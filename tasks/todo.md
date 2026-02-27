@@ -27,6 +27,15 @@
 - [x] CLAUDE.md: ErrEmptyName added to registries section
 - [x] Verification: `make test` green
 
+## Completed: Edge case tests, stress tests, whitespace rejection (v3.0.6)
+
+- [x] Registry whitespace rejection: `strings.TrimSpace` on both registries (2 production lines)
+- [x] Registry tests: +4 label_registry, +4 reltype_registry (whitespace, lookup-empty, recovery, concurrent)
+- [x] PropertySlice tests: +12 (depth boundary, empty containers, nil map values, mixed valid/invalid, map key types, stress large map/slice/wide-deep, many-properties sorted)
+- [x] Node tests: +5 (high-cardinality HasLabelTokenRaw, temporal shared-pointer mutation, SetTemporal(nil), temporal overwrite, 150-property stress)
+- [x] Relationship tests: +4 (temporal shared-pointer mutation, SetTemporal(nil), temporal overwrite, 150-property stress)
+- [x] Verification: `make ci` green, 97.4% coverage, race-clean, gosec clean, 167 total tests
+
 ## Next up
 
 - Phase 2 continued: msgpack wire formats (nodeWire/relWire), Badger persistence

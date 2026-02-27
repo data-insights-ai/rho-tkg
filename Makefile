@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration cover vet fmt fmt-check security vulncheck check ci clean
+.PHONY: build test test-v test-race test-integration bench cover vet fmt fmt-check security vulncheck check ci clean
 
 # Build (verify compilation)
 build:
@@ -23,6 +23,10 @@ test-race:
 # Run integration tests (long-running, not short)
 test-integration:
 	go test -count=1 -run Integration ./...
+
+# Run benchmarks (long-running, not short)
+bench:
+	go test -v -count=1 -run TestBench ./pkg/types/
 
 # Run tests with coverage report
 cover:

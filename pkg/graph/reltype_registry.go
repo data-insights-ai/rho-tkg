@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 )
 
@@ -27,9 +28,10 @@ func newRelTypeRegistry() *relTypeRegistry {
 }
 
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
-// Returns ErrEmptyName if name is empty. Returns an error if the registry is full (65535 tokens).
+// Returns ErrEmptyName if name is empty or whitespace-only.
+// Returns an error if the registry is full (65535 tokens).
 func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
-	if name == "" {
+	if strings.TrimSpace(name) == "" {
 		return 0, ErrEmptyName
 	}
 

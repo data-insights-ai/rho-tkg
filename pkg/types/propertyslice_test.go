@@ -2,6 +2,8 @@ package types
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"testing"
 )
 
@@ -542,6 +544,57 @@ func TestDeepCopyReflectMapWithNilValuePreservesKey(t *testing.T) {
 	}
 }
 
+// ─── DeepCopy scalar fast-path tests ─────────────────────────────────────────
+//
+// Scalars are immutable in Go so deep copy just returns the value.
+// These tests verify each scalar fast-path branch is exercised and correct.
+
+func TestDeepCopyScalarFastPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{"bool_true", true},
+		{"bool_false", false},
+		{"int", int(42)},
+		{"int8", int8(-1)},
+		{"int16", int16(1000)},
+		{"int32", int32(100000)},
+		{"int64", int64(9999999999)},
+		{"uint", uint(42)},
+		{"uint8", uint8(255)},
+		{"uint16", uint16(65535)},
+		{"uint32", uint32(4294967295)},
+		{"uint64", uint64(18446744073709551615)},
+		{"float32", float32(3.14)},
+		{"float64", float64(2.718281828)},
+		{"string", "hello world"},
+		{"string_empty", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var ps PropertySlice
+			if err := ps.Set("k", tt.val); err != nil {
+				t.Fatalf("Set(%q, %v) failed: %v", "k", tt.val, err)
+			}
+
+			cp := ps.DeepCopy()
+			got, ok := cp.Get("k")
+			if !ok {
+				t.Fatal("Get(\"k\") should return true")
+			}
+			if got != tt.val {
+				t.Fatalf("DeepCopy scalar: got %v (%T), want %v (%T)", got, got, tt.val, tt.val)
+			}
+		})
+	}
+}
+
 // ─── Sorted invariant tests ─────────────────────────────────────────────────
 
 func TestPropertySliceSetMaintainsSortedOrder(t *testing.T) {
@@ -790,5 +843,264 @@ func TestPropertySliceDeepCopyIsIndependent(t *testing.T) {
 	}
 	if ps.Len() != 1 {
 		t.Errorf("original Len() = %d after inserting into copy, want 1", ps.Len())
+	}
+}
+
+// ─── Depth boundary edge cases ──────────────────────────────────────────────
+
+func TestValidateAcceptsOneBelowMaxDepth(t *testing.T) {
+	t.Parallel()
+
+	// 31 levels of nesting (one below maxPropertyDepth=32).
+	var v any = "leaf"
+	for range 31 {
+		v = []any{v}
+	}
+
+	var ps PropertySlice
+	if err := ps.Set("deep31", v); err != nil {
+		t.Fatalf("Set should accept 31 levels of nesting, got: %v", err)
+	}
+}
+
+func TestValidateRejectsMapAtExcessiveDepth(t *testing.T) {
+	t.Parallel()
+
+	// 33-level map nesting → ErrMaxDepthExceeded (exercises the map-recursion branch).
+	var v any = "leaf"
+	for range 33 {
+		v = map[string]any{"k": v}
+	}
+
+	var ps PropertySlice
+	err := ps.Set("deep_map", v)
+	if err == nil {
+		t.Fatal("Set should reject map nesting deeper than maxPropertyDepth")
+	}
+	if !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Errorf("errors.Is(err, ErrMaxDepthExceeded) = false; err = %v", err)
+	}
+}
+
+// ─── Empty container edge cases ─────────────────────────────────────────────
+
+func TestValidateAcceptsEmptyContainers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{"empty slice", []any{}},
+		{"empty map", map[string]any{}},
+		{"nested empty slices", []any{[]any{[]any{}}}},
+	}
+
+	for _, tc := range cases {
+		var ps PropertySlice
+		if err := ps.Set(tc.name, tc.val); err != nil {
+			t.Errorf("Set(%q, ...) should accept empty container, got: %v", tc.name, err)
+		}
+	}
+}
+
+func TestValidateAcceptsMapWithNilValue(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	m := map[string]any{"key": nil}
+	if err := ps.Set("nilval_map", m); err != nil {
+		t.Fatalf("Set should accept map with nil value, got: %v", err)
+	}
+
+	val, ok := ps.Get("nilval_map")
+	if !ok {
+		t.Fatal("Get(\"nilval_map\") should return true")
+	}
+	got := val.(map[string]any)
+	if _, exists := got["key"]; !exists {
+		t.Fatal("nil-value key must be preserved")
+	}
+}
+
+// ─── Mixed valid/invalid content ────────────────────────────────────────────
+
+func TestValidateRejectsMixedValidInvalidSlice(t *testing.T) {
+	t.Parallel()
+
+	type myStruct struct{ X int }
+	var ps PropertySlice
+	err := ps.Set("mixed", []any{"ok", &myStruct{}})
+	if err == nil {
+		t.Fatal("Set should reject slice with mixed valid and invalid elements")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestValidateRejectsAnyWrappedInvalidType(t *testing.T) {
+	t.Parallel()
+
+	type myStruct struct{ X int }
+	var v any = myStruct{X: 1}
+	var ps PropertySlice
+	err := ps.Set("wrapped", v)
+	if err == nil {
+		t.Fatal("Set should reject struct wrapped in any interface")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+// ─── Map key type validation ────────────────────────────────────────────────
+
+func TestValidateAcceptsNonStringMapKeys(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	if err := ps.Set("intkeys", map[int]string{1: "one", 2: "two"}); err != nil {
+		t.Fatalf("Set should accept map[int]string, got: %v", err)
+	}
+}
+
+func TestValidateRejectsMapWithInvalidKeyType(t *testing.T) {
+	t.Parallel()
+
+	type myKey struct{ Name string }
+	var ps PropertySlice
+	err := ps.Set("structkeys", map[myKey]string{{Name: "a"}: "val"})
+	if err == nil {
+		t.Fatal("Set should reject map with struct key type")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+// ─── Stress tests ───────────────────────────────────────────────────────────
+
+func TestPropertySliceStressLargeMap(t *testing.T) {
+	t.Parallel()
+
+	m := make(map[string]any, 1000)
+	for i := range 1000 {
+		m[fmt.Sprintf("key_%04d", i)] = i
+	}
+
+	var ps PropertySlice
+	if err := ps.Set("big_map", m); err != nil {
+		t.Fatalf("Set should accept 1000-entry map, got: %v", err)
+	}
+
+	val, ok := ps.Get("big_map")
+	if !ok {
+		t.Fatal("Get(\"big_map\") should return true")
+	}
+	got := val.(map[string]any)
+	if len(got) != 1000 {
+		t.Fatalf("map len = %d, want 1000", len(got))
+	}
+}
+
+func TestPropertySliceStressLargeSlice(t *testing.T) {
+	t.Parallel()
+
+	s := make([]any, 1000)
+	for i := range 1000 {
+		s[i] = fmt.Sprintf("elem_%d", i)
+	}
+
+	var ps PropertySlice
+	if err := ps.Set("big_slice", s); err != nil {
+		t.Fatalf("Set should accept 1000-element slice, got: %v", err)
+	}
+
+	val, ok := ps.Get("big_slice")
+	if !ok {
+		t.Fatal("Get(\"big_slice\") should return true")
+	}
+	got := val.([]any)
+	if len(got) != 1000 {
+		t.Fatalf("slice len = %d, want 1000", len(got))
+	}
+}
+
+func TestPropertySliceStressWideAndDeep(t *testing.T) {
+	t.Parallel()
+
+	// Build 5 levels × 5 keys of nesting.
+	var build func(depth int) map[string]any
+	build = func(depth int) map[string]any {
+		m := make(map[string]any, 5)
+		for i := range 5 {
+			key := fmt.Sprintf("L%d_K%d", depth, i)
+			if depth < 5 {
+				m[key] = build(depth + 1)
+			} else {
+				m[key] = fmt.Sprintf("leaf_%d", i)
+			}
+		}
+		return m
+	}
+
+	tree := build(1)
+	var ps PropertySlice
+	if err := ps.Set("tree", tree); err != nil {
+		t.Fatalf("Set should accept wide-and-deep tree, got: %v", err)
+	}
+
+	// DeepCopy independence check.
+	cp := ps.DeepCopy()
+	copiedVal, _ := cp.Get("tree")
+	copiedMap := copiedVal.(map[string]any)
+	// Mutate a leaf in the copy.
+	inner := copiedMap["L1_K0"].(map[string]any)
+	inner["L2_K0"].(map[string]any)["L3_K0"].(map[string]any)["L4_K0"].(map[string]any)["L5_K0"] = "MUTATED"
+
+	// Original must be unchanged.
+	origVal, _ := ps.Get("tree")
+	origMap := origVal.(map[string]any)
+	leaf := origMap["L1_K0"].(map[string]any)["L2_K0"].(map[string]any)["L3_K0"].(map[string]any)["L4_K0"].(map[string]any)["L5_K0"]
+	if leaf == "MUTATED" {
+		t.Fatal("DeepCopy: mutating deep leaf in copy affected the original")
+	}
+
+	// Sorted invariant must hold across all properties.
+	_ = ps.Set("aaa", 1)
+	_ = ps.Set("zzz", 2)
+	for i := 1; i < ps.Len(); i++ {
+		if ps[i-1].Key >= ps[i].Key {
+			t.Fatalf("sorted invariant broken at index %d: %q >= %q", i-1, ps[i-1].Key, ps[i].Key)
+		}
+	}
+}
+
+// ─── Stress: many properties sorted invariant ───────────────────────────────
+
+func TestPropertySliceStressManyPropertiesSorted(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		if err := ps.Set(key, i); err != nil {
+			t.Fatalf("Set(%q) failed: %v", key, err)
+		}
+	}
+
+	// All 1000 retrievable.
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		val, ok := ps.Get(key)
+		if !ok || val != i {
+			t.Fatalf("Get(%q) = (%v, %v), want (%d, true)", key, val, ok, i)
+		}
+	}
+
+	// Sorted invariant.
+	if !sort.SliceIsSorted(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key }) {
+		t.Fatal("PropertySlice is not sorted after 1000 insertions")
 	}
 }

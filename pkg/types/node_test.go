@@ -2,6 +2,8 @@ package types
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"testing"
 
 	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
@@ -357,17 +359,17 @@ func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 
 	n := NewNode(snowflake.ID(1), 10, nil)
 	tm := &TemporalMetadata{
-		ValidFrom:    1000,
-		ValidTo:      2000,
-		TxFrom:       3000,
-		TxTo:         4000,
-		CreatedAt:    5000,
-		UpdatedAt:    6000,
-		DeletedAt:    7000,
-		CreatedBy:    "alice",
-		UpdatedBy:    "bob",
-		BaseEntityID: 42,
+		ValidFrom: 1000,
+		ValidTo:   2000,
+		TxFrom:    3000,
+		TxTo:      4000,
+		CreatedAt: 5000,
+		UpdatedAt: 6000,
+		DeletedAt: 7000,
+		CreatedBy: "alice",
+		UpdatedBy: "bob",
 	}
+	tm.SetBaseEntityID(snowflake.ID(42))
 	n.SetTemporal(tm)
 	got := n.Temporal()
 	if got.ValidFrom != 1000 || got.ValidTo != 2000 {
@@ -383,8 +385,8 @@ func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 	if got.CreatedBy != "alice" || got.UpdatedBy != "bob" {
 		t.Errorf("CreatedBy/UpdatedBy = %q/%q, want alice/bob", got.CreatedBy, got.UpdatedBy)
 	}
-	if got.BaseEntityID != 42 {
-		t.Errorf("BaseEntityID = %d, want 42", got.BaseEntityID)
+	if got.BaseEntityID() != entityID(snowflake.ID(42)) {
+		t.Errorf("BaseEntityID() = %v, want 42", got.BaseEntityID())
 	}
 }
 
@@ -465,5 +467,102 @@ func TestNodeVersion(t *testing.T) {
 	n.SetVersion(5)
 	if n.Version() != 5 {
 		t.Errorf("after SetVersion(5), Version() = %d", n.Version())
+	}
+}
+
+// ─── Edge case tests ────────────────────────────────────────────────────────
+
+func TestNodeHasLabelTokenRawHighCardinality(t *testing.T) {
+	t.Parallel()
+
+	extras := make([]uint16, 15)
+	for i := range extras {
+		extras[i] = uint16(100 + i) // tokens 100..114
+	}
+	n := NewNode(snowflake.ID(1), 10, extras)
+
+	// Hit on last extra label (full scan).
+	if !n.HasLabelTokenRaw(114) {
+		t.Error("HasLabelTokenRaw(114) = false, want true (last extra label)")
+	}
+	// Miss on absent token.
+	if n.HasLabelTokenRaw(999) {
+		t.Error("HasLabelTokenRaw(999) = true, want false (absent)")
+	}
+}
+
+func TestNodeTemporalSharedPointerMutation(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	tm := &TemporalMetadata{ValidFrom: 1000}
+	n.SetTemporal(tm)
+
+	// Mutate through the returned pointer.
+	n.Temporal().ValidFrom = 2000
+
+	// Node must reflect the change (shared pointer).
+	if n.Temporal().ValidFrom != 2000 {
+		t.Errorf("Temporal().ValidFrom = %d, want 2000 (shared pointer mutation)", n.Temporal().ValidFrom)
+	}
+}
+
+func TestNodeSetTemporalNil(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	tm := &TemporalMetadata{ValidFrom: 1000}
+	n.SetTemporal(tm)
+	n.SetTemporal(nil)
+
+	if n.Temporal() != nil {
+		t.Fatal("Temporal() should be nil after SetTemporal(nil)")
+	}
+}
+
+func TestNodeTemporalOverwrite(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	old := &TemporalMetadata{ValidFrom: 1000}
+	n.SetTemporal(old)
+
+	replacement := &TemporalMetadata{ValidFrom: 9999}
+	n.SetTemporal(replacement)
+
+	if n.Temporal() != replacement {
+		t.Fatal("Temporal() should return the replacement pointer")
+	}
+	// Old pointer must be detached — mutating it doesn't affect node.
+	old.ValidFrom = 5555
+	if n.Temporal().ValidFrom != 9999 {
+		t.Errorf("old pointer mutation affected node: ValidFrom = %d, want 9999", n.Temporal().ValidFrom)
+	}
+}
+
+func TestNodeStressManyProperties(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		if err := n.SetProperty(key, i); err != nil {
+			t.Fatalf("SetProperty(%q) failed: %v", key, err)
+		}
+	}
+
+	// All 1000 retrievable.
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		val, ok := n.GetProperty(key)
+		if !ok || val != i {
+			t.Fatalf("GetProperty(%q) = (%v, %v), want (%d, true)", key, val, ok, i)
+		}
+	}
+
+	// Sorted invariant on internal properties.
+	props := n.Properties()
+	if !sort.SliceIsSorted(props, func(i, j int) bool { return props[i].Key < props[j].Key }) {
+		t.Fatal("Node properties are not sorted after 1000 insertions")
 	}
 }

@@ -16,15 +16,20 @@ type relID snowflake.ID
 
 // Relationship represents a directed edge in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
+//
+// Layout: fields are ordered by descending alignment to eliminate internal
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 72 bytes
+// with only 2 bytes of trailing padding (vs. 80 bytes with naive ordering).
 type Relationship struct {
-	id         relID
-	relType    relTypeToken
-	startID    nodeID
-	endID      nodeID
-	properties PropertySlice
-	version    int
-	temporal   *TemporalMetadata
-	integrity  *RelIntegrity
+	id         relID             // 8B, offset  0
+	startID    nodeID            // 8B, offset  8
+	endID      nodeID            // 8B, offset 16
+	properties PropertySlice     // 24B (slice header), offset 24
+	temporal   *TemporalMetadata // 8B, offset 48
+	integrity  *RelIntegrity     // 8B, offset 56
+	version    uint32            // 4B, offset 64
+	relType    relTypeToken      // 2B, offset 68
+	// 2B trailing padding → 72B total
 }
 
 // NewRelationship creates a Relationship with snowflake IDs for all parties.
@@ -104,12 +109,12 @@ func (r *Relationship) PropertiesMap() map[string]any {
 }
 
 // Version returns the relationship's version number (default 0).
-func (r *Relationship) Version() int {
+func (r *Relationship) Version() uint32 {
 	return r.version
 }
 
 // SetVersion sets the relationship's version number.
-func (r *Relationship) SetVersion(v int) {
+func (r *Relationship) SetVersion(v uint32) {
 	r.version = v
 }
 

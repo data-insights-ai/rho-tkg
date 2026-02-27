@@ -201,3 +201,91 @@ func TestRelTypeRegistryLen(t *testing.T) {
 		t.Errorf("after 2 unique types Len() = %d, want 2", reg.Len())
 	}
 }
+
+// ─── Whitespace rejection edge cases ─────────────────────────────────────────
+
+func TestRelTypeRegistryRejectsWhitespaceOnlyName(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"space", " "},
+		{"tab", "\t"},
+		{"newline", "\n"},
+		{"mixed whitespace", "  \t\n  "},
+	}
+
+	for _, tc := range cases {
+		reg := newRelTypeRegistry()
+		_, err := reg.GetOrCreate(tc.input)
+		if err == nil {
+			t.Errorf("GetOrCreate(%q) [%s] should return error", tc.input, tc.name)
+			continue
+		}
+		if !errors.Is(err, ErrEmptyName) {
+			t.Errorf("GetOrCreate(%q) [%s]: errors.Is(err, ErrEmptyName) = false; err = %v", tc.input, tc.name, err)
+		}
+	}
+}
+
+func TestRelTypeRegistryLookupEmptyReturnsFalse(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	reg.GetOrCreate("KNOWS")
+
+	_, ok := reg.Lookup("")
+	if ok {
+		t.Fatal("Lookup(\"\") should return false")
+	}
+}
+
+func TestRelTypeRegistryRecoveryAfterEmptyRejection(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	_, err := reg.GetOrCreate("")
+	if err == nil {
+		t.Fatal("GetOrCreate(\"\") should return error")
+	}
+
+	tok, err := reg.GetOrCreate("VALID")
+	if err != nil {
+		t.Fatalf("GetOrCreate(\"VALID\") failed after empty rejection: %v", err)
+	}
+	if tok == 0 {
+		t.Fatal("GetOrCreate(\"VALID\") returned reserved token 0")
+	}
+	if reg.Len() != 1 {
+		t.Errorf("Len() = %d after 1 valid registration, want 1", reg.Len())
+	}
+}
+
+func TestRelTypeRegistryConcurrentEmptyRejection(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	const goroutines = 50
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			_, errs[idx] = reg.GetOrCreate("")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if !errors.Is(err, ErrEmptyName) {
+			t.Errorf("goroutine %d: errors.Is(err, ErrEmptyName) = false; err = %v", i, err)
+		}
+	}
+	if reg.Len() != 0 {
+		t.Errorf("Len() = %d after all-empty rejections, want 0", reg.Len())
+	}
+}

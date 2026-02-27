@@ -168,6 +168,13 @@ func deepCopyValue(v any, depth int) any {
 	}
 
 	switch val := v.(type) {
+	// Scalar types — immutable, return as-is without reflect overhead.
+	case bool, string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return val
+
 	// Common slice types.
 	case []string:
 		cp := make([]string, len(val))

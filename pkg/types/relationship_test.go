@@ -2,6 +2,8 @@ package types
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"testing"
 
 	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
@@ -290,17 +292,17 @@ func TestRelTemporalFieldsRoundTrip(t *testing.T) {
 
 	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
 	tm := &TemporalMetadata{
-		ValidFrom:    1000,
-		ValidTo:      2000,
-		TxFrom:       3000,
-		TxTo:         4000,
-		CreatedAt:    5000,
-		UpdatedAt:    6000,
-		DeletedAt:    7000,
-		CreatedBy:    "alice",
-		UpdatedBy:    "bob",
-		BaseEntityID: 42,
+		ValidFrom: 1000,
+		ValidTo:   2000,
+		TxFrom:    3000,
+		TxTo:      4000,
+		CreatedAt: 5000,
+		UpdatedAt: 6000,
+		DeletedAt: 7000,
+		CreatedBy: "alice",
+		UpdatedBy: "bob",
 	}
+	tm.SetBaseEntityID(snowflake.ID(42))
 	r.SetTemporal(tm)
 	got := r.Temporal()
 	if got.ValidFrom != 1000 || got.ValidTo != 2000 {
@@ -316,8 +318,8 @@ func TestRelTemporalFieldsRoundTrip(t *testing.T) {
 	if got.CreatedBy != "alice" || got.UpdatedBy != "bob" {
 		t.Errorf("CreatedBy/UpdatedBy = %q/%q, want alice/bob", got.CreatedBy, got.UpdatedBy)
 	}
-	if got.BaseEntityID != 42 {
-		t.Errorf("BaseEntityID = %d, want 42", got.BaseEntityID)
+	if got.BaseEntityID() != entityID(snowflake.ID(42)) {
+		t.Errorf("BaseEntityID() = %v, want 42", got.BaseEntityID())
 	}
 }
 
@@ -371,5 +373,83 @@ func TestRelPropertiesMap(t *testing.T) {
 	}
 	if m["weight"] != 1.5 || m["since"] != "2025" {
 		t.Errorf("PropertiesMap() = %v, unexpected values", m)
+	}
+}
+
+// ─── Edge case tests ────────────────────────────────────────────────────────
+
+func TestRelTemporalSharedPointerMutation(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	tm := &TemporalMetadata{ValidFrom: 1000}
+	r.SetTemporal(tm)
+
+	// Mutate through the returned pointer.
+	r.Temporal().ValidFrom = 2000
+
+	// Relationship must reflect the change (shared pointer).
+	if r.Temporal().ValidFrom != 2000 {
+		t.Errorf("Temporal().ValidFrom = %d, want 2000 (shared pointer mutation)", r.Temporal().ValidFrom)
+	}
+}
+
+func TestRelSetTemporalNil(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	tm := &TemporalMetadata{ValidFrom: 1000}
+	r.SetTemporal(tm)
+	r.SetTemporal(nil)
+
+	if r.Temporal() != nil {
+		t.Fatal("Temporal() should be nil after SetTemporal(nil)")
+	}
+}
+
+func TestRelTemporalOverwrite(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	old := &TemporalMetadata{ValidFrom: 1000}
+	r.SetTemporal(old)
+
+	replacement := &TemporalMetadata{ValidFrom: 9999}
+	r.SetTemporal(replacement)
+
+	if r.Temporal() != replacement {
+		t.Fatal("Temporal() should return the replacement pointer")
+	}
+	// Old pointer must be detached — mutating it doesn't affect relationship.
+	old.ValidFrom = 5555
+	if r.Temporal().ValidFrom != 9999 {
+		t.Errorf("old pointer mutation affected relationship: ValidFrom = %d, want 9999", r.Temporal().ValidFrom)
+	}
+}
+
+func TestRelStressManyProperties(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		if err := r.SetProperty(key, i); err != nil {
+			t.Fatalf("SetProperty(%q) failed: %v", key, err)
+		}
+	}
+
+	// All 1000 retrievable.
+	for i := range 1000 {
+		key := fmt.Sprintf("prop_%04d", i)
+		val, ok := r.GetProperty(key)
+		if !ok || val != i {
+			t.Fatalf("GetProperty(%q) = (%v, %v), want (%d, true)", key, val, ok, i)
+		}
+	}
+
+	// Sorted invariant on internal properties.
+	props := r.Properties()
+	if !sort.SliceIsSorted(props, func(i, j int) bool { return props[i].Key < props[j].Key }) {
+		t.Fatal("Relationship properties are not sorted after 1000 insertions")
 	}
 }

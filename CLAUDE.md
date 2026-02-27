@@ -129,11 +129,11 @@ Current packages (evolving):
 
 | File | Purpose |
 |---|---|
-| `node.go` | Node (graph vertex) — `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, version, temporal, integrity |
-| `relationship.go` | Relationship (directed edge) — `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity |
+| `node.go` | Node (graph vertex, 80B) — `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, `uint32` version, temporal, integrity |
+| `relationship.go` | Relationship (directed edge, 72B) — `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, `uint32` version, temporal, integrity |
 | `propertyslice.go` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types at any nesting depth; depth-limited to 32 levels (`ErrMaxDepthExceeded`) |
 | `shadow.go` | Constants for virtual read-only properties (`tkg_*`) managed by the graph layer |
-| `temporal.go` | `Instant` type (Unix ms), `TemporalMetadata` struct (validity, transaction, audit, provenance, version chain) |
+| `temporal.go` | `Instant` type (Unix ms), `entityID` (opaque cross-entity ref wrapping `snowflake.ID`), `TemporalMetadata` struct (validity, transaction, audit, provenance, version chain via `baseEntityID entityID`) |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` structs (hash chain: `Hash`, `PrevHash`) |
 
 ### `pkg/graph`
@@ -149,11 +149,13 @@ Current packages (evolving):
 
 **Pure-data structs (core architectural rule)**: Node and Relationship **never** hold references to the Graph, registries, or any resolver. They are self-contained data containers that hold tokens internally. String resolution is **always** the responsibility of the Graph layer, Cypher engine, or serialization layer — never on entities. No `SetGraph()`, no injected resolvers. This ensures entities are safely serializable, cacheable, testable standalone, and safe across goroutines.
 
-**snowflake.ID everywhere**: All entity IDs are backed by `snowflake.ID`. Internally, `Node.id` is `nodeID` (wraps `snowflake.ID`), `Relationship.id` is `relID` (wraps `snowflake.ID`), and `startID`/`endID` are `nodeID`. These opaque wrappers prevent external packages from constructing or comparing IDs directly. Constructors accept `snowflake.ID`; the graph layer generates IDs via `NextNodeID()`/`NextRelID()`. Never use plain `int64` or `string` for entity IDs.
+**snowflake.ID everywhere**: All entity IDs are backed by `snowflake.ID`. Internally, `Node.id` is `nodeID` (wraps `snowflake.ID`), `Relationship.id` is `relID` (wraps `snowflake.ID`), `startID`/`endID` are `nodeID`, and `TemporalMetadata.baseEntityID` is `entityID` (wraps `snowflake.ID` for cross-entity version chain references). These opaque wrappers prevent external packages from constructing or comparing IDs directly. Constructors accept `snowflake.ID`; the graph layer generates IDs via `NextNodeID()`/`NextRelID()`. Never use plain `int64` or `string` for entity IDs.
 
 **Dual snowflake generators**: Graph holds two separate generators — one for nodes, one for relationships — to guarantee independent ID spaces. Epoch: `2026-01-01`. Default: 10-bit node (1024 instances), 12-bit step (4096 IDs/ms). Each concurrent graph instance **must** use a different `SnowflakeNodeID`. Generators are stateless — no counter persistence, no crash recovery.
 
 **Strict encapsulation**: All struct fields are unexported. Access is through methods only. Constructors are `NewNode(id, primaryLabel, extraLabels)` and `NewRelationship(id, relType, startID, endID)`.
+
+**Struct alignment packing**: Node (80B) and Relationship (72B) are packed by descending field alignment — 8-byte fields first (IDs, slice headers, pointers), then `uint32 version` (4B), then the 2-byte token, with only 2 bytes of trailing padding. This eliminates 6 bytes of internal padding per entity vs. naive field ordering. When adding fields to these structs, maintain this descending-alignment order and verify with `unsafe.Sizeof`.
 
 **Defensive copying**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, `PropertiesMap()`, `ToMap()`, and `DeepCopy()` always return fully independent copies — never internal references. "Independent" means mutating the returned value must never affect the original, including nested slices and maps. Tests enforce this at every layer. When adding a new accessor that returns reference types, always deep-copy and always add a mutation-independence test.
 
@@ -204,9 +206,9 @@ All resolve to user-meaningful data via the Graph layer. No internal IDs exposed
 | `tkg_tx_from`, `tkg_tx_to` | `Instant` | Both | Temporal |
 | `tkg_created_at`, `tkg_updated_at`, `tkg_deleted_at` | `Instant` | Both | Temporal |
 | `tkg_created_by`, `tkg_updated_by` | `string` | Both | Provenance |
-| `tkg_version` | `int` | Both | Provenance |
+| `tkg_version` | `uint32` | Both | Provenance |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both | Integrity |
-| `tkg_base_entity` | `int64` | Both | Version chain |
+| `tkg_base_entity` | `entityID` | Both | Version chain |
 
 **Removed**: `tkg_id`, `tkg_start_id`, `tkg_end_id` — internal snowflake IDs have no user purpose.
 

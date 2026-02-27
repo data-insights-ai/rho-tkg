@@ -18,14 +18,19 @@ type nodeID snowflake.ID
 // All fields are unexported; access is through methods only.
 // A Node is a pure-data struct — it works immediately after construction
 // with no graph back-reference required.
+//
+// Layout: fields are ordered by descending alignment to eliminate internal
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes
+// with only 2 bytes of trailing padding (vs. 88 bytes with naive ordering).
 type Node struct {
-	id           nodeID
-	primaryLabel labelToken
-	extraLabels  []labelToken
-	properties   PropertySlice
-	version      int
-	temporal     *TemporalMetadata
-	integrity    *NodeIntegrity
+	id           nodeID            // 8B, offset  0
+	properties   PropertySlice     // 24B (slice header), offset  8
+	extraLabels  []labelToken      // 24B (slice header), offset 32
+	temporal     *TemporalMetadata // 8B, offset 56
+	integrity    *NodeIntegrity    // 8B, offset 64
+	version      uint32            // 4B, offset 72
+	primaryLabel labelToken        // 2B, offset 76
+	// 2B trailing padding → 80B total
 }
 
 // NewNode creates a Node with the given snowflake ID, primary label token,
@@ -158,12 +163,12 @@ func (n *Node) PropertiesMap() map[string]any {
 }
 
 // Version returns the node's version number (default 0).
-func (n *Node) Version() int {
+func (n *Node) Version() uint32 {
 	return n.version
 }
 
 // SetVersion sets the node's version number.
-func (n *Node) SetVersion(v int) {
+func (n *Node) SetVersion(v uint32) {
 	n.version = v
 }
 
