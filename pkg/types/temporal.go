@@ -1,6 +1,6 @@
 package types
 
-import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
+import snowflake "github.com/bds421/rho-snowflake-2026"
 
 // Instant represents a point in time as Unix milliseconds.
 // Used for all temporal fields in the graph (validity, transaction, audit).

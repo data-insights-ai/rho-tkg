@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 

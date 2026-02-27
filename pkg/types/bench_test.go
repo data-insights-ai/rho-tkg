@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
+	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
 const benchCount = 1_000_000

@@ -2,7 +2,7 @@
 
 **Temporal Knowledge Graph v3** -- a Go library defining core domain types for a temporal knowledge graph.
 
-This is a pure library (no main binary). All entity identification uses `snowflake.ID` from the internal `snowflake-2026` package.
+This is a pure library (no main binary). All entity identification uses `snowflake.ID` from [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026).
 
 ## Module
 
@@ -11,7 +11,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 ```
 
 **Go:** 1.26.0
-**Dependencies:** `rho/snowflake-2026` (IDs), `rho/kit` (service toolkit)
+**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), `rho/kit` (service toolkit)
 
 ## Architecture
 

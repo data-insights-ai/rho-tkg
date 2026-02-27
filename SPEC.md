@@ -68,7 +68,7 @@ type relTypeToken uint16  // interned type string, max 65,535 distinct types
 ### 3.2 Configuration
 
 ```go
-import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
+import snowflake "github.com/bds421/rho-snowflake-2026"
 
 // Graph holds two snowflake generators — one for nodes, one for relationships.
 // Separate generators avoid ID collisions between entity types.
@@ -692,7 +692,7 @@ nodes := graph.FindNodes("User", "name", "Alice")
 - `pkg/storage/badger.go` — registry persistence, entity serialization
 
 **Dependencies:**
-- `gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026`
+- `github.com/bds421/rho-snowflake-2026`
 
 **Tests:**
 - Snowflake: generated IDs are unique across 100K calls

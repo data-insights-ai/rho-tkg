@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.7] - 2026-02-27
+
+### Changed
+
+- **Snowflake dependency migrated** from `gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026 v0.1.3` to [`github.com/bds421/rho-snowflake-2026 v1.0.1`](https://github.com/bds421/rho-snowflake-2026). All import paths updated across 14 `.go` files, `go.mod`, `SPEC.md`, and documentation.
+
 ## [3.0.6] - 2026-02-27
 
 ### Added
@@ -113,7 +119,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Initial implementation of `pkg/types`: `Node`, `Relationship`, `PropertySlice`, shadow constants.
-- Snowflake ID integration via `rho/snowflake-2026`.
+- Snowflake ID integration via `github.com/bds421/rho-snowflake-2026`.
 - Token interning with `labelToken` and `relTypeToken` (uint16).
 - Shadow property protection (`tkg_` prefix rejection).
 - Defensive copying on all slice accessors.

@@ -1,6 +1,6 @@
 package types
 
-import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
+import snowflake "github.com/bds421/rho-snowflake-2026"
 
 // labelToken is the internal integer type for interned label strings.
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
