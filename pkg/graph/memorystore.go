@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"sort"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -205,6 +206,7 @@ func (ms *MemoryStore) DeleteRelationship(id snowflake.ID) error {
 }
 
 // NodesByLabel returns all nodes with the given label token.
+// Results are sorted by snowflake.ID (chronological order) for deterministic output.
 func (ms *MemoryStore) NodesByLabel(token uint16) []*types.Node {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -219,10 +221,12 @@ func (ms *MemoryStore) NodesByLabel(token uint16) []*types.Node {
 			result = append(result, n)
 		}
 	}
+	sortNodesByID(result)
 	return result
 }
 
 // RelationshipsByType returns all relationships with the given type token.
+// Results are sorted by snowflake.ID (chronological order) for deterministic output.
 func (ms *MemoryStore) RelationshipsByType(token uint16) []*types.Relationship {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -237,11 +241,13 @@ func (ms *MemoryStore) RelationshipsByType(token uint16) []*types.Relationship {
 			result = append(result, r)
 		}
 	}
+	sortRelsByID(result)
 	return result
 }
 
 // OutgoingRelationships returns relationships starting from the given node.
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
+// Results are sorted by snowflake.ID (chronological order) for deterministic output.
 func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -260,11 +266,13 @@ func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 			result = append(result, r)
 		}
 	}
+	sortRelsByID(result)
 	return result
 }
 
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
+// Results are sorted by snowflake.ID (chronological order) for deterministic output.
 func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -283,6 +291,7 @@ func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 			result = append(result, r)
 		}
 	}
+	sortRelsByID(result)
 	return result
 }
 
@@ -298,4 +307,18 @@ func (ms *MemoryStore) RelationshipCount() int {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	return len(ms.rels)
+}
+
+// sortNodesByID sorts nodes by snowflake.ID for deterministic, chronological output.
+func sortNodesByID(nodes []*types.Node) {
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].InternalID().SnowflakeID() < nodes[j].InternalID().SnowflakeID()
+	})
+}
+
+// sortRelsByID sorts relationships by snowflake.ID for deterministic, chronological output.
+func sortRelsByID(rels []*types.Relationship) {
+	sort.Slice(rels, func(i, j int) bool {
+		return rels[i].InternalID().SnowflakeID() < rels[j].InternalID().SnowflakeID()
+	})
 }

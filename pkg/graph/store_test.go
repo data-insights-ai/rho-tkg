@@ -468,3 +468,146 @@ func TestMemoryStoreConcurrentAccess(t *testing.T) {
 		t.Errorf("RelationshipCount() = %d, want %d", ms.RelationshipCount(), goroutines)
 	}
 }
+
+// ─── MemoryStore: Deterministic sort order ──────────────────────────────────
+
+func TestMemoryStoreNodesByLabelSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	// Insert in non-sequential order to ensure sort is effective.
+	n3 := types.NewNode(snowflake.ID(30), 1, nil)
+	n1 := types.NewNode(snowflake.ID(10), 1, nil)
+	n2 := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(n3)
+	ms.PutNode(n1)
+	ms.PutNode(n2)
+
+	result := ms.NodesByLabel(1)
+	if len(result) != 3 {
+		t.Fatalf("NodesByLabel(1) = %d nodes, want 3", len(result))
+	}
+	for i := 1; i < len(result); i++ {
+		prev := result[i-1].InternalID().SnowflakeID()
+		curr := result[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("NodesByLabel not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+func TestMemoryStoreRelsByTypeSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(1), 1, nil)
+	nB := types.NewNode(snowflake.ID(2), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	// Insert in reverse order.
+	r3 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(1), snowflake.ID(2))
+	r1 := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2))
+	r2 := types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(1), snowflake.ID(2))
+	ms.PutRelationship(r3)
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+
+	result := ms.RelationshipsByType(5)
+	if len(result) != 3 {
+		t.Fatalf("RelationshipsByType(5) = %d rels, want 3", len(result))
+	}
+	for i := 1; i < len(result); i++ {
+		prev := result[i-1].InternalID().SnowflakeID()
+		curr := result[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("RelationshipsByType not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+func TestMemoryStoreOutgoingRelsSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(1), 1, nil)
+	nB := types.NewNode(snowflake.ID(2), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	// Insert in reverse order.
+	r3 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(1), snowflake.ID(2))
+	r1 := types.NewRelationship(snowflake.ID(100), 7, snowflake.ID(1), snowflake.ID(2))
+	r2 := types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(1), snowflake.ID(2))
+	ms.PutRelationship(r3)
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+
+	result := ms.OutgoingRelationships(snowflake.ID(1), 0)
+	if len(result) != 3 {
+		t.Fatalf("OutgoingRelationships = %d rels, want 3", len(result))
+	}
+	for i := 1; i < len(result); i++ {
+		prev := result[i-1].InternalID().SnowflakeID()
+		curr := result[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("OutgoingRelationships not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+func TestMemoryStoreIncomingRelsSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(1), 1, nil)
+	nB := types.NewNode(snowflake.ID(2), 1, nil)
+	nC := types.NewNode(snowflake.ID(3), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+	ms.PutNode(nC)
+
+	// All point to nA, inserted in reverse order.
+	r3 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(3), snowflake.ID(1))
+	r1 := types.NewRelationship(snowflake.ID(100), 7, snowflake.ID(2), snowflake.ID(1))
+	r2 := types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(3), snowflake.ID(1))
+	ms.PutRelationship(r3)
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+
+	result := ms.IncomingRelationships(snowflake.ID(1), 0)
+	if len(result) != 3 {
+		t.Fatalf("IncomingRelationships = %d rels, want 3", len(result))
+	}
+	for i := 1; i < len(result); i++ {
+		prev := result[i-1].InternalID().SnowflakeID()
+		curr := result[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("IncomingRelationships not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	for i := range 20 {
+		ms.PutNode(types.NewNode(snowflake.ID(int64(i+1)), 1, nil))
+	}
+
+	// Call multiple times — must return the same order every time.
+	first := ms.NodesByLabel(1)
+	for range 10 {
+		got := ms.NodesByLabel(1)
+		if len(got) != len(first) {
+			t.Fatalf("length mismatch: %d vs %d", len(got), len(first))
+		}
+		for i := range first {
+			if first[i].InternalID().SnowflakeID() != got[i].InternalID().SnowflakeID() {
+				t.Fatalf("non-deterministic order at index %d: %d vs %d",
+					i, first[i].InternalID().SnowflakeID(), got[i].InternalID().SnowflakeID())
+			}
+		}
+	}
+}

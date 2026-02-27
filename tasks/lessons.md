@@ -136,3 +136,22 @@ Patterns that caused review findings. Rules to prevent recurrence.
 **Problem:** If `AddNode` generates an ID first and then property validation fails, the snowflake ID is consumed but never stored — a gap in the ID sequence.
 **Solution:** `NewPropertySlice(props)` runs before `g.NextNodeID()`. Validation failures return early with no wasted ID.
 **Rule:** In entity creation flows, validate all input before generating irreversible resources (IDs, timestamps).
+
+---
+
+## 2026-02-27 — Post-release review v3.0.7 (3 findings)
+
+### Map iteration produces non-deterministic query results (MAJOR)
+**Problem:** `NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships` iterate Go maps and return slices in random order. Snowflake IDs are time-ordered, but that ordering is thrown away.
+**Root cause:** Map iteration order is randomized by spec. Collecting from a hash-set into a slice without sorting produces shuffled results.
+**Rule:** Any Store method returning entity slices from map iteration MUST sort by snowflake.ID before returning. This gives deterministic, chronological results with zero additional metadata. Write determinism tests: insert in reverse order, verify ascending ID order on retrieval. Test with multiple calls to prove idempotent ordering.
+
+### Cascade delete must tolerate pre-deleted rels in ALL loops (BLOCKER)
+**Problem:** `DeleteNode` outgoing loop hard-failed on `ErrRelNotFound`. The incoming loop correctly skipped it for self-loops, but the outgoing loop did not. Under concurrency, a goroutine can delete a relationship between the fetch and the cascade — causing `DeleteNode` to abort with a partially severed node.
+**Root cause:** Only considered self-loops (incoming path) as a source of `ErrRelNotFound`. Did not consider concurrent external deletes.
+**Rule:** In cascade-delete patterns, tolerate `ErrRelNotFound` in EVERY deletion loop, not just the one that handles self-loops. The reason is broader than self-loops: any concurrent operation can remove relationships from under you. Guard pattern: `if errors.Is(err, ErrRelNotFound) { continue }`.
+
+### Per-call locking creates TOCTOU windows in multi-step operations (MAJOR)
+**Problem:** `DeleteNode` calls `OutgoingRelationships`, then `DeleteRelationship` N times, then `DeleteNode`. Each call acquires/releases the `RWMutex` independently. Between any two calls, a concurrent `AddRelationship` can create a new edge to the node being deleted — dangling edge.
+**Root cause:** Store has no transactional API. `RWMutex` serializes individual operations but not multi-step workflows.
+**Rule:** Document TOCTOU limitations explicitly with `// TODO` comments when the Store lacks a transaction API. The Badger implementation MUST wrap cascade-delete in a single serialized `Update()` transaction. Never assume per-call locking provides multi-step atomicity.

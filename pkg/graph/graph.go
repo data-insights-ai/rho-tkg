@@ -226,19 +226,31 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 
 // DeleteNode cascade-deletes all connected relationships, then removes the node.
 // Returns ErrNodeNotFound if the node does not exist.
+//
+// TODO: Requires transactional store API for full correctness. With the current
+// per-call locking in MemoryStore, there is a TOCTOU window between relationship
+// deletion and node deletion where a concurrent AddRelationship can create a new
+// edge pointing to this node — producing a dangling relationship. The real Badger
+// implementation MUST execute the entire cascade inside a single serialized
+// Update() transaction.
 func (g *Graph) DeleteNode(id snowflake.ID) error {
 	// Collect all connected relationships before deleting.
 	outgoing := g.store.OutgoingRelationships(id, 0)
 	incoming := g.store.IncomingRelationships(id, 0)
 
 	// Delete each connected relationship.
+	// ErrRelNotFound is tolerated in both loops: a concurrent goroutine may have
+	// already deleted the relationship between fetch and delete, or a self-loop
+	// appears in both outgoing and incoming lists.
 	for _, r := range outgoing {
 		if err := g.store.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue
+			}
 			return fmt.Errorf("graph: cascade delete outgoing rel: %w", err)
 		}
 	}
 	for _, r := range incoming {
-		// Skip if already deleted (self-loop: same rel in both outgoing and incoming).
 		if err := g.store.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue

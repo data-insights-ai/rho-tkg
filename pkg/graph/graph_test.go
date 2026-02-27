@@ -652,3 +652,59 @@ func TestGraphLabelAndRelTypeIndependentNamespaces(t *testing.T) {
 		t.Errorf("label=%q reltype=%q, want both \"KNOWS\"", labelStr, relStr)
 	}
 }
+
+func TestGraphDeleteNodeCascadeToleratesPreDeletedOutgoingRel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+
+	r, _ := g.AddRelationship("R", nA, nB, nil)
+
+	// Simulate a concurrent delete: remove the outgoing relationship before
+	// cascade-deleting the node. Without the ErrRelNotFound guard in the
+	// outgoing loop, DeleteNode would return an error and leave the node stranded.
+	if err := g.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("pre-delete rel: %v", err)
+	}
+
+	// DeleteNode must succeed — the outgoing loop must tolerate ErrRelNotFound.
+	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode() after pre-deleted outgoing rel: %v", err)
+	}
+
+	// Node A should be gone.
+	if _, err := g.GetNode(nA.InternalID().SnowflakeID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Error("Node A should be deleted")
+	}
+}
+
+func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+
+	// Self-loop: A → A. Appears in both outgoing and incoming lists.
+	_, err := g.AddRelationship("SELF", nA, nA, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship self-loop: %v", err)
+	}
+
+	if g.RelationshipCount() != 1 {
+		t.Fatalf("RelationshipCount before delete = %d, want 1", g.RelationshipCount())
+	}
+
+	// DeleteNode must handle the self-loop appearing in both loops without error.
+	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode() with self-loop: %v", err)
+	}
+
+	if g.NodeCount() != 0 {
+		t.Errorf("NodeCount after delete = %d, want 0", g.NodeCount())
+	}
+	if g.RelationshipCount() != 0 {
+		t.Errorf("RelationshipCount after delete = %d, want 0", g.RelationshipCount())
+	}
+}

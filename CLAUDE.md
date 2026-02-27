@@ -176,9 +176,9 @@ Current packages (evolving):
 
 **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate, sort once. `SetProperties(ps)` on Node/Relationship assigns the pre-built slice directly. `AddNode`/`AddRelationship` use this path. Avoids O(N²) per-property `SetProperty` loop.
 
-**Store is pure persistence**: The `Store` interface handles entity CRUD and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets (`map[snowflake.ID]map[snowflake.ID]struct{}`) for O(1) adjacency insert/delete.
+**Store is pure persistence**: The `Store` interface handles entity CRUD and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets (`map[snowflake.ID]map[snowflake.ID]struct{}`) for O(1) adjacency insert/delete. All query methods (`NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships`) sort results by snowflake.ID for deterministic, chronological output.
 
-**Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Self-loops are handled by skipping `ErrRelNotFound` in the incoming pass.
+**Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Both loops tolerate `ErrRelNotFound` — handles self-loops (same rel in both lists) and concurrent external deletes. **Known limitation**: per-call locking creates a TOCTOU window; the Badger store must wrap the cascade in a single `Update()` transaction.
 
 **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types. Cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
 
@@ -249,7 +249,7 @@ No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is statele
 ## Implementation Phases
 
 1. **Core Types & Registries** ✅ — `pkg/types` (Node, Relationship, PropertySlice, shadow constants, temporal, integrity) + `pkg/graph` (labelRegistry, relTypeRegistry, dual snowflake generators, string resolution). Opaque ID types (`nodeID`/`relID`), recursive property validation, `Instant` timestamps.
-2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries. 256 tests, 96.7% coverage.
+2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency, deterministic ID-sorted queries), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade with full `ErrRelNotFound` tolerance, TOCTOU documented), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries. 296 tests, 96.8% coverage.
 3. **Phase 2B: Serialization & Persistence** — msgpack wire formats (`nodeWire`/`relWire`), Badger persistence, registry persist/restart.
 4. **Index Migration** — new fixed-width Badger key formats, index maintenance. Tests: label/type index scans, adjacency prefix scans, history ordering, big-endian sort verification.
 5. **Cypher & Graph API Integration** — Cypher token-based matching, REST/gRPC API layer.
