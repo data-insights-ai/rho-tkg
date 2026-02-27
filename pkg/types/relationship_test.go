@@ -336,6 +336,28 @@ func TestRelIntegrityFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRelHasTypeTokenRaw(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+
+	tests := []struct {
+		name string
+		tok  uint16
+		want bool
+	}{
+		{"type hit", 5, true},
+		{"type miss", 99, false},
+		{"token 0 reserved", 0, false},
+	}
+
+	for _, tt := range tests {
+		if got := r.HasTypeTokenRaw(tt.tok); got != tt.want {
+			t.Errorf("HasTypeTokenRaw(%d) [%s] = %v, want %v", tt.tok, tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestRelPropertiesMap(t *testing.T) {
 	t.Parallel()
 

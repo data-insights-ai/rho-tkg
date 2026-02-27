@@ -106,6 +106,24 @@ func (n *Node) HasLabelToken(tok labelToken) bool {
 	return false
 }
 
+// HasLabelTokenRaw checks if this node has the given label token using a raw
+// uint16 value. This is the zero-allocation path for the graph layer, which
+// holds tokens as uint16. Token 0 always returns false.
+func (n *Node) HasLabelTokenRaw(tok uint16) bool {
+	if tok == 0 {
+		return false
+	}
+	if uint16(n.primaryLabel) == tok {
+		return true
+	}
+	for _, t := range n.extraLabels {
+		if uint16(t) == tok {
+			return true
+		}
+	}
+	return false
+}
+
 // LabelTokenCount returns the total number of label tokens.
 func (n *Node) LabelTokenCount() int {
 	return 1 + len(n.extraLabels)
@@ -150,6 +168,9 @@ func (n *Node) SetVersion(v int) {
 }
 
 // Temporal returns the node's temporal metadata (nil until set by the graph layer).
+// The returned pointer is shared with the node — the graph layer needs mutation
+// access, so no defensive copy is made. Callers outside the graph layer should
+// treat it as read-only.
 func (n *Node) Temporal() *TemporalMetadata {
 	return n.temporal
 }
@@ -160,6 +181,9 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 }
 
 // Integrity returns the node's integrity metadata (nil until set by the graph layer).
+// The returned pointer is shared with the node — the graph layer needs mutation
+// access, so no defensive copy is made. Callers outside the graph layer should
+// treat it as read-only.
 func (n *Node) Integrity() *NodeIntegrity {
 	return n.integrity
 }

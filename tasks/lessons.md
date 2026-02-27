@@ -41,6 +41,28 @@ Patterns that caused review findings. Rules to prevent recurrence.
 
 ---
 
+## 2026-02-27 — Pre-release review round 2 (v3.0.4)
+
+### Implicit snowflake defaults are fragile (BLOCKER)
+**Problem:** `snowflake.NewNode(config.SnowflakeNodeID)` relies on library defaults matching spec (epoch, node bits, step bits). If the library changes defaults, IDs silently break.
+**Rule:** Always pass explicit options: `WithEpoch(snowflakeEpoch)`, `WithNodeBits(10)`, `WithStepBits(12)`. Define the epoch as a package-level variable for clarity.
+
+### Denylist validation misses unknown-unknown types (MAJOR)
+**Problem:** `validateReflectValue` only blocked Ptr/Struct. Arrays, channels, functions, unsafe pointers all passed through the `default: return nil` branch. An attacker can embed pointers inside `[1]*MyStruct{}` to bypass validation.
+**Root cause:** Denylist thinking — "what should I block?" instead of "what should I allow?"
+**Rule:** Always use allowlists for security-sensitive validation. Explicitly enumerate safe kinds (primitives, containers). Everything else defaults to rejection. This is the same pattern as firewall rules: deny-all, allow-specific.
+
+### Off-by-one on uint16 capacity boundary (MINOR)
+**Problem:** `r.nextToken >= tokenCapacityMax` (65535) prevents token 65535 from being assigned. uint16 max is 65535, so the range is 1-65535 (65535 usable tokens), not 1-65534.
+**Root cause:** Checking the counter instead of actual occupancy.
+**Rule:** For capacity checks, use `len(collection) > max` instead of counter comparisons. This checks actual occupancy and avoids uint16 overflow concerns when the counter wraps.
+
+### Zero-alloc paths matter for hot-path graph operations (MAJOR)
+**Problem:** `NodeHasLabel` called `AllLabelTokens()` which allocates a new slice on every call. In graph traversal, this is a hot path.
+**Rule:** Provide raw-type accessor methods (e.g., `HasLabelTokenRaw(uint16)`) for performance-critical paths across package boundaries. The opaque type is still the primary API; the raw method is the zero-alloc escape hatch.
+
+---
+
 ## 2026-02-27 — Pre-release review v3.0.2
 
 ### Coverage gaps between mirrored types
@@ -66,3 +88,37 @@ Patterns that caused review findings. Rules to prevent recurrence.
 ### Missing coverage check before marking complete
 **Problem:** Multiple 0% coverage methods shipped because `make cover` wasn't run as a gate.
 **Rule:** Run `make cover` and review `go tool cover -func=coverage.out` before marking any task complete. Any public method at 0% is not done.
+
+---
+
+## 2026-02-27 — Pre-release review round 3 (v3.0.5)
+
+### Recursive functions without depth limits are stack-overflow bombs (MAJOR)
+**Problem:** `validateReflectValue`, `deepCopyValue`, and `reflectCopyValue` recurse into nested containers without any depth guard. A self-referential `[]any` (or any deeply-nested structure) causes infinite recursion → stack overflow → process crash.
+**Root cause:** Recursive validation was added to fix shallow checks (round 1), but nobody asked "what stops the recursion besides the data running out?"
+**Rule:** Every recursive function that processes untrusted input MUST have a depth parameter and a hard limit. Return an error (validation) or stop recursing (copy) when exceeded. Use a package-level constant (e.g., `maxPropertyDepth = 32`) so the limit is discoverable and testable. Write boundary tests: exactly-at-limit succeeds, one-over-limit fails.
+
+### Empty-string inputs create ambiguous state in registries (MAJOR)
+**Problem:** `GetOrCreate("")` silently assigns a token to the empty string. Then `Resolve(0)` (unregistered) and `Resolve(emptyToken)` both return `""` — indistinguishable. Callers cannot tell "not found" from "registered empty."
+**Root cause:** No input validation at the registry boundary. The function assumed all callers would pass meaningful strings.
+**Rule:** Validate inputs at system boundaries before they enter internal state. Registries must reject empty names with a sentinel error (`ErrEmptyName`). This is the same principle as "never trust external data" applied to internal APIs.
+
+### Doc comments and error messages drift after behavior changes (MINOR)
+**Problem:** `ErrUnsupportedValueType` still said "pointer and struct values" after the allowlist rewrite that also rejects arrays, funcs, channels. `Set()` doc comment was equally stale. Misleading messages confuse callers.
+**Root cause:** Changed the implementation but didn't grep for all references to the old behavior.
+**Rule:** After changing validation behavior, search the entire file for mentions of the old behavior — error messages, doc comments, inline comments. Update all of them. A stale error message is a lie to the caller.
+
+### Identical initialization parameters create dead code (MINOR)
+**Problem:** Both snowflake generators use the same `WithEpoch/WithNodeBits/WithStepBits`. If the first succeeds, the second always succeeds. The second error path is unreachable dead code (85.7% coverage).
+**Root cause:** Copy-paste initialization without considering that identical params guarantee identical outcomes.
+**Rule:** When code initializes multiple instances with identical params, document why the error handling exists despite being unreachable. "Defensive correctness" is valid but must be explicit, not accidental.
+
+### Single-variant test coverage misses multi-path behavior (MINOR)
+**Problem:** `TestGraphNodeHasLabel` only tested a single-label node. The extra-label hit path through the graph layer was untested.
+**Root cause:** Wrote the simplest test that made coverage nonzero, without asking "what other inputs exercise different code paths?"
+**Rule:** After writing the happy-path test, ask: "What variants of the input exercise different branches?" For `NodeHasLabel`: primary-label hit, extra-label hit, miss. All three need a test.
+
+### Silent integer overflow must be documented (MINOR)
+**Problem:** After assigning token 65535, `nextToken++` wraps `uint16` to 0. Safe today because `len(collection)` protects against further assignments, but undocumented. A future maintainer might add logic that trusts `nextToken` without knowing it can be 0.
+**Root cause:** Relying on implicit overflow behavior without a comment.
+**Rule:** When integer overflow is expected and safe, add a comment explaining why. Implicit "it works because X" is a future bug when X changes.

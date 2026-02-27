@@ -1,10 +1,14 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 )
+
+// ErrEmptyName is returned when GetOrCreate is called with an empty string.
+var ErrEmptyName = errors.New("graph: name must not be empty")
 
 const (
 	tokenCapacityWarning = 60000
@@ -32,8 +36,12 @@ func newLabelRegistry() *labelRegistry {
 }
 
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
-// Returns an error if the registry is full (65535 tokens).
+// Returns ErrEmptyName if name is empty. Returns an error if the registry is full (65535 tokens).
 func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
+	if name == "" {
+		return 0, ErrEmptyName
+	}
+
 	// Fast path: read lock.
 	r.mu.RLock()
 	tok, ok := r.toToken[name]
@@ -50,14 +58,15 @@ func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
 		return tok, nil
 	}
 
-	if r.nextToken >= tokenCapacityMax {
+	if len(r.toLabel) > int(tokenCapacityMax) {
 		return 0, fmt.Errorf("graph: label registry full (%d tokens)", tokenCapacityMax)
 	}
 
 	tok = r.nextToken
 	r.toToken[name] = tok
 	r.toLabel = append(r.toLabel, name)
-	r.nextToken++
+	r.nextToken++ // may wrap to 0 after assigning 65535; the len check above
+	// prevents any further assignments, so the wrapped value is never used.
 
 	if int(tok) >= tokenCapacityWarning {
 		r.warnOnce.Do(func() {

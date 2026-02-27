@@ -58,6 +58,13 @@ func (r *Relationship) HasTypeToken(tok relTypeToken) bool {
 	return tok != 0 && r.relType == tok
 }
 
+// HasTypeTokenRaw checks if this relationship has the given type token using
+// a raw uint16 value. This is the zero-allocation path for the graph layer.
+// Token 0 always returns false.
+func (r *Relationship) HasTypeTokenRaw(tok uint16) bool {
+	return tok != 0 && uint16(r.relType) == tok
+}
+
 // StartNodeID returns the source node's opaque internal ID.
 func (r *Relationship) StartNodeID() nodeID {
 	return r.startID
@@ -107,6 +114,9 @@ func (r *Relationship) SetVersion(v int) {
 }
 
 // Temporal returns the relationship's temporal metadata (nil until set by the graph layer).
+// The returned pointer is shared with the relationship — the graph layer needs
+// mutation access, so no defensive copy is made. Callers outside the graph layer
+// should treat it as read-only.
 func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
@@ -117,6 +127,9 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 }
 
 // Integrity returns the relationship's integrity metadata (nil until set by the graph layer).
+// The returned pointer is shared with the relationship — the graph layer needs
+// mutation access, so no defensive copy is made. Callers outside the graph layer
+// should treat it as read-only.
 func (r *Relationship) Integrity() *RelIntegrity {
 	return r.integrity
 }

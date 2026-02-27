@@ -11,7 +11,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 ```
 
 **Go:** 1.26.0
-**Dependencies:** `rho/snowflake-2026` (IDs)
+**Dependencies:** `rho/snowflake-2026` (IDs), `rho/kit` (service toolkit)
 
 ## Architecture
 
@@ -19,17 +19,18 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 
 | Type | Purpose |
 |------|---------|
-| `Node` | Graph vertex with snowflake ID, primary + extra labels (uint16 tokens), properties, version |
-| `Relationship` | Directed edge with snowflake ID, type token (uint16), start/end node IDs, properties, version |
-| `PropertySlice` | Sorted key-value store with binary search; rejects `tkg_` prefix keys |
-| `TemporalMetadata` | Temporal lifecycle metadata (stub, populated by graph layer) |
-| `NodeIntegrity` / `RelIntegrity` | Hash-chain integrity metadata (stub, populated by graph layer) |
+| `Node` | Graph vertex with opaque `nodeID` (wraps `snowflake.ID`), primary + extra labels (`labelToken`), properties, version, temporal, integrity |
+| `Relationship` | Directed edge with opaque `relID` (wraps `snowflake.ID`), type token (`relTypeToken`), start/end `nodeID`, properties, version, temporal, integrity |
+| `PropertySlice` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types (pointers, structs, arrays, channels, functions, unsafe pointers) at any nesting depth; depth-limited to 32 levels |
+| `Instant` | Semantic wrapper for Unix-millisecond timestamps used by all temporal fields |
+| `TemporalMetadata` | Temporal lifecycle metadata: `ValidFrom`, `ValidTo`, `TxFrom`, `TxTo`, `CreatedAt`, `UpdatedAt`, `DeletedAt` (all `Instant`), `CreatedBy`, `UpdatedBy` (`string`), `BaseEntityID` (`snowflake.ID`) |
+| `NodeIntegrity` / `RelIntegrity` | Hash-chain integrity: `Hash`, `PrevHash` (`string`) |
 
 ### Graph Layer (`pkg/graph`)
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Central graph layer — owns label and relationship type registries, provides string resolution |
+| `Graph` | Central graph layer — owns label and relationship type registries, dual snowflake ID generators (`NextNodeID()`/`NextRelID()`), and provides string resolution |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping |
 
@@ -37,17 +38,33 @@ Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, lab
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
+### Snowflake Configuration
+
+Both generators are initialized with explicit parameters matching the spec:
+
+| Parameter | Value |
+|-----------|-------|
+| Epoch | `2026-01-01 00:00:00 UTC` |
+| Node bits | 10 (1024 instances) |
+| Step bits | 12 (4096 IDs/ms) |
+
+Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-1023). Generators are stateless — no counter persistence, no crash recovery.
+
 ### Design Invariants
 
 - **Pure-data structs**: Node and Relationship hold no references to Graph, registries, or resolvers. They are self-contained data containers.
-- **snowflake.ID everywhere**: All entity and reference IDs are `snowflake.ID`.
+- **snowflake.ID everywhere**: All entity and reference IDs are `snowflake.ID`. Opaque wrapper types (`nodeID`/`relID`) prevent external construction or comparison.
 - **Strict encapsulation**: All struct fields are unexported. Access through methods only.
 - **Defensive copying**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, `DeepCopy()`, `ToMap()`, and `PropertiesMap()` always return independent copies.
-- **Token 0 reserved**: Token 0 is invalid. `HasLabelToken(0)` and `HasTypeToken(0)` always return false. Constructors panic on token 0 (both primary and extra labels).
+- **Token 0 reserved**: Token 0 is invalid. `HasLabelToken(0)`, `HasTypeToken(0)`, `HasLabelTokenRaw(0)`, and `HasTypeTokenRaw(0)` always return false. Constructors panic on token 0 (both primary and extra labels).
 - **Extra label deduplication**: `NewNode` deduplicates extra labels and removes the primary label from extras.
-- **No pointers/structs in properties**: `PropertySlice.Set()` rejects pointer and struct values (`ErrUnsupportedValueType`). Only primitives, slices, and maps are accepted.
+- **Allowlist property validation**: `PropertySlice.Set()` recursively validates values using an allowlist. Only primitives (`bool`, `int*`, `uint*`, `float*`, `string`), slices, and maps with safe element types are accepted. Pointers, structs, arrays, channels, functions, and unsafe pointers are rejected at any nesting depth (`ErrUnsupportedValueType`).
 - **Shadow property protection**: The `tkg_` prefix is reserved. `PropertySlice.Set()` and `Delete()` reject any key starting with `tkg_`. Errors wrap `ErrReservedPrefix` for programmatic discrimination via `errors.Is`.
 - **Opaque token types**: Label and relationship type tokens use unexported `labelToken` and `relTypeToken` types, preventing accidental misuse of raw `uint16` values.
+- **Zero-allocation token checks**: `HasLabelTokenRaw(uint16)` on Node and `HasTypeTokenRaw(uint16)` on Relationship for graph-layer hot paths. Token 0 returns false.
+- **Depth-limited validation**: Recursive validation and deep-copy stop at `maxPropertyDepth` (32). `Set()` returns `ErrMaxDepthExceeded` for deeper structures.
+- **Registry input validation**: `GetOrCreate("")` returns `ErrEmptyName`. Empty strings are never assigned tokens.
+- **Shared-pointer accessors**: `Temporal()` and `Integrity()` return the internal pointer — no defensive copy. The graph layer needs mutation access; external callers should treat as read-only.
 
 ### Shadow Properties (15)
 
@@ -63,7 +80,7 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_created_by`, `tkg_updated_by` | `string` | Both |
 | `tkg_version` | `int` | Both |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both |
-| `tkg_base_entity` | `int64` | Both |
+| `tkg_base_entity` | `snowflake.ID` | Both |
 
 ## Build & Test
 

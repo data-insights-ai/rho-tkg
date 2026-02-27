@@ -185,6 +185,116 @@ func TestPropertySliceAcceptsNestedSafeValues(t *testing.T) {
 	}
 }
 
+// ─── Allowlist validation tests (arrays, funcs, chans) ──────────────────────
+
+func TestPropertySliceRejectsArray(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	err := ps.Set("arr", [1]int{42})
+	if err == nil {
+		t.Fatal("Set should reject array values")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestPropertySliceRejectsArrayWithPointer(t *testing.T) {
+	t.Parallel()
+
+	type myStruct struct{ X int }
+	var ps PropertySlice
+	err := ps.Set("arr", [1]*myStruct{{X: 1}})
+	if err == nil {
+		t.Fatal("Set should reject array containing pointer")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestPropertySliceRejectsFunc(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	err := ps.Set("fn", func() {})
+	if err == nil {
+		t.Fatal("Set should reject func values")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestPropertySliceRejectsChan(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	err := ps.Set("ch", make(chan int))
+	if err == nil {
+		t.Fatal("Set should reject chan values")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+// ─── Recursion depth limit tests ────────────────────────────────────────────
+
+func TestValidateRejectsExcessiveDepth(t *testing.T) {
+	t.Parallel()
+
+	// Build a structure deeper than maxPropertyDepth (32).
+	var v any = "leaf"
+	for range 33 {
+		v = []any{v}
+	}
+
+	var ps PropertySlice
+	err := ps.Set("deep", v)
+	if err == nil {
+		t.Fatal("Set should reject values nested deeper than maxPropertyDepth")
+	}
+	if !errors.Is(err, ErrMaxDepthExceeded) {
+		t.Errorf("errors.Is(err, ErrMaxDepthExceeded) = false; err = %v", err)
+	}
+}
+
+func TestValidateAcceptsMaxDepth(t *testing.T) {
+	t.Parallel()
+
+	// Build a structure exactly at maxPropertyDepth (32 levels).
+	var v any = "leaf"
+	for range 32 {
+		v = []any{v}
+	}
+
+	var ps PropertySlice
+	if err := ps.Set("deep_ok", v); err != nil {
+		t.Fatalf("Set should accept values at exactly maxPropertyDepth, got: %v", err)
+	}
+}
+
+func TestDeepCopyTruncatesExcessiveDepth(t *testing.T) {
+	t.Parallel()
+
+	// Build a structure deeper than maxPropertyDepth.
+	// Bypass validation by directly constructing the PropertySlice.
+	var v any = "leaf"
+	for range 40 {
+		v = []any{v}
+	}
+
+	ps := PropertySlice{{Key: "deep", Value: v}}
+
+	// DeepCopy must not panic — it should stop recursing at depth limit.
+	cp := ps.DeepCopy()
+	if cp == nil {
+		t.Fatal("DeepCopy should return non-nil even for excessively deep values")
+	}
+}
+
 // ─── DeepCopy isolation tests ───────────────────────────────────────────────
 
 func TestDeepCopySliceValueIsIndependent(t *testing.T) {

@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 )
@@ -62,18 +64,18 @@ func TestRelTypeRegistryCapacityError(t *testing.T) {
 	t.Parallel()
 
 	reg := newRelTypeRegistry()
-	// Fill the registry to capacity (tokens 1..65534).
+	// Fill the registry to full capacity (tokens 1..65535).
 	reg.mu.Lock()
-	for i := uint16(1); i < 65535; i++ {
-		name := string(rune('A' + (i % 26)))
-		reg.toToken[name+string(rune(i))] = i
-		reg.toName = append(reg.toName, name+string(rune(i)))
+	for i := 1; i <= 65535; i++ {
+		name := fmt.Sprintf("RT%d", i)
+		reg.toToken[name] = uint16(i)
+		reg.toName = append(reg.toName, name)
 	}
-	reg.nextToken = 65535
+	reg.nextToken = 0 // wraps — doesn't matter, len check catches it
 	reg.mu.Unlock()
 
-	// Next allocation should return error (65535 is max uint16).
-	_, err := reg.GetOrCreate("OneMore")
+	// Registry is full (65535 tokens assigned). Next allocation should error.
+	_, err := reg.GetOrCreate("Overflow")
 	if err == nil {
 		t.Fatal("GetOrCreate should return error when registry is full")
 	}
@@ -122,6 +124,64 @@ func TestRelTypeRegistryResolveAll(t *testing.T) {
 	}
 	if names[0] != "KNOWS" || names[1] != "ACTED_IN" {
 		t.Errorf("ResolveAll = %v, want [KNOWS ACTED_IN]", names)
+	}
+}
+
+func TestRelTypeRegistryToken65535IsAssignable(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	// Fill tokens 1..65534 by manipulating internal state.
+	reg.mu.Lock()
+	for i := uint16(1); i <= 65534; i++ {
+		name := fmt.Sprintf("RT%d", i)
+		reg.toToken[name] = i
+		reg.toName = append(reg.toName, name)
+	}
+	reg.nextToken = 65535
+	reg.mu.Unlock()
+
+	// Token 65535 should be assignable.
+	tok, err := reg.GetOrCreate("Final")
+	if err != nil {
+		t.Fatalf("GetOrCreate(\"Final\") should succeed for token 65535, got: %v", err)
+	}
+	if tok != 65535 {
+		t.Errorf("expected token 65535, got %d", tok)
+	}
+
+	// Now it should be truly full.
+	_, err = reg.GetOrCreate("Overflow")
+	if err == nil {
+		t.Fatal("GetOrCreate should return error after all 65535 tokens assigned")
+	}
+}
+
+func TestRelTypeRegistryRejectsEmptyName(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	_, err := reg.GetOrCreate("")
+	if err == nil {
+		t.Fatal("GetOrCreate(\"\") should return error for empty name")
+	}
+	if !errors.Is(err, ErrEmptyName) {
+		t.Errorf("errors.Is(err, ErrEmptyName) = false; err = %v", err)
+	}
+	if reg.Len() != 0 {
+		t.Errorf("registry should be empty after rejected empty name, got Len()=%d", reg.Len())
+	}
+}
+
+func TestRelTypeRegistryResolveOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	reg.GetOrCreate("KNOWS") // token 1
+
+	got := reg.Resolve(9999)
+	if got != "" {
+		t.Errorf("Resolve(9999) = %q, want empty string (out of range)", got)
 	}
 }
 

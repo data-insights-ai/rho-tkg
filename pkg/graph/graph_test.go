@@ -57,14 +57,24 @@ func TestGraphNodeHasLabel(t *testing.T) {
 
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
+	actorTok, _ := g.GetOrCreateLabel("Actor")
 
+	// Single-label node: primary label hit.
 	n := types.NewNode(snowflake.ID(1), personTok, nil)
-
 	if !g.NodeHasLabel(n, "Person") {
-		t.Error("NodeHasLabel(\"Person\") = false, want true")
+		t.Error("NodeHasLabel(\"Person\") = false, want true (primary)")
 	}
 	if g.NodeHasLabel(n, "Animal") {
 		t.Error("NodeHasLabel(\"Animal\") = true, want false (unregistered)")
+	}
+
+	// Multi-label node: extra label hit.
+	n2 := types.NewNode(snowflake.ID(2), personTok, []uint16{actorTok})
+	if !g.NodeHasLabel(n2, "Actor") {
+		t.Error("NodeHasLabel(\"Actor\") = false, want true (extra label)")
+	}
+	if !g.NodeHasLabel(n2, "Person") {
+		t.Error("NodeHasLabel(\"Person\") = false, want true (primary on multi-label)")
 	}
 }
 
@@ -94,6 +104,12 @@ func TestGraphRelationshipHasType(t *testing.T) {
 	}
 	if g.RelationshipHasType(r, "LIKES") {
 		t.Error("RelationshipHasType(\"LIKES\") = true, want false (unregistered)")
+	}
+
+	// Registered but wrong type: Lookup succeeds, comparison fails.
+	g.GetOrCreateRelType("LIKES")
+	if g.RelationshipHasType(r, "LIKES") {
+		t.Error("RelationshipHasType(\"LIKES\") = true, want false (registered but wrong type)")
 	}
 }
 

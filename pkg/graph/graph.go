@@ -2,10 +2,14 @@ package graph
 
 import (
 	"fmt"
+	"time"
 
 	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// snowflakeEpoch is the custom epoch for all snowflake ID generation (2026-01-01 UTC).
+var snowflakeEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // Config holds configuration for the Graph.
 type Config struct {
@@ -27,11 +31,22 @@ type Graph struct {
 // New creates a new Graph with the given configuration.
 // Returns an error if SnowflakeNodeID is out of range (0-1023 for 10-bit node).
 func New(config Config) (*Graph, error) {
-	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID)
+	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+		snowflake.WithEpoch(snowflakeEpoch),
+		snowflake.WithNodeBits(10),
+		snowflake.WithStepBits(12),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("graph: node ID generator: %w", err)
 	}
-	relGen, err := snowflake.NewNode(config.SnowflakeNodeID)
+	// relGen uses the same parameters as nodeGen. If nodeGen succeeded,
+	// relGen will too. The error handling remains for defensive correctness
+	// in case the snowflake library adds non-deterministic validation.
+	relGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+		snowflake.WithEpoch(snowflakeEpoch),
+		snowflake.WithNodeBits(10),
+		snowflake.WithStepBits(12),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
 	}
@@ -99,14 +114,7 @@ func (g *Graph) NodeHasLabel(n *types.Node, label string) bool {
 	if !ok {
 		return false
 	}
-	// We need to check all tokens on the node. AllLabelTokens returns
-	// opaque labelToken values, so we compare via Value().
-	for _, lt := range n.AllLabelTokens() {
-		if lt.Value() == tok {
-			return true
-		}
-	}
-	return false
+	return n.HasLabelTokenRaw(tok)
 }
 
 // RelationshipType resolves the relationship's type token to a string.
@@ -121,5 +129,5 @@ func (g *Graph) RelationshipHasType(r *types.Relationship, typ string) bool {
 	if !ok {
 		return false
 	}
-	return r.TypeToken().Value() == tok
+	return r.HasTypeTokenRaw(tok)
 }

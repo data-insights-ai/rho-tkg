@@ -131,7 +131,7 @@ Current packages (evolving):
 |---|---|
 | `node.go` | Node (graph vertex) — `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, version, temporal, integrity |
 | `relationship.go` | Relationship (directed edge) — `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity |
-| `propertyslice.go` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and pointer/struct values at any nesting depth |
+| `propertyslice.go` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types at any nesting depth; depth-limited to 32 levels (`ErrMaxDepthExceeded`) |
 | `shadow.go` | Constants for virtual read-only properties (`tkg_*`) managed by the graph layer |
 | `temporal.go` | `Instant` type (Unix ms), `TemporalMetadata` struct (validity, transaction, audit, provenance, version chain) |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` structs (hash chain: `Hash`, `PrevHash`) |
@@ -157,13 +157,17 @@ Current packages (evolving):
 
 **Defensive copying**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, `PropertiesMap()`, `ToMap()`, and `DeepCopy()` always return fully independent copies — never internal references. "Independent" means mutating the returned value must never affect the original, including nested slices and maps. Tests enforce this at every layer. When adding a new accessor that returns reference types, always deep-copy and always add a mutation-independence test.
 
-**Token interning**: Labels (`labelToken`) and relationship types (`relTypeToken`) are `uint16`. **Token 0 is reserved** as zero/invalid and must never be assigned — `HasLabelToken(0)` and `HasTypeToken(0)` always return false.
+**Token interning**: Labels (`labelToken`) and relationship types (`relTypeToken`) are `uint16`. **Token 0 is reserved** as zero/invalid and must never be assigned — `HasLabelToken(0)`, `HasTypeToken(0)`, and their `*Raw` zero-alloc variants always return false.
 
-**No pointers or structs in properties**: `PropertySlice.Set()` recursively validates values at insertion time, rejecting any pointer or struct at any nesting depth (`ErrUnsupportedValueType`). A `[]any{&myStruct{}}` is rejected just like a top-level `&myStruct{}`. Graph databases store data, not application memory references. Only primitives, slices of primitives, and maps with primitive keys/values are accepted. Validation traverses slices, maps, and `any`/interface wrappers to reach leaf values.
+**Allowlist property validation**: `PropertySlice.Set()` recursively validates values at insertion time using an allowlist. Only primitives (`bool`, `int*`, `uint*`, `float*`, `string`), slices, and maps with safe element types are accepted. All other kinds — pointers, structs, arrays, channels, functions, unsafe pointers — are rejected at any nesting depth (`ErrUnsupportedValueType`). A `[]any{&myStruct{}}` is rejected just like a top-level `&myStruct{}`. Recursion is depth-limited to `maxPropertyDepth` (32); deeper structures return `ErrMaxDepthExceeded`.
 
 **Shadow property protection**: The `tkg_` prefix is reserved for graph-layer virtual properties. `PropertySlice.Set()` rejects any key starting with `tkg_` — security boundary preventing clients from spoofing internal metadata.
 
 **PropertySlice sorted invariant**: Properties are maintained in sorted-by-key order. Always use `Set()` to add/update — never modify the slice directly.
+
+**Shared-pointer accessors**: `Temporal()` and `Integrity()` return the internal pointer — no defensive copy. The graph layer needs mutation access; external callers should treat as read-only.
+
+**Zero-allocation token checks**: `HasLabelTokenRaw(uint16)` on Node and `HasTypeTokenRaw(uint16)` on Relationship for hot-path graph traversal. Token 0 returns false.
 
 ## Registries (pkg/graph)
 
@@ -172,6 +176,7 @@ Two independent registries with independent token namespaces. A label `"KNOWS"` 
 - **labelRegistry**: `map[string]labelToken` + `[]string` reverse lookup. Thread-safe (RWMutex, double-check on write miss).
 - **relTypeRegistry**: Same structure with `relTypeToken`.
 - Methods: `GetOrCreate(string)`, `Resolve(token)`, `ResolveAll([]token)`, `Lookup(string) (token, bool)`
+- `GetOrCreate` rejects empty strings with `ErrEmptyName`.
 - Growth warning logged at 60K tokens (92% of uint16). `GetOrCreate` returns error at 65535.
 - Persisted to Badger as `meta/label_tokens` and `meta/reltype_tokens` (msgpack `[]string`).
 

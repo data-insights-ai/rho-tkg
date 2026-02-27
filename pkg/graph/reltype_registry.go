@@ -27,8 +27,12 @@ func newRelTypeRegistry() *relTypeRegistry {
 }
 
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
-// Returns an error if the registry is full (65535 tokens).
+// Returns ErrEmptyName if name is empty. Returns an error if the registry is full (65535 tokens).
 func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
+	if name == "" {
+		return 0, ErrEmptyName
+	}
+
 	// Fast path: read lock.
 	r.mu.RLock()
 	tok, ok := r.toToken[name]
@@ -45,14 +49,15 @@ func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
 		return tok, nil
 	}
 
-	if r.nextToken >= tokenCapacityMax {
+	if len(r.toName) > int(tokenCapacityMax) {
 		return 0, fmt.Errorf("graph: reltype registry full (%d tokens)", tokenCapacityMax)
 	}
 
 	tok = r.nextToken
 	r.toToken[name] = tok
 	r.toName = append(r.toName, name)
-	r.nextToken++
+	r.nextToken++ // may wrap to 0 after assigning 65535; the len check above
+	// prevents any further assignments, so the wrapped value is never used.
 
 	if int(tok) >= tokenCapacityWarning {
 		r.warnOnce.Do(func() {

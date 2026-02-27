@@ -422,6 +422,29 @@ func TestNodePropertiesReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestNodeHasLabelTokenRaw(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30})
+
+	cases := []struct {
+		name string
+		tok  uint16
+		want bool
+	}{
+		{"primary hit", 10, true},
+		{"extra hit", 20, true},
+		{"extra hit second", 30, true},
+		{"miss", 99, false},
+		{"token 0 reserved", 0, false},
+	}
+	for _, tc := range cases {
+		if got := n.HasLabelTokenRaw(tc.tok); got != tc.want {
+			t.Errorf("HasLabelTokenRaw(%d) [%s] = %v, want %v", tc.tok, tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestLabelTokenValue(t *testing.T) {
 	t.Parallel()
 
