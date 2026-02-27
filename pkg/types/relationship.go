@@ -6,13 +6,21 @@ import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
 type relTypeToken uint16
 
+// Value returns the underlying uint16 value of the token.
+func (t relTypeToken) Value() uint16 { return uint16(t) }
+
+// relID is the opaque, unexported ID type for relationships.
+// Wraps snowflake.ID — external packages cannot construct or compare these
+// directly. The graph layer creates relationships with snowflake.ID values.
+type relID snowflake.ID
+
 // Relationship represents a directed edge in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
 type Relationship struct {
-	id         snowflake.ID
+	id         relID
 	relType    relTypeToken
-	startID    snowflake.ID
-	endID      snowflake.ID
+	startID    nodeID
+	endID      nodeID
 	properties PropertySlice
 	version    int
 	temporal   *TemporalMetadata
@@ -25,15 +33,17 @@ func NewRelationship(id snowflake.ID, relType uint16, startID, endID snowflake.I
 		panic("types: relationship type token 0 is reserved")
 	}
 	return &Relationship{
-		id:      id,
+		id:      relID(id),
 		relType: relTypeToken(relType),
-		startID: startID,
-		endID:   endID,
+		startID: nodeID(startID),
+		endID:   nodeID(endID),
 	}
 }
 
-// InternalID returns the relationship's snowflake ID.
-func (r *Relationship) InternalID() snowflake.ID {
+// InternalID returns the relationship's opaque internal ID.
+// The returned type is unexported — external packages can store and compare
+// these values but cannot construct them.
+func (r *Relationship) InternalID() relID {
 	return r.id
 }
 
@@ -48,13 +58,13 @@ func (r *Relationship) HasTypeToken(tok relTypeToken) bool {
 	return tok != 0 && r.relType == tok
 }
 
-// StartNodeID returns the source node's snowflake ID.
-func (r *Relationship) StartNodeID() snowflake.ID {
+// StartNodeID returns the source node's opaque internal ID.
+func (r *Relationship) StartNodeID() nodeID {
 	return r.startID
 }
 
-// EndNodeID returns the target node's snowflake ID.
-func (r *Relationship) EndNodeID() snowflake.ID {
+// EndNodeID returns the target node's opaque internal ID.
+func (r *Relationship) EndNodeID() nodeID {
 	return r.endID
 }
 
@@ -67,6 +77,13 @@ func (r *Relationship) SetProperty(key string, value any) error {
 // GetProperty returns the value for the given property key and whether it exists.
 func (r *Relationship) GetProperty(key string) (any, bool) {
 	return r.properties.Get(key)
+}
+
+// DeleteProperty removes a property from the relationship.
+// Returns true if the key was found and removed, false if it was not present.
+// Returns an error if the key has the reserved "tkg_" prefix.
+func (r *Relationship) DeleteProperty(key string) (bool, error) {
+	return r.properties.Delete(key)
 }
 
 // Properties returns a copy of the relationship's property slice.

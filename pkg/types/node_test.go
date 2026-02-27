@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"testing"
 
 	snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
@@ -23,9 +24,28 @@ func TestNodeSetPropertyRejectsTKGPrefixVariants(t *testing.T) {
 	keys := []string{"tkg_type", "tkg_version", "tkg_", "tkg_anything"}
 	n := NewNode(snowflake.ID(1), 10, nil)
 	for _, key := range keys {
-		if err := n.SetProperty(key, "x"); err == nil {
+		err := n.SetProperty(key, "x")
+		if err == nil {
 			t.Errorf("SetProperty(%q, ...) should return error", key)
+			continue
 		}
+		if !errors.Is(err, ErrReservedPrefix) {
+			t.Errorf("SetProperty(%q): errors.Is(err, ErrReservedPrefix) = false; err = %v", key, err)
+		}
+	}
+}
+
+func TestNodeSetPropertyRejectsNestedPointer(t *testing.T) {
+	t.Parallel()
+
+	type myStruct struct{ X int }
+	n := NewNode(snowflake.ID(1), 10, nil)
+	err := n.SetProperty("bad", []any{&myStruct{X: 1}})
+	if err == nil {
+		t.Fatal("SetProperty should reject nested pointer in []any")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
 	}
 }
 
@@ -38,6 +58,46 @@ func TestNewNodePanicsOnZeroPrimaryLabel(t *testing.T) {
 		}
 	}()
 	NewNode(snowflake.ID(1), 0, nil)
+}
+
+func TestNewNodePanicsOnZeroExtraLabel(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("NewNode(id, 1, []uint16{5, 0}) should panic on reserved token 0 in extras")
+		}
+	}()
+	NewNode(snowflake.ID(1), 1, []uint16{5, 0})
+}
+
+func TestNewNodeDeduplicatesExtraLabels(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30, 20})
+	extras := n.ExtraLabelTokens()
+	if len(extras) != 2 {
+		t.Fatalf("ExtraLabelTokens() len = %d, want 2 (deduped)", len(extras))
+	}
+	if n.LabelTokenCount() != 3 {
+		t.Errorf("LabelTokenCount() = %d, want 3", n.LabelTokenCount())
+	}
+}
+
+func TestNewNodeRemovesPrimaryFromExtras(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, []uint16{10, 20})
+	extras := n.ExtraLabelTokens()
+	if len(extras) != 1 {
+		t.Fatalf("ExtraLabelTokens() len = %d, want 1 (primary removed)", len(extras))
+	}
+	if extras[0] != labelToken(20) {
+		t.Errorf("ExtraLabelTokens()[0] = %d, want 20", extras[0])
+	}
+	if n.LabelTokenCount() != 2 {
+		t.Errorf("LabelTokenCount() = %d, want 2", n.LabelTokenCount())
+	}
 }
 
 func TestTokenZeroReservedNode(t *testing.T) {
@@ -69,7 +129,7 @@ func TestNewNode(t *testing.T) {
 	t.Parallel()
 
 	n := NewNode(snowflake.ID(42), 10, []uint16{20, 30})
-	if n.InternalID() != snowflake.ID(42) {
+	if n.InternalID() != nodeID(snowflake.ID(42)) {
 		t.Errorf("InternalID() = %d, want 42", n.InternalID())
 	}
 	if n.PrimaryLabelToken() != labelToken(10) {
@@ -151,7 +211,7 @@ func TestNodeInternalID(t *testing.T) {
 	t.Parallel()
 
 	n := NewNode(snowflake.ID(123456789), 1, nil)
-	if n.InternalID() != snowflake.ID(123456789) {
+	if n.InternalID() != nodeID(snowflake.ID(123456789)) {
 		t.Errorf("InternalID() = %d, want 123456789", n.InternalID())
 	}
 }
@@ -217,6 +277,41 @@ func TestNodePropertiesMap(t *testing.T) {
 	}
 }
 
+func TestNodeDeleteProperty(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	_ = n.SetProperty("age", 30)
+
+	found, err := n.DeleteProperty("name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("DeleteProperty(\"name\") should return true")
+	}
+	if _, ok := n.GetProperty("name"); ok {
+		t.Fatal("GetProperty(\"name\") should return false after delete")
+	}
+}
+
+func TestNodePropertiesMapIsIndependent(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("tags", []string{"a", "b"})
+
+	m := n.PropertiesMap()
+	m["tags"].([]string)[0] = "MUTATED"
+
+	val, _ := n.GetProperty("tags")
+	origSlice := val.([]string)
+	if origSlice[0] == "MUTATED" {
+		t.Fatal("PropertiesMap: mutating returned map affected internal node state")
+	}
+}
+
 func TestNodeTemporalDefaultNil(t *testing.T) {
 	t.Parallel()
 
@@ -254,6 +349,86 @@ func TestNodeIntegrityRoundTrip(t *testing.T) {
 	n.SetIntegrity(ig)
 	if n.Integrity() != ig {
 		t.Fatal("Integrity() should return the value set by SetIntegrity()")
+	}
+}
+
+func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	tm := &TemporalMetadata{
+		ValidFrom:    1000,
+		ValidTo:      2000,
+		TxFrom:       3000,
+		TxTo:         4000,
+		CreatedAt:    5000,
+		UpdatedAt:    6000,
+		DeletedAt:    7000,
+		CreatedBy:    "alice",
+		UpdatedBy:    "bob",
+		BaseEntityID: 42,
+	}
+	n.SetTemporal(tm)
+	got := n.Temporal()
+	if got.ValidFrom != 1000 || got.ValidTo != 2000 {
+		t.Errorf("ValidFrom/To = %d/%d, want 1000/2000", got.ValidFrom, got.ValidTo)
+	}
+	if got.TxFrom != 3000 || got.TxTo != 4000 {
+		t.Errorf("TxFrom/To = %d/%d, want 3000/4000", got.TxFrom, got.TxTo)
+	}
+	if got.CreatedAt != 5000 || got.UpdatedAt != 6000 || got.DeletedAt != 7000 {
+		t.Errorf("CreatedAt/UpdatedAt/DeletedAt = %d/%d/%d, want 5000/6000/7000",
+			got.CreatedAt, got.UpdatedAt, got.DeletedAt)
+	}
+	if got.CreatedBy != "alice" || got.UpdatedBy != "bob" {
+		t.Errorf("CreatedBy/UpdatedBy = %q/%q, want alice/bob", got.CreatedBy, got.UpdatedBy)
+	}
+	if got.BaseEntityID != 42 {
+		t.Errorf("BaseEntityID = %d, want 42", got.BaseEntityID)
+	}
+}
+
+func TestNodeIntegrityFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	ig := &NodeIntegrity{
+		Hash:     "abc123",
+		PrevHash: "def456",
+	}
+	n.SetIntegrity(ig)
+	got := n.Integrity()
+	if got.Hash != "abc123" || got.PrevHash != "def456" {
+		t.Errorf("Hash/PrevHash = %q/%q, want abc123/def456", got.Hash, got.PrevHash)
+	}
+}
+
+func TestNodePropertiesReturnsCopy(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	if err := n.SetProperty("weight", 42); err != nil {
+		t.Fatal(err)
+	}
+
+	props := n.Properties()
+	if err := props.Set("injected", "bad"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The internal state must not have changed.
+	if _, found := n.GetProperty("injected"); found {
+		t.Fatal("Properties() returned an alias to internal state")
+	}
+}
+
+func TestLabelTokenValue(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 42, nil)
+	tok := n.PrimaryLabelToken()
+	if tok.Value() != 42 {
+		t.Errorf("labelToken(42).Value() = %d, want 42", tok.Value())
 	}
 }
 

@@ -6,12 +6,20 @@ import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
 type labelToken uint16
 
+// Value returns the underlying uint16 value of the token.
+func (t labelToken) Value() uint16 { return uint16(t) }
+
+// nodeID is the opaque, unexported ID type for nodes.
+// Wraps snowflake.ID — external packages cannot construct or compare these
+// directly. The graph layer creates nodes with snowflake.ID values.
+type nodeID snowflake.ID
+
 // Node represents a vertex in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
 // A Node is a pure-data struct — it works immediately after construction
 // with no graph back-reference required.
 type Node struct {
-	id           snowflake.ID
+	id           nodeID
 	primaryLabel labelToken
 	extraLabels  []labelToken
 	properties   PropertySlice
@@ -27,20 +35,32 @@ func NewNode(id snowflake.ID, primaryLabel uint16, extraLabels []uint16) *Node {
 		panic("types: primary label token 0 is reserved")
 	}
 	n := &Node{
-		id:           id,
+		id:           nodeID(id),
 		primaryLabel: labelToken(primaryLabel),
 	}
 	if len(extraLabels) > 0 {
-		n.extraLabels = make([]labelToken, len(extraLabels))
-		for i, t := range extraLabels {
-			n.extraLabels[i] = labelToken(t)
+		seen := make(map[uint16]struct{}, len(extraLabels))
+		for _, t := range extraLabels {
+			if t == 0 {
+				panic("types: extra label token 0 is reserved")
+			}
+			if t == primaryLabel {
+				continue // primary already tracked separately
+			}
+			if _, dup := seen[t]; dup {
+				continue
+			}
+			seen[t] = struct{}{}
+			n.extraLabels = append(n.extraLabels, labelToken(t))
 		}
 	}
 	return n
 }
 
-// InternalID returns the snowflake ID.
-func (n *Node) InternalID() snowflake.ID {
+// InternalID returns the node's opaque internal ID.
+// The returned type is unexported — external packages can store and compare
+// these values but cannot construct them.
+func (n *Node) InternalID() nodeID {
 	return n.id
 }
 
@@ -100,6 +120,13 @@ func (n *Node) SetProperty(key string, value any) error {
 // GetProperty returns the value for the given property key and whether it exists.
 func (n *Node) GetProperty(key string) (any, bool) {
 	return n.properties.Get(key)
+}
+
+// DeleteProperty removes a property from the node.
+// Returns true if the key was found and removed, false if it was not present.
+// Returns an error if the key has the reserved "tkg_" prefix.
+func (n *Node) DeleteProperty(key string) (bool, error) {
+	return n.properties.Delete(key)
 }
 
 // Properties returns a copy of the node's property slice.

@@ -25,14 +25,28 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `TemporalMetadata` | Temporal lifecycle metadata (stub, populated by graph layer) |
 | `NodeIntegrity` / `RelIntegrity` | Hash-chain integrity metadata (stub, populated by graph layer) |
 
+### Graph Layer (`pkg/graph`)
+
+| Type | Purpose |
+|------|---------|
+| `Graph` | Central graph layer — owns label and relationship type registries, provides string resolution |
+| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping |
+| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping |
+
+Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
+
+Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
+
 ### Design Invariants
 
 - **Pure-data structs**: Node and Relationship hold no references to Graph, registries, or resolvers. They are self-contained data containers.
 - **snowflake.ID everywhere**: All entity and reference IDs are `snowflake.ID`.
 - **Strict encapsulation**: All struct fields are unexported. Access through methods only.
-- **Defensive copying**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, and `DeepCopy()` always return independent copies.
-- **Token 0 reserved**: Token 0 is invalid. `HasLabelToken(0)` and `HasTypeToken(0)` always return false. Constructors panic on token 0.
-- **Shadow property protection**: The `tkg_` prefix is reserved. `PropertySlice.Set()` rejects any key starting with `tkg_`.
+- **Defensive copying**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, `DeepCopy()`, `ToMap()`, and `PropertiesMap()` always return independent copies.
+- **Token 0 reserved**: Token 0 is invalid. `HasLabelToken(0)` and `HasTypeToken(0)` always return false. Constructors panic on token 0 (both primary and extra labels).
+- **Extra label deduplication**: `NewNode` deduplicates extra labels and removes the primary label from extras.
+- **No pointers/structs in properties**: `PropertySlice.Set()` rejects pointer and struct values (`ErrUnsupportedValueType`). Only primitives, slices, and maps are accepted.
+- **Shadow property protection**: The `tkg_` prefix is reserved. `PropertySlice.Set()` and `Delete()` reject any key starting with `tkg_`. Errors wrap `ErrReservedPrefix` for programmatic discrimination via `errors.Is`.
 - **Opaque token types**: Label and relationship type tokens use unexported `labelToken` and `relTypeToken` types, preventing accidental misuse of raw `uint16` values.
 
 ### Shadow Properties (15)

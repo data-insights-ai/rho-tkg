@@ -31,7 +31,7 @@ const (
 	ShadowPrevHash = "tkg_prev_hash" // Both: string
 
 	// Version chain
-	ShadowBaseEntity = "tkg_base_entity" // Both: int64
+	ShadowBaseEntity = "tkg_base_entity" // Both: snowflake.ID
 )
 
 // IsShadowKey returns true if key is a reserved tkg_ shadow property.
