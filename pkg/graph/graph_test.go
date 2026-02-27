@@ -708,3 +708,193 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 		t.Errorf("RelationshipCount after delete = %d, want 0", g.RelationshipCount())
 	}
 }
+
+// ─── Badger integration ──────────────────────────────────────────────────────
+
+func TestGraphWithBadgerInMemory(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	nA, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	nB, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	_, err = g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": int64(2026)})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	if g.NodeCount() != 2 {
+		t.Fatalf("NodeCount = %d, want 2", g.NodeCount())
+	}
+	if g.RelationshipCount() != 1 {
+		t.Fatalf("RelationshipCount = %d, want 1", g.RelationshipCount())
+	}
+
+	got, err := g.GetNode(nA.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("property mismatch: %v", v)
+	}
+}
+
+func TestGraphCloseAndReopenBadger(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create and populate.
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	nA, err := g1.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	nB, err := g1.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	_, err = g1.AddRelationship("KNOWS", nA, nB, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	// Reopen and verify data persists.
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	if g2.NodeCount() != 2 {
+		t.Fatalf("NodeCount after reopen = %d, want 2", g2.NodeCount())
+	}
+	if g2.RelationshipCount() != 1 {
+		t.Fatalf("RelationshipCount after reopen = %d, want 1", g2.RelationshipCount())
+	}
+}
+
+func TestGraphRegistryPersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create labels, close.
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	g1.AddNode([]string{"Person", "Actor"}, nil)
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	// Reopen and verify labels resolve.
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	tok, ok := g2.LookupLabel("Person")
+	if !ok {
+		t.Fatal("Person label not persisted")
+	}
+	if tok == 0 {
+		t.Fatal("Person token should not be 0")
+	}
+
+	tok, ok = g2.LookupLabel("Actor")
+	if !ok {
+		t.Fatal("Actor label not persisted")
+	}
+	if tok == 0 {
+		t.Fatal("Actor token should not be 0")
+	}
+}
+
+func TestGraphCloseNoop(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{}) // MemoryStore
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close on MemoryStore should be no-op, got: %v", err)
+	}
+}
+
+func TestGraphCloseIdempotent(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{BadgerInMemory: true})
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close 2 (idempotent): %v", err)
+	}
+}
+
+func TestGraphBadgerDeleteNodeCascade(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	nC, _ := g.AddNode([]string{"Person"}, nil)
+
+	g.AddRelationship("KNOWS", nA, nB, nil)
+	g.AddRelationship("KNOWS", nA, nC, nil)
+	g.AddRelationship("FOLLOWS", nB, nA, nil)
+
+	if g.RelationshipCount() != 3 {
+		t.Fatalf("RelationshipCount = %d, want 3", g.RelationshipCount())
+	}
+
+	// Cascade delete nA: should remove all 3 relationships.
+	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	if g.NodeCount() != 2 {
+		t.Fatalf("NodeCount = %d, want 2", g.NodeCount())
+	}
+	if g.RelationshipCount() != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", g.RelationshipCount())
+	}
+}
+
+func TestGraphBadgerInMemoryDefault(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Verify it's a BadgerStore.
+	if _, ok := g.store.(*BadgerStore); !ok {
+		t.Fatalf("expected BadgerStore, got %T", g.store)
+	}
+}

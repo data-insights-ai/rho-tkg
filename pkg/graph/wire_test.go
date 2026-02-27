@@ -1,0 +1,469 @@
+package graph
+
+import (
+	"testing"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/vmihailenco/msgpack/v5"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+)
+
+func TestNodeToWireAndBack(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(snowflake.ID(1001), 1, []uint16{2, 3})
+	n.SetVersion(5)
+	n.SetProperties(mustPropertySlice(t, map[string]any{
+		"name": "Alice",
+		"age":  int64(30),
+	}))
+	n.SetTemporal(&types.TemporalMetadata{
+		ValidFrom: 100,
+		ValidTo:   200,
+		TxFrom:    300,
+		TxTo:      400,
+		CreatedAt: 500,
+		UpdatedAt: 600,
+		DeletedAt: 700,
+		CreatedBy: "admin",
+		UpdatedBy: "system",
+	})
+	n.Temporal().SetBaseEntityID(snowflake.ID(999))
+	n.SetIntegrity(&types.NodeIntegrity{
+		Hash:     "abc123",
+		PrevHash: "def456",
+	})
+
+	w := nodeToWire(n)
+	got := wireToNode(w)
+
+	if int64(got.InternalID().SnowflakeID()) != 1001 {
+		t.Fatalf("ID mismatch: got %d", int64(got.InternalID().SnowflakeID()))
+	}
+	if got.PrimaryLabelToken().Value() != 1 {
+		t.Fatalf("primary label mismatch: got %d", got.PrimaryLabelToken().Value())
+	}
+	extras := got.ExtraLabelTokens()
+	if len(extras) != 2 {
+		t.Fatalf("extras len: got %d", len(extras))
+	}
+	if got.Version() != 5 {
+		t.Fatalf("version: got %d", got.Version())
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("property name: got %v %v", v, ok)
+	}
+	v, ok = got.GetProperty("age")
+	if !ok || v != int64(30) {
+		t.Fatalf("property age: got %v %v", v, ok)
+	}
+	tm := got.Temporal()
+	if tm == nil {
+		t.Fatal("temporal is nil")
+	}
+	if tm.ValidFrom != 100 || tm.ValidTo != 200 {
+		t.Fatalf("temporal validity: %d-%d", tm.ValidFrom, tm.ValidTo)
+	}
+	if tm.CreatedBy != "admin" || tm.UpdatedBy != "system" {
+		t.Fatal("temporal provenance mismatch")
+	}
+	if int64(tm.BaseEntityID().SnowflakeID()) != 999 {
+		t.Fatalf("base entity: got %d", int64(tm.BaseEntityID().SnowflakeID()))
+	}
+	ig := got.Integrity()
+	if ig == nil {
+		t.Fatal("integrity is nil")
+	}
+	if ig.Hash != "abc123" || ig.PrevHash != "def456" {
+		t.Fatal("integrity mismatch")
+	}
+}
+
+func TestNodeWireNoExtras(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(snowflake.ID(42), 1, nil)
+	w := nodeToWire(n)
+	got := wireToNode(w)
+
+	if got.ExtraLabelTokens() != nil {
+		t.Fatal("expected no extra labels")
+	}
+	if got.Properties().Len() != 0 {
+		t.Fatal("expected no properties")
+	}
+}
+
+func TestNodeWireNilTemporal(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(snowflake.ID(42), 1, nil)
+	w := nodeToWire(n)
+
+	if w.HasTemporal {
+		t.Fatal("HasTemporal should be false")
+	}
+
+	got := wireToNode(w)
+	if got.Temporal() != nil {
+		t.Fatal("temporal should be nil")
+	}
+}
+
+func TestNodeWireNilIntegrity(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(snowflake.ID(42), 1, nil)
+	w := nodeToWire(n)
+
+	if w.Hash != "" || w.PrevHash != "" {
+		t.Fatal("hash fields should be empty")
+	}
+
+	got := wireToNode(w)
+	if got.Integrity() != nil {
+		t.Fatal("integrity should be nil")
+	}
+}
+
+func TestRelToWireAndBack(t *testing.T) {
+	t.Parallel()
+
+	r := types.NewRelationship(snowflake.ID(500), 3, snowflake.ID(100), snowflake.ID(200))
+	r.SetVersion(2)
+	r.SetProperties(mustPropertySlice(t, map[string]any{
+		"weight": float64(1.5),
+	}))
+	r.SetTemporal(&types.TemporalMetadata{
+		ValidFrom: 10,
+		CreatedBy: "test",
+	})
+	r.SetIntegrity(&types.RelIntegrity{
+		Hash: "rel-hash",
+	})
+
+	w := relToWire(r)
+	got := wireToRel(w)
+
+	if int64(got.InternalID().SnowflakeID()) != 500 {
+		t.Fatalf("ID mismatch: got %d", int64(got.InternalID().SnowflakeID()))
+	}
+	if got.TypeToken().Value() != 3 {
+		t.Fatalf("type token: got %d", got.TypeToken().Value())
+	}
+	if int64(got.StartNodeID().SnowflakeID()) != 100 {
+		t.Fatal("start ID mismatch")
+	}
+	if int64(got.EndNodeID().SnowflakeID()) != 200 {
+		t.Fatal("end ID mismatch")
+	}
+	if got.Version() != 2 {
+		t.Fatalf("version: got %d", got.Version())
+	}
+	v, ok := got.GetProperty("weight")
+	if !ok || v != float64(1.5) {
+		t.Fatalf("property weight: got %v", v)
+	}
+	if got.Temporal() == nil {
+		t.Fatal("temporal is nil")
+	}
+	if got.Temporal().ValidFrom != 10 {
+		t.Fatal("temporal validfrom mismatch")
+	}
+	if got.Integrity() == nil || got.Integrity().Hash != "rel-hash" {
+		t.Fatal("integrity mismatch")
+	}
+}
+
+func TestRelWireNoProperties(t *testing.T) {
+	t.Parallel()
+
+	r := types.NewRelationship(snowflake.ID(1), 1, snowflake.ID(2), snowflake.ID(3))
+	w := relToWire(r)
+	got := wireToRel(w)
+
+	if got.Properties().Len() != 0 {
+		t.Fatal("expected no properties")
+	}
+}
+
+func TestRelWireNilTemporalIntegrity(t *testing.T) {
+	t.Parallel()
+
+	r := types.NewRelationship(snowflake.ID(1), 1, snowflake.ID(2), snowflake.ID(3))
+	w := relToWire(r)
+	got := wireToRel(w)
+
+	if got.Temporal() != nil {
+		t.Fatal("temporal should be nil")
+	}
+	if got.Integrity() != nil {
+		t.Fatal("integrity should be nil")
+	}
+}
+
+func TestPropertyWireRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	ps := mustPropertySlice(t, map[string]any{
+		"bool":    true,
+		"int64":   int64(42),
+		"float64": float64(3.14),
+		"string":  "hello",
+	})
+
+	pw := propertiesToWire(ps)
+	got := wireToProperties(pw)
+
+	if got.Len() != 4 {
+		t.Fatalf("expected 4 properties, got %d", got.Len())
+	}
+	v, ok := got.Get("bool")
+	if !ok || v != true {
+		t.Fatal("bool mismatch")
+	}
+	v, ok = got.Get("int64")
+	if !ok || v != int64(42) {
+		t.Fatal("int64 mismatch")
+	}
+	v, ok = got.Get("float64")
+	if !ok || v != float64(3.14) {
+		t.Fatal("float64 mismatch")
+	}
+	v, ok = got.Get("string")
+	if !ok || v != "hello" {
+		t.Fatal("string mismatch")
+	}
+}
+
+func TestPropertyWireSliceValues(t *testing.T) {
+	t.Parallel()
+
+	ps := mustPropertySlice(t, map[string]any{
+		"tags":  []string{"a", "b"},
+		"nums":  []int64{1, 2, 3},
+		"mixed": []any{"x", int64(1)},
+	})
+
+	pw := propertiesToWire(ps)
+	got := wireToProperties(pw)
+
+	if got.Len() != 3 {
+		t.Fatalf("expected 3, got %d", got.Len())
+	}
+}
+
+func TestPropertyWireMapValues(t *testing.T) {
+	t.Parallel()
+
+	ps := mustPropertySlice(t, map[string]any{
+		"nested": map[string]any{"key": "value"},
+	})
+
+	pw := propertiesToWire(ps)
+	got := wireToProperties(pw)
+
+	v, ok := got.Get("nested")
+	if !ok {
+		t.Fatal("missing nested")
+	}
+	m, ok := v.(map[string]any)
+	if !ok || m["key"] != "value" {
+		t.Fatal("nested map mismatch")
+	}
+}
+
+func TestPropertyWireEmpty(t *testing.T) {
+	t.Parallel()
+
+	pw := propertiesToWire(nil)
+	if pw != nil {
+		t.Fatal("expected nil for nil input")
+	}
+
+	got := wireToProperties(nil)
+	if got != nil {
+		t.Fatal("expected nil for nil input")
+	}
+
+	pw2 := propertiesToWire(types.PropertySlice{})
+	if pw2 != nil {
+		t.Fatal("expected nil for empty input")
+	}
+}
+
+func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(snowflake.ID(1001), 1, []uint16{2})
+	n.SetVersion(3)
+	n.SetProperties(mustPropertySlice(t, map[string]any{
+		"name": "Bob",
+	}))
+
+	w := nodeToWire(n)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var w2 nodeWire
+	if err := msgpack.Unmarshal(data, &w2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	got := wireToNode(w2)
+	if int64(got.InternalID().SnowflakeID()) != 1001 {
+		t.Fatal("ID mismatch after msgpack round-trip")
+	}
+	if got.Version() != 3 {
+		t.Fatal("version mismatch after msgpack round-trip")
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("property mismatch after msgpack round-trip: %v", v)
+	}
+}
+
+func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	r := types.NewRelationship(snowflake.ID(500), 3, snowflake.ID(100), snowflake.ID(200))
+	r.SetVersion(7)
+
+	w := relToWire(r)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var w2 relWire
+	if err := msgpack.Unmarshal(data, &w2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	got := wireToRel(w2)
+	if int64(got.InternalID().SnowflakeID()) != 500 {
+		t.Fatal("ID mismatch")
+	}
+	if got.TypeToken().Value() != 3 {
+		t.Fatal("type token mismatch")
+	}
+	if got.Version() != 7 {
+		t.Fatal("version mismatch")
+	}
+}
+
+func TestPropertyWireTypeNormalization(t *testing.T) {
+	t.Parallel()
+
+	// Msgpack uses compact integer encoding: small values decode as int8,
+	// larger values as int16/int32/int64. Floats: float32 → float32 (exact),
+	// float64 → float64. All integer and float types are on the PropertySlice
+	// allowlist, so this is safe.
+	w := nodeWire{
+		ID:           1,
+		PrimaryLabel: 1,
+		Properties: []propertyWire{
+			{Key: "count", Value: int(42)},      // small int → int8 after decode
+			{Key: "big", Value: int64(1 << 40)}, // large int → int64 after decode
+			{Key: "rate", Value: float64(1.5)},  // float64 stays float64
+		},
+	}
+
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var w2 nodeWire
+	if err := msgpack.Unmarshal(data, &w2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Small int(42) may decode as int8 — verify the numeric value is correct
+	// regardless of exact integer type.
+	switch v := w2.Properties[0].Value.(type) {
+	case int8:
+		if v != 42 {
+			t.Fatalf("expected 42, got %d", v)
+		}
+	case int64:
+		if v != 42 {
+			t.Fatalf("expected 42, got %d", v)
+		}
+	default:
+		t.Fatalf("expected integer type, got %T(%v)", w2.Properties[0].Value, w2.Properties[0].Value)
+	}
+
+	// Large int64 stays int64.
+	if v, ok := w2.Properties[1].Value.(int64); !ok || v != 1<<40 {
+		t.Fatalf("expected int64(1<<40), got %T(%v)", w2.Properties[1].Value, w2.Properties[1].Value)
+	}
+
+	// float64 stays float64.
+	if v, ok := w2.Properties[2].Value.(float64); !ok || v != 1.5 {
+		t.Fatalf("expected float64(1.5), got %T(%v)", w2.Properties[2].Value, w2.Properties[2].Value)
+	}
+}
+
+func TestNodeWireBaseEntityID(t *testing.T) {
+	t.Parallel()
+
+	// Non-zero base entity.
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetTemporal(&types.TemporalMetadata{})
+	n.Temporal().SetBaseEntityID(snowflake.ID(777))
+
+	w := nodeToWire(n)
+	if w.BaseEntityID != 777 {
+		t.Fatalf("wire base entity: got %d", w.BaseEntityID)
+	}
+
+	got := wireToNode(w)
+	if int64(got.Temporal().BaseEntityID().SnowflakeID()) != 777 {
+		t.Fatal("base entity round-trip failed")
+	}
+
+	// Zero base entity.
+	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2.SetTemporal(&types.TemporalMetadata{})
+	w2 := nodeToWire(n2)
+	got2 := wireToNode(w2)
+	if int64(got2.Temporal().BaseEntityID().SnowflakeID()) != 0 {
+		t.Fatal("zero base entity should remain zero")
+	}
+}
+
+func TestNodeWireTemporalZeroInstants(t *testing.T) {
+	t.Parallel()
+
+	// All-zero temporal with HasTemporal=true.
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetTemporal(&types.TemporalMetadata{})
+
+	w := nodeToWire(n)
+	if !w.HasTemporal {
+		t.Fatal("HasTemporal should be true")
+	}
+
+	got := wireToNode(w)
+	tm := got.Temporal()
+	if tm == nil {
+		t.Fatal("temporal should not be nil")
+	}
+	if tm.ValidFrom != 0 || tm.ValidTo != 0 || tm.TxFrom != 0 || tm.TxTo != 0 {
+		t.Fatal("all temporal instants should be zero")
+	}
+}
+
+// mustPropertySlice is a test helper that creates a PropertySlice from a map.
+func mustPropertySlice(t *testing.T, m map[string]any) types.PropertySlice {
+	t.Helper()
+	ps, err := types.NewPropertySlice(m)
+	if err != nil {
+		t.Fatalf("NewPropertySlice: %v", err)
+	}
+	return ps
+}

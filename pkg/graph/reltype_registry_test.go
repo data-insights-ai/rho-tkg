@@ -289,3 +289,97 @@ func TestRelTypeRegistryConcurrentEmptyRejection(t *testing.T) {
 		t.Errorf("Len() = %d after all-empty rejections, want 0", reg.Len())
 	}
 }
+
+// ─── Export/Import tests ──────────────────────────────────────────────────────
+
+func TestRelTypeRegistryExportImportRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	reg1 := newRelTypeRegistry()
+	reg1.GetOrCreate("KNOWS")
+	reg1.GetOrCreate("ACTED_IN")
+	reg1.GetOrCreate("DIRECTED")
+
+	names := reg1.ExportNames()
+
+	reg2 := newRelTypeRegistry()
+	if err := reg2.ImportNames(names); err != nil {
+		t.Fatalf("ImportNames: %v", err)
+	}
+
+	tok, ok := reg2.Lookup("KNOWS")
+	if !ok || tok != 1 {
+		t.Fatalf("Lookup(KNOWS): got (%d, %v), want (1, true)", tok, ok)
+	}
+	tok, ok = reg2.Lookup("ACTED_IN")
+	if !ok || tok != 2 {
+		t.Fatalf("Lookup(ACTED_IN): got (%d, %v), want (2, true)", tok, ok)
+	}
+
+	if reg2.Resolve(1) != "KNOWS" {
+		t.Fatal("Resolve(1) should be KNOWS")
+	}
+
+	tok, err := reg2.GetOrCreate("PRODUCED")
+	if err != nil {
+		t.Fatalf("GetOrCreate(PRODUCED): %v", err)
+	}
+	if tok != 4 {
+		t.Fatalf("expected token 4, got %d", tok)
+	}
+}
+
+func TestRelTypeRegistryImportOnNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	reg.GetOrCreate("KNOWS")
+
+	err := reg.ImportNames([]string{"", "KNOWS"})
+	if err == nil {
+		t.Fatal("ImportNames on non-empty registry should error")
+	}
+}
+
+func TestRelTypeRegistryImportInvalidFirst(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	err := reg.ImportNames([]string{"NotEmpty", "KNOWS"})
+	if err == nil {
+		t.Fatal("ImportNames with names[0] != \"\" should error")
+	}
+}
+
+func TestRelTypeRegistryImportEmpty(t *testing.T) {
+	t.Parallel()
+
+	reg := newRelTypeRegistry()
+	err := reg.ImportNames([]string{})
+	if err == nil {
+		t.Fatal("ImportNames with empty slice should error")
+	}
+}
+
+func TestRelTypeRegistryImportPreservesTokenOrder(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"", "KNOWS", "ACTED_IN", "DIRECTED"}
+	reg := newRelTypeRegistry()
+	if err := reg.ImportNames(names); err != nil {
+		t.Fatalf("ImportNames: %v", err)
+	}
+
+	if reg.Resolve(1) != "KNOWS" {
+		t.Fatal("token 1 should be KNOWS")
+	}
+	if reg.Resolve(2) != "ACTED_IN" {
+		t.Fatal("token 2 should be ACTED_IN")
+	}
+	if reg.Resolve(3) != "DIRECTED" {
+		t.Fatal("token 3 should be DIRECTED")
+	}
+	if reg.Len() != 3 {
+		t.Fatalf("Len() = %d, want 3", reg.Len())
+	}
+}

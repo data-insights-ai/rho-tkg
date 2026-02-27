@@ -289,3 +289,108 @@ func TestLabelRegistryConcurrentEmptyRejection(t *testing.T) {
 		t.Errorf("Len() = %d after all-empty rejections, want 0", reg.Len())
 	}
 }
+
+// ─── Export/Import tests ──────────────────────────────────────────────────────
+
+func TestLabelRegistryExportImportRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	reg1 := newLabelRegistry()
+	reg1.GetOrCreate("Person")
+	reg1.GetOrCreate("Movie")
+	reg1.GetOrCreate("Actor")
+
+	names := reg1.ExportNames()
+
+	reg2 := newLabelRegistry()
+	if err := reg2.ImportNames(names); err != nil {
+		t.Fatalf("ImportNames: %v", err)
+	}
+
+	// Verify lookups work.
+	tok, ok := reg2.Lookup("Person")
+	if !ok || tok != 1 {
+		t.Fatalf("Lookup(Person): got (%d, %v), want (1, true)", tok, ok)
+	}
+	tok, ok = reg2.Lookup("Movie")
+	if !ok || tok != 2 {
+		t.Fatalf("Lookup(Movie): got (%d, %v), want (2, true)", tok, ok)
+	}
+	tok, ok = reg2.Lookup("Actor")
+	if !ok || tok != 3 {
+		t.Fatalf("Lookup(Actor): got (%d, %v), want (3, true)", tok, ok)
+	}
+
+	// Verify resolution works.
+	if reg2.Resolve(1) != "Person" {
+		t.Fatal("Resolve(1) should be Person")
+	}
+	if reg2.Resolve(2) != "Movie" {
+		t.Fatal("Resolve(2) should be Movie")
+	}
+
+	// Verify new tokens continue from the right place.
+	tok, err := reg2.GetOrCreate("Director")
+	if err != nil {
+		t.Fatalf("GetOrCreate(Director): %v", err)
+	}
+	if tok != 4 {
+		t.Fatalf("expected token 4, got %d", tok)
+	}
+}
+
+func TestLabelRegistryImportOnNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	reg := newLabelRegistry()
+	reg.GetOrCreate("Person")
+
+	err := reg.ImportNames([]string{"", "Person"})
+	if err == nil {
+		t.Fatal("ImportNames on non-empty registry should error")
+	}
+}
+
+func TestLabelRegistryImportInvalidFirst(t *testing.T) {
+	t.Parallel()
+
+	reg := newLabelRegistry()
+	err := reg.ImportNames([]string{"NotEmpty", "Person"})
+	if err == nil {
+		t.Fatal("ImportNames with names[0] != \"\" should error")
+	}
+}
+
+func TestLabelRegistryImportEmpty(t *testing.T) {
+	t.Parallel()
+
+	reg := newLabelRegistry()
+	err := reg.ImportNames([]string{})
+	if err == nil {
+		t.Fatal("ImportNames with empty slice should error")
+	}
+}
+
+func TestLabelRegistryImportPreservesTokenOrder(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"", "Alpha", "Beta", "Gamma"}
+	reg := newLabelRegistry()
+	if err := reg.ImportNames(names); err != nil {
+		t.Fatalf("ImportNames: %v", err)
+	}
+
+	// Token 1 = names[1], etc.
+	if reg.Resolve(1) != "Alpha" {
+		t.Fatal("token 1 should be Alpha")
+	}
+	if reg.Resolve(2) != "Beta" {
+		t.Fatal("token 2 should be Beta")
+	}
+	if reg.Resolve(3) != "Gamma" {
+		t.Fatal("token 3 should be Gamma")
+	}
+	if reg.Len() != 3 {
+		t.Fatalf("Len() = %d, want 3", reg.Len())
+	}
+}

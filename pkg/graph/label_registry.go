@@ -8,6 +8,9 @@ import (
 	"sync"
 )
 
+// ErrRegistryNotEmpty is returned when importing into a non-empty registry.
+var ErrRegistryNotEmpty = errors.New("graph: registry is not empty")
+
 // ErrEmptyName is returned when GetOrCreate is called with an empty or whitespace-only string.
 var ErrEmptyName = errors.New("graph: name must not be empty")
 
@@ -124,4 +127,44 @@ func (r *labelRegistry) Len() int {
 	defer r.mu.RUnlock()
 
 	return len(r.toLabel) - 1
+}
+
+// ExportNames returns a copy of the registered names slice for persistence.
+// Index 0 is always "" (reserved). Read-locked.
+func (r *labelRegistry) ExportNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	cp := make([]string, len(r.toLabel))
+	copy(cp, r.toLabel)
+	return cp
+}
+
+// ImportNames restores the registry from persisted data. Write-locked.
+// The registry must be empty (freshly constructed). names[0] must be "".
+func (r *labelRegistry) ImportNames(names []string) error {
+	if len(names) == 0 {
+		return errors.New("graph: import: names slice must not be empty")
+	}
+	if names[0] != "" {
+		return errors.New("graph: import: names[0] must be empty (reserved)")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.toLabel) > 1 {
+		return ErrRegistryNotEmpty
+	}
+
+	r.toLabel = make([]string, len(names))
+	copy(r.toLabel, names)
+
+	r.toToken = make(map[string]uint16, len(names)-1)
+	for i := 1; i < len(names); i++ {
+		r.toToken[names[i]] = uint16(i) // #nosec G115 — index bounded by registry capacity (65535)
+	}
+
+	r.nextToken = uint16(len(names)) // #nosec G115 — len bounded by registry capacity (65535)
+	return nil
 }

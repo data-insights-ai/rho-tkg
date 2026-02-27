@@ -11,7 +11,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 ```
 
 **Go:** 1.26.0
-**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), `rho/kit` (service toolkit)
+**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence), `rho/kit` (service toolkit)
 
 ## Architecture
 
@@ -33,8 +33,9 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`DeleteNode`), shadow resolution, string resolution |
 | `Store` | Persistence interface — `PutNode`/`GetNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`DeleteRelationship`, index queries, adjacency queries, counts |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
-| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping |
-| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping |
+| `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
+| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
+| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
 
 Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
 
@@ -45,6 +46,23 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
 Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `NodeCount()`, `RelationshipCount()`.
+
+Lifecycle: `Close()` saves registries and closes the database (Badger only; no-op for MemoryStore).
+
+### Persistence (Badger)
+
+Configure with `Config.BadgerDir` (on-disk) or `Config.BadgerInMemory: true` (testing):
+
+```go
+g, err := graph.New(graph.Config{
+    SnowflakeNodeID: 1,
+    BadgerDir:       "/path/to/data",
+})
+// ... use graph ...
+g.Close() // saves registries + closes DB
+```
+
+Data is serialized using msgpack. Keys use fixed-width binary encoding with single-byte prefix tags for correct sort order. Registries are persisted on `Close()` and restored on startup.
 
 ### Snowflake Configuration
 

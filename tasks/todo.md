@@ -1,23 +1,25 @@
 # tkg-v3 — Current Tasks
 
-## Completed: Graph Layer Phase 2A — Store, MemoryStore, AddNode/AddRel, Shadow Resolution
+## Completed: Phase 2B — Badger Persistence with Msgpack Serialization (v3.0.8)
 
-- [x] `NewPropertySlice(map[string]any)` — O(N log N) bulk loader, single allocation + sort
-- [x] `SetProperties(ps PropertySlice)` on Node and Relationship — bypass per-property Set loop
-- [x] SnowflakeID bridge methods on `nodeID`, `relID`, `entityID` — cross-package persistence keys
-- [x] `Store` interface — pure persistence contract (PutNode/GetNode/DeleteNode, PutRel/GetRel/DeleteRel, index queries, adjacency, counts)
-- [x] Sentinel errors: `ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`
-- [x] `MemoryStore` — thread-safe in-memory store with hash-set adjacency indexes (O(1) insert/delete)
-- [x] `Graph.AddNode(labels, props)` — auto-ID, bulk property loader, label resolution
-- [x] `Graph.AddRelationship(type, start, end, props)` — auto-ID, bulk properties, endpoint validation
-- [x] `Graph.DeleteNode(id)` — cascade-deletes all connected relationships (outgoing + incoming)
-- [x] `Graph.DeleteRelationship(id)` — simple passthrough
-- [x] Passthrough queries: `GetNode`, `GetRelationship`, `NodesByLabel`, `RelationshipsByType`, `NodeCount`, `RelationshipCount`
-- [x] Shadow resolution: `ResolveNodeProperty` / `ResolveRelProperty` — all 15 `tkg_*` keys with nil-guards
-- [x] Verification: `make ci` green, 96.7% coverage, race-clean, gosec clean, 256 total tests
+- [x] Add `github.com/vmihailenco/msgpack/v5` and `github.com/dgraph-io/badger/v4` dependencies
+- [x] Binary key encoding (`keys.go`) — 10 key types, single-byte prefix tags, big-endian IDs/tokens, fixed-width keys
+- [x] Msgpack wire formats (`wire.go`) — `nodeWire`, `relWire`, `propertyWire` with temporal/integrity support
+- [x] Registry persistence — `ExportNames()`/`ImportNames()` on both registries, `ErrRegistryNotEmpty` sentinel
+- [x] `BadgerStore` (`badgerstore.go`) — full `Store` interface: CRUD, label/type/adjacency indexes, prefix scanning, sorted output
+- [x] Graph integration — `Config.BadgerDir`/`BadgerInMemory`, `Graph.Close()`, registry load on startup / save on close
+- [x] gosec clean (16 `#nosec` annotations for intentional binary encoding casts)
+- [x] Documentation: CHANGELOG.md (v3.0.8), README.md, CLAUDE.md updated
+- [x] Verification: `make ci` green, 355 tests, 94.2% coverage, race-clean, 0 gosec issues, 0 vulncheck findings
+
+## Completed: Phase 2A — Store, MemoryStore, Entity Management, Shadow Resolution (v3.0.6-v3.0.7)
+
+- [x] `Store` interface, `MemoryStore`, sentinel errors
+- [x] `AddNode`/`AddRelationship` with bulk `NewPropertySlice`
+- [x] `DeleteNode` cascade, `DeleteRelationship` passthrough
+- [x] Shadow resolution (all 15 `tkg_*` keys), passthrough queries
+- [x] SnowflakeID bridges, deterministic query ordering, TOCTOU documentation
 
 ## Next up
 
-- Phase 2B: msgpack wire formats (nodeWire/relWire), Badger persistence
-- Registry persistence to Badger (meta/label_tokens, meta/reltype_tokens)
-- Update README.md and CLAUDE.md with Phase 2A changes
+- Phase 3: Cypher & Graph API Integration — Cypher token-based matching, REST/gRPC API layer

@@ -24,8 +24,17 @@ type Config struct {
 	// Each concurrent instance must use a different value.
 	SnowflakeNodeID int64
 
-	// Store is the persistence backend. If nil, NewMemoryStore() is used.
+	// Store is the persistence backend. If nil, NewMemoryStore() is used
+	// unless BadgerDir or BadgerInMemory is set.
 	Store Store
+
+	// BadgerDir is the Badger data directory. If set and Store is nil,
+	// a BadgerStore is created. Ignored if Store is non-nil.
+	BadgerDir string
+
+	// BadgerInMemory enables in-memory Badger mode (useful for testing).
+	// If true and Store is nil, a BadgerStore with InMemory=true is created.
+	BadgerInMemory bool
 }
 
 // Graph is the central graph layer. It owns the label and relationship type
@@ -37,10 +46,19 @@ type Graph struct {
 	nodeIDGen *snowflake.Node
 	relIDGen  *snowflake.Node
 	store     Store
+	closeFn   func() error // nil for MemoryStore; calls BadgerStore.Close() for Badger
 }
 
 // New creates a new Graph with the given configuration.
 // Returns an error if SnowflakeNodeID is out of range (0-1023 for 10-bit node).
+//
+// Store selection priority:
+//  1. config.Store (explicit injection)
+//  2. BadgerStore (if BadgerDir or BadgerInMemory is set)
+//  3. MemoryStore (default)
+//
+// When a BadgerStore is created, registries are loaded from persisted data.
+// Call Close() when done to save registries and close the store.
 func New(config Config) (*Graph, error) {
 	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID,
 		snowflake.WithEpoch(snowflakeEpoch),
@@ -61,18 +79,64 @@ func New(config Config) (*Graph, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
 	}
-	store := config.Store
-	if store == nil {
-		store = NewMemoryStore()
-	}
 
-	return &Graph{
+	g := &Graph{
 		labels:    newLabelRegistry(),
 		relTypes:  newRelTypeRegistry(),
 		nodeIDGen: nodeGen,
 		relIDGen:  relGen,
-		store:     store,
-	}, nil
+	}
+
+	store := config.Store
+	if store == nil {
+		if config.BadgerDir != "" || config.BadgerInMemory {
+			bs, err := NewBadgerStore(BadgerStoreConfig{
+				Dir:      config.BadgerDir,
+				InMemory: config.BadgerInMemory,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("graph: badger store: %w", err)
+			}
+
+			// Load persisted registries. Fail fast if the saved data is corrupt.
+			if _, err := bs.LoadLabelRegistry(g.labels); err != nil {
+				_ = bs.Close() // best-effort cleanup; returning primary error
+				return nil, fmt.Errorf("graph: load label registry: %w", err)
+			}
+			if _, err := bs.LoadRelTypeRegistry(g.relTypes); err != nil {
+				_ = bs.Close() // best-effort cleanup; returning primary error
+				return nil, fmt.Errorf("graph: load reltype registry: %w", err)
+			}
+
+			store = bs
+			g.closeFn = bs.Close
+		} else {
+			store = NewMemoryStore()
+		}
+	}
+
+	g.store = store
+	return g, nil
+}
+
+// Close saves registries (if Badger) and closes the underlying store.
+// No-op for MemoryStore. Safe to call multiple times.
+func (g *Graph) Close() error {
+	if g.closeFn == nil {
+		return nil
+	}
+	// Save registries before closing.
+	if bs, ok := g.store.(*BadgerStore); ok {
+		if err := bs.SaveLabelRegistry(g.labels); err != nil {
+			return fmt.Errorf("graph: save label registry: %w", err)
+		}
+		if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil {
+			return fmt.Errorf("graph: save reltype registry: %w", err)
+		}
+	}
+	err := g.closeFn()
+	g.closeFn = nil // idempotent
+	return err
 }
 
 // NextNodeID generates a unique snowflake ID for a new node.

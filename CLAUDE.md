@@ -63,7 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0
-Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `rho/kit` (service toolkit)
+Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence), `rho/kit` (service toolkit)
 
 ## Build & Test Commands
 
@@ -140,12 +140,15 @@ Current packages (evolving):
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, `AddNode`/`AddRelationship`/`DeleteNode` (cascade)/`DeleteRelationship`, passthrough queries, string resolution |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, `AddNode`/`AddRelationship`/`DeleteNode` (cascade)/`DeleteRelationship`, passthrough queries, string resolution, `Close()` lifecycle |
 | `store.go` | `Store` interface (pure persistence contract) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
 | `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
+| `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, registry persistence |
+| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs/tokens, fixed-width keys for entities, indexes, adjacency, history, temporal, metadata |
+| `wire.go` | Msgpack wire format types (`nodeWire`/`relWire`/`propertyWire`) and conversion functions for serialization boundary |
 | `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches all 15 `tkg_*` shadow keys with nil-guards on `Temporal()`/`Integrity()` |
-| `label_registry.go` | Thread-safe label string ↔ uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning) |
-| `reltype_registry.go` | Thread-safe relationship type string ↔ uint16 token registry |
+| `label_registry.go` | Thread-safe label string ↔ uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning, `ExportNames`/`ImportNames` for persistence) |
+| `reltype_registry.go` | Thread-safe relationship type string ↔ uint16 token registry (with `ExportNames`/`ImportNames`) |
 | `doc.go` | Package documentation |
 
 ## Critical Design Invariants
@@ -250,9 +253,8 @@ No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is statele
 
 1. **Core Types & Registries** ✅ — `pkg/types` (Node, Relationship, PropertySlice, shadow constants, temporal, integrity) + `pkg/graph` (labelRegistry, relTypeRegistry, dual snowflake generators, string resolution). Opaque ID types (`nodeID`/`relID`), recursive property validation, `Instant` timestamps.
 2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency, deterministic ID-sorted queries), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade with full `ErrRelNotFound` tolerance, TOCTOU documented), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries. 296 tests, 96.8% coverage.
-3. **Phase 2B: Serialization & Persistence** — msgpack wire formats (`nodeWire`/`relWire`), Badger persistence, registry persist/restart.
-4. **Index Migration** — new fixed-width Badger key formats, index maintenance. Tests: label/type index scans, adjacency prefix scans, history ordering, big-endian sort verification.
-5. **Cypher & Graph API Integration** — Cypher token-based matching, REST/gRPC API layer.
+3. **Phase 2B: Serialization & Persistence** ✅ — msgpack wire formats (`nodeWire`/`relWire`/`propertyWire`), fixed-width binary key encoding (10 key types, big-endian IDs/tokens), `BadgerStore` implementing full `Store` interface (CRUD, label/type/adjacency indexes, prefix scanning), registry `ExportNames`/`ImportNames` for persistence, `Graph.Close()` lifecycle, `Config.BadgerDir`/`BadgerInMemory`. 355 tests, 94.2% coverage.
+4. **Cypher & Graph API Integration** — Cypher token-based matching, REST/gRPC API layer.
 
 ## rho/kit Integration
 
