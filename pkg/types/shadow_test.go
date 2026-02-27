@@ -6,12 +6,14 @@ func TestIsShadowKey(t *testing.T) {
 	t.Parallel()
 
 	shadowKeys := []string{
-		ShadowLabels, ShadowPrimaryLabel, ShadowID,
+		ShadowLabels, ShadowType,
 		ShadowValidFrom, ShadowValidTo,
-		ShadowTransactionFrom, ShadowTransactionTo,
-		ShadowCreatedAt, ShadowUpdatedAt,
-		ShadowVersion, ShadowPreviousVersion, ShadowNextVersion,
-		ShadowBaseEntity, ShadowRelType, ShadowIntegrity,
+		ShadowTxFrom, ShadowTxTo,
+		ShadowCreatedAt, ShadowUpdatedAt, ShadowDeletedAt,
+		ShadowCreatedBy, ShadowUpdatedBy,
+		ShadowVersion,
+		ShadowHash, ShadowPrevHash,
+		ShadowBaseEntity,
 	}
 
 	for _, key := range shadowKeys {
@@ -45,20 +47,20 @@ func TestShadowKeyConstants(t *testing.T) {
 		want     string
 	}{
 		{"Labels", ShadowLabels, "tkg_labels"},
-		{"PrimaryLabel", ShadowPrimaryLabel, "tkg_primary_label"},
-		{"ID", ShadowID, "tkg_id"},
+		{"Type", ShadowType, "tkg_type"},
 		{"ValidFrom", ShadowValidFrom, "tkg_valid_from"},
 		{"ValidTo", ShadowValidTo, "tkg_valid_to"},
-		{"TransactionFrom", ShadowTransactionFrom, "tkg_transaction_from"},
-		{"TransactionTo", ShadowTransactionTo, "tkg_transaction_to"},
+		{"TxFrom", ShadowTxFrom, "tkg_tx_from"},
+		{"TxTo", ShadowTxTo, "tkg_tx_to"},
 		{"CreatedAt", ShadowCreatedAt, "tkg_created_at"},
 		{"UpdatedAt", ShadowUpdatedAt, "tkg_updated_at"},
+		{"DeletedAt", ShadowDeletedAt, "tkg_deleted_at"},
+		{"CreatedBy", ShadowCreatedBy, "tkg_created_by"},
+		{"UpdatedBy", ShadowUpdatedBy, "tkg_updated_by"},
 		{"Version", ShadowVersion, "tkg_version"},
-		{"PreviousVersion", ShadowPreviousVersion, "tkg_previous_version"},
-		{"NextVersion", ShadowNextVersion, "tkg_next_version"},
+		{"Hash", ShadowHash, "tkg_hash"},
+		{"PrevHash", ShadowPrevHash, "tkg_prev_hash"},
 		{"BaseEntity", ShadowBaseEntity, "tkg_base_entity"},
-		{"RelType", ShadowRelType, "tkg_rel_type"},
-		{"Integrity", ShadowIntegrity, "tkg_integrity"},
 	}
 
 	for _, tc := range cases {

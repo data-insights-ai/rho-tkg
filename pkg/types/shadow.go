@@ -5,22 +5,33 @@ import "strings"
 // Shadow property keys — read-only virtual properties dispatched by the graph
 // layer from internal metadata. They are never stored in the entity's
 // PropertySlice; PropertySlice.Set rejects any key with the "tkg_" prefix.
+//
+// Final 15 shadow keys per spec.
 const (
-	ShadowLabels          = "tkg_labels"
-	ShadowPrimaryLabel    = "tkg_primary_label"
-	ShadowID              = "tkg_id"
-	ShadowValidFrom       = "tkg_valid_from"
-	ShadowValidTo         = "tkg_valid_to"
-	ShadowTransactionFrom = "tkg_transaction_from"
-	ShadowTransactionTo   = "tkg_transaction_to"
-	ShadowCreatedAt       = "tkg_created_at"
-	ShadowUpdatedAt       = "tkg_updated_at"
-	ShadowVersion         = "tkg_version"
-	ShadowPreviousVersion = "tkg_previous_version"
-	ShadowNextVersion     = "tkg_next_version"
-	ShadowBaseEntity      = "tkg_base_entity"
-	ShadowRelType         = "tkg_rel_type"
-	ShadowIntegrity       = "tkg_integrity"
+	// Structural
+	ShadowLabels = "tkg_labels" // Node: []string
+	ShadowType   = "tkg_type"   // Relationship: string
+
+	// Temporal
+	ShadowValidFrom = "tkg_valid_from" // Both: Instant
+	ShadowValidTo   = "tkg_valid_to"   // Both: Instant
+	ShadowTxFrom    = "tkg_tx_from"    // Both: Instant
+	ShadowTxTo      = "tkg_tx_to"      // Both: Instant
+	ShadowCreatedAt = "tkg_created_at" // Both: Instant
+	ShadowUpdatedAt = "tkg_updated_at" // Both: Instant
+	ShadowDeletedAt = "tkg_deleted_at" // Both: Instant
+
+	// Provenance
+	ShadowCreatedBy = "tkg_created_by" // Both: string
+	ShadowUpdatedBy = "tkg_updated_by" // Both: string
+	ShadowVersion   = "tkg_version"    // Both: int
+
+	// Integrity
+	ShadowHash     = "tkg_hash"      // Both: string
+	ShadowPrevHash = "tkg_prev_hash" // Both: string
+
+	// Version chain
+	ShadowBaseEntity = "tkg_base_entity" // Both: int64
 )
 
 // IsShadowKey returns true if key is a reserved tkg_ shadow property.

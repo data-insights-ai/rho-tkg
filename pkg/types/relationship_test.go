@@ -20,7 +20,7 @@ func TestRelSetPropertyRejectsTKGPrefix(t *testing.T) {
 func TestRelSetPropertyRejectsTKGPrefixVariants(t *testing.T) {
 	t.Parallel()
 
-	keys := []string{"tkg_id", "tkg_version", "tkg_", "tkg_rel_type"}
+	keys := []string{"tkg_type", "tkg_version", "tkg_", "tkg_hash"}
 	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
 	for _, key := range keys {
 		if err := r.SetProperty(key, "x"); err == nil {
@@ -29,11 +29,22 @@ func TestRelSetPropertyRejectsTKGPrefixVariants(t *testing.T) {
 	}
 }
 
+func TestNewRelationshipPanicsOnZeroRelType(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("NewRelationship(id, 0, start, end) should panic on reserved token 0")
+		}
+	}()
+	NewRelationship(snowflake.ID(1), 0, snowflake.ID(100), snowflake.ID(200))
+}
+
 func TestTokenZeroReservedRel(t *testing.T) {
 	t.Parallel()
 
-	r := NewRelationship(snowflake.ID(1), 0, snowflake.ID(100), snowflake.ID(200))
-	if r.HasTypeToken(0) {
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200)) // valid token
+	if r.HasTypeToken(relTypeToken(0)) {
 		t.Fatal("HasTypeToken(0) should always return false (reserved)")
 	}
 }
@@ -66,7 +77,7 @@ func TestNewRelationship(t *testing.T) {
 	if r.InternalID() != snowflake.ID(42) {
 		t.Errorf("InternalID() = %d, want 42", r.InternalID())
 	}
-	if r.TypeToken() != 5 {
+	if r.TypeToken() != relTypeToken(5) {
 		t.Errorf("TypeToken() = %d, want 5", r.TypeToken())
 	}
 	if r.StartNodeID() != snowflake.ID(100) {
@@ -81,7 +92,7 @@ func TestRelTypeToken(t *testing.T) {
 	t.Parallel()
 
 	r := NewRelationship(snowflake.ID(1), 7, snowflake.ID(100), snowflake.ID(200))
-	if r.TypeToken() != 7 {
+	if r.TypeToken() != relTypeToken(7) {
 		t.Errorf("TypeToken() = %d, want 7", r.TypeToken())
 	}
 }
@@ -90,10 +101,10 @@ func TestRelHasTypeToken(t *testing.T) {
 	t.Parallel()
 
 	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
-	if !r.HasTypeToken(5) {
+	if !r.HasTypeToken(relTypeToken(5)) {
 		t.Error("HasTypeToken(5) = false, want true")
 	}
-	if r.HasTypeToken(99) {
+	if r.HasTypeToken(relTypeToken(99)) {
 		t.Error("HasTypeToken(99) = true, want false")
 	}
 }
@@ -153,5 +164,61 @@ func TestRelGetProperty(t *testing.T) {
 	_, found = r.GetProperty("missing")
 	if found {
 		t.Error("GetProperty(\"missing\") found, want not found")
+	}
+}
+
+func TestRelTemporalDefaultNil(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	if r.Temporal() != nil {
+		t.Fatal("Temporal() should default to nil")
+	}
+}
+
+func TestRelTemporalRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	tm := &TemporalMetadata{}
+	r.SetTemporal(tm)
+	if r.Temporal() != tm {
+		t.Fatal("Temporal() should return the value set by SetTemporal()")
+	}
+}
+
+func TestRelIntegrityDefaultNil(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	if r.Integrity() != nil {
+		t.Fatal("Integrity() should default to nil")
+	}
+}
+
+func TestRelIntegrityRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	ig := &RelIntegrity{}
+	r.SetIntegrity(ig)
+	if r.Integrity() != ig {
+		t.Fatal("Integrity() should return the value set by SetIntegrity()")
+	}
+}
+
+func TestRelPropertiesMap(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	_ = r.SetProperty("weight", 1.5)
+	_ = r.SetProperty("since", "2025")
+
+	m := r.PropertiesMap()
+	if len(m) != 2 {
+		t.Fatalf("PropertiesMap() len = %d, want 2", len(m))
+	}
+	if m["weight"] != 1.5 || m["since"] != "2025" {
+		t.Errorf("PropertiesMap() = %v, unexpected values", m)
 	}
 }

@@ -16,11 +16,16 @@ type Node struct {
 	extraLabels  []labelToken
 	properties   PropertySlice
 	version      int
+	temporal     *TemporalMetadata
+	integrity    *NodeIntegrity
 }
 
 // NewNode creates a Node with the given snowflake ID, primary label token,
 // and optional extra label tokens.
 func NewNode(id snowflake.ID, primaryLabel uint16, extraLabels []uint16) *Node {
+	if primaryLabel == 0 {
+		panic("types: primary label token 0 is reserved")
+	}
 	n := &Node{
 		id:           id,
 		primaryLabel: labelToken(primaryLabel),
@@ -40,45 +45,41 @@ func (n *Node) InternalID() snowflake.ID {
 }
 
 // PrimaryLabelToken returns the primary label token.
-func (n *Node) PrimaryLabelToken() uint16 {
-	return uint16(n.primaryLabel)
+func (n *Node) PrimaryLabelToken() labelToken {
+	return n.primaryLabel
 }
 
 // ExtraLabelTokens returns the extra label tokens (all labels except primary).
 // Returns nil for single-label nodes. Always returns a copy.
-func (n *Node) ExtraLabelTokens() []uint16 {
+func (n *Node) ExtraLabelTokens() []labelToken {
 	if len(n.extraLabels) == 0 {
 		return nil
 	}
-	out := make([]uint16, len(n.extraLabels))
-	for i, t := range n.extraLabels {
-		out[i] = uint16(t)
-	}
+	out := make([]labelToken, len(n.extraLabels))
+	copy(out, n.extraLabels)
 	return out
 }
 
 // AllLabelTokens returns all label tokens (primary first, then extras).
 // Always returns a new slice.
-func (n *Node) AllLabelTokens() []uint16 {
-	out := make([]uint16, 0, 1+len(n.extraLabels))
-	out = append(out, uint16(n.primaryLabel))
-	for _, t := range n.extraLabels {
-		out = append(out, uint16(t))
-	}
+func (n *Node) AllLabelTokens() []labelToken {
+	out := make([]labelToken, 0, 1+len(n.extraLabels))
+	out = append(out, n.primaryLabel)
+	out = append(out, n.extraLabels...)
 	return out
 }
 
 // HasLabelToken returns true if this node has the given label token.
 // Token 0 always returns false — it is reserved as the zero/invalid value.
-func (n *Node) HasLabelToken(tok uint16) bool {
+func (n *Node) HasLabelToken(tok labelToken) bool {
 	if tok == 0 {
 		return false
 	}
-	if uint16(n.primaryLabel) == tok {
+	if n.primaryLabel == tok {
 		return true
 	}
 	for _, t := range n.extraLabels {
-		if uint16(t) == tok {
+		if t == tok {
 			return true
 		}
 	}
@@ -106,6 +107,11 @@ func (n *Node) Properties() PropertySlice {
 	return n.properties.DeepCopy()
 }
 
+// PropertiesMap returns the node's properties as a map.
+func (n *Node) PropertiesMap() map[string]any {
+	return n.properties.ToMap()
+}
+
 // Version returns the node's version number (default 0).
 func (n *Node) Version() int {
 	return n.version
@@ -114,4 +120,24 @@ func (n *Node) Version() int {
 // SetVersion sets the node's version number.
 func (n *Node) SetVersion(v int) {
 	n.version = v
+}
+
+// Temporal returns the node's temporal metadata (nil until set by the graph layer).
+func (n *Node) Temporal() *TemporalMetadata {
+	return n.temporal
+}
+
+// SetTemporal sets the node's temporal metadata.
+func (n *Node) SetTemporal(tm *TemporalMetadata) {
+	n.temporal = tm
+}
+
+// Integrity returns the node's integrity metadata (nil until set by the graph layer).
+func (n *Node) Integrity() *NodeIntegrity {
+	return n.integrity
+}
+
+// SetIntegrity sets the node's integrity metadata.
+func (n *Node) SetIntegrity(ig *NodeIntegrity) {
+	n.integrity = ig
 }

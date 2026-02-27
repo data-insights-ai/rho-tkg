@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // Property is a single key-value property entry.
@@ -20,7 +19,7 @@ type PropertySlice []Property
 // Returns an error if key has the reserved "tkg_" prefix.
 // Maintains the sorted-by-key invariant.
 func (ps *PropertySlice) Set(key string, value any) error {
-	if strings.HasPrefix(key, "tkg_") {
+	if IsShadowKey(key) {
 		return fmt.Errorf("property key %q uses reserved tkg_ prefix", key)
 	}
 	i := sort.Search(len(*ps), func(i int) bool {
@@ -49,13 +48,43 @@ func (ps PropertySlice) Get(key string) (any, bool) {
 }
 
 // DeepCopy returns a copy of the slice (independent from the original).
+// Reference-type values (slices, maps) are cloned so the copy is fully
+// independent. Primitives, strings, and other value types are safe as-is.
 func (ps PropertySlice) DeepCopy() PropertySlice {
 	if ps == nil {
 		return nil
 	}
 	cp := make(PropertySlice, len(ps))
-	copy(cp, ps)
+	for i, p := range ps {
+		cp[i] = Property{Key: p.Key, Value: deepCopyValue(p.Value)}
+	}
 	return cp
+}
+
+// deepCopyValue clones known reference types so that mutations to the copy
+// never affect the original. Unknown types fall through to shallow copy,
+// which is safe for primitives, strings, and other immutable values.
+func deepCopyValue(v any) any {
+	switch val := v.(type) {
+	case []string:
+		cp := make([]string, len(val))
+		copy(cp, val)
+		return cp
+	case []any:
+		cp := make([]any, len(val))
+		for i, elem := range val {
+			cp[i] = deepCopyValue(elem)
+		}
+		return cp
+	case map[string]any:
+		cp := make(map[string]any, len(val))
+		for k, elem := range val {
+			cp[k] = deepCopyValue(elem)
+		}
+		return cp
+	default:
+		return v
+	}
 }
 
 // ToMap converts the PropertySlice to a map.
