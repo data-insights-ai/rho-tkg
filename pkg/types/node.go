@@ -14,6 +14,10 @@ func (t labelToken) Value() uint16 { return uint16(t) }
 // directly. The graph layer creates nodes with snowflake.ID values.
 type nodeID snowflake.ID
 
+// SnowflakeID extracts the underlying snowflake.ID from a nodeID.
+// This is the bridge for pkg/graph to get persistence keys from entities.
+func (id nodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+
 // Node represents a vertex in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
 // A Node is a pure-data struct — it works immediately after construction
@@ -132,6 +136,12 @@ func (n *Node) HasLabelTokenRaw(tok uint16) bool {
 // LabelTokenCount returns the total number of label tokens.
 func (n *Node) LabelTokenCount() int {
 	return 1 + len(n.extraLabels)
+}
+
+// SetProperties replaces the node's property slice with a pre-built one.
+// Use NewPropertySlice to build a validated, sorted slice in O(N log N).
+func (n *Node) SetProperties(ps PropertySlice) {
+	n.properties = ps
 }
 
 // SetProperty sets a property on the node.

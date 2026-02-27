@@ -470,6 +470,40 @@ func TestNodeVersion(t *testing.T) {
 	}
 }
 
+// ─── SnowflakeID bridge tests ────────────────────────────────────────────────
+
+func TestNodeIDSnowflakeIDRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(42), 10, nil)
+	got := n.InternalID().SnowflakeID()
+	if got != snowflake.ID(42) {
+		t.Errorf("nodeID.SnowflakeID() = %d, want 42", got)
+	}
+}
+
+// ─── SetProperties tests ────────────────────────────────────────────────────
+
+func TestNodeSetProperties(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	ps, err := NewPropertySlice(map[string]any{"name": "Alice", "age": 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.SetProperties(ps)
+
+	val, ok := n.GetProperty("name")
+	if !ok || val != "Alice" {
+		t.Errorf("GetProperty(\"name\") = (%v, %v), want (\"Alice\", true)", val, ok)
+	}
+	val, ok = n.GetProperty("age")
+	if !ok || val != 30 {
+		t.Errorf("GetProperty(\"age\") = (%v, %v), want (30, true)", val, ok)
+	}
+}
+
 // ─── Edge case tests ────────────────────────────────────────────────────────
 
 func TestNodeHasLabelTokenRawHighCardinality(t *testing.T) {

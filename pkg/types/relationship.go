@@ -14,6 +14,10 @@ func (t relTypeToken) Value() uint16 { return uint16(t) }
 // directly. The graph layer creates relationships with snowflake.ID values.
 type relID snowflake.ID
 
+// SnowflakeID extracts the underlying snowflake.ID from a relID.
+// This is the bridge for pkg/graph to get persistence keys from entities.
+func (id relID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+
 // Relationship represents a directed edge in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
 //
@@ -78,6 +82,12 @@ func (r *Relationship) StartNodeID() nodeID {
 // EndNodeID returns the target node's opaque internal ID.
 func (r *Relationship) EndNodeID() nodeID {
 	return r.endID
+}
+
+// SetProperties replaces the relationship's property slice with a pre-built one.
+// Use NewPropertySlice to build a validated, sorted slice in O(N log N).
+func (r *Relationship) SetProperties(ps PropertySlice) {
+	r.properties = ps
 }
 
 // SetProperty sets a property on the relationship.

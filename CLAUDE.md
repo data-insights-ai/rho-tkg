@@ -140,7 +140,10 @@ Current packages (evolving):
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, dual snowflake generators (`NextNodeID`/`NextRelID`), label/reltype registry ownership, string resolution methods |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, `AddNode`/`AddRelationship`/`DeleteNode` (cascade)/`DeleteRelationship`, passthrough queries, string resolution |
+| `store.go` | `Store` interface (pure persistence contract) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
+| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
+| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches all 15 `tkg_*` shadow keys with nil-guards on `Temporal()`/`Integrity()` |
 | `label_registry.go` | Thread-safe label string ↔ uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning) |
 | `reltype_registry.go` | Thread-safe relationship type string ↔ uint16 token registry |
 | `doc.go` | Package documentation |
@@ -171,6 +174,18 @@ Current packages (evolving):
 
 **Zero-allocation token checks**: `HasLabelTokenRaw(uint16)` on Node and `HasTypeTokenRaw(uint16)` on Relationship for hot-path graph traversal. Token 0 returns false.
 
+**Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate, sort once. `SetProperties(ps)` on Node/Relationship assigns the pre-built slice directly. `AddNode`/`AddRelationship` use this path. Avoids O(N²) per-property `SetProperty` loop.
+
+**Store is pure persistence**: The `Store` interface handles entity CRUD and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets (`map[snowflake.ID]map[snowflake.ID]struct{}`) for O(1) adjacency insert/delete.
+
+**Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Self-loops are handled by skipping `ErrRelNotFound` in the incoming pass.
+
+**SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types. Cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
+
+**Shadow resolution nil-guards**: `ResolveNodeProperty`/`ResolveRelProperty` check `Temporal() != nil` and `Integrity() != nil` before accessing fields. New entities without metadata return `(nil, false)` — no panics.
+
+**Validate before generating IDs**: `AddNode`/`AddRelationship` run `NewPropertySlice(props)` and registry lookups before `NextNodeID()`/`NextRelID()`. Validation failures return early with no wasted snowflake IDs.
+
 ## Registries (pkg/graph)
 
 Two independent registries with independent token namespaces. A label `"KNOWS"` and a relationship type `"KNOWS"` get independent tokens.
@@ -188,7 +203,7 @@ The Graph layer is the **sole owner** of string resolution. Three consumers, all
 
 | Consumer | Resolution methods |
 |---|---|
-| Graph layer | `NodeLabels(n)`, `NodePrimaryLabel(n)`, `RelationshipType(r)`, `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` |
+| Graph layer | `NodeLabels(n)`, `NodePrimaryLabel(n)`, `RelationshipType(r)`, `ResolveNodeProperty(n, key)` ✅, `ResolveRelProperty(r, key)` ✅ |
 | Cypher engine | Resolves label/type tokens once per query via `Lookup()`, then matches with integer comparison |
 | REST/gRPC API | Calls Graph resolution methods before JSON encoding |
 
@@ -234,9 +249,10 @@ No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is statele
 ## Implementation Phases
 
 1. **Core Types & Registries** ✅ — `pkg/types` (Node, Relationship, PropertySlice, shadow constants, temporal, integrity) + `pkg/graph` (labelRegistry, relTypeRegistry, dual snowflake generators, string resolution). Opaque ID types (`nodeID`/`relID`), recursive property validation, `Instant` timestamps.
-2. **Snowflake ID Generation & Serialization** — snowflake generators ✅. Remaining: msgpack wire formats (`nodeWire`/`relWire`), Badger persistence, registry persist/restart.
-3. **Index Migration** — new fixed-width Badger key formats, index maintenance. Tests: label/type index scans, adjacency prefix scans, history ordering, big-endian sort verification.
-4. **Cypher & Graph API Integration** — Graph resolution methods, Cypher token-based matching, new `AddNode`/`AddRelationship` signatures (no user-supplied IDs). Tests: all 15 shadow keys resolve, label/type matching, nonexistent label returns empty result.
+2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries. 256 tests, 96.7% coverage.
+3. **Phase 2B: Serialization & Persistence** — msgpack wire formats (`nodeWire`/`relWire`), Badger persistence, registry persist/restart.
+4. **Index Migration** — new fixed-width Badger key formats, index maintenance. Tests: label/type index scans, adjacency prefix scans, history ordering, big-endian sort verification.
+5. **Cypher & Graph API Integration** — Cypher token-based matching, REST/gRPC API layer.
 
 ## rho/kit Integration
 

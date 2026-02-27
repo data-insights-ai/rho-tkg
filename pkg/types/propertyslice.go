@@ -302,3 +302,26 @@ func (ps PropertySlice) ToMap() map[string]any {
 func (ps PropertySlice) Len() int {
 	return len(ps)
 }
+
+// NewPropertySlice creates a PropertySlice from a map in O(N log N) time.
+// Allocates once, validates all values, then sorts once — no per-key memmoves.
+// Returns nil, nil for nil or empty maps.
+// Returns ErrReservedPrefix if any key starts with "tkg_".
+// Returns ErrUnsupportedValueType if any value fails allowlist validation.
+func NewPropertySlice(m map[string]any) (PropertySlice, error) {
+	if len(m) == 0 {
+		return nil, nil
+	}
+	ps := make(PropertySlice, 0, len(m))
+	for k, v := range m {
+		if IsShadowKey(k) {
+			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, k)
+		}
+		if err := validatePropertyValue(v); err != nil {
+			return nil, fmt.Errorf("%w: %q (got %T)", err, k, v)
+		}
+		ps = append(ps, Property{Key: k, Value: v})
+	}
+	sort.Slice(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key })
+	return ps, nil
+}

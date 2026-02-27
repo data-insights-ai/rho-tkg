@@ -1077,6 +1077,111 @@ func TestPropertySliceStressWideAndDeep(t *testing.T) {
 	}
 }
 
+// ─── NewPropertySlice bulk loader tests ──────────────────────────────────────
+
+func TestNewPropertySliceBasic(t *testing.T) {
+	t.Parallel()
+
+	m := map[string]any{
+		"zulu":  5,
+		"alpha": 1,
+		"mike":  3,
+		"bravo": 2,
+		"echo":  4,
+	}
+	ps, err := NewPropertySlice(m)
+	if err != nil {
+		t.Fatalf("NewPropertySlice() returned error: %v", err)
+	}
+	if ps.Len() != 5 {
+		t.Fatalf("Len() = %d, want 5", ps.Len())
+	}
+	// Verify sorted order.
+	if !sort.SliceIsSorted(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key }) {
+		t.Fatal("NewPropertySlice result is not sorted")
+	}
+	// Verify all values are correct.
+	for k, v := range m {
+		got, ok := ps.Get(k)
+		if !ok {
+			t.Fatalf("Get(%q) not found", k)
+		}
+		if got != v {
+			t.Fatalf("Get(%q) = %v, want %v", k, got, v)
+		}
+	}
+}
+
+func TestNewPropertySliceEmpty(t *testing.T) {
+	t.Parallel()
+
+	ps, err := NewPropertySlice(nil)
+	if err != nil {
+		t.Fatalf("NewPropertySlice(nil) returned error: %v", err)
+	}
+	if ps != nil {
+		t.Fatalf("NewPropertySlice(nil) = %v, want nil", ps)
+	}
+
+	ps2, err := NewPropertySlice(map[string]any{})
+	if err != nil {
+		t.Fatalf("NewPropertySlice({}) returned error: %v", err)
+	}
+	if ps2 != nil {
+		t.Fatalf("NewPropertySlice({}) = %v, want nil", ps2)
+	}
+}
+
+func TestNewPropertySliceReservedKey(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewPropertySlice(map[string]any{"tkg_labels": "hack", "name": "ok"})
+	if err == nil {
+		t.Fatal("NewPropertySlice should reject tkg_ prefix key")
+	}
+	if !errors.Is(err, ErrReservedPrefix) {
+		t.Errorf("errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
+	}
+}
+
+func TestNewPropertySliceInvalidValue(t *testing.T) {
+	t.Parallel()
+
+	type myStruct struct{ X int }
+	_, err := NewPropertySlice(map[string]any{"bad": &myStruct{X: 1}})
+	if err == nil {
+		t.Fatal("NewPropertySlice should reject pointer value")
+	}
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestNewPropertySliceLargeMap(t *testing.T) {
+	t.Parallel()
+
+	m := make(map[string]any, 1000)
+	for i := range 1000 {
+		m[fmt.Sprintf("key_%04d", i)] = i
+	}
+	ps, err := NewPropertySlice(m)
+	if err != nil {
+		t.Fatalf("NewPropertySlice(1000 keys) returned error: %v", err)
+	}
+	if ps.Len() != 1000 {
+		t.Fatalf("Len() = %d, want 1000", ps.Len())
+	}
+	if !sort.SliceIsSorted(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key }) {
+		t.Fatal("NewPropertySlice result is not sorted for 1000 keys")
+	}
+	// Spot-check a few values.
+	for _, k := range []string{"key_0000", "key_0500", "key_0999"} {
+		if _, ok := ps.Get(k); !ok {
+			t.Fatalf("Get(%q) not found in 1000-key result", k)
+		}
+	}
+}
+
 // ─── Stress: many properties sorted invariant ───────────────────────────────
 
 func TestPropertySliceStressManyPropertiesSorted(t *testing.T) {

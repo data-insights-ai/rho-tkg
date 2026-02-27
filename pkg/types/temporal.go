@@ -6,6 +6,10 @@ import snowflake "gitlab2024.bds421-cloud.com/bds421/rho/snowflake-2026"
 // Used for all temporal fields in the graph (validity, transaction, audit).
 type Instant int64
 
+// SnowflakeID extracts the underlying snowflake.ID from an entityID.
+// This is the bridge for pkg/graph to resolve base entity references.
+func (id entityID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+
 // entityID is the opaque, unexported ID type for cross-entity references
 // (version chains) where the target may be either a node or a relationship.
 // Wraps snowflake.ID — external packages cannot construct or compare these

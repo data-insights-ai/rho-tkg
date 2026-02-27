@@ -376,6 +376,55 @@ func TestRelPropertiesMap(t *testing.T) {
 	}
 }
 
+// ─── SnowflakeID bridge tests ────────────────────────────────────────────────
+
+func TestRelIDSnowflakeIDRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(42), 5, snowflake.ID(100), snowflake.ID(200))
+	got := r.InternalID().SnowflakeID()
+	if got != snowflake.ID(42) {
+		t.Errorf("relID.SnowflakeID() = %d, want 42", got)
+	}
+}
+
+func TestNodeIDSnowflakeIDRoundTripFromRel(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
+
+	if startID != snowflake.ID(100) {
+		t.Errorf("StartNodeID().SnowflakeID() = %d, want 100", startID)
+	}
+	if endID != snowflake.ID(200) {
+		t.Errorf("EndNodeID().SnowflakeID() = %d, want 200", endID)
+	}
+}
+
+// ─── SetProperties tests ────────────────────────────────────────────────────
+
+func TestRelSetProperties(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	ps, err := NewPropertySlice(map[string]any{"weight": 1.5, "since": "2025"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SetProperties(ps)
+
+	val, ok := r.GetProperty("weight")
+	if !ok || val != 1.5 {
+		t.Errorf("GetProperty(\"weight\") = (%v, %v), want (1.5, true)", val, ok)
+	}
+	val, ok = r.GetProperty("since")
+	if !ok || val != "2025" {
+		t.Errorf("GetProperty(\"since\") = (%v, %v), want (\"2025\", true)", val, ok)
+	}
+}
+
 // ─── Edge case tests ────────────────────────────────────────────────────────
 
 func TestRelTemporalSharedPointerMutation(t *testing.T) {

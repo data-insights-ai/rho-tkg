@@ -30,13 +30,21 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Central graph layer — owns label and relationship type registries, dual snowflake ID generators (`NextNodeID()`/`NextRelID()`), and provides string resolution |
+| `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`DeleteNode`), shadow resolution, string resolution |
+| `Store` | Persistence interface — `PutNode`/`GetNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`DeleteRelationship`, index queries, adjacency queries, counts |
+| `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping |
 
+Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
+
 Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
 
+Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 15 `tkg_*` keys with nil-guards.
+
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
+
+Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `NodeCount()`, `RelationshipCount()`.
 
 ### Snowflake Configuration
 
@@ -65,6 +73,11 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Depth-limited validation**: Recursive validation and deep-copy stop at `maxPropertyDepth` (32). `Set()` returns `ErrMaxDepthExceeded` for deeper structures.
 - **Registry input validation**: `GetOrCreate("")` returns `ErrEmptyName`. Empty strings are never assigned tokens.
 - **Shared-pointer accessors**: `Temporal()` and `Integrity()` return the internal pointer — no defensive copy. The graph layer needs mutation access; external callers should treat as read-only.
+- **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate all, sort once. Avoids the O(N²) per-property `SetProperty` loop for entity creation.
+- **Store is pure persistence**: The `Store` interface handles entity storage and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution live on Graph.
+- **Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Self-loops are handled by skipping `ErrRelNotFound` in the incoming pass.
+- **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types allow cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
+- **Shadow resolution nil-guards**: `ResolveNodeProperty` / `ResolveRelProperty` check `Temporal() != nil` and `Integrity() != nil` before accessing fields. New entities without metadata return `(nil, false)` instead of panicking.
 
 ### Shadow Properties (15)
 

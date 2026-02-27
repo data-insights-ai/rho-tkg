@@ -122,3 +122,17 @@ Patterns that caused review findings. Rules to prevent recurrence.
 **Problem:** After assigning token 65535, `nextToken++` wraps `uint16` to 0. Safe today because `len(collection)` protects against further assignments, but undocumented. A future maintainer might add logic that trusts `nextToken` without knowing it can be 0.
 **Root cause:** Relying on implicit overflow behavior without a comment.
 **Rule:** When integer overflow is expected and safe, add a comment explaining why. Implicit "it works because X" is a future bug when X changes.
+
+---
+
+## 2026-02-27 — Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution
+
+### Self-loop in cascade delete needs dedup (PATTERN)
+**Problem:** `DeleteNode` collects outgoing and incoming rels separately. A self-loop (A→A) appears in both lists. Deleting it in the outgoing pass means the incoming pass hits `ErrRelNotFound`.
+**Solution:** The incoming loop skips `ErrRelNotFound` — not an error, just a self-loop already handled. This is a correctness pattern, not a bug.
+**Rule:** When cascade-deleting bidirectional index entries, always guard against double-delete on self-referential edges.
+
+### Bulk construction before ID generation prevents wasted snowflake IDs (PATTERN)
+**Problem:** If `AddNode` generates an ID first and then property validation fails, the snowflake ID is consumed but never stored — a gap in the ID sequence.
+**Solution:** `NewPropertySlice(props)` runs before `g.NextNodeID()`. Validation failures return early with no wasted ID.
+**Rule:** In entity creation flows, validate all input before generating irreversible resources (IDs, timestamps).
