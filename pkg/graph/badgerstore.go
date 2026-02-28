@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 
@@ -43,12 +44,103 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}
-	return &BadgerStore{db: db}, nil
+	bs := &BadgerStore{db: db}
+	if err := bs.initCounters(); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, fmt.Errorf("graph: init counters: %w", err)
+	}
+	return bs, nil
 }
 
 // Close closes the Badger database.
 func (bs *BadgerStore) Close() error {
 	return bs.db.Close()
+}
+
+// --- Atomic counters ---
+//
+// Node and relationship counts are maintained as metadata keys for O(1) reads.
+// Each mutating transaction increments/decrements the counter atomically.
+
+var (
+	counterNodeCountKey = metaKey("node_count")
+	counterRelCountKey  = metaKey("rel_count")
+)
+
+// getCounter reads a big-endian int64 counter from the given key within txn.
+// Returns 0 if the key does not exist.
+func getCounter(txn *badger.Txn, key []byte) (int64, error) {
+	item, err := txn.Get(key)
+	if err == badger.ErrKeyNotFound {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var val int64
+	err = item.Value(func(v []byte) error {
+		if len(v) != 8 {
+			return fmt.Errorf("graph: counter value size %d, want 8", len(v))
+		}
+		val = int64(binary.BigEndian.Uint64(v)) // #nosec G115 — inverse of setCounter encoding
+		return nil
+	})
+	return val, err
+}
+
+// setCounter writes a big-endian int64 counter to the given key within txn.
+func setCounter(txn *badger.Txn, key []byte, val int64) error {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(val)) // #nosec G115 — intentional int64→uint64 for binary encoding
+	return txn.Set(key, buf)
+}
+
+// incrCounter atomically reads, modifies, and writes a counter within txn.
+func incrCounter(txn *badger.Txn, key []byte, delta int64) error {
+	current, err := getCounter(txn, key)
+	if err != nil {
+		return err
+	}
+	return setCounter(txn, key, current+delta)
+}
+
+// initCounters initializes counter metadata keys if they don't exist.
+// For fresh databases or migration from older versions without counters,
+// counts entities by scanning then persists the result.
+func (bs *BadgerStore) initCounters() error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// If node counter already exists, counters are initialized.
+		if _, err := txn.Get(counterNodeCountKey); err == nil {
+			return nil
+		} else if err != badger.ErrKeyNotFound {
+			return err
+		}
+
+		// Count nodes by prefix scan.
+		nodeCount := int64(0)
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		prefix := []byte{keyNode}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			nodeCount++
+		}
+		it.Close()
+
+		// Count relationships by prefix scan.
+		relCount := int64(0)
+		it = txn.NewIterator(opts)
+		prefix = []byte{keyRel}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			relCount++
+		}
+		it.Close()
+
+		if err := setCounter(txn, counterNodeCountKey, nodeCount); err != nil {
+			return err
+		}
+		return setCounter(txn, counterRelCountKey, relCount)
+	})
 }
 
 // --- Node operations ---
@@ -85,7 +177,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 			}
 		}
 
-		return nil
+		return incrCounter(txn, counterNodeCountKey, 1)
 	})
 }
 
@@ -145,7 +237,11 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 		}
 
 		// Delete node entity.
-		return txn.Delete(nk)
+		if err := txn.Delete(nk); err != nil {
+			return err
+		}
+
+		return incrCounter(txn, counterNodeCountKey, -1)
 	})
 }
 
@@ -204,7 +300,7 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 			return err
 		}
 
-		return nil
+		return incrCounter(txn, counterRelCountKey, 1)
 	})
 }
 
@@ -271,7 +367,11 @@ func (bs *BadgerStore) DeleteRelationship(id snowflake.ID) error {
 		}
 
 		// Delete relationship entity.
-		return txn.Delete(rk)
+		if err := txn.Delete(rk); err != nil {
+			return err
+		}
+
+		return incrCounter(txn, counterRelCountKey, -1)
 	})
 }
 
@@ -279,11 +379,11 @@ func (bs *BadgerStore) DeleteRelationship(id snowflake.ID) error {
 
 // NodesByLabel returns all nodes with the given label token.
 // Results are sorted by snowflake.ID (chronological) due to big-endian key encoding.
-func (bs *BadgerStore) NodesByLabel(token uint16) []*types.Node {
+func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 	var nodes []*types.Node
 	prefix := labelIndexPrefix(token)
 
-	_ = bs.db.View(func(txn *badger.Txn) error {
+	err := bs.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false // index keys have no values
 		it := txn.NewIterator(opts)
@@ -292,31 +392,36 @@ func (bs *BadgerStore) NodesByLabel(token uint16) []*types.Node {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			nodeID := parseNodeIDFromLabelIdx(it.Item().Key())
 			item, err := txn.Get(nodeKey(nodeID))
-			if err != nil {
+			if err == badger.ErrKeyNotFound {
 				continue // index orphan; skip silently
 			}
-			_ = item.Value(func(val []byte) error {
+			if err != nil {
+				return err
+			}
+			if err := item.Value(func(val []byte) error {
 				var w nodeWire
 				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return err
+					return fmt.Errorf("graph: unmarshal node %d: %w", nodeID, err)
 				}
 				nodes = append(nodes, wireToNode(w))
 				return nil
-			})
+			}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 
-	return nodes
+	return nodes, err
 }
 
 // RelationshipsByType returns all relationships with the given type token.
 // Results are sorted by snowflake.ID (chronological) due to big-endian key encoding.
-func (bs *BadgerStore) RelationshipsByType(token uint16) []*types.Relationship {
+func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
 	var rels []*types.Relationship
 	prefix := relTypeIndexPrefix(token)
 
-	_ = bs.db.View(func(txn *badger.Txn) error {
+	err := bs.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -325,22 +430,27 @@ func (bs *BadgerStore) RelationshipsByType(token uint16) []*types.Relationship {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			relID := parseRelIDFromTypeIdx(it.Item().Key())
 			item, err := txn.Get(relKey(relID))
-			if err != nil {
-				continue
+			if err == badger.ErrKeyNotFound {
+				continue // index orphan
 			}
-			_ = item.Value(func(val []byte) error {
+			if err != nil {
+				return err
+			}
+			if err := item.Value(func(val []byte) error {
 				var w relWire
 				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return err
+					return fmt.Errorf("graph: unmarshal rel %d: %w", relID, err)
 				}
 				rels = append(rels, wireToRel(w))
 				return nil
-			})
+			}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 
-	return rels
+	return rels, err
 }
 
 // --- Adjacency queries ---
@@ -348,7 +458,7 @@ func (bs *BadgerStore) RelationshipsByType(token uint16) []*types.Relationship {
 // OutgoingRelationships returns relationships starting from the given node.
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
+func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	var prefix []byte
 	if typeToken == 0 {
 		prefix = outPrefix(int64(nodeID))
@@ -362,7 +472,7 @@ func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
+func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	var prefix []byte
 	if typeToken == 0 {
 		prefix = inPrefix(int64(nodeID))
@@ -375,10 +485,10 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 
 // scanAdjacency scans adjacency keys with the given prefix, fetches each
 // relationship, and returns them sorted by snowflake.ID.
-func (bs *BadgerStore) scanAdjacency(prefix []byte) []*types.Relationship {
+func (bs *BadgerStore) scanAdjacency(prefix []byte) ([]*types.Relationship, error) {
 	var rels []*types.Relationship
 
-	_ = bs.db.View(func(txn *badger.Txn) error {
+	err := bs.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -387,17 +497,22 @@ func (bs *BadgerStore) scanAdjacency(prefix []byte) []*types.Relationship {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			relID := parseRelIDFromAdjKey(it.Item().Key())
 			item, err := txn.Get(relKey(relID))
-			if err != nil {
-				continue
+			if err == badger.ErrKeyNotFound {
+				continue // orphan adjacency entry
 			}
-			_ = item.Value(func(val []byte) error {
+			if err != nil {
+				return err
+			}
+			if err := item.Value(func(val []byte) error {
 				var w relWire
 				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return err
+					return fmt.Errorf("graph: unmarshal rel %d: %w", relID, err)
 				}
 				rels = append(rels, wireToRel(w))
 				return nil
-			})
+			}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -408,49 +523,146 @@ func (bs *BadgerStore) scanAdjacency(prefix []byte) []*types.Relationship {
 		return rels[i].InternalID().SnowflakeID() < rels[j].InternalID().SnowflakeID()
 	})
 
-	return rels
+	return rels, err
 }
 
-// --- Counts ---
+// --- Cascade operations ---
 
-// NodeCount returns the number of stored nodes.
-func (bs *BadgerStore) NodeCount() int {
-	count := 0
-	prefix := []byte{keyNode}
+// DeleteNodeCascade atomically removes a node and all connected relationships
+// in a single Badger Update() transaction — no TOCTOU window.
+// Returns ErrNodeNotFound if the node does not exist.
+func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
+	nodeID := int64(id)
 
-	_ = bs.db.View(func(txn *badger.Txn) error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// 1. Get node entity for label index cleanup.
+		nk := nodeKey(nodeID)
+		item, err := txn.Get(nk)
+		if err == badger.ErrKeyNotFound {
+			return ErrNodeNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var w nodeWire
+		if err := item.Value(func(val []byte) error {
+			return msgpack.Unmarshal(val, &w)
+		}); err != nil {
+			return fmt.Errorf("graph: unmarshal node for cascade: %w", err)
+		}
+
+		// 2. Collect all connected relIDs from adjacency indexes.
+		// Each entry holds the data needed to delete all index keys for that rel.
+		type relInfo struct {
+			relType uint16
+			startID int64
+			endID   int64
+		}
+		relInfos := make(map[int64]relInfo)
+
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
 
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			count++
+		// Scan outgoing adjacency: outKey = keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B)
+		outPfx := outPrefix(nodeID)
+		it := txn.NewIterator(opts)
+		for it.Seek(outPfx); it.ValidForPrefix(outPfx); it.Next() {
+			key := it.Item().KeyCopy(nil)
+			relID := parseRelIDFromAdjKey(key)
+			relType := binary.BigEndian.Uint16(key[9:])
+			endID := parseIDFromKey(key, 11)
+			relInfos[relID] = relInfo{relType: relType, startID: nodeID, endID: endID}
 		}
+		it.Close()
+
+		// Scan incoming adjacency: inKey = keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B)
+		inPfx := inPrefix(nodeID)
+		it = txn.NewIterator(opts)
+		for it.Seek(inPfx); it.ValidForPrefix(inPfx); it.Next() {
+			key := it.Item().KeyCopy(nil)
+			relID := parseRelIDFromAdjKey(key)
+			if _, exists := relInfos[relID]; exists {
+				continue // dedup self-loops
+			}
+			relType := binary.BigEndian.Uint16(key[9:])
+			startID := parseIDFromKey(key, 11)
+			relInfos[relID] = relInfo{relType: relType, startID: startID, endID: nodeID}
+		}
+		it.Close()
+
+		// 3. Delete each relationship and all its index entries.
+		for relID, ri := range relInfos {
+			// Relationship entity.
+			if err := txn.Delete(relKey(relID)); err != nil {
+				return err
+			}
+			// Type index.
+			if err := txn.Delete(relTypeIndexKey(ri.relType, relID)); err != nil {
+				return err
+			}
+			// Outgoing adjacency.
+			if err := txn.Delete(outKey(ri.startID, ri.relType, ri.endID, relID)); err != nil {
+				return err
+			}
+			// Incoming adjacency.
+			if err := txn.Delete(inKey(ri.endID, ri.relType, ri.startID, relID)); err != nil {
+				return err
+			}
+		}
+
+		// 4. Delete label index entries.
+		allTokens := []int{w.PrimaryLabel}
+		allTokens = append(allTokens, w.ExtraLabels...)
+		for _, tok := range allTokens {
+			if err := txn.Delete(labelIndexKey(uint16(tok), nodeID)); err != nil { // #nosec G115 — token from our own serialization
+				return err
+			}
+		}
+
+		// 5. Delete node entity.
+		if err := txn.Delete(nk); err != nil {
+			return err
+		}
+
+		// 6. Update counters: node -1, rels -N.
+		if err := incrCounter(txn, counterNodeCountKey, -1); err != nil {
+			return err
+		}
+		relCount := int64(len(relInfos))
+		if relCount > 0 {
+			if err := incrCounter(txn, counterRelCountKey, -relCount); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
+}
 
-	return count
+// --- Counts (O(1) via atomic counters) ---
+
+// NodeCount returns the number of stored nodes.
+// Reads the counter metadata key — O(1) regardless of graph size.
+func (bs *BadgerStore) NodeCount() (int, error) {
+	var count int64
+	err := bs.db.View(func(txn *badger.Txn) error {
+		var err error
+		count, err = getCounter(txn, counterNodeCountKey)
+		return err
+	})
+	return int(count), err // #nosec G115 — count is always non-negative and within int range
 }
 
 // RelationshipCount returns the number of stored relationships.
-func (bs *BadgerStore) RelationshipCount() int {
-	count := 0
-	prefix := []byte{keyRel}
-
-	_ = bs.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			count++
-		}
-		return nil
+// Reads the counter metadata key — O(1) regardless of graph size.
+func (bs *BadgerStore) RelationshipCount() (int, error) {
+	var count int64
+	err := bs.db.View(func(txn *badger.Txn) error {
+		var err error
+		count, err = getCounter(txn, counterRelCountKey)
+		return err
 	})
-
-	return count
+	return int(count), err // #nosec G115 — count is always non-negative and within int range
 }
 
 // --- Registry persistence ---

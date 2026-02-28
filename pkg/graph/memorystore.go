@@ -170,6 +170,12 @@ func (ms *MemoryStore) DeleteRelationship(id snowflake.ID) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	return ms.deleteRelLocked(id)
+}
+
+// deleteRelLocked removes a relationship and cleans up indexes.
+// Caller must hold ms.mu write lock.
+func (ms *MemoryStore) deleteRelLocked(id snowflake.ID) error {
 	r, ok := ms.rels[id]
 	if !ok {
 		return ErrRelNotFound
@@ -205,15 +211,59 @@ func (ms *MemoryStore) DeleteRelationship(id snowflake.ID) error {
 	return nil
 }
 
+// DeleteNodeCascade atomically removes a node and all connected relationships.
+// Holds the write lock for the entire operation — no TOCTOU window.
+// Returns ErrNodeNotFound if the node does not exist.
+func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	n, ok := ms.nodes[id]
+	if !ok {
+		return ErrNodeNotFound
+	}
+
+	// Collect all connected relIDs from adjacency indexes.
+	// Use a map for dedup (self-loops appear in both outgoing and incoming).
+	relIDs := make(map[snowflake.ID]struct{})
+	for relID := range ms.outIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
+	for relID := range ms.inIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
+
+	// Delete each relationship (lock-free inner call).
+	for relID := range relIDs {
+		// Ignore ErrRelNotFound — can't happen with dedup, but defensive.
+		_ = ms.deleteRelLocked(relID)
+	}
+
+	// Remove label index entries.
+	for _, tok := range n.AllLabelTokens() {
+		tv := tok.Value()
+		if set, exists := ms.labelIdx[tv]; exists {
+			delete(set, id)
+			if len(set) == 0 {
+				delete(ms.labelIdx, tv)
+			}
+		}
+	}
+
+	delete(ms.nodes, id)
+	return nil
+}
+
 // NodesByLabel returns all nodes with the given label token.
 // Results are sorted by snowflake.ID (chronological order) for deterministic output.
-func (ms *MemoryStore) NodesByLabel(token uint16) []*types.Node {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	set := ms.labelIdx[token]
 	if len(set) == 0 {
-		return nil
+		return nil, nil
 	}
 	result := make([]*types.Node, 0, len(set))
 	for id := range set {
@@ -222,18 +272,19 @@ func (ms *MemoryStore) NodesByLabel(token uint16) []*types.Node {
 		}
 	}
 	sortNodesByID(result)
-	return result
+	return result, nil
 }
 
 // RelationshipsByType returns all relationships with the given type token.
 // Results are sorted by snowflake.ID (chronological order) for deterministic output.
-func (ms *MemoryStore) RelationshipsByType(token uint16) []*types.Relationship {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	set := ms.typeIdx[token]
 	if len(set) == 0 {
-		return nil
+		return nil, nil
 	}
 	result := make([]*types.Relationship, 0, len(set))
 	for id := range set {
@@ -242,19 +293,20 @@ func (ms *MemoryStore) RelationshipsByType(token uint16) []*types.Relationship {
 		}
 	}
 	sortRelsByID(result)
-	return result
+	return result, nil
 }
 
 // OutgoingRelationships returns relationships starting from the given node.
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID (chronological order) for deterministic output.
-func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	set := ms.outIdx[nodeID]
 	if len(set) == 0 {
-		return nil
+		return nil, nil
 	}
 	result := make([]*types.Relationship, 0, len(set))
 	for relID := range set {
@@ -267,19 +319,20 @@ func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 		}
 	}
 	sortRelsByID(result)
-	return result
+	return result, nil
 }
 
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID (chronological order) for deterministic output.
-func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	set := ms.inIdx[nodeID]
 	if len(set) == 0 {
-		return nil
+		return nil, nil
 	}
 	result := make([]*types.Relationship, 0, len(set))
 	for relID := range set {
@@ -292,21 +345,23 @@ func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 		}
 	}
 	sortRelsByID(result)
-	return result
+	return result, nil
 }
 
 // NodeCount returns the number of stored nodes.
-func (ms *MemoryStore) NodeCount() int {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) NodeCount() (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	return len(ms.nodes)
+	return len(ms.nodes), nil
 }
 
 // RelationshipCount returns the number of stored relationships.
-func (ms *MemoryStore) RelationshipCount() int {
+// MemoryStore never returns an error.
+func (ms *MemoryStore) RelationshipCount() (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	return len(ms.rels)
+	return len(ms.rels), nil
 }
 
 // sortNodesByID sorts nodes by snowflake.ID for deterministic, chronological output.

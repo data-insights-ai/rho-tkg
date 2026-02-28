@@ -510,14 +510,22 @@ func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 	g.AddRelationship("OUT", nA, nB, nil)
 	g.AddRelationship("IN", nB, nA, nil)
 
-	if g.RelationshipCount() != 2 {
-		t.Fatalf("RelationshipCount before delete = %d, want 2", g.RelationshipCount())
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 2 {
+		t.Fatalf("RelationshipCount before delete = %d, want 2", rc)
 	}
 
 	// Delete A — both relationships should be gone.
 	g.DeleteNode(nA.InternalID().SnowflakeID())
-	if g.RelationshipCount() != 0 {
-		t.Errorf("RelationshipCount after cascade delete = %d, want 0", g.RelationshipCount())
+	rc, err = g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 0 {
+		t.Errorf("RelationshipCount after cascade delete = %d, want 0", rc)
 	}
 }
 
@@ -529,18 +537,27 @@ func TestGraphNodesByLabel(t *testing.T) {
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Animal"}, nil)
 
-	persons := g.NodesByLabel("Person")
+	persons, err := g.NodesByLabel("Person")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(persons) != 2 {
 		t.Fatalf("NodesByLabel(\"Person\") = %d, want 2", len(persons))
 	}
 
-	animals := g.NodesByLabel("Animal")
+	animals, err := g.NodesByLabel("Animal")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(animals) != 1 {
 		t.Fatalf("NodesByLabel(\"Animal\") = %d, want 1", len(animals))
 	}
 
 	// Unregistered label.
-	unknown := g.NodesByLabel("Robot")
+	unknown, err := g.NodesByLabel("Robot")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(unknown) != 0 {
 		t.Fatalf("NodesByLabel(\"Robot\") = %d, want 0", len(unknown))
 	}
@@ -557,17 +574,26 @@ func TestGraphRelationshipsByType(t *testing.T) {
 	g.AddRelationship("KNOWS", nB, nA, nil)
 	g.AddRelationship("LIKES", nA, nB, nil)
 
-	knows := g.RelationshipsByType("KNOWS")
+	knows, err := g.RelationshipsByType("KNOWS")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(knows) != 2 {
 		t.Fatalf("RelationshipsByType(\"KNOWS\") = %d, want 2", len(knows))
 	}
 
-	likes := g.RelationshipsByType("LIKES")
+	likes, err := g.RelationshipsByType("LIKES")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(likes) != 1 {
 		t.Fatalf("RelationshipsByType(\"LIKES\") = %d, want 1", len(likes))
 	}
 
-	unknown := g.RelationshipsByType("HATES")
+	unknown, err := g.RelationshipsByType("HATES")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(unknown) != 0 {
 		t.Fatalf("RelationshipsByType(\"HATES\") = %d, want 0", len(unknown))
 	}
@@ -577,13 +603,21 @@ func TestGraphNodeCount(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	if g.NodeCount() != 0 {
-		t.Fatalf("empty NodeCount() = %d, want 0", g.NodeCount())
+	nc, err := g.NodeCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nc != 0 {
+		t.Fatalf("empty NodeCount() = %d, want 0", nc)
 	}
 	g.AddNode([]string{"X"}, nil)
 	g.AddNode([]string{"X"}, nil)
-	if g.NodeCount() != 2 {
-		t.Fatalf("NodeCount() = %d, want 2", g.NodeCount())
+	nc, err = g.NodeCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nc != 2 {
+		t.Fatalf("NodeCount() = %d, want 2", nc)
 	}
 }
 
@@ -594,8 +628,12 @@ func TestGraphRelCount(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	g.AddRelationship("R", nA, nB, nil)
-	if g.RelationshipCount() != 1 {
-		t.Fatalf("RelationshipCount() = %d, want 1", g.RelationshipCount())
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 1 {
+		t.Fatalf("RelationshipCount() = %d, want 1", rc)
 	}
 }
 
@@ -625,8 +663,12 @@ func TestGraphDeleteRelationship(t *testing.T) {
 	if err := g.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
 		t.Fatalf("DeleteRelationship() returned error: %v", err)
 	}
-	if g.RelationshipCount() != 0 {
-		t.Errorf("RelationshipCount() = %d, want 0", g.RelationshipCount())
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 0 {
+		t.Errorf("RelationshipCount() = %d, want 0", rc)
 	}
 }
 
@@ -692,8 +734,12 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 		t.Fatalf("AddRelationship self-loop: %v", err)
 	}
 
-	if g.RelationshipCount() != 1 {
-		t.Fatalf("RelationshipCount before delete = %d, want 1", g.RelationshipCount())
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 1 {
+		t.Fatalf("RelationshipCount before delete = %d, want 1", rc)
 	}
 
 	// DeleteNode must handle the self-loop appearing in both loops without error.
@@ -701,11 +747,19 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 		t.Fatalf("DeleteNode() with self-loop: %v", err)
 	}
 
-	if g.NodeCount() != 0 {
-		t.Errorf("NodeCount after delete = %d, want 0", g.NodeCount())
+	nc, err := g.NodeCount()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if g.RelationshipCount() != 0 {
-		t.Errorf("RelationshipCount after delete = %d, want 0", g.RelationshipCount())
+	if nc != 0 {
+		t.Errorf("NodeCount after delete = %d, want 0", nc)
+	}
+	rc, err = g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 0 {
+		t.Errorf("RelationshipCount after delete = %d, want 0", rc)
 	}
 }
 
@@ -734,11 +788,19 @@ func TestGraphWithBadgerInMemory(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	if g.NodeCount() != 2 {
-		t.Fatalf("NodeCount = %d, want 2", g.NodeCount())
+	nc, err := g.NodeCount()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if g.RelationshipCount() != 1 {
-		t.Fatalf("RelationshipCount = %d, want 1", g.RelationshipCount())
+	if nc != 2 {
+		t.Fatalf("NodeCount = %d, want 2", nc)
+	}
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 1 {
+		t.Fatalf("RelationshipCount = %d, want 1", rc)
 	}
 
 	got, err := g.GetNode(nA.InternalID().SnowflakeID())
@@ -783,11 +845,19 @@ func TestGraphCloseAndReopenBadger(t *testing.T) {
 	}
 	defer g2.Close()
 
-	if g2.NodeCount() != 2 {
-		t.Fatalf("NodeCount after reopen = %d, want 2", g2.NodeCount())
+	nc, err := g2.NodeCount()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if g2.RelationshipCount() != 1 {
-		t.Fatalf("RelationshipCount after reopen = %d, want 1", g2.RelationshipCount())
+	if nc != 2 {
+		t.Fatalf("NodeCount after reopen = %d, want 2", nc)
+	}
+	rc, err := g2.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 1 {
+		t.Fatalf("RelationshipCount after reopen = %d, want 1", rc)
 	}
 }
 
@@ -850,6 +920,33 @@ func TestGraphCloseIdempotent(t *testing.T) {
 	}
 }
 
+func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Sabotage: close the Badger DB directly so registry saves will fail.
+	bs := g.store.(*BadgerStore)
+	if err := bs.db.Close(); err != nil {
+		t.Fatalf("sabotage close: %v", err)
+	}
+
+	// Close() must return an error (registry save fails on closed DB),
+	// but must NOT panic and must set closeFn to nil (idempotent).
+	err = g.Close()
+	if err == nil {
+		t.Fatal("Close() should return error when Badger is already closed")
+	}
+
+	// Second call must be no-op (closeFn set to nil despite error).
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close() second call should be no-op, got: %v", err)
+	}
+}
+
 func TestGraphBadgerDeleteNodeCascade(t *testing.T) {
 	t.Parallel()
 
@@ -867,8 +964,12 @@ func TestGraphBadgerDeleteNodeCascade(t *testing.T) {
 	g.AddRelationship("KNOWS", nA, nC, nil)
 	g.AddRelationship("FOLLOWS", nB, nA, nil)
 
-	if g.RelationshipCount() != 3 {
-		t.Fatalf("RelationshipCount = %d, want 3", g.RelationshipCount())
+	rc, err := g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 3 {
+		t.Fatalf("RelationshipCount = %d, want 3", rc)
 	}
 
 	// Cascade delete nA: should remove all 3 relationships.
@@ -876,11 +977,19 @@ func TestGraphBadgerDeleteNodeCascade(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	if g.NodeCount() != 2 {
-		t.Fatalf("NodeCount = %d, want 2", g.NodeCount())
+	nc, err := g.NodeCount()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if g.RelationshipCount() != 0 {
-		t.Fatalf("RelationshipCount = %d, want 0", g.RelationshipCount())
+	if nc != 2 {
+		t.Fatalf("NodeCount = %d, want 2", nc)
+	}
+	rc, err = g.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", rc)
 	}
 }
 

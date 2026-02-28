@@ -79,10 +79,18 @@ func TestMemoryStoreDeleteNode(t *testing.T) {
 	}
 
 	// Label index must be cleaned up.
-	if nodes := ms.NodesByLabel(10); len(nodes) != 0 {
+	nodes, err2 := ms.NodesByLabel(10)
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+	if len(nodes) != 0 {
 		t.Errorf("NodesByLabel(10) after delete: got %d nodes, want 0", len(nodes))
 	}
-	if nodes := ms.NodesByLabel(20); len(nodes) != 0 {
+	nodes, err2 = ms.NodesByLabel(20)
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+	if len(nodes) != 0 {
 		t.Errorf("NodesByLabel(20) after delete: got %d nodes, want 0", len(nodes))
 	}
 }
@@ -214,19 +222,28 @@ func TestMemoryStoreNodesByLabel(t *testing.T) {
 	ms.PutNode(n3)
 
 	// Label 10: n1 + n2.
-	got := ms.NodesByLabel(10)
+	got, err := ms.NodesByLabel(10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("NodesByLabel(10) = %d nodes, want 2", len(got))
 	}
 
 	// Label 20: only n1 (extra label).
-	got = ms.NodesByLabel(20)
+	got, err = ms.NodesByLabel(20)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("NodesByLabel(20) = %d nodes, want 1", len(got))
 	}
 
 	// Label 99: none.
-	got = ms.NodesByLabel(99)
+	got, err = ms.NodesByLabel(99)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 0 {
 		t.Fatalf("NodesByLabel(99) = %d nodes, want 0", len(got))
 	}
@@ -249,19 +266,28 @@ func TestMemoryStoreRelsByType(t *testing.T) {
 	ms.PutRelationship(r3)
 
 	// Type 5: r1 + r2.
-	got := ms.RelationshipsByType(5)
+	got, err := ms.RelationshipsByType(5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("RelationshipsByType(5) = %d rels, want 2", len(got))
 	}
 
 	// Type 7: r3.
-	got = ms.RelationshipsByType(7)
+	got, err = ms.RelationshipsByType(7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("RelationshipsByType(7) = %d rels, want 1", len(got))
 	}
 
 	// Type 99: none.
-	got = ms.RelationshipsByType(99)
+	got, err = ms.RelationshipsByType(99)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 0 {
 		t.Fatalf("RelationshipsByType(99) = %d rels, want 0", len(got))
 	}
@@ -286,19 +312,28 @@ func TestMemoryStoreOutgoingRelationships(t *testing.T) {
 	ms.PutRelationship(r2)
 
 	// All outgoing from node 10.
-	got := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	got, err := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("OutgoingRelationships(10, 0) = %d rels, want 2", len(got))
 	}
 
 	// Filtered by type 5.
-	got = ms.OutgoingRelationships(snowflake.ID(10), 5)
+	got, err = ms.OutgoingRelationships(snowflake.ID(10), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("OutgoingRelationships(10, 5) = %d rels, want 1", len(got))
 	}
 
 	// Node with no outgoing.
-	got = ms.OutgoingRelationships(snowflake.ID(20), 0)
+	got, err = ms.OutgoingRelationships(snowflake.ID(20), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 0 {
 		t.Fatalf("OutgoingRelationships(20, 0) = %d rels, want 0", len(got))
 	}
@@ -321,19 +356,28 @@ func TestMemoryStoreIncomingRelationships(t *testing.T) {
 	ms.PutRelationship(r2)
 
 	// All incoming to node 20.
-	got := ms.IncomingRelationships(snowflake.ID(20), 0)
+	got, err := ms.IncomingRelationships(snowflake.ID(20), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("IncomingRelationships(20, 0) = %d rels, want 2", len(got))
 	}
 
 	// Filtered by type 5.
-	got = ms.IncomingRelationships(snowflake.ID(20), 5)
+	got, err = ms.IncomingRelationships(snowflake.ID(20), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("IncomingRelationships(20, 5) = %d rels, want 1", len(got))
 	}
 
 	// Node with no incoming.
-	got = ms.IncomingRelationships(snowflake.ID(10), 0)
+	got, err = ms.IncomingRelationships(snowflake.ID(10), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 0 {
 		t.Fatalf("IncomingRelationships(10, 0) = %d rels, want 0", len(got))
 	}
@@ -355,7 +399,10 @@ func TestMemoryStoreOutgoingTypeZeroReturnsAll(t *testing.T) {
 	ms.PutRelationship(r2)
 	ms.PutRelationship(r3)
 
-	got := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	got, err := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 3 {
 		t.Fatalf("OutgoingRelationships(10, 0) = %d rels, want 3 (all types)", len(got))
 	}
@@ -367,14 +414,22 @@ func TestMemoryStoreNodeCount(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
-	if ms.NodeCount() != 0 {
-		t.Fatalf("empty NodeCount() = %d, want 0", ms.NodeCount())
+	cnt, err := ms.NodeCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 0 {
+		t.Fatalf("empty NodeCount() = %d, want 0", cnt)
 	}
 
 	ms.PutNode(types.NewNode(snowflake.ID(1), 1, nil))
 	ms.PutNode(types.NewNode(snowflake.ID(2), 1, nil))
-	if ms.NodeCount() != 2 {
-		t.Fatalf("NodeCount() = %d, want 2", ms.NodeCount())
+	cnt, err = ms.NodeCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 2 {
+		t.Fatalf("NodeCount() = %d, want 2", cnt)
 	}
 }
 
@@ -382,8 +437,12 @@ func TestMemoryStoreRelCount(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
-	if ms.RelationshipCount() != 0 {
-		t.Fatalf("empty RelationshipCount() = %d, want 0", ms.RelationshipCount())
+	cnt, err := ms.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 0 {
+		t.Fatalf("empty RelationshipCount() = %d, want 0", cnt)
 	}
 
 	nA := types.NewNode(snowflake.ID(10), 1, nil)
@@ -392,8 +451,12 @@ func TestMemoryStoreRelCount(t *testing.T) {
 	ms.PutNode(nB)
 
 	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20)))
-	if ms.RelationshipCount() != 1 {
-		t.Fatalf("RelationshipCount() = %d, want 1", ms.RelationshipCount())
+	cnt, err = ms.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 1 {
+		t.Fatalf("RelationshipCount() = %d, want 1", cnt)
 	}
 }
 
@@ -415,15 +478,27 @@ func TestMemoryStoreDeleteRelAdjacencyCleanup(t *testing.T) {
 	ms.DeleteRelationship(snowflake.ID(100))
 
 	// Adjacency must be empty.
-	if out := ms.OutgoingRelationships(snowflake.ID(10), 0); len(out) != 0 {
+	out, err := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
 		t.Errorf("OutgoingRelationships after delete: got %d, want 0", len(out))
 	}
-	if in := ms.IncomingRelationships(snowflake.ID(20), 0); len(in) != 0 {
+	in, err := ms.IncomingRelationships(snowflake.ID(20), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in) != 0 {
 		t.Errorf("IncomingRelationships after delete: got %d, want 0", len(in))
 	}
 
 	// Type index must be empty.
-	if rels := ms.RelationshipsByType(5); len(rels) != 0 {
+	rels, err := ms.RelationshipsByType(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rels) != 0 {
 		t.Errorf("RelationshipsByType after delete: got %d, want 0", len(rels))
 	}
 }
@@ -455,17 +530,21 @@ func TestMemoryStoreConcurrentAccess(t *testing.T) {
 			ms.PutRelationship(r)
 
 			ms.GetRelationship(relID)
-			ms.OutgoingRelationships(startID, 0)
-			ms.IncomingRelationships(endID, 0)
-			ms.RelationshipCount()
-			ms.NodeCount()
+			_, _ = ms.OutgoingRelationships(startID, 0)
+			_, _ = ms.IncomingRelationships(endID, 0)
+			_, _ = ms.RelationshipCount()
+			_, _ = ms.NodeCount()
 		}(i)
 	}
 
 	wg.Wait()
 
-	if ms.RelationshipCount() != goroutines {
-		t.Errorf("RelationshipCount() = %d, want %d", ms.RelationshipCount(), goroutines)
+	cnt, err := ms.RelationshipCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnt != goroutines {
+		t.Errorf("RelationshipCount() = %d, want %d", cnt, goroutines)
 	}
 }
 
@@ -483,7 +562,10 @@ func TestMemoryStoreNodesByLabelSortedByID(t *testing.T) {
 	ms.PutNode(n1)
 	ms.PutNode(n2)
 
-	result := ms.NodesByLabel(1)
+	result, err := ms.NodesByLabel(1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(result) != 3 {
 		t.Fatalf("NodesByLabel(1) = %d nodes, want 3", len(result))
 	}
@@ -513,7 +595,10 @@ func TestMemoryStoreRelsByTypeSortedByID(t *testing.T) {
 	ms.PutRelationship(r1)
 	ms.PutRelationship(r2)
 
-	result := ms.RelationshipsByType(5)
+	result, err := ms.RelationshipsByType(5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(result) != 3 {
 		t.Fatalf("RelationshipsByType(5) = %d rels, want 3", len(result))
 	}
@@ -543,7 +628,10 @@ func TestMemoryStoreOutgoingRelsSortedByID(t *testing.T) {
 	ms.PutRelationship(r1)
 	ms.PutRelationship(r2)
 
-	result := ms.OutgoingRelationships(snowflake.ID(1), 0)
+	result, err := ms.OutgoingRelationships(snowflake.ID(1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(result) != 3 {
 		t.Fatalf("OutgoingRelationships = %d rels, want 3", len(result))
 	}
@@ -575,7 +663,10 @@ func TestMemoryStoreIncomingRelsSortedByID(t *testing.T) {
 	ms.PutRelationship(r1)
 	ms.PutRelationship(r2)
 
-	result := ms.IncomingRelationships(snowflake.ID(1), 0)
+	result, err := ms.IncomingRelationships(snowflake.ID(1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(result) != 3 {
 		t.Fatalf("IncomingRelationships = %d rels, want 3", len(result))
 	}
@@ -588,6 +679,88 @@ func TestMemoryStoreIncomingRelsSortedByID(t *testing.T) {
 	}
 }
 
+// ─── MemoryStore: DeleteNodeCascade ──────────────────────────────────────────
+
+func TestMemoryStoreDeleteNodeCascade(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	ms.PutRelationship(r)
+
+	// Cascade delete A — relationship should be removed, B should survive.
+	if err := ms.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	// Node A gone.
+	if _, err := ms.GetNode(snowflake.ID(10)); !errors.Is(err, ErrNodeNotFound) {
+		t.Error("node A should be deleted")
+	}
+
+	// Relationship gone.
+	if _, err := ms.GetRelationship(snowflake.ID(100)); !errors.Is(err, ErrRelNotFound) {
+		t.Error("relationship should be cascade-deleted")
+	}
+
+	// Node B survives.
+	if _, err := ms.GetNode(snowflake.ID(20)); err != nil {
+		t.Errorf("node B should still exist: %v", err)
+	}
+
+	// Adjacency cleaned.
+	out, _ := ms.OutgoingRelationships(snowflake.ID(10), 0)
+	if len(out) != 0 {
+		t.Errorf("outgoing should be empty, got %d", len(out))
+	}
+	in, _ := ms.IncomingRelationships(snowflake.ID(20), 0)
+	if len(in) != 0 {
+		t.Errorf("incoming should be empty, got %d", len(in))
+	}
+}
+
+func TestMemoryStoreDeleteNodeCascadeSelfLoop(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	ms.PutNode(nA)
+
+	// Self-loop: A → A.
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(10))
+	ms.PutRelationship(r)
+
+	if err := ms.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+		t.Fatalf("DeleteNodeCascade self-loop: %v", err)
+	}
+
+	nc, _ := ms.NodeCount()
+	rc, _ := ms.RelationshipCount()
+	if nc != 0 {
+		t.Errorf("NodeCount = %d, want 0", nc)
+	}
+	if rc != 0 {
+		t.Errorf("RelationshipCount = %d, want 0", rc)
+	}
+}
+
+func TestMemoryStoreDeleteNodeCascadeNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	err := ms.DeleteNodeCascade(snowflake.ID(999))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
+// ─── MemoryStore: Deterministic sort order ──────────────────────────────────
+
 func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
 	t.Parallel()
 
@@ -597,9 +770,15 @@ func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
 	}
 
 	// Call multiple times — must return the same order every time.
-	first := ms.NodesByLabel(1)
+	first, err := ms.NodesByLabel(1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for range 10 {
-		got := ms.NodesByLabel(1)
+		got, err := ms.NodesByLabel(1)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(got) != len(first) {
 			t.Fatalf("length mismatch: %d vs %d", len(got), len(first))
 		}

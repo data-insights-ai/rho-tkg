@@ -121,22 +121,27 @@ func New(config Config) (*Graph, error) {
 
 // Close saves registries (if Badger) and closes the underlying store.
 // No-op for MemoryStore. Safe to call multiple times.
+//
+// closeFn() always runs even if registry saves fail — prevents file handle leaks.
+// Returns the first error encountered.
 func (g *Graph) Close() error {
 	if g.closeFn == nil {
 		return nil
 	}
-	// Save registries before closing.
+	var firstErr error
 	if bs, ok := g.store.(*BadgerStore); ok {
 		if err := bs.SaveLabelRegistry(g.labels); err != nil {
-			return fmt.Errorf("graph: save label registry: %w", err)
+			firstErr = fmt.Errorf("graph: save label registry: %w", err)
 		}
-		if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil {
-			return fmt.Errorf("graph: save reltype registry: %w", err)
+		if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("graph: save reltype registry: %w", err)
 		}
 	}
-	err := g.closeFn()
+	if err := g.closeFn(); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	g.closeFn = nil // idempotent
-	return err
+	return firstErr
 }
 
 // NextNodeID generates a unique snowflake ID for a new node.
@@ -288,42 +293,12 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 	return r, nil
 }
 
-// DeleteNode cascade-deletes all connected relationships, then removes the node.
+// DeleteNode atomically removes a node and all connected relationships.
+// Both MemoryStore and BadgerStore execute the entire cascade under a single
+// lock/transaction — no TOCTOU window.
 // Returns ErrNodeNotFound if the node does not exist.
-//
-// TODO: Requires transactional store API for full correctness. With the current
-// per-call locking in MemoryStore, there is a TOCTOU window between relationship
-// deletion and node deletion where a concurrent AddRelationship can create a new
-// edge pointing to this node — producing a dangling relationship. The real Badger
-// implementation MUST execute the entire cascade inside a single serialized
-// Update() transaction.
 func (g *Graph) DeleteNode(id snowflake.ID) error {
-	// Collect all connected relationships before deleting.
-	outgoing := g.store.OutgoingRelationships(id, 0)
-	incoming := g.store.IncomingRelationships(id, 0)
-
-	// Delete each connected relationship.
-	// ErrRelNotFound is tolerated in both loops: a concurrent goroutine may have
-	// already deleted the relationship between fetch and delete, or a self-loop
-	// appears in both outgoing and incoming lists.
-	for _, r := range outgoing {
-		if err := g.store.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue
-			}
-			return fmt.Errorf("graph: cascade delete outgoing rel: %w", err)
-		}
-	}
-	for _, r := range incoming {
-		if err := g.store.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue
-			}
-			return fmt.Errorf("graph: cascade delete incoming rel: %w", err)
-		}
-	}
-
-	return g.store.DeleteNode(id)
+	return g.store.DeleteNodeCascade(id)
 }
 
 // DeleteRelationship removes a relationship from the store.
@@ -346,30 +321,30 @@ func (g *Graph) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
 
 // NodesByLabel returns all nodes with the given label (resolved from string).
 // Returns nil if the label is not registered.
-func (g *Graph) NodesByLabel(label string) []*types.Node {
+func (g *Graph) NodesByLabel(label string) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return g.store.NodesByLabel(tok)
 }
 
 // RelationshipsByType returns all relationships with the given type (resolved from string).
 // Returns nil if the type is not registered.
-func (g *Graph) RelationshipsByType(typeName string) []*types.Relationship {
+func (g *Graph) RelationshipsByType(typeName string) ([]*types.Relationship, error) {
 	tok, ok := g.relTypes.Lookup(typeName)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return g.store.RelationshipsByType(tok)
 }
 
 // NodeCount returns the number of nodes in the store.
-func (g *Graph) NodeCount() int {
+func (g *Graph) NodeCount() (int, error) {
 	return g.store.NodeCount()
 }
 
 // RelationshipCount returns the number of relationships in the store.
-func (g *Graph) RelationshipCount() int {
+func (g *Graph) RelationshipCount() (int, error) {
 	return g.store.RelationshipCount()
 }

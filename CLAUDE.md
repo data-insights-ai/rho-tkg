@@ -141,11 +141,11 @@ Current packages (evolving):
 | File | Purpose |
 |---|---|
 | `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, `AddNode`/`AddRelationship`/`DeleteNode` (cascade)/`DeleteRelationship`, passthrough queries, string resolution, `Close()` lifecycle |
-| `store.go` | `Store` interface (pure persistence contract) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
-| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
-| `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, registry persistence |
+| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
+| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock |
+| `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, atomic counters for O(1) counts, single-transaction `DeleteNodeCascade`, registry persistence |
 | `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs/tokens, fixed-width keys for entities, indexes, adjacency, history, temporal, metadata |
-| `wire.go` | Msgpack wire format types (`nodeWire`/`relWire`/`propertyWire`) and conversion functions for serialization boundary |
+| `wire.go` | Msgpack wire format types (`nodeWire`/`relWire`/`propertyWire` with `Type byte` tag for Go type fidelity) and conversion functions for serialization boundary |
 | `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches all 15 `tkg_*` shadow keys with nil-guards on `Temporal()`/`Integrity()` |
 | `label_registry.go` | Thread-safe label string ↔ uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning, `ExportNames`/`ImportNames` for persistence) |
 | `reltype_registry.go` | Thread-safe relationship type string ↔ uint16 token registry (with `ExportNames`/`ImportNames`) |
@@ -179,9 +179,9 @@ Current packages (evolving):
 
 **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate, sort once. `SetProperties(ps)` on Node/Relationship assigns the pre-built slice directly. `AddNode`/`AddRelationship` use this path. Avoids O(N²) per-property `SetProperty` loop.
 
-**Store is pure persistence**: The `Store` interface handles entity CRUD and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets (`map[snowflake.ID]map[snowflake.ID]struct{}`) for O(1) adjacency insert/delete. All query methods (`NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships`) sort results by snowflake.ID for deterministic, chronological output.
+**Store is pure persistence**: The `Store` interface handles entity CRUD, index maintenance, and atomic cascade operations. Shadow resolution and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets (`map[snowflake.ID]map[snowflake.ID]struct{}`) for O(1) adjacency insert/delete. All query methods (`NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships`) return `error` and sort results by snowflake.ID for deterministic, chronological output. `BadgerStore` maintains atomic node/rel counters for O(1) `NodeCount`/`RelationshipCount`.
 
-**Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Both loops tolerate `ErrRelNotFound` — handles self-loops (same rel in both lists) and concurrent external deletes. **Known limitation**: per-call locking creates a TOCTOU window; the Badger store must wrap the cascade in a single `Update()` transaction.
+**Atomic cascade-delete on node removal**: `Graph.DeleteNode` delegates to `Store.DeleteNodeCascade`, which atomically removes the node and all connected relationships. `MemoryStore` holds the write lock for the entire operation; `BadgerStore` executes a single `db.Update()` transaction. Self-loops are deduplicated via a map. No TOCTOU window — the entire operation is serialized.
 
 **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types. Cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
 
@@ -246,14 +246,15 @@ All keys use fixed-width binary encoding. Snowflake IDs stored as big-endian int
 | `h/r/<8B relID>/<8B version>` | Rel history | varies |
 | `tv/n/<8B validFrom>/<8B nodeID>` | Temporal index | varies |
 | `meta/label_tokens`, `meta/reltype_tokens` | Registry persistence | varies |
+| `meta/node_count`, `meta/rel_count` | Atomic entity counters (big-endian int64) | varies |
 
 No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is stateless.
 
 ## Implementation Phases
 
 1. **Core Types & Registries** ✅ — `pkg/types` (Node, Relationship, PropertySlice, shadow constants, temporal, integrity) + `pkg/graph` (labelRegistry, relTypeRegistry, dual snowflake generators, string resolution). Opaque ID types (`nodeID`/`relID`), recursive property validation, `Instant` timestamps.
-2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency, deterministic ID-sorted queries), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade with full `ErrRelNotFound` tolerance, TOCTOU documented), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries. 296 tests, 96.8% coverage.
-3. **Phase 2B: Serialization & Persistence** ✅ — msgpack wire formats (`nodeWire`/`relWire`/`propertyWire`), fixed-width binary key encoding (10 key types, big-endian IDs/tokens), `BadgerStore` implementing full `Store` interface (CRUD, label/type/adjacency indexes, prefix scanning), registry `ExportNames`/`ImportNames` for persistence, `Graph.Close()` lifecycle, `Config.BadgerDir`/`BadgerInMemory`. 355 tests, 94.2% coverage.
+2. **Phase 2A: Store, MemoryStore, Entity Management, Shadow Resolution** ✅ — `Store` interface, `MemoryStore` (hash-set adjacency, deterministic ID-sorted queries), `AddNode`/`AddRelationship` (bulk properties via `NewPropertySlice`), `DeleteNode` (cascade), `ResolveNodeProperty`/`ResolveRelProperty` (all 15 shadow keys, nil-guarded), SnowflakeID bridge methods, passthrough queries.
+3. **Phase 2B: Serialization & Persistence** ✅ — msgpack wire formats (`nodeWire`/`relWire`/`propertyWire` with type tags for Go type fidelity), fixed-width binary key encoding (10 key types, big-endian IDs/tokens), `BadgerStore` implementing full `Store` interface (CRUD, label/type/adjacency indexes, atomic counters for O(1) counts, single-transaction `DeleteNodeCascade`), registry `ExportNames`/`ImportNames` for persistence, `Graph.Close()` lifecycle (always releases resources), `Config.BadgerDir`/`BadgerInMemory`. All query methods return `error`. 378 tests, 88.9% coverage.
 4. **Cypher & Graph API Integration** — Cypher token-based matching, REST/gRPC API layer.
 
 ## rho/kit Integration

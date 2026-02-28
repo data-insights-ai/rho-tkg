@@ -1,16 +1,21 @@
 # tkg-v3 — Current Tasks
 
+## Completed: Phase 2B Hardening — 5 Architectural Fixes (v3.0.9)
+
+- [x] Fix Close() file handle leak — `closeFn()` now runs unconditionally even if registry saves fail
+- [x] Fix type erasure in wire format — added `Type byte` tag to `propertyWire` for Go type fidelity across msgpack round-trips
+- [x] Add error returns to Store query methods — 6 methods now return `error`; BadgerStore propagates I/O errors
+- [x] Atomic `DeleteNodeCascade` — single write lock (MemoryStore) / single `db.Update()` transaction (BadgerStore), no TOCTOU window
+- [x] O(1) counts — `BadgerStore` maintains atomic metadata counters; `initCounters()` migrates existing databases
+- [x] Simplify `Graph.DeleteNode` — delegates to `Store.DeleteNodeCascade`
+- [x] Documentation: CHANGELOG.md (v3.0.9), CLAUDE.md, tasks/todo.md updated
+- [x] Verification: `make ci` green, 378 tests, 88.9% coverage, race-clean, 0 gosec issues, 0 vulncheck findings
+
 ## Completed: Phase 2B — Badger Persistence with Msgpack Serialization (v3.0.8)
 
-- [x] Add `github.com/vmihailenco/msgpack/v5` and `github.com/dgraph-io/badger/v4` dependencies
-- [x] Binary key encoding (`keys.go`) — 10 key types, single-byte prefix tags, big-endian IDs/tokens, fixed-width keys
-- [x] Msgpack wire formats (`wire.go`) — `nodeWire`, `relWire`, `propertyWire` with temporal/integrity support
-- [x] Registry persistence — `ExportNames()`/`ImportNames()` on both registries, `ErrRegistryNotEmpty` sentinel
-- [x] `BadgerStore` (`badgerstore.go`) — full `Store` interface: CRUD, label/type/adjacency indexes, prefix scanning, sorted output
-- [x] Graph integration — `Config.BadgerDir`/`BadgerInMemory`, `Graph.Close()`, registry load on startup / save on close
-- [x] gosec clean (16 `#nosec` annotations for intentional binary encoding casts)
-- [x] Documentation: CHANGELOG.md (v3.0.8), README.md, CLAUDE.md updated
-- [x] Verification: `make ci` green, 355 tests, 94.2% coverage, race-clean, 0 gosec issues, 0 vulncheck findings
+- [x] Binary key encoding, msgpack wire formats, registry persistence
+- [x] `BadgerStore` with full `Store` interface, `Graph.Close()` lifecycle
+- [x] 355 tests, 94.2% coverage
 
 ## Completed: Phase 2A — Store, MemoryStore, Entity Management, Shadow Resolution (v3.0.6-v3.0.7)
 
@@ -18,7 +23,7 @@
 - [x] `AddNode`/`AddRelationship` with bulk `NewPropertySlice`
 - [x] `DeleteNode` cascade, `DeleteRelationship` passthrough
 - [x] Shadow resolution (all 15 `tkg_*` keys), passthrough queries
-- [x] SnowflakeID bridges, deterministic query ordering, TOCTOU documentation
+- [x] SnowflakeID bridges, deterministic query ordering
 
 ## Next up
 

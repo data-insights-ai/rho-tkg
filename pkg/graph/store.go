@@ -22,16 +22,19 @@ type Store interface {
 	DeleteRelationship(id snowflake.ID) error
 
 	// Index queries
-	NodesByLabel(token uint16) []*types.Node
-	RelationshipsByType(token uint16) []*types.Relationship
+	NodesByLabel(token uint16) ([]*types.Node, error)
+	RelationshipsByType(token uint16) ([]*types.Relationship, error)
 
 	// Adjacency queries — token 0 means "all types"
-	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship
-	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) []*types.Relationship
+	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
+	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
+
+	// Cascade operations
+	DeleteNodeCascade(id snowflake.ID) error
 
 	// Counts
-	NodeCount() int
-	RelationshipCount() int
+	NodeCount() (int, error)
+	RelationshipCount() (int, error)
 }
 
 // Sentinel errors for store operations.
