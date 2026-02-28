@@ -18,15 +18,21 @@ const (
 
 // lruEntry is a single cached entity with dirty/tombstone tracking.
 type lruEntry[V any] struct {
-	key     snowflake.ID
-	value   V
-	dirty   bool // modified since last flush
-	deleted bool // tombstone — entity has been deleted
+	key      snowflake.ID
+	value    V
+	dirtyVer uint64 // 0 = clean; >0 = dirty (monotonic mutation version)
+	deleted  bool   // tombstone — entity has been deleted
 }
 
 // entityLRU is a generic LRU cache with dirty tracking and tombstone support.
 // Clean entries are evicted when capacity is exceeded; dirty entries are never
 // evicted until they are flushed to durable storage.
+//
+// Dirty tracking uses a monotonic version counter. Each mutation (Put, MarkDeleted)
+// increments the counter and stamps the entry with that version. CollectDirty
+// returns snapshots including the version; MarkFlushed only clears dirty on entries
+// whose version still matches — entries re-dirtied during a flush cycle are not
+// affected.
 //
 // All methods are thread-safe via internal mutex.
 type entityLRU[V any] struct {
@@ -34,6 +40,7 @@ type entityLRU[V any] struct {
 	capacity int // soft limit — dirty entries can exceed
 	items    map[snowflake.ID]*list.Element
 	order    *list.List // front = most recent, back = LRU
+	nextVer  uint64     // monotonic dirty version counter
 }
 
 // newEntityLRU creates an LRU cache with the given capacity.
@@ -81,16 +88,18 @@ func (c *entityLRU[V]) Put(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.nextVer++
+
 	if el, ok := c.items[key]; ok {
 		entry := el.Value.(*lruEntry[V])
 		entry.value = value
-		entry.dirty = true
+		entry.dirtyVer = c.nextVer
 		entry.deleted = false
 		c.order.MoveToFront(el)
 		return
 	}
 
-	entry := &lruEntry[V]{key: key, value: value, dirty: true}
+	entry := &lruEntry[V]{key: key, value: value, dirtyVer: c.nextVer}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 
@@ -105,17 +114,19 @@ func (c *entityLRU[V]) MarkDeleted(key snowflake.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.nextVer++
+
 	if el, ok := c.items[key]; ok {
 		entry := el.Value.(*lruEntry[V])
 		entry.deleted = true
-		entry.dirty = true
+		entry.dirtyVer = c.nextVer
 		c.order.MoveToFront(el)
 		return
 	}
 
 	// Insert tombstone for a key not currently cached.
 	var zero V
-	entry := &lruEntry[V]{key: key, deleted: true, dirty: true, value: zero}
+	entry := &lruEntry[V]{key: key, deleted: true, dirtyVer: c.nextVer, value: zero}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 	// No eviction — this is a dirty entry.
@@ -131,36 +142,58 @@ func (c *entityLRU[V]) LoadClean(key snowflake.ID, value V) {
 		return // in-memory state takes precedence
 	}
 
-	entry := &lruEntry[V]{key: key, value: value, dirty: false}
+	entry := &lruEntry[V]{key: key, value: value} // dirtyVer 0 = clean
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 
 	c.evictClean()
 }
 
-// CollectDirty returns all dirty entries and marks them clean.
-// Clean tombstones are removed from the cache entirely.
-// Called by the flush loop after successfully writing to Badger.
+// CollectDirty returns a snapshot of all dirty entries without modifying state.
+// The returned entries include their dirtyVer, which must be passed to MarkFlushed
+// after a successful write to durable storage. Calling CollectDirty multiple times
+// without MarkFlushed returns the same (or superset of) entries.
 func (c *entityLRU[V]) CollectDirty() []lruEntry[V] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	var dirty []lruEntry[V]
-	for el := c.order.Front(); el != nil; {
+	for el := c.order.Front(); el != nil; el = el.Next() {
 		entry := el.Value.(*lruEntry[V])
-		next := el.Next()
-		if entry.dirty {
-			dirty = append(dirty, *entry) // copy
-			entry.dirty = false
-			// Clean tombstones can be removed — the delete has been persisted.
-			if entry.deleted {
-				c.order.Remove(el)
-				delete(c.items, entry.key)
-			}
+		if entry.dirtyVer > 0 {
+			dirty = append(dirty, *entry) // copy with dirtyVer snapshot
 		}
-		el = next
 	}
 	return dirty
+}
+
+// MarkFlushed clears the dirty flag on entries whose dirtyVer matches the given
+// version. Entries that were re-dirtied since collection (higher dirtyVer) retain
+// their dirty status — they will be included in the next CollectDirty cycle.
+// Clean tombstones (deleted + dirtyVer cleared) are removed from the cache.
+//
+// This must only be called after the data for these entries has been successfully
+// persisted to durable storage.
+func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for id, ver := range flushed {
+		el, ok := c.items[id]
+		if !ok {
+			continue
+		}
+		entry := el.Value.(*lruEntry[V])
+		if entry.dirtyVer != ver {
+			continue // re-dirtied since collection; leave dirty
+		}
+		entry.dirtyVer = 0 // mark clean
+		// Clean tombstones can be removed — the delete has been persisted.
+		if entry.deleted {
+			c.order.Remove(el)
+			delete(c.items, id)
+		}
+	}
 }
 
 // Len returns the number of entries in the cache (including tombstones).
@@ -170,24 +203,19 @@ func (c *entityLRU[V]) Len() int {
 	return len(c.items)
 }
 
-// evictClean removes the LRU clean entry if the cache exceeds capacity.
-// Only clean (non-dirty) entries are candidates for eviction.
+// evictClean removes LRU clean entries until the cache is at capacity.
+// Only clean (dirtyVer == 0) entries are candidates for eviction.
+// Single pass from back (LRU) to front — O(N) worst case, no restarts.
 // Must be called with c.mu held.
 func (c *entityLRU[V]) evictClean() {
-	for len(c.items) > c.capacity {
-		// Walk from back (LRU) to find a clean entry.
-		evicted := false
-		for el := c.order.Back(); el != nil; el = el.Prev() {
-			entry := el.Value.(*lruEntry[V])
-			if !entry.dirty {
-				c.order.Remove(el)
-				delete(c.items, entry.key)
-				evicted = true
-				break
-			}
+	el := c.order.Back()
+	for len(c.items) > c.capacity && el != nil {
+		prev := el.Prev() // save before potential removal
+		entry := el.Value.(*lruEntry[V])
+		if entry.dirtyVer == 0 {
+			c.order.Remove(el)
+			delete(c.items, entry.key)
 		}
-		if !evicted {
-			break // all entries dirty — allow temporary overflow
-		}
+		el = prev
 	}
 }

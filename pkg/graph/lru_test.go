@@ -198,7 +198,7 @@ func TestLRULoadCleanDoesNotOverwriteTombstone(t *testing.T) {
 	}
 }
 
-// ─── CollectDirty ───────────────────────────────────────────────────────────
+// ─── CollectDirty (read-only snapshot) ──────────────────────────────────────
 
 func TestLRUCollectDirtyReturnsAll(t *testing.T) {
 	t.Parallel()
@@ -212,37 +212,39 @@ func TestLRUCollectDirtyReturnsAll(t *testing.T) {
 		t.Fatalf("expected 2 dirty entries, got %d", len(dirty))
 	}
 
-	// After collection, no more dirty entries.
+	// CollectDirty is read-only — entries are still dirty.
 	dirty2 := c.CollectDirty()
-	if len(dirty2) != 0 {
-		t.Fatalf("expected 0 dirty after second collect, got %d", len(dirty2))
+	if len(dirty2) != 2 {
+		t.Fatalf("expected 2 dirty entries on second collect, got %d", len(dirty2))
+	}
+
+	// MarkFlushed clears dirty for matching versions.
+	flushed := make(map[snowflake.ID]uint64, len(dirty))
+	for _, e := range dirty {
+		flushed[e.key] = e.dirtyVer
+	}
+	c.MarkFlushed(flushed)
+
+	// After MarkFlushed, no more dirty entries.
+	dirty3 := c.CollectDirty()
+	if len(dirty3) != 0 {
+		t.Fatalf("expected 0 dirty after MarkFlushed, got %d", len(dirty3))
 	}
 }
 
-func TestLRUCollectDirtyRemovesCleanTombstones(t *testing.T) {
+func TestLRUCollectDirtyIsReadOnly(t *testing.T) {
 	t.Parallel()
 	c := newEntityLRU[string](10)
 	c.Put(snowflake.ID(1), "a")
-	c.MarkDeleted(snowflake.ID(2))
+
+	// Multiple CollectDirty calls should not change state.
+	c.CollectDirty()
+	c.CollectDirty()
+	c.CollectDirty()
 
 	dirty := c.CollectDirty()
-	if len(dirty) != 2 {
-		t.Fatalf("expected 2 dirty entries, got %d", len(dirty))
-	}
-
-	// Tombstone for ID 2 should be removed after flush (now clean tombstone).
-	if c.Len() != 1 {
-		t.Fatalf("expected 1 entry (tombstone removed), got %d", c.Len())
-	}
-
-	// ID 1 is still cached (dirty→clean), ID 2 is gone.
-	_, status := c.Get(snowflake.ID(1))
-	if status != cacheHit {
-		t.Fatal("ID 1 should still be cached as clean")
-	}
-	_, status = c.Get(snowflake.ID(2))
-	if status != cacheMiss {
-		t.Fatal("ID 2 tombstone should be removed after collect")
+	if len(dirty) != 1 {
+		t.Fatalf("expected 1 dirty after multiple CollectDirty, got %d", len(dirty))
 	}
 }
 
@@ -257,6 +259,221 @@ func TestLRUCollectDirtyTombstoneIncluded(t *testing.T) {
 	}
 	if !dirty[0].deleted {
 		t.Fatal("expected tombstone in dirty output")
+	}
+}
+
+// ─── MarkFlushed ────────────────────────────────────────────────────────────
+
+func TestLRUMarkFlushedRemovesCleanTombstones(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](10)
+	c.Put(snowflake.ID(1), "a")
+	c.MarkDeleted(snowflake.ID(2))
+
+	dirty := c.CollectDirty()
+	if len(dirty) != 2 {
+		t.Fatalf("expected 2 dirty entries, got %d", len(dirty))
+	}
+
+	// MarkFlushed with matching versions.
+	flushed := make(map[snowflake.ID]uint64, len(dirty))
+	for _, e := range dirty {
+		flushed[e.key] = e.dirtyVer
+	}
+	c.MarkFlushed(flushed)
+
+	// Tombstone for ID 2 should be removed after flush (now clean tombstone).
+	if c.Len() != 1 {
+		t.Fatalf("expected 1 entry (tombstone removed), got %d", c.Len())
+	}
+
+	// ID 1 is still cached (dirty→clean), ID 2 is gone.
+	_, status := c.Get(snowflake.ID(1))
+	if status != cacheHit {
+		t.Fatal("ID 1 should still be cached as clean")
+	}
+	_, status = c.Get(snowflake.ID(2))
+	if status != cacheMiss {
+		t.Fatal("ID 2 tombstone should be removed after MarkFlushed")
+	}
+}
+
+func TestLRUMarkFlushedVersionMismatch(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](10)
+	c.Put(snowflake.ID(1), "v1")
+
+	// Collect dirty with v1's version.
+	dirty := c.CollectDirty()
+	if len(dirty) != 1 {
+		t.Fatalf("expected 1, got %d", len(dirty))
+	}
+	oldVer := dirty[0].dirtyVer
+
+	// Re-dirty the entry (simulates concurrent write during flush).
+	c.Put(snowflake.ID(1), "v2")
+
+	// MarkFlushed with old version — should NOT clear dirty.
+	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(1): oldVer})
+
+	// Entry should still be dirty (version mismatch).
+	dirty2 := c.CollectDirty()
+	if len(dirty2) != 1 {
+		t.Fatalf("expected 1 dirty after version-mismatch MarkFlushed, got %d", len(dirty2))
+	}
+	if dirty2[0].value != "v2" {
+		t.Fatalf("expected v2, got %s", dirty2[0].value)
+	}
+}
+
+func TestLRUMarkFlushedOnlyTargetedIDs(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](10)
+	c.Put(snowflake.ID(1), "a")
+	c.Put(snowflake.ID(2), "b")
+	c.Put(snowflake.ID(3), "c")
+
+	dirty := c.CollectDirty()
+	if len(dirty) != 3 {
+		t.Fatalf("expected 3 dirty, got %d", len(dirty))
+	}
+
+	// Find the entry for ID 1 and only mark it as flushed.
+	var id1Ver uint64
+	for _, e := range dirty {
+		if e.key == snowflake.ID(1) {
+			id1Ver = e.dirtyVer
+			break
+		}
+	}
+	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(1): id1Ver})
+
+	// IDs 2 and 3 should still be dirty.
+	remaining := c.CollectDirty()
+	if len(remaining) != 2 {
+		t.Fatalf("expected 2 dirty after partial MarkFlushed, got %d", len(remaining))
+	}
+}
+
+func TestLRUDirtyEntryNotEvictedDuringFlush(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](2)
+
+	c.Put(snowflake.ID(1), "a") // dirty
+
+	// Collect dirty (snapshot).
+	dirty := c.CollectDirty()
+
+	// Simulate concurrent write: re-dirty the same entry.
+	c.Put(snowflake.ID(1), "a_updated")
+
+	// MarkFlushed with old version — entry stays dirty.
+	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(1): dirty[0].dirtyVer})
+
+	// Add clean entries to trigger eviction pressure.
+	c.LoadClean(snowflake.ID(2), "b")
+	c.LoadClean(snowflake.ID(3), "c")
+
+	// ID 1 should NOT be evicted (still dirty due to version mismatch).
+	v, status := c.Get(snowflake.ID(1))
+	if status != cacheHit {
+		t.Fatal("re-dirtied entry should not be evicted")
+	}
+	if v != "a_updated" {
+		t.Fatalf("expected a_updated, got %s", v)
+	}
+}
+
+func TestLRUMarkFlushedTombstoneOnly(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](10)
+	c.MarkDeleted(snowflake.ID(1))
+
+	dirty := c.CollectDirty()
+	if len(dirty) != 1 || !dirty[0].deleted {
+		t.Fatal("expected 1 dirty tombstone")
+	}
+
+	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(1): dirty[0].dirtyVer})
+
+	if c.Len() != 0 {
+		t.Fatalf("expected 0 entries after flushing tombstone, got %d", c.Len())
+	}
+	_, status := c.Get(snowflake.ID(1))
+	if status != cacheMiss {
+		t.Fatal("expected cacheMiss after tombstone flushed and removed")
+	}
+}
+
+func TestLRUEvictCleanSinglePass(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](5)
+
+	// Fill to 2x capacity with dirty entries.
+	for i := 1; i <= 10; i++ {
+		c.Put(snowflake.ID(i), i)
+	}
+	if c.Len() != 10 {
+		t.Fatalf("expected 10 (dirty overflow), got %d", c.Len())
+	}
+
+	// Flush all dirty → clean.
+	dirty := c.CollectDirty()
+	flushed := make(map[snowflake.ID]uint64, len(dirty))
+	for _, e := range dirty {
+		flushed[e.key] = e.dirtyVer
+	}
+	c.MarkFlushed(flushed)
+
+	// Now 10 clean entries, capacity 5. Adding 1 dirty should evict 6 clean
+	// (LRU entries 1-6) in a single pass — O(N), not O(N²).
+	c.Put(snowflake.ID(100), 100)
+	if c.Len() != 5 {
+		t.Fatalf("expected 5 after bulk eviction, got %d", c.Len())
+	}
+
+	// Newest entry (dirty) must survive.
+	v, status := c.Get(snowflake.ID(100))
+	if status != cacheHit || v != 100 {
+		t.Fatal("ID 100 (dirty, newest) should survive eviction")
+	}
+
+	// LRU clean entries (1-6) should be evicted.
+	_, status = c.Get(snowflake.ID(1))
+	if status != cacheMiss {
+		t.Fatal("ID 1 (LRU clean) should be evicted")
+	}
+
+	// More-recently-used clean entries (7-10) should survive.
+	_, status = c.Get(snowflake.ID(10))
+	if status != cacheHit {
+		t.Fatal("ID 10 (MRU clean) should survive eviction")
+	}
+}
+
+func TestLRUEvictCleanSkipsDirtyInSinglePass(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](3)
+
+	// Create a mix: 3 dirty + 3 clean, with dirty at the LRU end.
+	c.LoadClean(snowflake.ID(1), 1) // clean, LRU
+	c.LoadClean(snowflake.ID(2), 2) // clean
+	c.LoadClean(snowflake.ID(3), 3) // clean
+	c.Put(snowflake.ID(4), 4)       // dirty — triggers eviction of clean(1)
+	c.Put(snowflake.ID(5), 5)       // dirty — triggers eviction of clean(2)
+	c.LoadClean(snowflake.ID(6), 6) // clean — triggers eviction of clean(3)
+
+	// Should have: [6, 5, 4] (capacity 3). All clean evicted, 2 dirty + 1 clean.
+	if c.Len() != 3 {
+		t.Fatalf("expected 3 entries, got %d", c.Len())
+	}
+
+	// Dirty entries 4 and 5 must survive.
+	for _, id := range []snowflake.ID{4, 5} {
+		_, status := c.Get(id)
+		if status != cacheHit {
+			t.Fatalf("dirty entry %d should survive", id)
+		}
 	}
 }
 
@@ -307,6 +524,16 @@ func TestLRUEmptyCollectDirty(t *testing.T) {
 	}
 }
 
+func TestLRUMarkFlushedNonExistentID(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](10)
+	// MarkFlushed with an ID not in the cache — should be a no-op.
+	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(999): 42})
+	if c.Len() != 0 {
+		t.Fatalf("expected 0 entries, got %d", c.Len())
+	}
+}
+
 // ─── Concurrent access ─────────────────────────────────────────────────────
 
 func TestLRUConcurrentAccess(t *testing.T) {
@@ -331,7 +558,12 @@ func TestLRUConcurrentAccess(t *testing.T) {
 					c.LoadClean(snowflake.ID(offset*opsPerGoroutine+i+10000), i)
 				}
 				if i%7 == 0 {
-					c.CollectDirty()
+					dirty := c.CollectDirty()
+					flushed := make(map[snowflake.ID]uint64, len(dirty))
+					for _, e := range dirty {
+						flushed[e.key] = e.dirtyVer
+					}
+					c.MarkFlushed(flushed)
 				}
 			}
 		}(g)

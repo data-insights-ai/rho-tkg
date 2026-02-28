@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badger "github.com/dgraph-io/badger/v4"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
@@ -1389,5 +1390,252 @@ func TestBadgerStoreReopenAfterFlush(t *testing.T) {
 	}
 	if rc != 3 {
 		t.Errorf("RelCount = %d, want 3", rc)
+	}
+}
+
+// ─── Requeue deduplication ────────────────────────────────────────────────────
+
+func TestBadgerStoreRequeueOpsPreservesNewerWrite(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	oldKey := nodeKey(100)
+	newKey := nodeKey(100)
+
+	// Simulate: a newer write for the same key is already pending.
+	bs.wbMu.Lock()
+	bs.pending[string(newKey)] = writeOp{opType: writeOpSet, key: newKey, value: []byte("new")}
+	bs.wbMu.Unlock()
+
+	// Requeue older version of the same key — should NOT overwrite newer.
+	failed := map[string]writeOp{
+		string(oldKey): {opType: writeOpSet, key: oldKey, value: []byte("old")},
+	}
+	bs.requeueOps(failed)
+
+	bs.wbMu.Lock()
+	op := bs.pending[string(oldKey)]
+	bs.wbMu.Unlock()
+
+	if string(op.value) != "new" {
+		t.Fatalf("requeue overwrote newer write: got %q, want %q", op.value, "new")
+	}
+}
+
+func TestBadgerStoreRequeueOpsAddsWhenNoNewer(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	key := nodeKey(200)
+	failed := map[string]writeOp{
+		string(key): {opType: writeOpSet, key: key, value: []byte("retry")},
+	}
+	bs.requeueOps(failed)
+
+	bs.wbMu.Lock()
+	op, exists := bs.pending[string(key)]
+	bs.wbMu.Unlock()
+
+	if !exists {
+		t.Fatal("failed op should be re-added when no newer version exists")
+	}
+	if string(op.value) != "retry" {
+		t.Fatalf("got %q, want %q", op.value, "retry")
+	}
+}
+
+// ─── Cascade delete error propagation ─────────────────────────────────────────
+
+func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	nodeID := snowflake.ID(10)
+	relID := snowflake.ID(500)
+
+	// Create node normally.
+	putTestNode(t, bs, 10, 1, nil)
+
+	// Write corrupt rel data directly to Badger (bypasses cache).
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt-msgpack-data"))
+	})
+	if err != nil {
+		t.Fatalf("write corrupt data: %v", err)
+	}
+
+	// Add rel to outgoing index without going through PutRelationship (which
+	// would cache valid data). This simulates a rel that exists in indexes
+	// but has corrupted data in Badger.
+	bs.idxMu.Lock()
+	if bs.outIdx[nodeID] == nil {
+		bs.outIdx[nodeID] = make(map[snowflake.ID]struct{})
+	}
+	bs.outIdx[nodeID][relID] = struct{}{}
+	if bs.typeIdx[1] == nil {
+		bs.typeIdx[1] = make(map[snowflake.ID]struct{})
+	}
+	bs.typeIdx[1][relID] = struct{}{}
+	bs.relCount.Add(1)
+	bs.idxMu.Unlock()
+
+	// DeleteNodeCascade must propagate the unmarshal error — NOT silently skip it.
+	err = bs.DeleteNodeCascade(nodeID)
+	if err == nil {
+		t.Fatal("expected error from corrupted relationship data")
+	}
+	if errors.Is(err, ErrRelNotFound) {
+		t.Fatal("error should NOT be ErrRelNotFound — it's data corruption")
+	}
+}
+
+// ─── InMemory Close flush ────────────────────────────────────────────────────
+
+func TestBadgerStoreInMemoryCloseFlushes(t *testing.T) {
+	t.Parallel()
+	// InMemory mode: FlushInterval=0, no flushLoop goroutine.
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+
+	n := types.NewNode(snowflake.ID(100), 1, nil)
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	// Verify pending ops exist before close.
+	bs.wbMu.Lock()
+	pendingCount := len(bs.pending)
+	bs.wbMu.Unlock()
+	if pendingCount == 0 {
+		t.Fatal("expected pending ops before close")
+	}
+
+	// Close must flush pending ops even without flushLoop — no error, no dropped data.
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+// ─── Atomic counter persistence ──────────────────────────────────────────────
+
+func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, write data, close (relies on Close() → flush() to persist
+	// both data and counters in the same WriteBatch).
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 10, 1, nil)
+	putTestNode(t, bs1, 20, 1, nil)
+	putTestNode(t, bs1, 30, 1, nil)
+	putTestRel(t, bs1, 500, 1, 10, 20)
+	putTestRel(t, bs1, 501, 1, 20, 30)
+
+	// Don't call Flush() manually — Close() must handle it.
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Reopen and verify counters exactly match entity count.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	nc, _ := bs2.NodeCount()
+	rc, _ := bs2.RelationshipCount()
+	if nc != 3 {
+		t.Errorf("NodeCount = %d, want 3", nc)
+	}
+	if rc != 2 {
+		t.Errorf("RelationshipCount = %d, want 2", rc)
+	}
+
+	// Verify actual entities are also there — not just counters.
+	if _, err := bs2.GetNode(snowflake.ID(10)); err != nil {
+		t.Errorf("node 10 not persisted: %v", err)
+	}
+	if _, err := bs2.GetRelationship(snowflake.ID(500)); err != nil {
+		t.Errorf("rel 500 not persisted: %v", err)
+	}
+}
+
+// ─── Cascade delete index leak ───────────────────────────────────────────────
+
+func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Set up inconsistent state: node exists in indexes but not in cache or
+	// Badger. This simulates data corruption or a cache miss on a closed DB.
+	id := snowflake.ID(42)
+	labelTok := uint16(5)
+
+	bs.idxMu.Lock()
+	bs.nodeIDs[id] = struct{}{}
+	bs.labelIdx[labelTok] = map[snowflake.ID]struct{}{id: {}}
+	bs.nodeCount.Add(1)
+	bs.idxMu.Unlock()
+
+	// DeleteNodeCascade should handle the error gracefully and clean up indexes.
+	err := bs.DeleteNodeCascade(id)
+	if err != nil {
+		t.Fatalf("DeleteNodeCascade should succeed on corrupted node, got: %v", err)
+	}
+
+	// Verify cleanup: nodeIDs should be empty, labelIdx should be clean.
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+
+	if _, exists := bs.nodeIDs[id]; exists {
+		t.Fatal("nodeIDs should not contain the deleted node")
+	}
+	if set, exists := bs.labelIdx[labelTok]; exists {
+		if _, inSet := set[id]; inSet {
+			t.Fatal("labelIdx should not contain the deleted node — ghost index entry leaked")
+		}
+	}
+
+	nc, _ := bs.NodeCount()
+	if nc != 0 {
+		t.Fatalf("expected 0 nodes, got %d", nc)
+	}
+}
+
+func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Node with multiple labels in indexes but no data.
+	id := snowflake.ID(77)
+	tok1, tok2 := uint16(10), uint16(20)
+
+	bs.idxMu.Lock()
+	bs.nodeIDs[id] = struct{}{}
+	bs.labelIdx[tok1] = map[snowflake.ID]struct{}{id: {}}
+	bs.labelIdx[tok2] = map[snowflake.ID]struct{}{id: {}}
+	bs.nodeCount.Add(1)
+	bs.idxMu.Unlock()
+
+	if err := bs.DeleteNodeCascade(id); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	// All label index entries for this node should be scrubbed.
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+
+	for _, tok := range []uint16{tok1, tok2} {
+		if set, exists := bs.labelIdx[tok]; exists {
+			if _, inSet := set[id]; inSet {
+				t.Fatalf("labelIdx[%d] still contains ghost node %d", tok, id)
+			}
+		}
 	}
 }

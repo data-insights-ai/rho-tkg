@@ -1,5 +1,25 @@
 # tkg-v3 — Current Tasks
 
+## Completed: Final Hardening + Code Review — v3.0.12
+
+- [x] BLOCKER: Atomic counter persistence — counters in WriteBatch, `persistCounters()` deleted
+- [x] BLOCKER: O(N²) `evictClean` → O(N) single pass from Back()
+- [x] MAJOR: `DeleteNodeCascade` propagates non-`ErrRelNotFound` errors (corrupted rel detection)
+- [x] MAJOR: `Close()` explicitly flushes when flushLoop was never started (InMemory mode)
+- [x] MINOR: O(1) `nodeIDs` bloom filter in `GetNode()` — short-circuit before Badger read
+- [x] MINOR: O(1) `relIDs` bloom filter in `GetRelationship()` + `PutRelationship()` — replaces O(N) `relExistsInIndex()` scan
+- [x] Tests: LRU single-pass eviction, cascade corrupt propagation, atomic counter persistence, InMemory close flush
+- [x] Final code review: READY FOR PRODUCTION
+- [x] Verification: `make ci` green, 92.3% coverage, race-clean, 0 gosec, 0 vulncheck
+
+## Completed: Async Flush Hardening — 3 Concurrency Fixes (v3.0.11)
+
+- [x] BLOCKER: Version-aware dirty tracking (`dirtyVer uint64`) — `CollectDirty()` read-only, `MarkFlushed()` only clears matching versions
+- [x] MAJOR: Map-based pending write buffer (`map[string]writeOp`) — last-write-wins dedup, `requeueOps()` preserves newer writes
+- [x] MAJOR: `DeleteNodeCascade` error path scrubs `labelIdx` when entity data unreadable — no ghost entries
+- [x] Tests: LRU version-aware tests, requeue tests, cascade corruption tests
+- [x] Verification: `make ci` green, 92.6% coverage, race-clean, 0 gosec, 0 vulncheck
+
 ## Completed: BadgerStore LRU Cache + Async Batch Persistence + Entity Locks (v3.0.10)
 
 - [x] Generic LRU cache (`entityLRU[V]`) with dirty tracking, tombstones, soft capacity
@@ -11,6 +31,7 @@
 - [x] `loadIndexes()` rebuilds in-memory state from Badger on startup
 - [x] Write-skew regression test (`TestGraphAddRelDeleteNodeConcurrency`)
 - [x] Verification: `make ci` green, 561 tests, 86.0% coverage, race-clean, 0 gosec, 0 vulncheck
+- [x] Documentation: CHANGELOG.md (v3.0.10), CLAUDE.md (architecture table, invariants, phases), doc.go, tasks/lessons.md, MEMORY.md updated
 
 ## Completed: Phase 2B Hardening — 5 Architectural Fixes (v3.0.9)
 

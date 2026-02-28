@@ -184,3 +184,42 @@ Patterns that caused review findings. Rules to prevent recurrence.
 **Problem:** Without tombstones, deleting an entity from the in-memory index would cause a cache miss → Badger read → returning the deleted entity (if the delete hasn't been flushed yet).
 **Solution:** `MarkDeleted()` sets a dirty tombstone in the cache. `GetNode`/`GetRelationship` return `ErrNotFound` on `cacheDeleted` without ever touching Badger.
 **Rule:** In cache-first architectures with async persistence, always use tombstones for deletes. A cache miss must not fall through to stale durable storage.
+
+### CollectDirty must not modify state — use version-aware MarkFlushed (BLOCKER)
+**Problem:** `CollectDirty()` both returned dirty entries AND cleared their dirty flags. During async flush, a concurrent writer could dirty an entry between CollectDirty and WriteBatch.Flush(). The newly-dirtied entry had its dirty flag stripped by CollectDirty, so under eviction pressure the unflushed entity vanished from cache — catastrophic data loss.
+**Root cause:** Combining "read" and "mutate" in one operation creates a race window in any async pipeline.
+**Rule:** `CollectDirty()` must be read-only — return snapshots with monotonic version stamps (`dirtyVer uint64`). Separate `MarkFlushed(map[ID]uint64)` only clears dirty on entries whose version still matches. Re-dirtied entries (higher `dirtyVer`) survive untouched. This is the same pattern as optimistic locking: check-and-set, not blind-set.
+
+### Flush retry must not replay stale writes over newer ones (MAJOR)
+**Problem:** On WriteBatch failure, `flush()` prepended failed ops (`append(ops, bs.pending...)`) back into the pending buffer. If a concurrent write added a newer version of the same key, the prepend placed the older value AFTER it — replaying in FIFO order meant the stale value overwrote the fresh one.
+**Root cause:** Using a slice (ordered) for a buffer that needs last-write-wins semantics.
+**Rule:** Use a `map[string]writeOp` for pending writes — natural last-write-wins dedup. On retry, `requeueOps()` only re-adds failed ops if no newer version already exists in the current pending map. Never prepend/append failed ops blindly.
+
+### Cascade-delete error path must scrub ALL indexes (MAJOR)
+**Problem:** `DeleteNodeCascade()` removed the node from `nodeIDs` before calling `getNodeLocked()` to retrieve label tokens for `labelIdx` cleanup. If `getNodeLocked()` failed (corrupted/missing entity data), the error path left ghost entries in `labelIdx` — permanent in-memory index pollution pointing to a deleted node.
+**Root cause:** The cleanup path assumed getNodeLocked always succeeds after nodeIDs confirms existence.
+**Rule:** When an entity's existence is confirmed in the index but its data is unreadable, the error path must still scrub ALL indexes. For nodes: scan all `labelIdx` entries for the node ID. This is O(labels) — acceptable on the error path. Never leave index entries pointing to deleted entities.
+
+---
+
+## 2026-02-28 — Async Flush Hardening Round 2 (v3.0.12)
+
+### Counters must be in the same atomic batch as data (BLOCKER)
+**Problem:** `flush()` called `wb.Flush()` for data, then `persistCounters()` in a separate `db.Update()` transaction. Process crash between the two lines commits entities without updating counters. On restart, `loadIndexes()` reads stale counters — permanent size lie.
+**Root cause:** Treating "persist counters" as a separate step instead of part of the atomic data batch.
+**Rule:** Move counter keys (`meta/node_count`, `meta/rel_count`) into the same WriteBatch as entity ops. Snapshot counters under `idxMu.RLock()` alongside the pending swap. Delete `persistCounters()` entirely — counters have no independent lifecycle. If they can't go in the batch, they shouldn't exist.
+
+### Cascade delete must propagate non-ErrRelNotFound errors (MAJOR)
+**Problem:** `DeleteNodeCascade` swallowed ALL errors from `deleteRelLocked()`, not just `ErrRelNotFound`. If a rel had corrupted msgpack data (unmarshal error), the loop silently skipped it — no `writeOpDelete` queued for type/adjacency/entity keys. The corrupted rel permanently strands in Badger pointing to a deleted node.
+**Root cause:** `continue` without asserting the error type. "Tolerate already-deleted" was over-generalized to "tolerate anything."
+**Rule:** In cascade-delete loops, only tolerate `errors.Is(err, ErrRelNotFound)`. Any other error (corruption, I/O failure) must propagate immediately. Failing loudly on unreadable data is better than silently creating dangling references.
+
+### Cache eviction must not restart from Back() per eviction (BLOCKER)
+**Problem:** `evictClean()` used nested loops — outer loop checked `len > capacity`, inner loop scanned from `Back()` to find one clean entry. After evicting it, the outer loop restarted the inner from `Back()`. Under dirty-heavy pressure (N dirty entries), each Put triggers a full O(N) scan. Over K puts, total work is O(K*N) = O(N²).
+**Root cause:** Restarting the inner scan from scratch after each successful eviction.
+**Rule:** Single pass from `Back()` to `Front()`, evicting clean entries as found. Track position with a local pointer. When `len <= capacity`, stop. O(N) worst case regardless of dirty/clean ratio. Never restart a scan from the beginning of a data structure when a continuation pointer suffices.
+
+### Close() must flush even when flushLoop was never started (MAJOR)
+**Problem:** When `FlushInterval == 0` (InMemory mode or disabled-flush tests), `flushLoop` is never spawned and `flushDone` is pre-closed. `Close()` passed through `<-flushDone` immediately, then called `persistCounters()` and `db.Close()`. The pending buffer was silently dropped.
+**Root cause:** Assuming flushLoop's final flush was sufficient. Didn't account for the code path where flushLoop never existed.
+**Rule:** `Close()` must explicitly call `flush()` after `<-flushDone`. If flushLoop ran, the second flush is a no-op (pending is empty). If flushLoop was never started, this is the only flush. Always code defensive close paths — never assume a goroutine exists to do cleanup.

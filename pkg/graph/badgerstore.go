@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -67,7 +68,7 @@ type writeOp struct {
 // FlushInterval. A GC loop runs RunValueLogGC periodically. On shutdown, a final
 // flush ensures all pending writes are persisted.
 //
-// Counters are atomic int64 fields — never in any Badger transaction. No OCC contention.
+// Counters are atomic int64 fields, persisted atomically in the flush WriteBatch. No OCC contention.
 type BadgerStore struct {
 	db *badger.DB
 
@@ -75,6 +76,7 @@ type BadgerStore struct {
 	// Protected by idxMu for concurrent read/write access.
 	idxMu    sync.RWMutex
 	nodeIDs  map[snowflake.ID]struct{}                  // O(1) node existence check
+	relIDs   map[snowflake.ID]struct{}                  // O(1) rel existence check
 	labelIdx map[uint16]map[snowflake.ID]struct{}       // labelToken → set(nodeID)
 	typeIdx  map[uint16]map[snowflake.ID]struct{}       // relTypeToken → set(relID)
 	outIdx   map[snowflake.ID]map[snowflake.ID]struct{} // startNodeID → set(relID)
@@ -84,13 +86,14 @@ type BadgerStore struct {
 	nodeCache *entityLRU[*types.Node]
 	relCache  *entityLRU[*types.Relationship]
 
-	// Counters (atomic — never in Badger transactions).
+	// Counters (atomic — persisted atomically via flush WriteBatch).
 	nodeCount atomic.Int64
 	relCount  atomic.Int64
 
 	// Write buffer (own mutex, swapped on flush).
+	// Map keyed by string(op.key) for last-write-wins deduplication.
 	wbMu    sync.Mutex
-	pending []writeOp
+	pending map[string]writeOp
 
 	// Lifecycle.
 	inMemory  bool
@@ -146,12 +149,14 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	bs := &BadgerStore{
 		db:        db,
 		nodeIDs:   make(map[snowflake.ID]struct{}),
+		relIDs:    make(map[snowflake.ID]struct{}),
 		labelIdx:  make(map[uint16]map[snowflake.ID]struct{}),
 		typeIdx:   make(map[uint16]map[snowflake.ID]struct{}),
 		outIdx:    make(map[snowflake.ID]map[snowflake.ID]struct{}),
 		inIdx:     make(map[snowflake.ID]map[snowflake.ID]struct{}),
 		nodeCache: newEntityLRU[*types.Node](capacity),
 		relCache:  newEntityLRU[*types.Relationship](capacity),
+		pending:   make(map[string]writeOp),
 		inMemory:  cfg.InMemory,
 		flushInt:  flushInt,
 		gcInt:     gcInt,
@@ -230,6 +235,7 @@ func (bs *BadgerStore) loadIndexes() error {
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
 			rid := snowflake.ID(parseIDFromKey(key, 3))
+			bs.relIDs[rid] = struct{}{}
 			if bs.typeIdx[token] == nil {
 				bs.typeIdx[token] = make(map[snowflake.ID]struct{})
 			}
@@ -285,15 +291,8 @@ func (bs *BadgerStore) loadIndexes() error {
 		if err != nil {
 			return err
 		}
-		if relCount == 0 {
-			// Count rels from type index as fallback.
-			total := int64(0)
-			for _, set := range bs.typeIdx {
-				total += int64(len(set))
-			}
-			if total > 0 {
-				relCount = total
-			}
+		if relCount == 0 && len(bs.relIDs) > 0 {
+			relCount = int64(len(bs.relIDs))
 		}
 		bs.relCount.Store(relCount)
 
@@ -325,9 +324,13 @@ func getCounter(txn *badger.Txn, key []byte) (int64, error) {
 // --- Write buffer operations ---
 
 // appendOps adds write operations to the pending buffer.
+// Last-write-wins: if the same key is written multiple times, only the
+// latest operation is retained.
 func (bs *BadgerStore) appendOps(ops ...writeOp) {
 	bs.wbMu.Lock()
-	bs.pending = append(bs.pending, ops...)
+	for _, op := range ops {
+		bs.pending[string(op.key)] = op
+	}
 	bs.wbMu.Unlock()
 }
 
@@ -375,7 +378,8 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 }
 
 // GetNode retrieves a node by its snowflake ID.
-// Cache-first: checks LRU cache before falling through to Badger.
+// Cache-first: checks LRU cache, then nodeIDs (O(1) existence check),
+// then falls through to Badger only if the node is confirmed to exist.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 	// Check cache first.
@@ -387,7 +391,16 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 		return nil, ErrNodeNotFound
 	}
 
-	// Cache miss — read from Badger.
+	// Short-circuit: nodeIDs is the authoritative set of all node IDs.
+	// Avoids opening a Badger transaction for non-existent nodes.
+	bs.idxMu.RLock()
+	_, exists := bs.nodeIDs[id]
+	bs.idxMu.RUnlock()
+	if !exists {
+		return nil, ErrNodeNotFound
+	}
+
+	// Cache miss, node exists — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(nodeKey(int64(id)))
@@ -485,17 +498,14 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 		return ErrNodeNotFound
 	}
 
-	// Check for duplicate.
-	if _, status := bs.relCache.Get(id); status == cacheHit {
-		return ErrRelExists
-	}
-	// Also check type index for rels not in cache.
-	if bs.relExistsInIndex(id) {
+	// Check for duplicate via O(1) relIDs.
+	if _, exists := bs.relIDs[id]; exists {
 		return ErrRelExists
 	}
 
 	// Update in-memory state.
 	bs.relCache.Put(id, r)
+	bs.relIDs[id] = struct{}{}
 
 	// Type index.
 	if bs.typeIdx[relType] == nil {
@@ -539,7 +549,16 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 		return nil, ErrRelNotFound
 	}
 
-	// Cache miss — read from Badger.
+	// Short-circuit: relIDs is the authoritative set of all relationship IDs.
+	// Avoids opening a Badger transaction for non-existent relationships.
+	bs.idxMu.RLock()
+	_, exists := bs.relIDs[id]
+	bs.idxMu.RUnlock()
+	if !exists {
+		return nil, ErrRelNotFound
+	}
+
+	// Cache miss, rel exists — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(relKey(int64(id)))
@@ -593,6 +612,7 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
+	delete(bs.relIDs, id)
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[relType]; exists {
@@ -778,7 +798,10 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	relDeleteCount := int64(0)
 	for relID := range relIDs {
 		if err := bs.deleteRelLocked(relID); err != nil {
-			continue // tolerate already-deleted rels (ErrRelNotFound)
+			if errors.Is(err, ErrRelNotFound) {
+				continue // tolerate already-deleted rels
+			}
+			return fmt.Errorf("graph: cascade delete relationship: %w", err)
 		}
 		relDeleteCount++
 	}
@@ -786,10 +809,23 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	// Get node data for label cleanup.
 	n, err := bs.getNodeLocked(id)
 	if err != nil {
-		// Node was in nodeIDs but can't be loaded — still proceed with cleanup.
+		// Node was in nodeIDs but can't be loaded (data corruption or cache miss
+		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
+		// ALL label sets to prevent orphaned index entries (perma-leak).
+		intID := int64(id)
+		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+		for tok, set := range bs.labelIdx {
+			if _, exists := set[id]; exists {
+				delete(set, id)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
+				ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+			}
+		}
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, id)
-		bs.appendOps(writeOp{opType: writeOpDelete, key: nodeKey(int64(id))})
+		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
 		return nil
 	}
@@ -857,16 +893,34 @@ func (bs *BadgerStore) Flush() error {
 }
 
 // flush drains the write buffer to Badger via WriteBatch.
+//
+// The flush holds idxMu.RLock during the snapshot+swap phase to prevent any
+// writer from being between cache.Put and appendOps (all writers hold
+// idxMu.Lock for their entire mutation). This guarantees that the dirty
+// version snapshot, pending ops, and counter values are consistent.
+//
+// Counters are included in the same WriteBatch as entity ops — no TOCTOU
+// window between data and counter persistence.
 func (bs *BadgerStore) flush() error {
+	// Step 1: Atomically snapshot dirty cache versions, pending ops, and counters.
+	// idxMu.RLock blocks writers (who hold idxMu.Lock) during this phase,
+	// ensuring no writer is between cache.Put and appendOps.
+	bs.idxMu.RLock()
+	nodeDirty := bs.nodeCache.CollectDirty()
+	relDirty := bs.relCache.CollectDirty()
 	bs.wbMu.Lock()
 	ops := bs.pending
-	bs.pending = nil
+	bs.pending = make(map[string]writeOp)
 	bs.wbMu.Unlock()
+	nc := bs.nodeCount.Load()
+	rc := bs.relCount.Load()
+	bs.idxMu.RUnlock()
 
 	if len(ops) == 0 {
 		return nil
 	}
 
+	// Step 2: Write all ops + counters to Badger via WriteBatch (blind writes, no OCC).
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel() // no-op if Flush already called
 
@@ -874,56 +928,74 @@ func (bs *BadgerStore) flush() error {
 		switch op.opType {
 		case writeOpSet:
 			if err := wb.SetEntry(badger.NewEntry(op.key, op.value)); err != nil {
-				// Re-queue failed ops for retry.
-				bs.wbMu.Lock()
-				bs.pending = append(ops, bs.pending...)
-				bs.wbMu.Unlock()
+				bs.requeueOps(ops)
 				return fmt.Errorf("graph: write batch set: %w", err)
 			}
 		case writeOpDelete:
 			if err := wb.Delete(op.key); err != nil {
-				bs.wbMu.Lock()
-				bs.pending = append(ops, bs.pending...)
-				bs.wbMu.Unlock()
+				bs.requeueOps(ops)
 				return fmt.Errorf("graph: write batch delete: %w", err)
 			}
 		}
 	}
 
+	// Include counters in the same atomic batch — no TOCTOU drift on crash.
+	ncBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(ncBuf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
+	if err := wb.SetEntry(badger.NewEntry(counterNodeCountKey, ncBuf)); err != nil {
+		bs.requeueOps(ops)
+		return fmt.Errorf("graph: write batch set counter: %w", err)
+	}
+	rcBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(rcBuf, uint64(rc)) // #nosec G115 — intentional int64→uint64 for binary encoding
+	if err := wb.SetEntry(badger.NewEntry(counterRelCountKey, rcBuf)); err != nil {
+		bs.requeueOps(ops)
+		return fmt.Errorf("graph: write batch set counter: %w", err)
+	}
+
 	if err := wb.Flush(); err != nil {
-		// Re-queue on flush failure.
-		bs.wbMu.Lock()
-		bs.pending = append(ops, bs.pending...)
-		bs.wbMu.Unlock()
+		bs.requeueOps(ops)
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}
 
-	// Persist counters alongside data.
-	if err := bs.persistCounters(); err != nil {
-		return err
-	}
-
-	// Mark dirty cache entries as clean, remove flushed tombstones.
-	bs.nodeCache.CollectDirty()
-	bs.relCache.CollectDirty()
+	// Step 3: Mark cache entries clean — version-aware.
+	// Only clears dirty on entries whose dirtyVer matches the snapshot.
+	// Entries re-dirtied during the flush retain their dirty status.
+	bs.markCacheFlushed(nodeDirty, relDirty)
 
 	return nil
 }
 
-// persistCounters writes current atomic counters to Badger meta keys.
-func (bs *BadgerStore) persistCounters() error {
-	return bs.db.Update(func(txn *badger.Txn) error {
-		nc := bs.nodeCount.Load()
-		rc := bs.relCount.Load()
-		buf := make([]byte, 8)
-		binary.BigEndian.PutUint64(buf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
-		if err := txn.Set(counterNodeCountKey, buf); err != nil {
-			return err
+// requeueOps merges failed write ops back into the pending buffer.
+// Only re-adds ops whose key is not already in pending (a newer concurrent
+// write takes precedence over the failed one).
+func (bs *BadgerStore) requeueOps(failed map[string]writeOp) {
+	bs.wbMu.Lock()
+	for k, op := range failed {
+		if _, exists := bs.pending[k]; !exists {
+			bs.pending[k] = op
 		}
-		buf2 := make([]byte, 8)
-		binary.BigEndian.PutUint64(buf2, uint64(rc)) // #nosec G115 — intentional int64→uint64 for binary encoding
-		return txn.Set(counterRelCountKey, buf2)
-	})
+	}
+	bs.wbMu.Unlock()
+}
+
+// markCacheFlushed builds flushed ID→version maps from the collected dirty
+// entries and passes them to MarkFlushed on each cache.
+func (bs *BadgerStore) markCacheFlushed(nodeDirty []lruEntry[*types.Node], relDirty []lruEntry[*types.Relationship]) {
+	if len(nodeDirty) > 0 {
+		nf := make(map[snowflake.ID]uint64, len(nodeDirty))
+		for _, e := range nodeDirty {
+			nf[e.key] = e.dirtyVer
+		}
+		bs.nodeCache.MarkFlushed(nf)
+	}
+	if len(relDirty) > 0 {
+		rf := make(map[snowflake.ID]uint64, len(relDirty))
+		for _, e := range relDirty {
+			rf[e.key] = e.dirtyVer
+		}
+		bs.relCache.MarkFlushed(rf)
+	}
 }
 
 // --- Background GC ---
@@ -947,15 +1019,21 @@ func (bs *BadgerStore) gcLoop() {
 
 // --- Lifecycle ---
 
-// Close stops background goroutines, performs a final flush, persists counters,
+// Close stops background goroutines, performs a final flush (including counters),
 // and closes the Badger database. Safe to call multiple times.
+//
+// The explicit flush() handles the case where flushLoop was never started
+// (InMemory mode, FlushInterval==0). If flushLoop already drained pending,
+// this is a no-op. Counters are included in the WriteBatch atomically.
 func (bs *BadgerStore) Close() error {
 	var err error
 	bs.closeOnce.Do(func() {
 		close(bs.stopCh)
-		<-bs.flushDone // wait for final flush
+		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit
-		if e := bs.persistCounters(); e != nil {
+		// Explicit final flush — ensures pending ops are persisted even when
+		// flushLoop was never spawned. No-op if already drained.
+		if e := bs.flush(); e != nil {
 			err = e
 		}
 		if e := bs.db.Close(); e != nil && err == nil {
@@ -1115,16 +1193,6 @@ func (bs *BadgerStore) getRelLocked(id snowflake.ID) (*types.Relationship, error
 	}
 	bs.relCache.LoadClean(id, r)
 	return r, nil
-}
-
-// relExistsInIndex checks if a relationship ID exists in any type index.
-func (bs *BadgerStore) relExistsInIndex(id snowflake.ID) bool {
-	for _, set := range bs.typeIdx {
-		if _, exists := set[id]; exists {
-			return true
-		}
-	}
-	return false
 }
 
 // collectNodeLabelTokens returns all label token values from a node.
