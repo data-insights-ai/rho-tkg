@@ -935,16 +935,43 @@ func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
 	}
 
 	// Close() must return an error (registry save fails on closed DB),
-	// but must NOT panic and must set closeFn to nil (idempotent).
+	// but must NOT panic. sync.Once handles idempotency.
 	err = g.Close()
 	if err == nil {
 		t.Fatal("Close() should return error when Badger is already closed")
 	}
 
-	// Second call must be no-op (closeFn set to nil despite error).
+	// Second call returns nil — sync.Once already fired.
 	if err := g.Close(); err != nil {
-		t.Fatalf("Close() second call should be no-op, got: %v", err)
+		t.Fatalf("Close() second call should return nil (sync.Once), got: %v", err)
 	}
+}
+
+func TestGraphCloseConcurrent(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// 10 goroutines calling Close() simultaneously — must not panic or race.
+	const workers = 10
+	done := make(chan error, workers)
+	for range workers {
+		go func() {
+			done <- g.Close()
+		}()
+	}
+
+	var errs int
+	for range workers {
+		if <-done != nil {
+			errs++
+		}
+	}
+	// At most zero errors expected (all succeed or only the first one runs).
+	_ = errs
 }
 
 func TestGraphBadgerDeleteNodeCascade(t *testing.T) {

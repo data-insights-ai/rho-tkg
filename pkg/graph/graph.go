@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -52,6 +53,7 @@ type Graph struct {
 	store       Store
 	closeFn     func() error // nil for MemoryStore; calls BadgerStore.Close() for Badger
 	entityLocks *entityLockManager
+	closeOnce   sync.Once
 }
 
 // New creates a new Graph with the given configuration.
@@ -126,28 +128,29 @@ func New(config Config) (*Graph, error) {
 }
 
 // Close saves registries (if Badger) and closes the underlying store.
-// No-op for MemoryStore. Safe to call multiple times.
+// No-op for MemoryStore. Safe to call concurrently and multiple times.
 //
 // closeFn() always runs even if registry saves fail — prevents file handle leaks.
-// Returns the first error encountered.
+// Returns the first error encountered; subsequent calls return nil.
 func (g *Graph) Close() error {
-	if g.closeFn == nil {
-		return nil
-	}
-	var firstErr error
-	if bs, ok := g.store.(*BadgerStore); ok {
-		if err := bs.SaveLabelRegistry(g.labels); err != nil {
-			firstErr = fmt.Errorf("graph: save label registry: %w", err)
+	var closeErr error
+	g.closeOnce.Do(func() {
+		if g.closeFn == nil {
+			return
 		}
-		if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("graph: save reltype registry: %w", err)
+		if bs, ok := g.store.(*BadgerStore); ok {
+			if err := bs.SaveLabelRegistry(g.labels); err != nil {
+				closeErr = fmt.Errorf("graph: save label registry: %w", err)
+			}
+			if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil && closeErr == nil {
+				closeErr = fmt.Errorf("graph: save reltype registry: %w", err)
+			}
 		}
-	}
-	if err := g.closeFn(); err != nil && firstErr == nil {
-		firstErr = err
-	}
-	g.closeFn = nil // idempotent
-	return firstErr
+		if err := g.closeFn(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	})
+	return closeErr
 }
 
 // NextNodeID generates a unique snowflake ID for a new node.

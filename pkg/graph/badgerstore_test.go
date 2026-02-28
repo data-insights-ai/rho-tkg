@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"container/list"
 	"errors"
 	"testing"
 
@@ -1637,5 +1638,138 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 				t.Fatalf("labelIdx[%d] still contains ghost node %d", tok, id)
 			}
 		}
+	}
+}
+
+// ─── Query error propagation ────────────────────────────────────────────────
+
+func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Write a valid node, then corrupt its data directly in Badger.
+	putTestNode(t, bs, 100, 1, nil)
+
+	// Flush to Badger so the corrupt overwrite is the only copy.
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Evict from cache so GetNode must read from Badger.
+	bs.nodeCache.mu.Lock()
+	bs.nodeCache.items = make(map[snowflake.ID]*list.Element)
+	bs.nodeCache.order.Init()
+	bs.nodeCache.mu.Unlock()
+
+	// Inject corrupt value into Badger.
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(nodeKey(100), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	// NodesByLabel must surface the corruption error, not silently skip.
+	_, err = bs.NodesByLabel(1)
+	if err == nil {
+		t.Fatal("NodesByLabel should return error for corrupted node data")
+	}
+	if errors.Is(err, ErrNodeNotFound) {
+		t.Fatal("error should NOT be ErrNodeNotFound — it's data corruption")
+	}
+}
+
+func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Evict rel from cache.
+	bs.relCache.mu.Lock()
+	bs.relCache.items = make(map[snowflake.ID]*list.Element)
+	bs.relCache.order.Init()
+	bs.relCache.mu.Unlock()
+
+	// Inject corrupt rel value.
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	_, err = bs.RelationshipsByType(3)
+	if err == nil {
+		t.Fatal("RelationshipsByType should return error for corrupted rel data")
+	}
+	if errors.Is(err, ErrRelNotFound) {
+		t.Fatal("error should NOT be ErrRelNotFound — it's data corruption")
+	}
+}
+
+func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	bs.relCache.mu.Lock()
+	bs.relCache.items = make(map[snowflake.ID]*list.Element)
+	bs.relCache.order.Init()
+	bs.relCache.mu.Unlock()
+
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	_, err = bs.OutgoingRelationships(snowflake.ID(10), 0)
+	if err == nil {
+		t.Fatal("OutgoingRelationships should return error for corrupted rel data")
+	}
+}
+
+func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	bs.relCache.mu.Lock()
+	bs.relCache.items = make(map[snowflake.ID]*list.Element)
+	bs.relCache.order.Init()
+	bs.relCache.mu.Unlock()
+
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	_, err = bs.IncomingRelationships(snowflake.ID(20), 0)
+	if err == nil {
+		t.Fatal("IncomingRelationships should return error for corrupted rel data")
 	}
 }

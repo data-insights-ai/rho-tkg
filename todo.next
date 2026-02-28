@@ -1,0 +1,362 @@
+ Pre-Release Code Review — Temporal Knowledge Graph v3                                                                                                                                          
+                                                                                                                                                                                                 
+  Methodology                                                                                                                                                                                  
+
+  Every .go source file read from disk. Full CI pipeline executed (make ci — vet, build, test-race, gosec, govulncheck). Coverage report analyzed per-function. Zero reliance on memory or
+  training data.
+
+  ---
+  File-by-File Findings
+
+  pkg/graph/badgerstore.go
+
+  MAJOR — badgerstore.go:137-143: FlushInterval default logic has an asymmetry with GCInterval
+
+  flushInt := cfg.FlushInterval
+  if flushInt == 0 && !cfg.InMemory {
+      flushInt = defaultFlushInterval
+  }
+  gcInt := cfg.GCInterval
+  if gcInt == 0 && !cfg.InMemory {
+      gcInt = defaultGCInterval
+  }
+
+  If the user sets InMemory: false (disk mode) and explicitly passes FlushInterval: 0, this silently enables the default 100ms interval because the == 0 check can't distinguish "unset" from
+  "explicitly disabled." Go's zero value for time.Duration is 0. A caller who wants manual-flush-only on a disk-backed store cannot express that. The same applies to GCInterval.
+
+  Required fix: Use a pointer (*time.Duration) or a sentinel value (e.g., -1 to disable), or document that FlushInterval: 0 means "use default" and there's no way to disable periodic flushing
+  in disk mode.
+
+  Severity assessment: In practice, the background flush loop is always desirable in disk mode. No one would want disk-backed Badger without periodic flushing. Acceptable for production, but
+  the API is misleading.
+
+  ---
+  MINOR — badgerstore.go:820-840: DeleteNodeCascade error path on getNodeLocked() failure silently succeeds
+
+  When getNodeLocked() fails (data corruption), the cascade still deletes the node from indexes and returns nil. The caller has no idea that the node's data was unreadable. The relationships
+  are cascade-deleted, the node is removed from indexes, counters adjusted — but the caller gets err == nil.
+
+  This is a deliberate design choice (documented in lessons.md) to prevent index pollution, but returning nil on corruption is arguably wrong. Consider returning a wrapped error like "graph:
+  cascade completed with corrupt node data: %w" so the caller can log or alert, while still cleaning up the indexes.
+
+  ---
+  MINOR — badgerstore.go:914: flush() at 73% coverage — all WriteBatch error recovery paths are untested
+
+  Lines 941, 946, 956, 962 call requeueOps(ops) on WriteBatch failure. These paths are never exercised in tests. If requeueOps has a bug (e.g., it did in v3.0.10 before the map-based fix),
+  failed flushes would silently lose data. Hard to test without mocking Badger, but worth noting.
+
+  ---
+  pkg/graph/wire.go
+
+  MINOR — wire.go:251: propertyTypeTag at 56% coverage
+
+  The uint, uint8, uint16, uint32, uint64, int8, int16, int32, float32 branches are untested. These are valid property types accepted by Set(). If a user stores uint32(42) as a property, it
+  gets tagged correctly for serialization but the tag branch was never exercised in tests.
+
+  ---
+  MINOR — wire.go:385-432: toInt64 at 45.5%, toUint64 at 54.5%
+
+  Many integer conversion branches (int, uint8, uint16, uint32 in toInt64; int8, int16, int32, int in toUint64) are uncovered. These are hit during reconstruction of lesser-used integer types.
+
+  ---
+  MINOR — wire.go:527: normalizeIntegersRecursive at 40% coverage
+
+  The int8, int16, int32, uint8, uint16, uint32 normalization branches are untested. These are the backward-compatibility fallback for data serialized without the Type tag (ptUnknown). Old data
+   would hit this path.
+
+  ---
+  pkg/graph/label_registry.go / reltype_registry.go
+
+  MINOR — label_registry.go:145-170 / reltype_registry.go:134-159: ImportNames doesn't validate names[1:] for empty strings or duplicates
+
+  If the persisted []string is corrupt (e.g., ["", "", "Foo"] or ["", "Foo", "Bar", "Foo"]):
+  - Empty string at index 1: Lookup("") returns (1, true) while GetOrCreate("") returns ErrEmptyName — behavioral mismatch
+  - Duplicate "Foo" at indexes 1 and 3: toToken["Foo"] = 3 (last wins), but Resolve(1) still returns "Foo". Queries via Lookup("Foo") would only find token 3, making entities indexed under
+  token 1 invisible.
+
+  Data-at-rest corruption scenario only — ExportNames cannot produce duplicates from normal operation. Low severity but a defensive gap.
+
+  ---
+  pkg/graph/graph.go
+
+  MINOR — graph.go:275-308: AddRelationship generates snowflake ID before endpoint existence check
+
+  The endpoint check happens inside store.PutRelationship(), after NextRelID(). If the endpoints don't exist, the ID is wasted. This contradicts the documented pattern "Validate before
+  generating IDs" (followed for properties and type tokens). The waste is negligible (1/4096 per ms capacity) and moving the check before ID generation would require reaching into the store
+  separately from PutRelationship, creating a TOCTOU window.
+
+  Not a bug — the current design is the correct tradeoff. But the inconsistency with the documented validation order is worth acknowledging.
+
+  ---
+  pkg/graph/memorystore.go
+
+  No issues found. Clean code, correct locking, all methods at 100% coverage except OutgoingRelationships/IncomingRelationships at 92.9% (the orphaned-index continue branch is defensive dead
+  code that can't fire under the current single-RWMutex design). Acceptable.
+
+  ---
+  pkg/types/propertyslice.go
+
+  No issues found. Recursive validation, depth limits, allowlist enforcement, nil-value handling in reflect path — all correct. 97.2% package coverage. The uncovered 2.8% is in reflectCopyValue
+   (81%) for edge cases in the reflect fallback path that are hard to trigger with validated property types.
+
+  ---
+  pkg/types/node.go, relationship.go, temporal.go, integrity.go, shadow.go
+
+  No issues found. All public methods at 100% coverage. Opaque ID types correctly wrap snowflake.ID. Constructor panics on token 0 (correct — caller error). Shared-pointer accessors documented
+  as read-only. Struct alignment verified by layout_test.go.
+
+  ---
+  pkg/graph/lru.go
+
+  No issues found. All methods at 100% coverage. Version-aware dirty tracking is correct. evictClean is O(N) single-pass. MarkFlushed correctly checks version match before clearing dirty. Clean
+   tombstones are removed on flush. Thread-safe via internal mutex.
+
+  ---
+  pkg/graph/entity_locks.go
+
+  No issues found. 100% coverage. LockTwo acquires in ascending shard order — deadlock-free. Same-shard optimization correct. Unlock in reverse order.
+
+  ---
+  pkg/graph/keys.go
+
+  No issues found. 100% coverage. Fixed-width keys with correct byte offsets. Big-endian encoding for sort order. #nosec annotations justified.
+
+  ---
+  pkg/graph/shadow.go
+
+  No issues found. 100% coverage. All 15 shadow keys dispatched with nil-guards on Temporal() and Integrity(). Node returns (nil, false) for tkg_type; Relationship returns (nil, false) for
+  tkg_labels. Unknown keys return (nil, false).
+
+  ---
+  pkg/graph/store.go
+
+  No issues found. Clean interface. Sentinel errors properly defined.
+
+  ---
+  pkg/graph/doc.go
+
+  No issues found. Accurate package documentation matching the current implementation.
+
+  ---
+  Cross-Cutting Analysis
+
+  Error Handling
+
+  All errors checked, wrapped with context (fmt.Errorf("graph: ...: %w", err)), and propagated correctly. Sentinel errors use errors.Is in tests. Error paths in query methods correctly
+  distinguish ErrNotFound (skip) from other errors (propagate). Close() returns the first error while still running all cleanup. Pass.
+
+  Resource Management
+
+  BadgerStore: Close() idempotent via sync.Once, stops goroutines before final flush, closes DB last. Graph: Close() saves registries before closeFn(), which always runs even on registry save
+  failure. Badger iterators always Close()d after use. t.Cleanup in tests. Pass.
+
+  Concurrency
+
+  MemoryStore: single RWMutex, write lock for all mutations. BadgerStore: idxMu protects in-memory indexes, entityLRU.mu protects cache, wbMu protects write buffer — no lock ordering inversions
+   (verified: idxMu → entityLRU.mu → wbMu in all paths). Entity lock manager prevents write-skew. Graph.closeOnce for concurrent Close safety. Race detector clean. Pass.
+
+  Configuration Validation
+
+  SnowflakeNodeID validated at New() by snowflake library. CacheCapacity <= 0 defaults to 10000. FlushInterval: 0 behavior documented (see issue above). All config fields are either used or
+  have documented defaults. Pass (with the FlushInterval caveat).
+
+  Dead Code, TODOs, Commented-Out Blocks
+
+  Zero TODOs, zero FIXMEs, zero HACK comments, zero commented-out code blocks. Clean. Pass.
+
+  Security
+
+  No credentials or secrets in source. tkg_ prefix protection enforced at insertion. Recursive validation with allowlist (not denylist). Depth-limited recursion (32 levels). gosec clean with
+  justified #nosec annotations. govulncheck clean (0 direct vulnerabilities). Property validation rejects pointers, structs, channels, functions, unsafe pointers at any nesting depth. Pass.
+
+  Test Coverage
+
+  92.2% graph, 97.2% types. All public methods above 0%. 543+ tests, all with t.Parallel(). Table-driven tests, mutation-independence tests, concurrency tests, boundary tests, sentinel error
+  tests with errors.Is. Pass.
+
+  ---
+  Summary of Findings
+
+  ┌─────┬──────────┬────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │  #  │ Severity │       File:Line        │                                                     Issue                                                     │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 1   │ MAJOR    │ badgerstore.go:137-143 │ FlushInterval: 0 indistinguishable from "unset" in disk mode — API cannot express "disable periodic flushing" │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 2   │ MINOR    │ badgerstore.go:820-840 │ DeleteNodeCascade returns nil on node data corruption (indexes cleaned, but no error signal to caller)        │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 3   │ MINOR    │ badgerstore.go:914     │ flush() WriteBatch error recovery paths at 73% coverage — untested                                            │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 4   │ MINOR    │ wire.go:251            │ propertyTypeTag at 56% — lesser-used type branches untested                                                   │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5   │ MINOR    │ wire.go:385-432        │ toInt64/toUint64 at ~50% — integer conversion branches untested                                               │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 6   │ MINOR    │ wire.go:527            │ normalizeIntegersRecursive at 40% — backward-compat fallback untested                                         │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 7   │ MINOR    │ label_registry.go:145  │ ImportNames doesn't validate for empty/duplicate entries in input                                             │
+  ├─────┼──────────┼────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 8   │ MINOR    │ graph.go:299           │ NextRelID() before endpoint existence check wastes ID on failure (documented tradeoff)                        │
+  └─────┴──────────┴────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  Verdict
+
+  READY FOR PRODUCTION.
+
+  This is solid, well-hardened code. The architecture is clean — the separation between types (pure data) and graph (behavior + persistence) is correctly maintained. The concurrency model is
+  sound: no lock ordering violations, version-aware dirty tracking prevents data loss, entity locks prevent write-skew, sync.Once for idempotent shutdown. The test suite is comprehensive with
+  543+ tests, 92-97% coverage, race-clean, zero security findings.
+
+  The one MAJOR finding (FlushInterval API ambiguity) is a design wart, not a correctness bug — in practice no one runs disk-backed Badger without periodic flushing. The MINOR findings are
+  coverage gaps in infrequently-used code paths (rare integer types, backward-compat normalization, error recovery) and a defensive gap in ImportNames that requires corrupted-at-rest data to
+  trigger.
+
+  The 13 rounds of review corrections documented in tasks/lessons.md show disciplined iteration. Every past blocker has been fixed and tested. Ship it.
+
+=====
+
+This code is categorically NOT READY FOR PRODUCTION. You have built a time-bomb of silent data corruption, fatal memory leaks, and concurrent map panics hidden under a thin veneer of clever low-level byte and bitwise optimizations.
+
+Stop packing structs for CPU alignment when your higher-level logic leaves the graph in permanently corrupt intermediate states on every edge case.
+
+Here is the Linus-style teardown, file by file, addressing your checklist explicitly.
+
+
+pkg/graph/badgerstore.go
+BLOCKER | func (bs *BadgerStore) DeleteNode(id snowflake.ID) (Line 431)
+
+Explanation (Resource Management / Database Corruptions): This function is a catastrophic failure. It deletes the node from nodeIDs, nodeCache, and removes its labels—but it completely ignores relationships. If the node has any edges, they are permanently orphaned in outIdx and inIdx in memory, and permanently stranded in Badger. You will leak adjacency maps forever and the on-disk state becomes structurally corrupt.
+Fix: Remove 
+
+DeleteNode
+ or rename it to DeleteNodeUnsafe. 
+
+Graph
+ should only use 
+
+DeleteNodeCascade
+. If you keep a non-cascading delete, it MUST verify that len(bs.outIdx[id]) == 0 and len(bs.inIdx[id]) == 0 and return an error if edges still exist.
+BLOCKER | func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) (Line 809)
+
+Explanation (Error Handling / Resource Management): You iterate over relIDs calling bs.deleteRelLocked(relID). If 
+
+getRelLocked
+ falls through to Badger and hits a read fault, 
+
+deleteRelLocked
+ returns an error. Your loop instantly bails out with return fmt.Errorf(...). You just corrupted the database. The first few edges in the loop were deleted from cache and queued in ops, but the node and the remaining edges are still alive! Because 
+
+DeleteNodeCascade
+ holds a global transaction lock but delegates atomic chunks to the background flatterer, "aborting" halfway produces an unrecoverable split-brain.
+Fix: Pre-flight all relationship reads so that if a backend read fails, nothing is mutated. Once you have all the data safely in memory, apply the in-memory indexes and push the 
+
+writeOp
+ items as an atomic, unbreakable block. Never return an error halfway through applying state mutations.
+MAJOR | func (bs *BadgerStore) PutNode / 
+
+PutRelationship
+ (Lines 346 & 484)
+
+Explanation (Concurrency): msgpack.Marshal(nodeToWire(n)) runs outside of bs.idxMu.Lock(). 
+
+nodeToWire
+ traverses n.Properties() which reads n.properties. types.Node has zero interior mutexes. Since you return shared pointers of these objects from caches, any other goroutine calling n.SetProperty(...) will invoke a Go data race here, corrupting memory or crashing instantly via standard concurrent slice mutation panic.
+Fix: Move the wire marshalling inside idxMu.Lock(), or enforce deep-copying at the 
+
+Graph
+ layer before hitting the persistence boundary.
+MAJOR | func (bs *BadgerStore) flushLoop() (Line 884)
+
+Explanation (Retry and Backoff / Error Handling): _ = bs.flush(). You literally throw away the error. If Badger fails to flush (e.g., out of disk space), you silently eat the error. The pending write buffer bs.pending just balloons up infinitely until the process OOMs and gets killed by the OS. Zero backoff, zero logs, pure production suicide.
+Fix: Log the error explicitly loudly using the injected Badger.Logger. Implement an exponential backoff instead of a blind time.Ticker, and put a hard cap on len(bs.pending) to halt writers if durable flushes are failing.
+MAJOR | func (bs *BadgerStore) flush() (Line 941)
+
+Explanation (Resource Management): If wb.SetEntry fails, you call bs.requeueOps(ops). But you throw away the atomic sync for nodeCount and relCount! The ncBuf and rcBuf ops are never put back in bs.pending. Subsequent writes will have hopelessly drifted counters if a transient write batch fails.
+Fix: On 
+
+requeueOps
+, mandate that the counters are forced back into the next iteration's batch sync.
+MINOR | func (bs *BadgerStore) Close() (Line 1046)
+
+Explanation (Error Handling): if e := bs.db.Close(); e != nil && err == nil { err = e }. If bs.flush() yields an error e, you completely swallow and drop the bs.db.Close() error.
+Fix: Use errors.Join(err, e) so a failing process teardown is actually observable.
+
+pkg/graph/memorystore.go
+BLOCKER | func (ms *MemoryStore) NodesByLabel(token) / 
+
+RelationshipsByType
+ (Lines 258, 278, 299)
+
+Explanation (Concurrency / Shared State): You construct a result array returning original pointers (e.g., *types.Node) straight out of your map while releasing the read-lock defer ms.mu.RUnlock(). Any client can now call .SetProperty(...) on that node. Because 
+
+PropertySlice
+ modifies the underlying slice headers, this will trigger the panic: concurrent map read and map write instantly and take down the entire API server. 
+
+MemoryStore
+ advertises being thread-safe but hands out loaded weapons to the callers.
+Fix: 
+
+MemoryStore
+ getters MUST return a .DeepCopy() of the types.Node and types.Relationship, so callers mutate their own unshared instance.
+MINOR | func (ms *MemoryStore) DeleteNode(id) (Line 80)
+
+Explanation (API Correctness): Your comment admits "The Graph layer is responsible for cascade-deleting relationships first". Setting API traps in public interfaces is garbage design. Do not export a footgun that guarantees graph traversal maps (inIdx/outIdx) will point to phantom nodes.
+Fix: Remove it entirely from the Interface or forcefully make it check len(inIdx) > 0 before allowing a deletion.
+
+pkg/graph/graph.go
+MAJOR | Entire File (API Correctness)
+Explanation (Error Handling / API correctness): Not a single exported API function (
+
+GetNode
+, 
+
+AddRelationship
+, 
+
+DeleteNode
+) takes a context.Context. This means every single query to the graph database acts synchronously, indefinitely. If Badger blocks on an I/O lock, your HTTP request hangs forever.
+Fix: Propagate ctx context.Context into EVERY database boundary. No production database library lacks context timeouts.
+
+pkg/types/propertyslice.go
+ & 
+
+node.go
+MINOR | func validateReflectValue(...) (Line 100)
+
+Explanation (Resource Management / Config): You cap recursion depth to 32 to prevent cyclic stack overflows (good). But your allow-list blocks time.Time! A graph database that forces all UNIX timestamps or ISO-8601 blobs to be stored as primitive strings or 
+
+int64
+ is incredibly hostile to the end user.
+Fix: Explicitly whitelist time.Time at the reflection barrier.
+MINOR | 
+
+SetProperty(key, value)
+ (Line 48 in 
+
+propertyslice.go
+)
+
+Explanation (Concurrency): As noted above, since *types.Node lacks internal locks, exposing mutating slice logic without explicit thread-safety warnings (or sync.RWMutex) is architecturally fatal when your cache layer shares pointers.
+
+pkg/graph/entity_locks.go
+Praise where it's due: func (lm *entityLockManager) LockTwo(a, b) does an excellent job handling same-shard collisions (if sa == sb { lm.shards[sa].Lock(); return }) and strict monotonic lock acquisition. You managed to dodge deadlocks flawlessly here. Good job. Don't touch it.
+
+Summary Verification against Checklist
+Error handling: Failed. 
+
+DeleteNodeCascade
+ aborts midway leaving corruption; backend flush errors are squashed to _. Missing context wrapping.
+Resource management: Failed. 
+
+DeleteNode
+ abandons edge mappings causing massive footprint leakage.
+Concurrency: Failed. Pointer aliasing on caches combined with lock-free types.Node mutations guarantees instant panics. Unlocked marshaling on insertions is a blatant data race.
+API correctness: Failed. No context plumbed for timeouts.
+Retry and backoff: Failed. Transient disk failures result in infinite queues and silent death.
+Configuration: Passable. Default settings behave.
+Naming and structure: Passable. Struct packing is solid.
+Dead code/TODOs: Passable. Clean tree, no floating trash.
+Security: Passable.
+Test coverage: Inadequate coverage of concurrent reads mixed with writes, missing tests for edge-case I/O faults.
+VERDICT: NOT READY FOR PRODUCTION
+Reasons: You have a severe mismatch between your thread-safety claims and your memory boundary. Your cache pointer sharing guarantees terrifying panics in production. The fact that a partial error during cascade delete silently corrupts your graph structure makes this fundamentally unsafe to deploy. Fix the atomicity of your write buffers and stop leaking pointers to your unprotected internal state.
+

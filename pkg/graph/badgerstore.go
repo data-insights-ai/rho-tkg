@@ -670,7 +670,10 @@ func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 	for _, id := range ids {
 		n, err := bs.GetNode(id)
 		if err != nil {
-			continue // index orphan or deleted
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // index orphan or tombstone
+			}
+			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
 		}
 		nodes = append(nodes, n)
 	}
@@ -698,7 +701,10 @@ func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship,
 	for _, id := range ids {
 		r, err := bs.GetRelationship(id)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrRelNotFound) {
+				continue // index orphan or tombstone
+			}
+			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
 		rels = append(rels, r)
 	}
@@ -729,7 +735,10 @@ func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 	for _, id := range ids {
 		r, err := bs.GetRelationship(id)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrRelNotFound) {
+				continue // index orphan or tombstone
+			}
+			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
 		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
 			rels = append(rels, r)
@@ -760,7 +769,10 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	for _, id := range ids {
 		r, err := bs.GetRelationship(id)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrRelNotFound) {
+				continue // index orphan or tombstone
+			}
+			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
 		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
 			rels = append(rels, r)
@@ -795,7 +807,6 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	}
 
 	// Delete each relationship.
-	relDeleteCount := int64(0)
 	for relID := range relIDs {
 		if err := bs.deleteRelLocked(relID); err != nil {
 			if errors.Is(err, ErrRelNotFound) {
@@ -803,7 +814,6 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 			}
 			return fmt.Errorf("graph: cascade delete relationship: %w", err)
 		}
-		relDeleteCount++
 	}
 
 	// Get node data for label cleanup.

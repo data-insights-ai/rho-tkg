@@ -783,6 +783,40 @@ func TestNodeWireTemporalZeroInstants(t *testing.T) {
 	}
 }
 
+func TestWireRoundTripIntSlice(t *testing.T) {
+	t.Parallel()
+
+	// Exercise toIntSlice via full marshal/unmarshal round-trip.
+	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n.SetProperties(mustPropertySlice(t, map[string]any{
+		"counts": []int{1, 2, 3},
+	}))
+
+	w := nodeToWire(n)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var w2 nodeWire
+	if err := msgpack.Unmarshal(data, &w2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	got := wireToNode(w2)
+	v, ok := got.GetProperty("counts")
+	if !ok {
+		t.Fatal("missing counts property")
+	}
+	is, ok := v.([]int)
+	if !ok {
+		t.Fatalf("expected []int, got %T", v)
+	}
+	if len(is) != 3 || is[0] != 1 || is[1] != 2 || is[2] != 3 {
+		t.Fatalf("unexpected value: %v", is)
+	}
+}
+
 // mustPropertySlice is a test helper that creates a PropertySlice from a map.
 func mustPropertySlice(t *testing.T, m map[string]any) types.PropertySlice {
 	t.Helper()

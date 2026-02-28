@@ -1,5 +1,15 @@
 # tkg-v3 — Current Tasks
 
+## Completed: Pre-Release Code Review Fixes — v3.0.13
+
+- [x] MAJOR: `Graph.Close()` data race on `closeFn` — replaced with `sync.Once` (`closeOnce`)
+- [x] MAJOR: Query methods silently swallow corruption errors — `NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships` now propagate non-sentinel errors
+- [x] MINOR: Dead variable `relDeleteCount` in `DeleteNodeCascade` — removed
+- [x] MINOR: 12 test-only functions + 6 constants moved from `keys.go` to `keys_helpers_test.go`
+- [x] MINOR: `toIntSlice` at 0% coverage — `TestWireRoundTripIntSlice` added
+- [x] Tests: `TestGraphCloseConcurrent`, 4 corruption propagation tests
+- [x] Verification: `make ci` green, 92.2% coverage, race-clean, 0 gosec, 0 vulncheck
+
 ## Completed: Final Hardening + Code Review — v3.0.12
 
 - [x] BLOCKER: Atomic counter persistence — counters in WriteBatch, `persistCounters()` deleted
@@ -58,6 +68,6 @@
 - [x] Shadow resolution (all 15 `tkg_*` keys), passthrough queries
 - [x] SnowflakeID bridges, deterministic query ordering
 
-## Next up
+## Status
 
-- Phase 3: Cypher & Graph API Integration — Cypher token-based matching, REST/gRPC API layer
+Library is feature-complete at v3.0.13. Future work: Cypher & Graph API Integration (Phase 4).

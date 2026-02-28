@@ -204,6 +204,20 @@ Patterns that caused review findings. Rules to prevent recurrence.
 
 ## 2026-02-28 — Async Flush Hardening Round 2 (v3.0.12)
 
+---
+
+## 2026-02-28 — Pre-release code review v3.0.13 (5 findings)
+
+### Bare `continue` in query loops swallows corruption errors (MAJOR)
+**Problem:** `NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships` used bare `continue` on any `GetNode`/`GetRelationship` error. Index orphans (ErrNotFound) were correctly skipped, but I/O and corruption errors were silently eaten — data corruption becomes invisible.
+**Root cause:** Copy-paste of `continue` without distinguishing sentinel errors from real failures. Same pattern already fixed in `DeleteNodeCascade` but not retrofitted to query methods.
+**Rule:** Every error-handling `continue` in a loop must check for the specific sentinel first. `if errors.Is(err, ErrNodeNotFound) { continue }` — any other error propagates. A bare `continue` on error is always a code smell.
+
+### sync.Once vs nil-guard for idempotent Close() (MAJOR)
+**Problem:** `Graph.Close()` used `g.closeFn = nil` for idempotency. Two concurrent `Close()` calls race on the nil check and nil assignment — `-race` fires. The `BadgerStore.Close()` already used `sync.Once` correctly, but `Graph.Close()` didn't.
+**Root cause:** Different idempotency patterns across the same codebase. `closeFn = nil` is thread-safe only under a mutex — `sync.Once` is the correct zero-coordination pattern.
+**Rule:** Always use `sync.Once` for idempotent shutdown methods. Never rely on nil-guarding a function pointer across goroutines. Audit all `Close()` methods in a package for consistent patterns.
+
 ### Counters must be in the same atomic batch as data (BLOCKER)
 **Problem:** `flush()` called `wb.Flush()` for data, then `persistCounters()` in a separate `db.Update()` transaction. Process crash between the two lines commits entities without updating counters. On restart, `loadIndexes()` reads stale counters — permanent size lie.
 **Root cause:** Treating "persist counters" as a separate step instead of part of the atomic data batch.
