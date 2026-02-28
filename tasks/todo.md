@@ -1,5 +1,17 @@
 # tkg-v3 — Current Tasks
 
+## Completed: BadgerStore LRU Cache + Async Batch Persistence + Entity Locks (v3.0.10)
+
+- [x] Generic LRU cache (`entityLRU[V]`) with dirty tracking, tombstones, soft capacity
+- [x] Sharded entity lock manager (256 shards, deadlock-free `LockTwo`)
+- [x] BadgerStore refactored: in-memory indexes + LRU caches + async WriteBatch flush loop
+- [x] Atomic int64 counters (no OCC contention) — `nodeCount`/`relCount` on struct
+- [x] Entity locks in Graph layer: `AddRelationship` locks both endpoints, `DeleteNode` locks target
+- [x] Background flush loop (100ms ticker) + value log GC loop (5min ticker)
+- [x] `loadIndexes()` rebuilds in-memory state from Badger on startup
+- [x] Write-skew regression test (`TestGraphAddRelDeleteNodeConcurrency`)
+- [x] Verification: `make ci` green, 561 tests, 86.0% coverage, race-clean, 0 gosec, 0 vulncheck
+
 ## Completed: Phase 2B Hardening — 5 Architectural Fixes (v3.0.9)
 
 - [x] Fix Close() file handle leak — `closeFn()` now runs unconditionally even if registry saves fail

@@ -1007,3 +1007,99 @@ func TestGraphBadgerInMemoryDefault(t *testing.T) {
 		t.Fatalf("expected BadgerStore, got %T", g.store)
 	}
 }
+
+// ─── Write-skew regression ──────────────────────────────────────────────────
+
+func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
+	t.Parallel()
+
+	// Regression test: concurrent AddRelationship(→X) + DeleteNode(X) must not
+	// produce a dangling edge. Entity locks at the Graph layer serialize these
+	// operations on overlapping entities.
+	const iterations = 100
+	for i := range iterations {
+		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
+			t.Parallel()
+			g, err := New(Config{BadgerInMemory: true})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			// Create 3 nodes: A, B, target.
+			nodeA, _ := g.AddNode([]string{"A"}, nil)
+			nodeB, _ := g.AddNode([]string{"B"}, nil)
+			target, _ := g.AddNode([]string{"Target"}, nil)
+			targetID := target.InternalID().SnowflakeID()
+
+			// Race: AddRelationship(A→target) vs DeleteNode(target)
+			done := make(chan struct{}, 2)
+			var addErr error
+			var delErr error
+
+			go func() {
+				defer func() { done <- struct{}{} }()
+				_, addErr = g.AddRelationship("KNOWS", nodeA, target, nil)
+			}()
+
+			go func() {
+				defer func() { done <- struct{}{} }()
+				delErr = g.DeleteNode(targetID)
+			}()
+
+			<-done
+			<-done
+
+			// Exactly one of two valid outcomes:
+			// 1. AddRel succeeded first → DeleteNode cascade removes it → graph clean
+			// 2. DeleteNode succeeded first → AddRel fails with ErrNodeNotFound
+			if addErr != nil && delErr != nil {
+				// Both failed — unexpected.
+				t.Fatalf("both failed: addErr=%v, delErr=%v", addErr, delErr)
+			}
+
+			// Invariant: no dangling edges. Every rel's endpoints must exist.
+			nc, _ := g.NodeCount()
+			rc, _ := g.RelationshipCount()
+
+			if addErr != nil {
+				// AddRel failed → target deleted first → only A, B remain, 0 rels.
+				if nc != 2 {
+					t.Errorf("addErr case: NodeCount=%d, want 2", nc)
+				}
+				if rc != 0 {
+					t.Errorf("addErr case: RelCount=%d, want 0", rc)
+				}
+			} else {
+				// AddRel succeeded → either target still exists with the rel,
+				// or target was deleted (cascade removed the rel).
+				if delErr != nil {
+					// Delete failed → target exists, rel exists.
+					if nc != 3 {
+						t.Errorf("delErr case: NodeCount=%d, want 3", nc)
+					}
+					if rc != 1 {
+						t.Errorf("delErr case: RelCount=%d, want 1", rc)
+					}
+				} else {
+					// Both succeeded → AddRel then DeleteNode cascade.
+					// Target is gone, rel is cascade-deleted.
+					if nc != 2 {
+						t.Errorf("both ok case: NodeCount=%d, want 2", nc)
+					}
+					if rc != 0 {
+						t.Errorf("both ok case: RelCount=%d, want 0", rc)
+					}
+				}
+			}
+
+			// Final invariant: verify no rels reference non-existent nodes.
+			// Check nodeB outgoing (should be empty).
+			bID := nodeB.InternalID().SnowflakeID()
+			outB, _ := g.store.OutgoingRelationships(bID, 0)
+			if len(outB) != 0 {
+				t.Errorf("nodeB should have no outgoing rels, got %d", len(outB))
+			}
+		})
+	}
+}

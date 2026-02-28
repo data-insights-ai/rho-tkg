@@ -3,12 +3,22 @@ package graph
 import (
 	"encoding/binary"
 	"fmt"
-	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+)
+
+// Default configuration values for BadgerStore.
+const (
+	defaultCacheCapacity  = 10_000
+	defaultFlushInterval  = 100 * time.Millisecond
+	defaultGCInterval     = 5 * time.Minute
+	defaultGCDiscardRatio = 0.5
 )
 
 // BadgerStoreConfig configures a BadgerStore instance.
@@ -19,16 +29,87 @@ type BadgerStoreConfig struct {
 	InMemory bool
 	// Logger is the Badger logger. Nil uses Badger's default logger.
 	Logger badger.Logger
+	// CacheCapacity is the per-cache (nodes, rels) soft limit. Default: 10,000.
+	CacheCapacity int
+	// FlushInterval is the time between async write batches. Default: 100ms.
+	// Zero disables periodic flushing (manual flush only — for testing).
+	FlushInterval time.Duration
+	// GCInterval is the time between value log GC runs. Default: 5min.
+	// Zero disables GC. Ignored in InMemory mode.
+	GCInterval time.Duration
+	// GCDiscardRatio is the discard ratio for RunValueLogGC. Default: 0.5.
+	GCDiscardRatio float64
 }
 
-// BadgerStore implements the Store interface using Badger as the storage backend.
-// All entity data is serialized using msgpack; keys use fixed-width binary encoding
-// for correct sort order.
+// writeOpType indicates the type of deferred write operation.
+type writeOpType byte
+
+const (
+	writeOpSet    writeOpType = 1
+	writeOpDelete writeOpType = 2
+)
+
+// writeOp is a single deferred write to Badger.
+type writeOp struct {
+	opType writeOpType
+	key    []byte
+	value  []byte // nil for deletes and index entries
+}
+
+// BadgerStore implements the Store interface using Badger as the durable backing store.
+//
+// Architecture: in-memory state is the source of truth while running. The LRU caches
+// hold recently accessed entities with dirty tracking. In-memory indexes (label, type,
+// adjacency) provide O(1) lookups. Write operations update in-memory state immediately
+// and queue writeOps for async batch persistence.
+//
+// A background flush loop drains the write buffer to Badger via WriteBatch every
+// FlushInterval. A GC loop runs RunValueLogGC periodically. On shutdown, a final
+// flush ensures all pending writes are persisted.
+//
+// Counters are atomic int64 fields — never in any Badger transaction. No OCC contention.
 type BadgerStore struct {
 	db *badger.DB
+
+	// In-memory indexes (source of truth while running).
+	// Protected by idxMu for concurrent read/write access.
+	idxMu    sync.RWMutex
+	nodeIDs  map[snowflake.ID]struct{}                  // O(1) node existence check
+	labelIdx map[uint16]map[snowflake.ID]struct{}       // labelToken → set(nodeID)
+	typeIdx  map[uint16]map[snowflake.ID]struct{}       // relTypeToken → set(relID)
+	outIdx   map[snowflake.ID]map[snowflake.ID]struct{} // startNodeID → set(relID)
+	inIdx    map[snowflake.ID]map[snowflake.ID]struct{} // endNodeID → set(relID)
+
+	// Entity caches (internal sync via entityLRU mutex).
+	nodeCache *entityLRU[*types.Node]
+	relCache  *entityLRU[*types.Relationship]
+
+	// Counters (atomic — never in Badger transactions).
+	nodeCount atomic.Int64
+	relCount  atomic.Int64
+
+	// Write buffer (own mutex, swapped on flush).
+	wbMu    sync.Mutex
+	pending []writeOp
+
+	// Lifecycle.
+	inMemory  bool
+	flushInt  time.Duration
+	gcInt     time.Duration
+	gcRatio   float64
+	stopCh    chan struct{}
+	flushDone chan struct{}
+	gcDone    chan struct{}
+	closeOnce sync.Once
 }
 
-// NewBadgerStore opens a Badger database with the given configuration.
+var (
+	counterNodeCountKey = metaKey("node_count")
+	counterRelCountKey  = metaKey("rel_count")
+)
+
+// NewBadgerStore opens a Badger database with the given configuration and
+// rebuilds in-memory indexes from persisted data.
 func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	opts := badger.DefaultOptions(cfg.Dir)
 	if cfg.InMemory {
@@ -44,28 +125,181 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}
-	bs := &BadgerStore{db: db}
-	if err := bs.initCounters(); err != nil {
-		_ = db.Close() // best-effort cleanup
-		return nil, fmt.Errorf("graph: init counters: %w", err)
+
+	capacity := cfg.CacheCapacity
+	if capacity <= 0 {
+		capacity = defaultCacheCapacity
 	}
+	flushInt := cfg.FlushInterval
+	if flushInt == 0 && !cfg.InMemory {
+		flushInt = defaultFlushInterval
+	}
+	gcInt := cfg.GCInterval
+	if gcInt == 0 && !cfg.InMemory {
+		gcInt = defaultGCInterval
+	}
+	gcRatio := cfg.GCDiscardRatio
+	if gcRatio == 0 {
+		gcRatio = defaultGCDiscardRatio
+	}
+
+	bs := &BadgerStore{
+		db:        db,
+		nodeIDs:   make(map[snowflake.ID]struct{}),
+		labelIdx:  make(map[uint16]map[snowflake.ID]struct{}),
+		typeIdx:   make(map[uint16]map[snowflake.ID]struct{}),
+		outIdx:    make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		inIdx:     make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		nodeCache: newEntityLRU[*types.Node](capacity),
+		relCache:  newEntityLRU[*types.Relationship](capacity),
+		inMemory:  cfg.InMemory,
+		flushInt:  flushInt,
+		gcInt:     gcInt,
+		gcRatio:   gcRatio,
+		stopCh:    make(chan struct{}),
+		flushDone: make(chan struct{}),
+		gcDone:    make(chan struct{}),
+	}
+
+	if err := bs.loadIndexes(); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, fmt.Errorf("graph: load indexes: %w", err)
+	}
+
+	// Start background goroutines (skip for InMemory mode with no flush interval).
+	if flushInt > 0 {
+		go bs.flushLoop()
+	} else {
+		close(bs.flushDone)
+	}
+	if gcInt > 0 && !cfg.InMemory {
+		go bs.gcLoop()
+	} else {
+		close(bs.gcDone)
+	}
+
 	return bs, nil
 }
 
-// Close closes the Badger database.
-func (bs *BadgerStore) Close() error {
-	return bs.db.Close()
+// loadIndexes rebuilds in-memory indexes and counters from Badger.
+// Single db.View() scan of all index key prefixes (keys-only, no values).
+func (bs *BadgerStore) loadIndexes() error {
+	return bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+
+		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B)
+		it := txn.NewIterator(opts)
+		prefix := []byte{keyLabel}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < sizeLabelIdx {
+				continue
+			}
+			token := binary.BigEndian.Uint16(key[1:3])
+			nid := snowflake.ID(parseIDFromKey(key, 3))
+			bs.nodeIDs[nid] = struct{}{}
+			if bs.labelIdx[token] == nil {
+				bs.labelIdx[token] = make(map[snowflake.ID]struct{})
+			}
+			bs.labelIdx[token][nid] = struct{}{}
+		}
+		it.Close()
+
+		// Also scan node entities to catch nodes without label indexes
+		// (shouldn't happen, but defensive).
+		it = txn.NewIterator(opts)
+		prefix = []byte{keyNode}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < sizeNodeKey {
+				continue
+			}
+			nid := snowflake.ID(parseIDFromKey(key, 1))
+			bs.nodeIDs[nid] = struct{}{}
+		}
+		it.Close()
+
+		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B)
+		it = txn.NewIterator(opts)
+		prefix = []byte{keyRelType}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < sizeRelTypeIdx {
+				continue
+			}
+			token := binary.BigEndian.Uint16(key[1:3])
+			rid := snowflake.ID(parseIDFromKey(key, 3))
+			if bs.typeIdx[token] == nil {
+				bs.typeIdx[token] = make(map[snowflake.ID]struct{})
+			}
+			bs.typeIdx[token][rid] = struct{}{}
+		}
+		it.Close()
+
+		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B)
+		it = txn.NewIterator(opts)
+		prefix = []byte{keyOut}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < sizeAdjacency {
+				continue
+			}
+			startID := snowflake.ID(parseIDFromKey(key, 1))
+			relID := snowflake.ID(parseRelIDFromAdjKey(key))
+			if bs.outIdx[startID] == nil {
+				bs.outIdx[startID] = make(map[snowflake.ID]struct{})
+			}
+			bs.outIdx[startID][relID] = struct{}{}
+		}
+		it.Close()
+
+		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B)
+		it = txn.NewIterator(opts)
+		prefix = []byte{keyIn}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < sizeAdjacency {
+				continue
+			}
+			endID := snowflake.ID(parseIDFromKey(key, 1))
+			relID := snowflake.ID(parseRelIDFromAdjKey(key))
+			if bs.inIdx[endID] == nil {
+				bs.inIdx[endID] = make(map[snowflake.ID]struct{})
+			}
+			bs.inIdx[endID][relID] = struct{}{}
+		}
+		it.Close()
+
+		// Load counters from meta keys, or count from indexes if missing.
+		nodeCount, err := getCounter(txn, counterNodeCountKey)
+		if err != nil {
+			return err
+		}
+		if nodeCount == 0 && len(bs.nodeIDs) > 0 {
+			nodeCount = int64(len(bs.nodeIDs))
+		}
+		bs.nodeCount.Store(nodeCount)
+
+		relCount, err := getCounter(txn, counterRelCountKey)
+		if err != nil {
+			return err
+		}
+		if relCount == 0 {
+			// Count rels from type index as fallback.
+			total := int64(0)
+			for _, set := range bs.typeIdx {
+				total += int64(len(set))
+			}
+			if total > 0 {
+				relCount = total
+			}
+		}
+		bs.relCount.Store(relCount)
+
+		return nil
+	})
 }
-
-// --- Atomic counters ---
-//
-// Node and relationship counts are maintained as metadata keys for O(1) reads.
-// Each mutating transaction increments/decrements the counter atomically.
-
-var (
-	counterNodeCountKey = metaKey("node_count")
-	counterRelCountKey  = metaKey("rel_count")
-)
 
 // getCounter reads a big-endian int64 counter from the given key within txn.
 // Returns 0 if the key does not exist.
@@ -82,73 +316,29 @@ func getCounter(txn *badger.Txn, key []byte) (int64, error) {
 		if len(v) != 8 {
 			return fmt.Errorf("graph: counter value size %d, want 8", len(v))
 		}
-		val = int64(binary.BigEndian.Uint64(v)) // #nosec G115 — inverse of setCounter encoding
+		val = int64(binary.BigEndian.Uint64(v)) // #nosec G115 — inverse of counter encoding
 		return nil
 	})
 	return val, err
 }
 
-// setCounter writes a big-endian int64 counter to the given key within txn.
-func setCounter(txn *badger.Txn, key []byte, val int64) error {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(val)) // #nosec G115 — intentional int64→uint64 for binary encoding
-	return txn.Set(key, buf)
-}
+// --- Write buffer operations ---
 
-// incrCounter atomically reads, modifies, and writes a counter within txn.
-func incrCounter(txn *badger.Txn, key []byte, delta int64) error {
-	current, err := getCounter(txn, key)
-	if err != nil {
-		return err
-	}
-	return setCounter(txn, key, current+delta)
-}
-
-// initCounters initializes counter metadata keys if they don't exist.
-// For fresh databases or migration from older versions without counters,
-// counts entities by scanning then persists the result.
-func (bs *BadgerStore) initCounters() error {
-	return bs.db.Update(func(txn *badger.Txn) error {
-		// If node counter already exists, counters are initialized.
-		if _, err := txn.Get(counterNodeCountKey); err == nil {
-			return nil
-		} else if err != badger.ErrKeyNotFound {
-			return err
-		}
-
-		// Count nodes by prefix scan.
-		nodeCount := int64(0)
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		prefix := []byte{keyNode}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			nodeCount++
-		}
-		it.Close()
-
-		// Count relationships by prefix scan.
-		relCount := int64(0)
-		it = txn.NewIterator(opts)
-		prefix = []byte{keyRel}
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			relCount++
-		}
-		it.Close()
-
-		if err := setCounter(txn, counterNodeCountKey, nodeCount); err != nil {
-			return err
-		}
-		return setCounter(txn, counterRelCountKey, relCount)
-	})
+// appendOps adds write operations to the pending buffer.
+func (bs *BadgerStore) appendOps(ops ...writeOp) {
+	bs.wbMu.Lock()
+	bs.pending = append(bs.pending, ops...)
+	bs.wbMu.Unlock()
 }
 
 // --- Node operations ---
 
 // PutNode stores a node with its label index entries.
+// Updates in-memory state immediately; Badger write is queued for async flush.
 // Returns ErrNodeExists if a node with the same ID already exists.
 func (bs *BadgerStore) PutNode(n *types.Node) error {
-	id := int64(n.InternalID().SnowflakeID())
+	id := n.InternalID().SnowflakeID()
+	intID := int64(id)
 
 	w := nodeToWire(n)
 	data, err := msgpack.Marshal(w)
@@ -156,34 +346,48 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	return bs.db.Update(func(txn *badger.Txn) error {
-		nk := nodeKey(id)
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 
-		// Check for duplicate.
-		if _, err := txn.Get(nk); err == nil {
-			return ErrNodeExists
+	// Check for duplicate.
+	if _, exists := bs.nodeIDs[id]; exists {
+		return ErrNodeExists
+	}
+
+	// Update in-memory state.
+	bs.nodeCache.Put(id, n)
+	bs.nodeIDs[id] = struct{}{}
+
+	// Build write ops.
+	ops := []writeOp{{opType: writeOpSet, key: nodeKey(intID), value: data}}
+	for _, tok := range n.AllLabelTokens() {
+		tv := tok.Value()
+		if bs.labelIdx[tv] == nil {
+			bs.labelIdx[tv] = make(map[snowflake.ID]struct{})
 		}
+		bs.labelIdx[tv][id] = struct{}{}
+		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+	}
 
-		// Store node entity.
-		if err := txn.Set(nk, data); err != nil {
-			return err
-		}
-
-		// Label index entries.
-		for _, tok := range n.AllLabelTokens() {
-			lik := labelIndexKey(tok.Value(), id)
-			if err := txn.Set(lik, nil); err != nil {
-				return err
-			}
-		}
-
-		return incrCounter(txn, counterNodeCountKey, 1)
-	})
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(1)
+	return nil
 }
 
 // GetNode retrieves a node by its snowflake ID.
+// Cache-first: checks LRU cache before falling through to Badger.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
+	// Check cache first.
+	v, status := bs.nodeCache.Get(id)
+	switch status {
+	case cacheHit:
+		return v, nil
+	case cacheDeleted:
+		return nil, ErrNodeNotFound
+	}
+
+	// Cache miss — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(nodeKey(int64(id)))
@@ -202,47 +406,54 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 			return nil
 		})
 	})
-	return n, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate cache as clean (evictable).
+	bs.nodeCache.LoadClean(id, n)
+	return n, nil
 }
 
 // DeleteNode removes a node and its label index entries.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
-	return bs.db.Update(func(txn *badger.Txn) error {
-		nk := nodeKey(int64(id))
-		item, err := txn.Get(nk)
-		if err == badger.ErrKeyNotFound {
-			return ErrNodeNotFound
-		}
-		if err != nil {
-			return err
-		}
+	intID := int64(id)
 
-		// Unmarshal to get label tokens for index cleanup.
-		var w nodeWire
-		if err := item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &w)
-		}); err != nil {
-			return fmt.Errorf("graph: unmarshal node for delete: %w", err)
-		}
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 
-		// Delete label index entries.
-		allTokens := []int{w.PrimaryLabel}
-		allTokens = append(allTokens, w.ExtraLabels...)
-		for _, tok := range allTokens {
-			lik := labelIndexKey(uint16(tok), int64(id)) // #nosec G115 — token from our own serialization, always in uint16 range
-			if err := txn.Delete(lik); err != nil {
-				return err
+	if _, exists := bs.nodeIDs[id]; !exists {
+		return ErrNodeNotFound
+	}
+
+	// Get node data for label token cleanup.
+	n, err := bs.getNodeLocked(id)
+	if err != nil {
+		return err
+	}
+
+	// Build delete ops.
+	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+
+	// Remove label index entries.
+	allTokens := collectNodeLabelTokens(n)
+	for _, tok := range allTokens {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+		if set, exists := bs.labelIdx[tok]; exists {
+			delete(set, id)
+			if len(set) == 0 {
+				delete(bs.labelIdx, tok)
 			}
 		}
+	}
 
-		// Delete node entity.
-		if err := txn.Delete(nk); err != nil {
-			return err
-		}
-
-		return incrCounter(txn, counterNodeCountKey, -1)
-	})
+	// Update in-memory state.
+	bs.nodeCache.MarkDeleted(id)
+	delete(bs.nodeIDs, id)
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(-1)
+	return nil
 }
 
 // --- Relationship operations ---
@@ -251,9 +462,10 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 // Returns ErrNodeNotFound if the start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
-	id := int64(r.InternalID().SnowflakeID())
-	startID := int64(r.StartNodeID().SnowflakeID())
-	endID := int64(r.EndNodeID().SnowflakeID())
+	id := r.InternalID().SnowflakeID()
+	intID := int64(id)
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
 
 	w := relToWire(r)
@@ -262,51 +474,72 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
 
-	return bs.db.Update(func(txn *badger.Txn) error {
-		// Verify endpoints exist.
-		if _, err := txn.Get(nodeKey(startID)); err == badger.ErrKeyNotFound {
-			return ErrNodeNotFound
-		} else if err != nil {
-			return err
-		}
-		if _, err := txn.Get(nodeKey(endID)); err == badger.ErrKeyNotFound {
-			return ErrNodeNotFound
-		} else if err != nil {
-			return err
-		}
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 
-		rk := relKey(id)
-		if _, err := txn.Get(rk); err == nil {
-			return ErrRelExists
-		}
+	// Verify endpoints exist.
+	if _, exists := bs.nodeIDs[startID]; !exists {
+		return ErrNodeNotFound
+	}
+	if _, exists := bs.nodeIDs[endID]; !exists {
+		return ErrNodeNotFound
+	}
 
-		// Store relationship entity.
-		if err := txn.Set(rk, data); err != nil {
-			return err
-		}
+	// Check for duplicate.
+	if _, status := bs.relCache.Get(id); status == cacheHit {
+		return ErrRelExists
+	}
+	// Also check type index for rels not in cache.
+	if bs.relExistsInIndex(id) {
+		return ErrRelExists
+	}
 
-		// Type index.
-		if err := txn.Set(relTypeIndexKey(relType, id), nil); err != nil {
-			return err
-		}
+	// Update in-memory state.
+	bs.relCache.Put(id, r)
 
-		// Adjacency: outgoing.
-		if err := txn.Set(outKey(startID, relType, endID, id), nil); err != nil {
-			return err
-		}
+	// Type index.
+	if bs.typeIdx[relType] == nil {
+		bs.typeIdx[relType] = make(map[snowflake.ID]struct{})
+	}
+	bs.typeIdx[relType][id] = struct{}{}
 
-		// Adjacency: incoming.
-		if err := txn.Set(inKey(endID, relType, startID, id), nil); err != nil {
-			return err
-		}
+	// Adjacency indexes.
+	if bs.outIdx[startID] == nil {
+		bs.outIdx[startID] = make(map[snowflake.ID]struct{})
+	}
+	bs.outIdx[startID][id] = struct{}{}
+	if bs.inIdx[endID] == nil {
+		bs.inIdx[endID] = make(map[snowflake.ID]struct{})
+	}
+	bs.inIdx[endID][id] = struct{}{}
 
-		return incrCounter(txn, counterRelCountKey, 1)
-	})
+	// Build write ops.
+	ops := []writeOp{
+		{opType: writeOpSet, key: relKey(intID), value: data},
+		{opType: writeOpSet, key: relTypeIndexKey(relType, intID)},
+		{opType: writeOpSet, key: outKey(int64(startID), relType, int64(endID), intID)},
+		{opType: writeOpSet, key: inKey(int64(endID), relType, int64(startID), intID)},
+	}
+
+	bs.appendOps(ops...)
+	bs.relCount.Add(1)
+	return nil
 }
 
 // GetRelationship retrieves a relationship by its snowflake ID.
+// Cache-first: checks LRU cache before falling through to Badger.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
+	// Check cache first.
+	v, status := bs.relCache.Get(id)
+	switch status {
+	case cacheHit:
+		return v, nil
+	case cacheDeleted:
+		return nil, ErrRelNotFound
+	}
+
+	// Cache miss — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(relKey(int64(id)))
@@ -325,132 +558,133 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 			return nil
 		})
 	})
-	return r, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate cache as clean.
+	bs.relCache.LoadClean(id, r)
+	return r, nil
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *BadgerStore) DeleteRelationship(id snowflake.ID) error {
-	return bs.db.Update(func(txn *badger.Txn) error {
-		rk := relKey(int64(id))
-		item, err := txn.Get(rk)
-		if err == badger.ErrKeyNotFound {
-			return ErrRelNotFound
-		}
-		if err != nil {
-			return err
-		}
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 
-		// Unmarshal to get type/start/end for index cleanup.
-		var w relWire
-		if err := item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &w)
-		}); err != nil {
-			return fmt.Errorf("graph: unmarshal relationship for delete: %w", err)
+	return bs.deleteRelLocked(id)
+}
+
+// deleteRelLocked removes a relationship and cleans up indexes.
+// Caller must hold bs.idxMu write lock.
+func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
+	intID := int64(id)
+
+	// Get rel data (cache or Badger).
+	r, err := bs.getRelLocked(id)
+	if err != nil {
+		return err
+	}
+
+	relType := r.TypeToken().Value()
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
+
+	// Update in-memory state.
+	bs.relCache.MarkDeleted(id)
+
+	// Type index cleanup.
+	if set, exists := bs.typeIdx[relType]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(bs.typeIdx, relType)
 		}
+	}
 
-		relType := uint16(w.RelType) // #nosec G115 — token from our own serialization, always in uint16 range
-
-		// Delete type index.
-		if err := txn.Delete(relTypeIndexKey(relType, int64(id))); err != nil {
-			return err
+	// Adjacency cleanup.
+	if set, exists := bs.outIdx[startID]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(bs.outIdx, startID)
 		}
-
-		// Delete adjacency: outgoing.
-		if err := txn.Delete(outKey(w.StartID, relType, w.EndID, int64(id))); err != nil {
-			return err
+	}
+	if set, exists := bs.inIdx[endID]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(bs.inIdx, endID)
 		}
+	}
 
-		// Delete adjacency: incoming.
-		if err := txn.Delete(inKey(w.EndID, relType, w.StartID, int64(id))); err != nil {
-			return err
-		}
+	// Build delete ops.
+	ops := []writeOp{
+		{opType: writeOpDelete, key: relKey(intID)},
+		{opType: writeOpDelete, key: relTypeIndexKey(relType, intID)},
+		{opType: writeOpDelete, key: outKey(int64(startID), relType, int64(endID), intID)},
+		{opType: writeOpDelete, key: inKey(int64(endID), relType, int64(startID), intID)},
+	}
 
-		// Delete relationship entity.
-		if err := txn.Delete(rk); err != nil {
-			return err
-		}
-
-		return incrCounter(txn, counterRelCountKey, -1)
-	})
+	bs.appendOps(ops...)
+	bs.relCount.Add(-1)
+	return nil
 }
 
 // --- Index queries ---
 
 // NodesByLabel returns all nodes with the given label token.
-// Results are sorted by snowflake.ID (chronological) due to big-endian key encoding.
+// Results are sorted by snowflake.ID (chronological) for deterministic output.
 func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
-	var nodes []*types.Node
-	prefix := labelIndexPrefix(token)
+	bs.idxMu.RLock()
+	set := bs.labelIdx[token]
+	ids := make([]snowflake.ID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
 
-	err := bs.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false // index keys have no values
-		it := txn.NewIterator(opts)
-		defer it.Close()
+	if len(ids) == 0 {
+		return nil, nil
+	}
 
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			nodeID := parseNodeIDFromLabelIdx(it.Item().Key())
-			item, err := txn.Get(nodeKey(nodeID))
-			if err == badger.ErrKeyNotFound {
-				continue // index orphan; skip silently
-			}
-			if err != nil {
-				return err
-			}
-			if err := item.Value(func(val []byte) error {
-				var w nodeWire
-				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return fmt.Errorf("graph: unmarshal node %d: %w", nodeID, err)
-				}
-				nodes = append(nodes, wireToNode(w))
-				return nil
-			}); err != nil {
-				return err
-			}
+	nodes := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			continue // index orphan or deleted
 		}
-		return nil
-	})
+		nodes = append(nodes, n)
+	}
 
-	return nodes, err
+	sortNodesByID(nodes)
+	return nodes, nil
 }
 
 // RelationshipsByType returns all relationships with the given type token.
-// Results are sorted by snowflake.ID (chronological) due to big-endian key encoding.
+// Results are sorted by snowflake.ID (chronological) for deterministic output.
 func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
-	var rels []*types.Relationship
-	prefix := relTypeIndexPrefix(token)
+	bs.idxMu.RLock()
+	set := bs.typeIdx[token]
+	ids := make([]snowflake.ID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
 
-	err := bs.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
+	if len(ids) == 0 {
+		return nil, nil
+	}
 
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			relID := parseRelIDFromTypeIdx(it.Item().Key())
-			item, err := txn.Get(relKey(relID))
-			if err == badger.ErrKeyNotFound {
-				continue // index orphan
-			}
-			if err != nil {
-				return err
-			}
-			if err := item.Value(func(val []byte) error {
-				var w relWire
-				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return fmt.Errorf("graph: unmarshal rel %d: %w", relID, err)
-				}
-				rels = append(rels, wireToRel(w))
-				return nil
-			}); err != nil {
-				return err
-			}
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			continue
 		}
-		return nil
-	})
+		rels = append(rels, r)
+	}
 
-	return rels, err
+	sortRelsByID(rels)
+	return rels, nil
 }
 
 // --- Adjacency queries ---
@@ -459,210 +693,276 @@ func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship,
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
-	var prefix []byte
-	if typeToken == 0 {
-		prefix = outPrefix(int64(nodeID))
-	} else {
-		prefix = outTypedPrefix(int64(nodeID), typeToken)
+	bs.idxMu.RLock()
+	set := bs.outIdx[nodeID]
+	ids := make([]snowflake.ID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	return bs.scanAdjacency(prefix)
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			continue
+		}
+		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			rels = append(rels, r)
+		}
+	}
+
+	sortRelsByID(rels)
+	return rels, nil
 }
 
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
-	var prefix []byte
-	if typeToken == 0 {
-		prefix = inPrefix(int64(nodeID))
-	} else {
-		prefix = inTypedPrefix(int64(nodeID), typeToken)
+	bs.idxMu.RLock()
+	set := bs.inIdx[nodeID]
+	ids := make([]snowflake.ID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	return bs.scanAdjacency(prefix)
-}
-
-// scanAdjacency scans adjacency keys with the given prefix, fetches each
-// relationship, and returns them sorted by snowflake.ID.
-func (bs *BadgerStore) scanAdjacency(prefix []byte) ([]*types.Relationship, error) {
-	var rels []*types.Relationship
-
-	err := bs.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			relID := parseRelIDFromAdjKey(it.Item().Key())
-			item, err := txn.Get(relKey(relID))
-			if err == badger.ErrKeyNotFound {
-				continue // orphan adjacency entry
-			}
-			if err != nil {
-				return err
-			}
-			if err := item.Value(func(val []byte) error {
-				var w relWire
-				if err := msgpack.Unmarshal(val, &w); err != nil {
-					return fmt.Errorf("graph: unmarshal rel %d: %w", relID, err)
-				}
-				rels = append(rels, wireToRel(w))
-				return nil
-			}); err != nil {
-				return err
-			}
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			continue
 		}
-		return nil
-	})
+		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			rels = append(rels, r)
+		}
+	}
 
-	// Adjacency keys are grouped by (relType, endID/startID, relID), not by relID
-	// alone. Sort by relID for deterministic, chronological output.
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].InternalID().SnowflakeID() < rels[j].InternalID().SnowflakeID()
-	})
-
-	return rels, err
+	sortRelsByID(rels)
+	return rels, nil
 }
 
 // --- Cascade operations ---
 
-// DeleteNodeCascade atomically removes a node and all connected relationships
-// in a single Badger Update() transaction — no TOCTOU window.
+// DeleteNodeCascade atomically removes a node and all connected relationships.
+// In-memory state is updated atomically under idxMu write lock. Badger writes
+// are queued for the next flush.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
-	nodeID := int64(id)
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 
-	return bs.db.Update(func(txn *badger.Txn) error {
-		// 1. Get node entity for label index cleanup.
-		nk := nodeKey(nodeID)
-		item, err := txn.Get(nk)
-		if err == badger.ErrKeyNotFound {
-			return ErrNodeNotFound
-		}
-		if err != nil {
-			return err
-		}
-		var w nodeWire
-		if err := item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &w)
-		}); err != nil {
-			return fmt.Errorf("graph: unmarshal node for cascade: %w", err)
-		}
+	if _, exists := bs.nodeIDs[id]; !exists {
+		return ErrNodeNotFound
+	}
 
-		// 2. Collect all connected relIDs from adjacency indexes.
-		// Each entry holds the data needed to delete all index keys for that rel.
-		type relInfo struct {
-			relType uint16
-			startID int64
-			endID   int64
-		}
-		relInfos := make(map[int64]relInfo)
+	// Collect all connected relIDs (dedup self-loops).
+	relIDs := make(map[snowflake.ID]struct{})
+	for relID := range bs.outIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
+	for relID := range bs.inIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
 
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-
-		// Scan outgoing adjacency: outKey = keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B)
-		outPfx := outPrefix(nodeID)
-		it := txn.NewIterator(opts)
-		for it.Seek(outPfx); it.ValidForPrefix(outPfx); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			relID := parseRelIDFromAdjKey(key)
-			relType := binary.BigEndian.Uint16(key[9:])
-			endID := parseIDFromKey(key, 11)
-			relInfos[relID] = relInfo{relType: relType, startID: nodeID, endID: endID}
+	// Delete each relationship.
+	relDeleteCount := int64(0)
+	for relID := range relIDs {
+		if err := bs.deleteRelLocked(relID); err != nil {
+			continue // tolerate already-deleted rels (ErrRelNotFound)
 		}
-		it.Close()
+		relDeleteCount++
+	}
 
-		// Scan incoming adjacency: inKey = keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B)
-		inPfx := inPrefix(nodeID)
-		it = txn.NewIterator(opts)
-		for it.Seek(inPfx); it.ValidForPrefix(inPfx); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			relID := parseRelIDFromAdjKey(key)
-			if _, exists := relInfos[relID]; exists {
-				continue // dedup self-loops
-			}
-			relType := binary.BigEndian.Uint16(key[9:])
-			startID := parseIDFromKey(key, 11)
-			relInfos[relID] = relInfo{relType: relType, startID: startID, endID: nodeID}
-		}
-		it.Close()
-
-		// 3. Delete each relationship and all its index entries.
-		for relID, ri := range relInfos {
-			// Relationship entity.
-			if err := txn.Delete(relKey(relID)); err != nil {
-				return err
-			}
-			// Type index.
-			if err := txn.Delete(relTypeIndexKey(ri.relType, relID)); err != nil {
-				return err
-			}
-			// Outgoing adjacency.
-			if err := txn.Delete(outKey(ri.startID, ri.relType, ri.endID, relID)); err != nil {
-				return err
-			}
-			// Incoming adjacency.
-			if err := txn.Delete(inKey(ri.endID, ri.relType, ri.startID, relID)); err != nil {
-				return err
-			}
-		}
-
-		// 4. Delete label index entries.
-		allTokens := []int{w.PrimaryLabel}
-		allTokens = append(allTokens, w.ExtraLabels...)
-		for _, tok := range allTokens {
-			if err := txn.Delete(labelIndexKey(uint16(tok), nodeID)); err != nil { // #nosec G115 — token from our own serialization
-				return err
-			}
-		}
-
-		// 5. Delete node entity.
-		if err := txn.Delete(nk); err != nil {
-			return err
-		}
-
-		// 6. Update counters: node -1, rels -N.
-		if err := incrCounter(txn, counterNodeCountKey, -1); err != nil {
-			return err
-		}
-		relCount := int64(len(relInfos))
-		if relCount > 0 {
-			if err := incrCounter(txn, counterRelCountKey, -relCount); err != nil {
-				return err
-			}
-		}
-
+	// Get node data for label cleanup.
+	n, err := bs.getNodeLocked(id)
+	if err != nil {
+		// Node was in nodeIDs but can't be loaded — still proceed with cleanup.
+		bs.nodeCache.MarkDeleted(id)
+		delete(bs.nodeIDs, id)
+		bs.appendOps(writeOp{opType: writeOpDelete, key: nodeKey(int64(id))})
+		bs.nodeCount.Add(-1)
 		return nil
-	})
+	}
+
+	// Build delete ops for node.
+	intID := int64(id)
+	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+
+	// Remove label index entries.
+	allTokens := collectNodeLabelTokens(n)
+	for _, tok := range allTokens {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+		if set, exists := bs.labelIdx[tok]; exists {
+			delete(set, id)
+			if len(set) == 0 {
+				delete(bs.labelIdx, tok)
+			}
+		}
+	}
+
+	// Update in-memory state.
+	bs.nodeCache.MarkDeleted(id)
+	delete(bs.nodeIDs, id)
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(-1)
+
+	// Note: relCount was already adjusted by deleteRelLocked for each rel.
+	// The cascade counter is handled independently by deleteRelLocked's relCount.Add(-1).
+	return nil
 }
 
 // --- Counts (O(1) via atomic counters) ---
 
-// NodeCount returns the number of stored nodes.
-// Reads the counter metadata key — O(1) regardless of graph size.
+// NodeCount returns the number of stored nodes. O(1).
 func (bs *BadgerStore) NodeCount() (int, error) {
-	var count int64
-	err := bs.db.View(func(txn *badger.Txn) error {
-		var err error
-		count, err = getCounter(txn, counterNodeCountKey)
-		return err
-	})
-	return int(count), err // #nosec G115 — count is always non-negative and within int range
+	return int(bs.nodeCount.Load()), nil // #nosec G115 — count is always non-negative and within int range
 }
 
-// RelationshipCount returns the number of stored relationships.
-// Reads the counter metadata key — O(1) regardless of graph size.
+// RelationshipCount returns the number of stored relationships. O(1).
 func (bs *BadgerStore) RelationshipCount() (int, error) {
-	var count int64
-	err := bs.db.View(func(txn *badger.Txn) error {
-		var err error
-		count, err = getCounter(txn, counterRelCountKey)
+	return int(bs.relCount.Load()), nil // #nosec G115 — count is always non-negative and within int range
+}
+
+// --- Background flush ---
+
+// flushLoop periodically drains the write buffer to Badger.
+func (bs *BadgerStore) flushLoop() {
+	defer close(bs.flushDone)
+	ticker := time.NewTicker(bs.flushInt)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-bs.stopCh:
+			_ = bs.flush() // #nosec G104 — best-effort final flush; failed ops are re-queued internally
+			return
+		case <-ticker.C:
+			_ = bs.flush() // #nosec G104 — best-effort periodic flush; failed ops are re-queued internally
+		}
+	}
+}
+
+// Flush synchronously drains the write buffer to Badger. Exported for testing.
+func (bs *BadgerStore) Flush() error {
+	return bs.flush()
+}
+
+// flush drains the write buffer to Badger via WriteBatch.
+func (bs *BadgerStore) flush() error {
+	bs.wbMu.Lock()
+	ops := bs.pending
+	bs.pending = nil
+	bs.wbMu.Unlock()
+
+	if len(ops) == 0 {
+		return nil
+	}
+
+	wb := bs.db.NewWriteBatch()
+	defer wb.Cancel() // no-op if Flush already called
+
+	for _, op := range ops {
+		switch op.opType {
+		case writeOpSet:
+			if err := wb.SetEntry(badger.NewEntry(op.key, op.value)); err != nil {
+				// Re-queue failed ops for retry.
+				bs.wbMu.Lock()
+				bs.pending = append(ops, bs.pending...)
+				bs.wbMu.Unlock()
+				return fmt.Errorf("graph: write batch set: %w", err)
+			}
+		case writeOpDelete:
+			if err := wb.Delete(op.key); err != nil {
+				bs.wbMu.Lock()
+				bs.pending = append(ops, bs.pending...)
+				bs.wbMu.Unlock()
+				return fmt.Errorf("graph: write batch delete: %w", err)
+			}
+		}
+	}
+
+	if err := wb.Flush(); err != nil {
+		// Re-queue on flush failure.
+		bs.wbMu.Lock()
+		bs.pending = append(ops, bs.pending...)
+		bs.wbMu.Unlock()
+		return fmt.Errorf("graph: write batch flush: %w", err)
+	}
+
+	// Persist counters alongside data.
+	if err := bs.persistCounters(); err != nil {
 		return err
+	}
+
+	// Mark dirty cache entries as clean, remove flushed tombstones.
+	bs.nodeCache.CollectDirty()
+	bs.relCache.CollectDirty()
+
+	return nil
+}
+
+// persistCounters writes current atomic counters to Badger meta keys.
+func (bs *BadgerStore) persistCounters() error {
+	return bs.db.Update(func(txn *badger.Txn) error {
+		nc := bs.nodeCount.Load()
+		rc := bs.relCount.Load()
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
+		if err := txn.Set(counterNodeCountKey, buf); err != nil {
+			return err
+		}
+		buf2 := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf2, uint64(rc)) // #nosec G115 — intentional int64→uint64 for binary encoding
+		return txn.Set(counterRelCountKey, buf2)
 	})
-	return int(count), err // #nosec G115 — count is always non-negative and within int range
+}
+
+// --- Background GC ---
+
+// gcLoop periodically runs Badger value log GC.
+func (bs *BadgerStore) gcLoop() {
+	defer close(bs.gcDone)
+	ticker := time.NewTicker(bs.gcInt)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-bs.stopCh:
+			return
+		case <-ticker.C:
+			for bs.db.RunValueLogGC(bs.gcRatio) == nil {
+				// Keep running until no more garbage to collect.
+			}
+		}
+	}
+}
+
+// --- Lifecycle ---
+
+// Close stops background goroutines, performs a final flush, persists counters,
+// and closes the Badger database. Safe to call multiple times.
+func (bs *BadgerStore) Close() error {
+	var err error
+	bs.closeOnce.Do(func() {
+		close(bs.stopCh)
+		<-bs.flushDone // wait for final flush
+		<-bs.gcDone    // wait for GC exit
+		if e := bs.persistCounters(); e != nil {
+			err = e
+		}
+		if e := bs.db.Close(); e != nil && err == nil {
+			err = e
+		}
+	})
+	return err
 }
 
 // --- Registry persistence ---
@@ -739,4 +1039,100 @@ func (bs *BadgerStore) LoadRelTypeRegistry(reg *relTypeRegistry) (bool, error) {
 		return false, nil
 	}
 	return true, reg.ImportNames(names)
+}
+
+// --- Internal helpers ---
+
+// getNodeLocked retrieves a node from cache or Badger.
+// Caller must hold bs.idxMu (read or write).
+func (bs *BadgerStore) getNodeLocked(id snowflake.ID) (*types.Node, error) {
+	v, status := bs.nodeCache.Get(id)
+	if status == cacheHit {
+		return v, nil
+	}
+	if status == cacheDeleted {
+		return nil, ErrNodeNotFound
+	}
+
+	// Cache miss — read from Badger.
+	var n *types.Node
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(nodeKey(int64(id)))
+		if err == badger.ErrKeyNotFound {
+			return ErrNodeNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w nodeWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal node: %w", err)
+			}
+			n = wireToNode(w)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	bs.nodeCache.LoadClean(id, n)
+	return n, nil
+}
+
+// getRelLocked retrieves a relationship from cache or Badger.
+// Caller must hold bs.idxMu (read or write).
+func (bs *BadgerStore) getRelLocked(id snowflake.ID) (*types.Relationship, error) {
+	v, status := bs.relCache.Get(id)
+	if status == cacheHit {
+		return v, nil
+	}
+	if status == cacheDeleted {
+		return nil, ErrRelNotFound
+	}
+
+	// Cache miss — read from Badger.
+	var r *types.Relationship
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(relKey(int64(id)))
+		if err == badger.ErrKeyNotFound {
+			return ErrRelNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w relWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal relationship: %w", err)
+			}
+			r = wireToRel(w)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	bs.relCache.LoadClean(id, r)
+	return r, nil
+}
+
+// relExistsInIndex checks if a relationship ID exists in any type index.
+func (bs *BadgerStore) relExistsInIndex(id snowflake.ID) bool {
+	for _, set := range bs.typeIdx {
+		if _, exists := set[id]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+// collectNodeLabelTokens returns all label token values from a node.
+func collectNodeLabelTokens(n *types.Node) []uint16 {
+	tokens := n.AllLabelTokens()
+	result := make([]uint16, len(tokens))
+	for i, t := range tokens {
+		result[i] = t.Value()
+	}
+	return result
 }

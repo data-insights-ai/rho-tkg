@@ -9,6 +9,7 @@ import (
 )
 
 // newTestBadgerStore creates an in-memory BadgerStore for testing.
+// FlushInterval is 0 to disable periodic flushing — tests call Flush() manually.
 func newTestBadgerStore(t *testing.T) *BadgerStore {
 	t.Helper()
 	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
@@ -807,7 +808,7 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// Open, store data, close.
+	// Open, store data, flush, close.
 	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
 	if err != nil {
 		t.Fatalf("open 1: %v", err)
@@ -817,11 +818,12 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 	if err := bs1.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
+	// Close() performs a final flush, persisting all pending writes.
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("close 1: %v", err)
 	}
 
-	// Reopen and verify.
+	// Reopen — loadIndexes rebuilds in-memory state from Badger.
 	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
 	if err != nil {
 		t.Fatalf("open 2: %v", err)
@@ -873,30 +875,45 @@ func TestBadgerStoreDeleteRelCleansAdjacency(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreQueryPropagatesError(t *testing.T) {
+func TestBadgerStoreGetNodePropagatesErrorOnCacheMiss(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	// Close the DB to force errors on all query methods.
+	// Close the underlying DB to force errors on cache-miss reads.
 	bs.db.Close()
 
-	if _, err := bs.NodesByLabel(1); err == nil {
-		t.Fatal("NodesByLabel should error on closed DB")
+	// GetNode on a cache miss should propagate the Badger error.
+	_, err := bs.GetNode(snowflake.ID(999))
+	if err == nil {
+		t.Fatal("GetNode cache miss should error on closed DB")
 	}
-	if _, err := bs.RelationshipsByType(1); err == nil {
-		t.Fatal("RelationshipsByType should error on closed DB")
+
+	// GetRelationship on a cache miss should propagate the Badger error.
+	_, err = bs.GetRelationship(snowflake.ID(999))
+	if err == nil {
+		t.Fatal("GetRelationship cache miss should error on closed DB")
 	}
-	if _, err := bs.OutgoingRelationships(snowflake.ID(1), 0); err == nil {
-		t.Fatal("OutgoingRelationships should error on closed DB")
+}
+
+func TestBadgerStoreCountsNeverError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Counts are atomic — never touch Badger.
+	nc, err := bs.NodeCount()
+	if err != nil {
+		t.Fatalf("NodeCount should not error: %v", err)
 	}
-	if _, err := bs.IncomingRelationships(snowflake.ID(1), 0); err == nil {
-		t.Fatal("IncomingRelationships should error on closed DB")
+	if nc != 0 {
+		t.Fatalf("expected 0 nodes, got %d", nc)
 	}
-	if _, err := bs.NodeCount(); err == nil {
-		t.Fatal("NodeCount should error on closed DB")
+
+	rc, err := bs.RelationshipCount()
+	if err != nil {
+		t.Fatalf("RelationshipCount should not error: %v", err)
 	}
-	if _, err := bs.RelationshipCount(); err == nil {
-		t.Fatal("RelationshipCount should error on closed DB")
+	if rc != 0 {
+		t.Fatalf("expected 0 rels, got %d", rc)
 	}
 }
 
@@ -1057,8 +1074,7 @@ func TestBadgerStoreCountInitialization(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// Open and store data without counters — simulate older DB by
-	// directly operating on a fresh BadgerStore (counters initialized to 0).
+	// Open, store data, close (final flush persists counters).
 	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
 	if err != nil {
 		t.Fatalf("open 1: %v", err)
@@ -1066,9 +1082,9 @@ func TestBadgerStoreCountInitialization(t *testing.T) {
 	putTestNode(t, bs1, 100, 1, nil)
 	putTestNode(t, bs1, 200, 1, nil)
 	putTestRel(t, bs1, 500, 1, 100, 200)
-	bs1.Close()
+	bs1.Close() // final flush + persistCounters
 
-	// Reopen — initCounters should read existing counter values.
+	// Reopen — loadIndexes reads counter values from Badger.
 	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
 	if err != nil {
 		t.Fatalf("open 2: %v", err)
@@ -1113,5 +1129,265 @@ func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
 	}
 	if len(nodes2) != 0 {
 		t.Fatalf("expected 0 nodes with label 2 after delete, got %d", len(nodes2))
+	}
+}
+
+// ─── LRU cache + flush tests ────────────────────────────────────────────────
+
+func TestBadgerStoreFlushPersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, write entities, flush, close.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 10, 1, nil)
+	putTestNode(t, bs1, 20, 1, nil)
+	putTestRel(t, bs1, 500, 1, 10, 20)
+
+	// Explicit flush before close.
+	if err := bs1.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Reopen and verify data was flushed to Badger.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	if _, err := bs2.GetNode(snowflake.ID(10)); err != nil {
+		t.Fatalf("node 10 not persisted: %v", err)
+	}
+	if _, err := bs2.GetNode(snowflake.ID(20)); err != nil {
+		t.Fatalf("node 20 not persisted: %v", err)
+	}
+	if _, err := bs2.GetRelationship(snowflake.ID(500)); err != nil {
+		t.Fatalf("rel 500 not persisted: %v", err)
+	}
+
+	nc, _ := bs2.NodeCount()
+	rc, _ := bs2.RelationshipCount()
+	if nc != 2 {
+		t.Errorf("NodeCount = %d, want 2", nc)
+	}
+	if rc != 1 {
+		t.Errorf("RelCount = %d, want 1", rc)
+	}
+}
+
+func TestBadgerStoreCountConcurrency(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	const goroutines = 10
+	const nodesPerGoroutine = 10
+	done := make(chan struct{})
+
+	for g := range goroutines {
+		go func(offset int) {
+			for i := range nodesPerGoroutine {
+				id := int64(offset*1000 + i + 1)
+				n := types.NewNode(snowflake.ID(id), 1, nil)
+				if err := bs.PutNode(n); err != nil {
+					t.Errorf("PutNode(%d): %v", id, err)
+				}
+			}
+			done <- struct{}{}
+		}(g)
+	}
+
+	for range goroutines {
+		<-done
+	}
+
+	nc, _ := bs.NodeCount()
+	if nc != goroutines*nodesPerGoroutine {
+		t.Fatalf("NodeCount = %d, want %d", nc, goroutines*nodesPerGoroutine)
+	}
+}
+
+func TestBadgerStoreCloseIdempotent(t *testing.T) {
+	t.Parallel()
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+
+	putTestNode(t, bs, 100, 1, nil)
+
+	// Close twice — no panic.
+	if err := bs.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("close 2: %v", err)
+	}
+}
+
+func TestBadgerStoreCacheTombstone(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, nil)
+
+	// Verify node exists.
+	if _, err := bs.GetNode(snowflake.ID(100)); err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+
+	// Delete — creates tombstone in cache.
+	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Before flush: cache tombstone should prevent fallthrough to Badger.
+	_, err := bs.GetNode(snowflake.ID(100))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound from tombstone, got %v", err)
+	}
+}
+
+func TestBadgerStoreDeleteNodeAfterReopen(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, add node, close (flushes to Badger).
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 100, 1, []uint16{2})
+	bs1.Close()
+
+	// Reopen — node is in Badger but not in cache.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	// DeleteNode must read from Badger (cache miss) to get label tokens.
+	if err := bs2.DeleteNode(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteNode after reopen: %v", err)
+	}
+
+	// Verify node is gone.
+	_, err = bs2.GetNode(snowflake.ID(100))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+
+	nc, _ := bs2.NodeCount()
+	if nc != 0 {
+		t.Fatalf("NodeCount = %d, want 0", nc)
+	}
+}
+
+func TestBadgerStoreDeleteRelAfterReopen(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, add nodes + rel, close.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 10, 1, nil)
+	putTestNode(t, bs1, 20, 1, nil)
+	putTestRel(t, bs1, 500, 3, 10, 20)
+	bs1.Close()
+
+	// Reopen — rel is in Badger but not in cache.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	// DeleteRelationship reads from Badger (cache miss) to get type/endpoints.
+	if err := bs2.DeleteRelationship(snowflake.ID(500)); err != nil {
+		t.Fatalf("DeleteRelationship after reopen: %v", err)
+	}
+
+	_, err = bs2.GetRelationship(snowflake.ID(500))
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+
+	rc, _ := bs2.RelationshipCount()
+	if rc != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", rc)
+	}
+}
+
+func TestBadgerStoreReopenAfterFlush(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, add nodes + rels, close (triggers final flush).
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 10, 1, []uint16{2})
+	putTestNode(t, bs1, 20, 1, nil)
+	putTestNode(t, bs1, 30, 2, nil)
+	putTestRel(t, bs1, 500, 3, 10, 20)
+	putTestRel(t, bs1, 501, 3, 10, 30)
+	putTestRel(t, bs1, 502, 4, 20, 30)
+	bs1.Close()
+
+	// Reopen — indexes should be rebuilt from Badger.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	// Label index rebuilt.
+	nodes, _ := bs2.NodesByLabel(1)
+	if len(nodes) != 2 {
+		t.Errorf("label 1: expected 2 nodes, got %d", len(nodes))
+	}
+	nodes, _ = bs2.NodesByLabel(2)
+	if len(nodes) != 2 { // node 10 (extra label 2) + node 30 (primary label 2)
+		t.Errorf("label 2: expected 2 nodes, got %d", len(nodes))
+	}
+
+	// Type index rebuilt.
+	rels, _ := bs2.RelationshipsByType(3)
+	if len(rels) != 2 {
+		t.Errorf("type 3: expected 2 rels, got %d", len(rels))
+	}
+	rels, _ = bs2.RelationshipsByType(4)
+	if len(rels) != 1 {
+		t.Errorf("type 4: expected 1 rel, got %d", len(rels))
+	}
+
+	// Adjacency rebuilt.
+	out, _ := bs2.OutgoingRelationships(snowflake.ID(10), 0)
+	if len(out) != 2 {
+		t.Errorf("node 10 outgoing: expected 2, got %d", len(out))
+	}
+	in, _ := bs2.IncomingRelationships(snowflake.ID(30), 0)
+	if len(in) != 2 {
+		t.Errorf("node 30 incoming: expected 2, got %d", len(in))
+	}
+
+	// Counts correct.
+	nc, _ := bs2.NodeCount()
+	rc, _ := bs2.RelationshipCount()
+	if nc != 3 {
+		t.Errorf("NodeCount = %d, want 3", nc)
+	}
+	if rc != 3 {
+		t.Errorf("RelCount = %d, want 3", rc)
 	}
 }

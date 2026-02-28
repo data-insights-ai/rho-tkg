@@ -155,3 +155,32 @@ Patterns that caused review findings. Rules to prevent recurrence.
 **Problem:** `DeleteNode` calls `OutgoingRelationships`, then `DeleteRelationship` N times, then `DeleteNode`. Each call acquires/releases the `RWMutex` independently. Between any two calls, a concurrent `AddRelationship` can create a new edge to the node being deleted — dangling edge.
 **Root cause:** Store has no transactional API. `RWMutex` serializes individual operations but not multi-step workflows.
 **Rule:** Document TOCTOU limitations explicitly with `// TODO` comments when the Store lacks a transaction API. The Badger implementation MUST wrap cascade-delete in a single serialized `Update()` transaction. Never assume per-call locking provides multi-step atomicity.
+
+---
+
+## 2026-02-28 — BadgerStore LRU Cache + Async Persistence (v3.0.10)
+
+### OCC contention on shared counter keys makes concurrent writes fail (BLOCKER)
+**Problem:** `incrCounter()` in every Badger Update() transaction touched shared meta keys. Under Badger's OCC (Optimistic Concurrency Control), concurrent writes all conflict — 100 concurrent PutNode → 99 ErrConflict with no retry logic.
+**Solution:** Replace with `atomic.Int64` fields on the BadgerStore struct. Counters are persisted by the flush loop piggyback, never inside any Badger transaction. Zero OCC contention.
+**Rule:** Never put counters inside Badger transactions. Use `sync/atomic` for in-memory counters and persist them out-of-band.
+
+### In-memory indexes must be rebuilt from Badger on startup (PATTERN)
+**Problem:** With the LRU cache architecture, in-memory indexes are the source of truth while running. But they start empty. If the DB has existing data, queries would return empty results until entities are accessed.
+**Solution:** `loadIndexes()` performs a single `db.View()` scanning all index key prefixes (keys-only) to rebuild `nodeIDs`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx` and load counter values.
+**Rule:** When switching from transactional reads to in-memory state, always rebuild the complete index on startup. A partial index is worse than no index.
+
+### Entity locks must use ascending shard order for deadlock prevention (PATTERN)
+**Problem:** Concurrent `LockTwo(A, B)` and `LockTwo(B, A)` on different goroutines can deadlock if locks are acquired in parameter order.
+**Solution:** `LockTwo` normalizes to ascending shard index before acquiring. Same-shard: single lock. Self-loops (A→A): works correctly.
+**Rule:** When locking multiple resources, always sort by a consistent ordering key (shard index, not entity ID) before acquiring. Unlock in reverse order by convention.
+
+### Async flush means tests must call Flush() or Close() before cross-DB reads (PATTERN)
+**Problem:** With async batch writes, data written via `PutNode()` is in the LRU cache and write buffer but not yet in Badger. Tests that close and reopen the DB to verify persistence will find empty data.
+**Solution:** Tests call `bs.Flush()` or `bs.Close()` (which triggers final flush) before reopening. In-memory reads (cache-first) work immediately without flush.
+**Rule:** Tests verifying durable persistence must explicitly flush or close before reopening. Tests verifying in-memory behavior work immediately.
+
+### Tombstones prevent stale reads after delete (PATTERN)
+**Problem:** Without tombstones, deleting an entity from the in-memory index would cause a cache miss → Badger read → returning the deleted entity (if the delete hasn't been flushed yet).
+**Solution:** `MarkDeleted()` sets a dirty tombstone in the cache. `GetNode`/`GetRelationship` return `ErrNotFound` on `cacheDeleted` without ever touching Badger.
+**Rule:** In cache-first architectures with async persistence, always use tombstones for deletes. A cache miss must not fall through to stale durable storage.

@@ -40,13 +40,18 @@ type Config struct {
 // Graph is the central graph layer. It owns the label and relationship type
 // registries, snowflake ID generators, store, and provides string resolution
 // for token-based entities.
+//
+// Entity locks serialize AddRelationship and DeleteNode on overlapping entities
+// to prevent write-skew (concurrent AddRelationship(→X) + DeleteNodeCascade(X)
+// producing a dangling edge).
 type Graph struct {
-	labels    *labelRegistry
-	relTypes  *relTypeRegistry
-	nodeIDGen *snowflake.Node
-	relIDGen  *snowflake.Node
-	store     Store
-	closeFn   func() error // nil for MemoryStore; calls BadgerStore.Close() for Badger
+	labels      *labelRegistry
+	relTypes    *relTypeRegistry
+	nodeIDGen   *snowflake.Node
+	relIDGen    *snowflake.Node
+	store       Store
+	closeFn     func() error // nil for MemoryStore; calls BadgerStore.Close() for Badger
+	entityLocks *entityLockManager
 }
 
 // New creates a new Graph with the given configuration.
@@ -81,10 +86,11 @@ func New(config Config) (*Graph, error) {
 	}
 
 	g := &Graph{
-		labels:    newLabelRegistry(),
-		relTypes:  newRelTypeRegistry(),
-		nodeIDGen: nodeGen,
-		relIDGen:  relGen,
+		labels:      newLabelRegistry(),
+		relTypes:    newRelTypeRegistry(),
+		nodeIDGen:   nodeGen,
+		relIDGen:    relGen,
+		entityLocks: newEntityLockManager(),
 	}
 
 	store := config.Store
@@ -282,6 +288,11 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 	startID := startNode.InternalID().SnowflakeID()
 	endID := endNode.InternalID().SnowflakeID()
 
+	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
+	// Lock ordering: ascending shard index — deadlock-free.
+	g.entityLocks.LockTwo(startID, endID)
+	defer g.entityLocks.UnlockTwo(startID, endID)
+
 	id := g.NextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
@@ -294,10 +305,12 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 }
 
 // DeleteNode atomically removes a node and all connected relationships.
-// Both MemoryStore and BadgerStore execute the entire cascade under a single
-// lock/transaction — no TOCTOU window.
+// Acquires the entity lock for the node to prevent write-skew with concurrent
+// AddRelationship targeting the same node.
 // Returns ErrNodeNotFound if the node does not exist.
 func (g *Graph) DeleteNode(id snowflake.ID) error {
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
 	return g.store.DeleteNodeCascade(id)
 }
 
