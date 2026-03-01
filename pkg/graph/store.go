@@ -14,11 +14,13 @@ type Store interface {
 	// Node operations
 	PutNode(n *types.Node) error
 	GetNode(id snowflake.ID) (*types.Node, error)
+	ReplaceNode(n *types.Node) error
 	DeleteNode(id snowflake.ID) error
 
 	// Relationship operations
 	PutRelationship(r *types.Relationship) error
 	GetRelationship(id snowflake.ID) (*types.Relationship, error)
+	ReplaceRelationship(r *types.Relationship) error
 	DeleteRelationship(id snowflake.ID) error
 
 	// Index queries

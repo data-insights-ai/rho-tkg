@@ -791,6 +791,140 @@ func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
 	}
 }
 
+// ─── MemoryStore: ReplaceNode / ReplaceRelationship ─────────────────────────
+
+func TestMemoryStoreReplaceNode(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	ms.PutNode(n)
+
+	// Retrieve, modify, replace.
+	updated, _ := ms.GetNode(snowflake.ID(1))
+	_ = updated.SetProperty("name", "Bob")
+
+	if err := ms.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode() returned error: %v", err)
+	}
+
+	got, err := ms.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatalf("GetNode after replace: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("property after replace = %v, want Bob", v)
+	}
+}
+
+func TestMemoryStoreReplaceNodeNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(999), 10, nil)
+
+	err := ms.ReplaceNode(n)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("ReplaceNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	}
+}
+
+func TestMemoryStoreReplaceNodeCacheIsolation(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	ms.PutNode(n)
+
+	// Replace with a new value.
+	updated, _ := ms.GetNode(snowflake.ID(1))
+	_ = updated.SetProperty("name", "Bob")
+	ms.ReplaceNode(updated)
+
+	// Mutate the replaced node AFTER the call — must not affect store.
+	_ = updated.SetProperty("name", "MUTATED")
+
+	got, _ := ms.GetNode(snowflake.ID(1))
+	v, _ := got.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("ReplaceNode did not deep copy: got %v, want Bob", v)
+	}
+}
+
+func TestMemoryStoreReplaceRelationship(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	ms.PutRelationship(r)
+
+	// Retrieve, modify, replace.
+	updated, _ := ms.GetRelationship(snowflake.ID(100))
+	_ = updated.SetProperty("weight", 2.0)
+
+	if err := ms.ReplaceRelationship(updated); err != nil {
+		t.Fatalf("ReplaceRelationship() returned error: %v", err)
+	}
+
+	got, err := ms.GetRelationship(snowflake.ID(100))
+	if err != nil {
+		t.Fatalf("GetRelationship after replace: %v", err)
+	}
+	v, ok := got.GetProperty("weight")
+	if !ok || v != 2.0 {
+		t.Fatalf("property after replace = %v, want 2.0", v)
+	}
+}
+
+func TestMemoryStoreReplaceRelNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	r := types.NewRelationship(snowflake.ID(999), 5, snowflake.ID(10), snowflake.ID(20))
+
+	err := ms.ReplaceRelationship(r)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("ReplaceRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
+	}
+}
+
+func TestMemoryStoreReplaceRelCacheIsolation(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	ms.PutRelationship(r)
+
+	// Replace with new value.
+	updated, _ := ms.GetRelationship(snowflake.ID(100))
+	_ = updated.SetProperty("weight", 2.0)
+	ms.ReplaceRelationship(updated)
+
+	// Mutate after call — must not affect store.
+	_ = updated.SetProperty("weight", 999.0)
+
+	got, _ := ms.GetRelationship(snowflake.ID(100))
+	v, _ := got.GetProperty("weight")
+	if v != 2.0 {
+		t.Fatalf("ReplaceRelationship did not deep copy: got %v, want 2.0", v)
+	}
+}
+
 // ─── MemoryStore: Cache isolation ───────────────────────────────────────────
 
 func TestMemoryStorePutNodeCacheIsolation(t *testing.T) {

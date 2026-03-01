@@ -42,8 +42,8 @@ Complete. Implemented in v3.0.15.
 **Graph layer:** `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)` — read-modify-write with entity lock, version bump, UpdatedAt.
 **Convenience:** `SetNodeProperty`, `DeleteNodeProperty`, `SetRelationshipProperty`, `DeleteRelationshipProperty`.
 
-**37 tests total:** 6 store-level (MemoryStore Replace), 27 graph-layer (UpdateNode/UpdateRelationship/convenience), 4 Badger integration (including persistence round-trip).
-All pass with race detector. Coverage ≥83% on all new methods.
+**44 tests total:** 6 MemoryStore Replace, 6 BadgerStore Replace, 28 graph-layer (13 UpdateNode + 11 UpdateRelationship + 4 convenience), 4 Badger integration (including persistence round-trip).
+All pass with race detector. Coverage ≥89% on all new methods.
 
 ### 1b. Version History
 

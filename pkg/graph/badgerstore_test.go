@@ -1947,3 +1947,131 @@ func TestBadgerStoreGetRelReturnsCopy(t *testing.T) {
 		t.Fatalf("GetRelationship returned shared pointer: got %v, want 1.0", v)
 	}
 }
+
+// ─── ReplaceNode / ReplaceRelationship ──────────────────────────────────────
+
+func TestBadgerStoreReplaceNode(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(100), 1, nil)
+	_ = n.SetProperty("name", "Alice")
+	bs.PutNode(n)
+
+	// Retrieve, modify, replace.
+	updated, _ := bs.GetNode(snowflake.ID(100))
+	_ = updated.SetProperty("name", "Bob")
+
+	if err := bs.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode() returned error: %v", err)
+	}
+
+	got, err := bs.GetNode(snowflake.ID(100))
+	if err != nil {
+		t.Fatalf("GetNode after replace: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("property after replace = %v, want Bob", v)
+	}
+}
+
+func TestBadgerStoreReplaceNodeNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(999), 1, nil)
+	err := bs.ReplaceNode(n)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("ReplaceNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	}
+}
+
+func TestBadgerStoreReplaceNodeCacheIsolation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(100), 1, nil)
+	_ = n.SetProperty("name", "Alice")
+	bs.PutNode(n)
+
+	// Replace with a new value.
+	updated, _ := bs.GetNode(snowflake.ID(100))
+	_ = updated.SetProperty("name", "Bob")
+	bs.ReplaceNode(updated)
+
+	// Mutate the replaced node AFTER the call — must not affect store.
+	_ = updated.SetProperty("name", "MUTATED")
+
+	got, _ := bs.GetNode(snowflake.ID(100))
+	v, _ := got.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("ReplaceNode did not deep copy: got %v, want Bob", v)
+	}
+}
+
+func TestBadgerStoreReplaceRelationship(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	bs.PutRelationship(r)
+
+	// Retrieve, modify, replace.
+	updated, _ := bs.GetRelationship(snowflake.ID(100))
+	_ = updated.SetProperty("weight", 2.0)
+
+	if err := bs.ReplaceRelationship(updated); err != nil {
+		t.Fatalf("ReplaceRelationship() returned error: %v", err)
+	}
+
+	got, err := bs.GetRelationship(snowflake.ID(100))
+	if err != nil {
+		t.Fatalf("GetRelationship after replace: %v", err)
+	}
+	v, ok := got.GetProperty("weight")
+	if !ok || v != 2.0 {
+		t.Fatalf("property after replace = %v, want 2.0", v)
+	}
+}
+
+func TestBadgerStoreReplaceRelNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(snowflake.ID(999), 5, snowflake.ID(10), snowflake.ID(20))
+	err := bs.ReplaceRelationship(r)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("ReplaceRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
+	}
+}
+
+func TestBadgerStoreReplaceRelCacheIsolation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	bs.PutRelationship(r)
+
+	// Replace with new value.
+	updated, _ := bs.GetRelationship(snowflake.ID(100))
+	_ = updated.SetProperty("weight", 2.0)
+	bs.ReplaceRelationship(updated)
+
+	// Mutate after call — must not affect store.
+	_ = updated.SetProperty("weight", 999.0)
+
+	got, _ := bs.GetRelationship(snowflake.ID(100))
+	v, _ := got.GetProperty("weight")
+	if v != 2.0 {
+		t.Fatalf("ReplaceRelationship did not deep copy: got %v, want 2.0", v)
+	}
+}

@@ -104,6 +104,22 @@ func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
 	return nil
 }
 
+// ReplaceNode overwrites an existing node's data in-place.
+// Returns ErrNodeNotFound if the node does not exist.
+// No index changes — labels are immutable after creation.
+func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
+	id := n.InternalID().SnowflakeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.nodes[id]; !exists {
+		return ErrNodeNotFound
+	}
+	ms.nodes[id] = n.DeepCopy()
+	return nil
+}
+
 // PutRelationship stores a relationship and indexes its type and adjacency.
 // Returns ErrNodeNotFound if start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
@@ -162,6 +178,22 @@ func (ms *MemoryStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 		return nil, ErrRelNotFound
 	}
 	return r.DeepCopy(), nil
+}
+
+// ReplaceRelationship overwrites an existing relationship's data in-place.
+// Returns ErrRelNotFound if the relationship does not exist.
+// No index changes — type and endpoints are immutable after creation.
+func (ms *MemoryStore) ReplaceRelationship(r *types.Relationship) error {
+	id := r.InternalID().SnowflakeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.rels[id]; !exists {
+		return ErrRelNotFound
+	}
+	ms.rels[id] = r.DeepCopy()
+	return nil
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.

@@ -470,6 +470,30 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	return nil
 }
 
+// ReplaceNode overwrites an existing node's data in-place.
+// Returns ErrNodeNotFound if the node does not exist.
+// No index changes — labels are immutable after creation.
+func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
+	id := n.InternalID().SnowflakeID()
+
+	w := nodeToWire(n)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		return ErrNodeNotFound
+	}
+
+	bs.nodeCache.Put(id, n.DeepCopy())
+	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
+	return nil
+}
+
 // --- Relationship operations ---
 
 // PutRelationship stores a relationship with type index and adjacency entries.
@@ -585,6 +609,30 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 	// Populate cache as clean.
 	bs.relCache.LoadClean(id, r)
 	return r.DeepCopy(), nil
+}
+
+// ReplaceRelationship overwrites an existing relationship's data in-place.
+// Returns ErrRelNotFound if the relationship does not exist.
+// No index changes — type and endpoints are immutable after creation.
+func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
+	id := r.InternalID().SnowflakeID()
+
+	w := relToWire(r)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal relationship: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.relIDs[id]; !exists {
+		return ErrRelNotFound
+	}
+
+	bs.relCache.Put(id, r.DeepCopy())
+	bs.appendOps(writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data})
+	return nil
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.

@@ -331,6 +331,150 @@ func (g *Graph) DeleteRelationship(id snowflake.ID) error {
 	return g.store.DeleteRelationship(id)
 }
 
+// --- Update operations ---
+
+// UpdateNode applies property updates to an existing node.
+// The updates map keys are property names; values are the new values.
+// A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
+// Returns the updated node. Empty updates map is a no-op (no version bump).
+func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	if len(updates) == 0 {
+		return g.store.GetNode(id)
+	}
+
+	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return nil, fmt.Errorf("graph: update node: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+		}
+	}
+
+	// Phase 2: Entity lock → read-modify-write under serialization.
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, val := range updates {
+		if val == nil {
+			if _, err := current.DeleteProperty(key); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+		} else {
+			if err := current.SetProperty(key, val); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+		}
+	}
+
+	current.SetVersion(current.Version() + 1)
+
+	now := types.Instant(time.Now().UnixMilli())
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.UpdatedAt = now
+
+	if err := g.store.ReplaceNode(current); err != nil {
+		return nil, err
+	}
+
+	return current, nil
+}
+
+// UpdateRelationship applies property updates to an existing relationship.
+// The updates map keys are property names; values are the new values.
+// A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
+// Returns the updated relationship. Empty updates map is a no-op.
+func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	if len(updates) == 0 {
+		return g.store.GetRelationship(id)
+	}
+
+	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return nil, fmt.Errorf("graph: update relationship: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+		}
+	}
+
+	// Phase 2: Entity lock on rel ID only — property changes don't affect adjacency.
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	current, err := g.store.GetRelationship(id)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, val := range updates {
+		if val == nil {
+			if _, err := current.DeleteProperty(key); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+		} else {
+			if err := current.SetProperty(key, val); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+		}
+	}
+
+	current.SetVersion(current.Version() + 1)
+
+	now := types.Instant(time.Now().UnixMilli())
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.UpdatedAt = now
+
+	if err := g.store.ReplaceRelationship(current); err != nil {
+		return nil, err
+	}
+
+	return current, nil
+}
+
+// SetNodeProperty sets a single property on an existing node.
+func (g *Graph) SetNodeProperty(id snowflake.ID, key string, value any) error {
+	_, err := g.UpdateNode(id, map[string]any{key: value})
+	return err
+}
+
+// DeleteNodeProperty removes a single property from an existing node.
+func (g *Graph) DeleteNodeProperty(id snowflake.ID, key string) error {
+	_, err := g.UpdateNode(id, map[string]any{key: nil})
+	return err
+}
+
+// SetRelationshipProperty sets a single property on an existing relationship.
+func (g *Graph) SetRelationshipProperty(id snowflake.ID, key string, value any) error {
+	_, err := g.UpdateRelationship(id, map[string]any{key: value})
+	return err
+}
+
+// DeleteRelationshipProperty removes a single property from an existing relationship.
+func (g *Graph) DeleteRelationshipProperty(id snowflake.ID, key string) error {
+	_, err := g.UpdateRelationship(id, map[string]any{key: nil})
+	return err
+}
+
 // --- Store passthrough queries ---
 
 // GetNode retrieves a node by snowflake ID.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -1298,5 +1299,753 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	}
 	if len(empty) != 0 {
 		t.Errorf("IncomingRelationships(a, all) = %d, want 0", len(empty))
+	}
+}
+
+// ─── UpdateNode tests ────────────────────────────────────────────────────────
+
+func TestGraphUpdateNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
+	id := n.InternalID().SnowflakeID()
+
+	updated, err := g.UpdateNode(id, map[string]any{"name": "Bob", "age": 31})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	v, ok := updated.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("name = %v, want Bob", v)
+	}
+	v, ok = updated.GetProperty("age")
+	if !ok || v != 31 {
+		t.Fatalf("age = %v, want 31", v)
+	}
+
+	// Verify persisted.
+	got, _ := g.GetNode(id)
+	v, _ = got.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("persisted name = %v, want Bob", v)
+	}
+}
+
+func TestGraphUpdateNodeAddProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	_, err := g.UpdateNode(id, map[string]any{"email": "alice@example.com"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	got, _ := g.GetNode(id)
+	v, ok := got.GetProperty("email")
+	if !ok || v != "alice@example.com" {
+		t.Fatalf("email = %v, want alice@example.com", v)
+	}
+	// Original property still present.
+	v, ok = got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("name = %v, want Alice", v)
+	}
+}
+
+func TestGraphUpdateNodeDeleteProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
+	id := n.InternalID().SnowflakeID()
+
+	_, err := g.UpdateNode(id, map[string]any{"age": nil})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	got, _ := g.GetNode(id)
+	_, ok := got.GetProperty("age")
+	if ok {
+		t.Fatal("age should be deleted")
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("name = %v, want Alice (unchanged)", v)
+	}
+}
+
+func TestGraphUpdateNodeMixed(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30, "city": "NYC"})
+	id := n.InternalID().SnowflakeID()
+
+	// Add email, modify name, delete city — all in one call.
+	_, err := g.UpdateNode(id, map[string]any{
+		"email": "alice@example.com",
+		"name":  "Bob",
+		"city":  nil,
+	})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	got, _ := g.GetNode(id)
+	v, _ := got.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("name = %v, want Bob", v)
+	}
+	v, ok := got.GetProperty("email")
+	if !ok || v != "alice@example.com" {
+		t.Fatalf("email = %v, want alice@example.com", v)
+	}
+	_, ok = got.GetProperty("city")
+	if ok {
+		t.Fatal("city should be deleted")
+	}
+	v, ok = got.GetProperty("age")
+	if !ok || v != 30 {
+		t.Fatalf("age = %v, want 30 (unchanged)", v)
+	}
+}
+
+func TestGraphUpdateNodeNotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	_, err := g.UpdateNode(snowflake.ID(999), map[string]any{"name": "Alice"})
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("UpdateNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateNodeInvalidProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	_, err := g.UpdateNode(id, map[string]any{"tkg_hack": "bad"})
+	if !errors.Is(err, types.ErrReservedPrefix) {
+		t.Fatalf("UpdateNode(tkg_ key): errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateNodeInvalidValue(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	type badStruct struct{ X int }
+	_, err := g.UpdateNode(id, map[string]any{"bad": badStruct{42}})
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("UpdateNode(bad value): errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateNodeVersionIncrement(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	if n.Version() != 0 {
+		t.Fatalf("initial version = %d, want 0", n.Version())
+	}
+
+	updated1, _ := g.UpdateNode(id, map[string]any{"name": "Bob"})
+	if updated1.Version() != 1 {
+		t.Fatalf("version after first update = %d, want 1", updated1.Version())
+	}
+
+	updated2, _ := g.UpdateNode(id, map[string]any{"name": "Charlie"})
+	if updated2.Version() != 2 {
+		t.Fatalf("version after second update = %d, want 2", updated2.Version())
+	}
+}
+
+func TestGraphUpdateNodeUpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	updated, _ := g.UpdateNode(id, map[string]any{"name": "Alice"})
+	tm := updated.Temporal()
+	if tm == nil {
+		t.Fatal("temporal should be set after update")
+	}
+	if tm.UpdatedAt == 0 {
+		t.Fatal("UpdatedAt should be non-zero after update")
+	}
+}
+
+func TestGraphUpdateNodeEmptyUpdates(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	got, err := g.UpdateNode(id, map[string]any{})
+	if err != nil {
+		t.Fatalf("UpdateNode(empty): %v", err)
+	}
+	if got.Version() != 0 {
+		t.Fatalf("version after empty update = %d, want 0 (no bump)", got.Version())
+	}
+	v, _ := got.GetProperty("name")
+	if v != "Alice" {
+		t.Fatalf("name = %v, want Alice (unchanged)", v)
+	}
+}
+
+func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"counter": 0})
+	id := n.InternalID().SnowflakeID()
+
+	const workers = 50
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for i := range workers {
+		go func(val int) {
+			defer wg.Done()
+			// Each goroutine reads and increments a different property to avoid lost updates.
+			g.UpdateNode(id, map[string]any{fmt.Sprintf("worker_%d", val): val})
+		}(i)
+	}
+	wg.Wait()
+
+	got, _ := g.GetNode(id)
+	// All 50 properties should be present (serialized updates, no lost writes).
+	for i := range workers {
+		key := fmt.Sprintf("worker_%d", i)
+		v, ok := got.GetProperty(key)
+		if !ok {
+			t.Errorf("property %s missing (lost update)", key)
+		}
+		if v != i {
+			t.Errorf("property %s = %v, want %d", key, v, i)
+		}
+	}
+	// Version should be workers (one bump per update).
+	if got.Version() != uint32(workers) {
+		t.Errorf("version = %d, want %d", got.Version(), workers)
+	}
+}
+
+func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+
+	const count = 20
+	ids := make([]snowflake.ID, count)
+	for i := range count {
+		n, _ := g.AddNode([]string{"X"}, map[string]any{"v": 0})
+		ids[i] = n.InternalID().SnowflakeID()
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(count)
+	for i := range count {
+		go func(idx int) {
+			defer wg.Done()
+			g.UpdateNode(ids[idx], map[string]any{"v": idx + 1})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, id := range ids {
+		got, err := g.GetNode(id)
+		if err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+		v, _ := got.GetProperty("v")
+		if v != i+1 {
+			t.Errorf("node %d: v = %v, want %d", id, v, i+1)
+		}
+	}
+}
+
+func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	g.UpdateNode(id, map[string]any{"name": "Bob"})
+
+	got, _ := g.GetNode(id)
+	labels := g.NodeLabels(got)
+	if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Actor" {
+		t.Fatalf("labels after update = %v, want [Person Actor]", labels)
+	}
+}
+
+// ─── UpdateRelationship tests ────────────────────────────────────────────────
+
+func TestGraphUpdateRelationship(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
+	id := r.InternalID().SnowflakeID()
+
+	updated, err := g.UpdateRelationship(id, map[string]any{"since": 2021})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+	v, ok := updated.GetProperty("since")
+	if !ok || v != 2021 {
+		t.Fatalf("since = %v, want 2021", v)
+	}
+
+	// Verify persisted.
+	got, _ := g.GetRelationship(id)
+	v, _ = got.GetProperty("since")
+	if v != 2021 {
+		t.Fatalf("persisted since = %v, want 2021", v)
+	}
+}
+
+func TestGraphUpdateRelAddProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	_, err := g.UpdateRelationship(id, map[string]any{"weight": 0.5})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	v, ok := got.GetProperty("weight")
+	if !ok || v != 0.5 {
+		t.Fatalf("weight = %v, want 0.5", v)
+	}
+}
+
+func TestGraphUpdateRelDeleteProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
+	id := r.InternalID().SnowflakeID()
+
+	_, err := g.UpdateRelationship(id, map[string]any{"note": nil})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	_, ok := got.GetProperty("note")
+	if ok {
+		t.Fatal("note should be deleted")
+	}
+	v, ok := got.GetProperty("since")
+	if !ok || v != 2020 {
+		t.Fatalf("since = %v, want 2020 (unchanged)", v)
+	}
+}
+
+func TestGraphUpdateRelMixed(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
+	id := r.InternalID().SnowflakeID()
+
+	_, err := g.UpdateRelationship(id, map[string]any{
+		"since":  2021,
+		"note":   nil,
+		"weight": 0.8,
+	})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	v, _ := got.GetProperty("since")
+	if v != 2021 {
+		t.Fatalf("since = %v, want 2021", v)
+	}
+	_, ok := got.GetProperty("note")
+	if ok {
+		t.Fatal("note should be deleted")
+	}
+	v, ok = got.GetProperty("weight")
+	if !ok || v != 0.8 {
+		t.Fatalf("weight = %v, want 0.8", v)
+	}
+}
+
+func TestGraphUpdateRelNotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	_, err := g.UpdateRelationship(snowflake.ID(999), map[string]any{"x": 1})
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("UpdateRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateRelInvalidProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	_, err := g.UpdateRelationship(id, map[string]any{"tkg_hack": "bad"})
+	if !errors.Is(err, types.ErrReservedPrefix) {
+		t.Fatalf("UpdateRelationship(tkg_ key): errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateRelInvalidValue(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	type badStruct struct{ X int }
+	_, err := g.UpdateRelationship(id, map[string]any{"bad": badStruct{42}})
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("UpdateRelationship(bad value): errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	}
+}
+
+func TestGraphUpdateRelVersionIncrement(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	if r.Version() != 0 {
+		t.Fatalf("initial version = %d, want 0", r.Version())
+	}
+
+	u1, _ := g.UpdateRelationship(id, map[string]any{"x": 1})
+	if u1.Version() != 1 {
+		t.Fatalf("version after first update = %d, want 1", u1.Version())
+	}
+
+	u2, _ := g.UpdateRelationship(id, map[string]any{"x": 2})
+	if u2.Version() != 2 {
+		t.Fatalf("version after second update = %d, want 2", u2.Version())
+	}
+}
+
+func TestGraphUpdateRelUpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	updated, _ := g.UpdateRelationship(id, map[string]any{"x": 1})
+	tm := updated.Temporal()
+	if tm == nil {
+		t.Fatal("temporal should be set after update")
+	}
+	if tm.UpdatedAt == 0 {
+		t.Fatal("UpdatedAt should be non-zero after update")
+	}
+}
+
+func TestGraphUpdateRelEmptyUpdates(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
+	id := r.InternalID().SnowflakeID()
+
+	got, err := g.UpdateRelationship(id, map[string]any{})
+	if err != nil {
+		t.Fatalf("UpdateRelationship(empty): %v", err)
+	}
+	if got.Version() != 0 {
+		t.Fatalf("version after empty update = %d, want 0 (no bump)", got.Version())
+	}
+}
+
+func TestGraphUpdateRelEndpointsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
+	id := r.InternalID().SnowflakeID()
+	origStartID := r.StartNodeID().SnowflakeID()
+	origEndID := r.EndNodeID().SnowflakeID()
+
+	g.UpdateRelationship(id, map[string]any{"x": 2})
+
+	got, _ := g.GetRelationship(id)
+	if got.StartNodeID().SnowflakeID() != origStartID {
+		t.Fatal("startID changed after update")
+	}
+	if got.EndNodeID().SnowflakeID() != origEndID {
+		t.Fatal("endID changed after update")
+	}
+}
+
+// ─── Convenience method tests ────────────────────────────────────────────────
+
+func TestGraphSetNodeProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	if err := g.SetNodeProperty(id, "name", "Alice"); err != nil {
+		t.Fatalf("SetNodeProperty: %v", err)
+	}
+
+	got, _ := g.GetNode(id)
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("name = %v, want Alice", v)
+	}
+}
+
+func TestGraphDeleteNodeProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	if err := g.DeleteNodeProperty(id, "name"); err != nil {
+		t.Fatalf("DeleteNodeProperty: %v", err)
+	}
+
+	got, _ := g.GetNode(id)
+	_, ok := got.GetProperty("name")
+	if ok {
+		t.Fatal("name should be deleted")
+	}
+}
+
+func TestGraphSetRelationshipProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	if err := g.SetRelationshipProperty(id, "weight", 0.5); err != nil {
+		t.Fatalf("SetRelationshipProperty: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	v, ok := got.GetProperty("weight")
+	if !ok || v != 0.5 {
+		t.Fatalf("weight = %v, want 0.5", v)
+	}
+}
+
+func TestGraphDeleteRelationshipProperty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 0.5})
+	id := r.InternalID().SnowflakeID()
+
+	if err := g.DeleteRelationshipProperty(id, "weight"); err != nil {
+		t.Fatalf("DeleteRelationshipProperty: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	_, ok := got.GetProperty("weight")
+	if ok {
+		t.Fatal("weight should be deleted")
+	}
+}
+
+// ─── Badger integration: UpdateNode / UpdateRelationship ─────────────────────
+
+func TestGraphBadgerUpdateNode(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	updated, err := g.UpdateNode(id, map[string]any{"name": "Bob", "age": 30})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	v, _ := updated.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("name = %v, want Bob", v)
+	}
+
+	got, _ := g.GetNode(id)
+	v, _ = got.GetProperty("name")
+	if v != "Bob" {
+		t.Fatalf("persisted name = %v, want Bob", v)
+	}
+	v, ok := got.GetProperty("age")
+	if !ok || v != 30 {
+		t.Fatalf("age = %v, want 30", v)
+	}
+}
+
+func TestGraphBadgerUpdateRelationship(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
+	id := r.InternalID().SnowflakeID()
+
+	_, err = g.UpdateRelationship(id, map[string]any{"since": 2021})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	got, _ := g.GetRelationship(id)
+	v, _ := got.GetProperty("since")
+	if v != 2021 {
+		t.Fatalf("since = %v, want 2021", v)
+	}
+}
+
+func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create, update, close.
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	_, err = g1.UpdateNode(id, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	// Reopen and verify updated value persisted.
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	got, err := g2.GetNode(id)
+	if err != nil {
+		t.Fatalf("GetNode after reopen: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("persisted name = %v, want Bob", v)
+	}
+	if got.Version() != 1 {
+		t.Fatalf("persisted version = %d, want 1", got.Version())
+	}
+}
+
+func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create, update, close.
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	nA, _ := g1.AddNode([]string{"X"}, nil)
+	nB, _ := g1.AddNode([]string{"X"}, nil)
+	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
+	relID := r.InternalID().SnowflakeID()
+
+	_, err = g1.UpdateRelationship(relID, map[string]any{"since": 2021})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	// Reopen and verify updated value persisted.
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	got, err := g2.GetRelationship(relID)
+	if err != nil {
+		t.Fatalf("GetRelationship after reopen: %v", err)
+	}
+	v, ok := got.GetProperty("since")
+	if !ok || v != 2021 {
+		t.Fatalf("persisted since = %v, want 2021", v)
+	}
+	if got.Version() != 1 {
+		t.Fatalf("persisted version = %d, want 1", got.Version())
 	}
 }
