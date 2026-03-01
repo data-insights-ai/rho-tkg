@@ -28,7 +28,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: v3.0.17 — Phases 1a-1f complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations).
+Status: v3.0.18 — Phases 1a-1g complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations, Context-Aware Operations).
 
 ## Build & Test Commands
 
@@ -109,6 +109,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning, `ExportNames`/`ImportNames` for persistence) |
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry (with `ExportNames`/`ImportNames`) |
 | `batch.go` | `BatchBuilder` — fluent API for queuing graph operations with eager validation and deferred persistence. `BatchResult` / `BatchError` types. Execute order: create nodes → create rels → update nodes → update rels → delete rels → delete nodes. Node creates use `store.PutNodesBatch` for efficiency; rel creates lock endpoints per-rel; updates and deletes use existing Graph methods |
+| `context.go` | `checkCtx` helper + 8 `WithContext` methods (`AddNodeWithContext`, `AddRelationshipWithContext`, `UpdateNodeWithContext`, `UpdateRelationshipWithContext`, `DeleteNodeWithContext`, `DeleteRelationshipWithContext`, `GetNodeWithContext`, `GetRelationshipWithContext`). Non-context methods delegate to `WithContext` with `context.Background()`. No Store interface change — context checks are Graph-layer best-effort (pre-flight + before locks + before I/O) |
 | `doc.go` | Package documentation |
 
 ### Configuration

@@ -343,6 +343,15 @@ Two contradictory external reviews were cross-checked against the actual codebas
 
 ---
 
+## 2026-03-01 — Phase 1g: Context-Aware Operations (v3.0.18)
+
+### Verify working directory before implementing anything (BLOCKER)
+**Problem:** Implemented the entire Phase 1g (context.go, 28 tests, graph.go refactoring) in `tkg-2026-v3/services/tkg/pkg/graph/` — the old v1/v2 codebase — instead of `rho/tkg-v3/pkg/graph/`. The two projects have completely different APIs: tkg-2026-v3 uses `*types.Node` objects with string IDs, while rho/tkg-v3 uses `AddNode(labels, props)` with snowflake IDs. All work had to be reverted.
+**Root cause:** Started exploring without checking which project to work in. Found `pkg/graph` files in the first project directory and assumed it was correct.
+**Rule:** At the start of every session, verify the working directory matches the project. For rho/tkg-v3: `rho/tkg-v3/` is the correct root. Read `tasks/lessons.md` and `tasks/todo.md` before writing any code (session protocol in CLAUDE.md lines 7-9). Never assume a `pkg/graph` directory is the right one without checking the module path in `go.mod`.
+
+---
+
 ## 2026-03-01 — FlushInterval Policy + LRU evictClean Fix (v3.0.16)
 
 ### InMemory FlushInterval defaulting silently disabled flush loop (POLICY BUG)

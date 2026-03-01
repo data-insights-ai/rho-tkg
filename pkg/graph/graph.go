@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -241,84 +242,14 @@ func (g *Graph) RelationshipHasType(r *types.Relationship, typ string) bool {
 // Labels are resolved to tokens (created if needed). Properties are bulk-validated
 // and sorted in O(N log N). Returns the created node with a generated snowflake ID.
 func (g *Graph) AddNode(labels []string, props map[string]any) (*types.Node, error) {
-	if len(labels) == 0 {
-		return nil, ErrNoLabels
-	}
-
-	// Bulk-build properties first — fail fast before generating an ID.
-	ps, err := types.NewPropertySlice(props)
-	if err != nil {
-		return nil, fmt.Errorf("graph: node properties: %w", err)
-	}
-
-	// Resolve labels to tokens.
-	primaryToken, err := g.labels.GetOrCreate(labels[0])
-	if err != nil {
-		return nil, fmt.Errorf("graph: primary label: %w", err)
-	}
-
-	var extraTokens []uint16
-	for _, label := range labels[1:] {
-		tok, err := g.labels.GetOrCreate(label)
-		if err != nil {
-			return nil, fmt.Errorf("graph: extra label %q: %w", label, err)
-		}
-		extraTokens = append(extraTokens, tok)
-	}
-
-	id := g.NextNodeID()
-	n := types.NewNode(id, primaryToken, extraTokens)
-	n.SetProperties(ps)
-
-	hash := ComputeNodeHash(n, labels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
-
-	if err := g.store.PutNode(n); err != nil {
-		return nil, err
-	}
-
-	return n, nil
+	return g.AddNodeWithContext(context.Background(), labels, props)
 }
 
 // AddRelationship creates a new directed relationship between two nodes.
 // The type name is resolved to a token (created if needed). Properties are
 // bulk-validated and sorted in O(N log N).
 func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	if startNode == nil || endNode == nil {
-		return nil, ErrNilNode
-	}
-
-	// Bulk-build properties first — fail fast before generating an ID.
-	ps, err := types.NewPropertySlice(props)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship properties: %w", err)
-	}
-
-	typeToken, err := g.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
-	startID := startNode.InternalID().SnowflakeID()
-	endID := endNode.InternalID().SnowflakeID()
-
-	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
-	// Lock ordering: ascending shard index — deadlock-free.
-	g.entityLocks.LockTwo(startID, endID)
-	defer g.entityLocks.UnlockTwo(startID, endID)
-
-	id := g.NextRelID()
-	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
-
-	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
-
-	if err := g.store.PutRelationship(r); err != nil {
-		return nil, err
-	}
-
-	return r, nil
+	return g.AddRelationshipWithContext(context.Background(), typeName, startNode, endNode, props)
 }
 
 // DeleteNode atomically removes a node and all connected relationships.
@@ -326,15 +257,13 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 // AddRelationship targeting the same node.
 // Returns ErrNodeNotFound if the node does not exist.
 func (g *Graph) DeleteNode(id snowflake.ID) error {
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
-	return g.store.DeleteNodeCascade(id)
+	return g.DeleteNodeWithContext(context.Background(), id)
 }
 
 // DeleteRelationship removes a relationship from the store.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (g *Graph) DeleteRelationship(id snowflake.ID) error {
-	return g.store.DeleteRelationship(id)
+	return g.DeleteRelationshipWithContext(context.Background(), id)
 }
 
 // --- Update operations ---
@@ -344,73 +273,7 @@ func (g *Graph) DeleteRelationship(id snowflake.ID) error {
 // A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
 // Returns the updated node. Empty updates map is a no-op (no version bump).
 func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node, error) {
-	if len(updates) == 0 {
-		return g.store.GetNode(id)
-	}
-
-	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update node: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
-			}
-		}
-	}
-
-	// Phase 2: Entity lock → read-modify-write under serialization.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
-
-	current, err := g.store.GetNode(id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Capture current hash for the PrevHash chain.
-	prevHash := ""
-	if ig := current.Integrity(); ig != nil {
-		prevHash = ig.Hash
-	}
-
-	// Save pre-mutation state to version history.
-	if err := g.store.PutNodeVersion(id, current.Version(), current); err != nil {
-		return nil, fmt.Errorf("graph: save node version: %w", err)
-	}
-
-	for key, val := range updates {
-		if val == nil {
-			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
-			}
-		} else {
-			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
-			}
-		}
-	}
-
-	current.SetVersion(current.Version() + 1)
-
-	now := types.Instant(time.Now().UnixMilli())
-	tm := current.Temporal()
-	if tm == nil {
-		tm = &types.TemporalMetadata{}
-		current.SetTemporal(tm)
-	}
-	tm.UpdatedAt = now
-
-	nodeLabels := g.NodeLabels(current)
-	hash := ComputeNodeHash(current, nodeLabels)
-	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
-
-	if err := g.store.ReplaceNode(current); err != nil {
-		return nil, err
-	}
-
-	return current, nil
+	return g.UpdateNodeWithContext(context.Background(), id, updates)
 }
 
 // UpdateRelationship applies property updates to an existing relationship.
@@ -418,73 +281,7 @@ func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node
 // A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
 // Returns the updated relationship. Empty updates map is a no-op.
 func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
-	if len(updates) == 0 {
-		return g.store.GetRelationship(id)
-	}
-
-	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update relationship: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
-			}
-		}
-	}
-
-	// Phase 2: Entity lock on rel ID only — property changes don't affect adjacency.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
-
-	current, err := g.store.GetRelationship(id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Capture current hash for the PrevHash chain.
-	prevHash := ""
-	if ig := current.Integrity(); ig != nil {
-		prevHash = ig.Hash
-	}
-
-	// Save pre-mutation state to version history.
-	if err := g.store.PutRelVersion(id, current.Version(), current); err != nil {
-		return nil, fmt.Errorf("graph: save rel version: %w", err)
-	}
-
-	for key, val := range updates {
-		if val == nil {
-			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
-			}
-		} else {
-			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
-			}
-		}
-	}
-
-	current.SetVersion(current.Version() + 1)
-
-	now := types.Instant(time.Now().UnixMilli())
-	tm := current.Temporal()
-	if tm == nil {
-		tm = &types.TemporalMetadata{}
-		current.SetTemporal(tm)
-	}
-	tm.UpdatedAt = now
-
-	relTypeName := g.RelationshipType(current)
-	hash := ComputeRelHash(current, relTypeName)
-	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
-
-	if err := g.store.ReplaceRelationship(current); err != nil {
-		return nil, err
-	}
-
-	return current, nil
+	return g.UpdateRelationshipWithContext(context.Background(), id, updates)
 }
 
 // SetNodeProperty sets a single property on an existing node.
@@ -527,12 +324,12 @@ func (g *Graph) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
 
 // GetNode retrieves a node by snowflake ID.
 func (g *Graph) GetNode(id snowflake.ID) (*types.Node, error) {
-	return g.store.GetNode(id)
+	return g.GetNodeWithContext(context.Background(), id)
 }
 
 // GetRelationship retrieves a relationship by snowflake ID.
 func (g *Graph) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
-	return g.store.GetRelationship(id)
+	return g.GetRelationshipWithContext(context.Background(), id)
 }
 
 // NodesByLabel returns all nodes with the given label (resolved from string).

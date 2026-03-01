@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.17. Phases 1a-1f complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations).
+Library at v3.0.18. Phases 1a-1g complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations, Context-Aware Operations).
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -133,15 +133,22 @@ Complete. Implemented in v3.0.17.
 **41 tests total:** 12 MemoryStore, 12 BadgerStore, 17 BatchBuilder.
 All pass with race detector. Coverage ≥80% on all new methods.
 
-### 1g. Context-Aware Operations (optional for Phase 1)
+### 1g. Context-Aware Operations ✓
 
-Timeout and cancellation support. Lower priority — can be deferred.
+Complete. Implemented in v3.0.18.
 
-- [ ] `AddNodeWithContext(ctx, labels, props)`
-- [ ] `UpdateNodeWithContext(ctx, id, updates)`
-- [ ] `DeleteNodeWithContext(ctx, id)`
-- [ ] `GetNodeWithContext(ctx, id)`
-- [ ] Mirror for Relationship
+- [x] `AddNodeWithContext(ctx, labels, props)` — 2 context checks (entry + before store write)
+- [x] `AddRelationshipWithContext(ctx, typeName, startNode, endNode, props)` — 3 context checks (entry + before lock + before store write)
+- [x] `UpdateNodeWithContext(ctx, id, updates)` — 5 context checks (entry + before lock + before read + before history + before write)
+- [x] `UpdateRelationshipWithContext(ctx, id, updates)` — 5 context checks (mirror of UpdateNode)
+- [x] `DeleteNodeWithContext(ctx, id)` — 2 context checks (entry + under lock before cascade)
+- [x] `DeleteRelationshipWithContext(ctx, id)` — 1 context check (entry)
+- [x] `GetNodeWithContext(ctx, id)` — 1 context check (entry)
+- [x] `GetRelationshipWithContext(ctx, id)` — 1 context check (entry)
+- [x] Existing methods refactored to delegate to WithContext with `context.Background()`
+- [x] `checkCtx` helper — non-blocking select, zero overhead when context is not cancelled
+- [x] 28 tests in `context_test.go` — all pass with race detector
+- [x] No Store interface change — Badger v4 doesn't support context in its core API
 
 ---
 
