@@ -534,6 +534,78 @@ func TestLRUMarkFlushedNonExistentID(t *testing.T) {
 	}
 }
 
+// ─── CleanCount tracking ────────────────────────────────────────────────────
+
+func TestLRUEvictCleanSkipsWhenAllDirty(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](5)
+
+	// Insert 20 dirty entries — all exceed capacity, but none are evictable.
+	for i := 1; i <= 20; i++ {
+		c.Put(snowflake.ID(i), i)
+	}
+
+	// All 20 must be present — dirty entries are never evicted.
+	if c.Len() != 20 {
+		t.Fatalf("Len() = %d, want 20 (dirty entries never evicted)", c.Len())
+	}
+	if c.CleanCount() != 0 {
+		t.Fatalf("CleanCount() = %d, want 0 (all entries are dirty)", c.CleanCount())
+	}
+}
+
+func TestLRUCleanCountAccuracy(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[string](100) // large capacity so eviction doesn't interfere
+
+	// Step 1: Put 10 entries (all dirty) — cleanCount = 0.
+	for i := 1; i <= 10; i++ {
+		c.Put(snowflake.ID(i), "dirty")
+	}
+	if cc := c.CleanCount(); cc != 0 {
+		t.Fatalf("after 10 puts: CleanCount() = %d, want 0", cc)
+	}
+
+	// Step 2: Flush all 10 (dirty → clean) — cleanCount = 10.
+	dirty := c.CollectDirty()
+	flushed := make(map[snowflake.ID]uint64, len(dirty))
+	for _, e := range dirty {
+		flushed[e.key] = e.dirtyVer
+	}
+	c.MarkFlushed(flushed)
+	if cc := c.CleanCount(); cc != 10 {
+		t.Fatalf("after flush: CleanCount() = %d, want 10", cc)
+	}
+
+	// Step 3: Overwrite 3 clean entries (clean → dirty) — cleanCount = 7.
+	c.Put(snowflake.ID(1), "redirtied")
+	c.Put(snowflake.ID(2), "redirtied")
+	c.Put(snowflake.ID(3), "redirtied")
+	if cc := c.CleanCount(); cc != 7 {
+		t.Fatalf("after 3 overwrites: CleanCount() = %d, want 7", cc)
+	}
+
+	// Step 4: MarkDeleted on 2 clean entries — cleanCount = 5.
+	c.MarkDeleted(snowflake.ID(4))
+	c.MarkDeleted(snowflake.ID(5))
+	if cc := c.CleanCount(); cc != 5 {
+		t.Fatalf("after 2 deletes: CleanCount() = %d, want 5", cc)
+	}
+
+	// Step 5: LoadClean 2 new entries — cleanCount = 7.
+	c.LoadClean(snowflake.ID(100), "clean100")
+	c.LoadClean(snowflake.ID(101), "clean101")
+	if cc := c.CleanCount(); cc != 7 {
+		t.Fatalf("after 2 LoadClean: CleanCount() = %d, want 7", cc)
+	}
+
+	// Step 6: LoadClean on existing key (no-op) — cleanCount unchanged.
+	c.LoadClean(snowflake.ID(1), "stale")
+	if cc := c.CleanCount(); cc != 7 {
+		t.Fatalf("after LoadClean no-op: CleanCount() = %d, want 7", cc)
+	}
+}
+
 // ─── Concurrent access ─────────────────────────────────────────────────────
 
 func TestLRUConcurrentAccess(t *testing.T) {

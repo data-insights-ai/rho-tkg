@@ -136,7 +136,7 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		capacity = defaultCacheCapacity
 	}
 	flushInt := cfg.FlushInterval
-	if flushInt == 0 && !cfg.InMemory {
+	if flushInt == 0 {
 		flushInt = defaultFlushInterval
 	}
 	gcInt := cfg.GCInterval

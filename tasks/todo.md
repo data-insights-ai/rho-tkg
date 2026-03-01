@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.15. Phases 1a-1d complete (Update, Version History, Hash Chain, Bulk Queries).
+Library at v3.0.16. Phases 1a-1e complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix).
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -96,7 +96,20 @@ Complete. Implemented in v3.0.15.
 **32 tests total:** 12 MemoryStore (AllNodes empty/count/sorted, AllRels empty/count/sorted, GetNodesByIDs empty/found/sorted, GetRelsByIDs empty/found/sorted), 12 BadgerStore (mirrored), 8 graph-layer (AllNodes/AllRels empty + populated, GetNodesByIDs/GetRelsByIDs empty + skip-missing).
 All pass with race detector. Coverage 82-100% on all new methods.
 
-### 1e. Batch Operations
+### 1e. FlushInterval Policy + LRU evictClean Fix ✓
+
+Complete. Implemented in v3.0.16.
+
+- [x] Fix `NewBadgerStore` FlushInterval defaulting — remove `!cfg.InMemory` condition
+- [x] Add `cleanCount` field to `entityLRU` for O(1) early exit in `evictClean()`
+- [x] Update all LRU mutation methods to maintain `cleanCount`
+- [x] Add `CleanCount()` accessor for test verification
+- [x] Add tests: `TestLRUEvictCleanSkipsWhenAllDirty`, `TestLRUCleanCountAccuracy`
+- [x] Fix `TestBadgerStoreDirtyNotEvictedUnderPressure` — add large FlushInterval
+- [x] Update `newTestBadgerStore` comment
+- [x] Tutorial 005 — fair comparison via library fix (no tutorial changes needed)
+
+### 1f. Batch Operations
 
 Bulk create/update/delete in single operations. Critical for import and the tiered
 store's split-write.
@@ -123,7 +136,7 @@ store's split-write.
 - [ ] Partial failure tracking
 - [ ] Both MemoryStore and BadgerStore
 
-### 1f. Context-Aware Operations (optional for Phase 1)
+### 1g. Context-Aware Operations (optional for Phase 1)
 
 Timeout and cancellation support. Lower priority — can be deferred.
 

@@ -336,6 +336,33 @@ Two contradictory external reviews were cross-checked against the actual codebas
 **Rule:** Large value tests must account for serialization overhead. Use 500KB or less to stay safely under Badger's 1MB default. If truly large values are needed, configure `badger.Options.ValueLogFileSize` and `MaxValueSize` explicitly.
 
 ### AddNode returns *types.Node, not *graph.Node (PATTERN)
+
 **Problem:** Tutorial 005 used `*graph.Node` in helper functions and struct fields. Node is defined in `pkg/types`, not `pkg/graph`. The code wouldn't compile.
 **Root cause:** Assumed the Node type was in the same package as the Graph API without verifying the import path.
 **Rule:** Before writing code that uses API return types, verify the exact package. `AddNode` returns `*types.Node`, `AddRelationship` returns `*types.Relationship`. Always check function signatures, not assumptions. This was already a lesson from "Never write code against an API you haven't fully analyzed" but was violated again in a tutorial context.
+
+---
+
+## 2026-03-01 — FlushInterval Policy + LRU evictClean Fix (v3.0.16)
+
+### InMemory FlushInterval defaulting silently disabled flush loop (POLICY BUG)
+**Problem:** `NewBadgerStore` config defaulting had `if flushInt == 0 && !cfg.InMemory` — InMemory
+stores never got the default 100ms flush loop. This caused: (1) pending buffer growing unbounded,
+(2) LRU cache filling with dirty entries that could never be evicted, (3) O(N²) evictClean scans.
+**Root cause:** Premature optimization — "avoid unnecessary goroutines for testing." A goroutine
+costs ~2KB stack; unbounded pending map + O(N²) eviction costs orders of magnitude more.
+**Rule:** Never silently disable production defaults based on deployment mode. If InMemory and
+OnDisk both use the same write path (pending buffer → flush → Badger), they must both get the
+same flush loop. Mode-specific defaults are only correct when the feature genuinely doesn't apply
+(e.g., GC is disk-only because there's no value log in InMemory).
+
+### evictClean() O(N²) when all entries are dirty (PERFORMANCE BUG)
+**Problem:** `evictClean()` did an O(N) scan from tail to head on every `Put()` when cache exceeded
+capacity. With all-dirty entries (no flush loop), every scan traversed the entire list finding
+nothing. For 50K relationship inserts above 10K capacity: sum(10K..50K) ≈ 1.2 billion list
+traversals — O(N²). BadgerStore (memory) was 135x slower than MemoryStore for rels.
+**Root cause:** No tracking of evictable entry count. The scan always ran when `len > capacity`,
+even when there was nothing to evict. A simple `cleanCount` counter enables O(1) early exit.
+**Rule:** When a loop's exit condition depends on finding entries with a specific property (clean,
+dirty, deleted), maintain a count of those entries. O(N) scans that find nothing are O(N) wasted
+work per call, which compounds to O(N²) for N calls.

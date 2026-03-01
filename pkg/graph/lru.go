@@ -36,11 +36,12 @@ type lruEntry[V any] struct {
 //
 // All methods are thread-safe via internal mutex.
 type entityLRU[V any] struct {
-	mu       sync.Mutex
-	capacity int // soft limit — dirty entries can exceed
-	items    map[snowflake.ID]*list.Element
-	order    *list.List // front = most recent, back = LRU
-	nextVer  uint64     // monotonic dirty version counter
+	mu         sync.Mutex
+	capacity   int // soft limit — dirty entries can exceed
+	cleanCount int // number of evictable entries (dirtyVer == 0, !deleted)
+	items      map[snowflake.ID]*list.Element
+	order      *list.List // front = most recent, back = LRU
+	nextVer    uint64     // monotonic dirty version counter
 }
 
 // newEntityLRU creates an LRU cache with the given capacity.
@@ -92,6 +93,9 @@ func (c *entityLRU[V]) Put(key snowflake.ID, value V) {
 
 	if el, ok := c.items[key]; ok {
 		entry := el.Value.(*lruEntry[V])
+		if entry.dirtyVer == 0 && !entry.deleted {
+			c.cleanCount-- // was clean, now dirty
+		}
 		entry.value = value
 		entry.dirtyVer = c.nextVer
 		entry.deleted = false
@@ -118,6 +122,9 @@ func (c *entityLRU[V]) MarkDeleted(key snowflake.ID) {
 
 	if el, ok := c.items[key]; ok {
 		entry := el.Value.(*lruEntry[V])
+		if entry.dirtyVer == 0 && !entry.deleted {
+			c.cleanCount-- // was clean, now dirty tombstone
+		}
 		entry.deleted = true
 		entry.dirtyVer = c.nextVer
 		c.order.MoveToFront(el)
@@ -145,6 +152,7 @@ func (c *entityLRU[V]) LoadClean(key snowflake.ID, value V) {
 	entry := &lruEntry[V]{key: key, value: value} // dirtyVer 0 = clean
 	el := c.order.PushFront(entry)
 	c.items[key] = el
+	c.cleanCount++
 
 	c.evictClean()
 }
@@ -192,6 +200,8 @@ func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 		if entry.deleted {
 			c.order.Remove(el)
 			delete(c.items, id)
+		} else {
+			c.cleanCount++ // dirty → clean, not deleted
 		}
 	}
 }
@@ -203,18 +213,30 @@ func (c *entityLRU[V]) Len() int {
 	return len(c.items)
 }
 
+// CleanCount returns the number of clean (evictable) entries in the cache.
+func (c *entityLRU[V]) CleanCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cleanCount
+}
+
 // evictClean removes LRU clean entries until the cache is at capacity.
-// Only clean (dirtyVer == 0) entries are candidates for eviction.
-// Single pass from back (LRU) to front — O(N) worst case, no restarts.
+// Only clean (dirtyVer == 0, !deleted) entries are candidates for eviction.
+// Maintains cleanCount for O(1) early exit when no clean entries exist;
+// otherwise O(N) single-pass backward scan.
 // Must be called with c.mu held.
 func (c *entityLRU[V]) evictClean() {
+	if c.cleanCount == 0 || len(c.items) <= c.capacity {
+		return
+	}
 	el := c.order.Back()
-	for len(c.items) > c.capacity && el != nil {
+	for len(c.items) > c.capacity && el != nil && c.cleanCount > 0 {
 		prev := el.Prev() // save before potential removal
 		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer == 0 {
+		if entry.dirtyVer == 0 && !entry.deleted {
 			c.order.Remove(el)
 			delete(c.items, entry.key)
+			c.cleanCount--
 		}
 		el = prev
 	}

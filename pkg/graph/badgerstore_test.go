@@ -15,7 +15,8 @@ import (
 )
 
 // newTestBadgerStore creates an in-memory BadgerStore for testing.
-// FlushInterval is 0 to disable periodic flushing — tests call Flush() manually.
+// Uses default FlushInterval (100ms). Tests call Flush() explicitly before assertions
+// that depend on durable state. The background flush loop is harmless for most tests.
 func newTestBadgerStore(t *testing.T) *BadgerStore {
 	t.Helper()
 	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
@@ -2675,7 +2676,8 @@ func TestBadgerStoreDirtyNotEvictedUnderPressure(t *testing.T) {
 
 	// Cache capacity 50, insert 100 nodes WITHOUT flushing.
 	// All entries are dirty — dirty entries must never be evicted.
-	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, CacheCapacity: 50})
+	// Large FlushInterval prevents background flush from marking entries clean mid-test.
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, CacheCapacity: 50, FlushInterval: 10 * time.Minute})
 	if err != nil {
 		t.Fatalf("NewBadgerStore: %v", err)
 	}

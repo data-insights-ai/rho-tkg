@@ -28,7 +28,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: v3.0.15 — Phases 1a-1d complete (Update, Version History, Hash Chain, Bulk Queries).
+Status: v3.0.16 — Phases 1a-1e complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix).
 
 ## Build & Test Commands
 
@@ -114,7 +114,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 **`Graph.Config`** (in `graph.go`): `SnowflakeNodeID` (int64, 0-511), `Store` (Store interface), `BadgerDir` (string), `BadgerInMemory` (bool). If `Store` is nil and `BadgerDir` or `BadgerInMemory` is set, a `BadgerStore` is auto-created with default settings. Whitespace-only `BadgerDir` (e.g. `"   "`) is rejected — prevents silent fallback to MemoryStore.
 
-**`BadgerStoreConfig`** (in `badgerstore.go`): `Dir`, `InMemory`, `Logger`, `CacheCapacity` (default 10K), `FlushInterval` (default 100ms), `GCInterval` (default 5min), `GCDiscardRatio` (default 0.5). To customize these, create a `BadgerStore` manually via `NewBadgerStore(cfg)` and pass it as `Config.Store`.
+**`BadgerStoreConfig`** (in `badgerstore.go`): `Dir`, `InMemory`, `Logger`, `CacheCapacity` (default 10K), `FlushInterval` (default 100ms for both InMemory and OnDisk), `GCInterval` (default 5min, disk-only), `GCDiscardRatio` (default 0.5). To customize these, create a `BadgerStore` manually via `NewBadgerStore(cfg)` and pass it as `Config.Store`.
 
 ## Critical Design Invariants
 
@@ -146,7 +146,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 **Store is pure persistence**: The `Store` interface handles entity CRUD, index maintenance, atomic cascade operations, and resource cleanup via `Close()`. All Store implementations must satisfy `Close() error` (no-op for MemoryStore, stops goroutines + flushes + closes Badger for BadgerStore). `Graph.Close()` always calls `store.Close()` — no `closeFn` indirection. Shadow resolution and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets for O(1) adjacency insert/delete. All query methods return `error` and sort results by snowflake.ID for deterministic output. `BadgerStore` maintains atomic `int64` counters (persisted in the flush WriteBatch) for O(1) `NodeCount`/`RelationshipCount`. In-memory indexes (`nodeIDs`, `relIDs`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx`) are rebuilt from Badger on startup via `loadIndexes()`. `nodeIDs` and `relIDs` are O(1) existence maps used as bloom filters to short-circuit `GetNode`/`GetRelationship` for non-existent entities.
 
-**LRU caches with version-aware dirty tracking**: `BadgerStore` maintains `entityLRU[*types.Node]` and `entityLRU[*types.Relationship]` with configurable capacity (default 10K per cache). Entries are marked dirty on write (monotonic `dirtyVer` counter) and tombstoned on delete. Dirty entries are never evicted (soft capacity). `CollectDirty()` is read-only — returns snapshots with version stamps. `MarkFlushed()` only clears entries matching the collected `dirtyVer`, preventing data loss when new writes land between collect and flush. `evictClean()` is O(N) single-pass backward scan.
+**LRU caches with version-aware dirty tracking**: `BadgerStore` maintains `entityLRU[*types.Node]` and `entityLRU[*types.Relationship]` with configurable capacity (default 10K per cache). Entries are marked dirty on write (monotonic `dirtyVer` counter) and tombstoned on delete. Dirty entries are never evicted (soft capacity). `CollectDirty()` is read-only — returns snapshots with version stamps. `MarkFlushed()` only clears entries matching the collected `dirtyVer`, preventing data loss when new writes land between collect and flush. `evictClean()` maintains `cleanCount` for O(1) early exit when no clean entries exist; otherwise O(N) single-pass backward scan. This prevents O(N²) degradation when the cache is full of dirty entries.
 
 **Async batch persistence**: Write operations update in-memory state immediately and queue `writeOp` structs into a `map[string]writeOp` buffer (last-write-wins deduplication). A background flush loop drains the buffer via Badger `WriteBatch` every `FlushInterval` (default 100ms). Counter keys (`meta/node_count`, `meta/rel_count`) are included in the same WriteBatch for atomic crash recovery. Failed ops are re-queued via `requeueOps()` (preserves newer writes). `Close()` stops goroutines, calls `flush()` unconditionally (handles InMemory mode where flushLoop was never spawned), then closes Badger. Idempotent via `sync.Once`.
 
