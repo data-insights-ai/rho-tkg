@@ -45,7 +45,7 @@ func (ps *PropertySlice) Set(key string, value any) error {
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)
 	}
-	if err := validatePropertyValue(value); err != nil {
+	if err := ValidatePropertyValue(value); err != nil {
 		return fmt.Errorf("%w: %q (got %T)", err, key, value)
 	}
 	i := sort.Search(len(*ps), func(i int) bool {
@@ -87,10 +87,10 @@ func (ps PropertySlice) DeepCopy() PropertySlice {
 	return cp
 }
 
-// validatePropertyValue recursively checks that v contains only allowlisted types
+// ValidatePropertyValue recursively checks that v contains only allowlisted types
 // at any nesting depth. Slices, maps, and interface wrappers are traversed.
 // Rejects at maxPropertyDepth to prevent stack overflow from deep/cyclic input.
-func validatePropertyValue(v any) error {
+func ValidatePropertyValue(v any) error {
 	if v == nil {
 		return nil
 	}
@@ -317,7 +317,7 @@ func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 		if IsShadowKey(k) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, k)
 		}
-		if err := validatePropertyValue(v); err != nil {
+		if err := ValidatePropertyValue(v); err != nil {
 			return nil, fmt.Errorf("%w: %q (got %T)", err, k, v)
 		}
 		ps = append(ps, Property{Key: k, Value: v})

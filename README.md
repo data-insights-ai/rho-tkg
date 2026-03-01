@@ -38,14 +38,16 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 
 | Type | Purpose |
 |------|---------|
-| `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`DeleteNode`), shadow resolution, string resolution |
-| `Store` | Persistence interface — `PutNode`/`GetNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`DeleteRelationship`, index queries, adjacency queries, counts |
-| `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete |
+| `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`UpdateNode`/`UpdateRelationship`/`DeleteNode`), convenience property methods, shadow resolution, string resolution |
+| `Store` | Persistence interface — `PutNode`/`GetNode`/`ReplaceNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`ReplaceRelationship`/`DeleteRelationship`, index queries, adjacency queries, counts, `Close()` |
+| `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
 | `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
 
-Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
+Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
+
+Convenience methods: `SetNodeProperty(id, key, value)`, `DeleteNodeProperty(id, key)`, `SetRelationshipProperty(id, key, value)`, `DeleteRelationshipProperty(id, key)`.
 
 Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
 
@@ -53,9 +55,9 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
-Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `NodeCount()`, `RelationshipCount()`.
+Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`.
 
-Lifecycle: `Close()` saves registries and closes the database (Badger only; no-op for MemoryStore).
+Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
 
 ### Persistence (Badger)
 
@@ -100,7 +102,9 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Registry input validation**: `GetOrCreate("")` returns `ErrEmptyName`. Empty strings are never assigned tokens.
 - **Shared-pointer accessors**: `Temporal()` and `Integrity()` return the internal pointer — no defensive copy. The graph layer needs mutation access; external callers should treat as read-only.
 - **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate all, sort once. Avoids the O(N²) per-property `SetProperty` loop for entity creation.
-- **Store is pure persistence**: The `Store` interface handles entity storage and index maintenance only. Shadow resolution, referential integrity (cascade-delete), and string resolution live on Graph.
+- **Store is pure persistence**: The `Store` interface handles entity storage, index maintenance, and resource cleanup (`Close()`). Shadow resolution, referential integrity (cascade-delete), and string resolution live on Graph.
+- **Update operations**: `UpdateNode(id, updates)` / `UpdateRelationship(id, updates)` perform read-modify-write under entity lock. Property keys with `nil` values are deleted; non-nil values are set/overwritten. Each update bumps the version counter and sets `temporal.UpdatedAt`. Empty updates map is a no-op (no lock, no version bump). Pre-validates all keys (`tkg_` prefix rejected) and values (`ValidatePropertyValue`) before acquiring the lock.
+- **Replace vs Put semantics**: `ReplaceNode`/`ReplaceRelationship` (Store interface) require existence — return `ErrNodeNotFound`/`ErrRelNotFound` if missing. `PutNode`/`PutRelationship` reject duplicates — return `ErrNodeExists`/`ErrRelExists` if present. Replace overwrites entity data only; labels and relationship type/endpoints are immutable after creation — no index changes.
 - **Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Self-loops are handled by skipping `ErrRelNotFound` in the incoming pass.
 - **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types allow cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
 - **Shadow resolution nil-guards**: `ResolveNodeProperty` / `ResolveRelProperty` check `Temporal() != nil` and `Integrity() != nil` before accessing fields. New entities without metadata return `(nil, false)` instead of panicking.

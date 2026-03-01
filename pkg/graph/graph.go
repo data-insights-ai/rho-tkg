@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,7 +54,6 @@ type Graph struct {
 	nodeIDGen   *snowflake.Node
 	relIDGen    *snowflake.Node
 	store       Store
-	closeFn     func() error // nil for MemoryStore; calls BadgerStore.Close() for Badger
 	entityLocks *entityLockManager
 	closeOnce   sync.Once
 }
@@ -100,6 +100,13 @@ func New(config Config) (*Graph, error) {
 		entityLocks: newEntityLockManager(),
 	}
 
+	// Validate BadgerDir: reject whitespace-only strings (silent fallback hazard).
+	if config.Store == nil && config.BadgerDir != "" {
+		if strings.TrimSpace(config.BadgerDir) == "" {
+			return nil, fmt.Errorf("graph: BadgerDir is whitespace-only; use a valid path or omit for MemoryStore")
+		}
+	}
+
 	store := config.Store
 	if store == nil {
 		if config.BadgerDir != "" || config.BadgerInMemory {
@@ -122,7 +129,6 @@ func New(config Config) (*Graph, error) {
 			}
 
 			store = bs
-			g.closeFn = bs.Close
 		} else {
 			store = NewMemoryStore()
 		}
@@ -133,27 +139,24 @@ func New(config Config) (*Graph, error) {
 }
 
 // Close saves registries (if Badger) and closes the underlying store.
-// No-op for MemoryStore. Safe to call concurrently and multiple times.
+// Safe to call concurrently and multiple times.
 //
-// closeFn() always runs even if registry saves fail — prevents file handle leaks.
-// Returns the first error encountered; subsequent calls return nil.
+// store.Close() always runs even if registry saves fail — prevents resource leaks.
+// Returns all errors joined; subsequent calls return nil.
 func (g *Graph) Close() error {
 	var closeErr error
 	g.closeOnce.Do(func() {
-		if g.closeFn == nil {
-			return
-		}
+		// Save registries if the store supports it (Badger-specific).
 		if bs, ok := g.store.(*BadgerStore); ok {
 			if err := bs.SaveLabelRegistry(g.labels); err != nil {
 				closeErr = fmt.Errorf("graph: save label registry: %w", err)
 			}
-			if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil && closeErr == nil {
-				closeErr = fmt.Errorf("graph: save reltype registry: %w", err)
+			if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
 			}
 		}
-		if err := g.closeFn(); err != nil && closeErr == nil {
-			closeErr = err
-		}
+		// Always close the store — even if registry saves failed.
+		closeErr = errors.Join(closeErr, g.store.Close())
 	})
 	return closeErr
 }

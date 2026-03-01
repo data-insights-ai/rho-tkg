@@ -28,7 +28,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: Feature-complete at v3.0.14 (92.9% coverage).
+Status: v3.0.15 — Update operations added (Phase 1a complete).
 
 ## Build & Test Commands
 
@@ -87,7 +87,7 @@ These rules exist because every single one was violated at least once. Do not sk
 |---|---|
 | `node.go` | Node (graph vertex, 80B) — `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, `uint32` version, temporal, integrity |
 | `relationship.go` | Relationship (directed edge, 72B) — `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, `uint32` version, temporal, integrity |
-| `propertyslice.go` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types at any nesting depth; depth-limited to 32 levels (`ErrMaxDepthExceeded`) |
+| `propertyslice.go` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types at any nesting depth; depth-limited to 32 levels (`ErrMaxDepthExceeded`); `ValidatePropertyValue` exported for pre-validation in graph-layer update paths |
 | `shadow.go` | Constants for virtual read-only properties (`tkg_*`) managed by the graph layer |
 | `temporal.go` | `Instant` type (Unix ms), `entityID` (opaque cross-entity ref wrapping `snowflake.ID`), `TemporalMetadata` struct (validity, transaction, audit, provenance, version chain via `baseEntityID entityID`) |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` structs (hash chain: `Hash`, `PrevHash`) |
@@ -96,9 +96,9 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle |
-| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
-| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle (calls `store.Close()` universally, saves Badger registries via type assertion), BadgerDir whitespace validation in `New()` |
+| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`, `Close()` for resource cleanup) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
+| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock, no-op `Close()` |
 | `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with LRU entity caches (dirty tracking + tombstones), in-memory indexes as source of truth, async WriteBatch flush loop, background value log GC, atomic `int64` counters (never in transactions), `loadIndexes()` startup rebuild, `Close()` with `sync.Once` idempotence, registry persistence |
 | `lru.go` | `entityLRU[V]` — generic LRU cache with dirty tracking, tombstone support, soft capacity (dirty entries never evicted) |
 | `entity_locks.go` | `entityLockManager` — 256-shard mutex array for write-skew prevention. `LockTwo` acquires in ascending shard order (deadlock-free) |
@@ -111,7 +111,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### Configuration
 
-**`Graph.Config`** (in `graph.go`): `SnowflakeNodeID` (int64, 0-511), `Store` (Store interface), `BadgerDir` (string), `BadgerInMemory` (bool). If `Store` is nil and `BadgerDir` or `BadgerInMemory` is set, a `BadgerStore` is auto-created with default settings.
+**`Graph.Config`** (in `graph.go`): `SnowflakeNodeID` (int64, 0-511), `Store` (Store interface), `BadgerDir` (string), `BadgerInMemory` (bool). If `Store` is nil and `BadgerDir` or `BadgerInMemory` is set, a `BadgerStore` is auto-created with default settings. Whitespace-only `BadgerDir` (e.g. `"   "`) is rejected — prevents silent fallback to MemoryStore.
 
 **`BadgerStoreConfig`** (in `badgerstore.go`): `Dir`, `InMemory`, `Logger`, `CacheCapacity` (default 10K), `FlushInterval` (default 100ms), `GCInterval` (default 5min), `GCDiscardRatio` (default 0.5). To customize these, create a `BadgerStore` manually via `NewBadgerStore(cfg)` and pass it as `Config.Store`.
 
@@ -143,7 +143,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate, sort once. `SetProperties(ps)` on Node/Relationship assigns the pre-built slice directly. `AddNode`/`AddRelationship` use this path.
 
-**Store is pure persistence**: The `Store` interface handles entity CRUD, index maintenance, and atomic cascade operations. Shadow resolution and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets for O(1) adjacency insert/delete. All query methods return `error` and sort results by snowflake.ID for deterministic output. `BadgerStore` maintains atomic `int64` counters (persisted in the flush WriteBatch) for O(1) `NodeCount`/`RelationshipCount`. In-memory indexes (`nodeIDs`, `relIDs`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx`) are rebuilt from Badger on startup via `loadIndexes()`. `nodeIDs` and `relIDs` are O(1) existence maps used as bloom filters to short-circuit `GetNode`/`GetRelationship` for non-existent entities.
+**Store is pure persistence**: The `Store` interface handles entity CRUD, index maintenance, atomic cascade operations, and resource cleanup via `Close()`. All Store implementations must satisfy `Close() error` (no-op for MemoryStore, stops goroutines + flushes + closes Badger for BadgerStore). `Graph.Close()` always calls `store.Close()` — no `closeFn` indirection. Shadow resolution and string resolution are Graph-layer responsibilities. `MemoryStore` uses nested hash-sets for O(1) adjacency insert/delete. All query methods return `error` and sort results by snowflake.ID for deterministic output. `BadgerStore` maintains atomic `int64` counters (persisted in the flush WriteBatch) for O(1) `NodeCount`/`RelationshipCount`. In-memory indexes (`nodeIDs`, `relIDs`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx`) are rebuilt from Badger on startup via `loadIndexes()`. `nodeIDs` and `relIDs` are O(1) existence maps used as bloom filters to short-circuit `GetNode`/`GetRelationship` for non-existent entities.
 
 **LRU caches with version-aware dirty tracking**: `BadgerStore` maintains `entityLRU[*types.Node]` and `entityLRU[*types.Relationship]` with configurable capacity (default 10K per cache). Entries are marked dirty on write (monotonic `dirtyVer` counter) and tombstoned on delete. Dirty entries are never evicted (soft capacity). `CollectDirty()` is read-only — returns snapshots with version stamps. `MarkFlushed()` only clears entries matching the collected `dirtyVer`, preventing data loss when new writes land between collect and flush. `evictClean()` is O(N) single-pass backward scan.
 
@@ -154,6 +154,10 @@ These rules exist because every single one was violated at least once. Do not sk
 **Atomic cascade-delete on node removal**: `Graph.DeleteNode` acquires the entity lock, then delegates to `Store.DeleteNodeCascade`, which atomically removes the node and all connected relationships. Self-loops are deduplicated via a map. No TOCTOU window. `BadgerStore.DeleteNodeCascade` uses a two-phase approach: (1) preflight reads all relationship metadata via `getRelLocked`, aborting with zero mutations on any read failure; (2) applies all deletions via `deleteRelByInfo` (mutation-only, cannot fail). This prevents partial state corruption when a relationship has corrupt data on disk.
 
 **Validate before generating IDs**: `AddNode`/`AddRelationship` run `NewPropertySlice(props)` and registry lookups before `NextNodeID()`/`NextRelID()`. Validation failures return early with no wasted snowflake IDs.
+
+**Update operations — read-modify-write with entity lock**: `UpdateNode(id, updates)` and `UpdateRelationship(id, updates)` pre-validate all keys (reject `tkg_` prefix) and values (`ValidatePropertyValue`) before acquiring the entity lock. Under the lock: read current state from store, apply property updates (nil value = delete), bump version, set `UpdatedAt`, persist via `ReplaceNode`/`ReplaceRelationship`. Empty updates map is a no-op (no version bump, no lock). `UpdateRelationship` locks on the rel ID only — property changes don't affect adjacency, so endpoint locking is unnecessary.
+
+**`ReplaceNode`/`ReplaceRelationship` are separate from Put**: Put rejects duplicates (`ErrNodeExists`/`ErrRelExists`). Replace requires existence (`ErrNodeNotFound`/`ErrRelNotFound`). Replace overwrites the entity data blob only — no index changes, because labels (Node) and type/endpoints (Relationship) are immutable after creation. Both deep-copy at the store boundary.
 
 ## Registries (pkg/graph)
 

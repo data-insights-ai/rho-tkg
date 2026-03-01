@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -934,9 +935,50 @@ func TestGraphRegistryPersistence(t *testing.T) {
 func TestGraphCloseNoop(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{}) // MemoryStore
+	g, _ := New(Config{}) // MemoryStore — Close() calls MemoryStore.Close() which returns nil
 	if err := g.Close(); err != nil {
-		t.Fatalf("Close on MemoryStore should be no-op, got: %v", err)
+		t.Fatalf("Close on MemoryStore should return nil, got: %v", err)
+	}
+}
+
+func TestGraphCloseMemoryStoreCallsStoreClose(t *testing.T) {
+	t.Parallel()
+
+	// Verify Close() calls store.Close() even for MemoryStore.
+	// Previously Close() was a no-op (closeFn == nil); now it goes through store.Close().
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// First close should succeed.
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+	// Second close returns nil (sync.Once).
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close 2 (idempotent): %v", err)
+	}
+}
+
+func TestGraphNewBadgerDirWhitespace(t *testing.T) {
+	t.Parallel()
+
+	_, err := New(Config{BadgerDir: "   "})
+	if err == nil {
+		t.Fatal("New(BadgerDir: whitespace) should return error")
+	}
+	if !strings.Contains(err.Error(), "whitespace-only") {
+		t.Fatalf("error should mention whitespace-only, got: %v", err)
+	}
+}
+
+func TestGraphNewBadgerDirTabsWhitespace(t *testing.T) {
+	t.Parallel()
+
+	_, err := New(Config{BadgerDir: "\t\n "})
+	if err == nil {
+		t.Fatal("New(BadgerDir: tabs/newlines) should return error")
 	}
 }
 

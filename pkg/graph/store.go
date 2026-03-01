@@ -35,6 +35,10 @@ type Store interface {
 	// Counts
 	NodeCount() (int, error)
 	RelationshipCount() (int, error)
+
+	// Close releases any resources held by the store.
+	// Safe to call multiple times. No-op for stores without resources.
+	Close() error
 }
 
 // Sentinel errors for store operations.

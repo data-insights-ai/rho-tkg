@@ -364,6 +364,9 @@ func (ms *MemoryStore) RelationshipCount() (int, error) {
 	return len(ms.rels), nil
 }
 
+// Close is a no-op for MemoryStore. Satisfies the Store interface.
+func (ms *MemoryStore) Close() error { return nil }
+
 // sortNodesByID sorts nodes by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func sortNodesByID(nodes []*types.Node) {
