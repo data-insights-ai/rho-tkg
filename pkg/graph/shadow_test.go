@@ -199,20 +199,34 @@ func TestResolveNodePropertyNilTemporal(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, _ := g.AddNode([]string{"X"}, nil)
-	// No Temporal set — all temporal shadow keys should return (nil, false).
+	// No Temporal set — most temporal shadow keys should return (nil, false).
+	// Exception: tkg_created_at derives from snowflake ID.
 
-	temporalKeys := []string{
+	nilKeys := []string{
 		types.ShadowValidFrom, types.ShadowValidTo,
 		types.ShadowTxFrom, types.ShadowTxTo,
-		types.ShadowCreatedAt, types.ShadowUpdatedAt, types.ShadowDeletedAt,
+		types.ShadowUpdatedAt, types.ShadowDeletedAt,
 		types.ShadowCreatedBy, types.ShadowUpdatedBy,
 		types.ShadowBaseEntity,
 	}
-	for _, key := range temporalKeys {
+	for _, key := range nilKeys {
 		val, ok := g.ResolveNodeProperty(n, key)
 		if ok || val != nil {
 			t.Errorf("ResolveNodeProperty(%q) with nil temporal: got (%v, %v), want (nil, false)", key, val, ok)
 		}
+	}
+
+	// tkg_created_at should derive from snowflake ID even without temporal metadata.
+	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at should return true even without temporal metadata")
+	}
+	derived, isInstant := val.(types.Instant)
+	if !isInstant {
+		t.Fatalf("tkg_created_at should be Instant, got %T", val)
+	}
+	if derived <= 0 {
+		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
 	}
 }
 
@@ -359,18 +373,33 @@ func TestResolveRelPropertyNilTemporal(t *testing.T) {
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("R", nA, nB, nil)
 
-	temporalKeys := []string{
+	// Most temporal keys return (nil, false) without temporal metadata.
+	// Exception: tkg_created_at derives from snowflake ID.
+	nilKeys := []string{
 		types.ShadowValidFrom, types.ShadowValidTo,
 		types.ShadowTxFrom, types.ShadowTxTo,
-		types.ShadowCreatedAt, types.ShadowUpdatedAt, types.ShadowDeletedAt,
+		types.ShadowUpdatedAt, types.ShadowDeletedAt,
 		types.ShadowCreatedBy, types.ShadowUpdatedBy,
 		types.ShadowBaseEntity,
 	}
-	for _, key := range temporalKeys {
+	for _, key := range nilKeys {
 		val, ok := g.ResolveRelProperty(r, key)
 		if ok || val != nil {
 			t.Errorf("ResolveRelProperty(%q) with nil temporal: got (%v, %v), want (nil, false)", key, val, ok)
 		}
+	}
+
+	// tkg_created_at should derive from snowflake ID even without temporal metadata.
+	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at on rel should return true even without temporal metadata")
+	}
+	derived, isInstant := val.(types.Instant)
+	if !isInstant {
+		t.Fatalf("tkg_created_at should be Instant, got %T", val)
+	}
+	if derived <= 0 {
+		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
 	}
 }
 
@@ -390,6 +419,85 @@ func TestResolveRelPropertyNilIntegrity(t *testing.T) {
 		if ok || val != nil {
 			t.Errorf("ResolveRelProperty(%q) with nil integrity: got (%v, %v), want (nil, false)", key, val, ok)
 		}
+	}
+}
+
+// ─── CreatedAt derivation from snowflake ID ─────────────────────────────────
+
+func TestResolveNodeCreatedAtExplicitPriority(t *testing.T) {
+	t.Parallel()
+
+	// When temporal metadata has an explicit CreatedAt, it takes priority
+	// over the snowflake-derived timestamp.
+	g, n := makeNodeWithMeta(t)
+	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at should return true")
+	}
+	if val != types.Instant(5000) {
+		t.Errorf("tkg_created_at = %v, want 5000 (explicit)", val)
+	}
+}
+
+func TestResolveNodeCreatedAtZeroFallback(t *testing.T) {
+	t.Parallel()
+
+	// When temporal metadata exists but CreatedAt is zero, derive from ID.
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, _ := g.AddNode([]string{"X"}, nil)
+	n.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
+
+	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
+	}
+	derived, isInstant := val.(types.Instant)
+	if !isInstant {
+		t.Fatalf("tkg_created_at should be Instant, got %T", val)
+	}
+	if derived <= 0 {
+		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
+	}
+}
+
+func TestResolveRelCreatedAtExplicitPriority(t *testing.T) {
+	t.Parallel()
+
+	g, r := makeRelWithMeta(t)
+	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at should return true")
+	}
+	if val != types.Instant(5000) {
+		t.Errorf("tkg_created_at = %v, want 5000 (explicit)", val)
+	}
+}
+
+func TestResolveRelCreatedAtZeroFallback(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("R", nA, nB, nil)
+	r.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
+
+	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	if !ok {
+		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
+	}
+	derived, isInstant := val.(types.Instant)
+	if !isInstant {
+		t.Fatalf("tkg_created_at should be Instant, got %T", val)
+	}
+	if derived <= 0 {
+		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
 	}
 }
 

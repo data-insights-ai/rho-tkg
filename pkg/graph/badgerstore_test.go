@@ -1490,6 +1490,81 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Set up: node A with 3 relationships (2 valid, 1 corrupt).
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	// Two valid relationships via normal PutRelationship.
+	putTestRel(t, bs, 100, 5, 10, 20)
+	putTestRel(t, bs, 101, 5, 10, 30)
+
+	// Flush to Badger so they exist on disk.
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject a third "relationship" with corrupt data directly into Badger and indexes.
+	corruptRelID := snowflake.ID(999)
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(999), []byte("corrupt-data"))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bs.idxMu.Lock()
+	bs.relIDs[corruptRelID] = struct{}{}
+	if bs.outIdx[snowflake.ID(10)] == nil {
+		bs.outIdx[snowflake.ID(10)] = make(map[snowflake.ID]struct{})
+	}
+	bs.outIdx[snowflake.ID(10)][corruptRelID] = struct{}{}
+	if bs.inIdx[snowflake.ID(20)] == nil {
+		bs.inIdx[snowflake.ID(20)] = make(map[snowflake.ID]struct{})
+	}
+	bs.inIdx[snowflake.ID(20)][corruptRelID] = struct{}{}
+	bs.relCount.Add(1)
+	bs.idxMu.Unlock()
+
+	// DeleteNodeCascade should fail because of corruption.
+	err = bs.DeleteNodeCascade(snowflake.ID(10))
+	if err == nil {
+		t.Fatal("expected error from corrupted relationship data")
+	}
+
+	// Atomicity check: ALL relationships should still exist (no partial deletion).
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+
+	if _, exists := bs.relIDs[snowflake.ID(100)]; !exists {
+		t.Error("rel 100 was partially deleted — atomicity violation")
+	}
+	if _, exists := bs.relIDs[snowflake.ID(101)]; !exists {
+		t.Error("rel 101 was partially deleted — atomicity violation")
+	}
+	if _, exists := bs.relIDs[corruptRelID]; !exists {
+		t.Error("corrupt rel 999 was removed — atomicity violation")
+	}
+
+	// Node should still exist.
+	if _, exists := bs.nodeIDs[snowflake.ID(10)]; !exists {
+		t.Error("node 10 was deleted despite cascade failure — atomicity violation")
+	}
+
+	// Counts should be unchanged.
+	nc, _ := bs.NodeCount()
+	rc, _ := bs.RelationshipCount()
+	if nc != 3 {
+		t.Errorf("NodeCount = %d, want 3", nc)
+	}
+	if rc != 3 {
+		t.Errorf("RelationshipCount = %d, want 3", rc)
+	}
+}
+
 // ─── InMemory Close flush ────────────────────────────────────────────────────
 
 func TestBadgerStoreInMemoryCloseFlushes(t *testing.T) {
@@ -1584,10 +1659,10 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
-	// DeleteNodeCascade should handle the error gracefully and clean up indexes.
+	// DeleteNodeCascade should return an error but still clean up indexes.
 	err := bs.DeleteNodeCascade(id)
-	if err != nil {
-		t.Fatalf("DeleteNodeCascade should succeed on corrupted node, got: %v", err)
+	if err == nil {
+		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
 
 	// Verify cleanup: nodeIDs should be empty, labelIdx should be clean.
@@ -1624,11 +1699,12 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
-	if err := bs.DeleteNodeCascade(id); err != nil {
-		t.Fatalf("DeleteNodeCascade: %v", err)
+	err := bs.DeleteNodeCascade(id)
+	if err == nil {
+		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
 
-	// All label index entries for this node should be scrubbed.
+	// All label index entries for this node should be scrubbed despite the error.
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 
@@ -1638,6 +1714,14 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 				t.Fatalf("labelIdx[%d] still contains ghost node %d", tok, id)
 			}
 		}
+	}
+	if _, exists := bs.nodeIDs[id]; exists {
+		t.Fatal("nodeIDs should not contain the deleted node")
+	}
+
+	nc, _ := bs.NodeCount()
+	if nc != 0 {
+		t.Fatalf("expected 0 nodes, got %d", nc)
 	}
 }
 
@@ -1771,5 +1855,95 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 	_, err = bs.IncomingRelationships(snowflake.ID(20), 0)
 	if err == nil {
 		t.Fatal("IncomingRelationships should return error for corrupted rel data")
+	}
+}
+
+// ─── Cache isolation ─────────────────────────────────────────────────────────
+
+func TestBadgerStorePutNodeCacheIsolation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	if err := bs.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mutate the original after Put.
+	_ = n.SetProperty("name", "MUTATED")
+
+	got, err := bs.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := got.GetProperty("name")
+	if v != "Alice" {
+		t.Fatalf("PutNode did not copy: got %v, want Alice", v)
+	}
+}
+
+func TestBadgerStoreGetNodeReturnsCopy(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	bs.PutNode(n)
+
+	first, _ := bs.GetNode(snowflake.ID(1))
+	_ = first.SetProperty("name", "MUTATED")
+
+	second, _ := bs.GetNode(snowflake.ID(1))
+	v, _ := second.GetProperty("name")
+	if v != "Alice" {
+		t.Fatalf("GetNode returned shared pointer: got %v, want Alice", v)
+	}
+}
+
+func TestBadgerStorePutRelCacheIsolation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mutate original after Put.
+	_ = r.SetProperty("weight", 999.0)
+
+	got, err := bs.GetRelationship(snowflake.ID(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := got.GetProperty("weight")
+	if v != 1.0 {
+		t.Fatalf("PutRelationship did not copy: got %v, want 1.0", v)
+	}
+}
+
+func TestBadgerStoreGetRelReturnsCopy(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	bs.PutRelationship(r)
+
+	first, _ := bs.GetRelationship(snowflake.ID(100))
+	_ = first.SetProperty("weight", 999.0)
+
+	second, _ := bs.GetRelationship(snowflake.ID(100))
+	v, _ := second.GetProperty("weight")
+	if v != 1.0 {
+		t.Fatalf("GetRelationship returned shared pointer: got %v, want 1.0", v)
 	}
 }

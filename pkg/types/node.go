@@ -207,3 +207,28 @@ func (n *Node) Integrity() *NodeIntegrity {
 func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 	n.integrity = ig
 }
+
+// DeepCopy returns a fully independent clone of the node.
+// All nested reference types (extraLabels, properties, temporal, integrity)
+// are deep-copied so mutations to the copy never affect the original.
+func (n *Node) DeepCopy() *Node {
+	cp := &Node{
+		id:           n.id,
+		primaryLabel: n.primaryLabel,
+		version:      n.version,
+	}
+	if len(n.extraLabels) > 0 {
+		cp.extraLabels = make([]labelToken, len(n.extraLabels))
+		copy(cp.extraLabels, n.extraLabels)
+	}
+	cp.properties = n.properties.DeepCopy()
+	if n.temporal != nil {
+		tm := *n.temporal
+		cp.temporal = &tm
+	}
+	if n.integrity != nil {
+		ig := *n.integrity
+		cp.integrity = &ig
+	}
+	return cp
+}

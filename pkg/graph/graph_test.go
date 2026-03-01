@@ -203,22 +203,50 @@ func TestGraphSnowflakeNodeIDRange(t *testing.T) {
 		t.Errorf("SnowflakeNodeID=0 should be valid, got: %v", err)
 	}
 
-	// Valid: 1023 (maximum for 10-bit node)
-	_, err = New(Config{SnowflakeNodeID: 1023})
+	// Valid: 511 (maximum — maps to even/odd pair 1022/1023)
+	_, err = New(Config{SnowflakeNodeID: 511})
 	if err != nil {
-		t.Errorf("SnowflakeNodeID=1023 should be valid, got: %v", err)
+		t.Errorf("SnowflakeNodeID=511 should be valid, got: %v", err)
 	}
 
-	// Invalid: 1024 (exceeds 10-bit range)
-	_, err = New(Config{SnowflakeNodeID: 1024})
+	// Invalid: 512 (would map to 1024/1025 — exceeds 10-bit range)
+	_, err = New(Config{SnowflakeNodeID: 512})
 	if err == nil {
-		t.Fatal("SnowflakeNodeID=1024 should return error")
+		t.Fatal("SnowflakeNodeID=512 should return error")
 	}
 
 	// Invalid: negative
 	_, err = New(Config{SnowflakeNodeID: -1})
 	if err == nil {
 		t.Fatal("SnowflakeNodeID=-1 should return error")
+	}
+}
+
+func TestGraphNodeRelIDValueUniqueness(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{SnowflakeNodeID: 0})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Generate node and rel IDs concurrently. The even/odd node field
+	// guarantees no value collision even within the same millisecond.
+	const count = 1000
+	all := make(map[snowflake.ID]string, count*2)
+
+	for range count {
+		nid := g.NextNodeID()
+		if prev, dup := all[nid]; dup {
+			t.Fatalf("node ID %d collides with %s", nid, prev)
+		}
+		all[nid] = "node"
+
+		rid := g.NextRelID()
+		if prev, dup := all[rid]; dup {
+			t.Fatalf("rel ID %d collides with %s", rid, prev)
+		}
+		all[rid] = "rel"
 	}
 }
 
@@ -282,8 +310,12 @@ func TestGraphAddNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode() returned error: %v", err)
 	}
-	if got != n {
-		t.Fatal("GetNode() returned different pointer than AddNode()")
+	if got.InternalID() != n.InternalID() {
+		t.Fatal("GetNode() returned node with different ID")
+	}
+	gotName, _ := got.GetProperty("name")
+	if gotName != "Alice" {
+		t.Fatalf("GetNode() property name = %v, want Alice", gotName)
 	}
 }
 
@@ -647,7 +679,7 @@ func TestGraphDefaultMemoryStore(t *testing.T) {
 	// Verify the default store works by adding and retrieving a node.
 	n, _ := g.AddNode([]string{"Test"}, nil)
 	got, _ := g.GetNode(n.InternalID().SnowflakeID())
-	if got != n {
+	if got.InternalID() != n.InternalID() {
 		t.Fatal("Default store should round-trip nodes")
 	}
 }

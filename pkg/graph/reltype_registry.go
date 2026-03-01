@@ -138,6 +138,10 @@ func (r *relTypeRegistry) ImportNames(names []string) error {
 	if names[0] != "" {
 		return errors.New("graph: import: names[0] must be empty (reserved)")
 	}
+	if len(names)-1 > int(tokenCapacityMax) {
+		return fmt.Errorf("graph: reltype import: %d entries exceeds registry capacity (%d)",
+			len(names)-1, tokenCapacityMax)
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -151,9 +155,9 @@ func (r *relTypeRegistry) ImportNames(names []string) error {
 
 	r.toToken = make(map[string]uint16, len(names)-1)
 	for i := 1; i < len(names); i++ {
-		r.toToken[names[i]] = uint16(i) // #nosec G115 — index bounded by registry capacity (65535)
+		r.toToken[names[i]] = uint16(i)
 	}
 
-	r.nextToken = uint16(len(names)) // #nosec G115 — len bounded by registry capacity (65535)
+	r.nextToken = uint16(len(names))
 	return nil
 }

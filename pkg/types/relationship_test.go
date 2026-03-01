@@ -502,3 +502,83 @@ func TestRelStressManyProperties(t *testing.T) {
 		t.Fatal("Relationship properties are not sorted after 1000 insertions")
 	}
 }
+
+// ─── DeepCopy tests ──────────────────────────────────────────────────────────
+
+func TestRelDeepCopy(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(42), 5, snowflake.ID(100), snowflake.ID(200))
+	_ = r.SetProperty("weight", 1.5)
+	_ = r.SetProperty("tags", []string{"x", "y"})
+	r.SetVersion(3)
+	r.SetTemporal(&TemporalMetadata{ValidFrom: 2000, CreatedBy: "bob"})
+	r.SetIntegrity(&RelIntegrity{Hash: "abc", PrevHash: "def"})
+
+	cp := r.DeepCopy()
+
+	// All fields copied correctly.
+	if cp.InternalID() != r.InternalID() {
+		t.Errorf("ID: got %v, want %v", cp.InternalID(), r.InternalID())
+	}
+	if cp.TypeToken() != r.TypeToken() {
+		t.Errorf("TypeToken: got %v, want %v", cp.TypeToken(), r.TypeToken())
+	}
+	if cp.StartNodeID() != r.StartNodeID() {
+		t.Errorf("StartNodeID: got %v, want %v", cp.StartNodeID(), r.StartNodeID())
+	}
+	if cp.EndNodeID() != r.EndNodeID() {
+		t.Errorf("EndNodeID: got %v, want %v", cp.EndNodeID(), r.EndNodeID())
+	}
+	if cp.Version() != 3 {
+		t.Errorf("Version: got %d, want 3", cp.Version())
+	}
+	if v, ok := cp.GetProperty("weight"); !ok || v != 1.5 {
+		t.Errorf("Property weight: got (%v, %v), want (1.5, true)", v, ok)
+	}
+	if cp.Temporal().ValidFrom != 2000 || cp.Temporal().CreatedBy != "bob" {
+		t.Error("Temporal fields not copied correctly")
+	}
+	if cp.Integrity().Hash != "abc" || cp.Integrity().PrevHash != "def" {
+		t.Error("Integrity fields not copied correctly")
+	}
+
+	// Mutation independence: properties.
+	_ = cp.SetProperty("weight", 9.9)
+	if v, _ := r.GetProperty("weight"); v != 1.5 {
+		t.Fatal("DeepCopy properties: mutation affected original")
+	}
+
+	// Mutation independence: slice property values.
+	cpTags, _ := cp.GetProperty("tags")
+	cpTags.([]string)[0] = "MUTATED"
+	origTags, _ := r.GetProperty("tags")
+	if origTags.([]string)[0] == "MUTATED" {
+		t.Fatal("DeepCopy property slice value: mutation affected original")
+	}
+
+	// Mutation independence: temporal.
+	cp.Temporal().ValidFrom = 9999
+	if r.Temporal().ValidFrom != 2000 {
+		t.Fatal("DeepCopy temporal: mutation affected original")
+	}
+
+	// Mutation independence: integrity.
+	cp.Integrity().Hash = "MUTATED"
+	if r.Integrity().Hash != "abc" {
+		t.Fatal("DeepCopy integrity: mutation affected original")
+	}
+}
+
+func TestRelDeepCopyNilTemporalIntegrity(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(snowflake.ID(1), 5, snowflake.ID(100), snowflake.ID(200))
+	cp := r.DeepCopy()
+	if cp.Temporal() != nil {
+		t.Fatal("DeepCopy should preserve nil temporal")
+	}
+	if cp.Integrity() != nil {
+		t.Fatal("DeepCopy should preserve nil integrity")
+	}
+}

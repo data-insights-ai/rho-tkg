@@ -144,7 +144,7 @@ Patterns that caused review findings. Rules to prevent recurrence.
 ### Map iteration produces non-deterministic query results (MAJOR)
 **Problem:** `NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships` iterate Go maps and return slices in random order. Snowflake IDs are time-ordered, but that ordering is thrown away.
 **Root cause:** Map iteration order is randomized by spec. Collecting from a hash-set into a slice without sorting produces shuffled results.
-**Rule:** Any Store method returning entity slices from map iteration MUST sort by snowflake.ID before returning. This gives deterministic, chronological results with zero additional metadata. Write determinism tests: insert in reverse order, verify ascending ID order on retrieval. Test with multiple calls to prove idempotent ordering.
+**Rule:** Any Store method returning entity slices from map iteration MUST sort by snowflake.ID before returning. This gives deterministic, time-dominant results with zero additional metadata. Write determinism tests: insert in reverse order, verify ascending ID order on retrieval. Test with multiple calls to prove idempotent ordering.
 
 ### Cascade delete must tolerate pre-deleted rels in ALL loops (BLOCKER)
 **Problem:** `DeleteNode` outgoing loop hard-failed on `ErrRelNotFound`. The incoming loop correctly skipped it for self-loops, but the outgoing loop did not. Under concurrency, a goroutine can delete a relationship between the fetch and the cascade — causing `DeleteNode` to abort with a partially severed node.
@@ -237,3 +237,50 @@ Patterns that caused review findings. Rules to prevent recurrence.
 **Problem:** When `FlushInterval == 0` (InMemory mode or disabled-flush tests), `flushLoop` is never spawned and `flushDone` is pre-closed. `Close()` passed through `<-flushDone` immediately, then called `persistCounters()` and `db.Close()`. The pending buffer was silently dropped.
 **Root cause:** Assuming flushLoop's final flush was sufficient. Didn't account for the code path where flushLoop never existed.
 **Rule:** `Close()` must explicitly call `flush()` after `<-flushDone`. If flushLoop ran, the second flush is a no-op (pending is empty). If flushLoop was never started, this is the only flush. Always code defensive close paths — never assume a goroutine exists to do cleanup.
+
+---
+
+## 2026-03-01 — External Review Analysis (v3.0.13 → v3.0.14)
+
+Two contradictory external reviews were cross-checked against the actual codebase. Below are the confirmed bugs and root-cause analyses.
+
+### Background loop errors must never be silently discarded (MAJOR)
+**Problem:** `flushLoop()` uses `_ = bs.flush()` at badgerstore.go:892,895 with `#nosec G104` annotations. If Badger fails persistently (disk full, permission error, corruption), the error vanishes. The pending buffer grows unbounded until OOM kills the process. No log entry, no metric, no backpressure signal.
+**Root cause:** Treating background loops as "fire and forget." The re-queue logic (`requeueOps`) gave false confidence that "everything is handled internally." The `#nosec` annotation actively suppressed the linter that would have caught this. Background error handling was conflated with "the data will retry" — but observability was ignored entirely.
+**Why it survived 13 rounds of review:** Every review checked correctness of the retry path (requeueOps) and confirmed that data isn't lost on transient failure. Nobody asked "what happens if the failure is permanent?" or "who is notified?" The `#nosec` annotation short-circuited the one tool that would have flagged it.
+**Rule:** Never use `_ = fn()` in background goroutines. At minimum, log the error with `slog.Error`. For persistence loops, add: (1) slog logging on every failure, (2) exponential backoff instead of blind ticker retry, (3) a hard cap on `len(pending)` to apply backpressure to writers. The `#nosec G104` annotation is only valid when the error is genuinely unactionable (e.g., `io.Closer` on read-only cleanup) — never for write operations.
+
+### Entity pointers must not be shared between cache and caller (MAJOR)
+**Problem:** `Graph.AddNode` creates a `*types.Node`, passes it to `PutNode` which stores the pointer in `nodeCache.Put(id, n)` (badgerstore.go:361), then returns the same pointer to the caller (graph.go:269). Cache and caller hold the same pointer. If the caller mutates the node via `SetProperty`, the cached entity is silently corrupted. `MemoryStore` has the identical pattern — `ms.nodes[id] = n` stores the raw pointer. `GetNode` returns the cached pointer directly (badgerstore.go:389, memorystore.go:45).
+**Root cause:** The "pure-data struct" design principle (Node has no locks, is a value container) was correctly applied to the type itself. But the **store boundary** was not treated as a trust boundary. The defensive-copying principle was applied to Node *accessors* (`Properties()`, `AllLabelTokens()`) but not to the **store ingestion and retrieval path**. Nobody asked "who else holds a reference to this pointer after PutNode?"
+**Why it survived 13 rounds of review:** All reviews focused on Node's accessor methods (defensive copies) and the store's index correctness. The pointer aliasing between caller and cache was invisible because the Graph API doesn't expose mutation-after-creation as a first-class operation. Tests never exercised "add node, then mutate the returned node, then read from cache" because the API doesn't encourage it. The bug requires a caller to violate the implied contract (treat returned entities as read-only) — but that contract is nowhere documented.
+**Rule:** Store boundaries are trust boundaries. `PutNode`/`PutRelationship` must deep-copy the entity before caching: `bs.nodeCache.Put(id, n.DeepCopy())`. Alternatively, `GetNode`/`GetRelationship` can deep-copy on retrieval. Pick one side — never share pointers across the boundary. When a type is designed as "pure data, no locks," the system that caches it is responsible for isolation. Add a test: `AddNode → mutate returned node → GetNode → verify cached node is unmodified`.
+
+### Multi-step mutations must be all-or-nothing, not mutate-as-you-go (MAJOR)
+**Problem:** `DeleteNodeCascade` (badgerstore.go:810-817) calls `deleteRelLocked(relID)` in a loop. Each call modifies in-memory indexes (`relIDs`, `typeIdx`, `outIdx`, `inIdx`) and queues `writeOp` entries. If the Nth call fails (non-ErrRelNotFound — e.g., corrupted msgpack data), relationships 1..N-1 are already deleted from indexes but the node and remaining relationships are still alive. The graph is left in a permanently split state. No rollback mechanism exists.
+**Root cause:** Incremental mutation was chosen for simplicity — each `deleteRelLocked` is a self-contained unit. But a loop of self-contained mutations without rollback is only safe when every iteration is guaranteed to succeed. The only failure mode is corrupted data on disk, which is rare but not impossible. The v3.0.11 lesson ("cascade-delete error path must scrub ALL indexes") fixed the *node* cleanup path but didn't address the *relationship* loop's partial-mutation risk.
+**Why it survived 13 rounds of review:** Reviews focused on the error *type* (`ErrRelNotFound` vs others) and index cleanup. The partial-mutation scenario requires a specific failure (corrupted rel data mid-cascade) that existing tests don't simulate. The fix for v3.0.11 (scrub labelIdx on getNodeLocked failure) addressed a symptom of the same class of bug but didn't generalize the solution.
+**Rule:** Multi-step mutations on shared state must use a two-phase pattern: (1) **preflight phase** — read all data needed for the operation, fail fast if any read fails, mutate nothing; (2) **apply phase** — apply all changes as a single block with no error exits. For `DeleteNodeCascade`: collect all rel data via `getRelLocked` first; if any fails, return the error immediately with zero state changes; then apply all deletes in a non-failing loop. This is the same pattern as database transactions: validate → commit.
+
+### Close() must preserve all errors, not just the first (MINOR)
+**Problem:** `BadgerStore.Close()` (badgerstore.go:1049) uses `if e != nil && err == nil { err = e }` for `db.Close()`. If `flush()` already returned an error, the `db.Close()` error is silently dropped. A failing disk could cause both `flush()` and `db.Close()` to error — only the flush error surfaces.
+**Root cause:** Ad-hoc multi-error handling. Go's `errors.Join` (available since Go 1.20) wasn't used.
+**Rule:** When a shutdown sequence has multiple fallible steps, use `errors.Join(err, e)` to preserve all errors. Never use `if err == nil { err = e }` — it's a lossy pattern that drops secondary errors.
+
+### Cascade returning nil on data corruption hides failures (MINOR)
+**Problem:** `DeleteNodeCascade` (badgerstore.go:820-840) handles `getNodeLocked()` failure by scanning all `labelIdx` entries to clean up, then returns `nil`. The caller has no idea the node's data was unreadable. Corruption is silently absorbed.
+**Root cause:** The v3.0.11 fix for ghost entries in `labelIdx` (lessons.md line 198-201) correctly prioritized "never leave orphaned index entries." But it over-corrected by returning success — the cleanup is correct, but hiding corruption from the caller prevents alerting and diagnosis.
+**Rule:** When an operation succeeds structurally (indexes cleaned, node removed) but encounters data corruption, return a wrapped error: `fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)`. The caller can log/alert while knowing the operation completed. Distinguish "operation failed" (rollback needed) from "operation completed with warnings" (cleanup succeeded but corruption detected).
+
+---
+
+## 2026-03-01 — v3.0.14 Bug Fix Implementation
+
+### Adding DeepCopy breaks pointer-identity tests across the codebase (PATTERN)
+**Problem:** After adding `DeepCopy()` to Put/Get paths, tests in `store_test.go` and `graph_test.go` that asserted `got == n` (pointer equality) failed. These tests assumed the store returns the exact same pointer.
+**Rule:** When adding defensive copying to a store layer, grep the entire test suite for pointer comparisons (`!= n`, `!= r`, `returned different pointer`, `returned same pointer`) and update them to compare by ID or field values. Pointer identity tests are incompatible with copy-on-store semantics.
+
+### Extract mutation-only helpers when splitting read+write operations (PATTERN)
+**Problem:** `deleteRelLocked` was a single function doing read (getRelLocked) + mutations. The two-phase cascade fix needed the mutation part without the read. Copy-pasting the mutations would create duplication.
+**Solution:** Extract `deleteRelByInfo(info relDeleteInfo)` containing only the mutation logic. `deleteRelLocked` becomes read + call helper. `DeleteNodeCascade` preflight reads, then calls the helper directly.
+**Rule:** When refactoring to two-phase operations, separate the "get data" step from the "apply mutations" step into independent functions. The mutation function should accept pre-read data and perform no reads — guaranteeing it cannot fail mid-mutation.

@@ -25,8 +25,8 @@ func TestMemoryStorePutGetNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode() returned error: %v", err)
 	}
-	if got != n {
-		t.Fatal("GetNode() returned different pointer than PutNode()")
+	if got.InternalID() != n.InternalID() {
+		t.Fatal("GetNode() returned node with different ID")
 	}
 }
 
@@ -125,8 +125,8 @@ func TestMemoryStorePutGetRelationship(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelationship() returned error: %v", err)
 	}
-	if got != r {
-		t.Fatal("GetRelationship() returned different pointer")
+	if got.InternalID() != r.InternalID() {
+		t.Fatal("GetRelationship() returned relationship with different ID")
 	}
 }
 
@@ -788,5 +788,98 @@ func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
 					i, first[i].InternalID().SnowflakeID(), got[i].InternalID().SnowflakeID())
 			}
 		}
+	}
+}
+
+// ─── MemoryStore: Cache isolation ───────────────────────────────────────────
+
+func TestMemoryStorePutNodeCacheIsolation(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	ms.PutNode(n)
+
+	// Mutate the original after Put.
+	_ = n.SetProperty("name", "MUTATED")
+
+	// GetNode must return the original value, not the mutation.
+	got, err := ms.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := got.GetProperty("name")
+	if v != "Alice" {
+		t.Fatalf("PutNode did not copy: got %v, want Alice", v)
+	}
+}
+
+func TestMemoryStoreGetNodeReturnsCopy(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	ms.PutNode(n)
+
+	// Get twice, mutate first result.
+	first, _ := ms.GetNode(snowflake.ID(1))
+	_ = first.SetProperty("name", "MUTATED")
+
+	// Second Get must be unaffected.
+	second, _ := ms.GetNode(snowflake.ID(1))
+	v, _ := second.GetProperty("name")
+	if v != "Alice" {
+		t.Fatalf("GetNode returned shared pointer: got %v, want Alice", v)
+	}
+}
+
+func TestMemoryStorePutRelCacheIsolation(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	ms.PutRelationship(r)
+
+	// Mutate original after Put.
+	_ = r.SetProperty("weight", 999.0)
+
+	got, err := ms.GetRelationship(snowflake.ID(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := got.GetProperty("weight")
+	if v != 1.0 {
+		t.Fatalf("PutRelationship did not copy: got %v, want 1.0", v)
+	}
+}
+
+func TestMemoryStoreGetRelReturnsCopy(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.0)
+	ms.PutRelationship(r)
+
+	first, _ := ms.GetRelationship(snowflake.ID(100))
+	_ = first.SetProperty("weight", 999.0)
+
+	second, _ := ms.GetRelationship(snowflake.ID(100))
+	v, _ := second.GetProperty("weight")
+	if v != 1.0 {
+		t.Fatalf("GetRelationship returned shared pointer: got %v, want 1.0", v)
 	}
 }

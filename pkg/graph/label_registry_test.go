@@ -371,6 +371,45 @@ func TestLabelRegistryImportEmpty(t *testing.T) {
 	}
 }
 
+func TestLabelRegistryImportAtCapacityAccepted(t *testing.T) {
+	t.Parallel()
+
+	// Exactly tokenCapacityMax tokens (slot 0 + 65535 entries) — must succeed.
+	names := make([]string, tokenCapacityMax+1) // len = 65536
+	names[0] = ""
+	for i := 1; i < len(names); i++ {
+		names[i] = fmt.Sprintf("L%d", i)
+	}
+
+	reg := newLabelRegistry()
+	if err := reg.ImportNames(names); err != nil {
+		t.Fatalf("ImportNames at exact capacity should succeed, got: %v", err)
+	}
+	if reg.Len() != int(tokenCapacityMax) {
+		t.Errorf("Len() = %d, want %d", reg.Len(), tokenCapacityMax)
+	}
+}
+
+func TestLabelRegistryImportOverflowRejected(t *testing.T) {
+	t.Parallel()
+
+	// tokenCapacityMax+1 tokens (slot 0 + 65536 entries) — 1 beyond capacity.
+	names := make([]string, tokenCapacityMax+2) // len = 65537
+	names[0] = ""
+	for i := 1; i < len(names); i++ {
+		names[i] = fmt.Sprintf("L%d", i)
+	}
+
+	reg := newLabelRegistry()
+	err := reg.ImportNames(names)
+	if err == nil {
+		t.Fatal("ImportNames should reject slice exceeding registry capacity")
+	}
+	if reg.Len() != 0 {
+		t.Errorf("registry should remain empty after overflow rejection, got Len()=%d", reg.Len())
+	}
+}
+
 func TestLabelRegistryImportPreservesTokenOrder(t *testing.T) {
 	t.Parallel()
 

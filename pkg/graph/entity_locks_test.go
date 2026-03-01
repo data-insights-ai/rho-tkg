@@ -22,9 +22,10 @@ func TestEntityLockManagerLockTwoDifferentShards(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
 
-	// Choose IDs that definitely map to different shards.
-	a := snowflake.ID(0) // shard 0
-	b := snowflake.ID(1) // shard 1
+	// Choose IDs that map to different shards. shardIndex uses bits 22-29
+	// (low 8 bits of the timestamp field), so shift values above bit 22.
+	a := snowflake.ID(0 << 22)   // shard 0
+	b := snowflake.ID(1 << 22)   // shard 1
 
 	lm.LockTwo(a, b)
 	lm.UnlockTwo(a, b)
@@ -45,8 +46,8 @@ func TestEntityLockManagerLockTwoReverseOrder(t *testing.T) {
 	lm := newEntityLockManager()
 
 	// LockTwo should normalize order, so (b, a) == (a, b).
-	a := snowflake.ID(0)
-	b := snowflake.ID(1)
+	a := snowflake.ID(0 << 22)
+	b := snowflake.ID(1 << 22)
 
 	lm.LockTwo(b, a)
 	lm.UnlockTwo(b, a)
@@ -58,11 +59,28 @@ func TestShardIndexRange(t *testing.T) {
 	t.Parallel()
 
 	// Verify shard indices are always 0-255.
-	for _, id := range []snowflake.ID{0, 1, 255, 256, 1000, ^snowflake.ID(0)} {
+	// Values must place bits in the timestamp region (bits 22+) for meaningful shard diversity.
+	for _, id := range []snowflake.ID{0, 1 << 22, 255 << 22, 256 << 22, 1000 << 22, ^snowflake.ID(0)} {
 		si := shardIndex(id)
 		if int(si) >= entityLockShards {
 			t.Fatalf("shardIndex(%d) = %d, out of range", id, si)
 		}
+	}
+}
+
+func TestShardIndexDistribution(t *testing.T) {
+	t.Parallel()
+
+	// Entities created at different millisecond timestamps should distribute
+	// across shards. With the old step-based sharding, all of these would
+	// map to shard 0 (step=0 for each).
+	seen := make(map[uint8]struct{})
+	for ms := int64(0); ms < 256; ms++ {
+		id := snowflake.ID(ms << 22) // ms in timestamp field, step=0, node=0
+		seen[shardIndex(id)] = struct{}{}
+	}
+	if len(seen) != 256 {
+		t.Errorf("256 consecutive ms timestamps used %d/256 shards, want 256", len(seen))
 	}
 }
 
@@ -72,9 +90,9 @@ func TestEntityLockManagerNoDeadlock(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
 
-	// Find two IDs in different shards.
-	a := snowflake.ID(0) // shard 0
-	b := snowflake.ID(1) // shard 1
+	// Two IDs in different shards (timestamp bits determine shard).
+	a := snowflake.ID(0 << 22) // shard 0
+	b := snowflake.ID(1 << 22) // shard 1
 
 	const iterations = 1000
 	var wg sync.WaitGroup
@@ -117,8 +135,8 @@ func TestEntityLockManagerConcurrentStress(t *testing.T) {
 		go func(gid int) {
 			defer wg.Done()
 			for i := range opsPerGoroutine {
-				a := snowflake.ID(gid*100 + i)
-				b := snowflake.ID(gid*100 + i + 1)
+				a := snowflake.ID(int64(gid*100+i) << 22)
+				b := snowflake.ID(int64(gid*100+i+1) << 22)
 
 				if i%2 == 0 {
 					lm.LockEntity(a)

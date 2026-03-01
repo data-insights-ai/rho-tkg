@@ -153,3 +153,26 @@ func (r *Relationship) Integrity() *RelIntegrity {
 func (r *Relationship) SetIntegrity(ig *RelIntegrity) {
 	r.integrity = ig
 }
+
+// DeepCopy returns a fully independent clone of the relationship.
+// All nested reference types (properties, temporal, integrity) are deep-copied
+// so mutations to the copy never affect the original.
+func (r *Relationship) DeepCopy() *Relationship {
+	cp := &Relationship{
+		id:      r.id,
+		startID: r.startID,
+		endID:   r.endID,
+		relType: r.relType,
+		version: r.version,
+	}
+	cp.properties = r.properties.DeepCopy()
+	if r.temporal != nil {
+		tm := *r.temporal
+		cp.temporal = &tm
+	}
+	if r.integrity != nil {
+		ig := *r.integrity
+		cp.integrity = &ig
+	}
+	return cp
+}

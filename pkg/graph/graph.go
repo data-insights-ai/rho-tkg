@@ -21,7 +21,9 @@ var snowflakeEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // Config holds configuration for the Graph.
 type Config struct {
-	// SnowflakeNodeID identifies this graph instance (0-1023).
+	// SnowflakeNodeID identifies this graph instance (0-511).
+	// Internally mapped to even/odd generator pair (nodeGen=ID*2, relGen=ID*2+1)
+	// to guarantee value-level uniqueness across node and relationship IDs.
 	// Each concurrent instance must use a different value.
 	SnowflakeNodeID int64
 
@@ -57,7 +59,9 @@ type Graph struct {
 }
 
 // New creates a new Graph with the given configuration.
-// Returns an error if SnowflakeNodeID is out of range (0-1023 for 10-bit node).
+// Returns an error if SnowflakeNodeID is out of range (0-511).
+// The ID is mapped to an even/odd pair (ID*2 for nodes, ID*2+1 for rels)
+// to guarantee value-level uniqueness across entity types.
 //
 // Store selection priority:
 //  1. config.Store (explicit injection)
@@ -67,7 +71,11 @@ type Graph struct {
 // When a BadgerStore is created, registries are loaded from persisted data.
 // Call Close() when done to save registries and close the store.
 func New(config Config) (*Graph, error) {
-	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+	if config.SnowflakeNodeID < 0 || config.SnowflakeNodeID > 511 {
+		return nil, fmt.Errorf("graph: SnowflakeNodeID must be 0-511, got %d", config.SnowflakeNodeID)
+	}
+
+	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
 		snowflake.WithEpoch(snowflakeEpoch),
 		snowflake.WithNodeBits(10),
 		snowflake.WithStepBits(12),
@@ -75,10 +83,7 @@ func New(config Config) (*Graph, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: node ID generator: %w", err)
 	}
-	// relGen uses the same parameters as nodeGen. If nodeGen succeeded,
-	// relGen will too. The error handling remains for defensive correctness
-	// in case the snowflake library adds non-deterministic validation.
-	relGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+	relGen, err := snowflake.NewNode(config.SnowflakeNodeID*2+1,
 		snowflake.WithEpoch(snowflakeEpoch),
 		snowflake.WithNodeBits(10),
 		snowflake.WithStepBits(12),

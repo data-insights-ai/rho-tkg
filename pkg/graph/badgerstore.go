@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -358,7 +359,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	}
 
 	// Update in-memory state.
-	bs.nodeCache.Put(id, n)
+	bs.nodeCache.Put(id, n.DeepCopy())
 	bs.nodeIDs[id] = struct{}{}
 
 	// Build write ops.
@@ -386,7 +387,7 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case cacheHit:
-		return v, nil
+		return v.DeepCopy(), nil
 	case cacheDeleted:
 		return nil, ErrNodeNotFound
 	}
@@ -425,7 +426,7 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 
 	// Populate cache as clean (evictable).
 	bs.nodeCache.LoadClean(id, n)
-	return n, nil
+	return n.DeepCopy(), nil
 }
 
 // DeleteNode removes a node and its label index entries.
@@ -504,7 +505,7 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, r)
+	bs.relCache.Put(id, r.DeepCopy())
 	bs.relIDs[id] = struct{}{}
 
 	// Type index.
@@ -544,7 +545,7 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 	v, status := bs.relCache.Get(id)
 	switch status {
 	case cacheHit:
-		return v, nil
+		return v.DeepCopy(), nil
 	case cacheDeleted:
 		return nil, ErrRelNotFound
 	}
@@ -583,7 +584,7 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 
 	// Populate cache as clean.
 	bs.relCache.LoadClean(id, r)
-	return r, nil
+	return r.DeepCopy(), nil
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
@@ -595,64 +596,80 @@ func (bs *BadgerStore) DeleteRelationship(id snowflake.ID) error {
 	return bs.deleteRelLocked(id)
 }
 
+// relDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.
+type relDeleteInfo struct {
+	id      snowflake.ID
+	relType uint16
+	startID snowflake.ID
+	endID   snowflake.ID
+}
+
 // deleteRelLocked removes a relationship and cleans up indexes.
 // Caller must hold bs.idxMu write lock.
 func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
-	intID := int64(id)
-
-	// Get rel data (cache or Badger).
+	// Read phase.
 	r, err := bs.getRelLocked(id)
 	if err != nil {
 		return err
 	}
 
-	relType := r.TypeToken().Value()
-	startID := r.StartNodeID().SnowflakeID()
-	endID := r.EndNodeID().SnowflakeID()
+	// Mutation phase.
+	bs.deleteRelByInfo(relDeleteInfo{
+		id:      id,
+		relType: r.TypeToken().Value(),
+		startID: r.StartNodeID().SnowflakeID(),
+		endID:   r.EndNodeID().SnowflakeID(),
+	})
+	return nil
+}
+
+// deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
+// Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
+func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
+	intID := int64(info.id)
 
 	// Update in-memory state.
-	bs.relCache.MarkDeleted(id)
-	delete(bs.relIDs, id)
+	bs.relCache.MarkDeleted(info.id)
+	delete(bs.relIDs, info.id)
 
 	// Type index cleanup.
-	if set, exists := bs.typeIdx[relType]; exists {
-		delete(set, id)
+	if set, exists := bs.typeIdx[info.relType]; exists {
+		delete(set, info.id)
 		if len(set) == 0 {
-			delete(bs.typeIdx, relType)
+			delete(bs.typeIdx, info.relType)
 		}
 	}
 
 	// Adjacency cleanup.
-	if set, exists := bs.outIdx[startID]; exists {
-		delete(set, id)
+	if set, exists := bs.outIdx[info.startID]; exists {
+		delete(set, info.id)
 		if len(set) == 0 {
-			delete(bs.outIdx, startID)
+			delete(bs.outIdx, info.startID)
 		}
 	}
-	if set, exists := bs.inIdx[endID]; exists {
-		delete(set, id)
+	if set, exists := bs.inIdx[info.endID]; exists {
+		delete(set, info.id)
 		if len(set) == 0 {
-			delete(bs.inIdx, endID)
+			delete(bs.inIdx, info.endID)
 		}
 	}
 
 	// Build delete ops.
 	ops := []writeOp{
 		{opType: writeOpDelete, key: relKey(intID)},
-		{opType: writeOpDelete, key: relTypeIndexKey(relType, intID)},
-		{opType: writeOpDelete, key: outKey(int64(startID), relType, int64(endID), intID)},
-		{opType: writeOpDelete, key: inKey(int64(endID), relType, int64(startID), intID)},
+		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, intID)},
+		{opType: writeOpDelete, key: outKey(int64(info.startID), info.relType, int64(info.endID), intID)},
+		{opType: writeOpDelete, key: inKey(int64(info.endID), info.relType, int64(info.startID), intID)},
 	}
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
-	return nil
 }
 
 // --- Index queries ---
 
 // NodesByLabel returns all nodes with the given label token.
-// Results are sorted by snowflake.ID (chronological) for deterministic output.
+// Results are sorted by snowflake.ID for deterministic output.
 func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	set := bs.labelIdx[token]
@@ -683,7 +700,7 @@ func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 }
 
 // RelationshipsByType returns all relationships with the given type token.
-// Results are sorted by snowflake.ID (chronological) for deterministic output.
+// Results are sorted by snowflake.ID for deterministic output.
 func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
 	bs.idxMu.RLock()
 	set := bs.typeIdx[token]
@@ -806,14 +823,28 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 		relIDs[relID] = struct{}{}
 	}
 
-	// Delete each relationship.
+	// Phase 1 — Preflight: read all relationship metadata before any mutations.
+	// If any read fails (corruption), we abort without partial state changes.
+	toDelete := make([]relDeleteInfo, 0, len(relIDs))
 	for relID := range relIDs {
-		if err := bs.deleteRelLocked(relID); err != nil {
+		r, err := bs.getRelLocked(relID)
+		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // tolerate already-deleted rels
 			}
-			return fmt.Errorf("graph: cascade delete relationship: %w", err)
+			return fmt.Errorf("graph: cascade read relationship: %w", err)
 		}
+		toDelete = append(toDelete, relDeleteInfo{
+			id:      relID,
+			relType: r.TypeToken().Value(),
+			startID: r.StartNodeID().SnowflakeID(),
+			endID:   r.EndNodeID().SnowflakeID(),
+		})
+	}
+
+	// Phase 2 — Apply: all mutations use pre-read data, no reads, cannot fail.
+	for _, info := range toDelete {
+		bs.deleteRelByInfo(info)
 	}
 
 	// Get node data for label cleanup.
@@ -837,7 +868,7 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 		delete(bs.nodeIDs, id)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
-		return nil
+		return fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)
 	}
 
 	// Build delete ops for node.
@@ -889,10 +920,14 @@ func (bs *BadgerStore) flushLoop() {
 	for {
 		select {
 		case <-bs.stopCh:
-			_ = bs.flush() // #nosec G104 — best-effort final flush; failed ops are re-queued internally
+			if err := bs.flush(); err != nil {
+				slog.Error("graph: flush failed", "error", err)
+			}
 			return
 		case <-ticker.C:
-			_ = bs.flush() // #nosec G104 — best-effort periodic flush; failed ops are re-queued internally
+			if err := bs.flush(); err != nil {
+				slog.Error("graph: flush failed", "error", err)
+			}
 		}
 	}
 }
@@ -1046,9 +1081,7 @@ func (bs *BadgerStore) Close() error {
 		if e := bs.flush(); e != nil {
 			err = e
 		}
-		if e := bs.db.Close(); e != nil && err == nil {
-			err = e
-		}
+		err = errors.Join(err, bs.db.Close())
 	})
 	return err
 }

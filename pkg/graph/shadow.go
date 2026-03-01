@@ -1,6 +1,8 @@
 package graph
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+import (
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+)
 
 // ResolveNodeProperty resolves a property key on a node.
 // For non-tkg_ keys, delegates to the node's PropertySlice.
@@ -40,10 +42,12 @@ func (g *Graph) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
 		}
 		return nil, false
 	case types.ShadowCreatedAt:
-		if tm := n.Temporal(); tm != nil {
+		if tm := n.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return nil, false
+		// Derive from snowflake ID — always available, millisecond precision.
+		parts := g.nodeIDGen.Decompose(n.InternalID().SnowflakeID())
+		return types.Instant(snowflakeEpoch.UnixMilli() + parts.Time), true
 	case types.ShadowUpdatedAt:
 		if tm := n.Temporal(); tm != nil {
 			return tm.UpdatedAt, true
@@ -131,10 +135,12 @@ func (g *Graph) ResolveRelProperty(r *types.Relationship, key string) (any, bool
 		}
 		return nil, false
 	case types.ShadowCreatedAt:
-		if tm := r.Temporal(); tm != nil {
+		if tm := r.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return nil, false
+		// Derive from snowflake ID — always available, millisecond precision.
+		parts := g.relIDGen.Decompose(r.InternalID().SnowflakeID())
+		return types.Instant(snowflakeEpoch.UnixMilli() + parts.Time), true
 	case types.ShadowUpdatedAt:
 		if tm := r.Temporal(); tm != nil {
 			return tm.UpdatedAt, true

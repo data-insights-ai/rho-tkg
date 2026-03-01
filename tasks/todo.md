@@ -1,73 +1,19 @@
 # tkg-v3 — Current Tasks
 
-## Completed: Pre-Release Code Review Fixes — v3.0.13
+### Confirmed Design Observations (document only)
 
-- [x] MAJOR: `Graph.Close()` data race on `closeFn` — replaced with `sync.Once` (`closeOnce`)
-- [x] MAJOR: Query methods silently swallow corruption errors — `NodesByLabel`, `RelationshipsByType`, `OutgoingRelationships`, `IncomingRelationships` now propagate non-sentinel errors
-- [x] MINOR: Dead variable `relDeleteCount` in `DeleteNodeCascade` — removed
-- [x] MINOR: 12 test-only functions + 6 constants moved from `keys.go` to `keys_helpers_test.go`
-- [x] MINOR: `toIntSlice` at 0% coverage — `TestWireRoundTripIntSlice` added
-- [x] Tests: `TestGraphCloseConcurrent`, 4 corruption propagation tests
-- [x] Verification: `make ci` green, 92.2% coverage, race-clean, 0 gosec, 0 vulncheck
+- [ ] DOC: `FlushInterval: 0` = "use default" in disk mode (cannot disable periodic flush)
+- [ ] DOC: No `context.Context` — intentional for embedded library
+- [ ] DOC: `time.Time` rejected — by design, use `Instant`
 
-## Completed: Final Hardening + Code Review — v3.0.12
+### Coverage Gaps (confirmed)
 
-- [x] BLOCKER: Atomic counter persistence — counters in WriteBatch, `persistCounters()` deleted
-- [x] BLOCKER: O(N²) `evictClean` → O(N) single pass from Back()
-- [x] MAJOR: `DeleteNodeCascade` propagates non-`ErrRelNotFound` errors (corrupted rel detection)
-- [x] MAJOR: `Close()` explicitly flushes when flushLoop was never started (InMemory mode)
-- [x] MINOR: O(1) `nodeIDs` bloom filter in `GetNode()` — short-circuit before Badger read
-- [x] MINOR: O(1) `relIDs` bloom filter in `GetRelationship()` + `PutRelationship()` — replaces O(N) `relExistsInIndex()` scan
-- [x] Tests: LRU single-pass eviction, cascade corrupt propagation, atomic counter persistence, InMemory close flush
-- [x] Final code review: READY FOR PRODUCTION
-- [x] Verification: `make ci` green, 92.3% coverage, race-clean, 0 gosec, 0 vulncheck
-
-## Completed: Async Flush Hardening — 3 Concurrency Fixes (v3.0.11)
-
-- [x] BLOCKER: Version-aware dirty tracking (`dirtyVer uint64`) — `CollectDirty()` read-only, `MarkFlushed()` only clears matching versions
-- [x] MAJOR: Map-based pending write buffer (`map[string]writeOp`) — last-write-wins dedup, `requeueOps()` preserves newer writes
-- [x] MAJOR: `DeleteNodeCascade` error path scrubs `labelIdx` when entity data unreadable — no ghost entries
-- [x] Tests: LRU version-aware tests, requeue tests, cascade corruption tests
-- [x] Verification: `make ci` green, 92.6% coverage, race-clean, 0 gosec, 0 vulncheck
-
-## Completed: BadgerStore LRU Cache + Async Batch Persistence + Entity Locks (v3.0.10)
-
-- [x] Generic LRU cache (`entityLRU[V]`) with dirty tracking, tombstones, soft capacity
-- [x] Sharded entity lock manager (256 shards, deadlock-free `LockTwo`)
-- [x] BadgerStore refactored: in-memory indexes + LRU caches + async WriteBatch flush loop
-- [x] Atomic int64 counters (no OCC contention) — `nodeCount`/`relCount` on struct
-- [x] Entity locks in Graph layer: `AddRelationship` locks both endpoints, `DeleteNode` locks target
-- [x] Background flush loop (100ms ticker) + value log GC loop (5min ticker)
-- [x] `loadIndexes()` rebuilds in-memory state from Badger on startup
-- [x] Write-skew regression test (`TestGraphAddRelDeleteNodeConcurrency`)
-- [x] Verification: `make ci` green, 561 tests, 86.0% coverage, race-clean, 0 gosec, 0 vulncheck
-- [x] Documentation: CHANGELOG.md (v3.0.10), CLAUDE.md (architecture table, invariants, phases), doc.go, tasks/lessons.md, MEMORY.md updated
-
-## Completed: Phase 2B Hardening — 5 Architectural Fixes (v3.0.9)
-
-- [x] Fix Close() file handle leak — `closeFn()` now runs unconditionally even if registry saves fail
-- [x] Fix type erasure in wire format — added `Type byte` tag to `propertyWire` for Go type fidelity across msgpack round-trips
-- [x] Add error returns to Store query methods — 6 methods now return `error`; BadgerStore propagates I/O errors
-- [x] Atomic `DeleteNodeCascade` — single write lock (MemoryStore) / single `db.Update()` transaction (BadgerStore), no TOCTOU window
-- [x] O(1) counts — `BadgerStore` maintains atomic metadata counters; `initCounters()` migrates existing databases
-- [x] Simplify `Graph.DeleteNode` — delegates to `Store.DeleteNodeCascade`
-- [x] Documentation: CHANGELOG.md (v3.0.9), CLAUDE.md, tasks/todo.md updated
-- [x] Verification: `make ci` green, 378 tests, 88.9% coverage, race-clean, 0 gosec issues, 0 vulncheck findings
-
-## Completed: Phase 2B — Badger Persistence with Msgpack Serialization (v3.0.8)
-
-- [x] Binary key encoding, msgpack wire formats, registry persistence
-- [x] `BadgerStore` with full `Store` interface, `Graph.Close()` lifecycle
-- [x] 355 tests, 94.2% coverage
-
-## Completed: Phase 2A — Store, MemoryStore, Entity Management, Shadow Resolution (v3.0.6-v3.0.7)
-
-- [x] `Store` interface, `MemoryStore`, sentinel errors
-- [x] `AddNode`/`AddRelationship` with bulk `NewPropertySlice`
-- [x] `DeleteNode` cascade, `DeleteRelationship` passthrough
-- [x] Shadow resolution (all 15 `tkg_*` keys), passthrough queries
-- [x] SnowflakeID bridges, deterministic query ordering
+- [ ] MINOR: wire.go `propertyTypeTag` at 56% — uint, uint8-32, float32 branches untested
+- [ ] MINOR: wire.go `toInt64`/`toUint64` at ~50% — integer conversion branches untested
+- [ ] MINOR: wire.go `normalizeIntegersRecursive` at 40% — backward-compat fallback untested
+- [ ] MINOR: badgerstore.go `flush()` at 73% — WriteBatch error recovery paths untested
+- [ ] MINOR: ImportNames — no validation for empty/duplicate entries in persisted data
 
 ## Status
 
-Library is feature-complete at v3.0.13. Future work: Cypher & Graph API Integration (Phase 4).
+Library at v3.0.14. Coverage: 92.9%.

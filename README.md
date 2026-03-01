@@ -1,8 +1,15 @@
 # tkg-v3
 
-**Temporal Knowledge Graph v3** -- a Go library defining core domain types for a temporal knowledge graph.
+**Temporal Knowledge Graph v3** — the internal Go library powering the core graph engine for temporal knowledge graphs.
 
-This is a pure library (no main binary). All entity identification uses `snowflake.ID` from [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026).
+tkg-v3 is a **pure library** (no main binary, no HTTP server, no query language). It provides the low-level graph types, persistence layer, and entity management that higher-level products build on.
+
+For the full product with Cypher queries, Vadalog reasoning, and an HTTP/gRPC server, see **tkgd-v3**.
+
+| Layer | Repository | What it provides |
+|---|---|---|
+| **tkg-v3** (this repo) | `rho/tkg-v3` | Graph types, registries, MemoryStore, BadgerStore, entity locks |
+| **tkgd-v3** | `rho/tkgd-v3` | Cypher engine, Vadalog reasoning, HTTP/gRPC server, REST API |
 
 ## Module
 
@@ -11,7 +18,8 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 ```
 
 **Go:** 1.26.0
-**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence), `rho/kit` (service toolkit)
+**License:** Apache-2.0
+**Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence)
 
 ## Architecture
 
@@ -136,4 +144,4 @@ go test -run TestFoo ./pkg/types/
 
 ## License
 
-Proprietary. See LICENSE file for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

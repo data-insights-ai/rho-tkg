@@ -145,7 +145,8 @@ This is a free performance benefit from the ID structure — no additional work 
 
 ```go
 type Config struct {
-    // SnowflakeNodeID identifies this graph instance (0-1023 with default 10-bit node).
+    // SnowflakeNodeID identifies this graph instance (0-511).
+    // Mapped to even/odd generator pair (ID*2 for nodes, ID*2+1 for rels).
     // Each concurrent graph instance MUST use a different SnowflakeNodeID to
     // guarantee globally unique IDs. For single-instance embedded use, 0 is fine.
     SnowflakeNodeID int64

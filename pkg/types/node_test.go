@@ -600,3 +600,87 @@ func TestNodeStressManyProperties(t *testing.T) {
 		t.Fatal("Node properties are not sorted after 1000 insertions")
 	}
 }
+
+// ─── DeepCopy tests ──────────────────────────────────────────────────────────
+
+func TestNodeDeepCopy(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(42), 10, []uint16{20, 30})
+	_ = n.SetProperty("name", "Alice")
+	_ = n.SetProperty("tags", []string{"a", "b"})
+	n.SetVersion(7)
+	n.SetTemporal(&TemporalMetadata{ValidFrom: 1000, CreatedBy: "alice"})
+	n.SetIntegrity(&NodeIntegrity{Hash: "abc", PrevHash: "def"})
+
+	cp := n.DeepCopy()
+
+	// All fields copied correctly.
+	if cp.InternalID() != n.InternalID() {
+		t.Errorf("ID: got %v, want %v", cp.InternalID(), n.InternalID())
+	}
+	if cp.PrimaryLabelToken() != n.PrimaryLabelToken() {
+		t.Errorf("PrimaryLabel: got %v, want %v", cp.PrimaryLabelToken(), n.PrimaryLabelToken())
+	}
+	if cp.Version() != 7 {
+		t.Errorf("Version: got %d, want 7", cp.Version())
+	}
+	extras := cp.ExtraLabelTokens()
+	if len(extras) != 2 || extras[0] != labelToken(20) || extras[1] != labelToken(30) {
+		t.Errorf("ExtraLabels: got %v, want [20 30]", extras)
+	}
+	if v, ok := cp.GetProperty("name"); !ok || v != "Alice" {
+		t.Errorf("Property name: got (%v, %v), want (Alice, true)", v, ok)
+	}
+	if cp.Temporal().ValidFrom != 1000 || cp.Temporal().CreatedBy != "alice" {
+		t.Error("Temporal fields not copied correctly")
+	}
+	if cp.Integrity().Hash != "abc" || cp.Integrity().PrevHash != "def" {
+		t.Error("Integrity fields not copied correctly")
+	}
+
+	// Mutation independence: extraLabels.
+	extras[0] = labelToken(999)
+	if n.ExtraLabelTokens()[0] == labelToken(999) {
+		t.Fatal("DeepCopy extraLabels: mutation affected original")
+	}
+
+	// Mutation independence: properties.
+	_ = cp.SetProperty("name", "Bob")
+	if v, _ := n.GetProperty("name"); v != "Alice" {
+		t.Fatal("DeepCopy properties: mutation affected original")
+	}
+
+	// Mutation independence: slice property values.
+	cpTags, _ := cp.GetProperty("tags")
+	cpTags.([]string)[0] = "MUTATED"
+	origTags, _ := n.GetProperty("tags")
+	if origTags.([]string)[0] == "MUTATED" {
+		t.Fatal("DeepCopy property slice value: mutation affected original")
+	}
+
+	// Mutation independence: temporal.
+	cp.Temporal().ValidFrom = 9999
+	if n.Temporal().ValidFrom != 1000 {
+		t.Fatal("DeepCopy temporal: mutation affected original")
+	}
+
+	// Mutation independence: integrity.
+	cp.Integrity().Hash = "MUTATED"
+	if n.Integrity().Hash != "abc" {
+		t.Fatal("DeepCopy integrity: mutation affected original")
+	}
+}
+
+func TestNodeDeepCopyNilTemporalIntegrity(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(snowflake.ID(1), 10, nil)
+	cp := n.DeepCopy()
+	if cp.Temporal() != nil {
+		t.Fatal("DeepCopy should preserve nil temporal")
+	}
+	if cp.Integrity() != nil {
+		t.Fatal("DeepCopy should preserve nil integrity")
+	}
+}
