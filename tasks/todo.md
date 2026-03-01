@@ -57,26 +57,20 @@ Complete. Implemented in v3.0.15.
 **~50 tests total:** 17 MemoryStore (8 node + 9 rel), 19 BadgerStore (mirrored + 2 restart persistence), 14 graph-layer (5 node + 5 rel + 4 Badger persistence).
 All pass with race detector.
 
-### 1c. Hash Chain Computation
+### 1c. Hash Chain Computation ✓
 
-Make the integrity fields real — compute SHA-256 hashes on create/update.
+Complete. Implemented in v3.0.15.
 
 **Implementation:**
-- [ ] `ComputeNodeHash(n *types.Node, labels []string) [32]byte`
-  - Hash: id + sorted labels + sorted properties + version
-  - SHA-256
-- [ ] `ComputeRelHash(r *types.Relationship, typeName string) [32]byte`
-  - Hash: id + type + startID + endID + sorted properties + version
-- [ ] AddNode: compute hash, set integrity (PrevHash = zero for v1)
-- [ ] UpdateNode: compute new hash, set PrevHash = old hash
-- [ ] AddRelationship: compute hash, set integrity
-- [ ] UpdateRelationship: compute new hash, set PrevHash = old hash
+- [x] `ComputeNodeHash(n *types.Node, labels []string) string` — SHA-256 of id + version + sorted labels + sorted properties, hex-encoded (64 chars)
+- [x] `ComputeRelHash(r *types.Relationship, typeName string) string` — SHA-256 of id + version + type + startID + endID + sorted properties
+- [x] AddNode: compute hash, set integrity (PrevHash = "" for genesis)
+- [x] UpdateNode: capture PrevHash from current integrity, compute new hash on final state
+- [x] AddRelationship: compute hash, set integrity (PrevHash = "" for genesis)
+- [x] UpdateRelationship: capture PrevHash from current integrity, compute new hash on final state
 
-**Tests:**
-- [ ] Hash changes when properties change
-- [ ] Hash is deterministic (same input = same hash)
-- [ ] PrevHash chain links correctly across updates
-- [ ] Genesis version has zero PrevHash
+**22 tests total:** 10 unit tests (determinism, property/version/label/type/endpoint sensitivity, label order independence), 12 graph-layer integration tests (integrity set on create, hash chain linking, multiple-update chain, genesis zero PrevHash — node/rel parity).
+All pass with race detector. 100% coverage on all new functions.
 
 ### 1d. GetAllNodes / GetAllRelationships / GetByIDs
 

@@ -270,6 +270,9 @@ func (g *Graph) AddNode(labels []string, props map[string]any) (*types.Node, err
 	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
+	hash := ComputeNodeHash(n, labels)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+
 	if err := g.store.PutNode(n); err != nil {
 		return nil, err
 	}
@@ -307,6 +310,9 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 	id := g.NextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
+
+	hash := ComputeRelHash(r, typeName)
+	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
 
 	if err := g.store.PutRelationship(r); err != nil {
 		return nil, err
@@ -363,6 +369,12 @@ func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node
 		return nil, err
 	}
 
+	// Capture current hash for the PrevHash chain.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.Hash
+	}
+
 	// Save pre-mutation state to version history.
 	if err := g.store.PutNodeVersion(id, current.Version(), current); err != nil {
 		return nil, fmt.Errorf("graph: save node version: %w", err)
@@ -389,6 +401,10 @@ func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node
 		current.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+
+	nodeLabels := g.NodeLabels(current)
+	hash := ComputeNodeHash(current, nodeLabels)
+	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := g.store.ReplaceNode(current); err != nil {
 		return nil, err
@@ -427,6 +443,12 @@ func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*ty
 		return nil, err
 	}
 
+	// Capture current hash for the PrevHash chain.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.Hash
+	}
+
 	// Save pre-mutation state to version history.
 	if err := g.store.PutRelVersion(id, current.Version(), current); err != nil {
 		return nil, fmt.Errorf("graph: save rel version: %w", err)
@@ -453,6 +475,10 @@ func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*ty
 		current.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+
+	relTypeName := g.RelationshipType(current)
+	hash := ComputeRelHash(current, relTypeName)
+	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := g.store.ReplaceRelationship(current); err != nil {
 		return nil, err

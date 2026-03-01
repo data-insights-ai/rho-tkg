@@ -237,8 +237,10 @@ func TestResolveNodePropertyNilIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _ := g.AddNode([]string{"X"}, nil)
-	// No Integrity set — integrity shadow keys should return (nil, false).
+	// Construct a node directly (bypassing AddNode) to simulate a legacy
+	// entity loaded from disk without integrity metadata.
+	tok, _ := g.GetOrCreateLabel("X")
+	n := types.NewNode(g.NextNodeID(), tok, nil)
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
 		val, ok := g.ResolveNodeProperty(n, key)
@@ -410,9 +412,10 @@ func TestResolveRelPropertyNilIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.AddNode([]string{"X"}, nil)
-	nB, _ := g.AddNode([]string{"X"}, nil)
-	r, _ := g.AddRelationship("R", nA, nB, nil)
+	// Construct a relationship directly (bypassing AddRelationship) to simulate
+	// a legacy entity loaded from disk without integrity metadata.
+	tok, _ := g.GetOrCreateRelType("R")
+	r := types.NewRelationship(g.NextRelID(), tok, g.NextNodeID(), g.NextNodeID())
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
 		val, ok := g.ResolveRelProperty(r, key)

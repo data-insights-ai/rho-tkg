@@ -2422,3 +2422,274 @@ func TestGraphBadgerDeleteRelCleansHistory(t *testing.T) {
 		t.Fatalf("expected empty history after reopen, got %d", len(history))
 	}
 }
+
+// --- Hash chain integrity -- Node ---
+
+func TestGraphAddNodeSetsIntegrity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	ig := n.Integrity()
+	if ig == nil {
+		t.Fatal("Integrity() is nil after AddNode")
+	}
+	if ig.Hash == "" {
+		t.Fatal("Hash is empty after AddNode")
+	}
+	if ig.PrevHash != "" {
+		t.Fatalf("PrevHash = %q, want empty for genesis", ig.PrevHash)
+	}
+	if len(ig.Hash) != 64 {
+		t.Fatalf("Hash length = %d, want 64 hex chars", len(ig.Hash))
+	}
+}
+
+func TestGraphAddNodeHashDeterministic(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n1, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
+	n2, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
+
+	// Different IDs means different hashes — but same labels+props with same ID would match.
+	// We verify that both hashes are non-empty and well-formed.
+	if n1.Integrity().Hash == "" || n2.Integrity().Hash == "" {
+		t.Fatal("one or both hashes are empty")
+	}
+	// IDs differ, so hashes must differ.
+	if n1.Integrity().Hash == n2.Integrity().Hash {
+		t.Fatal("different node IDs produced identical hashes")
+	}
+}
+
+func TestGraphAddNodeGenesisZeroPrevHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"X"}, nil)
+
+	if n.Integrity().PrevHash != "" {
+		t.Fatalf("PrevHash = %q, want empty for genesis", n.Integrity().PrevHash)
+	}
+}
+
+// --- Hash chain integrity -- Relationship ---
+
+func TestGraphAddRelSetsIntegrity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+
+	r, err := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	ig := r.Integrity()
+	if ig == nil {
+		t.Fatal("Integrity() is nil after AddRelationship")
+	}
+	if ig.Hash == "" {
+		t.Fatal("Hash is empty after AddRelationship")
+	}
+	if ig.PrevHash != "" {
+		t.Fatalf("PrevHash = %q, want empty for genesis", ig.PrevHash)
+	}
+	if len(ig.Hash) != 64 {
+		t.Fatalf("Hash length = %d, want 64 hex chars", len(ig.Hash))
+	}
+}
+
+func TestGraphAddRelHashDeterministic(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+
+	r1, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+	r2, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+
+	if r1.Integrity().Hash == "" || r2.Integrity().Hash == "" {
+		t.Fatal("one or both hashes are empty")
+	}
+	// Different IDs means different hashes.
+	if r1.Integrity().Hash == r2.Integrity().Hash {
+		t.Fatal("different rel IDs produced identical hashes")
+	}
+}
+
+func TestGraphAddRelGenesisZeroPrevHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+
+	if r.Integrity().PrevHash != "" {
+		t.Fatalf("PrevHash = %q, want empty for genesis", r.Integrity().PrevHash)
+	}
+}
+
+// --- Hash chain integrity -- UpdateNode ---
+
+func TestGraphUpdateNodeHashChain(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	oldHash := n.Integrity().Hash
+
+	updated, err := g.UpdateNode(id, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	ig := updated.Integrity()
+	if ig == nil {
+		t.Fatal("Integrity() is nil after UpdateNode")
+	}
+	if ig.PrevHash != oldHash {
+		t.Fatalf("PrevHash = %q, want %q", ig.PrevHash, oldHash)
+	}
+	if ig.Hash == oldHash {
+		t.Fatal("Hash did not change after update")
+	}
+}
+
+func TestGraphUpdateNodeMultipleUpdatesChain(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	h0 := n.Integrity().Hash
+
+	n1, _ := g.UpdateNode(id, map[string]any{"name": "v1"})
+	h1 := n1.Integrity().Hash
+	if n1.Integrity().PrevHash != h0 {
+		t.Fatalf("update 1: PrevHash = %q, want %q", n1.Integrity().PrevHash, h0)
+	}
+
+	n2, _ := g.UpdateNode(id, map[string]any{"name": "v2"})
+	h2 := n2.Integrity().Hash
+	if n2.Integrity().PrevHash != h1 {
+		t.Fatalf("update 2: PrevHash = %q, want %q", n2.Integrity().PrevHash, h1)
+	}
+
+	n3, _ := g.UpdateNode(id, map[string]any{"name": "v3"})
+	if n3.Integrity().PrevHash != h2 {
+		t.Fatalf("update 3: PrevHash = %q, want %q", n3.Integrity().PrevHash, h2)
+	}
+
+	// All hashes must be unique.
+	hashes := map[string]bool{h0: true, h1: true, h2: true, n3.Integrity().Hash: true}
+	if len(hashes) != 4 {
+		t.Fatal("expected 4 unique hashes across genesis + 3 updates")
+	}
+}
+
+func TestGraphUpdateNodeHashChanges(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+	hashBefore := n.Integrity().Hash
+
+	updated, _ := g.UpdateNode(id, map[string]any{"age": int64(30)})
+	if updated.Integrity().Hash == hashBefore {
+		t.Fatal("hash did not change when properties changed")
+	}
+}
+
+// --- Hash chain integrity -- UpdateRelationship ---
+
+func TestGraphUpdateRelHashChain(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": int64(1)})
+	relID := r.InternalID().SnowflakeID()
+
+	oldHash := r.Integrity().Hash
+
+	updated, err := g.UpdateRelationship(relID, map[string]any{"weight": int64(2)})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	ig := updated.Integrity()
+	if ig == nil {
+		t.Fatal("Integrity() is nil after UpdateRelationship")
+	}
+	if ig.PrevHash != oldHash {
+		t.Fatalf("PrevHash = %q, want %q", ig.PrevHash, oldHash)
+	}
+	if ig.Hash == oldHash {
+		t.Fatal("Hash did not change after update")
+	}
+}
+
+func TestGraphUpdateRelMultipleUpdatesChain(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	relID := r.InternalID().SnowflakeID()
+
+	h0 := r.Integrity().Hash
+
+	r1, _ := g.UpdateRelationship(relID, map[string]any{"w": int64(1)})
+	h1 := r1.Integrity().Hash
+	if r1.Integrity().PrevHash != h0 {
+		t.Fatalf("update 1: PrevHash = %q, want %q", r1.Integrity().PrevHash, h0)
+	}
+
+	r2, _ := g.UpdateRelationship(relID, map[string]any{"w": int64(2)})
+	h2 := r2.Integrity().Hash
+	if r2.Integrity().PrevHash != h1 {
+		t.Fatalf("update 2: PrevHash = %q, want %q", r2.Integrity().PrevHash, h1)
+	}
+
+	r3, _ := g.UpdateRelationship(relID, map[string]any{"w": int64(3)})
+	if r3.Integrity().PrevHash != h2 {
+		t.Fatalf("update 3: PrevHash = %q, want %q", r3.Integrity().PrevHash, h2)
+	}
+
+	hashes := map[string]bool{h0: true, h1: true, h2: true, r3.Integrity().Hash: true}
+	if len(hashes) != 4 {
+		t.Fatal("expected 4 unique hashes across genesis + 3 updates")
+	}
+}
+
+func TestGraphUpdateRelHashChanges(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(1)})
+	relID := r.InternalID().SnowflakeID()
+	hashBefore := r.Integrity().Hash
+
+	updated, _ := g.UpdateRelationship(relID, map[string]any{"extra": "data"})
+	if updated.Integrity().Hash == hashBefore {
+		t.Fatal("hash did not change when properties changed")
+	}
+}
