@@ -107,7 +107,7 @@ Complete. Implemented in v3.0.16.
 - [x] Add tests: `TestLRUEvictCleanSkipsWhenAllDirty`, `TestLRUCleanCountAccuracy`
 - [x] Fix `TestBadgerStoreDirtyNotEvictedUnderPressure` — add large FlushInterval
 - [x] Update `newTestBadgerStore` comment
-- [x] Tutorial 005 — fair comparison via library fix (no tutorial changes needed)
+- [x] Tutorial 005 — fair comparison via library fix + tutorial fixes (Close in bench timing, rels in memory measurement, log.Fatal→Printf in defer, distinct SnowflakeNodeIDs)
 
 ### 1f. Batch Operations ✓
 

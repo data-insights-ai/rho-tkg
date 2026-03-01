@@ -13,11 +13,36 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
+	"strconv"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// commas formats an integer with thousand separators: 1234567 -> "1,234,567".
+func commas(n int64) string {
+	if n < 0 {
+		return "-" + commas(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var buf []byte
+	pre := len(s) % 3
+	if pre > 0 {
+		buf = append(buf, s[:pre]...)
+	}
+	for i := pre; i < len(s); i += 3 {
+		if len(buf) > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i:i+3]...)
+	}
+	return string(buf)
+}
 
 func main() {
 	const (
@@ -34,30 +59,28 @@ func main() {
 		log.Fatal(err)
 	}
 	memElapsed, memNodeOps, memRelOps := benchmarkBackend("MemoryStore", gMem, nodeCount, relCount)
-	if err := gMem.Close(); err != nil {
-		log.Fatal(err)
-	}
 
 	fmt.Printf("  Elapsed:     %v\n", memElapsed)
-	fmt.Printf("  Node write:  %d ops/sec\n", memNodeOps)
-	fmt.Printf("  Rel write:   %d ops/sec\n", memRelOps)
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(memNodeOps)))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(memRelOps)))
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 2. BadgerStore In-Memory Benchmark ===")
 	// ----------------------------------------------------------------
 
-	gBadgerMem, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+	bsMem, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	gBadgerMem, err := graph.New(graph.Config{SnowflakeNodeID: 2, Store: bsMem})
 	if err != nil {
 		log.Fatal(err)
 	}
 	bmElapsed, bmNodeOps, bmRelOps := benchmarkBackend("BadgerInMemory", gBadgerMem, nodeCount, relCount)
-	if err := gBadgerMem.Close(); err != nil {
-		log.Fatal(err)
-	}
 
 	fmt.Printf("  Elapsed:     %v\n", bmElapsed)
-	fmt.Printf("  Node write:  %d ops/sec\n", bmNodeOps)
-	fmt.Printf("  Rel write:   %d ops/sec\n", bmRelOps)
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(bmNodeOps)))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(bmRelOps)))
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 3. BadgerStore On-Disk Benchmark ===")
@@ -73,138 +96,192 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	gDisk, err := graph.New(graph.Config{SnowflakeNodeID: 1, Store: bs})
+	gDisk, err := graph.New(graph.Config{SnowflakeNodeID: 3, Store: bs})
 	if err != nil {
 		log.Fatal(err)
 	}
 	diskElapsed, diskNodeOps, diskRelOps := benchmarkBackend("BadgerOnDisk", gDisk, nodeCount, relCount)
-	if err := gDisk.Close(); err != nil {
-		log.Fatal(err)
-	}
 
 	fmt.Printf("  Elapsed:     %v\n", diskElapsed)
-	fmt.Printf("  Node write:  %d ops/sec\n", diskNodeOps)
-	fmt.Printf("  Rel write:   %d ops/sec\n", diskRelOps)
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(diskNodeOps)))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(diskRelOps)))
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 4. Memory Usage ===")
 	// ----------------------------------------------------------------
 
 	memUsageMem := measureMemoryUsage(func() *graph.Graph {
-		g, err := graph.New(graph.Config{SnowflakeNodeID: 1})
+		g, err := graph.New(graph.Config{SnowflakeNodeID: 4})
 		if err != nil {
 			log.Fatal(err)
 		}
 		return g
-	}, nodeCount)
+	}, nodeCount, relCount)
 
 	memUsageBadger := measureMemoryUsage(func() *graph.Graph {
-		g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+		bs, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+		if err != nil {
+			log.Fatal(err)
+		}
+		g, err := graph.New(graph.Config{SnowflakeNodeID: 5, Store: bs})
 		if err != nil {
 			log.Fatal(err)
 		}
 		return g
-	}, nodeCount)
+	}, nodeCount, relCount)
 
-	fmt.Printf("  MemoryStore:     %d KB heap for %d nodes\n", memUsageMem/1024, nodeCount)
-	fmt.Printf("  BadgerInMemory:  %d KB heap for %d nodes\n", memUsageBadger/1024, nodeCount)
+	fmt.Printf("  MemoryStore:     %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageMem/1024)), commas(nodeCount), commas(relCount))
+	fmt.Printf("  BadgerInMemory:  %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageBadger/1024)), commas(nodeCount), commas(relCount))
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 5. Storage Usage ===")
 	// ----------------------------------------------------------------
 
 	diskSize := dirSize(tmpDir)
-	fmt.Printf("  On-disk Badger:  %.2f MB for %d nodes + %d rels\n",
-		float64(diskSize)/(1024*1024), nodeCount, relCount)
+	fmt.Printf("  On-disk Badger:  %.2f MB for %s nodes + %s rels\n",
+		float64(diskSize)/(1024*1024), commas(nodeCount), commas(relCount))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 6. Query Performance ===")
+	fmt.Println("\n=== 6. Point Lookup Performance ===")
 	// ----------------------------------------------------------------
 
-	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+	bsQuery, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 6, Store: bsQuery})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() {
 		if err := gQuery.Close(); err != nil {
-			log.Fatal(err)
+			log.Printf("error closing query graph: %v", err)
 		}
 	}()
 
 	// Populate query graph.
-	qNodes := make([]*queryNode, nodeCount)
+	qNodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
 		n, err := gQuery.AddNode([]string{label}, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
-		qNodes[i] = &queryNode{node: n}
+		qNodes[i] = n
 	}
+	qRels := make([]*types.Relationship, relCount)
 	for i := range relCount {
 		sIdx := i % nodeCount
 		eIdx := (i*7 + 3) % nodeCount
 		if sIdx == eIdx {
 			eIdx = (eIdx + 1) % nodeCount
 		}
-		if _, err := gQuery.AddRelationship("EDGE", qNodes[sIdx].node, qNodes[eIdx].node, nil); err != nil {
+		r, err := gQuery.AddRelationship("EDGE", qNodes[sIdx], qNodes[eIdx], nil)
+		if err != nil {
 			log.Fatal(err)
 		}
+		qRels[i] = r
 	}
 
-	// Benchmark NodesByLabel.
-	const queryCount = 1000
+	// Benchmark GetNode — single-entity retrieval.
+	const lookupCount = 10_000
 	start := time.Now()
-	for i := range queryCount {
-		label := fmt.Sprintf("Type%d", i%10)
-		if _, err := gQuery.NodesByLabel(label); err != nil {
+	for i := range lookupCount {
+		id := qNodes[i%nodeCount].InternalID().SnowflakeID()
+		if _, err := gQuery.GetNode(id); err != nil {
 			log.Fatal(err)
 		}
 	}
-	labelElapsed := time.Since(start)
-	labelOps := int(float64(queryCount) / labelElapsed.Seconds())
+	getNodeElapsed := time.Since(start)
+	getNodeOps := int64(float64(lookupCount) / getNodeElapsed.Seconds())
+	getNodeNs := getNodeElapsed.Nanoseconds() / lookupCount
 
-	// Benchmark OutgoingRelationships.
+	// Benchmark GetRelationship — single-entity retrieval.
 	start = time.Now()
-	for i := range queryCount {
-		nodeIdx := i % nodeCount
-		id := qNodes[nodeIdx].node.InternalID().SnowflakeID()
-		if _, err := gQuery.OutgoingRelationships(id, ""); err != nil {
+	for i := range lookupCount {
+		id := qRels[i%relCount].InternalID().SnowflakeID()
+		if _, err := gQuery.GetRelationship(id); err != nil {
 			log.Fatal(err)
 		}
 	}
-	outElapsed := time.Since(start)
-	outOps := int(float64(queryCount) / outElapsed.Seconds())
+	getRelElapsed := time.Since(start)
+	getRelOps := int64(float64(lookupCount) / getRelElapsed.Seconds())
+	getRelNs := getRelElapsed.Nanoseconds() / lookupCount
 
-	fmt.Printf("  NodesByLabel:          %d queries/sec (%v for %d)\n", labelOps, labelElapsed, queryCount)
-	fmt.Printf("  OutgoingRelationships: %d queries/sec (%v for %d)\n", outOps, outElapsed, queryCount)
+	fmt.Printf("  GetNode:           %s ops/sec  (%d ns/op)\n", commas(getNodeOps), getNodeNs)
+	fmt.Printf("  GetRelationship:   %s ops/sec  (%d ns/op)\n", commas(getRelOps), getRelNs)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 7. Summary ===")
+	fmt.Println("\n=== 7. Query Performance ===")
+	// ----------------------------------------------------------------
+
+	// Benchmark OutgoingRelationships — adjacency query, small result sets.
+	const outQueryCount = 10_000
+	var outTotalEntities int64
+	start = time.Now()
+	for i := range outQueryCount {
+		id := qNodes[i%nodeCount].InternalID().SnowflakeID()
+		rels, err := gQuery.OutgoingRelationships(id, "")
+		if err != nil {
+			log.Fatal(err)
+		}
+		outTotalEntities += int64(len(rels))
+	}
+	outElapsed := time.Since(start)
+	outOps := int64(float64(outQueryCount) / outElapsed.Seconds())
+	outAvgSize := float64(outTotalEntities) / outQueryCount
+	outEntPerSec := int64(float64(outTotalEntities) / outElapsed.Seconds())
+
+	// Benchmark NodesByLabel — index scan, large result sets.
+	const labelQueryCount = 1000
+	var labelTotalEntities int64
+	start = time.Now()
+	for i := range labelQueryCount {
+		label := fmt.Sprintf("Type%d", i%10)
+		nodes, err := gQuery.NodesByLabel(label)
+		if err != nil {
+			log.Fatal(err)
+		}
+		labelTotalEntities += int64(len(nodes))
+	}
+	labelElapsed := time.Since(start)
+	labelOps := int64(float64(labelQueryCount) / labelElapsed.Seconds())
+	labelAvgSize := float64(labelTotalEntities) / labelQueryCount
+	labelEntPerSec := int64(float64(labelTotalEntities) / labelElapsed.Seconds())
+
+	fmt.Printf("  OutgoingRelationships: %s queries/sec  (~%.0f rels/query, ~%s entities/sec)\n",
+		commas(outOps), outAvgSize, commas(outEntPerSec))
+	fmt.Printf("  NodesByLabel:          %s queries/sec  (~%.0f nodes/query, ~%s entities/sec)\n",
+		commas(labelOps), labelAvgSize, commas(labelEntPerSec))
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 8. Summary ===")
 	// ----------------------------------------------------------------
 
 	fmt.Println()
 	fmt.Printf("  %-22s %12s %12s %12s\n", "Backend", "Node ops/s", "Rel ops/s", "Elapsed")
 	fmt.Printf("  %-22s %12s %12s %12s\n", "------", "----------", "---------", "-------")
-	fmt.Printf("  %-22s %12d %12d %12v\n", "MemoryStore", memNodeOps, memRelOps, memElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-22s %12d %12d %12v\n", "BadgerStore (memory)", bmNodeOps, bmRelOps, bmElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-22s %12d %12d %12v\n", "BadgerStore (disk)", diskNodeOps, diskRelOps, diskElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-22s %12s %12s %12v\n", "MemoryStore", commas(int64(memNodeOps)), commas(int64(memRelOps)), memElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-22s %12s %12s %12v\n", "BadgerStore (memory)", commas(int64(bmNodeOps)), commas(int64(bmRelOps)), bmElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-22s %12s %12s %12v\n", "BadgerStore (disk)", commas(int64(diskNodeOps)), commas(int64(diskRelOps)), diskElapsed.Round(time.Millisecond))
 	fmt.Println()
 	fmt.Printf("  %-22s %12s\n", "Memory (heap)", "KB")
 	fmt.Printf("  %-22s %12s\n", "------", "--")
-	fmt.Printf("  %-22s %12d\n", "MemoryStore", memUsageMem/1024)
-	fmt.Printf("  %-22s %12d\n", "BadgerStore (memory)", memUsageBadger/1024)
+	fmt.Printf("  %-22s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))
+	fmt.Printf("  %-22s %12s\n", "BadgerStore (memory)", commas(int64(memUsageBadger/1024)))
 	fmt.Println()
 	fmt.Printf("  %-22s %12s\n", "Storage", "Size")
 	fmt.Printf("  %-22s %12s\n", "------", "----")
 	fmt.Printf("  %-22s %10.2f MB\n", "BadgerStore (disk)", float64(diskSize)/(1024*1024))
+	fmt.Println()
+	fmt.Printf("  %-22s %12s %14s\n", "Query", "ops/sec", "entities/sec")
+	fmt.Printf("  %-22s %12s %14s\n", "------", "-------", "------------")
+	fmt.Printf("  %-22s %12s %14s\n", "GetNode", commas(getNodeOps), "-")
+	fmt.Printf("  %-22s %12s %14s\n", "GetRelationship", commas(getRelOps), "-")
+	fmt.Printf("  %-22s %12s %14s\n", "OutgoingRels", commas(outOps), commas(outEntPerSec))
+	fmt.Printf("  %-22s %12s %14s\n", "NodesByLabel", commas(labelOps), commas(labelEntPerSec))
 
 	fmt.Println("\n=== Done ===")
-}
-
-// queryNode wraps a graph node for the query benchmark population.
-type queryNode struct {
-	node *types.Node
 }
 
 // benchmarkBackend populates a graph with nodeCount nodes and relCount
@@ -237,6 +314,12 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 		}
 	}
 	relElapsed := time.Since(relStart)
+
+	// Include Close() in timing — captures async flush for BadgerStore.
+	// MemoryStore.Close() is a no-op, so this is safe for all backends.
+	if err := g.Close(); err != nil {
+		log.Fatalf("[%s] Close: %v", name, err)
+	}
 	total := time.Since(start)
 
 	nodeOps := int(float64(nodeCount) / nodeElapsed.Seconds())
@@ -245,17 +328,36 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 	return total, nodeOps, relOps
 }
 
-// measureMemoryUsage creates nodeCount nodes in a fresh graph and returns
-// the approximate heap increase in bytes.
-func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount int) uint64 {
+// measureMemoryUsage creates nodeCount nodes and relCount relationships in a
+// fresh graph and returns the approximate heap increase in bytes.
+func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) uint64 {
+	// Aggressively clean up prior allocations (Badger goroutine stacks, etc.)
+	// before measuring baseline. A single GC pass is insufficient because
+	// finalizers require a second pass to collect their referents.
 	runtime.GC()
+	debug.FreeOSMemory()
+	runtime.GC()
+
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
 
 	g := newGraph()
+	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		if _, err := g.AddNode([]string{label}, nil); err != nil {
+		n, err := g.AddNode([]string{label}, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		nodes[i] = n
+	}
+	for i := range relCount {
+		sIdx := i % nodeCount
+		eIdx := (i*7 + 3) % nodeCount
+		if sIdx == eIdx {
+			eIdx = (eIdx + 1) % nodeCount
+		}
+		if _, err := g.AddRelationship("EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -268,8 +370,8 @@ func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount int) uint64 {
 		log.Fatal(err)
 	}
 
-	if after.HeapInuse > before.HeapInuse {
-		return after.HeapInuse - before.HeapInuse
+	if after.HeapAlloc > before.HeapAlloc {
+		return after.HeapAlloc - before.HeapAlloc
 	}
 	return 0
 }
