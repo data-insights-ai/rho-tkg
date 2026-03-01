@@ -86,7 +86,7 @@ Both generators are initialized with explicit parameters matching the spec:
 | Node bits | 10 (1024 instances) |
 | Step bits | 12 (4096 IDs/ms) |
 
-Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-1023). Generators are stateless — no counter persistence, no crash recovery.
+Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-511). Generators are stateless — no counter persistence, no crash recovery.
 
 ### Design Invariants
 
@@ -123,7 +123,7 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_tx_from`, `tkg_tx_to` | `Instant` | Both |
 | `tkg_created_at`, `tkg_updated_at`, `tkg_deleted_at` | `Instant` | Both |
 | `tkg_created_by`, `tkg_updated_by` | `string` | Both |
-| `tkg_version` | `int` | Both |
+| `tkg_version` | `uint32` | Both |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both |
 | `tkg_base_entity` | `snowflake.ID` | Both |
 
@@ -147,6 +147,20 @@ Run a single test:
 ```bash
 go test -run TestFoo ./pkg/types/
 ```
+
+## Tutorials
+
+Progressive tutorials in `tutorials/`, each a standalone `main.go`:
+
+| Tutorial | Topic |
+|----------|-------|
+| `001_basic_graph` | Create nodes, relationships, and query the graph |
+| `002_temporal` | Temporal metadata (ValidFrom/ValidTo, CreatedAt, UpdatedAt) |
+| `003_badger_persistence` | On-disk BadgerStore, close/reopen, registry persistence |
+| `004_full_features` | Update operations, version history, hash chain integrity |
+| `005_performance` | Benchmark MemoryStore vs BadgerStore (throughput, memory, storage) |
+
+Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ## License
 

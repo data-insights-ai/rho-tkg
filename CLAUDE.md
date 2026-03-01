@@ -103,6 +103,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `lru.go` | `entityLRU[V]` — generic LRU cache with dirty tracking, tombstone support, soft capacity (dirty entries never evicted) |
 | `entity_locks.go` | `entityLockManager` — 256-shard mutex array for write-skew prevention. `LockTwo` acquires in ascending shard order (deadlock-free) |
 | `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs/tokens, fixed-width keys for entities, indexes, adjacency, history (0x07/0x08), metadata. `histNodeKey`/`histRelKey` for exact keys, `histNodePrefix`/`histRelPrefix` for prefix scans |
+| `integrity.go` | `ComputeNodeHash(n, labels)` / `ComputeRelHash(r, typeName)` — SHA-256 content hashing for hash chain integrity. Called by `AddNode`/`AddRelationship` (genesis, PrevHash="") and `UpdateNode`/`UpdateRelationship` (chain linking, PrevHash=previous hash) |
 | `wire.go` | Msgpack wire format types (`nodeWire`/`relWire`/`propertyWire` with `Type byte` tag for Go type fidelity) and conversion functions for serialization boundary |
 | `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches all 15 `tkg_*` shadow keys with nil-guards on `Temporal()`/`Integrity()`; `tkg_created_at` derives from snowflake ID via `Decompose()` when `CreatedAt` is zero/unset |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning, `ExportNames`/`ImportNames` for persistence) |

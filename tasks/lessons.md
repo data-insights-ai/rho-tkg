@@ -320,3 +320,22 @@ Two contradictory external reviews were cross-checked against the actual codebas
 ### Pre-existing test timeouts are not caused by your changes (PATTERN)
 **Problem:** `make test-race` timed out on `TestBadgerStoreRecoveryAfterAbruptShutdown` — a pre-existing Badger WriteBatch deadlock unrelated to bulk query methods. Initial reaction was to investigate whether the new code caused the failure.
 **Rule:** When a CI-style test fails, check (1) is the failing test one you wrote or modified, and (2) does it fail on the main branch too. If the answer to both is no, document it as pre-existing and verify your changes separately with a targeted test run.
+
+---
+
+## 2026-03-01 — Gap Tests & Tutorial 005
+
+### FlushInterval: 0 gets overridden to 100ms for on-disk stores (BLOCKER)
+**Problem:** `TestBadgerStoreRecoveryAfterAbruptShutdown` used `FlushInterval: 0` to prevent auto-flushing, but `NewBadgerStore` coerces zero to `defaultFlushInterval` (100ms) when `!cfg.InMemory`. The flush loop was running, and `close(stopCh)` triggered flushLoop's shutdown flush which persisted the "unflushed" node — defeating the test's purpose.
+**Root cause:** Config defaulting logic: `if flushInt == 0 && !cfg.InMemory { flushInt = defaultFlushInterval }`. Zero is not "disabled" — it's "use default."
+**Rule:** To prevent auto-flushing in on-disk tests, use a very large `FlushInterval` (e.g., `10 * time.Minute`), not zero. To simulate crash data loss, clear the pending buffer (`bs.pending = make(map[string]writeOp)`) before calling `Close()` — this makes the shutdown flush a no-op. Never assume zero means "disabled" in config structs without checking the defaulting logic.
+
+### Badger has a 1MB MaxValueSize limit for WriteBatch (MAJOR)
+**Problem:** `TestBadgerStoreLargeStringProperty` used a 1MB string (`1<<20`). After msgpack serialization with node metadata overhead, the total value exceeded Badger's 1048576-byte `MaxValueSize`. `Flush()` → `WriteBatch.SetEntry()` failed.
+**Root cause:** Badger's default value size limit isn't documented in our codebase. Msgpack adds ~40 bytes of overhead per node, pushing a 1MB string over the limit.
+**Rule:** Large value tests must account for serialization overhead. Use 500KB or less to stay safely under Badger's 1MB default. If truly large values are needed, configure `badger.Options.ValueLogFileSize` and `MaxValueSize` explicitly.
+
+### AddNode returns *types.Node, not *graph.Node (PATTERN)
+**Problem:** Tutorial 005 used `*graph.Node` in helper functions and struct fields. Node is defined in `pkg/types`, not `pkg/graph`. The code wouldn't compile.
+**Root cause:** Assumed the Node type was in the same package as the Graph API without verifying the import path.
+**Rule:** Before writing code that uses API return types, verify the exact package. `AddNode` returns `*types.Node`, `AddRelationship` returns `*types.Relationship`. Always check function signatures, not assumptions. This was already a lesson from "Never write code against an API you haven't fully analyzed" but was violated again in a tutorial context.
