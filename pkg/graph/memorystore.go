@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -585,6 +586,177 @@ func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 
 // Close is a no-op for MemoryStore. Satisfies the Store interface.
 func (ms *MemoryStore) Close() error { return nil }
+
+// --- Batch operations ---
+
+// PutNodesBatch stores multiple nodes atomically using two-phase validation.
+// Phase 1: check for duplicates vs existing store AND within the batch.
+// Phase 2: deep-copy each, store, and update label indexes.
+// Any duplicate → error, zero mutations. Nil/empty input → nil error.
+func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — no duplicates in store or within batch.
+	seen := make(map[snowflake.ID]struct{}, len(nodes))
+	for _, n := range nodes {
+		id := n.InternalID().SnowflakeID()
+		if _, exists := ms.nodes[id]; exists {
+			return ErrNodeExists
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("graph: duplicate node ID %d in batch", id)
+		}
+		seen[id] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, n := range nodes {
+		id := n.InternalID().SnowflakeID()
+		ms.nodes[id] = n.DeepCopy()
+
+		for _, tok := range n.AllLabelTokens() {
+			tv := tok.Value()
+			if ms.labelIdx[tv] == nil {
+				ms.labelIdx[tv] = make(map[snowflake.ID]struct{})
+			}
+			ms.labelIdx[tv][id] = struct{}{}
+		}
+	}
+
+	return nil
+}
+
+// PutRelationshipsBatch stores multiple relationships atomically using two-phase validation.
+// Phase 1: check endpoints exist, check for duplicate rel IDs.
+// Phase 2: deep-copy each, store, update type + adjacency indexes.
+// Any failure → error, zero mutations. Nil/empty input → nil error.
+func (ms *MemoryStore) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if len(rels) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — endpoints exist, no duplicates.
+	seen := make(map[snowflake.ID]struct{}, len(rels))
+	for _, r := range rels {
+		id := r.InternalID().SnowflakeID()
+		startID := r.StartNodeID().SnowflakeID()
+		endID := r.EndNodeID().SnowflakeID()
+
+		if _, exists := ms.nodes[startID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := ms.nodes[endID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := ms.rels[id]; exists {
+			return ErrRelExists
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("graph: duplicate relationship ID %d in batch", id)
+		}
+		seen[id] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, r := range rels {
+		id := r.InternalID().SnowflakeID()
+		startID := r.StartNodeID().SnowflakeID()
+		endID := r.EndNodeID().SnowflakeID()
+
+		ms.rels[id] = r.DeepCopy()
+
+		tv := r.TypeToken().Value()
+		if ms.typeIdx[tv] == nil {
+			ms.typeIdx[tv] = make(map[snowflake.ID]struct{})
+		}
+		ms.typeIdx[tv][id] = struct{}{}
+
+		if ms.outIdx[startID] == nil {
+			ms.outIdx[startID] = make(map[snowflake.ID]struct{})
+		}
+		ms.outIdx[startID][id] = struct{}{}
+
+		if ms.inIdx[endID] == nil {
+			ms.inIdx[endID] = make(map[snowflake.ID]struct{})
+		}
+		ms.inIdx[endID][id] = struct{}{}
+	}
+
+	return nil
+}
+
+// DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
+// Phase 1: check all IDs exist.
+// Phase 2: remove each from store and clean label indexes.
+// Missing ID → ErrNodeNotFound, zero mutations. Nil/empty input → nil error.
+func (ms *MemoryStore) DeleteNodesBatch(ids []snowflake.ID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — all must exist.
+	for _, id := range ids {
+		if _, exists := ms.nodes[id]; !exists {
+			return ErrNodeNotFound
+		}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, id := range ids {
+		n := ms.nodes[id]
+		for _, tok := range n.AllLabelTokens() {
+			tv := tok.Value()
+			if set, exists := ms.labelIdx[tv]; exists {
+				delete(set, id)
+				if len(set) == 0 {
+					delete(ms.labelIdx, tv)
+				}
+			}
+		}
+		delete(ms.nodes, id)
+	}
+
+	return nil
+}
+
+// DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
+// Phase 1: check all IDs exist.
+// Phase 2: delete each via deleteRelLocked (handles type/adjacency/history cleanup).
+// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+func (ms *MemoryStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — all must exist.
+	for _, id := range ids {
+		if _, exists := ms.rels[id]; !exists {
+			return ErrRelNotFound
+		}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, id := range ids {
+		// deleteRelLocked can't fail here (verified existence above, holding write lock).
+		_ = ms.deleteRelLocked(id)
+	}
+
+	return nil
+}
 
 // --- Bulk queries ---
 

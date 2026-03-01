@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.16. Phases 1a-1e complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix).
+Library at v3.0.17. Phases 1a-1f complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations).
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -109,32 +109,29 @@ Complete. Implemented in v3.0.16.
 - [x] Update `newTestBadgerStore` comment
 - [x] Tutorial 005 — fair comparison via library fix (no tutorial changes needed)
 
-### 1f. Batch Operations
+### 1f. Batch Operations ✓
 
-Bulk create/update/delete in single operations. Critical for import and the tiered
-store's split-write.
+Complete. Implemented in v3.0.17.
 
 **Store interface additions:**
-- [ ] `PutNodesBatch(nodes []*types.Node) error`
-- [ ] `PutRelationshipsBatch(rels []*types.Relationship) error`
-- [ ] `DeleteNodesBatch(ids []snowflake.ID) error`
-- [ ] `DeleteRelationshipsBatch(ids []snowflake.ID) error`
+- [x] `PutNodesBatch(nodes []*types.Node) error` — two-phase atomic, all-or-nothing
+- [x] `PutRelationshipsBatch(rels []*types.Relationship) error` — two-phase atomic
+- [x] `DeleteNodesBatch(ids []snowflake.ID) error` — two-phase atomic
+- [x] `DeleteRelationshipsBatch(ids []snowflake.ID) error` — two-phase atomic
 
 **Graph-layer batch builder:**
-- [ ] `BatchBuilder` fluent API
+- [x] `BatchBuilder` fluent API (`batch.go`)
   - `NewBatchBuilder(g *Graph) *BatchBuilder`
-  - `.AddNode(labels, props)` — queues node creation
-  - `.AddRelationship(typeName, startNode, endNode, props)` — queues rel creation
-  - `.UpdateNode(id, updates)` — queues update
-  - `.DeleteNode(id)` — queues delete
-  - `.Execute() (*BatchResult, error)` — runs all ops
-- [ ] `BatchResult` with Success, Failed, Errors, Duration
+  - `.AddNode(labels, props)` — eager validation, deferred persistence
+  - `.AddRelationship(typeName, startNode, endNode, props)` — eager validation
+  - `.UpdateNode(id, updates)` / `.UpdateRelationship(id, updates)` — pre-validate
+  - `.DeleteNode(id)` / `.DeleteRelationship(id)` — queue deletes
+  - `.Execute() (*BatchResult, error)` — create → update → delete order
+- [x] `BatchResult` with Created, Updated, Deleted, Failed, Errors, Duration
+- [x] `BatchError` with Op, ID, Err
 
-**Tests:**
-- [ ] Batch add 1000 nodes
-- [ ] Batch mixed operations
-- [ ] Partial failure tracking
-- [ ] Both MemoryStore and BadgerStore
+**41 tests total:** 12 MemoryStore, 12 BadgerStore, 17 BatchBuilder.
+All pass with race detector. Coverage ≥80% on all new methods.
 
 ### 1g. Context-Aware Operations (optional for Phase 1)
 

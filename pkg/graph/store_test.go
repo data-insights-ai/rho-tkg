@@ -1691,3 +1691,272 @@ func TestMemoryStoreGetRelsByIDsSorted(t *testing.T) {
 		}
 	}
 }
+
+// ─── MemoryStore: Batch operations ──────────────────────────────────────────
+
+func TestMemoryStorePutNodesBatchEmpty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	if err := ms.PutNodesBatch(nil); err != nil {
+		t.Fatalf("PutNodesBatch(nil) returned error: %v", err)
+	}
+	if err := ms.PutNodesBatch([]*types.Node{}); err != nil {
+		t.Fatalf("PutNodesBatch([]) returned error: %v", err)
+	}
+}
+
+func TestMemoryStorePutNodesBatch(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	nodes := []*types.Node{
+		types.NewNode(snowflake.ID(1), 10, nil),
+		types.NewNode(snowflake.ID(2), 10, []uint16{20}),
+		types.NewNode(snowflake.ID(3), 20, nil),
+	}
+
+	if err := ms.PutNodesBatch(nodes); err != nil {
+		t.Fatalf("PutNodesBatch returned error: %v", err)
+	}
+
+	count, _ := ms.NodeCount()
+	if count != 3 {
+		t.Fatalf("NodeCount = %d, want 3", count)
+	}
+
+	for _, n := range nodes {
+		got, err := ms.GetNode(n.InternalID().SnowflakeID())
+		if err != nil {
+			t.Fatalf("GetNode(%d) returned error: %v", n.InternalID().SnowflakeID(), err)
+		}
+		if got.PrimaryLabelToken().Value() != n.PrimaryLabelToken().Value() {
+			t.Errorf("node %d: primary label mismatch", n.InternalID().SnowflakeID())
+		}
+	}
+
+	// Verify label index.
+	byLabel, _ := ms.NodesByLabel(10)
+	if len(byLabel) != 2 {
+		t.Fatalf("NodesByLabel(10) = %d nodes, want 2", len(byLabel))
+	}
+}
+
+func TestMemoryStorePutNodesBatchDuplicate(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Pre-existing node.
+	existing := types.NewNode(snowflake.ID(1), 10, nil)
+	if err := ms.PutNode(existing); err != nil {
+		t.Fatal(err)
+	}
+
+	nodes := []*types.Node{
+		types.NewNode(snowflake.ID(2), 10, nil),
+		types.NewNode(snowflake.ID(1), 10, nil), // duplicate
+	}
+
+	err := ms.PutNodesBatch(nodes)
+	if !errors.Is(err, ErrNodeExists) {
+		t.Fatalf("expected ErrNodeExists, got %v", err)
+	}
+
+	// Zero mutations.
+	count, _ := ms.NodeCount()
+	if count != 1 {
+		t.Fatalf("NodeCount = %d, want 1 (zero mutations)", count)
+	}
+}
+
+func TestMemoryStorePutNodesBatchInternalDuplicate(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	nodes := []*types.Node{
+		types.NewNode(snowflake.ID(1), 10, nil),
+		types.NewNode(snowflake.ID(1), 20, nil), // same ID
+	}
+
+	err := ms.PutNodesBatch(nodes)
+	if err == nil {
+		t.Fatal("expected error for internal duplicate, got nil")
+	}
+
+	count, _ := ms.NodeCount()
+	if count != 0 {
+		t.Fatalf("NodeCount = %d, want 0 (zero mutations)", count)
+	}
+}
+
+func TestMemoryStorePutRelsBatchEmpty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	if err := ms.PutRelationshipsBatch(nil); err != nil {
+		t.Fatalf("PutRelationshipsBatch(nil) returned error: %v", err)
+	}
+}
+
+func TestMemoryStorePutRelsBatch(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Create endpoints.
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n3 := types.NewNode(snowflake.ID(3), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+	_ = ms.PutNode(n3)
+
+	rels := []*types.Relationship{
+		types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)),
+		types.NewRelationship(snowflake.ID(101), 5, snowflake.ID(2), snowflake.ID(3)),
+		types.NewRelationship(snowflake.ID(102), 6, snowflake.ID(1), snowflake.ID(3)),
+	}
+
+	if err := ms.PutRelationshipsBatch(rels); err != nil {
+		t.Fatalf("PutRelationshipsBatch returned error: %v", err)
+	}
+
+	count, _ := ms.RelationshipCount()
+	if count != 3 {
+		t.Fatalf("RelationshipCount = %d, want 3", count)
+	}
+
+	// Verify adjacency.
+	outgoing, _ := ms.OutgoingRelationships(snowflake.ID(1), 0)
+	if len(outgoing) != 2 {
+		t.Fatalf("OutgoingRelationships(1, 0) = %d, want 2", len(outgoing))
+	}
+}
+
+func TestMemoryStorePutRelsBatchDuplicate(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	// Pre-existing relationship.
+	existing := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2))
+	_ = ms.PutRelationship(existing)
+
+	rels := []*types.Relationship{
+		types.NewRelationship(snowflake.ID(101), 5, snowflake.ID(1), snowflake.ID(2)),
+		types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)), // duplicate
+	}
+
+	err := ms.PutRelationshipsBatch(rels)
+	if !errors.Is(err, ErrRelExists) {
+		t.Fatalf("expected ErrRelExists, got %v", err)
+	}
+
+	// Zero mutations.
+	count, _ := ms.RelationshipCount()
+	if count != 1 {
+		t.Fatalf("RelationshipCount = %d, want 1 (zero mutations)", count)
+	}
+}
+
+func TestMemoryStoreDeleteNodesBatchEmpty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	if err := ms.DeleteNodesBatch(nil); err != nil {
+		t.Fatalf("DeleteNodesBatch(nil) returned error: %v", err)
+	}
+}
+
+func TestMemoryStoreDeleteNodesBatch(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n3 := types.NewNode(snowflake.ID(3), 20, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+	_ = ms.PutNode(n3)
+
+	if err := ms.DeleteNodesBatch([]snowflake.ID{snowflake.ID(1), snowflake.ID(3)}); err != nil {
+		t.Fatalf("DeleteNodesBatch returned error: %v", err)
+	}
+
+	count, _ := ms.NodeCount()
+	if count != 1 {
+		t.Fatalf("NodeCount = %d, want 1", count)
+	}
+
+	// Verify label index cleaned up.
+	byLabel, _ := ms.NodesByLabel(20)
+	if len(byLabel) != 0 {
+		t.Fatalf("NodesByLabel(20) = %d nodes, want 0 after delete", len(byLabel))
+	}
+}
+
+func TestMemoryStoreDeleteNodesBatchMissing(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	err := ms.DeleteNodesBatch([]snowflake.ID{snowflake.ID(1), snowflake.ID(999)})
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+
+	// Zero mutations.
+	count, _ := ms.NodeCount()
+	if count != 2 {
+		t.Fatalf("NodeCount = %d, want 2 (zero mutations)", count)
+	}
+}
+
+func TestMemoryStoreDeleteRelsBatchEmpty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	if err := ms.DeleteRelationshipsBatch(nil); err != nil {
+		t.Fatalf("DeleteRelationshipsBatch(nil) returned error: %v", err)
+	}
+}
+
+func TestMemoryStoreDeleteRelsBatch(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	r1 := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2))
+	r2 := types.NewRelationship(snowflake.ID(101), 5, snowflake.ID(2), snowflake.ID(1))
+	_ = ms.PutRelationship(r1)
+	_ = ms.PutRelationship(r2)
+
+	// Add version history so we can verify cleanup.
+	_ = ms.PutRelVersion(snowflake.ID(100), 0, r1)
+
+	if err := ms.DeleteRelationshipsBatch([]snowflake.ID{snowflake.ID(100), snowflake.ID(101)}); err != nil {
+		t.Fatalf("DeleteRelationshipsBatch returned error: %v", err)
+	}
+
+	count, _ := ms.RelationshipCount()
+	if count != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", count)
+	}
+
+	// Verify history cleaned up.
+	history, _ := ms.GetRelHistory(snowflake.ID(100))
+	if len(history) != 0 {
+		t.Fatalf("GetRelHistory(100) = %d entries, want 0 after delete", len(history))
+	}
+}

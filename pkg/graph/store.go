@@ -37,6 +37,13 @@ type Store interface {
 	GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)
 	GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)
 
+	// Batch operations — two-phase (validate then apply), all-or-nothing.
+	// Empty/nil input returns nil error with zero mutations.
+	PutNodesBatch(nodes []*types.Node) error
+	PutRelationshipsBatch(rels []*types.Relationship) error
+	DeleteNodesBatch(ids []snowflake.ID) error
+	DeleteRelationshipsBatch(ids []snowflake.ID) error
+
 	// Version history — Node
 	PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error
 	GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)

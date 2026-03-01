@@ -1,0 +1,294 @@
+package graph
+
+import (
+	"fmt"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+)
+
+// BatchBuilder queues graph operations for batch execution.
+// Operations are eagerly validated when added, then persisted atomically
+// when Execute is called.
+//
+// Execute order: create nodes → create rels → update nodes → update rels →
+// delete rels → delete nodes. Nodes before rels (endpoints must exist),
+// deletes last (don't delete something that's about to be updated).
+type BatchBuilder struct {
+	g           *Graph
+	nodes       []pendingNode
+	rels        []pendingRel
+	nodeUpdates []pendingUpdate
+	relUpdates  []pendingUpdate
+	nodeDeletes []snowflake.ID
+	relDeletes  []snowflake.ID
+}
+
+type pendingNode struct {
+	node   *types.Node
+	labels []string
+}
+
+type pendingRel struct {
+	rel     *types.Relationship
+	startID snowflake.ID
+	endID   snowflake.ID
+}
+
+type pendingUpdate struct {
+	id      snowflake.ID
+	updates map[string]any
+}
+
+// BatchResult reports the outcome of a batch execution.
+type BatchResult struct {
+	Created  int
+	Updated  int
+	Deleted  int
+	Failed   int
+	Errors   []BatchError
+	Duration time.Duration
+}
+
+// BatchError describes a single operation failure within a batch.
+type BatchError struct {
+	Op  string
+	ID  snowflake.ID
+	Err error
+}
+
+func (e BatchError) Error() string {
+	return fmt.Sprintf("batch %s (ID %d): %v", e.Op, e.ID, e.Err)
+}
+
+// NewBatchBuilder creates a new BatchBuilder for the given graph.
+func NewBatchBuilder(g *Graph) *BatchBuilder {
+	return &BatchBuilder{g: g}
+}
+
+// AddNode queues a node for creation. Labels and properties are validated
+// eagerly. The node is fully formed (ID, hash, integrity) but not yet persisted.
+// Returns the created node so it can be passed to AddRelationship.
+func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.Node, error) {
+	if len(labels) == 0 {
+		return nil, ErrNoLabels
+	}
+
+	ps, err := types.NewPropertySlice(props)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch node properties: %w", err)
+	}
+
+	primaryToken, err := b.g.labels.GetOrCreate(labels[0])
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch primary label: %w", err)
+	}
+
+	var extraTokens []uint16
+	for _, label := range labels[1:] {
+		tok, err := b.g.labels.GetOrCreate(label)
+		if err != nil {
+			return nil, fmt.Errorf("graph: batch extra label %q: %w", label, err)
+		}
+		extraTokens = append(extraTokens, tok)
+	}
+
+	id := b.g.NextNodeID()
+	n := types.NewNode(id, primaryToken, extraTokens)
+	n.SetProperties(ps)
+
+	hash := ComputeNodeHash(n, labels)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+
+	b.nodes = append(b.nodes, pendingNode{node: n, labels: labels})
+	return n, nil
+}
+
+// AddRelationship queues a relationship for creation. The type name and
+// properties are validated eagerly. Endpoint locking is deferred to Execute.
+// Returns the created relationship.
+func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	if startNode == nil || endNode == nil {
+		return nil, ErrNilNode
+	}
+
+	ps, err := types.NewPropertySlice(props)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
+	}
+
+	typeToken, err := b.g.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
+	}
+
+	startID := startNode.InternalID().SnowflakeID()
+	endID := endNode.InternalID().SnowflakeID()
+
+	id := b.g.NextRelID()
+	r := types.NewRelationship(id, typeToken, startID, endID)
+	r.SetProperties(ps)
+
+	hash := ComputeRelHash(r, typeName)
+	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+
+	b.rels = append(b.rels, pendingRel{rel: r, startID: startID, endID: endID})
+	return r, nil
+}
+
+// UpdateNode queues a node update. Keys and values are validated eagerly.
+func (b *BatchBuilder) UpdateNode(id snowflake.ID, updates map[string]any) error {
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return fmt.Errorf("graph: batch update node: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return fmt.Errorf("graph: batch update node property %q: %w", key, err)
+			}
+		}
+	}
+	b.nodeUpdates = append(b.nodeUpdates, pendingUpdate{id: id, updates: updates})
+	return nil
+}
+
+// UpdateRelationship queues a relationship update. Keys and values are validated eagerly.
+func (b *BatchBuilder) UpdateRelationship(id snowflake.ID, updates map[string]any) error {
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return fmt.Errorf("graph: batch update relationship: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return fmt.Errorf("graph: batch update relationship property %q: %w", key, err)
+			}
+		}
+	}
+	b.relUpdates = append(b.relUpdates, pendingUpdate{id: id, updates: updates})
+	return nil
+}
+
+// DeleteNode queues a node for deletion (cascade via Graph.DeleteNode).
+func (b *BatchBuilder) DeleteNode(id snowflake.ID) {
+	b.nodeDeletes = append(b.nodeDeletes, id)
+}
+
+// DeleteRelationship queues a relationship for deletion.
+func (b *BatchBuilder) DeleteRelationship(id snowflake.ID) {
+	b.relDeletes = append(b.relDeletes, id)
+}
+
+// Execute persists all queued operations in order:
+// create nodes → create rels → update nodes → update rels → delete rels → delete nodes.
+//
+// Node creates use store.PutNodesBatch for efficiency. Relationship creates
+// lock endpoints per-rel via LockTwo. Updates and deletes use existing Graph
+// methods (handles version history, entity locks, cascade).
+//
+// Returns a BatchResult with counts and per-operation errors. A nil error
+// means the batch completed (possibly with partial failures tracked in result).
+func (b *BatchBuilder) Execute() (*BatchResult, error) {
+	start := time.Now()
+	result := &BatchResult{}
+
+	// 1. Create nodes via batch store method.
+	if len(b.nodes) > 0 {
+		nodes := make([]*types.Node, len(b.nodes))
+		for i, pn := range b.nodes {
+			nodes[i] = pn.node
+		}
+		if err := b.g.store.PutNodesBatch(nodes); err != nil {
+			// All node creates failed.
+			for _, pn := range b.nodes {
+				result.Failed += 1
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddNode",
+					ID:  pn.node.InternalID().SnowflakeID(),
+					Err: err,
+				})
+			}
+		} else {
+			result.Created += len(b.nodes)
+		}
+	}
+
+	// 2. Create relationships — lock endpoints per-rel.
+	for _, pr := range b.rels {
+		b.g.entityLocks.LockTwo(pr.startID, pr.endID)
+		err := b.g.store.PutRelationship(pr.rel)
+		b.g.entityLocks.UnlockTwo(pr.startID, pr.endID)
+
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "AddRelationship",
+				ID:  pr.rel.InternalID().SnowflakeID(),
+				Err: err,
+			})
+		} else {
+			result.Created++
+		}
+	}
+
+	// 3. Update nodes.
+	for _, pu := range b.nodeUpdates {
+		_, err := b.g.UpdateNode(pu.id, pu.updates)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "UpdateNode",
+				ID:  pu.id,
+				Err: err,
+			})
+		} else {
+			result.Updated++
+		}
+	}
+
+	// 4. Update relationships.
+	for _, pu := range b.relUpdates {
+		_, err := b.g.UpdateRelationship(pu.id, pu.updates)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "UpdateRelationship",
+				ID:  pu.id,
+				Err: err,
+			})
+		} else {
+			result.Updated++
+		}
+	}
+
+	// 5. Delete relationships (before nodes — avoid cascade confusion).
+	for _, id := range b.relDeletes {
+		if err := b.g.DeleteRelationship(id); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "DeleteRelationship",
+				ID:  id,
+				Err: err,
+			})
+		} else {
+			result.Deleted++
+		}
+	}
+
+	// 6. Delete nodes (cascade via Graph.DeleteNode).
+	for _, id := range b.nodeDeletes {
+		if err := b.g.DeleteNode(id); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "DeleteNode",
+				ID:  id,
+				Err: err,
+			})
+		} else {
+			result.Deleted++
+		}
+	}
+
+	result.Duration = time.Since(start)
+	return result, nil
+}

@@ -1083,6 +1083,258 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	return nil
 }
 
+// --- Batch operations ---
+
+// PutNodesBatch stores multiple nodes atomically using two-phase validation.
+// Phase 1: check for duplicates vs existing store AND within the batch.
+// Phase 2: serialize, cache, index, and queue each for async flush.
+// Any duplicate → error, zero mutations. Nil/empty input → nil error.
+func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	// Pre-serialize all nodes outside the lock.
+	type nodeData struct {
+		id   snowflake.ID
+		data []byte
+	}
+	serialized := make([]nodeData, len(nodes))
+	for i, n := range nodes {
+		w := nodeToWire(n)
+		data, err := msgpack.Marshal(w)
+		if err != nil {
+			return fmt.Errorf("graph: marshal node: %w", err)
+		}
+		serialized[i] = nodeData{id: n.InternalID().SnowflakeID(), data: data}
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	// Phase 1: validate — no duplicates in store or within batch.
+	seen := make(map[snowflake.ID]struct{}, len(nodes))
+	for _, nd := range serialized {
+		if _, exists := bs.nodeIDs[nd.id]; exists {
+			return ErrNodeExists
+		}
+		if _, exists := seen[nd.id]; exists {
+			return fmt.Errorf("graph: duplicate node ID %d in batch", nd.id)
+		}
+		seen[nd.id] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
+	for i, n := range nodes {
+		nd := serialized[i]
+		intID := int64(nd.id)
+
+		bs.nodeCache.Put(nd.id, n.DeepCopy())
+		bs.nodeIDs[nd.id] = struct{}{}
+
+		ops = append(ops, writeOp{opType: writeOpSet, key: nodeKey(intID), value: nd.data})
+		for _, tok := range n.AllLabelTokens() {
+			tv := tok.Value()
+			if bs.labelIdx[tv] == nil {
+				bs.labelIdx[tv] = make(map[snowflake.ID]struct{})
+			}
+			bs.labelIdx[tv][nd.id] = struct{}{}
+			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+		}
+	}
+
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(int64(len(nodes)))
+	return nil
+}
+
+// PutRelationshipsBatch stores multiple relationships atomically using two-phase validation.
+// Phase 1: check endpoints exist, check for duplicate rel IDs.
+// Phase 2: serialize, cache, index, and queue each for async flush.
+// Any failure → error, zero mutations. Nil/empty input → nil error.
+func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if len(rels) == 0 {
+		return nil
+	}
+
+	// Pre-serialize all relationships outside the lock.
+	type relData struct {
+		id      snowflake.ID
+		startID snowflake.ID
+		endID   snowflake.ID
+		relType uint16
+		data    []byte
+	}
+	serialized := make([]relData, len(rels))
+	for i, r := range rels {
+		w := relToWire(r)
+		data, err := msgpack.Marshal(w)
+		if err != nil {
+			return fmt.Errorf("graph: marshal relationship: %w", err)
+		}
+		serialized[i] = relData{
+			id:      r.InternalID().SnowflakeID(),
+			startID: r.StartNodeID().SnowflakeID(),
+			endID:   r.EndNodeID().SnowflakeID(),
+			relType: r.TypeToken().Value(),
+			data:    data,
+		}
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	// Phase 1: validate — endpoints exist, no duplicates.
+	seen := make(map[snowflake.ID]struct{}, len(rels))
+	for _, rd := range serialized {
+		if _, exists := bs.nodeIDs[rd.startID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := bs.nodeIDs[rd.endID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := bs.relIDs[rd.id]; exists {
+			return ErrRelExists
+		}
+		if _, exists := seen[rd.id]; exists {
+			return fmt.Errorf("graph: duplicate relationship ID %d in batch", rd.id)
+		}
+		seen[rd.id] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	ops := make([]writeOp, 0, len(rels)*4) // entity + type + out + in
+	for i, r := range rels {
+		rd := serialized[i]
+		intID := int64(rd.id)
+
+		bs.relCache.Put(rd.id, r.DeepCopy())
+		bs.relIDs[rd.id] = struct{}{}
+
+		if bs.typeIdx[rd.relType] == nil {
+			bs.typeIdx[rd.relType] = make(map[snowflake.ID]struct{})
+		}
+		bs.typeIdx[rd.relType][rd.id] = struct{}{}
+
+		if bs.outIdx[rd.startID] == nil {
+			bs.outIdx[rd.startID] = make(map[snowflake.ID]struct{})
+		}
+		bs.outIdx[rd.startID][rd.id] = struct{}{}
+
+		if bs.inIdx[rd.endID] == nil {
+			bs.inIdx[rd.endID] = make(map[snowflake.ID]struct{})
+		}
+		bs.inIdx[rd.endID][rd.id] = struct{}{}
+
+		ops = append(ops, writeOp{opType: writeOpSet, key: relKey(intID), value: rd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, intID)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: outKey(int64(rd.startID), rd.relType, int64(rd.endID), intID)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: inKey(int64(rd.endID), rd.relType, int64(rd.startID), intID)})
+	}
+
+	bs.appendOps(ops...)
+	bs.relCount.Add(int64(len(rels)))
+	return nil
+}
+
+// DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
+// Phase 1: check all IDs exist, pre-read node data for label cleanup.
+// Phase 2: remove from cache, indexes, queue delete ops.
+// Missing ID → ErrNodeNotFound, zero mutations. Nil/empty input → nil error.
+func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	// Phase 1: validate — all must exist + pre-read for label cleanup.
+	nodeData := make([]*types.Node, len(ids))
+	for i, id := range ids {
+		if _, exists := bs.nodeIDs[id]; !exists {
+			return ErrNodeNotFound
+		}
+		n, err := bs.getNodeLocked(id)
+		if err != nil {
+			return fmt.Errorf("graph: batch read node %d: %w", id, err)
+		}
+		nodeData[i] = n
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for i, id := range ids {
+		intID := int64(id)
+		n := nodeData[i]
+
+		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+
+		allTokens := collectNodeLabelTokens(n)
+		for _, tok := range allTokens {
+			ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+			if set, exists := bs.labelIdx[tok]; exists {
+				delete(set, id)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
+			}
+		}
+
+		if err := bs.deleteHistoryByPrefix(histNodePrefix(intID)); err != nil {
+			return fmt.Errorf("graph: delete node history: %w", err)
+		}
+
+		bs.nodeCache.MarkDeleted(id)
+		delete(bs.nodeIDs, id)
+		bs.appendOps(ops...)
+	}
+
+	bs.nodeCount.Add(-int64(len(ids)))
+	return nil
+}
+
+// DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
+// Phase 1: check all IDs exist, pre-read relationship metadata.
+// Phase 2: delete via deleteRelByInfo (mutation-only), clean up history.
+// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+func (bs *BadgerStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	// Phase 1: validate — all must exist + pre-read metadata.
+	infos := make([]relDeleteInfo, len(ids))
+	for i, id := range ids {
+		if _, exists := bs.relIDs[id]; !exists {
+			return ErrRelNotFound
+		}
+		r, err := bs.getRelLocked(id)
+		if err != nil {
+			return fmt.Errorf("graph: batch read relationship %d: %w", id, err)
+		}
+		infos[i] = relDeleteInfo{
+			id:      id,
+			relType: r.TypeToken().Value(),
+			startID: r.StartNodeID().SnowflakeID(),
+			endID:   r.EndNodeID().SnowflakeID(),
+		}
+	}
+
+	// Phase 2: apply — all validated, mutations cannot fail.
+	for _, info := range infos {
+		bs.deleteRelByInfo(info)
+		if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); err != nil {
+			return fmt.Errorf("graph: delete rel history: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // --- Version history ---
 
 // PutNodeVersion stores a node snapshot at the given version.

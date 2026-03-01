@@ -39,7 +39,8 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | Type | Purpose |
 |------|---------|
 | `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`UpdateNode`/`UpdateRelationship`/`DeleteNode`), convenience property methods, shadow resolution, string resolution |
-| `Store` | Persistence interface — `PutNode`/`GetNode`/`ReplaceNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`ReplaceRelationship`/`DeleteRelationship`, index queries, adjacency queries, bulk queries (`AllNodes`, `AllRelationships`, `GetNodesByIDs`, `GetRelationshipsByIDs`), counts, `Close()` |
+| `Store` | Persistence interface — CRUD, index/adjacency/bulk queries, batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
+| `BatchBuilder` | Fluent API for queuing graph operations with eager validation and deferred persistence — `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Execute` |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
 | `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
@@ -58,6 +59,8 @@ Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupL
 Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`.
 
 Bulk queries: `AllNodes()`, `AllRelationships()`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
+
+Batch operations: `NewBatchBuilder(g)` creates a builder that queues operations with eager validation. Call `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)`, `DeleteRelationship(id)` to queue operations. Call `Execute()` to persist all operations in order (creates → updates → deletes). Returns a `BatchResult` with counts and per-operation errors. Store-level batch methods (`PutNodesBatch`, `DeleteNodesBatch`, etc.) use two-phase validate-then-apply for atomicity.
 
 Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
 
