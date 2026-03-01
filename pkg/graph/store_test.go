@@ -1425,3 +1425,269 @@ func TestMemoryStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
 		t.Fatalf("expected empty node history after cascade, got %d", len(nHistory))
 	}
 }
+
+// ─── MemoryStore: Bulk queries — AllNodes ───────────────────────────────────
+
+func TestMemoryStoreAllNodesEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	got, err := ms.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllNodes() on empty store = %v, want nil", got)
+	}
+}
+
+func TestMemoryStoreAllNodes(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	ms.PutNode(types.NewNode(snowflake.ID(1), 10, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(2), 20, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(3), 10, nil))
+
+	got, err := ms.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
+	}
+}
+
+func TestMemoryStoreAllNodesSorted(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	// Insert in reverse order to ensure sort is effective.
+	ms.PutNode(types.NewNode(snowflake.ID(30), 1, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(10), 1, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(20), 1, nil))
+
+	got, err := ms.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("AllNodes not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── MemoryStore: Bulk queries — AllRelationships ───────────────────────────
+
+func TestMemoryStoreAllRelsEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	got, err := ms.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllRelationships() on empty store = %v, want nil", got)
+	}
+}
+
+func TestMemoryStoreAllRels(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(101), 7, snowflake.ID(10), snowflake.ID(20)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(102), 5, snowflake.ID(20), snowflake.ID(10)))
+
+	got, err := ms.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllRelationships() = %d rels, want 3", len(got))
+	}
+}
+
+func TestMemoryStoreAllRelsSorted(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(1), 1, nil)
+	nB := types.NewNode(snowflake.ID(2), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	// Insert in reverse order.
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(1), snowflake.ID(2)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(1), snowflake.ID(2)))
+
+	got, err := ms.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllRelationships() = %d rels, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("AllRelationships not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── MemoryStore: Bulk queries — GetNodesByIDs ──────────────────────────────
+
+func TestMemoryStoreGetNodesByIDsEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	got, err := ms.GetNodesByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetNodesByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetNodesByIDs(nil) = %v, want nil", got)
+	}
+
+	got, err = ms.GetNodesByIDs([]snowflake.ID{})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs([]) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetNodesByIDs([]) = %v, want nil", got)
+	}
+}
+
+func TestMemoryStoreGetNodesByIDs(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	ms.PutNode(types.NewNode(snowflake.ID(1), 10, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(2), 20, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(3), 10, nil))
+
+	// Request 2 existing + 1 missing → should return 2, skip missing.
+	got, err := ms.GetNodesByIDs([]snowflake.ID{snowflake.ID(1), snowflake.ID(999), snowflake.ID(3)})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	}
+}
+
+func TestMemoryStoreGetNodesByIDsSorted(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	ms.PutNode(types.NewNode(snowflake.ID(30), 1, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(10), 1, nil))
+	ms.PutNode(types.NewNode(snowflake.ID(20), 1, nil))
+
+	// Request in reverse order — results must still be sorted ascending.
+	got, err := ms.GetNodesByIDs([]snowflake.ID{snowflake.ID(30), snowflake.ID(10), snowflake.ID(20)})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("GetNodesByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── MemoryStore: Bulk queries — GetRelationshipsByIDs ──────────────────────
+
+func TestMemoryStoreGetRelsByIDsEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	got, err := ms.GetRelationshipsByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) = %v, want nil", got)
+	}
+
+	got, err = ms.GetRelationshipsByIDs([]snowflake.ID{})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs([]) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetRelationshipsByIDs([]) = %v, want nil", got)
+	}
+}
+
+func TestMemoryStoreGetRelsByIDs(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(101), 7, snowflake.ID(10), snowflake.ID(20)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(102), 5, snowflake.ID(20), snowflake.ID(10)))
+
+	// Request 2 existing + 1 missing → should return 2, skip missing.
+	got, err := ms.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(100), snowflake.ID(999), snowflake.ID(102)})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	}
+}
+
+func TestMemoryStoreGetRelsByIDsSorted(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(1), 1, nil)
+	nB := types.NewNode(snowflake.ID(2), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(1), snowflake.ID(2)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)))
+	ms.PutRelationship(types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(1), snowflake.ID(2)))
+
+	// Request in reverse order — results must still be sorted ascending.
+	got, err := ms.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(300), snowflake.ID(100), snowflake.ID(200)})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("GetRelationshipsByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}

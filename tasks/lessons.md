@@ -298,3 +298,25 @@ Two contradictory external reviews were cross-checked against the actual codebas
 **Problem:** `OutgoingRelationships` and `IncomingRelationships` existed only on the `Store` interface — no Graph passthrough. The initial instinct was to inject the store and keep a separate reference, but this breaks the principle that Graph is the sole interface for external code.
 **Solution:** Added `Graph.OutgoingRelationships(nodeID, typeName)` and `Graph.IncomingRelationships(nodeID, typeName)` as passthroughs with string→token resolution (empty string = all types, same convention as `NodesByLabel`). This maintains the Graph as the sole external API.
 **Rule:** When external code needs Store functionality, add a Graph-level passthrough rather than exposing the Store. The Graph layer owns string resolution and should be the only interface external packages touch. Read-only queries don't need entity locks, so passthroughs are safe.
+
+---
+
+## 2026-03-01 — Phase 1d: Bulk Query Methods (v3.0.15)
+
+### Adding interface methods requires all implementations to compile (PATTERN)
+**Problem:** Adding 4 methods to the `Store` interface immediately broke compilation — `BadgerStore` didn't satisfy the interface. MemoryStore tests couldn't even run until BadgerStore was implemented.
+**Solution:** Implemented all Store implementations in the same step rather than TDD-ing one at a time. Both MemoryStore and BadgerStore were implemented together so the code compiles before any tests run.
+**Rule:** When extending a Go interface, all implementations must be updated in the same step. Plan for this when scoping TDD cycles — "write test, make it pass" requires the code to compile first, which means all interface implementations need at least stub methods.
+
+### Bulk query patterns mirror existing index query patterns exactly (PATTERN)
+**Problem:** Could have invented new patterns for AllNodes/AllRelationships, but the codebase already had `NodesByLabel` demonstrating exactly the right approach: snapshot IDs under lock, release lock, fetch via public Get methods, sort results.
+**Rule:** Before implementing a new Store method, find the closest existing method and replicate its pattern. For MemoryStore: `NodesByLabel` (line 300) — `RLock`, iterate set, DeepCopy, sort. For BadgerStore: `NodesByLabel` (line 730) — snapshot IDs under `idxMu.RLock`, fetch via public `GetNode`, `errors.Is(err, ErrNodeNotFound)` continue, sort. Consistent patterns reduce review burden.
+
+### Missing IDs should be skipped, not errored (DESIGN DECISION)
+**Problem:** `GetNodesByIDs` could either return an error on missing IDs or silently skip them. Both are defensible.
+**Decision:** Skip missing IDs — consistent with `NodesByLabel`'s orphan-skip pattern and more useful for bulk callers (export, snapshot) that don't want one missing entity to fail the entire batch.
+**Rule:** Bulk query methods that accept caller-provided IDs should skip not-found entries rather than erroring. This matches the established orphan-skip convention in `NodesByLabel`/`RelationshipsByType` and is more practical for callers doing partial reads.
+
+### Pre-existing test timeouts are not caused by your changes (PATTERN)
+**Problem:** `make test-race` timed out on `TestBadgerStoreRecoveryAfterAbruptShutdown` — a pre-existing Badger WriteBatch deadlock unrelated to bulk query methods. Initial reaction was to investigate whether the new code caused the failure.
+**Rule:** When a CI-style test fails, check (1) is the failing test one you wrote or modified, and (2) does it fail on the main branch too. If the answer to both is no, document it as pre-existing and verify your changes separately with a targeted test run.

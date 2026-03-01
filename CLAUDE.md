@@ -28,7 +28,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: v3.0.15 — Update operations and version history added (Phase 1a+1b complete).
+Status: v3.0.15 — Phases 1a-1d complete (Update, Version History, Hash Chain, Bulk Queries).
 
 ## Build & Test Commands
 
@@ -96,8 +96,8 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, `UpdateNode`/`UpdateRelationship` (saves pre-mutation state to version history before mutations), `GetNodeHistory`/`GetRelHistory` passthroughs, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle (calls `store.Close()` universally, saves Badger registries via type assertion), BadgerDir whitespace validation in `New()` |
-| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`, `Close()` for resource cleanup, 8 version history methods) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`) |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, `UpdateNode`/`UpdateRelationship` (saves pre-mutation state to version history before mutations), `GetNodeHistory`/`GetRelHistory` passthroughs, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), bulk query passthroughs (`AllNodes`, `AllRelationships`, `GetNodesByIDs`, `GetRelationshipsByIDs`), string resolution, `Close()` lifecycle (calls `store.Close()` universally, saves Badger registries via type assertion), BadgerDir whitespace validation in `New()` |
+| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, bulk queries (`AllNodes`, `AllRelationships`, `GetNodesByIDs`, `GetRelationshipsByIDs`), `DeleteNodeCascade`, `Close()` for resource cleanup, 8 version history methods) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`) |
 | `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock, version history maps (`nodeHistory`/`relHistory`) with deep-copy at boundary, no-op `Close()` |
 | `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with LRU entity caches (dirty tracking + tombstones), in-memory indexes as source of truth, async WriteBatch flush loop, background value log GC, atomic `int64` counters (never in transactions), `loadIndexes()` startup rebuild, version history via 0x07/0x08 keys (prefix scan + pending buffer merge, no in-memory index), three-phase cascade delete with history cleanup, `Close()` with `sync.Once` idempotence, registry persistence |
 | `lru.go` | `entityLRU[V]` — generic LRU cache with dirty tracking, tombstone support, soft capacity (dirty entries never evicted) |

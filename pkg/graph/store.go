@@ -31,6 +31,12 @@ type Store interface {
 	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 
+	// Bulk queries
+	AllNodes() ([]*types.Node, error)
+	AllRelationships() ([]*types.Relationship, error)
+	GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)
+	GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)
+
 	// Version history — Node
 	PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error
 	GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)

@@ -2693,3 +2693,315 @@ func TestGraphUpdateRelHashChanges(t *testing.T) {
 		t.Fatal("hash did not change when properties changed")
 	}
 }
+
+// ─── Gap 1: Concurrency & Locks ─────────────────────────────────────────────
+
+func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 50
+	for i := range iterations {
+		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
+			t.Parallel()
+			g, err := New(Config{BadgerInMemory: true})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			nA, _ := g.AddNode([]string{"A"}, nil)
+			nB, _ := g.AddNode([]string{"B"}, nil)
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			var err1, err2 error
+			go func() {
+				defer wg.Done()
+				_, err1 = g.AddRelationship("R1", nA, nB, nil)
+			}()
+			go func() {
+				defer wg.Done()
+				_, err2 = g.AddRelationship("R2", nA, nB, nil)
+			}()
+			wg.Wait()
+
+			if err1 != nil {
+				t.Fatalf("AddRelationship R1: %v", err1)
+			}
+			if err2 != nil {
+				t.Fatalf("AddRelationship R2: %v", err2)
+			}
+
+			rc, _ := g.RelationshipCount()
+			if rc != 2 {
+				t.Fatalf("RelationshipCount = %d, want 2", rc)
+			}
+
+			out, err := g.OutgoingRelationships(nA.InternalID().SnowflakeID(), "")
+			if err != nil {
+				t.Fatalf("OutgoingRelationships: %v", err)
+			}
+			if len(out) != 2 {
+				t.Fatalf("outgoing = %d, want 2", len(out))
+			}
+		})
+	}
+}
+
+func TestGraphConcurrentDeleteNodeOverlappingRels(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 50
+	for i := range iterations {
+		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
+			t.Parallel()
+			g, err := New(Config{BadgerInMemory: true})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			nA, _ := g.AddNode([]string{"A"}, nil)
+			nB, _ := g.AddNode([]string{"B"}, nil)
+			nC, _ := g.AddNode([]string{"C"}, nil)
+
+			// A→B, B→C, A→C — deleting A and B concurrently overlaps on A→B.
+			g.AddRelationship("R", nA, nB, nil)
+			g.AddRelationship("R", nB, nC, nil)
+			g.AddRelationship("R", nA, nC, nil)
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				g.DeleteNode(nA.InternalID().SnowflakeID())
+			}()
+			go func() {
+				defer wg.Done()
+				g.DeleteNode(nB.InternalID().SnowflakeID())
+			}()
+			wg.Wait()
+
+			nc, _ := g.NodeCount()
+			if nc != 1 {
+				t.Fatalf("NodeCount = %d, want 1 (only C)", nc)
+			}
+			rc, _ := g.RelationshipCount()
+			if rc != 0 {
+				t.Fatalf("RelationshipCount = %d, want 0", rc)
+			}
+		})
+	}
+}
+
+func TestGraphConcurrentCRUDStress(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Pre-create 10 hub nodes.
+	const hubCount = 10
+	hubs := make([]*types.Node, hubCount)
+	for i := range hubCount {
+		n, err := g.AddNode([]string{"Hub"}, map[string]any{"idx": int64(i)})
+		if err != nil {
+			t.Fatalf("AddNode hub %d: %v", i, err)
+		}
+		hubs[i] = n
+	}
+
+	const workers = 50
+	const opsPerWorker = 20
+	errs := make(chan error, workers)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := range workers {
+		go func(workerID int) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					errs <- fmt.Errorf("worker %d panicked: %v", workerID, r)
+				}
+			}()
+
+			wn, err := g.AddNode([]string{"Worker"}, map[string]any{"w": int64(workerID)})
+			if err != nil {
+				errs <- fmt.Errorf("worker %d AddNode: %w", workerID, err)
+				return
+			}
+			hub := hubs[workerID%hubCount]
+			if _, err := g.AddRelationship("LINK", wn, hub, nil); err != nil {
+				errs <- fmt.Errorf("worker %d AddRel: %w", workerID, err)
+				return
+			}
+
+			for i := range opsPerWorker {
+				// Query.
+				g.NodesByLabel("Hub")
+
+				// Update.
+				g.UpdateNode(wn.InternalID().SnowflakeID(), map[string]any{"iter": int64(i)})
+
+				// Delete on even iterations.
+				if i == opsPerWorker-1 && workerID%2 == 0 {
+					g.DeleteNode(wn.InternalID().SnowflakeID())
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Fatalf("worker error: %v", err)
+	}
+
+	// Hubs survive.
+	nc, _ := g.NodeCount()
+	if nc < hubCount {
+		t.Fatalf("NodeCount = %d, want >= %d (hubs survive)", nc, hubCount)
+	}
+}
+
+// ─── Bulk queries ───────────────────────────────────────────────────────────
+
+func TestGraphAllNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.AddNode([]string{"City"}, map[string]any{"name": "Vienna"})
+
+	got, err := g.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
+	}
+}
+
+func TestGraphAllNodesEmpty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	got, err := g.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllNodes() on empty graph = %v, want nil", got)
+	}
+}
+
+func TestGraphAllRels(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	nC, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddRelationship("KNOWS", nA, nB, nil)
+	g.AddRelationship("LIKES", nB, nC, nil)
+
+	got, err := g.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("AllRelationships() = %d rels, want 2", len(got))
+	}
+}
+
+func TestGraphAllRelsEmpty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	got, err := g.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllRelationships() on empty graph = %v, want nil", got)
+	}
+}
+
+func TestGraphGetNodesByIDs(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n1, _ := g.AddNode([]string{"Person"}, nil)
+	n2, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddNode([]string{"Person"}, nil) // n3 — not requested
+
+	ids := []snowflake.ID{
+		n1.InternalID().SnowflakeID(),
+		snowflake.ID(999), // missing
+		n2.InternalID().SnowflakeID(),
+	}
+
+	got, err := g.GetNodesByIDs(ids)
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	}
+}
+
+func TestGraphGetNodesByIDsEmpty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	got, err := g.GetNodesByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetNodesByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetNodesByIDs(nil) = %v, want nil", got)
+	}
+}
+
+func TestGraphGetRelsByIDs(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	r1, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	r2, _ := g.AddRelationship("LIKES", nA, nB, nil)
+
+	ids := []snowflake.ID{
+		r1.InternalID().SnowflakeID(),
+		snowflake.ID(999), // missing
+		r2.InternalID().SnowflakeID(),
+	}
+
+	got, err := g.GetRelationshipsByIDs(ids)
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	}
+}
+
+func TestGraphGetRelsByIDsEmpty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	got, err := g.GetRelationshipsByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) = %v, want nil", got)
+	}
+}

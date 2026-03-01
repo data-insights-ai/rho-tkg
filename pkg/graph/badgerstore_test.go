@@ -3,7 +3,11 @@ package graph
 import (
 	"container/list"
 	"errors"
+	"math"
+	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
@@ -2528,6 +2532,679 @@ func TestBadgerStoreRelHistorySurvivesRestart(t *testing.T) {
 	for i, h := range history {
 		if h.Version() != uint32(i) {
 			t.Errorf("history[%d].Version() = %d, want %d", i, h.Version(), i)
+		}
+	}
+}
+
+// ─── Gap 2: Background Processes ────────────────────────────────────────────
+
+func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create on-disk store with short FlushInterval to test auto-flush goroutine.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{
+		Dir:           dir,
+		FlushInterval: 50 * time.Millisecond,
+		GCInterval:    0,
+	})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+
+	putTestNode(t, bs1, 1, 1, nil)
+	putTestNode(t, bs1, 2, 1, nil)
+	putTestRel(t, bs1, 3, 1, 1, 2)
+
+	// NO explicit Flush() — let the auto-flush goroutine handle it.
+	time.Sleep(200 * time.Millisecond)
+
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen with FlushInterval=0 (no auto-flush) and verify data persisted.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs2.Close()
+
+	nc, _ := bs2.NodeCount()
+	if nc != 2 {
+		t.Fatalf("NodeCount = %d, want 2", nc)
+	}
+	if _, err := bs2.GetNode(snowflake.ID(1)); err != nil {
+		t.Fatalf("GetNode(1): %v", err)
+	}
+	if _, err := bs2.GetNode(snowflake.ID(2)); err != nil {
+		t.Fatalf("GetNode(2): %v", err)
+	}
+	if _, err := bs2.GetRelationship(snowflake.ID(3)); err != nil {
+		t.Fatalf("GetRelationship(3): %v", err)
+	}
+}
+
+func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := NewBadgerStore(BadgerStoreConfig{
+		Dir:           dir,
+		FlushInterval: 50 * time.Millisecond,
+		GCInterval:    0,
+	})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+
+	// Rapidly write 500 nodes across multiple flush cycles.
+	for i := range 500 {
+		putTestNode(t, bs1, int64(i+1), 1, nil)
+	}
+
+	// Wait for multiple flush cycles to drain the buffer.
+	time.Sleep(300 * time.Millisecond)
+
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen and verify all 500 nodes persisted.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs2.Close()
+
+	nc, _ := bs2.NodeCount()
+	if nc != 500 {
+		t.Fatalf("NodeCount = %d, want 500", nc)
+	}
+	// Spot-check first, middle, and last.
+	for _, id := range []int64{1, 250, 500} {
+		if _, err := bs2.GetNode(snowflake.ID(id)); err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+	}
+}
+
+// ─── Gap 3: LRU Cache Eviction ──────────────────────────────────────────────
+
+func TestBadgerStoreEvictionFallsThroughToBadger(t *testing.T) {
+	t.Parallel()
+
+	// Small cache capacity: 100. Insert 200, flush (makes them clean/evictable),
+	// then insert 50 more to trigger eviction of early entries.
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, CacheCapacity: 100})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	defer bs.Close()
+
+	for i := range 200 {
+		putTestNode(t, bs, int64(i+1), 1, nil)
+	}
+
+	// Flush makes all 200 entries clean (evictable).
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Insert 50 more — triggers eviction of clean entries from cache.
+	for i := range 50 {
+		putTestNode(t, bs, int64(201+i), 1, nil)
+	}
+
+	// Access evicted node (ID 1) — should fall through from cache miss to Badger.
+	nc, _ := bs.NodeCount()
+	if nc != 250 {
+		t.Fatalf("NodeCount = %d, want 250", nc)
+	}
+
+	// Spot-check across the range.
+	for _, id := range []int64{1, 100, 200, 250} {
+		if _, err := bs.GetNode(snowflake.ID(id)); err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+	}
+}
+
+func TestBadgerStoreDirtyNotEvictedUnderPressure(t *testing.T) {
+	t.Parallel()
+
+	// Cache capacity 50, insert 100 nodes WITHOUT flushing.
+	// All entries are dirty — dirty entries must never be evicted.
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, CacheCapacity: 50})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	defer bs.Close()
+
+	for i := range 100 {
+		putTestNode(t, bs, int64(i+1), 1, nil)
+	}
+
+	// Dirty entries exceed soft capacity.
+	cacheLen := bs.nodeCache.Len()
+	if cacheLen < 100 {
+		t.Fatalf("nodeCache.Len() = %d, want >= 100 (dirty entries never evicted)", cacheLen)
+	}
+
+	// Flush and verify all 100 accessible.
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	nc, _ := bs.NodeCount()
+	if nc != 100 {
+		t.Fatalf("NodeCount = %d, want 100", nc)
+	}
+	for _, id := range []int64{1, 50, 100} {
+		if _, err := bs.GetNode(snowflake.ID(id)); err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+	}
+}
+
+// ─── Gap 4: Badger Recovery ─────────────────────────────────────────────────
+
+func TestBadgerStoreRecoveryAfterAbruptShutdown(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Phase 1: Create store, write data, flush some, leave some unflushed.
+	// Use large FlushInterval/GCInterval so no background flush fires during
+	// the test. FlushInterval=0 gets overridden to 100ms for on-disk stores.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{
+		Dir:           dir,
+		FlushInterval: 10 * time.Minute,
+		GCInterval:    10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+
+	putTestNode(t, bs1, 1, 1, nil)
+	putTestNode(t, bs1, 2, 1, nil)
+	putTestRel(t, bs1, 3, 1, 1, 2)
+
+	// Flush to persist IDs 1, 2, 3.
+	if err := bs1.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Write one more node — NOT flushed.
+	putTestNode(t, bs1, 99, 1, nil)
+
+	// Simulate abrupt shutdown: discard the pending write buffer so the
+	// shutdown flush finds nothing to write. Node 99 is in the LRU cache
+	// but its Badger write op is lost — as if the process crashed before
+	// the next flush cycle.
+	bs1.wbMu.Lock()
+	bs1.pending = make(map[string]writeOp)
+	bs1.wbMu.Unlock()
+
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Phase 2: Reopen and verify — flushed data survives, unflushed data lost.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs2.Close()
+
+	nc, _ := bs2.NodeCount()
+	if nc != 2 {
+		t.Fatalf("NodeCount = %d, want 2 (unflushed node lost)", nc)
+	}
+
+	if _, err := bs2.GetNode(snowflake.ID(1)); err != nil {
+		t.Fatalf("GetNode(1): %v (flushed data should survive)", err)
+	}
+	if _, err := bs2.GetNode(snowflake.ID(2)); err != nil {
+		t.Fatalf("GetNode(2): %v (flushed data should survive)", err)
+	}
+	if _, err := bs2.GetRelationship(snowflake.ID(3)); err != nil {
+		t.Fatalf("GetRelationship(3): %v (flushed data should survive)", err)
+	}
+
+	// Unflushed node should be lost.
+	_, err = bs2.GetNode(snowflake.ID(99))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode(99): expected ErrNodeNotFound (unflushed), got %v", err)
+	}
+}
+
+// ─── Gap 5: Exhaustive Type Conversions ─────────────────────────────────────
+
+func TestBadgerStorePropertyBoundaryValues(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	props := map[string]any{
+		"max_i64":  int64(math.MaxInt64),
+		"min_i64":  int64(math.MinInt64),
+		"max_u64":  uint64(math.MaxUint64),
+		"max_f64":  math.MaxFloat64,
+		"tiny_f64": math.SmallestNonzeroFloat64,
+		"empty_s":  "",
+		"zero_i64": int64(0),
+		"zero_f64": float64(0),
+		"false":    false,
+	}
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetProperties(mustPropertySlice(t, props))
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	got, err := bs.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+
+	for key, want := range props {
+		v, ok := got.GetProperty(key)
+		if !ok {
+			t.Errorf("property %q missing after round-trip", key)
+			continue
+		}
+		if !reflect.DeepEqual(v, want) {
+			t.Errorf("property %q: got %v (%T), want %v (%T)", key, v, v, want, want)
+		}
+	}
+}
+
+func TestBadgerStoreLargeStringProperty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	const bigSize = 500 * 1024 // 500 KB — safely under Badger's 1 MB MaxValueSize
+	big := strings.Repeat("x", bigSize)
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetProperties(mustPropertySlice(t, map[string]any{"big": big}))
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	got, err := bs.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	v, ok := got.GetProperty("big")
+	if !ok {
+		t.Fatal("big property missing")
+	}
+	s, ok := v.(string)
+	if !ok {
+		t.Fatalf("big property type = %T, want string", v)
+	}
+	if len(s) != bigSize {
+		t.Fatalf("big property len = %d, want %d", len(s), bigSize)
+	}
+	if s != big {
+		t.Fatal("big property content mismatch")
+	}
+}
+
+func TestBadgerStoreDeeplyNestedProperty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Build 30-level nested map (within the maxPropertyDepth=32 limit).
+	current := map[string]any{"leaf": "value"}
+	for range 29 {
+		current = map[string]any{"nested": current}
+	}
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetProperties(mustPropertySlice(t, map[string]any{"deep": current}))
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	got, err := bs.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+
+	// Traverse 30 levels to reach the leaf.
+	v, ok := got.GetProperty("deep")
+	if !ok {
+		t.Fatal("deep property missing")
+	}
+	for level := range 29 {
+		m, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("level %d: expected map[string]any, got %T", level, v)
+		}
+		v, ok = m["nested"]
+		if !ok {
+			t.Fatalf("level %d: 'nested' key missing", level)
+		}
+	}
+	leaf, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("leaf level: expected map[string]any, got %T", v)
+	}
+	if leaf["leaf"] != "value" {
+		t.Fatalf("leaf value = %v, want 'value'", leaf["leaf"])
+	}
+}
+
+func TestBadgerStoreEmptyCollections(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n.SetProperties(mustPropertySlice(t, map[string]any{
+		"empty_slice": []any{},
+		"empty_map":   map[string]any{},
+	}))
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	got, err := bs.GetNode(snowflake.ID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+
+	// Check empty slice.
+	v, ok := got.GetProperty("empty_slice")
+	if !ok {
+		t.Fatal("empty_slice missing")
+	}
+	if reflect.TypeOf(v).Kind() != reflect.Slice {
+		t.Fatalf("empty_slice type = %T, want slice", v)
+	}
+	if reflect.ValueOf(v).Len() != 0 {
+		t.Fatalf("empty_slice len = %d, want 0", reflect.ValueOf(v).Len())
+	}
+
+	// Check empty map.
+	v, ok = got.GetProperty("empty_map")
+	if !ok {
+		t.Fatal("empty_map missing")
+	}
+	if reflect.TypeOf(v).Kind() != reflect.Map {
+		t.Fatalf("empty_map type = %T, want map", v)
+	}
+	if reflect.ValueOf(v).Len() != 0 {
+		t.Fatalf("empty_map len = %d, want 0", reflect.ValueOf(v).Len())
+	}
+}
+
+// ─── BadgerStore: Bulk queries — AllNodes ───────────────────────────────────
+
+func TestBadgerStoreAllNodesEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllNodes() on empty store = %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreAllNodes(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 20, nil)
+	putTestNode(t, bs, 3, 10, nil)
+
+	got, err := bs.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
+	}
+}
+
+func TestBadgerStoreAllNodesSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Insert in reverse order.
+	putTestNode(t, bs, 30, 1, nil)
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	got, err := bs.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("AllNodes not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── BadgerStore: Bulk queries — AllRelationships ───────────────────────────
+
+func TestBadgerStoreAllRelsEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("AllRelationships() on empty store = %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreAllRels(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20)
+	putTestRel(t, bs, 101, 7, 10, 20)
+	putTestRel(t, bs, 102, 5, 20, 10)
+
+	got, err := bs.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllRelationships() = %d rels, want 3", len(got))
+	}
+}
+
+func TestBadgerStoreAllRelsSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	// Insert in reverse order.
+	putTestRel(t, bs, 300, 5, 1, 2)
+	putTestRel(t, bs, 100, 5, 1, 2)
+	putTestRel(t, bs, 200, 5, 1, 2)
+
+	got, err := bs.AllRelationships()
+	if err != nil {
+		t.Fatalf("AllRelationships() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("AllRelationships() = %d rels, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("AllRelationships not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── BadgerStore: Bulk queries — GetNodesByIDs ──────────────────────────────
+
+func TestBadgerStoreGetNodesByIDsEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.GetNodesByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetNodesByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetNodesByIDs(nil) = %v, want nil", got)
+	}
+
+	got, err = bs.GetNodesByIDs([]snowflake.ID{})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs([]) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetNodesByIDs([]) = %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreGetNodesByIDs(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 20, nil)
+	putTestNode(t, bs, 3, 10, nil)
+
+	// Request 2 existing + 1 missing → should return 2, skip missing.
+	got, err := bs.GetNodesByIDs([]snowflake.ID{snowflake.ID(1), snowflake.ID(999), snowflake.ID(3)})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	}
+}
+
+func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 30, 1, nil)
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	// Request in reverse order — results must still be sorted ascending.
+	got, err := bs.GetNodesByIDs([]snowflake.ID{snowflake.ID(30), snowflake.ID(10), snowflake.ID(20)})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("GetNodesByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+		}
+	}
+}
+
+// ─── BadgerStore: Bulk queries — GetRelationshipsByIDs ──────────────────────
+
+func TestBadgerStoreGetRelsByIDsEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.GetRelationshipsByIDs(nil)
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetRelationshipsByIDs(nil) = %v, want nil", got)
+	}
+
+	got, err = bs.GetRelationshipsByIDs([]snowflake.ID{})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs([]) returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetRelationshipsByIDs([]) = %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreGetRelsByIDs(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20)
+	putTestRel(t, bs, 101, 7, 10, 20)
+	putTestRel(t, bs, 102, 5, 20, 10)
+
+	// Request 2 existing + 1 missing → should return 2, skip missing.
+	got, err := bs.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(100), snowflake.ID(999), snowflake.ID(102)})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	}
+}
+
+func TestBadgerStoreGetRelsByIDsSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	putTestRel(t, bs, 300, 5, 1, 2)
+	putTestRel(t, bs, 100, 5, 1, 2)
+	putTestRel(t, bs, 200, 5, 1, 2)
+
+	// Request in reverse order — results must still be sorted ascending.
+	got, err := bs.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(300), snowflake.ID(100), snowflake.ID(200)})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		prev := got[i-1].InternalID().SnowflakeID()
+		curr := got[i].InternalID().SnowflakeID()
+		if prev >= curr {
+			t.Errorf("GetRelationshipsByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
 	}
 }

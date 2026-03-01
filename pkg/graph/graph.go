@@ -594,3 +594,19 @@ func (g *Graph) NodeCount() (int, error) {
 func (g *Graph) RelationshipCount() (int, error) {
 	return g.store.RelationshipCount()
 }
+
+// AllNodes returns all nodes in the store.
+func (g *Graph) AllNodes() ([]*types.Node, error) { return g.store.AllNodes() }
+
+// AllRelationships returns all relationships in the store.
+func (g *Graph) AllRelationships() ([]*types.Relationship, error) { return g.store.AllRelationships() }
+
+// GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.
+func (g *Graph) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+	return g.store.GetNodesByIDs(ids)
+}
+
+// GetRelationshipsByIDs returns relationships matching the given IDs. Missing IDs are skipped.
+func (g *Graph) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+	return g.store.GetRelationshipsByIDs(ids)
+}

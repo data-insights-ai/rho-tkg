@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.15] - 2026-03-01
 
+### Added (Phase 1d — Bulk Query Methods)
+
+- **`AllNodes()`** on Store interface — returns all stored nodes, sorted by snowflake.ID. MemoryStore iterates the node map under `RLock` with DeepCopy. BadgerStore snapshots `nodeIDs` under `idxMu.RLock`, then fetches each via `GetNode` (cache + existence check + Badger fallback + DeepCopy). Returns `nil, nil` for empty stores.
+- **`AllRelationships()`** on Store interface — returns all stored relationships, sorted by snowflake.ID. Same patterns as `AllNodes`.
+- **`GetNodesByIDs(ids []snowflake.ID)`** on Store interface — returns nodes matching the given IDs, sorted by snowflake.ID. Missing IDs are silently skipped (matches `NodesByLabel` orphan-skip pattern). Returns `nil, nil` for empty/nil input.
+- **`GetRelationshipsByIDs(ids []snowflake.ID)`** on Store interface — returns relationships matching the given IDs, sorted by snowflake.ID. Missing IDs are silently skipped.
+- **Graph-layer passthroughs** — `Graph.AllNodes()`, `Graph.AllRelationships()`, `Graph.GetNodesByIDs(ids)`, `Graph.GetRelationshipsByIDs(ids)`. Pure delegation to the store (no string resolution needed).
+- **32 new tests** — 12 MemoryStore (empty/count/sorted for each method), 12 BadgerStore (mirrored), 8 graph-layer (empty + populated for each method, including skip-missing verification). All pass with race detector.
+
 ### Added (Phase 1c — Hash Chain Computation)
 
 - **`ComputeNodeHash(n, labels)`** — computes a SHA-256 hash of a node's content (id, version, sorted labels, sorted properties). Returns a 64-character hex string.

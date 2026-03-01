@@ -859,6 +859,122 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	return rels, nil
 }
 
+// --- Bulk queries ---
+
+// AllNodes returns all stored nodes.
+// Snapshot nodeIDs under lock, then fetch each via GetNode.
+// Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) AllNodes() ([]*types.Node, error) {
+	bs.idxMu.RLock()
+	ids := make([]snowflake.ID, 0, len(bs.nodeIDs))
+	for id := range bs.nodeIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	nodes := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: all nodes %d: %w", id, err)
+		}
+		nodes = append(nodes, n)
+	}
+
+	sortNodesByID(nodes)
+	return nodes, nil
+}
+
+// AllRelationships returns all stored relationships.
+// Snapshot relIDs under lock, then fetch each via GetRelationship.
+// Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) AllRelationships() ([]*types.Relationship, error) {
+	bs.idxMu.RLock()
+	ids := make([]snowflake.ID, 0, len(bs.relIDs))
+	for id := range bs.relIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: all relationships %d: %w", id, err)
+		}
+		rels = append(rels, r)
+	}
+
+	sortRelsByID(rels)
+	return rels, nil
+}
+
+// GetNodesByIDs returns nodes matching the given IDs.
+// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+func (bs *BadgerStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	nodes := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
+		}
+		nodes = append(nodes, n)
+	}
+
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	sortNodesByID(nodes)
+	return nodes, nil
+}
+
+// GetRelationshipsByIDs returns relationships matching the given IDs.
+// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+func (bs *BadgerStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
+		}
+		rels = append(rels, r)
+	}
+
+	if len(rels) == 0 {
+		return nil, nil
+	}
+	sortRelsByID(rels)
+	return rels, nil
+}
+
 // --- Cascade operations ---
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.

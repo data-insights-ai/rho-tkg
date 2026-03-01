@@ -39,7 +39,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | Type | Purpose |
 |------|---------|
 | `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`UpdateNode`/`UpdateRelationship`/`DeleteNode`), convenience property methods, shadow resolution, string resolution |
-| `Store` | Persistence interface — `PutNode`/`GetNode`/`ReplaceNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`ReplaceRelationship`/`DeleteRelationship`, index queries, adjacency queries, counts, `Close()` |
+| `Store` | Persistence interface — `PutNode`/`GetNode`/`ReplaceNode`/`DeleteNode`, `PutRelationship`/`GetRelationship`/`ReplaceRelationship`/`DeleteRelationship`, index queries, adjacency queries, bulk queries (`AllNodes`, `AllRelationships`, `GetNodesByIDs`, `GetRelationshipsByIDs`), counts, `Close()` |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
 | `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
@@ -56,6 +56,8 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
 Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`.
+
+Bulk queries: `AllNodes()`, `AllRelationships()`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
 
 Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
 

@@ -586,6 +586,88 @@ func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 // Close is a no-op for MemoryStore. Satisfies the Store interface.
 func (ms *MemoryStore) Close() error { return nil }
 
+// --- Bulk queries ---
+
+// AllNodes returns all stored nodes.
+// Results are sorted by snowflake.ID for deterministic output.
+func (ms *MemoryStore) AllNodes() ([]*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.nodes) == 0 {
+		return nil, nil
+	}
+	result := make([]*types.Node, 0, len(ms.nodes))
+	for _, n := range ms.nodes {
+		result = append(result, n.DeepCopy())
+	}
+	sortNodesByID(result)
+	return result, nil
+}
+
+// AllRelationships returns all stored relationships.
+// Results are sorted by snowflake.ID for deterministic output.
+func (ms *MemoryStore) AllRelationships() ([]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.rels) == 0 {
+		return nil, nil
+	}
+	result := make([]*types.Relationship, 0, len(ms.rels))
+	for _, r := range ms.rels {
+		result = append(result, r.DeepCopy())
+	}
+	sortRelsByID(result)
+	return result, nil
+}
+
+// GetNodesByIDs returns nodes matching the given IDs.
+// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+func (ms *MemoryStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		if n, ok := ms.nodes[id]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	sortNodesByID(result)
+	return result, nil
+}
+
+// GetRelationshipsByIDs returns relationships matching the given IDs.
+// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+func (ms *MemoryStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := ms.rels[id]; ok {
+			result = append(result, r.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	sortRelsByID(result)
+	return result, nil
+}
+
 // sortNodesByID sorts nodes by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func sortNodesByID(nodes []*types.Node) {

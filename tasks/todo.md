@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.15. Phase 1a (UpdateNode/UpdateRelationship) and Phase 1b (Version History) complete.
+Library at v3.0.15. Phases 1a-1d complete (Update, Version History, Hash Chain, Bulk Queries).
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -72,26 +72,29 @@ Complete. Implemented in v3.0.15.
 **22 tests total:** 10 unit tests (determinism, property/version/label/type/endpoint sensitivity, label order independence), 12 graph-layer integration tests (integrity set on create, hash chain linking, multiple-update chain, genesis zero PrevHash — node/rel parity).
 All pass with race detector. 100% coverage on all new functions.
 
-### 1d. GetAllNodes / GetAllRelationships / GetByIDs
+### 1d. Bulk Query Methods (AllNodes / AllRelationships / GetByIDs) ✓
 
-Bulk query methods needed by export, snapshot, and the tiered store layer.
+Complete. Implemented in v3.0.15.
 
 **Store interface additions:**
-- [ ] `AllNodes() ([]*types.Node, error)`
-- [ ] `AllRelationships() ([]*types.Relationship, error)`
-- [ ] `GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)`
-- [ ] `GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)`
+- [x] `AllNodes() ([]*types.Node, error)`
+- [x] `AllRelationships() ([]*types.Relationship, error)`
+- [x] `GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)`
+- [x] `GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)`
 
 **Graph-layer passthrough:**
-- [ ] `Graph.AllNodes()`, `Graph.AllRelationships()`
-- [ ] `Graph.GetNodesByIDs(ids)`, `Graph.GetRelationshipsByIDs(ids)`
+- [x] `Graph.AllNodes()`, `Graph.AllRelationships()`
+- [x] `Graph.GetNodesByIDs(ids)`, `Graph.GetRelationshipsByIDs(ids)`
 
-**Tests:**
-- [ ] AllNodes returns all stored nodes
-- [ ] AllNodes returns empty slice when empty
-- [ ] GetNodesByIDs returns found nodes, skips missing (or returns error per ID)
-- [ ] Results sorted by snowflake.ID (deterministic)
-- [ ] Both MemoryStore and BadgerStore
+**Design decisions:**
+- Missing IDs silently skipped (matches `NodesByLabel` orphan-skip pattern)
+- `nil, nil` for empty results (consistent with all existing query methods)
+- Pure Graph passthroughs (no string resolution needed)
+- BadgerStore: snapshot IDs under `idxMu.RLock()`, fetch via public `GetNode`/`GetRelationship`
+- MemoryStore: single `RLock`, iterate map, DeepCopy, sort
+
+**32 tests total:** 12 MemoryStore (AllNodes empty/count/sorted, AllRels empty/count/sorted, GetNodesByIDs empty/found/sorted, GetRelsByIDs empty/found/sorted), 12 BadgerStore (mirrored), 8 graph-layer (AllNodes/AllRels empty + populated, GetNodesByIDs/GetRelsByIDs empty + skip-missing).
+All pass with race detector. Coverage 82-100% on all new methods.
 
 ### 1e. Batch Operations
 
