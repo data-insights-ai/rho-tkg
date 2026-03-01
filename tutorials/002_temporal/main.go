@@ -10,11 +10,44 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// commas formats an integer with thousand separators: 1234567 -> "1,234,567".
+func commas(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	if n < 0 {
+		return "-" + commas(-n)
+	}
+	return insertCommas(s)
+}
+
+// commasFmt formats any %d-compatible value with thousand separators.
+func commasFmt(v any) string {
+	return insertCommas(fmt.Sprintf("%d", v))
+}
+
+func insertCommas(s string) string {
+	if len(s) <= 3 {
+		return s
+	}
+	var buf []byte
+	pre := len(s) % 3
+	if pre > 0 {
+		buf = append(buf, s[:pre]...)
+	}
+	for i := pre; i < len(s); i += 3 {
+		if len(buf) > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i:i+3]...)
+	}
+	return string(buf)
+}
 
 func main() {
 	g, err := graph.New(graph.Config{})
@@ -185,8 +218,8 @@ func main() {
 
 	baseID, ok := g.ResolveNodeProperty(empV2, types.ShadowBaseEntity)
 	if ok {
-		fmt.Printf("empV2 base entity: %d (points to original %d)\n",
-			baseID, emp.InternalID().SnowflakeID())
+		fmt.Printf("empV2 base entity: %s (points to original %s)\n",
+			commasFmt(baseID), commas(int64(emp.InternalID().SnowflakeID())))
 	}
 
 	fmt.Println("\n=== 9. Reserved Prefix Protection ===")

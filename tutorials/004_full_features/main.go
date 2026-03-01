@@ -13,11 +13,35 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// commas formats an integer with thousand separators: 1234567 -> "1,234,567".
+func commas(n int64) string {
+	if n < 0 {
+		return "-" + commas(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var buf []byte
+	pre := len(s) % 3
+	if pre > 0 {
+		buf = append(buf, s[:pre]...)
+	}
+	for i := pre; i < len(s); i += 3 {
+		if len(buf) > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i:i+3]...)
+	}
+	return string(buf)
+}
 
 func main() {
 	// BadgerInMemory gives BadgerStore behavior without disk I/O.
@@ -134,8 +158,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Self-loop: Alice -[REVIEWS]-> Alice (ID: %d)\n",
-		selfLoop.InternalID().SnowflakeID())
+	fmt.Printf("Self-loop: Alice -[REVIEWS]-> Alice (ID: %s)\n",
+		commas(int64(selfLoop.InternalID().SnowflakeID())))
 
 	nc, err := g.NodeCount()
 	if err != nil {
@@ -264,8 +288,8 @@ func main() {
 	}
 	fmt.Printf("Alice outgoing (all types): %d relationships\n", len(outAll))
 	for _, r := range outAll {
-		fmt.Printf("  -[%s]-> %d\n",
-			g.RelationshipType(r), r.EndNodeID().SnowflakeID())
+		fmt.Printf("  -[%s]-> %s\n",
+			g.RelationshipType(r), commas(int64(r.EndNodeID().SnowflakeID())))
 	}
 
 	// All incoming to Bob.

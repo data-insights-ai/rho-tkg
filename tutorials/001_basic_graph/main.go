@@ -10,9 +10,33 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
 )
+
+// commas formats an integer with thousand separators: 1234567 -> "1,234,567".
+func commas(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	if n < 0 {
+		return "-" + commas(-n)
+	}
+	if len(s) <= 3 {
+		return s
+	}
+	var buf []byte
+	pre := len(s) % 3
+	if pre > 0 {
+		buf = append(buf, s[:pre]...)
+	}
+	for i := pre; i < len(s); i += 3 {
+		if len(buf) > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i:i+3]...)
+	}
+	return string(buf)
+}
 
 func main() {
 	// Create graph with explicit configuration.
@@ -49,8 +73,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Alice ID: %d, labels: %v\n",
-		alice.InternalID().SnowflakeID(), g.NodeLabels(alice))
+	fmt.Printf("Alice ID: %s, labels: %v\n",
+		commas(int64(alice.InternalID().SnowflakeID())), g.NodeLabels(alice))
 
 	// Multi-label node.
 	bob, err := g.AddNode([]string{"Person", "Employee"}, map[string]any{
@@ -60,8 +84,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Bob   ID: %d, labels: %v\n",
-		bob.InternalID().SnowflakeID(), g.NodeLabels(bob))
+	fmt.Printf("Bob   ID: %s, labels: %v\n",
+		commas(int64(bob.InternalID().SnowflakeID())), g.NodeLabels(bob))
 
 	charlie, err := g.AddNode([]string{"Person"}, map[string]any{
 		"name":   "Charlie",
@@ -71,8 +95,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Charlie ID: %d, labels: %v\n",
-		charlie.InternalID().SnowflakeID(), g.NodeLabels(charlie))
+	fmt.Printf("Charlie ID: %s, labels: %v\n",
+		commas(int64(charlie.InternalID().SnowflakeID())), g.NodeLabels(charlie))
 
 	fmt.Println("\n=== 2. Adding Relationships ===")
 
@@ -82,8 +106,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Alice -[%s]-> Bob  (ID: %d)\n",
-		g.RelationshipType(knows), knows.InternalID().SnowflakeID())
+	fmt.Printf("Alice -[%s]-> Bob  (ID: %s)\n",
+		g.RelationshipType(knows), commas(int64(knows.InternalID().SnowflakeID())))
 
 	worksWith, err := g.AddRelationship("WORKS_WITH", bob, charlie, map[string]any{
 		"project": "Atlas",
@@ -91,15 +115,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Bob -[%s]-> Charlie  (ID: %d)\n",
-		g.RelationshipType(worksWith), worksWith.InternalID().SnowflakeID())
+	fmt.Printf("Bob -[%s]-> Charlie  (ID: %s)\n",
+		g.RelationshipType(worksWith), commas(int64(worksWith.InternalID().SnowflakeID())))
 
 	knows2, err := g.AddRelationship("KNOWS", alice, charlie, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Alice -[%s]-> Charlie  (ID: %d)\n",
-		g.RelationshipType(knows2), knows2.InternalID().SnowflakeID())
+	fmt.Printf("Alice -[%s]-> Charlie  (ID: %s)\n",
+		g.RelationshipType(knows2), commas(int64(knows2.InternalID().SnowflakeID())))
 
 	fmt.Println("\n=== 3. Entity Counts ===")
 
@@ -190,7 +214,7 @@ func main() {
 	}
 	fmt.Printf("Alice outgoing (all): %d\n", len(outAll))
 	for _, r := range outAll {
-		fmt.Printf("  -[%s]-> %d\n", g.RelationshipType(r), r.EndNodeID().SnowflakeID())
+		fmt.Printf("  -[%s]-> %s\n", g.RelationshipType(r), commas(int64(r.EndNodeID().SnowflakeID())))
 	}
 
 	// Filtered: only KNOWS.

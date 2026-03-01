@@ -10,10 +10,34 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
 )
+
+// commas formats an integer with thousand separators: 1234567 -> "1,234,567".
+func commas(n int64) string {
+	if n < 0 {
+		return "-" + commas(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return s
+	}
+	var buf []byte
+	pre := len(s) % 3
+	if pre > 0 {
+		buf = append(buf, s[:pre]...)
+	}
+	for i := pre; i < len(s); i += 3 {
+		if len(buf) > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, s[i:i+3]...)
+	}
+	return string(buf)
+}
 
 func main() {
 	dir, err := os.MkdirTemp("", "tkg-tutorial-003-*")
@@ -89,7 +113,7 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Printf("Written: %d nodes, %d relationships\n", nc, rc)
-		fmt.Printf("Alice ID: %d, Bob ID: %d\n", aliceID, bobID)
+		fmt.Printf("Alice ID: %s, Bob ID: %s\n", commas(aliceID), commas(bobID))
 
 		fmt.Println("Closing graph (flush + save registries)...")
 	}()
@@ -177,7 +201,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Dave ID: %d\n", dave.InternalID().SnowflakeID())
+		fmt.Printf("Dave ID: %s\n", commas(int64(dave.InternalID().SnowflakeID())))
 
 		_, err = g.AddRelationship("KNOWS", alice, dave, nil)
 		if err != nil {
