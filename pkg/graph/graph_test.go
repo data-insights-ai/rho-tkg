@@ -1155,10 +1155,106 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 			// Final invariant: verify no rels reference non-existent nodes.
 			// Check nodeB outgoing (should be empty).
 			bID := nodeB.InternalID().SnowflakeID()
-			outB, _ := g.store.OutgoingRelationships(bID, 0)
+			outB, _ := g.OutgoingRelationships(bID, "")
 			if len(outB) != 0 {
 				t.Errorf("nodeB should have no outgoing rels, got %d", len(outB))
 			}
 		})
+	}
+}
+
+func TestGraphOutgoingRelationships(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	c, _ := g.AddNode([]string{"Person"}, nil)
+
+	g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("WORKS_WITH", a, c, nil)
+
+	// All outgoing from A.
+	all, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships(all): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("OutgoingRelationships(all) = %d, want 2", len(all))
+	}
+
+	// Filtered by type.
+	knows, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "KNOWS")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships(KNOWS): %v", err)
+	}
+	if len(knows) != 1 {
+		t.Fatalf("OutgoingRelationships(KNOWS) = %d, want 1", len(knows))
+	}
+
+	// Unregistered type returns nil.
+	none, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "NONEXISTENT")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships(NONEXISTENT): %v", err)
+	}
+	if none != nil {
+		t.Errorf("OutgoingRelationships(NONEXISTENT) = %v, want nil", none)
+	}
+
+	// Node with no outgoing.
+	empty, err := g.OutgoingRelationships(c.InternalID().SnowflakeID(), "")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships(c, all): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("OutgoingRelationships(c, all) = %d, want 0", len(empty))
+	}
+}
+
+func TestGraphIncomingRelationships(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	c, _ := g.AddNode([]string{"Person"}, nil)
+
+	g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("WORKS_WITH", c, b, nil)
+
+	// All incoming to B.
+	all, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "")
+	if err != nil {
+		t.Fatalf("IncomingRelationships(all): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("IncomingRelationships(all) = %d, want 2", len(all))
+	}
+
+	// Filtered by type.
+	knows, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "KNOWS")
+	if err != nil {
+		t.Fatalf("IncomingRelationships(KNOWS): %v", err)
+	}
+	if len(knows) != 1 {
+		t.Fatalf("IncomingRelationships(KNOWS) = %d, want 1", len(knows))
+	}
+
+	// Unregistered type returns nil.
+	none, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "NONEXISTENT")
+	if err != nil {
+		t.Fatalf("IncomingRelationships(NONEXISTENT): %v", err)
+	}
+	if none != nil {
+		t.Errorf("IncomingRelationships(NONEXISTENT) = %v, want nil", none)
+	}
+
+	// Node with no incoming.
+	empty, err := g.IncomingRelationships(a.InternalID().SnowflakeID(), "")
+	if err != nil {
+		t.Fatalf("IncomingRelationships(a, all): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("IncomingRelationships(a, all) = %d, want 0", len(empty))
 	}
 }

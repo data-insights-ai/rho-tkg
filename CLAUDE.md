@@ -96,7 +96,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, passthrough queries, string resolution, `Close()` lifecycle |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle |
 | `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
 | `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock |
 | `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with LRU entity caches (dirty tracking + tombstones), in-memory indexes as source of truth, async WriteBatch flush loop, background value log GC, atomic `int64` counters (never in transactions), `loadIndexes()` startup rebuild, `Close()` with `sync.Once` idempotence, registry persistence |
@@ -172,7 +172,7 @@ The Graph layer is the **sole owner** of string resolution:
 
 | Consumer | Resolution methods |
 |---|---|
-| Graph layer | `NodeLabels(n)`, `NodePrimaryLabel(n)`, `RelationshipType(r)`, `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` |
+| Graph layer | `NodeLabels(n)`, `NodePrimaryLabel(n)`, `RelationshipType(r)`, `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)`, `OutgoingRelationships(id, typeName)`, `IncomingRelationships(id, typeName)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)` |
 | Cypher engine | Resolves label/type tokens once per query via `Lookup()`, then matches with integer comparison |
 | REST/gRPC API | Calls Graph resolution methods before JSON encoding |
 

@@ -360,6 +360,36 @@ func (g *Graph) RelationshipsByType(typeName string) ([]*types.Relationship, err
 	return g.store.RelationshipsByType(tok)
 }
 
+// OutgoingRelationships returns all outgoing relationships from the given node.
+// If typeName is empty, all types are returned. If typeName is non-empty, only
+// relationships of that type are returned (nil if the type is not registered).
+func (g *Graph) OutgoingRelationships(nodeID snowflake.ID, typeName string) ([]*types.Relationship, error) {
+	var tok uint16
+	if typeName != "" {
+		t, ok := g.relTypes.Lookup(typeName)
+		if !ok {
+			return nil, nil
+		}
+		tok = t
+	}
+	return g.store.OutgoingRelationships(nodeID, tok)
+}
+
+// IncomingRelationships returns all incoming relationships to the given node.
+// If typeName is empty, all types are returned. If typeName is non-empty, only
+// relationships of that type are returned (nil if the type is not registered).
+func (g *Graph) IncomingRelationships(nodeID snowflake.ID, typeName string) ([]*types.Relationship, error) {
+	var tok uint16
+	if typeName != "" {
+		t, ok := g.relTypes.Lookup(typeName)
+		if !ok {
+			return nil, nil
+		}
+		tok = t
+	}
+	return g.store.IncomingRelationships(nodeID, tok)
+}
+
 // NodeCount returns the number of nodes in the store.
 func (g *Graph) NodeCount() (int, error) {
 	return g.store.NodeCount()

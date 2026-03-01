@@ -284,3 +284,17 @@ Two contradictory external reviews were cross-checked against the actual codebas
 **Problem:** `deleteRelLocked` was a single function doing read (getRelLocked) + mutations. The two-phase cascade fix needed the mutation part without the read. Copy-pasting the mutations would create duplication.
 **Solution:** Extract `deleteRelByInfo(info relDeleteInfo)` containing only the mutation logic. `deleteRelLocked` becomes read + call helper. `DeleteNodeCascade` preflight reads, then calls the helper directly.
 **Rule:** When refactoring to two-phase operations, separate the "get data" step from the "apply mutations" step into independent functions. The mutation function should accept pre-read data and perform no reads — guaranteeing it cannot fail mid-mutation.
+
+---
+
+## 2026-03-01 — Tutorial Implementation
+
+### Never write code against an API you haven't fully analyzed (BLOCKER)
+**Problem:** Started writing tutorial code assuming `Graph` had a `Store()` accessor method and that adjacency queries were available through Graph. Neither is true. The first attempt produced code that wouldn't compile.
+**Root cause:** Jumped to implementation without exhaustive API analysis. Read `graph.go` but didn't verify every assumption before writing code.
+**Rule:** Before writing ANY code that consumes an API (tutorials, integration code, test harnesses), catalog every public method on every relevant type with full signatures. Verify: (1) method exists, (2) parameter types match, (3) return types match, (4) unexported wrapper types are handled correctly. Document the API surface, THEN write code. Never assume a method exists because it "should."
+
+### API gaps should be fixed, not worked around (PATTERN)
+**Problem:** `OutgoingRelationships` and `IncomingRelationships` existed only on the `Store` interface — no Graph passthrough. The initial instinct was to inject the store and keep a separate reference, but this breaks the principle that Graph is the sole interface for external code.
+**Solution:** Added `Graph.OutgoingRelationships(nodeID, typeName)` and `Graph.IncomingRelationships(nodeID, typeName)` as passthroughs with string→token resolution (empty string = all types, same convention as `NodesByLabel`). This maintains the Graph as the sole external API.
+**Rule:** When external code needs Store functionality, add a Graph-level passthrough rather than exposing the Store. The Graph layer owns string resolution and should be the only interface external packages touch. Read-only queries don't need entity locks, so passthroughs are safe.
