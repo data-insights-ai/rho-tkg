@@ -2049,3 +2049,376 @@ func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
 		t.Fatalf("persisted version = %d, want 1", got.Version())
 	}
 }
+
+// ─── Version history — Node ─────────────────────────────────────────────────
+
+func TestGraphUpdateNodeSavesHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Update: should save version 0 (pre-mutation) to history.
+	_, err := g.UpdateNode(id, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	history, err := g.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("len(history) = %d, want 1", len(history))
+	}
+	if history[0].Version() != 0 {
+		t.Errorf("history[0].Version() = %d, want 0", history[0].Version())
+	}
+	hv, ok := history[0].GetProperty("name")
+	if !ok || hv != "Alice" {
+		t.Fatalf("history[0] name = %v, want Alice", hv)
+	}
+}
+
+func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	for i := 1; i <= 5; i++ {
+		_, err := g.UpdateNode(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+		if err != nil {
+			t.Fatalf("UpdateNode %d: %v", i, err)
+		}
+	}
+
+	history, err := g.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 5 {
+		t.Fatalf("len(history) = %d, want 5", len(history))
+	}
+}
+
+func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	for i := 1; i <= 3; i++ {
+		g.UpdateNode(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+	}
+
+	history, _ := g.GetNodeHistory(id)
+	for i := 0; i < len(history)-1; i++ {
+		if history[i].Version() >= history[i+1].Version() {
+			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
+				i, history[i].Version(), i+1, history[i+1].Version())
+		}
+	}
+}
+
+func TestGraphGetNodeHistoryEmpty(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	// No updates = no history.
+	history, err := g.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected empty history, got %d", len(history))
+	}
+}
+
+func TestGraphDeleteNodeCleansHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	g.UpdateNode(id, map[string]any{"name": "v1"})
+	g.UpdateNode(id, map[string]any{"name": "v2"})
+
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	history, _ := g.GetNodeHistory(id)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after delete, got %d", len(history))
+	}
+}
+
+// ─── Version history — Relationship ─────────────────────────────────────────
+
+func TestGraphUpdateRelSavesHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 1.0})
+	id := r.InternalID().SnowflakeID()
+
+	_, err := g.UpdateRelationship(id, map[string]any{"weight": 2.0})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	history, err := g.GetRelHistory(id)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("len(history) = %d, want 1", len(history))
+	}
+	if history[0].Version() != 0 {
+		t.Errorf("history[0].Version() = %d, want 0", history[0].Version())
+	}
+	hv, ok := history[0].GetProperty("weight")
+	if !ok || hv != 1.0 {
+		t.Fatalf("history[0] weight = %v, want 1.0", hv)
+	}
+}
+
+func TestGraphUpdateRelHistoryGrows(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	id := r.InternalID().SnowflakeID()
+
+	for i := 1; i <= 5; i++ {
+		g.UpdateRelationship(id, map[string]any{"w": int64(i)})
+	}
+
+	history, _ := g.GetRelHistory(id)
+	if len(history) != 5 {
+		t.Fatalf("len(history) = %d, want 5", len(history))
+	}
+}
+
+func TestGraphUpdateRelHistoryAscendingOrder(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	id := r.InternalID().SnowflakeID()
+
+	for i := 1; i <= 3; i++ {
+		g.UpdateRelationship(id, map[string]any{"w": int64(i)})
+	}
+
+	history, _ := g.GetRelHistory(id)
+	for i := 0; i < len(history)-1; i++ {
+		if history[i].Version() >= history[i+1].Version() {
+			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
+				i, history[i].Version(), i+1, history[i+1].Version())
+		}
+	}
+}
+
+func TestGraphGetRelHistoryEmpty(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
+	id := r.InternalID().SnowflakeID()
+
+	history, err := g.GetRelHistory(id)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected empty, got %d", len(history))
+	}
+}
+
+func TestGraphDeleteRelCleansHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	id := r.InternalID().SnowflakeID()
+
+	g.UpdateRelationship(id, map[string]any{"w": int64(1)})
+	g.UpdateRelationship(id, map[string]any{"w": int64(2)})
+
+	if err := g.DeleteRelationship(id); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	history, _ := g.GetRelHistory(id)
+	if len(history) != 0 {
+		t.Fatalf("expected empty after delete, got %d", len(history))
+	}
+}
+
+// ─── Version history — Badger persistence ───────────────────────────────────
+
+func TestGraphBadgerNodeHistoryPersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	g1.UpdateNode(id, map[string]any{"name": "v1"})
+	g1.UpdateNode(id, map[string]any{"name": "v2"})
+
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	history, err := g2.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory after reopen: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+	if history[0].Version() != 0 {
+		t.Errorf("history[0].Version() = %d, want 0", history[0].Version())
+	}
+}
+
+func TestGraphBadgerRelHistoryPersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	nA, _ := g1.AddNode([]string{"X"}, nil)
+	nB, _ := g1.AddNode([]string{"X"}, nil)
+	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	relID := r.InternalID().SnowflakeID()
+
+	g1.UpdateRelationship(relID, map[string]any{"w": int64(1)})
+	g1.UpdateRelationship(relID, map[string]any{"w": int64(2)})
+
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	history, err := g2.GetRelHistory(relID)
+	if err != nil {
+		t.Fatalf("GetRelHistory after reopen: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+}
+
+func TestGraphBadgerDeleteNodeCleansHistory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	g1.UpdateNode(id, map[string]any{"name": "v1"})
+
+	if err := g1.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	history, _ := g2.GetNodeHistory(id)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after reopen, got %d", len(history))
+	}
+}
+
+func TestGraphBadgerDeleteRelCleansHistory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	nA, _ := g1.AddNode([]string{"X"}, nil)
+	nB, _ := g1.AddNode([]string{"X"}, nil)
+	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	relID := r.InternalID().SnowflakeID()
+
+	g1.UpdateRelationship(relID, map[string]any{"w": int64(1)})
+
+	if err := g1.DeleteRelationship(relID); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	history, _ := g2.GetRelHistory(relID)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after reopen, got %d", len(history))
+	}
+}

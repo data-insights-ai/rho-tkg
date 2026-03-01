@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -462,6 +463,11 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 		}
 	}
 
+	// Clean up version history.
+	if err := bs.deleteHistoryByPrefix(histNodePrefix(intID)); err != nil {
+		return fmt.Errorf("graph: delete node history: %w", err)
+	}
+
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, id)
@@ -668,6 +674,11 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 		startID: r.StartNodeID().SnowflakeID(),
 		endID:   r.EndNodeID().SnowflakeID(),
 	})
+
+	// Clean up version history.
+	if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(id))); err != nil {
+		return fmt.Errorf("graph: delete rel history: %w", err)
+	}
 	return nil
 }
 
@@ -895,6 +906,16 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 		bs.deleteRelByInfo(info)
 	}
 
+	// Phase 3 — Clean up history entries for all deleted relationships and the node.
+	for _, info := range toDelete {
+		if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); err != nil {
+			return fmt.Errorf("graph: cascade delete rel history: %w", err)
+		}
+	}
+	if err := bs.deleteHistoryByPrefix(histNodePrefix(int64(id))); err != nil {
+		return fmt.Errorf("graph: cascade delete node history: %w", err)
+	}
+
 	// Get node data for label cleanup.
 	n, err := bs.getNodeLocked(id)
 	if err != nil {
@@ -943,6 +964,400 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 
 	// Note: relCount was already adjusted by deleteRelLocked for each rel.
 	// The cascade counter is handled independently by deleteRelLocked's relCount.Add(-1).
+	return nil
+}
+
+// --- Version history ---
+
+// PutNodeVersion stores a node snapshot at the given version.
+// Serializes via nodeToWire (deep copy at serialization boundary).
+func (bs *BadgerStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
+	w := nodeToWire(n)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+	key := histNodeKey(int64(id), uint64(version))
+	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	return nil
+}
+
+// GetNodeVersion retrieves a node snapshot at the given version.
+// Checks the pending buffer first (unflushed writes), then Badger.
+// Returns ErrVersionNotFound if the version does not exist.
+func (bs *BadgerStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+	key := histNodeKey(int64(id), uint64(version))
+	keyStr := string(key)
+
+	// Check pending buffer for unflushed writes.
+	bs.wbMu.Lock()
+	op, found := bs.pending[keyStr]
+	bs.wbMu.Unlock()
+
+	if found {
+		if op.opType == writeOpDelete {
+			return nil, ErrVersionNotFound
+		}
+		var w nodeWire
+		if err := msgpack.Unmarshal(op.value, &w); err != nil {
+			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+		}
+		n := wireToNode(w)
+		return n.DeepCopy(), nil
+	}
+
+	// Fall through to Badger.
+	var n *types.Node
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err == badger.ErrKeyNotFound {
+			return ErrVersionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w nodeWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal node version: %w", err)
+			}
+			n = wireToNode(w)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return n.DeepCopy(), nil
+}
+
+// GetNodeHistory returns all node version snapshots in ascending version order.
+// Merges persisted Badger entries with unflushed pending buffer entries.
+func (bs *BadgerStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
+	prefix := histNodePrefix(int64(id))
+	return bs.getNodeHistoryByPrefix(prefix)
+}
+
+// getNodeHistoryByPrefix scans Badger and the pending buffer for node history entries.
+func (bs *BadgerStore) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
+	prefixStr := string(prefix)
+
+	// Collect from Badger.
+	entries := make(map[string][]byte) // key string -> value bytes
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			k := string(item.KeyCopy(nil))
+			err := item.Value(func(val []byte) error {
+				cp := make([]byte, len(val))
+				copy(cp, val)
+				entries[k] = cp
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge pending buffer entries (pending wins).
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
+			if op.opType == writeOpDelete {
+				delete(entries, k)
+			} else {
+				cp := make([]byte, len(op.value))
+				copy(cp, op.value)
+				entries[k] = cp
+			}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	// Sort by key (big-endian version in bytes 9-17 gives natural ascending order).
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	result := make([]*types.Node, 0, len(keys))
+	for _, k := range keys {
+		var w nodeWire
+		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
+			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+		}
+		n := wireToNode(w)
+		result = append(result, n.DeepCopy())
+	}
+	return result, nil
+}
+
+// TruncateNodeHistory removes all but the N most recent node versions.
+// If keepVersions <= 0, all history is cleared.
+func (bs *BadgerStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
+	prefix := histNodePrefix(int64(id))
+	return bs.truncateHistoryByPrefix(prefix, keepVersions)
+}
+
+// PutRelVersion stores a relationship snapshot at the given version.
+// Serializes via relToWire (deep copy at serialization boundary).
+func (bs *BadgerStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
+	w := relToWire(r)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal rel version: %w", err)
+	}
+	key := histRelKey(int64(id), uint64(version))
+	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	return nil
+}
+
+// GetRelVersion retrieves a relationship snapshot at the given version.
+// Checks the pending buffer first, then Badger.
+// Returns ErrVersionNotFound if the version does not exist.
+func (bs *BadgerStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+	key := histRelKey(int64(id), uint64(version))
+	keyStr := string(key)
+
+	// Check pending buffer.
+	bs.wbMu.Lock()
+	op, found := bs.pending[keyStr]
+	bs.wbMu.Unlock()
+
+	if found {
+		if op.opType == writeOpDelete {
+			return nil, ErrVersionNotFound
+		}
+		var w relWire
+		if err := msgpack.Unmarshal(op.value, &w); err != nil {
+			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
+		}
+		r := wireToRel(w)
+		return r.DeepCopy(), nil
+	}
+
+	// Fall through to Badger.
+	var r *types.Relationship
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err == badger.ErrKeyNotFound {
+			return ErrVersionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w relWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal rel version: %w", err)
+			}
+			r = wireToRel(w)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.DeepCopy(), nil
+}
+
+// GetRelHistory returns all relationship version snapshots in ascending version order.
+// Merges persisted Badger entries with unflushed pending buffer entries.
+func (bs *BadgerStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
+	prefix := histRelPrefix(int64(id))
+	return bs.getRelHistoryByPrefix(prefix)
+}
+
+// getRelHistoryByPrefix scans Badger and the pending buffer for rel history entries.
+func (bs *BadgerStore) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
+	prefixStr := string(prefix)
+
+	entries := make(map[string][]byte)
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			k := string(item.KeyCopy(nil))
+			err := item.Value(func(val []byte) error {
+				cp := make([]byte, len(val))
+				copy(cp, val)
+				entries[k] = cp
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
+			if op.opType == writeOpDelete {
+				delete(entries, k)
+			} else {
+				cp := make([]byte, len(op.value))
+				copy(cp, op.value)
+				entries[k] = cp
+			}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	result := make([]*types.Relationship, 0, len(keys))
+	for _, k := range keys {
+		var w relWire
+		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
+			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
+		}
+		r := wireToRel(w)
+		result = append(result, r.DeepCopy())
+	}
+	return result, nil
+}
+
+// TruncateRelHistory removes all but the N most recent relationship versions.
+// If keepVersions <= 0, all history is cleared.
+func (bs *BadgerStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
+	prefix := histRelPrefix(int64(id))
+	return bs.truncateHistoryByPrefix(prefix, keepVersions)
+}
+
+// truncateHistoryByPrefix removes all but the N most recent history entries
+// matching the given prefix. Scans both Badger and the pending buffer.
+func (bs *BadgerStore) truncateHistoryByPrefix(prefix []byte, keepVersions int) error {
+	prefixStr := string(prefix)
+
+	// Collect all keys from Badger.
+	var allKeys []string
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			allKeys = append(allKeys, string(it.Item().KeyCopy(nil)))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Merge in pending buffer keys.
+	keySet := make(map[string]struct{}, len(allKeys))
+	for _, k := range allKeys {
+		keySet[k] = struct{}{}
+	}
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
+			if op.opType == writeOpDelete {
+				delete(keySet, k)
+			} else {
+				keySet[k] = struct{}{}
+			}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	if len(keySet) == 0 {
+		return nil
+	}
+
+	sorted := make([]string, 0, len(keySet))
+	for k := range keySet {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+
+	var toDelete []string
+	if keepVersions <= 0 {
+		toDelete = sorted
+	} else if len(sorted) > keepVersions {
+		toDelete = sorted[:len(sorted)-keepVersions]
+	}
+
+	if len(toDelete) == 0 {
+		return nil
+	}
+
+	ops := make([]writeOp, len(toDelete))
+	for i, k := range toDelete {
+		ops[i] = writeOp{opType: writeOpDelete, key: []byte(k)}
+	}
+	bs.appendOps(ops...)
+	return nil
+}
+
+// deleteHistoryByPrefix removes all history entries matching the given prefix
+// from both the pending buffer and Badger.
+func (bs *BadgerStore) deleteHistoryByPrefix(prefix []byte) error {
+	prefixStr := string(prefix)
+
+	// Remove matching entries from pending buffer.
+	bs.wbMu.Lock()
+	for k := range bs.pending {
+		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
+			delete(bs.pending, k)
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Scan Badger for persisted entries and queue deletes.
+	var ops []writeOp
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().KeyCopy(nil)
+			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(ops) > 0 {
+		bs.appendOps(ops...)
+	}
 	return nil
 }
 

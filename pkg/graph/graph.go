@@ -363,6 +363,11 @@ func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node
 		return nil, err
 	}
 
+	// Save pre-mutation state to version history.
+	if err := g.store.PutNodeVersion(id, current.Version(), current); err != nil {
+		return nil, fmt.Errorf("graph: save node version: %w", err)
+	}
+
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
@@ -422,6 +427,11 @@ func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*ty
 		return nil, err
 	}
 
+	// Save pre-mutation state to version history.
+	if err := g.store.PutRelVersion(id, current.Version(), current); err != nil {
+		return nil, fmt.Errorf("graph: save rel version: %w", err)
+	}
+
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
@@ -473,6 +483,18 @@ func (g *Graph) SetRelationshipProperty(id snowflake.ID, key string, value any) 
 func (g *Graph) DeleteRelationshipProperty(id snowflake.ID, key string) error {
 	_, err := g.UpdateRelationship(id, map[string]any{key: nil})
 	return err
+}
+
+// --- Version history passthrough ---
+
+// GetNodeHistory returns all version history snapshots for the given node.
+func (g *Graph) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
+	return g.store.GetNodeHistory(id)
+}
+
+// GetRelHistory returns all version history snapshots for the given relationship.
+func (g *Graph) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
+	return g.store.GetRelHistory(id)
 }
 
 // --- Store passthrough queries ---

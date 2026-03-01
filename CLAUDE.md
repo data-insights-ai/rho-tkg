@@ -28,7 +28,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: v3.0.15 — Update operations added (Phase 1a complete).
+Status: v3.0.15 — Update operations and version history added (Phase 1a+1b complete).
 
 ## Build & Test Commands
 
@@ -96,13 +96,13 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle (calls `store.Close()` universally, saves Badger registries via type assertion), BadgerDir whitespace validation in `New()` |
-| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`, `Close()` for resource cleanup) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`) |
-| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock, no-op `Close()` |
-| `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with LRU entity caches (dirty tracking + tombstones), in-memory indexes as source of truth, async WriteBatch flush loop, background value log GC, atomic `int64` counters (never in transactions), `loadIndexes()` startup rebuild, `Close()` with `sync.Once` idempotence, registry persistence |
+| `graph.go` | Graph struct with Config, Store, dual snowflake generators, registries, entity lock manager, `AddNode`/`AddRelationship` (with entity locks)/`DeleteNode` (with entity lock + cascade)/`DeleteRelationship`, `UpdateNode`/`UpdateRelationship` (saves pre-mutation state to version history before mutations), `GetNodeHistory`/`GetRelHistory` passthroughs, passthrough queries (including `OutgoingRelationships`/`IncomingRelationships` with string type name resolution), string resolution, `Close()` lifecycle (calls `store.Close()` universally, saves Badger registries via type assertion), BadgerDir whitespace validation in `New()` |
+| `store.go` | `Store` interface (pure persistence contract with error-returning query methods, `DeleteNodeCascade`, `Close()` for resource cleanup, 8 version history methods) + sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`) |
+| `memorystore.go` | `MemoryStore` — thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, atomic `DeleteNodeCascade` under single write lock, version history maps (`nodeHistory`/`relHistory`) with deep-copy at boundary, no-op `Close()` |
+| `badgerstore.go` | `BadgerStore` — persistent `Store` using Badger v4 with LRU entity caches (dirty tracking + tombstones), in-memory indexes as source of truth, async WriteBatch flush loop, background value log GC, atomic `int64` counters (never in transactions), `loadIndexes()` startup rebuild, version history via 0x07/0x08 keys (prefix scan + pending buffer merge, no in-memory index), three-phase cascade delete with history cleanup, `Close()` with `sync.Once` idempotence, registry persistence |
 | `lru.go` | `entityLRU[V]` — generic LRU cache with dirty tracking, tombstone support, soft capacity (dirty entries never evicted) |
 | `entity_locks.go` | `entityLockManager` — 256-shard mutex array for write-skew prevention. `LockTwo` acquires in ascending shard order (deadlock-free) |
-| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs/tokens, fixed-width keys for entities, indexes, adjacency, metadata |
+| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs/tokens, fixed-width keys for entities, indexes, adjacency, history (0x07/0x08), metadata. `histNodeKey`/`histRelKey` for exact keys, `histNodePrefix`/`histRelPrefix` for prefix scans |
 | `wire.go` | Msgpack wire format types (`nodeWire`/`relWire`/`propertyWire` with `Type byte` tag for Go type fidelity) and conversion functions for serialization boundary |
 | `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches all 15 `tkg_*` shadow keys with nil-guards on `Temporal()`/`Integrity()`; `tkg_created_at` derives from snowflake ID via `Decompose()` when `CreatedAt` is zero/unset |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry (RWMutex, double-check, `sync.Once` capacity warning, `ExportNames`/`ImportNames` for persistence) |
@@ -151,7 +151,9 @@ These rules exist because every single one was violated at least once. Do not sk
 
 **Entity locks for write-skew prevention**: `entityLockManager` (256 shards) serializes operations on overlapping entities. `shardIndex` extracts the low 8 bits of the snowflake timestamp field (`>> 22 & 0xFF`), cycling every 256ms — entities created at different times distribute across shards. `Graph.AddRelationship` acquires locks on both endpoints via `LockTwo(startID, endID)` before ID generation. `Graph.DeleteNode` acquires lock on the target via `LockEntity(id)` before cascade. `LockTwo` normalizes to ascending shard order (deadlock-free). Lock ordering: entity locks -> idxMu. Always.
 
-**Atomic cascade-delete on node removal**: `Graph.DeleteNode` acquires the entity lock, then delegates to `Store.DeleteNodeCascade`, which atomically removes the node and all connected relationships. Self-loops are deduplicated via a map. No TOCTOU window. `BadgerStore.DeleteNodeCascade` uses a two-phase approach: (1) preflight reads all relationship metadata via `getRelLocked`, aborting with zero mutations on any read failure; (2) applies all deletions via `deleteRelByInfo` (mutation-only, cannot fail). This prevents partial state corruption when a relationship has corrupt data on disk.
+**Atomic cascade-delete on node removal**: `Graph.DeleteNode` acquires the entity lock, then delegates to `Store.DeleteNodeCascade`, which atomically removes the node and all connected relationships. Self-loops are deduplicated via a map. No TOCTOU window. `BadgerStore.DeleteNodeCascade` uses a three-phase approach: (1) preflight reads all relationship metadata via `getRelLocked`, aborting with zero mutations on any read failure; (2) applies all deletions via `deleteRelByInfo` (mutation-only, cannot fail); (3) cleans up version history entries for all deleted relationships and the node. This prevents partial state corruption when a relationship has corrupt data on disk.
+
+**Version history — pre-mutation snapshots**: `UpdateNode`/`UpdateRelationship` save the entity's current state to version history (via `PutNodeVersion`/`PutRelVersion`) before applying mutations. History is keyed by `(entityID, version)` — version comes from `entity.Version()` at the time of the snapshot. Initial creation (AddNode/AddRelationship) does NOT write history; the first update saves version 0. `GetNodeHistory`/`GetRelHistory` return all saved versions in ascending order. `TruncateNodeHistory`/`TruncateRelHistory` keep only the N most recent versions (`keepVersions <= 0` clears all). All delete paths (DeleteNode, DeleteNodeCascade, DeleteRelationship) clean up associated history entries. BadgerStore stores history directly in Badger via 0x07/0x08 prefix keys — no in-memory index (low frequency, bounded cardinality). `GetNodeVersion`/`GetRelVersion` check the pending buffer first for unflushed writes before falling through to Badger.
 
 **Validate before generating IDs**: `AddNode`/`AddRelationship` run `NewPropertySlice(props)` and registry lookups before `NextNodeID()`/`NextRelID()`. Validation failures return early with no wasted snowflake IDs.
 
@@ -216,7 +218,10 @@ All keys use fixed-width binary encoding with single-byte prefix tags. Snowflake
 | `0x0F/label_tokens`, `0x0F/reltype_tokens` | Registry persistence | varies |
 | `0x0F/node_count`, `0x0F/rel_count` | Atomic entity counters (big-endian int64) | varies |
 
-History keys (`h/n/`, `h/r/`) and temporal index keys (`tv/n/`) exist as test-only stubs in `keys_helpers_test.go` — not yet implemented in any Store.
+| `0x07/<8B nodeID>/<8B version>` | Node version history | 17B |
+| `0x08/<8B relID>/<8B version>` | Relationship version history | 17B |
+
+Temporal index keys (`0x09`/`0x0A`) exist as test-only stubs in `keys_helpers_test.go` — not yet implemented in any Store.
 
 No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is stateless.
 

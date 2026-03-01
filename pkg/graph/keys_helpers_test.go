@@ -2,18 +2,15 @@ package graph
 
 import "encoding/binary"
 
-// Key prefix tags used only in tests — future key types for history and temporal
+// Key prefix tags used only in tests — future key types for temporal
 // indexing that are not yet integrated into any Store implementation.
 const (
-	keyHistNode byte = 0x07 // + 8B nodeID + 8B version                 = 17B
-	keyHistRel  byte = 0x08 // + 8B relID + 8B version                  = 17B
 	keyTempNode byte = 0x09 // + 8B validFrom + 8B nodeID               = 17B
 	keyTempRel  byte = 0x0A // + 8B validFrom + 8B relID                = 17B
 )
 
 // Key sizes for test-only key types.
 const (
-	sizeHistKey = 1 + 8 + 8 // 17B
 	sizeTempIdx = 1 + 8 + 8 // 17B
 )
 
@@ -66,26 +63,6 @@ func inTypedPrefix(endID int64, relType uint16) []byte {
 	b[0] = keyIn
 	putUint64(b, 1, endID)
 	putUint16(b, 9, relType)
-	return b
-}
-
-// --- History keys (test-only) ---
-
-// histNodeKey returns the 17-byte key for a node history entry.
-func histNodeKey(nodeID int64, version uint64) []byte {
-	b := make([]byte, sizeHistKey)
-	b[0] = keyHistNode
-	putUint64(b, 1, nodeID)
-	binary.BigEndian.PutUint64(b[9:], version)
-	return b
-}
-
-// histRelKey returns the 17-byte key for a relationship history entry.
-func histRelKey(relID int64, version uint64) []byte {
-	b := make([]byte, sizeHistKey)
-	b[0] = keyHistRel
-	putUint64(b, 1, relID)
-	binary.BigEndian.PutUint64(b[9:], version)
 	return b
 }
 

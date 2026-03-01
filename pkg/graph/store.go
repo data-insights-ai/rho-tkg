@@ -31,6 +31,18 @@ type Store interface {
 	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 
+	// Version history — Node
+	PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error
+	GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)
+	GetNodeHistory(id snowflake.ID) ([]*types.Node, error)
+	TruncateNodeHistory(id snowflake.ID, keepVersions int) error
+
+	// Version history — Relationship
+	PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error
+	GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error)
+	GetRelHistory(id snowflake.ID) ([]*types.Relationship, error)
+	TruncateRelHistory(id snowflake.ID, keepVersions int) error
+
 	// Cascade operations
 	DeleteNodeCascade(id snowflake.ID) error
 
@@ -48,5 +60,6 @@ var (
 	ErrNodeNotFound = errors.New("graph: node not found")
 	ErrRelNotFound  = errors.New("graph: relationship not found")
 	ErrNodeExists   = errors.New("graph: node already exists")
-	ErrRelExists    = errors.New("graph: relationship already exists")
+	ErrRelExists       = errors.New("graph: relationship already exists")
+	ErrVersionNotFound = errors.New("graph: version not found")
 )

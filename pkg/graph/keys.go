@@ -12,7 +12,9 @@ const (
 	keyRelType byte = 0x04 // + 2B relTypeToken + 8B relID             = 11B
 	keyOut     byte = 0x05 // + 8B start + 2B type + 8B end + 8B rel   = 27B
 	keyIn      byte = 0x06 // + 8B end + 2B type + 8B start + 8B rel   = 27B
-	keyMeta    byte = 0x0F // + variable (rare, only registry keys)
+	keyHistNode byte = 0x07 // + 8B nodeID + 8B version              = 17B
+	keyHistRel  byte = 0x08 // + 8B relID + 8B version               = 17B
+	keyMeta     byte = 0x0F // + variable (rare, only registry keys)
 )
 
 // --- Key sizes ---
@@ -23,6 +25,7 @@ const (
 	sizeLabelIdx   = 1 + 2 + 8         // 11B
 	sizeRelTypeIdx = 1 + 2 + 8         // 11B
 	sizeAdjacency  = 1 + 8 + 2 + 8 + 8 // 27B
+	sizeHistKey    = 1 + 8 + 8         // 17B
 )
 
 // putUint64 writes v as big-endian at buf[off..off+8].
@@ -97,6 +100,42 @@ func inKey(endID int64, relType uint16, startID int64, relID int64) []byte {
 	putUint16(b, 9, relType)
 	putUint64(b, 11, startID)
 	putUint64(b, 19, relID)
+	return b
+}
+
+// --- History keys ---
+
+// histNodeKey returns the 17-byte key for a node history entry.
+func histNodeKey(nodeID int64, version uint64) []byte {
+	b := make([]byte, sizeHistKey)
+	b[0] = keyHistNode
+	putUint64(b, 1, nodeID)
+	binary.BigEndian.PutUint64(b[9:], version)
+	return b
+}
+
+// histRelKey returns the 17-byte key for a relationship history entry.
+func histRelKey(relID int64, version uint64) []byte {
+	b := make([]byte, sizeHistKey)
+	b[0] = keyHistRel
+	putUint64(b, 1, relID)
+	binary.BigEndian.PutUint64(b[9:], version)
+	return b
+}
+
+// histNodePrefix returns the 9-byte prefix for scanning all node version entries.
+func histNodePrefix(nodeID int64) []byte {
+	b := make([]byte, 1+8)
+	b[0] = keyHistNode
+	putUint64(b, 1, nodeID)
+	return b
+}
+
+// histRelPrefix returns the 9-byte prefix for scanning all relationship version entries.
+func histRelPrefix(relID int64) []byte {
+	b := make([]byte, 1+8)
+	b[0] = keyHistRel
+	putUint64(b, 1, relID)
 	return b
 }
 

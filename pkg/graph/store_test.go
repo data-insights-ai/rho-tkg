@@ -1017,3 +1017,411 @@ func TestMemoryStoreGetRelReturnsCopy(t *testing.T) {
 		t.Fatalf("GetRelationship returned shared pointer: got %v, want 1.0", v)
 	}
 }
+
+// ─── MemoryStore: Node version history ──────────────────────────────────────
+
+func TestMemoryStorePutGetNodeVersion(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+
+	if err := ms.PutNodeVersion(snowflake.ID(1), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+
+	got, err := ms.GetNodeVersion(snowflake.ID(1), 0)
+	if err != nil {
+		t.Fatalf("GetNodeVersion: %v", err)
+	}
+	if got.InternalID() != n.InternalID() {
+		t.Fatal("version snapshot has wrong ID")
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Alice" {
+		t.Fatalf("property mismatch: got %v", v)
+	}
+
+	// Cache isolation: mutate returned copy, re-read should be unaffected.
+	_ = got.SetProperty("name", "mutated")
+	got2, _ := ms.GetNodeVersion(snowflake.ID(1), 0)
+	v2, _ := got2.GetProperty("name")
+	if v2 != "Alice" {
+		t.Fatalf("GetNodeVersion returned shared pointer: got %v, want Alice", v2)
+	}
+}
+
+func TestMemoryStoreGetNodeVersionNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	_, err := ms.GetNodeVersion(snowflake.ID(1), 0)
+	if !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("expected ErrVersionNotFound, got %v", err)
+	}
+}
+
+func TestMemoryStoreGetNodeHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(1)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := ms.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+
+	history, err := ms.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("len(history) = %d, want 3", len(history))
+	}
+	for i, h := range history {
+		if h.Version() != uint32(i) {
+			t.Errorf("history[%d].Version() = %d, want %d", i, h.Version(), i)
+		}
+	}
+}
+
+func TestMemoryStoreGetNodeHistoryEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	history, err := ms.GetNodeHistory(snowflake.ID(999))
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected empty history, got %d entries", len(history))
+	}
+}
+
+func TestMemoryStoreGetNodeHistoryAscending(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(1)
+
+	// Store out of order: 2, 0, 1.
+	for _, ver := range []uint32{2, 0, 1} {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := ms.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+
+	history, err := ms.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	for i := 0; i < len(history)-1; i++ {
+		if history[i].Version() >= history[i+1].Version() {
+			t.Fatalf("history not ascending: version[%d]=%d >= version[%d]=%d",
+				i, history[i].Version(), i+1, history[i+1].Version())
+		}
+	}
+}
+
+func TestMemoryStoreTruncateNodeHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(1)
+
+	for ver := uint32(0); ver < 5; ver++ {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		ms.PutNodeVersion(id, ver, n)
+	}
+
+	if err := ms.TruncateNodeHistory(id, 2); err != nil {
+		t.Fatalf("TruncateNodeHistory: %v", err)
+	}
+
+	history, _ := ms.GetNodeHistory(id)
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+	// Should keep versions 3 and 4 (most recent).
+	if history[0].Version() != 3 {
+		t.Errorf("history[0].Version() = %d, want 3", history[0].Version())
+	}
+	if history[1].Version() != 4 {
+		t.Errorf("history[1].Version() = %d, want 4", history[1].Version())
+	}
+}
+
+func TestMemoryStoreTruncateNodeHistoryAll(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(1)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		ms.PutNodeVersion(id, ver, n)
+	}
+
+	if err := ms.TruncateNodeHistory(id, 0); err != nil {
+		t.Fatalf("TruncateNodeHistory(0): %v", err)
+	}
+
+	history, _ := ms.GetNodeHistory(id)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after truncate all, got %d", len(history))
+	}
+}
+
+func TestMemoryStoreDeleteNodeCleansHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	ms.PutNode(n)
+
+	// Store some history.
+	for ver := uint32(0); ver < 3; ver++ {
+		snap := types.NewNode(snowflake.ID(1), 10, nil)
+		snap.SetVersion(ver)
+		ms.PutNodeVersion(snowflake.ID(1), ver, snap)
+	}
+
+	if err := ms.DeleteNodeCascade(snowflake.ID(1)); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	history, _ := ms.GetNodeHistory(snowflake.ID(1))
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after cascade delete, got %d", len(history))
+	}
+}
+
+// ─── MemoryStore: Relationship version history ──────────────────────────────
+
+func TestMemoryStorePutGetRelVersion(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	_ = r.SetProperty("weight", 1.5)
+
+	if err := ms.PutRelVersion(snowflake.ID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+
+	got, err := ms.GetRelVersion(snowflake.ID(100), 0)
+	if err != nil {
+		t.Fatalf("GetRelVersion: %v", err)
+	}
+	if got.InternalID() != r.InternalID() {
+		t.Fatal("version snapshot has wrong ID")
+	}
+	v, ok := got.GetProperty("weight")
+	if !ok || v != 1.5 {
+		t.Fatalf("property mismatch: got %v", v)
+	}
+
+	// Cache isolation.
+	_ = got.SetProperty("weight", 999.0)
+	got2, _ := ms.GetRelVersion(snowflake.ID(100), 0)
+	v2, _ := got2.GetProperty("weight")
+	if v2 != 1.5 {
+		t.Fatalf("GetRelVersion returned shared pointer: got %v, want 1.5", v2)
+	}
+}
+
+func TestMemoryStoreGetRelVersionNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	_, err := ms.GetRelVersion(snowflake.ID(100), 0)
+	if !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("expected ErrVersionNotFound, got %v", err)
+	}
+}
+
+func TestMemoryStoreGetRelHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(100)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r.SetVersion(ver)
+		ms.PutRelVersion(id, ver, r)
+	}
+
+	history, err := ms.GetRelHistory(id)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("len(history) = %d, want 3", len(history))
+	}
+	for i, h := range history {
+		if h.Version() != uint32(i) {
+			t.Errorf("history[%d].Version() = %d, want %d", i, h.Version(), i)
+		}
+	}
+}
+
+func TestMemoryStoreGetRelHistoryEmpty(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	history, err := ms.GetRelHistory(snowflake.ID(999))
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected empty history, got %d entries", len(history))
+	}
+}
+
+func TestMemoryStoreGetRelHistoryAscending(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(100)
+
+	// Store out of order: 2, 0, 1.
+	for _, ver := range []uint32{2, 0, 1} {
+		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r.SetVersion(ver)
+		ms.PutRelVersion(id, ver, r)
+	}
+
+	history, err := ms.GetRelHistory(id)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	for i := 0; i < len(history)-1; i++ {
+		if history[i].Version() >= history[i+1].Version() {
+			t.Fatalf("history not ascending: version[%d]=%d >= version[%d]=%d",
+				i, history[i].Version(), i+1, history[i+1].Version())
+		}
+	}
+}
+
+func TestMemoryStoreTruncateRelHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(100)
+
+	for ver := uint32(0); ver < 5; ver++ {
+		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r.SetVersion(ver)
+		ms.PutRelVersion(id, ver, r)
+	}
+
+	if err := ms.TruncateRelHistory(id, 2); err != nil {
+		t.Fatalf("TruncateRelHistory: %v", err)
+	}
+
+	history, _ := ms.GetRelHistory(id)
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+	if history[0].Version() != 3 {
+		t.Errorf("history[0].Version() = %d, want 3", history[0].Version())
+	}
+	if history[1].Version() != 4 {
+		t.Errorf("history[1].Version() = %d, want 4", history[1].Version())
+	}
+}
+
+func TestMemoryStoreTruncateRelHistoryAll(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	id := snowflake.ID(100)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r.SetVersion(ver)
+		ms.PutRelVersion(id, ver, r)
+	}
+
+	if err := ms.TruncateRelHistory(id, 0); err != nil {
+		t.Fatalf("TruncateRelHistory(0): %v", err)
+	}
+
+	history, _ := ms.GetRelHistory(id)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after truncate all, got %d", len(history))
+	}
+}
+
+func TestMemoryStoreDeleteRelCleansHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	ms.PutRelationship(r)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		snap := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+		snap.SetVersion(ver)
+		ms.PutRelVersion(snowflake.ID(100), ver, snap)
+	}
+
+	if err := ms.DeleteRelationship(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	history, _ := ms.GetRelHistory(snowflake.ID(100))
+	if len(history) != 0 {
+		t.Fatalf("expected empty history after delete, got %d", len(history))
+	}
+}
+
+func TestMemoryStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	ms.PutRelationship(r)
+
+	for ver := uint32(0); ver < 3; ver++ {
+		snap := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+		snap.SetVersion(ver)
+		ms.PutRelVersion(snowflake.ID(100), ver, snap)
+	}
+
+	if err := ms.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	// Relationship history should be cleaned by cascade.
+	history, _ := ms.GetRelHistory(snowflake.ID(100))
+	if len(history) != 0 {
+		t.Fatalf("expected empty rel history after cascade, got %d", len(history))
+	}
+
+	// Node history should also be cleaned.
+	nHistory, _ := ms.GetNodeHistory(snowflake.ID(10))
+	if len(nHistory) != 0 {
+		t.Fatalf("expected empty node history after cascade, got %d", len(nHistory))
+	}
+}

@@ -24,17 +24,23 @@ type MemoryStore struct {
 	// Adjacency indexes — nested hash sets for O(1) insert/delete.
 	outIdx map[snowflake.ID]map[snowflake.ID]struct{} // startNodeID → set(relID)
 	inIdx  map[snowflake.ID]map[snowflake.ID]struct{} // endNodeID → set(relID)
+
+	// Version history — pre-mutation snapshots keyed by entity ID and version.
+	nodeHistory map[snowflake.ID]map[uint32]*types.Node
+	relHistory  map[snowflake.ID]map[uint32]*types.Relationship
 }
 
 // NewMemoryStore creates an empty MemoryStore with all indexes initialized.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:    make(map[snowflake.ID]*types.Node),
-		rels:     make(map[snowflake.ID]*types.Relationship),
-		labelIdx: make(map[uint16]map[snowflake.ID]struct{}),
-		typeIdx:  make(map[uint16]map[snowflake.ID]struct{}),
-		outIdx:   make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		inIdx:    make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		nodes:       make(map[snowflake.ID]*types.Node),
+		rels:        make(map[snowflake.ID]*types.Relationship),
+		labelIdx:    make(map[uint16]map[snowflake.ID]struct{}),
+		typeIdx:     make(map[uint16]map[snowflake.ID]struct{}),
+		outIdx:      make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		inIdx:       make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		nodeHistory: make(map[snowflake.ID]map[uint32]*types.Node),
+		relHistory:  make(map[snowflake.ID]map[uint32]*types.Relationship),
 	}
 }
 
@@ -240,6 +246,7 @@ func (ms *MemoryStore) deleteRelLocked(id snowflake.ID) error {
 	}
 
 	delete(ms.rels, id)
+	delete(ms.relHistory, id)
 	return nil
 }
 
@@ -283,6 +290,7 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 	}
 
 	delete(ms.nodes, id)
+	delete(ms.nodeHistory, id)
 	return nil
 }
 
@@ -394,6 +402,185 @@ func (ms *MemoryStore) RelationshipCount() (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	return len(ms.rels), nil
+}
+
+// --- Version history ---
+
+// PutNodeVersion stores a node snapshot at the given version.
+// Deep-copies the node at the store boundary.
+func (ms *MemoryStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	inner, ok := ms.nodeHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Node)
+		ms.nodeHistory[id] = inner
+	}
+	inner[version] = n.DeepCopy()
+	return nil
+}
+
+// GetNodeVersion retrieves a node snapshot at the given version.
+// Returns ErrVersionNotFound if the version does not exist.
+func (ms *MemoryStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	inner, ok := ms.nodeHistory[id]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	n, ok := inner[version]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	return n.DeepCopy(), nil
+}
+
+// GetNodeHistory returns all node version snapshots in ascending version order.
+// Returns an empty slice if no history exists.
+func (ms *MemoryStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	inner := ms.nodeHistory[id]
+	if len(inner) == 0 {
+		return nil, nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		versions = append(versions, v)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+
+	result := make([]*types.Node, len(versions))
+	for i, v := range versions {
+		result[i] = inner[v].DeepCopy()
+	}
+	return result, nil
+}
+
+// TruncateNodeHistory removes all but the N most recent node versions.
+// If keepVersions <= 0, all history is cleared.
+func (ms *MemoryStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	inner := ms.nodeHistory[id]
+	if len(inner) == 0 {
+		return nil
+	}
+
+	if keepVersions <= 0 {
+		delete(ms.nodeHistory, id)
+		return nil
+	}
+
+	if len(inner) <= keepVersions {
+		return nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		versions = append(versions, v)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+
+	// Delete all but the most recent keepVersions.
+	for _, v := range versions[:len(versions)-keepVersions] {
+		delete(inner, v)
+	}
+	return nil
+}
+
+// PutRelVersion stores a relationship snapshot at the given version.
+// Deep-copies the relationship at the store boundary.
+func (ms *MemoryStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	inner, ok := ms.relHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Relationship)
+		ms.relHistory[id] = inner
+	}
+	inner[version] = r.DeepCopy()
+	return nil
+}
+
+// GetRelVersion retrieves a relationship snapshot at the given version.
+// Returns ErrVersionNotFound if the version does not exist.
+func (ms *MemoryStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	inner, ok := ms.relHistory[id]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	r, ok := inner[version]
+	if !ok {
+		return nil, ErrVersionNotFound
+	}
+	return r.DeepCopy(), nil
+}
+
+// GetRelHistory returns all relationship version snapshots in ascending version order.
+// Returns an empty slice if no history exists.
+func (ms *MemoryStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	inner := ms.relHistory[id]
+	if len(inner) == 0 {
+		return nil, nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		versions = append(versions, v)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+
+	result := make([]*types.Relationship, len(versions))
+	for i, v := range versions {
+		result[i] = inner[v].DeepCopy()
+	}
+	return result, nil
+}
+
+// TruncateRelHistory removes all but the N most recent relationship versions.
+// If keepVersions <= 0, all history is cleared.
+func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	inner := ms.relHistory[id]
+	if len(inner) == 0 {
+		return nil
+	}
+
+	if keepVersions <= 0 {
+		delete(ms.relHistory, id)
+		return nil
+	}
+
+	if len(inner) <= keepVersions {
+		return nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		versions = append(versions, v)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+
+	for _, v := range versions[:len(versions)-keepVersions] {
+		delete(inner, v)
+	}
+	return nil
 }
 
 // Close is a no-op for MemoryStore. Satisfies the Store interface.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.15. Phase 1a (UpdateNode/UpdateRelationship) complete.
+Library at v3.0.15. Phase 1a (UpdateNode/UpdateRelationship) and Phase 1b (Version History) complete.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -16,7 +16,7 @@ the tiered persistence layer can be built.
 The current key schema already supports the tiered persistence spec:
 - `0x05` (out): compound key supports basic/typed/counterpart prefix scans in 1 key
 - `0x06` (in): same, 3 scan levels in 1 key
-- History keys (`0x07`/`0x08`) and temporal keys (`0x09`/`0x0A`) are forward-planned in `keys_helpers_test.go`
+- History keys (`0x07`/`0x08`) promoted to production in `keys.go` (Phase 1b). Temporal keys (`0x09`/`0x0A`) remain forward-planned in `keys_helpers_test.go`
 - **No key schema changes needed** for tiered persistence
 
 ### Existing Coverage Gaps (carry-forward)
@@ -45,38 +45,17 @@ Complete. Implemented in v3.0.15.
 **44 tests total:** 6 MemoryStore Replace, 6 BadgerStore Replace, 28 graph-layer (13 UpdateNode + 11 UpdateRelationship + 4 convenience), 4 Badger integration (including persistence round-trip).
 All pass with race detector. Coverage ≥89% on all new methods.
 
-### 1b. Version History
+### 1b. Version History ✓
 
-Store previous versions of entities for temporal queries and audit trails.
+Complete. Implemented in v3.0.15.
 
-**Store interface additions:**
-- [ ] `PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error`
-- [ ] `GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)`
-- [ ] `GetNodeHistory(id snowflake.ID) ([]*types.Node, error)` — all versions, ascending
-- [ ] `TruncateNodeHistory(id snowflake.ID, keepVersions int) error`
-- [ ] `PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error`
-- [ ] `GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error)`
-- [ ] `GetRelHistory(id snowflake.ID) ([]*types.Relationship, error)`
-- [ ] `TruncateRelHistory(id snowflake.ID, keepVersions int) error`
+**Store interface:** `PutNodeVersion`, `GetNodeVersion`, `GetNodeHistory`, `TruncateNodeHistory` + relationship mirrors. `ErrVersionNotFound` sentinel for missing versions.
+**Graph layer:** `UpdateNode`/`UpdateRelationship` save pre-mutation state to history. `GetNodeHistory`/`GetRelHistory` passthroughs.
+**Key promotion:** `keyHistNode` (0x07) and `keyHistRel` (0x08) promoted from test-only stubs to production. Added `histNodePrefix`/`histRelPrefix` for prefix scanning.
+**Delete cleanup:** All delete paths (DeleteNode, DeleteNodeCascade, DeleteRelationship) clean up associated history entries. BadgerStore cascade uses three-phase approach.
 
-**Badger key layout (already planned):**
-- `0x07/<8B nodeID>/<8B version>` — node history entry (17B)
-- `0x08/<8B relID>/<8B version>` — relationship history entry (17B)
-- Prefix scan `0x07/<nodeID>` returns all versions in order
-
-**Graph-layer integration:**
-- [ ] UpdateNode saves old version to history before overwriting
-- [ ] UpdateRelationship saves old version to history before overwriting
-- [ ] `Graph.GetNodeHistory(id)` passthrough
-- [ ] `Graph.GetRelHistory(id)` passthrough
-
-**Tests:**
-- [ ] History grows on each update
-- [ ] History returns versions in ascending order
-- [ ] Truncate keeps only N most recent versions
-- [ ] History survives BadgerStore restart
-- [ ] DeleteNode cleans up history
-- [ ] Mirror for Relationship
+**~50 tests total:** 17 MemoryStore (8 node + 9 rel), 19 BadgerStore (mirrored + 2 restart persistence), 14 graph-layer (5 node + 5 rel + 4 Badger persistence).
+All pass with race detector.
 
 ### 1c. Hash Chain Computation
 
