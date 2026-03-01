@@ -3444,3 +3444,144 @@ func TestBadgerStoreDeleteRelsBatch(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 0", count)
 	}
 }
+
+// ─── ReplaceNodeWithHistory ─────────────────────────────────────────────────
+
+func TestBadgerStoreReplaceNodeWithHistory(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := putTestNode(t, bs, 1, 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	n.SetVersion(0)
+	// We need to replace with the property (putTestNode already stored without it).
+	// Simpler: use ReplaceNode to set up initial state with property.
+	_ = n.SetProperty("name", "Alice")
+	if err := bs.ReplaceNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get current state.
+	current, _ := bs.GetNode(snowflake.ID(1))
+	prevState := current.DeepCopy()
+	prevVersion := current.Version()
+
+	// Mutate.
+	_ = current.SetProperty("name", "Bob")
+	current.SetVersion(1)
+
+	if err := bs.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
+		t.Fatalf("ReplaceNodeWithHistory: %v", err)
+	}
+
+	// Verify current state.
+	got, _ := bs.GetNode(snowflake.ID(1))
+	if got.PropertiesMap()["name"] != "Bob" {
+		t.Fatalf("got name=%v, want Bob", got.PropertiesMap()["name"])
+	}
+
+	// Verify history.
+	hist, err := bs.GetNodeVersion(snowflake.ID(1), prevVersion)
+	if err != nil {
+		t.Fatalf("GetNodeVersion: %v", err)
+	}
+	if hist.PropertiesMap()["name"] != "Alice" {
+		t.Fatalf("history name=%v, want Alice", hist.PropertiesMap()["name"])
+	}
+}
+
+func TestBadgerStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(999), 10, nil)
+	err := bs.ReplaceNodeWithHistory(n, 0, n)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("want ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	current, _ := bs.GetNode(snowflake.ID(1))
+	prevState := current.DeepCopy()
+	_ = current.SetProperty("x", int64(42))
+	current.SetVersion(1)
+
+	if err := bs.ReplaceNodeWithHistory(current, 0, prevState); err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush to Badger.
+	if err := bs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both entity and history must be in Badger now.
+	got, _ := bs.GetNode(snowflake.ID(1))
+	if got.Version() != 1 {
+		t.Fatalf("version = %d, want 1", got.Version())
+	}
+	hist, _ := bs.GetNodeVersion(snowflake.ID(1), 0)
+	if hist.Version() != 0 {
+		t.Fatalf("history version = %d, want 0", hist.Version())
+	}
+}
+
+// ─── ReplaceRelWithHistory ──────────────────────────────────────────────────
+
+func TestBadgerStoreReplaceRelWithHistory(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+
+	r := putTestRel(t, bs, 100, 5, 1, 2)
+	_ = r.SetProperty("weight", int64(5))
+	if err := bs.ReplaceRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get current state.
+	current, _ := bs.GetRelationship(snowflake.ID(100))
+	prevState := current.DeepCopy()
+	prevVersion := current.Version()
+
+	// Mutate.
+	_ = current.SetProperty("weight", int64(10))
+	current.SetVersion(1)
+
+	if err := bs.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
+		t.Fatalf("ReplaceRelWithHistory: %v", err)
+	}
+
+	// Verify current state.
+	got, _ := bs.GetRelationship(snowflake.ID(100))
+	if got.PropertiesMap()["weight"] != int64(10) {
+		t.Fatalf("got weight=%v, want 10", got.PropertiesMap()["weight"])
+	}
+
+	// Verify history.
+	hist, err := bs.GetRelVersion(snowflake.ID(100), prevVersion)
+	if err != nil {
+		t.Fatalf("GetRelVersion: %v", err)
+	}
+	if hist.PropertiesMap()["weight"] != int64(5) {
+		t.Fatalf("history weight=%v, want 5", hist.PropertiesMap()["weight"])
+	}
+}
+
+func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(snowflake.ID(999), 1, snowflake.ID(1), snowflake.ID(2))
+	err := bs.ReplaceRelWithHistory(r, 0, r)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("want ErrRelNotFound, got %v", err)
+	}
+}

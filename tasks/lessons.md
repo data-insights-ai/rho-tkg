@@ -375,3 +375,26 @@ even when there was nothing to evict. A simple `cleanCount` counter enables O(1)
 **Rule:** When a loop's exit condition depends on finding entries with a specific property (clean,
 dirty, deleted), maintain a count of those entries. O(N) scans that find nothing are O(N) wasted
 work per call, which compounds to O(N²) for N calls.
+
+---
+
+## 2026-03-01 — Pre-Release Code Review Fixes (v3.0.18)
+
+### Multi-step store calls must be atomic (BLOCKER)
+**Problem:** `UpdateNode` called `PutNodeVersion` then `ReplaceNode` as separate store calls. BadgerStore's flush loop can snapshot the pending buffer between them. On crash: phantom history entry without entity update.
+**Root cause:** Version history and entity update treated as independent operations.
+**Rule:** When two store writes must both succeed or both fail, provide a single atomic method (`ReplaceNodeWithHistory`). For BadgerStore: single `appendOps` call queues both ops atomically. For MemoryStore: single lock acquisition covers both writes. Never make two separate store calls when the second depends on the first.
+
+### fmt.Sprintf("%v") is non-deterministic for maps (BLOCKER)
+**Problem:** `writeProperties` used `fmt.Sprintf("%v", p.Value)` for hash computation. Go maps have random iteration order, so `map[string]any{"b":2, "a":1}` hashes differently each run. Also type-ambiguous: `int(1)` and `string("1")` both produce `"1"`.
+**Root cause:** Using a debug-oriented formatter for a cryptographic input.
+**Rule:** Hash functions must use typed binary serialization. Write a type tag byte first, then the typed binary representation. Maps must sort keys before hashing. Use `propertyTypeTag()` from wire.go for consistent type tags. Never use `fmt.Sprintf` for content that feeds into hashes.
+
+### History cleanup under global write lock blocks all readers (MAJOR)
+**Problem:** `DeleteNodeCascade` held `idxMu.Lock` during Phase 3 history cleanup. `deleteHistoryByPrefix` does Badger `db.View()` iterator scans — per relationship. Supernode with 10K rels = 10K+ prefix scans blocking all concurrent operations.
+**Root cause:** Convenience of `defer bs.idxMu.Unlock()` covering the entire function.
+**Rule:** When a function mixes fast in-memory mutations and slow I/O operations, release the lock between phases. History keys (`0x07`/`0x08`) are NOT in any in-memory index — `deleteHistoryByPrefix` only uses `wbMu`. Extract the locked portion into a helper that returns under `defer Unlock()`, then run I/O-heavy work outside the lock.
+
+### Silent error discard in hash functions (MINOR)
+**Problem:** `_ = binary.Write(h, ...)` discarded errors. hash.Hash.Write never errors (per interface contract), but the pattern normalizes error suppression.
+**Rule:** Use a `mustWrite` helper that panics on error. This is the correct pattern for operations that "cannot fail" — if the contract ever changes, the failure is immediately surfaced.

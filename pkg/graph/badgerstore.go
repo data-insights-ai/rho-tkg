@@ -617,6 +617,81 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 	return r.DeepCopy(), nil
 }
 
+// ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
+// Both operations are queued in a single appendOps call — the flush loop cannot
+// snapshot one without the other.
+func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
+	id := current.InternalID().SnowflakeID()
+
+	// Serialize current state.
+	w := nodeToWire(current)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	// Serialize history snapshot.
+	hw := nodeToWire(prevState)
+	histData, err := msgpack.Marshal(hw)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		return ErrNodeNotFound
+	}
+
+	bs.nodeCache.Put(id, current.DeepCopy())
+
+	// Single appendOps call — atomic in the pending buffer.
+	histKey := histNodeKey(int64(id), uint64(prevVersion))
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data},
+		writeOp{opType: writeOpSet, key: histKey, value: histData},
+	)
+	return nil
+}
+
+// ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
+// Both operations are queued in a single appendOps call.
+func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	id := current.InternalID().SnowflakeID()
+
+	// Serialize current state.
+	w := relToWire(current)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal relationship: %w", err)
+	}
+
+	// Serialize history snapshot.
+	hw := relToWire(prevState)
+	histData, err := msgpack.Marshal(hw)
+	if err != nil {
+		return fmt.Errorf("graph: marshal rel version: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.relIDs[id]; !exists {
+		return ErrRelNotFound
+	}
+
+	bs.relCache.Put(id, current.DeepCopy())
+
+	// Single appendOps call — atomic in the pending buffer.
+	histKey := histRelKey(int64(id), uint64(prevVersion))
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data},
+		writeOp{opType: writeOpSet, key: histKey, value: histData},
+	)
+	return nil
+}
+
 // ReplaceRelationship overwrites an existing relationship's data in-place.
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
@@ -978,15 +1053,41 @@ func (bs *BadgerStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relat
 // --- Cascade operations ---
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.
-// In-memory state is updated atomically under idxMu write lock. Badger writes
-// are queued for the next flush.
+// Phases 1+2 (preflight + in-memory mutations) run under idxMu write lock.
+// Phase 3 (history cleanup) runs after releasing the lock — history keys are
+// NOT in any in-memory index and deleteHistoryByPrefix uses wbMu, not idxMu.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
+	toDelete, corruptErr, err := bs.cascadeDeleteLocked(id)
+	if err != nil {
+		return err
+	}
+
+	// Phase 3 — History cleanup runs WITHOUT idxMu held.
+	// deleteHistoryByPrefix does Badger db.View() iterator scans per entity.
+	// Holding idxMu during these scans would block all concurrent reads/writes.
+	for _, info := range toDelete {
+		if e := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); e != nil {
+			corruptErr = errors.Join(corruptErr, fmt.Errorf("graph: cascade delete rel history: %w", e))
+		}
+	}
+	if e := bs.deleteHistoryByPrefix(histNodePrefix(int64(id))); e != nil {
+		corruptErr = errors.Join(corruptErr, fmt.Errorf("graph: cascade delete node history: %w", e))
+	}
+
+	return corruptErr
+}
+
+// cascadeDeleteLocked performs Phases 1+2 of DeleteNodeCascade under idxMu write lock.
+// Returns the list of deleted relationships and an optional corruption error.
+// The corruption error is non-nil when the node's data was unreadable but indexes
+// were still cleaned up. Callers should still run Phase 3 for the returned toDelete list.
+func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
-		return ErrNodeNotFound
+		return nil, nil, ErrNodeNotFound
 	}
 
 	// Collect all connected relIDs (dedup self-loops).
@@ -1007,7 +1108,7 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // tolerate already-deleted rels
 			}
-			return fmt.Errorf("graph: cascade read relationship: %w", err)
+			return nil, nil, fmt.Errorf("graph: cascade read relationship: %w", err)
 		}
 		toDelete = append(toDelete, relDeleteInfo{
 			id:      relID,
@@ -1022,22 +1123,13 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 		bs.deleteRelByInfo(info)
 	}
 
-	// Phase 3 — Clean up history entries for all deleted relationships and the node.
-	for _, info := range toDelete {
-		if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); err != nil {
-			return fmt.Errorf("graph: cascade delete rel history: %w", err)
-		}
-	}
-	if err := bs.deleteHistoryByPrefix(histNodePrefix(int64(id))); err != nil {
-		return fmt.Errorf("graph: cascade delete node history: %w", err)
-	}
-
 	// Get node data for label cleanup.
 	n, err := bs.getNodeLocked(id)
 	if err != nil {
 		// Node was in nodeIDs but can't be loaded (data corruption or cache miss
 		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
 		// ALL label sets to prevent orphaned index entries (perma-leak).
+		// O(L) where L is total distinct labels — bounded, corruption-only path.
 		intID := int64(id)
 		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
 		for tok, set := range bs.labelIdx {
@@ -1053,7 +1145,7 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 		delete(bs.nodeIDs, id)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
-		return fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)
+		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
 	}
 
 	// Build delete ops for node.
@@ -1078,9 +1170,7 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
 
-	// Note: relCount was already adjusted by deleteRelLocked for each rel.
-	// The cascade counter is handled independently by deleteRelLocked's relCount.Add(-1).
-	return nil
+	return toDelete, nil, nil
 }
 
 // --- Batch operations ---

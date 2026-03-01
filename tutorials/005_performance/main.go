@@ -151,6 +151,7 @@ func main() {
 	}
 	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 6, Store: bsQuery})
 	if err != nil {
+		_ = bsQuery.Close() // prevent resource leak on graph creation failure
 		log.Fatal(err)
 	}
 	defer func() {

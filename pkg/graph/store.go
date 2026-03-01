@@ -44,6 +44,14 @@ type Store interface {
 	DeleteNodesBatch(ids []snowflake.ID) error
 	DeleteRelationshipsBatch(ids []snowflake.ID) error
 
+	// Atomic replace + history — atomically writes a version history entry
+	// and replaces the current entity data. Prevents orphaned history entries
+	// if a crash occurs between the two operations.
+	// prevVersion is the version number for the history snapshot.
+	// prevState is the pre-mutation entity snapshot (deep-copied by caller).
+	ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error
+	ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error
+
 	// Version history — Node
 	PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error
 	GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)

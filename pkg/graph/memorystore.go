@@ -584,6 +584,56 @@ func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 	return nil
 }
 
+// ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
+// Both writes happen under a single lock acquisition — no interleaving possible.
+func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
+	id := current.InternalID().SnowflakeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.nodes[id]; !exists {
+		return ErrNodeNotFound
+	}
+
+	// Write history entry.
+	inner, ok := ms.nodeHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Node)
+		ms.nodeHistory[id] = inner
+	}
+	inner[prevVersion] = prevState.DeepCopy()
+
+	// Replace current entity.
+	ms.nodes[id] = current.DeepCopy()
+	return nil
+}
+
+// ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
+// Both writes happen under a single lock acquisition — no interleaving possible.
+func (ms *MemoryStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	id := current.InternalID().SnowflakeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.rels[id]; !exists {
+		return ErrRelNotFound
+	}
+
+	// Write history entry.
+	inner, ok := ms.relHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Relationship)
+		ms.relHistory[id] = inner
+	}
+	inner[prevVersion] = prevState.DeepCopy()
+
+	// Replace current entity.
+	ms.rels[id] = current.DeepCopy()
+	return nil
+}
+
 // Close is a no-op for MemoryStore. Satisfies the Store interface.
 func (ms *MemoryStore) Close() error { return nil }
 
@@ -762,6 +812,10 @@ func (ms *MemoryStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 
 // AllNodes returns all stored nodes.
 // Results are sorted by snowflake.ID for deterministic output.
+// Note: holds RLock for the entire iteration + DeepCopy pass. This is
+// acceptable for MemoryStore's use case (testing, small datasets). For
+// large production datasets, BadgerStore snapshots IDs under RLock and
+// fetches entities outside the lock.
 func (ms *MemoryStore) AllNodes() ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -779,6 +833,7 @@ func (ms *MemoryStore) AllNodes() ([]*types.Node, error) {
 
 // AllRelationships returns all stored relationships.
 // Results are sorted by snowflake.ID for deterministic output.
+// Note: holds RLock for the entire iteration. See AllNodes for rationale.
 func (ms *MemoryStore) AllRelationships() ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()

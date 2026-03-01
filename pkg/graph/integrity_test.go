@@ -183,3 +183,72 @@ func TestComputeRelHashChangesWithEndpoints(t *testing.T) {
 		t.Fatal("different endpoints produced same hash")
 	}
 }
+
+// --- Hash determinism and type distinction tests (Issue 3) ---
+
+func TestHashMapPropertyDeterministic(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	personTok, _ := g.GetOrCreateLabel("Person")
+
+	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	_ = n.SetProperty("meta", map[string]any{
+		"z": "last",
+		"a": "first",
+		"m": int64(42),
+	})
+
+	// Compute 1000 times — map iteration order is randomized by Go,
+	// so a non-deterministic implementation would fail.
+	first := ComputeNodeHash(n, []string{"Person"})
+	for i := 0; i < 1000; i++ {
+		h := ComputeNodeHash(n, []string{"Person"})
+		if h != first {
+			t.Fatalf("iteration %d: hash differs (non-deterministic map hashing)", i)
+		}
+	}
+}
+
+func TestHashTypeDistinction(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	personTok, _ := g.GetOrCreateLabel("Person")
+
+	// int(1) vs string("1") must produce different hashes.
+	n1 := types.NewNode(snowflake.ID(100), personTok, nil)
+	_ = n1.SetProperty("val", int(1))
+
+	n2 := types.NewNode(snowflake.ID(100), personTok, nil)
+	_ = n2.SetProperty("val", "1")
+
+	h1 := ComputeNodeHash(n1, []string{"Person"})
+	h2 := ComputeNodeHash(n2, []string{"Person"})
+
+	if h1 == h2 {
+		t.Fatal("int(1) and string(\"1\") produced same hash — type distinction failed")
+	}
+}
+
+func TestHashNestedMapDeterministic(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	personTok, _ := g.GetOrCreateLabel("Person")
+
+	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	_ = n.SetProperty("nested", []any{
+		map[string]any{"b": int64(2), "a": int64(1)},
+		"hello",
+		int64(42),
+	})
+
+	first := ComputeNodeHash(n, []string{"Person"})
+	for i := 0; i < 1000; i++ {
+		h := ComputeNodeHash(n, []string{"Person"})
+		if h != first {
+			t.Fatalf("iteration %d: nested map hash differs", i)
+		}
+	}
+}

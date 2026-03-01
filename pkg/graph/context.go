@@ -206,6 +206,10 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 		return nil, err
 	}
 
+	// Capture pre-mutation state for version history (deep copy before any mutations).
+	prevVersion := current.Version()
+	prevState := current.DeepCopy()
+
 	// Capture current hash for the PrevHash chain.
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
@@ -214,11 +218,6 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
-	}
-
-	// Save pre-mutation state to version history.
-	if err := g.store.PutNodeVersion(id, current.Version(), current); err != nil {
-		return nil, fmt.Errorf("graph: save node version: %w", err)
 	}
 
 	for key, val := range updates {
@@ -251,7 +250,8 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 		return nil, err
 	}
 
-	if err := g.store.ReplaceNode(current); err != nil {
+	// Atomic replace + history — single store call prevents orphaned history entries.
+	if err := g.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, err
 	}
 
@@ -299,6 +299,10 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 		return nil, err
 	}
 
+	// Capture pre-mutation state for version history (deep copy before any mutations).
+	prevVersion := current.Version()
+	prevState := current.DeepCopy()
+
 	// Capture current hash for the PrevHash chain.
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
@@ -307,11 +311,6 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
-	}
-
-	// Save pre-mutation state to version history.
-	if err := g.store.PutRelVersion(id, current.Version(), current); err != nil {
-		return nil, fmt.Errorf("graph: save rel version: %w", err)
 	}
 
 	for key, val := range updates {
@@ -344,7 +343,8 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 		return nil, err
 	}
 
-	if err := g.store.ReplaceRelationship(current); err != nil {
+	// Atomic replace + history — single store call prevents orphaned history entries.
+	if err := g.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, err
 	}
 

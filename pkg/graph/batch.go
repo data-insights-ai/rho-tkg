@@ -9,8 +9,9 @@ import (
 )
 
 // BatchBuilder queues graph operations for batch execution.
-// Operations are eagerly validated when added, then persisted atomically
-// when Execute is called.
+// Operations are eagerly validated when added, then executed sequentially
+// when Execute is called. Partial success is possible — individual
+// operation failures are collected in BatchResult.Errors.
 //
 // Execute order: create nodes → create rels → update nodes → update rels →
 // delete rels → delete nodes. Nodes before rels (endpoints must exist),

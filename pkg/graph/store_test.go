@@ -1960,3 +1960,112 @@ func TestMemoryStoreDeleteRelsBatch(t *testing.T) {
 		t.Fatalf("GetRelHistory(100) = %d entries, want 0 after delete", len(history))
 	}
 }
+
+// ─── MemoryStore: ReplaceNodeWithHistory ────────────────────────────────────
+
+func TestMemoryStoreReplaceNodeWithHistory(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n := types.NewNode(snowflake.ID(1), 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	n.SetVersion(0)
+	if err := ms.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare updated state.
+	updated, _ := ms.GetNode(snowflake.ID(1))
+	prevState := updated.DeepCopy()
+	prevVersion := updated.Version()
+	_ = updated.SetProperty("name", "Bob")
+	updated.SetVersion(1)
+
+	if err := ms.ReplaceNodeWithHistory(updated, prevVersion, prevState); err != nil {
+		t.Fatalf("ReplaceNodeWithHistory: %v", err)
+	}
+
+	// Verify current state updated.
+	current, _ := ms.GetNode(snowflake.ID(1))
+	props := current.PropertiesMap()
+	if props["name"] != "Bob" {
+		t.Fatalf("got name=%v, want Bob", props["name"])
+	}
+	if current.Version() != 1 {
+		t.Fatalf("version = %d, want 1", current.Version())
+	}
+
+	// Verify history entry exists.
+	hist, _ := ms.GetNodeVersion(snowflake.ID(1), 0)
+	histProps := hist.PropertiesMap()
+	if histProps["name"] != "Alice" {
+		t.Fatalf("history name=%v, want Alice", histProps["name"])
+	}
+}
+
+func TestMemoryStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n := types.NewNode(snowflake.ID(999), 10, nil)
+	err := ms.ReplaceNodeWithHistory(n, 0, n)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("want ErrNodeNotFound, got %v", err)
+	}
+}
+
+// ─── MemoryStore: ReplaceRelWithHistory ─────────────────────────────────────
+
+func TestMemoryStoreReplaceRelWithHistory(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Create endpoints.
+	n1 := types.NewNode(snowflake.ID(1), 10, nil)
+	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
+	_ = r.SetProperty("weight", int64(5))
+	r.SetVersion(0)
+	if err := ms.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare updated state.
+	updated, _ := ms.GetRelationship(snowflake.ID(100))
+	prevState := updated.DeepCopy()
+	prevVersion := updated.Version()
+	_ = updated.SetProperty("weight", int64(10))
+	updated.SetVersion(1)
+
+	if err := ms.ReplaceRelWithHistory(updated, prevVersion, prevState); err != nil {
+		t.Fatalf("ReplaceRelWithHistory: %v", err)
+	}
+
+	// Verify current state updated.
+	current, _ := ms.GetRelationship(snowflake.ID(100))
+	props := current.PropertiesMap()
+	if props["weight"] != int64(10) {
+		t.Fatalf("got weight=%v, want 10", props["weight"])
+	}
+
+	// Verify history entry exists.
+	hist, _ := ms.GetRelVersion(snowflake.ID(100), 0)
+	histProps := hist.PropertiesMap()
+	if histProps["weight"] != int64(5) {
+		t.Fatalf("history weight=%v, want 5", histProps["weight"])
+	}
+}
+
+func TestMemoryStoreReplaceRelWithHistoryNotFound(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	r := types.NewRelationship(snowflake.ID(999), 1, snowflake.ID(1), snowflake.ID(2))
+	err := ms.ReplaceRelWithHistory(r, 0, r)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("want ErrRelNotFound, got %v", err)
+	}
+}
