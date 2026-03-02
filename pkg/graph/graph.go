@@ -18,6 +18,8 @@ var (
 	ErrNilNode        = errors.New("graph: node must not be nil")
 	ErrZeroID         = errors.New("graph: zero ID is not valid for import")
 	ErrNotTieredStore = errors.New("graph: operation requires TieredStore")
+	ErrAlreadyClosed  = errors.New("graph: entity already closed")
+	ErrInvalidTimeRange = errors.New("graph: invalid time range")
 )
 
 // Sentinel errors for validation limits.
@@ -93,6 +95,7 @@ type Graph struct {
 	entityLocks *entityLockManager
 	validation  ValidationLimits
 	constraints ConstraintSet  // temporal constraints checked at relationship write time
+	events      *EventBus      // nil = no event publishing; set via SetEventBus
 	mu          sync.RWMutex   // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
 }
@@ -738,4 +741,185 @@ func (g *Graph) Reset() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.store.Clear()
+}
+
+// --- Event bus ---
+
+// SetEventBus attaches an EventBus to the graph.
+// All subsequent mutations publish lifecycle events to the bus.
+// Pass nil to detach the bus and disable event publishing.
+func (g *Graph) SetEventBus(bus *EventBus) {
+	g.events = bus
+}
+
+// GetEventBus returns the attached EventBus, or nil if none is set.
+func (g *Graph) GetEventBus() *EventBus {
+	return g.events
+}
+
+// publishEvent delivers a lifecycle event to the attached EventBus.
+// No-op if no EventBus is attached (nil-safe).
+func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant) {
+	if g.events == nil {
+		return
+	}
+	g.events.publish(Event{Type: typ, EntityID: id, Timestamp: t})
+}
+
+// --- Version chain navigation ---
+
+// GetPreviousNodeVersion returns the version immediately before the given version.
+// Returns nil, nil if version == 0 or if the predecessor does not exist in history.
+func (g *Graph) GetPreviousNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+	if version == 0 {
+		return nil, nil
+	}
+	n, err := g.store.GetNodeVersion(id, version-1)
+	if errors.Is(err, ErrVersionNotFound) {
+		return nil, nil
+	}
+	return n, err
+}
+
+// GetNextNodeVersion returns the version immediately after the given version.
+// Returns nil, nil if no newer version exists (the given version IS the current tip).
+// Checks history first, then falls back to the current node (which may be version+1).
+func (g *Graph) GetNextNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+	n, err := g.store.GetNodeVersion(id, version+1)
+	if err == nil {
+		return n, nil
+	}
+	if !errors.Is(err, ErrVersionNotFound) {
+		return nil, err
+	}
+	// Not in history: the current node itself may be version+1.
+	current, err2 := g.store.GetNode(id)
+	if err2 != nil {
+		if errors.Is(err2, ErrNodeNotFound) {
+			return nil, nil
+		}
+		return nil, err2
+	}
+	if current.Version() == version+1 {
+		return current, nil
+	}
+	return nil, nil
+}
+
+// CloseNodeVersion sets ValidTo on the current node to t, marking it temporally
+// expired without deleting it or incrementing its version number.
+// Returns ErrAlreadyClosed if ValidTo is already non-zero.
+// Returns ErrNodeNotFound if the node does not exist.
+func (g *Graph) CloseNodeVersion(id snowflake.ID, t types.Instant) error {
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return err
+	}
+
+	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+		return ErrAlreadyClosed
+	}
+
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.ValidTo = t
+
+	// Preserve existing chain position; recompute hash after temporal change.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.PrevHash
+	}
+	nodeLabels := g.NodeLabels(current)
+	hash := ComputeNodeHash(current, nodeLabels)
+	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+
+	if err := g.store.ReplaceNode(current); err != nil {
+		return err
+	}
+	g.publishEvent(EventNodeUpdate, id, types.Instant(time.Now().UnixMilli()))
+	return nil
+}
+
+// GetPreviousRelVersion returns the version immediately before the given version.
+// Returns nil, nil if version == 0 or if the predecessor does not exist in history.
+func (g *Graph) GetPreviousRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+	if version == 0 {
+		return nil, nil
+	}
+	r, err := g.store.GetRelVersion(id, version-1)
+	if errors.Is(err, ErrVersionNotFound) {
+		return nil, nil
+	}
+	return r, err
+}
+
+// GetNextRelVersion returns the version immediately after the given version.
+// Returns nil, nil if no newer version exists (the given version IS the current tip).
+// Checks history first, then falls back to the current relationship (which may be version+1).
+func (g *Graph) GetNextRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+	r, err := g.store.GetRelVersion(id, version+1)
+	if err == nil {
+		return r, nil
+	}
+	if !errors.Is(err, ErrVersionNotFound) {
+		return nil, err
+	}
+	// Not in history: the current rel itself may be version+1.
+	current, err2 := g.store.GetRelationship(id)
+	if err2 != nil {
+		if errors.Is(err2, ErrRelNotFound) {
+			return nil, nil
+		}
+		return nil, err2
+	}
+	if current.Version() == version+1 {
+		return current, nil
+	}
+	return nil, nil
+}
+
+// CloseRelVersion sets ValidTo on the current relationship to t, marking it
+// temporally expired without deleting it or incrementing its version number.
+// Returns ErrAlreadyClosed if ValidTo is already non-zero.
+// Returns ErrRelNotFound if the relationship does not exist.
+func (g *Graph) CloseRelVersion(id snowflake.ID, t types.Instant) error {
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	current, err := g.store.GetRelationship(id)
+	if err != nil {
+		return err
+	}
+
+	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+		return ErrAlreadyClosed
+	}
+
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.ValidTo = t
+
+	// Preserve existing chain position; recompute hash after temporal change.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.PrevHash
+	}
+	relTypeName := g.RelationshipType(current)
+	hash := ComputeRelHash(current, relTypeName)
+	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
+
+	if err := g.store.ReplaceRelationship(current); err != nil {
+		return err
+	}
+	g.publishEvent(EventRelUpdate, id, types.Instant(time.Now().UnixMilli()))
+	return nil
 }

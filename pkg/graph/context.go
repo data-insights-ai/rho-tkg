@@ -9,6 +9,11 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
+// nowInstant returns the current time as a types.Instant (Unix milliseconds).
+func nowInstant() types.Instant {
+	return types.Instant(time.Now().UnixMilli())
+}
+
 // checkCtx performs a non-blocking context cancellation check.
 // Returns ctx.Err() if the context is done, nil otherwise.
 // Zero overhead when the context is not cancelled.
@@ -100,6 +105,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 		return nil, err
 	}
 
+	g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant())
 	return n, nil
 }
 
@@ -164,6 +170,7 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 		return nil, err
 	}
 
+	g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant())
 	return r, nil
 }
 
@@ -320,7 +327,11 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		return err
 	}
 
-	return g.store.DeleteNodeCascade(id)
+	if err := g.store.DeleteNodeCascade(id); err != nil {
+		return err
+	}
+	g.publishEvent(EventNodeDelete, id, now)
+	return nil
 }
 
 // DeleteRelationshipWithContext removes a relationship from the store.
@@ -353,7 +364,11 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 		return err
 	}
 
-	return g.store.DeleteRelationship(id)
+	if err := g.store.DeleteRelationship(id); err != nil {
+		return err
+	}
+	g.publishEvent(EventRelDelete, id, now)
+	return nil
 }
 
 // UpdateNodeWithContext applies property updates to an existing node with context support.
@@ -459,6 +474,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 		return nil, err
 	}
 
+	g.publishEvent(EventNodeUpdate, id, now)
 	return current, nil
 }
 
@@ -565,6 +581,7 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 		return nil, err
 	}
 
+	g.publishEvent(EventRelUpdate, id, now)
 	return current, nil
 }
 

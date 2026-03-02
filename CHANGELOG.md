@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.39] - 2026-03-02
+
+### Added (CRUD Diff Exporter — Phase 4.6)
+
+- **`NodeUpdate`** / **`RelUpdate`** — pair structs holding `Before` and `After` snapshots of a changed entity.
+- **`SnapshotDiff`** — result type with `T1`, `T2`, `NodesCreated`, `NodesUpdated`, `NodesDeleted`, `RelsCreated`, `RelsUpdated`, `RelsDeleted`.
+- **`Graph.DiffSnapshots(t1, t2)`** — compares two temporal snapshots under a single `g.mu.RLock` (prevents torn reads). Returns `*SnapshotDiff` classifying each entity as Created (present only at t2), Deleted (present only at t1), or Updated (hash changed). Unchanged entities are omitted. Returns `ErrInvalidTimeRange` if `t1 >= t2` or either is zero.
+- **`ErrInvalidTimeRange`** — new sentinel error in `graph` package.
+- **`snapshotLocked`** (unexported) — inner body of `Snapshot(t)` extracted without the lock, allowing `DiffSnapshots` to hold the RLock across both snapshot reads (B15 compliance: no nested RLock).
+- 15 new tests in `pkg/graph/diff_test.go`: invalid range, empty graph, created/deleted/updated/unchanged for nodes and rels, mixed scenario, nil integrity branches.
+
+## [3.0.38] - 2026-03-02
+
+### Added (Event / Notification System — Phase 4.5)
+
+- **`EventType uint8`** — 6 constants: `EventNodeCreate`, `EventNodeUpdate`, `EventNodeDelete`, `EventRelCreate`, `EventRelUpdate`, `EventRelDelete`.
+- **`Event`** — struct with `Type EventType`, `EntityID snowflake.ID`, `Timestamp types.Instant`.
+- **`EventHandler`** — type alias for `func(Event)`.
+- **`EventBus`** — dispatcher with `Subscribe(handler) func()` (returns idempotent unsubscribe via `sync.Once`) and unexported `publish(e Event)`. Handlers are copied under `RLock`, then invoked outside the lock to prevent deadlocks when handlers re-enter the Graph.
+- **`NewEventBus()`** — constructor.
+- **`Graph.SetEventBus(bus)`** / **`Graph.GetEventBus()`** — attach/retrieve the event bus. Nil by default (zero overhead for callers not using events).
+- 6 hook points wired in `context.go` after each successful store write: `AddNode`→`EventNodeCreate`, `AddRelationship`→`EventRelCreate`, `UpdateNode`→`EventNodeUpdate`, `UpdateRelationship`→`EventRelUpdate`, `DeleteNode`→`EventNodeDelete`, `DeleteRelationship`→`EventRelDelete`.
+- `CloseNodeVersion` / `CloseRelVersion` also publish `EventNodeUpdate` / `EventRelUpdate`.
+- 13 new tests in `pkg/graph/events_test.go`: subscribe/unsubscribe, idempotent unsubscribe, multiple handlers, nil-default graph, all 6 CRUD event types, async handler, CloseNodeVersion/CloseRelVersion events.
+
+## [3.0.37] - 2026-03-02
+
+### Added (Version Chain Navigation — Phase 4.4)
+
+- **`Graph.GetPreviousNodeVersion(id, version)`** — returns the version immediately before `version`. Returns `nil, nil` if `version == 0` (genesis has no predecessor) or the predecessor does not exist in history.
+- **`Graph.GetNextNodeVersion(id, version)`** — returns the version immediately after `version`. Checks the history store first for `version+1`, then falls back to the current entity (which may itself be `version+1`). Returns `nil, nil` if no newer version exists (current tip or deleted node with a version gap).
+- **`Graph.CloseNodeVersion(id, t)`** — sets `ValidTo = t` on the current node in-place via `ReplaceNode` (no new version, no history entry). Recomputes the integrity hash preserving `PrevHash`. Returns `ErrAlreadyClosed` if `ValidTo` is already non-zero; returns `ErrNodeNotFound` if the node does not exist. Updates temporal indexes via `ReplaceNode`.
+- **`GetPreviousRelVersion`** / **`GetNextRelVersion`** / **`CloseRelVersion`** — exact mirrors of the node methods for relationships.
+- **`ErrAlreadyClosed`** — new sentinel error in `graph` package.
+- 18 new tests in `pkg/graph/version_chain_test.go`: genesis/tip boundaries, normal prev/next traversal, through-history path, deleted node/rel edge cases, version gap after truncation, CloseNodeVersion sets ValidTo, ErrAlreadyClosed on second close, ErrNodeNotFound on missing entity, rel mirrors.
+
 ## [3.0.35] - 2026-03-02
 
 ### Fixed (Carry-Forward Coverage Gaps)

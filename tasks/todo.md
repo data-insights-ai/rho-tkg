@@ -36,6 +36,9 @@ Library at v3.0.36. Core engine complete (Phases 1-3). Phases 4.1–4.3 complete
 | v3.0.34 | 4.1 | Allen's 13 interval relations |
 | v3.0.35 | coverage | Carry-forward test gaps: ImportNames validation, wire.go helpers, flush() error path |
 | v3.0.36 | 4.2 + 4.3 | Temporal constraints (ConstraintSet, enforcement hooks) + temporal indexes (CreateTemporalIndex, fast-path NodesByLabel, TieredStore delegation, BadgerStore persistence); fix B22 (Badger WriteBatch.Flush blocks on closed DB) |
+| v3.0.37 | 4.4 | Version chain navigation: GetPreviousNodeVersion, GetNextNodeVersion, CloseNodeVersion + rel mirrors. ErrAlreadyClosed sentinel. 15 tests. |
+| v3.0.38 | 4.5 | Event system: EventType, Event, EventBus (Subscribe/publish, unsubscribe). SetEventBus/GetEventBus on Graph. 6 hook points in CRUD methods + CloseNode/RelVersion. 13 tests. |
+| v3.0.39 | 4.6 | CRUD diff exporter: NodeUpdate, RelUpdate, SnapshotDiff, DiffSnapshots, snapshotLocked refactor, buildDiff. ErrInvalidTimeRange. 15 tests. |
 
 ---
 
@@ -66,39 +69,24 @@ BadgerStore: 3-phase creation (same pattern as property indexes), index label to
 rebuilt from nodes on startup. TieredStore: delegates to all shards, `tempIndexLabels` ensures new hot
 shards inherit indexes on rotation. MemoryStore: full integration. 11 unit tests + helper tests.
 
-### 4.4. Version Chain Navigation — Medium
+### 4.4. Version Chain Navigation ✓ (v3.0.37)
 
-**v2:** `GetPreviousNodeVersion()`, `GetNextNodeVersion()`, `CloseNodeVersion()`,
-`VersionChain`, `RelationshipVersionChain` — navigate version history as a linked list.
+Complete. `GetPreviousNodeVersion`, `GetNextNodeVersion`, `CloseNodeVersion` + rel mirrors.
+`ErrAlreadyClosed` sentinel. ReplaceNode path (no version bump). Temporal indexes updated.
+Event hook: CloseNode/RelVersion publishes EventNodeUpdate/EventRelUpdate.
 
-**v3:** `GetNodeHistory(id)` returns flat `[]*Node` slice. No chain navigation, no CloseNodeVersion.
+### 4.5. Event / Notification System ✓ (v3.0.38)
 
-- [ ] `GetPreviousNodeVersion(id, version)` / `GetNextNodeVersion(id, version)`
-- [ ] `CloseNodeVersion(id)` — set ValidTo on current version
-- [ ] Rel mirrors
+Complete. `EventType` (6 constants), `Event`, `EventBus` (Subscribe returns unsubscribe func,
+publish copies handlers outside lock). `SetEventBus`/`GetEventBus` on Graph. 6 hook points
+in AddNode, AddRel, UpdateNode, UpdateRel, deleteNodeLocked, DeleteRel. Plus CloseNode/RelVersion.
 
-### 4.5. Event / Notification System — Medium
+### 4.6. CRUD Diff Exporter ✓ (v3.0.39)
 
-**v2:** Full `events` package — `Type` constants (NodeCreate, NodeUpdate, NodeDelete,
-RelCreate, RelUpdate, RelDelete, etc.), `Event`, `Queue`, `Dispatcher`, `EventBus`,
-`AsyncUpdater`, `Worker`, `WorkerPool`.
-
-**v3:** None. No publish/subscribe, no lifecycle hooks.
-
-- [ ] `EventType` iota (NodeCreate, NodeUpdate, NodeDelete, RelCreate, RelUpdate, RelDelete)
-- [ ] `Event` struct with Type, EntityID, Timestamp
-- [ ] `EventBus` with Subscribe/Publish
-- [ ] Hook points in Graph CRUD methods
-
-### 4.6. CRUD Diff Exporter — Medium
-
-**v2:** `CRUDDiffExporter` — export a stream of create/update/delete diffs between two
-points in time.
-
-**v3:** `Snapshot(t)` gives full state at a point. No diff between snapshots.
-
-- [ ] `DiffSnapshots(t1, t2)` — returns created/updated/deleted entity lists
-- [ ] Efficient implementation via version history scan (not dual snapshot)
+Complete. `NodeUpdate`, `RelUpdate`, `SnapshotDiff`. `DiffSnapshots(t1, t2)` uses dual snapshot
+under single RLock (snapshotLocked refactor prevents torn reads). `buildDiff` compares entity
+sets by ID; detects Created/Deleted/Updated via integrity hash comparison. `ErrInvalidTimeRange`.
+15 tests (invalid range, empty graph, created/deleted/updated/unchanged for nodes + rels, mixed scenario).
 
 ### 4.7. Recurrence Patterns — Low
 
@@ -163,9 +151,9 @@ but no cache hit/miss metrics or operation counters.
 | ~~4.1~~ | ~~Allen's interval algebra~~ | ~~High~~ | ✓ Complete (v3.0.34) |
 | ~~4.2~~ | ~~Temporal constraints~~ | ~~High~~ | ✓ Complete (v3.0.36) |
 | ~~4.3~~ | ~~Advanced temporal indexes~~ | ~~High~~ | ✓ Complete (v3.0.36) |
-| 4.4 | Version chain navigation | Medium | Small — add Next/Prev/Close methods |
-| 4.5 | Event system | Medium | Medium — dispatcher + subscriber pattern |
-| 4.6 | CRUD diff exporter | Medium | Medium — compare two snapshots |
+| ~~4.4~~ | ~~Version chain navigation~~ | ~~Medium~~ | ✓ Complete (v3.0.37) |
+| ~~4.5~~ | ~~Event system~~ | ~~Medium~~ | ✓ Complete (v3.0.38) |
+| ~~4.6~~ | ~~CRUD diff exporter~~ | ~~Medium~~ | ✓ Complete (v3.0.39) |
 | 4.7 | Recurrence patterns | Low | Small — type + expansion logic |
 | 4.8 | Time granularity | Low | Small — enum + rounding functions |
 | 4.9 | VectorField | Low | Medium — new property type + index |
