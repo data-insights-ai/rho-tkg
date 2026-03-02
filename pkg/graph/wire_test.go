@@ -817,6 +817,160 @@ func TestWireRoundTripIntSlice(t *testing.T) {
 	}
 }
 
+// ─── Direct unit tests for low-level helpers ──────────────────────────────────
+
+// TestPropertyTypeTagAllBranches exercises every branch in propertyTypeTag
+// directly (without going through msgpack). The function is called by
+// propertiesToWire, but most wire tests construct propertyWire literals and
+// bypass it; this test provides explicit coverage.
+func TestPropertyTypeTagAllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		val  any
+		want byte
+	}{
+		{true, ptBool},
+		{int(1), ptInt},
+		{int8(1), ptInt8},
+		{int16(1), ptInt16},
+		{int32(1), ptInt32},
+		{int64(1), ptInt64},
+		{uint(1), ptUint},
+		{uint8(1), ptUint8},
+		{uint16(1), ptUint16},
+		{uint32(1), ptUint32},
+		{uint64(1), ptUint64},
+		{float32(1), ptFloat32},
+		{float64(1), ptFloat64},
+		{"s", ptString},
+		{[]string{"a"}, ptSliceStr},
+		{[]int{1}, ptSliceInt},
+		{[]int64{1}, ptSliceInt64},
+		{[]float64{1}, ptSliceF64},
+		{[]byte{1}, ptSliceByte},
+		{[]bool{true}, ptSliceBool},
+		{[]any{1}, ptSliceAny},
+		{map[string]any{"k": "v"}, ptMapStrAny},
+		{map[string]string{"k": "v"}, ptMapStrStr},
+		{struct{}{}, ptUnknown}, // unknown type → default branch
+	}
+
+	for _, tc := range cases {
+		got := propertyTypeTag(tc.val)
+		if got != tc.want {
+			t.Errorf("propertyTypeTag(%T) = %d, want %d", tc.val, got, tc.want)
+		}
+	}
+}
+
+// TestToInt64AllBranches covers every type case in toInt64 directly.
+func TestToInt64AllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		val  any
+		want int64
+	}{
+		{int8(-5), -5},
+		{int16(300), 300},
+		{int32(70000), 70000},
+		{int64(1 << 40), 1 << 40},
+		{int(42), 42},
+		{uint8(200), 200},
+		{uint16(50000), 50000},
+		{uint32(3000000000), 3000000000},
+		{uint64(999), 999},
+		{"unsupported", 0}, // default → 0
+	}
+
+	for _, tc := range cases {
+		got := toInt64(tc.val)
+		if got != tc.want {
+			t.Errorf("toInt64(%T(%v)) = %d, want %d", tc.val, tc.val, got, tc.want)
+		}
+	}
+}
+
+// TestToUint64AllBranches covers every type case in toUint64 directly.
+func TestToUint64AllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		val  any
+		want uint64
+	}{
+		{uint8(200), 200},
+		{uint16(50000), 50000},
+		{uint32(3000000000), 3000000000},
+		{uint64(1 << 50), 1 << 50},
+		{int8(7), 7},
+		{int16(300), 300},
+		{int32(70000), 70000},
+		{int64(999), 999},
+		{int(42), 42},
+		{"unsupported", 0}, // default → 0
+	}
+
+	for _, tc := range cases {
+		got := toUint64(tc.val)
+		if got != tc.want {
+			t.Errorf("toUint64(%T(%v)) = %d, want %d", tc.val, tc.val, got, tc.want)
+		}
+	}
+}
+
+// TestNormalizeIntegersRecursiveAllBranches covers every branch in
+// normalizeIntegersRecursive including the integer narrow-int cases and
+// the default passthrough for non-integer types.
+func TestNormalizeIntegersRecursiveAllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		val     any
+		wantVal any
+	}{
+		{int8(-3), int64(-3)},
+		{int16(300), int64(300)},
+		{int32(70000), int64(70000)},
+		{uint8(200), uint64(200)},
+		{uint16(50000), uint64(50000)},
+		{uint32(3000000000), uint64(3000000000)},
+		// default passthrough — types that are already normalized
+		{int64(42), int64(42)},
+		{uint64(99), uint64(99)},
+		{float64(1.5), float64(1.5)},
+		{"hello", "hello"},
+		{true, true},
+	}
+
+	for _, tc := range cases {
+		got := normalizeIntegersRecursive(tc.val)
+		if got != tc.wantVal {
+			t.Errorf("normalizeIntegersRecursive(%T(%v)) = %T(%v), want %T(%v)",
+				tc.val, tc.val, got, got, tc.wantVal, tc.wantVal)
+		}
+	}
+
+	// []any and map[string]any recursion is already covered by
+	// normalizeIntegersInSlice / normalizeIntegersInMap (100%), but
+	// call through normalizeIntegersRecursive explicitly for branch coverage.
+	sliceResult := normalizeIntegersRecursive([]any{int8(1), int16(2)})
+	s, ok := sliceResult.([]any)
+	if !ok || len(s) != 2 {
+		t.Fatalf("[]any branch: got %T(%v)", sliceResult, sliceResult)
+	}
+	if s[0] != int64(1) || s[1] != int64(2) {
+		t.Fatalf("[]any branch values: %v %v", s[0], s[1])
+	}
+
+	mapResult := normalizeIntegersRecursive(map[string]any{"x": int32(99)})
+	m, ok := mapResult.(map[string]any)
+	if !ok || m["x"] != int64(99) {
+		t.Fatalf("map[string]any branch: got %T(%v)", mapResult, mapResult)
+	}
+}
+
 // mustPropertySlice is a test helper that creates a PropertySlice from a map.
 func mustPropertySlice(t *testing.T, m map[string]any) types.PropertySlice {
 	t.Helper()

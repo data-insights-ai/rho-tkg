@@ -4481,3 +4481,64 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
 		}
 	}
 }
+
+// TestBadgerStoreFlushWriteBatchError covers the flush() error path that
+// triggers when the underlying Badger DB is closed before WriteBatch.Flush().
+// It verifies that failed ops are requeued via requeueOps so they are not lost.
+func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
+	// Not parallel: directly manipulates internal BadgerStore state.
+
+	// Create a store without the helper to manage lifecycle manually.
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	// Ensure goroutines are stopped and DB is not double-closed regardless of
+	// which path the test exits through.
+	t.Cleanup(func() {
+		bs.closeOnce.Do(func() {
+			close(bs.stopCh)
+			<-bs.flushDone
+			<-bs.gcDone
+		})
+	})
+
+	// Enqueue a write op by storing a node.
+	n := types.NewNode(snowflake.ID(42), 1, nil)
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	// Stop background goroutines cleanly (flushLoop does a final flush on exit,
+	// which drains pending; we inject a new op after the loop exits).
+	close(bs.stopCh)
+	<-bs.flushDone
+	<-bs.gcDone
+
+	// Inject a fresh pending op so flush() has something to write.
+	injectedKey := nodeKey(9999)
+	bs.wbMu.Lock()
+	bs.pending[string(injectedKey)] = writeOp{key: injectedKey, value: []byte{0x01}, opType: writeOpSet}
+	bs.wbMu.Unlock()
+
+	// Close the underlying Badger DB. WriteBatch.Flush() will now return an error.
+	if dbErr := bs.db.Close(); dbErr != nil {
+		t.Fatalf("bs.db.Close: %v", dbErr)
+	}
+
+	// flush() must return an error and requeue the op.
+	flushErr := bs.flush()
+	if flushErr == nil {
+		t.Fatal("flush() should return an error when the Badger DB is closed")
+	}
+
+	bs.wbMu.Lock()
+	requeued := len(bs.pending)
+	bs.wbMu.Unlock()
+	if requeued == 0 {
+		t.Fatal("flush() should requeue ops when WriteBatch fails")
+	}
+
+	// Consume closeOnce so the t.Cleanup no-ops on the already-managed lifecycle.
+	bs.closeOnce.Do(func() {})
+}

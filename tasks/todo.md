@@ -2,490 +2,229 @@
 
 ## Status
 
-Library at v3.0.33. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented. v3.0.30: 5 bug fixes (idleCloseLoop race via checkout/checkin, shardForRelID cold skip, ArchiveNode/RestoreNode rollback, CreatePropertyIndex dirty-map tracking, BatchBuilder canonical label hash). v3.0.31: OOM fix — lazy ForEach iterators for temporal pipeline (~83% memory reduction). v3.0.32: ImportNodeWithID/ImportRelationshipWithID + GraphTx wrappers. v3.0.33: Pre-release code review fixes (1 BLOCKER + 10 MAJORs + 16 MINORs).
+Library at v3.0.35. Core engine complete (Phases 1-3). Now closing v2 feature gaps.
 
 ---
 
-## v3.0.33 — Pre-Release Code Review Fixes
+## Completed Work
 
-### BLOCKER
-- [x] checkoutStore TOCTOU race — activeReqs increment outside shardMu
-
-### MAJORs
-- [x] M1: Missing fsync in shard_catalog.go + registry_file.go (crash data loss)
-- [x] M2: Registry save read-modify-write race (SaveRegistries atomic method)
-- [x] M3: ShardCatalog thread safety (sync.RWMutex)
-- [x] M4: append(outRels, inRels...) backing array corruption in context.go + tx.go
-- [x] M5: ReplaceNode property index cleanup on cache miss (badgerstore.go)
-- [x] M7: Float %v formatting in property_index.go (strconv.FormatFloat)
-- [x] M8: NodesByLabel hot-shard-only for event labels (fan-out)
-- [x] M9: Constructor warm shard leak on error (cleanup loop)
-- [x] M10: TieredStore.Close() loses errors (errors.Join)
-
-### MINORs (16)
-- [x] m1: Remove `_ = attempt` in context.go
-- [x] m2: `result.Failed += 1` → `result.Failed++` in batch.go
-- [x] m3: Document Execute returns (result, nil) in batch.go
-- [x] m6: Add doc comment "BatchBuilder is not safe for concurrent use"
-- [x] m4: Define ErrNotTieredStore sentinel in graph.go
-- [x] m7: Add slog.Error in persistPropertyIndexDefs
-- [x] m8: Distinguish ErrNodeNotFound from real errors in property scan
-- [x] m9: Move contains() to test file
-- [x] m11: Remove redundant archiveWritten/refWritten guards
-- [x] m12: Remove dead code ColdEventShards/AddLabel/AddRelType
-- [x] m13: Fix tkg_version comment in shadow.go
-- [x] m14: Document ValidStart+ValidEnd requirement in temporal_filter.go
-- [x] m15: Add panic("unreachable") in writePropertyValue default
-- [x] m16: Add pagination in MigrateFromBadger
+| Version | Phase | What |
+|---------|-------|------|
+| v3.0.15 | 1a-1d | UpdateNode/Rel, version history, hash chains, bulk queries |
+| v3.0.16 | 1e | FlushInterval fix, LRU evictClean O(1) |
+| v3.0.17 | 1f | Batch operations (PutNodesBatch, BatchBuilder) |
+| v3.0.18 | 1g | Context-aware operations (8 WithContext methods) |
+| v3.0.19 | 2b | Hash chain verification |
+| v3.0.20 | 2d | Per-label/type statistics (O(1) atomic counters) |
+| v3.0.21 | 2a | Temporal queries (point-in-time, interval, snapshot) |
+| v3.0.22 | 2c | Property indexes (CreatePropertyIndex, auto-maintenance) |
+| — | 2e | Configurable ValidationLimits (5 limits, 5 sentinel errors) |
+| v3.0.23 | 2-review | 6 fixes (hash chain truncation, history-aware queries, index persistence) |
+| — | 2f | Cursor-based pagination (QueryOpts{Limit, After}) |
+| — | 2g | Combined label+property+temporal queries |
+| v3.0.25 | 2h | 5 architectural fixes (entity locks, TOCTOU retry, snapshot isolation) |
+| — | 2h-ext | Temporal query push-down to Store layer |
+| — | 2i | GraphTx (create-only transactions), Graph.Reset() |
+| v3.0.26 | 3a | TieredStore: ref/event split, cross-shard rels, registry file |
+| v3.0.27 | 3b+3c | Shard rotation (hot→warm), depth-aware reads, warm recovery |
+| v3.0.28 | 3d | Cold shard tier, parallel queries, reference archive |
+| v3.0.29 | 3e | Repair, admin API, verification caching, migration tool |
+| v3.0.30 | bugfix | 5 fixes (idle-close race, shardForRelID, archive rollback, dirty-map, batch hash) |
+| v3.0.31 | bugfix | OOM fix — lazy ForEach iterators (~83% memory reduction) |
+| v3.0.32 | feat | ImportNodeWithID/ImportRelationshipWithID + GraphTx wrappers |
+| v3.0.33 | review | Pre-release code review (1 BLOCKER + 10 MAJORs + 16 MINORs) |
+| v3.0.34 | 4.1 | Allen's 13 interval relations |
+| v3.0.35 | coverage | Carry-forward test gaps: ImportNames validation, wire.go helpers, flush() error path |
 
 ---
 
-## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
+## Phase 4 — v2 Feature Parity
 
-Comprehensive comparison of v2's pkg/graph + pkg/storage against v3's current feature set.
-v3 is architecturally superior (80B nodes, token interning, compound adjacency keys,
-snowflake IDs, async batch persistence) but missing several v2 features needed before
-the tiered persistence layer can be built.
+Engine-layer features present in tkg-2025-v2 but missing from rho/tkg-v3.
 
-### Key Schema Alignment (verified)
+### 4.1. Allen's Interval Algebra ✓ (v3.0.34)
 
-The current key schema already supports the tiered persistence spec:
-- `0x05` (out): compound key supports basic/typed/counterpart prefix scans in 1 key
-- `0x06` (in): same, 3 scan levels in 1 key
-- History keys (`0x07`/`0x08`) promoted to production in `keys.go` (Phase 1b). Temporal keys (`0x09`/`0x0A`) remain forward-planned in `keys_helpers_test.go`
-- **No key schema changes needed** for tiered persistence
+Complete. `types.AllenRelation` (13 relations), `AllenRelationSet` (uint16 bitset),
+`Relate()`, `Compose()`/`ComposeSets()` (composition table), `NodeInterval`/`RelInterval`,
+`RelateNodes`/`RelateRels`. 48 tests. No `EnforcePathConsistency` yet (deferred until
+tkgd-v3 needs constraint networks).
 
-### Existing Coverage Gaps (carry-forward)
+### 4.2. Temporal Constraints — High
 
-- [ ] MINOR: wire.go `propertyTypeTag` at 56% — uint, uint8-32, float32 branches untested
-- [ ] MINOR: wire.go `toInt64`/`toUint64` at ~50% — integer conversion branches untested
-- [ ] MINOR: wire.go `normalizeIntegersRecursive` at 40% — backward-compat fallback untested
-- [ ] MINOR: badgerstore.go `flush()` at 73% — WriteBatch error recovery paths untested
-- [ ] MINOR: ImportNames — no validation for empty/duplicate entries in persisted data
+**v2:** `types.TemporalConstraint` and `ConstraintSet` — enforce rules like "relationship R
+must exist within the validity of its endpoints".
 
----
+**v3:** None. Temporal metadata stored but no constraint enforcement.
 
-## Phase 1 — Store Interface Completion (must-have before tiering)
+- [ ] `TemporalConstraint` type (relationship validity ⊆ endpoint validity)
+- [ ] `ConstraintSet` for composing multiple constraints
+- [ ] Enforcement hooks in AddRelationship / UpdateRelationship
+- [ ] Constraint violation sentinel errors
 
-Make tkg-v3 a fully usable graph engine. These operations are foundational —
-the tiered store must implement them all.
+### 4.3. Advanced Temporal Indexes — High
 
-### 1a. UpdateNode / UpdateRelationship ✓
+**v2:** `AdvancedTemporalIndex` (interval tree), `HighFrequencyIndex`, `TimeWindowIndex`,
+`IndexManager` — specialized index structures for temporal queries.
 
-Complete. Implemented in v3.0.15.
+**v3:** Property indexes only (`CreatePropertyIndex` / `NodesByLabelAndProperty`).
+Temporal queries do full-scan with ForEach iterators.
 
-**Store interface:** `ReplaceNode(n)`, `ReplaceRelationship(r)` — overwrite existing entities.
-**Graph layer:** `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)` — read-modify-write with entity lock, version bump, UpdatedAt.
-**Convenience:** `SetNodeProperty`, `DeleteNodeProperty`, `SetRelationshipProperty`, `DeleteRelationshipProperty`.
+- [ ] Interval tree data structure for `[ValidFrom, ValidTo)` ranges
+- [ ] `CreateTemporalIndex(labelToken)` on Store interface
+- [ ] Temporal push-down uses index when available, falls back to scan
+- [ ] Integration with TieredStore per-shard indexes
 
-**44 tests total:** 6 MemoryStore Replace, 6 BadgerStore Replace, 28 graph-layer (13 UpdateNode + 11 UpdateRelationship + 4 convenience), 4 Badger integration (including persistence round-trip).
-All pass with race detector. Coverage ≥89% on all new methods.
+### 4.4. Version Chain Navigation — Medium
 
-### 1b. Version History ✓
+**v2:** `GetPreviousNodeVersion()`, `GetNextNodeVersion()`, `CloseNodeVersion()`,
+`VersionChain`, `RelationshipVersionChain` — navigate version history as a linked list.
 
-Complete. Implemented in v3.0.15.
+**v3:** `GetNodeHistory(id)` returns flat `[]*Node` slice. No chain navigation, no CloseNodeVersion.
 
-**Store interface:** `PutNodeVersion`, `GetNodeVersion`, `GetNodeHistory`, `TruncateNodeHistory` + relationship mirrors. `ErrVersionNotFound` sentinel for missing versions.
-**Graph layer:** `UpdateNode`/`UpdateRelationship` save pre-mutation state to history. `GetNodeHistory`/`GetRelHistory` passthroughs.
-**Key promotion:** `keyHistNode` (0x07) and `keyHistRel` (0x08) promoted from test-only stubs to production. Added `histNodePrefix`/`histRelPrefix` for prefix scanning.
-**Delete preserves history:** All delete paths preserve version history (append-only). `DeleteNodeWithContext`/`DeleteRelationshipWithContext` save tombstone versions with `DeletedAt`/`ValidTo` before deletion.
+- [ ] `GetPreviousNodeVersion(id, version)` / `GetNextNodeVersion(id, version)`
+- [ ] `CloseNodeVersion(id)` — set ValidTo on current version
+- [ ] Rel mirrors
 
-**~50 tests total:** 17 MemoryStore (8 node + 9 rel), 19 BadgerStore (mirrored + 2 restart persistence), 14 graph-layer (5 node + 5 rel + 4 Badger persistence).
-All pass with race detector.
+### 4.5. Event / Notification System — Medium
 
-### 1c. Hash Chain Computation ✓
+**v2:** Full `events` package — `Type` constants (NodeCreate, NodeUpdate, NodeDelete,
+RelCreate, RelUpdate, RelDelete, etc.), `Event`, `Queue`, `Dispatcher`, `EventBus`,
+`AsyncUpdater`, `Worker`, `WorkerPool`.
 
-Complete. Implemented in v3.0.15.
+**v3:** None. No publish/subscribe, no lifecycle hooks.
 
-**Implementation:**
-- [x] `ComputeNodeHash(n *types.Node, labels []string) string` — SHA-256 of id + version + sorted labels + sorted properties, hex-encoded (64 chars)
-- [x] `ComputeRelHash(r *types.Relationship, typeName string) string` — SHA-256 of id + version + type + startID + endID + sorted properties
-- [x] AddNode: compute hash, set integrity (PrevHash = "" for genesis)
-- [x] UpdateNode: capture PrevHash from current integrity, compute new hash on final state
-- [x] AddRelationship: compute hash, set integrity (PrevHash = "" for genesis)
-- [x] UpdateRelationship: capture PrevHash from current integrity, compute new hash on final state
+- [ ] `EventType` iota (NodeCreate, NodeUpdate, NodeDelete, RelCreate, RelUpdate, RelDelete)
+- [ ] `Event` struct with Type, EntityID, Timestamp
+- [ ] `EventBus` with Subscribe/Publish
+- [ ] Hook points in Graph CRUD methods
 
-**22 tests total:** 10 unit tests (determinism, property/version/label/type/endpoint sensitivity, label order independence), 12 graph-layer integration tests (integrity set on create, hash chain linking, multiple-update chain, genesis zero PrevHash — node/rel parity).
-All pass with race detector. 100% coverage on all new functions.
+### 4.6. CRUD Diff Exporter — Medium
 
-### 1d. Bulk Query Methods (AllNodes / AllRelationships / GetByIDs) ✓
+**v2:** `CRUDDiffExporter` — export a stream of create/update/delete diffs between two
+points in time.
 
-Complete. Implemented in v3.0.15.
+**v3:** `Snapshot(t)` gives full state at a point. No diff between snapshots.
 
-**Store interface additions:**
-- [x] `AllNodes() ([]*types.Node, error)`
-- [x] `AllRelationships() ([]*types.Relationship, error)`
-- [x] `GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)`
-- [x] `GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)`
+- [ ] `DiffSnapshots(t1, t2)` — returns created/updated/deleted entity lists
+- [ ] Efficient implementation via version history scan (not dual snapshot)
 
-**Graph-layer passthrough:**
-- [x] `Graph.AllNodes()`, `Graph.AllRelationships()`
-- [x] `Graph.GetNodesByIDs(ids)`, `Graph.GetRelationshipsByIDs(ids)`
+### 4.7. Recurrence Patterns — Low
 
-**Design decisions:**
-- Missing IDs silently skipped (matches `NodesByLabel` orphan-skip pattern)
-- `nil, nil` for empty results (consistent with all existing query methods)
-- Pure Graph passthroughs (no string resolution needed)
-- BadgerStore: snapshot IDs under `idxMu.RLock()`, fetch via public `GetNode`/`GetRelationship`
-- MemoryStore: single `RLock`, iterate map, DeepCopy, sort
+**v2:** `types.RecurrencePattern` — express recurring temporal validity (e.g., "every Monday 9-17").
 
-**32 tests total:** 12 MemoryStore (AllNodes empty/count/sorted, AllRels empty/count/sorted, GetNodesByIDs empty/found/sorted, GetRelsByIDs empty/found/sorted), 12 BadgerStore (mirrored), 8 graph-layer (AllNodes/AllRels empty + populated, GetNodesByIDs/GetRelsByIDs empty + skip-missing).
-All pass with race detector. Coverage 82-100% on all new methods.
+**v3:** None.
 
-### 1e. FlushInterval Policy + LRU evictClean Fix ✓
+- [ ] `RecurrencePattern` type + expansion to concrete intervals
 
-Complete. Implemented in v3.0.16.
+### 4.8. Time Granularity — Low
 
-- [x] Fix `NewBadgerStore` FlushInterval defaulting — remove `!cfg.InMemory` condition
-- [x] Add `cleanCount` field to `entityLRU` for O(1) early exit in `evictClean()`
-- [x] Update all LRU mutation methods to maintain `cleanCount`
-- [x] Add `CleanCount()` accessor for test verification
-- [x] Add tests: `TestLRUEvictCleanSkipsWhenAllDirty`, `TestLRUCleanCountAccuracy`
-- [x] Fix `TestBadgerStoreDirtyNotEvictedUnderPressure` — add large FlushInterval
-- [x] Update `newTestBadgerStore` comment
-- [x] Tutorial 005 — fair comparison via library fix + tutorial fixes (Close in bench timing, rels in memory measurement, log.Fatal→Printf in defer, distinct SnowflakeNodeIDs)
+**v2:** `types.TimeGranularity` with levels from Millisecond through Year. Allows
+coercion/rounding of temporal values.
 
-### 1f. Batch Operations ✓
+**v3:** Raw `types.Instant` (int64 unix millis) only. No granularity abstraction.
 
-Complete. Implemented in v3.0.17.
+- [ ] `TimeGranularity` enum + coercion/rounding of `Instant` values
 
-**Store interface additions:**
-- [x] `PutNodesBatch(nodes []*types.Node) error` — two-phase atomic, all-or-nothing
-- [x] `PutRelationshipsBatch(rels []*types.Relationship) error` — two-phase atomic
-- [x] `DeleteNodesBatch(ids []snowflake.ID) error` — two-phase atomic
-- [x] `DeleteRelationshipsBatch(ids []snowflake.ID) error` — two-phase atomic
+### 4.9. VectorField Support — Low
 
-**Graph-layer batch builder:**
-- [x] `BatchBuilder` fluent API (`batch.go`)
-  - `NewBatchBuilder(g *Graph) *BatchBuilder`
-  - `.AddNode(labels, props)` — eager validation, deferred persistence
-  - `.AddRelationship(typeName, startNode, endNode, props)` — eager validation
-  - `.UpdateNode(id, updates)` / `.UpdateRelationship(id, updates)` — pre-validate
-  - `.DeleteNode(id)` / `.DeleteRelationship(id)` — queue deletes
-  - `.Execute() (*BatchResult, error)` — create → update → delete order
-- [x] `BatchResult` with Created, Updated, Deleted, Failed, Errors, Duration
-- [x] `BatchError` with Op, ID, Err
+**v2:** `types.VectorField` — store vector embeddings as entity properties for similarity search.
 
-**41 tests total:** 12 MemoryStore, 12 BadgerStore, 17 BatchBuilder.
-All pass with race detector. Coverage ≥80% on all new methods.
+**v3:** Property values support basic Go types (`string`, `int64`, `float64`, `bool`,
+`[]any`, `map[string]any`) but not vectors.
 
-### 1g. Context-Aware Operations ✓
+- [ ] New property type for float32/float64 vectors
+- [ ] Similarity index (cosine, euclidean)
 
-Complete. Implemented in v3.0.18.
+### 4.10. Remove Label from Node — Low
 
-- [x] `AddNodeWithContext(ctx, labels, props)` — 2 context checks (entry + before store write)
-- [x] `AddRelationshipWithContext(ctx, typeName, startNode, endNode, props)` — 3 context checks (entry + before lock + before store write)
-- [x] `UpdateNodeWithContext(ctx, id, updates)` — 5 context checks (entry + before lock + before read + before history + before write)
-- [x] `UpdateRelationshipWithContext(ctx, id, updates)` — 5 context checks (mirror of UpdateNode)
-- [x] `DeleteNodeWithContext(ctx, id)` — 2 context checks (entry + under lock before cascade)
-- [x] `DeleteRelationshipWithContext(ctx, id)` — 1 context check (entry)
-- [x] `GetNodeWithContext(ctx, id)` — 1 context check (entry)
-- [x] `GetRelationshipWithContext(ctx, id)` — 1 context check (entry)
-- [x] Existing methods refactored to delegate to WithContext with `context.Background()`
-- [x] `checkCtx` helper — non-blocking select, zero overhead when context is not cancelled
-- [x] 28 tests in `context_test.go` — all pass with race detector
-- [x] No Store interface change — Badger v4 doesn't support context in its core API
+**v2:** `RemoveNodeLabel()` — remove a label from an existing node.
+
+**v3:** Nodes are created with labels; no API to add or remove labels after creation.
+
+- [ ] `Graph.RemoveNodeLabel(id, label)` — remove label, update indexes + hash chain
+
+### 4.11. In-Place Update (No History) — Low
+
+**v2:** `UpdateNodeInPlace()` — update a node without creating a version history entry.
+
+**v3:** Every `UpdateNode()` creates a new version and stores the previous state in history.
+No bypass.
+
+- [ ] `UpdateNodeInPlace(id, updates)` — skip history write path
+- [ ] Clear use-case justification (perf-critical counters, etc.)
+
+### 4.12. Graph Stats (Cache Metrics) — Low
+
+**v2:** `GraphStats` with cache hit/miss tracking, operation counters.
+
+**v3:** Count methods (`NodeCount`, `RelationshipCount`, `AllLabelCounts`, `AllRelTypeCounts`)
+but no cache hit/miss metrics or operation counters.
+
+- [ ] Operation counters (AddNode, GetNode, UpdateNode, DeleteNode, etc.)
+- [ ] Cache hit/miss metrics on BadgerStore LRU
+- [ ] `Graph.Stats()` accessor
+
+### Phase 4 Summary
+
+| # | Feature | Priority | Effort |
+|---|---------|----------|--------|
+| ~~4.1~~ | ~~Allen's interval algebra~~ | ~~High~~ | ✓ Complete (v3.0.34) |
+| 4.2 | Temporal constraints | High | Medium — constraint types + enforcement hooks |
+| 4.3 | Advanced temporal indexes | High | Large — interval tree data structure |
+| 4.4 | Version chain navigation | Medium | Small — add Next/Prev/Close methods |
+| 4.5 | Event system | Medium | Medium — dispatcher + subscriber pattern |
+| 4.6 | CRUD diff exporter | Medium | Medium — compare two snapshots |
+| 4.7 | Recurrence patterns | Low | Small — type + expansion logic |
+| 4.8 | Time granularity | Low | Small — enum + rounding functions |
+| 4.9 | VectorField | Low | Medium — new property type + index |
+| 4.10 | Remove label | Low | Small — single method |
+| 4.11 | In-place update | Low | Small — skip history write path |
+| 4.12 | Graph stats (cache metrics) | Low | Small — counters + exposure methods |
 
 ---
 
-## Phase 2 — Temporal Query Layer
+## Application Layer (Out of Scope for tkg-v3)
 
-Make tkg-v3 a proper temporal graph. The "T" in TKG.
+These v2 features belong in `tkgd-v3/` (server layer), NOT the core graph library.
 
-### 2b. Hash Chain Verification ✓
-
-Complete. Implemented in v3.0.19.
-
-- [x] `VerifyNodeHashChain(id)` — verifies genesis PrevHash="", PrevHash chain links, recomputes hashes
-- [x] `VerifyRelHashChain(id)` — mirrors node verification for relationships
-- [x] 14 tests (7 node + 7 rel): genesis-only, multiple updates, tampered hash, broken PrevHash, non-existent, nil integrity, property change
-
-### 2d. Per-Label / Per-Type Statistics ✓
-
-Complete. Initially implemented in v3.0.20 (scan-based O(N)). Upgraded to O(1) atomic counters.
-
-**O(1) upgrade (post-v3.0.22):**
-- [x] Store interface: `NodeCountByLabel(token uint16)`, `RelCountByType(token uint16)` — O(1) delegation
-- [x] MemoryStore: `len(labelIdx[token])` / `len(typeIdx[token])` — trivial O(1) via existing index sizes
-- [x] BadgerStore: `sync.Map` + `atomic.Int64` counters — maintained in 9 mutation sites, rebuilt from index sizes in `loadIndexes()`
-- [x] Graph layer: O(1) delegation to Store (no longer materializes entities to count)
-- [x] `AllLabelCounts()` / `AllRelTypeCounts()` use `uint16(i)` as token directly (avoids redundant registry lookups)
-- [x] 8 MemoryStore counter tests, 8 BadgerStore counter tests (including persistence round-trip), 2 graph-level integration tests
-- [x] All pass with race detector. 100% coverage on all new methods
-
-### 2a. Temporal Queries ✓
-
-Complete. Initially implemented in v3.0.21. Made history-aware in v3.0.23 (Phase 2 review).
-
-- [x] `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries (history-aware: includes deleted entities)
-- [x] `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries (history-aware)
-- [x] `GetNodeAt(id, t)` — version-specific query with version chain derivation (handles deleted entities)
-- [x] `GetRelAt(id, t)` — mirrors `GetNodeAt` for relationships (added in v3.0.23)
-- [x] `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal
-- [x] `Snapshot(t)` — full graph state at time t (endpoint-filtered relationships, includes deleted entities)
-- [x] `GraphSnapshot` struct, `ErrNoVersionValidAt` sentinel
-- [x] Store interface: `AllNodeHistoryIDs()`, `AllRelHistoryIDs()` for history-aware queries (added in v3.0.23)
-- [x] ~50 tests total: point-in-time, interval, version-specific, neighbor, snapshot, deleted entity queries, truncation resilience
-
-### 2c. Property Indexes ✓
-
-Complete. Implemented in v3.0.22.
-
-**Store interface additions:**
-- [x] `CreatePropertyIndex(labelToken, propertyKey)` — creates in-memory index, scans existing nodes
-- [x] `DropPropertyIndex(labelToken, propertyKey)` — removes index
-- [x] `NodesByLabelAndProperty(labelToken, key, value)` — O(1) indexed lookup with fallback scan
-
-**Implementation:**
-- [x] `propertyValueKey` — type-prefixed canonical string for 14 primitive types
-- [x] Auto-update hooks in all 7 node mutation paths (both MemoryStore and BadgerStore)
-- [x] `ErrIndexExists` / `ErrIndexNotFound` sentinel errors
-- [x] 25 tests: 8 MemoryStore, 8 BadgerStore, 8 Graph-layer, 1 propertyValueKey type coverage
-
-### 2e. Configurable Validation Limits ✓
-
-Complete. Implemented post-v3.0.22.
-
-**ValidationLimits struct** on `Graph.Config` with generous defaults:
-- `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (65536), `MaxNameLength` (256)
-- Zero values resolve to defaults in `New()`
-
-**Sentinel errors:** `ErrTooManyLabels`, `ErrTooManyProperties`, `ErrKeyTooLong`, `ErrValueTooLarge`, `ErrNameTooLong`
-
-**Enforcement:**
-- [x] `AddNodeWithContext` — MaxLabelsPerNode, MaxNameLength (each label), validateProperties
-- [x] `AddRelationshipWithContext` — MaxNameLength (type), validateProperties
-- [x] `UpdateNodeWithContext` — pre-lock entry validation + post-mutation MaxPropertiesPerEntity check under lock
-- [x] `UpdateRelationshipWithContext` — same pattern as UpdateNode
-- [x] Batch builder mirrors all graph-layer checks (`AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`)
-
-**Prerequisites:**
-- [x] `PropertyCount()` on Node and Relationship — `properties.Len()` without deep copy
-
-**~30 tests:** defaults, zero-uses-defaults, custom limits, boundary tests (at-limit succeeds, one-over fails) for all 5 limits on AddNode/AddRelationship/UpdateNode/UpdateRelationship, batch mirroring, all sentinel errors tested with `errors.Is`
-
-### Phase 2 Review — 6 Issues ✓
-
-Complete. Implemented in v3.0.23.
-
-6 issues found during Phase 2 code review, resolved in order 5 → 6 → 4 → 3 → 2 → 1:
-
-- [x] **Fix 5**: Hash chain verification — truncation resilience (`i==0` → `entry.Version()==0`)
-- [x] **Fix 6**: GetNodeAt — truncation resilience (`i==0` → `entry.Version()==0`)
-- [x] **Fix 4**: CreatePropertyIndex — 3-phase lock scope (RLock→unlocked I/O→Lock)
-- [x] **Fix 3**: Property index persistence — definitions survive BadgerStore restart via `0x0F/prop_indexes` meta key
-- [x] **Fix 2**: Delete preserves history — removed `deleteHistoryByPrefix`, added tombstone versions with `DeletedAt`/`ValidTo`
-- [x] **Fix 1**: Temporal queries history-aware — `GetNodesValidAt`/`GetRelationshipsValidAt`/`GetNodesValidDuring`/`GetRelationshipsValidDuring`/`Snapshot` now include deleted entities; added `GetRelAt`, `AllNodeHistoryIDs`/`AllRelHistoryIDs` Store methods
-
-**~19 new tests**, all pass with race detector. Coverage 89.7%.
-
-### 2f. Cursor-Based Pagination ✓
-
-Complete. Addresses tkgd-v3 Issue 6 — `NodesByLabel("Person")` on a million-node graph allocates 1M deep copies.
-
-**Design:** `QueryOpts{Limit, After}` parameter added to 5 unbounded Store methods. Zero values mean "return all" (backward-compatible). Keyset cursor using `snowflake.ID`.
-
-**Store interface changes:**
-- [x] `NodesByLabel(token, opts QueryOpts)` — paginated
-- [x] `RelationshipsByType(token, opts QueryOpts)` — paginated
-- [x] `AllNodes(opts QueryOpts)` — paginated
-- [x] `AllRelationships(opts QueryOpts)` — paginated
-- [x] `NodesByLabelAndProperty(token, key, value, opts QueryOpts)` — paginated
-
-**Implementation:**
-- [x] `QueryOpts` struct in `store.go`
-- [x] `paginateIDs` shared helper (`pagination.go`) — binary search cursor, sort-before-fetch
-- [x] MemoryStore: 5 methods refactored to sort IDs → paginate → deep-copy subset only
-- [x] BadgerStore: 5 methods refactored with sort+paginate; `NodesByLabelAndProperty` lock scope fixed (snapshot-and-release pattern, early-stop on fallback scan)
-- [x] Graph layer: 5 passthrough methods gain `QueryOpts` parameter
-- [x] All internal callers pass `QueryOpts{}` (temporal.go, tutorials)
-
-**~30 tests total:** 8 paginateIDs unit tests, 8 MemoryStore integration (limit, multi-page walk, zero opts, indexed/fallback property query), 8 BadgerStore integration (mirrored), 3 Graph-layer. All pass with race detector.
-
-### 2g. Combined Label+Property+Temporal Queries ✓
-
-Complete. Addresses tkgd-v3 Issue 7 — finding "Person nodes named Alice valid at time T" required two calls plus Go-side filtering.
-
-**New Graph methods:**
-- [x] `NodesByLabelPropertyAndTime(label, key, value, t)` — intersects property index with point-in-time filter
-- [x] `NodesByLabelPropertyDuring(label, key, value, start, end)` — intersects property index with interval filter
-
-**7 tests:** found (all axes match), property mismatch, temporal mismatch, unregistered label, with property index, interval overlap, no overlap.
-
-### 2h. Architectural Fixes (5 Issues) ✓
-
-Complete. Implemented in v3.0.25.
-
-5 issues found during post-Phase-2 review, resolved in order 3 → 1 → 2 → 4 → 5:
-
-- [x] **Fix 1 (Issue #3)**: `DeleteRelationshipWithContext` missing entity lock — added `LockEntity`/`UnlockEntity` (2-line fix in `context.go`)
-- [x] **Fix 2 (Issue #1)**: `allKnownNodeIDs` O(N) deep-copy waste — added `AllNodeIDs`/`AllRelIDs` to Store interface (MemoryStore + BadgerStore), rewrote temporal helpers to use ID-only queries
-- [x] **Fix 3 (Issue #2)**: `DeleteNodeWithContext` missing relationship locks — added `LockMany`/`UnlockMany` to entity lock manager, rewrote delete with two-phase locking + TOCTOU retry
-- [x] **Fix 4 (Issue #4)**: Cascade corruption fallback skips property index cleanup — added `purgeNodeFromAllPropertyIndexes` brute-force purge helper, called in BadgerStore corruption path
-- [x] **Fix 5 (Issue #5)**: Snapshot vs Batch torn reads — added graph-level `sync.RWMutex`, Batch acquires write lock, Snapshot acquires read lock
-
-**25 new tests**, all pass with race detector. Coverage 89.6%.
+| # | Feature | v2 Location | Notes |
+|---|---------|-------------|-------|
+| S1 | Cypher query engine (v1) | `cypher/` | Parser, AST, query plans, plan cache |
+| S2 | Cypher query engine (v2) | `cypher2/` | Pratt parser, full AST, GraphV2Ops integration |
+| S3 | Vadalog reasoning engine | `vadalog/` | Chase engine, stratified negation, query builder |
+| S4 | HTTP REST server | `server/` | Endpoints for nodes, rels, cypher, history, stats, export/import, streaming |
+| S5 | gRPC services | `services/ruleintelligence/` | Detection rule intelligence service |
+| S6 | Authorization / RBAC | `types.SystemsTable`, `UserRecord`, `RolePermissions` | Access control |
+| S7 | Memory management (exposed) | `memory.Manager` | Cleanup callbacks, manual GC triggers |
+| S8 | API-level TKG wrapper | `api.TKG` with `Config` | High-level facade over graph + storage + server |
 
 ---
 
-## Store Interface Extensions (from tkgd-v3 integration)
+## Redesigned (v2 → v3)
 
-Gaps identified during tkgd-v3 development. Not blockers for Phase 3 tiering,
-but required for correct multi-step mutations and efficient temporal queries
-at the server layer.
+Features present in both versions with different designs. Not missing — intentionally rearchitected.
 
-### 2h. Temporal Query Push-Down ✓
-
-Complete. Temporal filtering pushed down to Store layer, eliminating O(N) deep-copy waste.
-
-**QueryOpts extension:** `ValidAt types.Instant` (point-in-time), `ValidStart/ValidEnd types.Instant` (interval). Zero values = no filter (backward-compatible).
-
-**Implementation:**
-- [x] `temporal_filter.go` — `entityValidFrom` (explicit ValidFrom or snowflake ID bit extraction), `matchesTemporalFilter` (point-in-time: `from <= t AND (to == 0 OR to > t)`, interval overlap: `from < end AND (to == 0 OR to > start)`)
-- [x] `lru.go` — `Peek(key)` for zero-allocation cache lookup (no deep-copy, no MRU promotion), `Cap()` for cache recreation
-- [x] MemoryStore: 5 paginated methods filter before deep-copy via `filterNodeIDsByTemporal`/`filterRelIDsByTemporal` (reads in-memory entity pointers directly)
-- [x] BadgerStore: two-stage filtering — `filterNodeIDsByTemporalPeek` pre-filters cache hits (zero allocation), `fetchNodesWithTemporalFilter` post-filters cache misses after GetNode
-- [x] Graph-layer refactor: `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring` now push temporal filters into Store calls via QueryOpts
-
-**~30 tests:** 9 temporal_filter, 6 LRU (Peek/Cap), 8 MemoryStore temporal, 7 BadgerStore temporal. All pass with race detector.
-
-### 2i. Graph Transactions + Reset ✓
-
-Complete. Create-only transaction with full rollback + atomic graph reset.
-
-**Implementation:**
-- [x] `Store.Clear()` — removes all entities, indexes, history, counters. MemoryStore reinitializes 9 maps. BadgerStore clears indexes + counters + LRU caches + pending buffer + `db.DropAll()`
-- [x] `ErrTxDone` sentinel error for post-commit/rollback method calls
-- [x] `GraphTx` (`tx.go`) — create-only transaction holding graph write lock. `BeginTx()`, `AddNode`, `AddRelationship`, `Commit`, `Rollback`, `CreatedNodeIDs`, `CreatedRelIDs`
-- [x] Rollback uses `store.Delete*` directly (no tombstone versions — rolled-back entities vanish completely). Reverse creation order. Best-effort: continues on error, returns first error
-- [x] `Graph.Reset()` — acquires graph write lock, calls `store.Clear()`. Preserves registries (Graph-layer concern, not cleared by Store)
-
-**~25 tests:** 8 Store.Clear (4 MemoryStore + 4 BadgerStore), 12 GraphTx (commit/rollback/double-commit/ErrTxDone/concurrent access/rollback-leaves-no-history), 4 Graph.Reset (empty/clears entities/preserves registries/clears history). All pass with race detector.
+| Feature | v2 | v3 |
+|---------|----|----|
+| Entity IDs | `string` | `snowflake.ID` (uint64, timestamp-embedded) |
+| Hybrid persistence | `HybridStore` (RAM + disk + eviction) | `TieredStore` (ref/event shards, hot→warm→cold lifecycle) |
+| Validation | Separate `validation` package | `ValidationLimits` struct in `graph` package |
+| Errors | Separate `errors` package with codes | Sentinel `var` errors in `graph` package |
+| Batch operations | Separate `batch` package | `BatchBuilder` in `graph` package |
+| Entity types | `NodeV2` / `RelationshipV2` + `PropertyMap` | `Node` / `Relationship` + `PropertySlice` (sorted, binary search) |
+| Transactions | `transaction.Transaction` with WAL | `GraphTx` with snapshot-based rollback (no WAL) |
+| Persistence contract | `Store` + `StoreV2` + `Persister` (Sync/Async/Null) | Single `Store` interface (47 methods), persistence integrated |
+| Deep copy | `GetNodeCopy()` / `GetRelationshipCopy()` | `node.DeepCopy()` / `rel.DeepCopy()` |
+| Property removal | `RemoveNodeProperty()` | `DeleteNodeProperty()` (same semantics, different name) |
+| Export/Import | Server-level endpoints | `ImportNodeWithID()` / `ImportRelationshipWithID()` (import only, at graph layer) |
+| Query types | Separate `query` package (AST, Plan, Cost) | No query AST — direct Go method calls |
 
 ---
 
-## Phase 3 — Tiered Persistence
+## Carry-Forward Coverage Gaps
 
-The multi-shard architecture from the Tiered Temporal Storage spec.
-Built behind the Store interface — single-instance deployments unaffected.
-
-### 3a. Snowflake + Registry + Reference/Event Split ✓
-
-Complete. Implemented in v3.0.26.
-
-**New files (12):**
-- `ontology.go` + `ontology_test.go` — EntityClass, OntologyMapping (label → ref/event classification, lazy token cache)
-- `shard_catalog.go` + `shard_catalog_test.go` — ShardCatalog, ShardEntry, ShardKind, ShardTier (JSON persistence, atomic write)
-- `registry_file.go` + `registry_file_test.go` — Flat msgpack registry save/load (write-tmp+rename)
-- `badgerstore_partial.go` + `badgerstore_partial_test.go` — Split rel write/delete helpers (putRelEntityAndOut, putRelIncoming, deleteRelEntityAndOut, deleteRelIncoming, hasNodeID, hasRelID, incomingRelIDs, outgoingRelIDs)
-- `tieredstore.go` — TieredStoreConfig, TieredStore, eventShard, constructor, Close, Clear, shard routing, timestamp-to-shard resolution, registry file integration
-- `tieredstore_write.go` — Node/Rel Put/Delete/Replace/Batch, cross-shard relationship routing (E→R ref-first, R→E entity-first), DeleteNodeCascade, history writes, property indexes
-- `tieredstore_read.go` — Get/Query/Count/Adjacency/History reads, merge helpers (k-way merge of sorted slices), pagination helpers, IncomingRelationships cross-shard fetch
-- `tieredstore_test.go` — 40 integration tests covering ontology routing, CRUD, cross-shard rels, merge queries, cascade, history, batch, property indexes, lifecycle, registry round-trip, pagination, disk-backed, mid-window restart
-
-**Modified files (1):**
-- `graph.go` — TieredStore type switch in Close() for registry saves, TieredStore setup in New() (SetLabelRegistry, LoadLabelRegistry, LoadRelTypeRegistry)
-
-**Key design decisions:**
-- [x] Ontology mapping (label → reference/event classification)
-- [x] TieredStore skeleton implementing Store interface (all 43 methods)
-- [x] Registry as flat msgpack file (tokens only, ~2KB)
-- [x] Reference shard (single BadgerStore, always hot)
-- [x] Hot event shard (single BadgerStore, current time window)
-- [x] Shard catalog (JSON, time windows, tier tracking)
-- [x] Entity routing by label classification
-- [x] Relationship key routing (in/ keys to endpoint shard, entity+out/ to start shard)
-- [x] All 4 relationship patterns routed correctly (E→R, E→E, R→R, R→E)
-- [x] Snowflake ID timestamp extraction for shard resolution (O(1), no fan-out)
-- [x] Cross-shard split-write with reference-first ordering (§12)
-- [x] Cross-shard DeleteRelationship and DeleteNodeCascade
-- [x] Mid-window restart (reopen existing hot shard from catalog)
-
-**52 tests total.** All pass with race detector. Coverage ≥80% on all public methods.
-
-### 3b+3c. Shard Rotation + Warm Tier + Depth-Aware Reads ✓
-
-Complete. Implemented in v3.0.27.
-
-**New/modified files:**
-- `store.go` — `ShardDepth` type (DepthAll/DepthHot/DepthWarm), `Depth` field on `QueryOpts`
-- `badgerstore.go` — `ReadOnly` config, opens Badger read-only, skips flushLoop/gcLoop
-- `shard_catalog.go` — `UpdateShardTier`, `UpdateShardTimeEnd` methods
-- `tieredstore.go` — `mu sync.RWMutex`, `RotateHotShard()`, `checkRotation()`, `eventShardSnapshot(depth)`, warm shard recovery in constructor, `shardForRelID` probe-all-shards fallback
-- `tieredstore_write.go` — shard-based routing (replaces class-based), `checkRotation()` on write paths, batch partitioning by `*BadgerStore` pointer
-- `tieredstore_read.go` — all merge queries use `eventShardSnapshot(opts.Depth)` with `mu.RLock` snapshot pattern
-
-**Key design decisions:**
-- [x] ShardDepth type — zero=all tiers (backward-compatible)
-- [x] BadgerStore ReadOnly mode (warm/cold shards)
-- [x] Shard rotation: hot→warm on time window expiry via `checkRotation()`
-- [x] Millisecond-aligned shard boundaries (snowflake ID ms resolution)
-- [x] Warm shard recovery from catalog on restart
-- [x] E→E cross-shard fix: shard-based routing via `shardForNodeID` (not class-based)
-- [x] `shardForRelID` probe-all-shards fallback for cross-shard relationship entities
-- [x] Depth-aware merge queries (hot/warm/all)
-- [x] sync.RWMutex snapshot pattern for rotation safety
-
-**~25 new tests** (rotation, E→E cross-shard, depth-aware reads, warm recovery, ReadOnly BadgerStore, catalog). All pass with race detector. Coverage ≥80%.
-
-**Deferred to later phases:**
-- [x] Warm → cold demotion → Phase 3d ✓
-- [x] Lazy-open cold shards on first access → Phase 3d ✓
-- [x] Idle-close after configurable timeout → Phase 3d ✓
-- [x] Parallel shard queries → Phase 3d ✓
-
-### 3d. Cold Shard Tier + Parallel Query + Reference Archive ✓
-
-Complete. Implemented in v3.0.28.
-
-**New/modified files:**
-- `tieredstore.go` — `eventShard` gains `path`, `shardMu`, `lastAccess` fields + `getStore()` lazy-open method. Config gains `ColdAfter`, `IdleTimeout`. Constructor: cold shard recovery from catalog (store=nil), archive dir, `closeCh` channel, `idleCloseLoop()` goroutine. `eventShardSnapshot` returns `[]*eventShard`. `RotateHotShard()` gains warm→cold demotion. `shardForNodeID` falls back to refArchive. `openRefArchive()`, `ensureRefArchive()`, `hasArchiveShard()`. `Close()` handles nil stores + closeCh + refArchive. `Clear()` skips nil stores + clears archive.
-- `tieredstore_write.go` — Error propagation from shard routing. `ArchiveNode(id)` moves ref node + rels to archive (skips rels where other endpoint not archived). `RestoreNode(id)` reverse of archive. `ErrNotReferenceEntity` sentinel.
-- `tieredstore_read.go` — All 10 merge queries rewritten with `sync.WaitGroup` parallel pattern (ref shard sequential, event shards concurrent via goroutines). `stripDepth` helper. Error propagation from `es.getStore(ts)`.
-- `shard_catalog.go` — `ColdEventShards()` helper.
-- `graph.go` — `ArchiveNode`/`RestoreNode` passthroughs via type switch on `*TieredStore`.
-- `tieredstore_test.go` — ~30 new tests.
-
-**Key design decisions:**
-- [x] Cold shard lifecycle: warm→cold demotion during rotation when `ColdAfter > 0`
-- [x] Per-shard `sync.Mutex` (`shardMu`) protects lazy open/close of individual cold shards
-- [x] `atomic.Int64` `lastAccess` tracks idle time for cold shard auto-close
-- [x] `idleCloseLoop()` goroutine checks every `IdleTimeout/2`, stopped via `closeCh`
-- [x] Cold shards recovered from catalog on restart with `store=nil` (not opened until queried)
-- [x] `getStore(ts)` zero overhead for hot/warm (direct pointer return), lock+open for cold
-- [x] Parallel shard queries via `sync.WaitGroup` for all 10 merge methods
-- [x] Reference archive lazy-opened on first `ArchiveNode`/`RestoreNode` or DepthAll with catalog entry
-- [x] `shardForNodeID` falls back to refArchive (lazy-open if catalog says archive exists)
-- [x] `ArchiveNode`: read node+rels from refShard → write to archive → `DeleteNodeCascade` from refShard
-- [x] Cross-node rels skipped during archive if other endpoint not in archive (cascade deletes them)
-- [x] Zero defaults = backward-compatible (ColdAfter=0: no demotion, IdleTimeout=0: no idle-close)
-
-**~30 new tests** (8 cold shard, 4 parallel query, 8 archive, 3 routing error, 2 graph passthrough, 1 catalog). All pass with race detector.
-
-### 3e. Repair + Tooling ✓
-
-Complete. Implemented in v3.0.29.
-
-**New files (4):**
-- `id_decompose.go` — `IDComponents` struct, `DecomposeID()` function (bit extraction: time >> 22, node >> 12 & 0x3FF, seq & 0xFFF)
-- `tieredstore_admin.go` — `ShardInfo`/`VerifyResult` types, `ForceRotate`, `ListShards`, `RebuildCatalog`, `VerifyShard` (with immutable-shard caching), `resolveShardStore`, `allShardStoresWithLazyOpen`, `findRelInAnyShardStore`
-- `tieredstore_repair.go` — `RepairResult`, `RunRepair` (Phase 1: orphaned in/ detection+delete, Phase 2: missing in/ detection+re-create)
-- `tieredstore_migrate.go` — `MigrateFromBadger(src, dst, labels)` (copies nodes+rels with automatic ontology routing)
-
-**Modified files (4):**
-- `tieredstore_write.go` — `ErrEventPropertyIndex`, `CreatePropertyIndex` rejects event labels
-- `badgerstore_partial.go` — `deleteIncomingByRelID` (repair: scan pending buffer + Badger prefix for orphaned in/ keys)
-- `shard_catalog.go` — `UpdateShardVerified`, `UpdateShardStats`
-- `graph.go` — 6 passthroughs: `DecomposeID`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `RunRepair`, `VerifyShard`
-
-**Key design decisions:**
-- [x] ID decomposition uses same `snowflakeEpoch` as temporal filter — consistent time extraction
-- [x] Property indexes restricted to reference entities only (`ErrEventPropertyIndex`)
-- [x] Verification caching: immutable shards (warm/cold) verified once, result cached in catalog
-- [x] Cross-shard repair: Phase 1 removes orphaned in/ entries, Phase 2 re-creates missing in/ entries
-- [x] `deleteIncomingByRelID` handles unknown relType/startID via pending buffer scan + Badger prefix scan
-- [x] Migration tool routes by ontology — cross-shard rels handled automatically by TieredStore.PutRelationship
-- [x] Admin API methods are Go methods on TieredStore/Graph (not HTTP endpoints — pure library)
-
-**~29 new tests** (4 ID decompose, 3 property index, 2 catalog, 7 admin API, 3 verification, 4 repair, 4 migration, 1 Graph.DecomposeID, 1 admin-not-tiered). All pass with race detector. Coverage ≥80%.
-
+- [x] wire.go `propertyTypeTag` — direct unit test covers all 24 branches (64% → 100%)
+- [x] wire.go `toInt64`/`toUint64` — direct unit tests cover all 9 type cases each (54.5% → 100%)
+- [x] wire.go `normalizeIntegersRecursive` — direct unit tests for int16/int32/uint8-32/default (40% → 100%)
+- [x] badgerstore.go `flush()` — WriteBatch error path tested by closing DB before Flush() (73% → covered)
+- [x] ImportNames — validation added for empty entries (index > 0) and duplicates; 4 new tests (label + reltype)

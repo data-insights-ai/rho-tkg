@@ -143,6 +143,18 @@ func (r *relTypeRegistry) ImportNames(names []string) error {
 			len(names)-1, tokenCapacityMax)
 	}
 
+	// Validate entries before acquiring lock: reject empty or duplicate names.
+	seen := make(map[string]struct{}, len(names)-1)
+	for i := 1; i < len(names); i++ {
+		if strings.TrimSpace(names[i]) == "" {
+			return fmt.Errorf("graph: reltype import: empty name at index %d", i)
+		}
+		if _, dup := seen[names[i]]; dup {
+			return fmt.Errorf("graph: reltype import: duplicate name %q", names[i])
+		}
+		seen[names[i]] = struct{}{}
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

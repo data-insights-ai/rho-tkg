@@ -433,3 +433,43 @@ func TestLabelRegistryImportPreservesTokenOrder(t *testing.T) {
 		t.Fatalf("Len() = %d, want 3", reg.Len())
 	}
 }
+
+func TestLabelRegistryImportRejectsEmptyEntry(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		names []string
+	}{
+		{"literal empty", []string{"", "Person", "", "Movie"}},
+		{"whitespace only", []string{"", "Person", "  ", "Movie"}},
+		{"tab only", []string{"", "\t", "Movie"}},
+	}
+
+	for _, tc := range cases {
+		reg := newLabelRegistry()
+		err := reg.ImportNames(tc.names)
+		if err == nil {
+			t.Errorf("[%s] ImportNames should reject slice with empty/whitespace entry at index > 0", tc.name)
+			continue
+		}
+		if reg.Len() != 0 {
+			t.Errorf("[%s] registry should remain empty after rejection, got Len()=%d", tc.name, reg.Len())
+		}
+	}
+}
+
+func TestLabelRegistryImportRejectsDuplicateEntry(t *testing.T) {
+	t.Parallel()
+
+	// "Person" appears at both index 1 and index 3 — duplicate must be rejected.
+	names := []string{"", "Person", "Movie", "Person"}
+	reg := newLabelRegistry()
+	err := reg.ImportNames(names)
+	if err == nil {
+		t.Fatal("ImportNames should reject slice with duplicate names")
+	}
+	if reg.Len() != 0 {
+		t.Errorf("registry should remain empty after rejection, got Len()=%d", reg.Len())
+	}
+}

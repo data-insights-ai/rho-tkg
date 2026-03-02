@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.35] - 2026-03-02
+
+### Fixed (Carry-Forward Coverage Gaps)
+
+- **`ImportNames` validation** (`label_registry.go`, `reltype_registry.go`) — added rejection of whitespace-only and empty strings at positions > 0, and duplicate names. Uses `strings.TrimSpace` to match the invariant enforced by `GetOrCreate`. Previously, importing `["", "Foo", "Foo"]` silently corrupted the reverse map; importing `["", " ", "Foo"]` mapped token 1 to a whitespace-only string that `GetOrCreate` would refuse to produce, creating an inconsistent registry.
+- **`propertyTypeTag` coverage** — direct unit tests covering all 24 branches: `int8`, `int16`, `int32`, `uint`, `uint8`–`uint32`, `uint64`, `float32`, and the `default` unknown-type branch (64% → 100%).
+- **`toInt64` / `toUint64` coverage** — direct unit tests covering all 9 type cases plus the `default` zero-return branch each (54.5% → 100%).
+- **`normalizeIntegersRecursive` coverage** — direct unit tests for `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `[]any` recursion, `map[string]any` recursion, and the `default` passthrough (40% → 100%).
+- **`flush()` WriteBatch error path** (`badgerstore.go`) — test closes the underlying Badger DB before `WriteBatch.Flush()`, exercising the requeue-on-error path with correct goroutine lifecycle via `t.Cleanup` (73% → covered).
+
+## [3.0.34] - 2026-03-02
+
+### Added (Allen's 13 Interval Relations — Gap A1)
+
+- **`types.AllenRelation`** — `uint8` iota (1..13) representing Allen's 13 interval relations: Before, After, Meets, MetBy, Overlaps, OverlappedBy, Starts, StartedBy, During, Contains, Finishes, FinishedBy, Equals. Zero value is invalid (catches uninitialized usage). Methods: `String()`, `Symbol()`, `Inverse()`, `Set()`.
+- **`types.AllenRelationSet`** — compact `uint16` bitset for sets of relations. Methods: `Contains`, `Add`, `Union`, `Intersection`, `IsEmpty`, `Len`, `ToSlice`, `String`, `InverseSet`. `AllRelations()` returns the full 13-element set.
+- **`types.Relate(aStart, aEnd, bStart, bEnd)`** — classifies the Allen relation between two `[start, end)` intervals. Returns `ErrOpenInterval` for zero endpoints, `ErrInvalidInterval` for start >= end.
+- **`types.Compose(r1, r2)`** / **`types.ComposeSets(a, b)`** — composition table (computed at `init()` via exhaustive enumeration of 21 intervals over a 7-point timeline). Returns the set of possible relations when chaining two known relations.
+- **`graph.NodeInterval(n)`** / **`graph.RelInterval(r)`** — extracts effective `[start, end)` from a node/relationship, deriving start from snowflake ID timestamp when no explicit `ValidFrom` is set. Returns `ErrOpenInterval` if `ValidTo == 0`.
+- **`graph.RelateNodes(a, b)`** / **`graph.RelateRels(a, b)`** — classifies Allen relation between two entities via their effective intervals.
+- **`ErrOpenInterval`** / **`ErrInvalidInterval`** — new sentinel errors in `pkg/types`.
+- 38 new tests in `pkg/types/allen_test.go`: error cases, all 13 relations, inverse symmetry, string/symbol, set operations, composition identity/known results/never-empty/singleton consistency.
+- 10 new tests in `pkg/graph/temporal_allen_test.go`: open-ended error propagation, resolved intervals, snowflake-derived start, all 13 relations through Graph, inverse consistency, relationship intervals.
+
+### Notes
+
+- Purely additive — no existing files modified, no existing tests affected.
+- Foundation for temporal constraints (A2) and advanced temporal indexes (A7).
+
 ## [3.0.33] - 2026-03-02
 
 ### Fixed (Pre-Release Code Review — 1 BLOCKER + 10 MAJORs + 16 MINORs)
