@@ -401,3 +401,60 @@ GOOD: func Snapshot(t) {           // only outer method locks
 ```
 
 This means: design internal methods to be lock-agnostic. The caller decides the lock scope.
+
+---
+
+## 21. Hash Inputs Must Come From Canonical Internal State
+
+Never hash raw user input when the internal representation differs. Token deduplication,
+normalization, and ordering happen during construction — the hash must reflect the canonical
+state, not the user-provided input.
+
+```
+BAD:  labels := []string{"User", "User"}
+      n := types.NewNode(id, primaryToken, extraTokens)  // deduplicates to ["User"]
+      hash := ComputeNodeHash(n, labels)                  // hashes ["User", "User"]
+      // VerifyNodeHashChain later resolves canonical labels → ["User"] → hash mismatch
+
+GOOD: n := types.NewNode(id, primaryToken, extraTokens)
+      canonicalLabels := g.NodeLabels(n)                  // ["User"] — deduplicated
+      hash := ComputeNodeHash(n, canonicalLabels)         // hashes canonical state
+```
+
+---
+
+## 22. Verification Must Handle Deleted Entities
+
+Any verification function that reads entity state must tolerate the entity being deleted.
+If the entity has history but no current state, verification should proceed using history alone.
+
+```
+BAD:  func VerifyNodeHashChain(id) {
+          current, err := store.GetNode(id)
+          if err != nil { return false, err }  // ErrNodeNotFound → can't verify deleted
+      }
+
+GOOD: func VerifyNodeHashChain(id) {
+          current, err := store.GetNode(id)
+          if err != nil && !errors.Is(err, ErrNodeNotFound) { return false, err }
+          // current may be nil — build chain from history + current (if exists)
+      }
+```
+
+---
+
+## 23. Index Creation Must Be Visible to Concurrent Writes
+
+When building an index in phases (snapshot → fetch → install), the index must be
+installed as an empty placeholder BEFORE the I/O phase. Otherwise concurrent writes
+that check `if idx, ok := indexes[key]; ok` see nothing and skip index maintenance.
+
+```
+BAD:  Phase 1 (RLock): snapshot IDs, index not installed
+      Phase 2 (no lock): concurrent PutNode → addNodeToPropertyIndexes → no-op
+      Phase 3 (Lock): install index → missing concurrent writes
+
+GOOD: Phase 1 (Lock): install empty index, snapshot IDs
+      Phase 2 (no lock): concurrent PutNode → addNodeToPropertyIndexes → index exists → added
+      Phase 3 (Lock): merge backfill, skip IDs already in live index
+```

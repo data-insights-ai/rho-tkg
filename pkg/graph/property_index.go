@@ -53,6 +53,17 @@ func (pi *propertyIndex) remove(id snowflake.ID, value any) {
 	}
 }
 
+// contains returns true if the given node ID exists in any value bucket.
+// Used during index creation to avoid overwriting entries from concurrent writes.
+func (pi *propertyIndex) contains(id snowflake.ID) bool {
+	for _, idSet := range pi.entries {
+		if _, ok := idSet[id]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // lookup returns the set of node IDs matching the given value.
 // Returns nil if no matches.
 func (pi *propertyIndex) lookup(value any) map[snowflake.ID]struct{} {

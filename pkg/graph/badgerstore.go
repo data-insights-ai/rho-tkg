@@ -2018,18 +2018,26 @@ func (bs *BadgerStore) gcLoop() {
 // --- Property indexes ---
 
 // CreatePropertyIndex creates a property index for the given label token and property key.
-// Three-phase approach: snapshot IDs under RLock, fetch entities outside any lock,
-// install index under write Lock. This prevents blocking concurrent reads/writes
-// during the potentially slow Badger I/O phase.
+// Three-phase approach to prevent blocking concurrent reads/writes during slow I/O:
+//
+//	Phase 1 (write Lock): Install an empty live index so concurrent PutNode/ReplaceNode
+//	writes are captured immediately. Snapshot existing node IDs.
+//	Phase 2 (no lock): Fetch node data via public GetNode to build a backfill set.
+//	Phase 3 (write Lock): Merge backfill entries into the live index, skipping IDs
+//	that were already handled by concurrent writes during Phase 2.
+//
 // Returns ErrIndexExists if the index already exists.
 func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
-	// Phase 1: Check existence + snapshot IDs under RLock.
-	bs.idxMu.RLock()
+	// Phase 1: Install empty live index + snapshot IDs under write Lock.
+	// Write lock (not RLock) ensures the index is visible to concurrent mutations.
+	bs.idxMu.Lock()
 	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
 	if _, exists := bs.propertyIndexes[key]; exists {
-		bs.idxMu.RUnlock()
+		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
+	liveIdx := newPropertyIndex()
+	bs.propertyIndexes[key] = liveIdx
 	var ids []snowflake.ID
 	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
 		ids = make([]snowflake.ID, 0, len(nodeIDs))
@@ -2037,30 +2045,47 @@ func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 			ids = append(ids, id)
 		}
 	}
-	bs.idxMu.RUnlock()
+	bs.idxMu.Unlock()
 
 	// Phase 2: Fetch node data OUTSIDE any lock via public GetNode.
-	idx := newPropertyIndex()
+	// Builds a backfill index for nodes that existed before Phase 1.
+	backfill := newPropertyIndex()
 	for _, id := range ids {
 		n, err := bs.GetNode(id)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // deleted between snapshot and fetch
 			}
+			// Fatal error — remove the incomplete index.
+			bs.idxMu.Lock()
+			delete(bs.propertyIndexes, key)
+			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
 		if val, found := n.GetProperty(propertyKey); found {
-			idx.add(id, val)
+			backfill.add(id, val)
 		}
 	}
 
-	// Phase 3: Install index under write Lock. Re-check for concurrent creation.
+	// Phase 3: Merge backfill into live index under write Lock.
+	// Skip entries for IDs already handled by concurrent writes during Phase 2,
+	// and entries for nodes deleted during Phase 2.
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	if _, exists := bs.propertyIndexes[key]; exists {
-		return ErrIndexExists
+	for vk, idSet := range backfill.entries {
+		for id := range idSet {
+			if liveIdx.contains(id) {
+				continue // concurrent write already indexed this ID
+			}
+			if _, alive := bs.nodeIDs[id]; !alive {
+				continue // node deleted during Phase 2
+			}
+			if liveIdx.entries[vk] == nil {
+				liveIdx.entries[vk] = make(map[snowflake.ID]struct{})
+			}
+			liveIdx.entries[vk][id] = struct{}{}
+		}
 	}
-	bs.propertyIndexes[key] = idx
 	bs.persistPropertyIndexDefs()
 	return nil
 }

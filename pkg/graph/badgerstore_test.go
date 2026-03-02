@@ -3,9 +3,11 @@ package graph
 import (
 	"container/list"
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -4289,5 +4291,79 @@ func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
 	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: ids[1]})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
+	}
+}
+
+// TestBadgerStoreCreatePropertyIndex_ConcurrentWrite verifies that nodes added
+// concurrently during CreatePropertyIndex Phase 2 are captured by the live index.
+func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Pre-populate with existing nodes.
+	for i := int64(1); i <= 50; i++ {
+		n := types.NewNode(snowflake.ID(i), 1, nil)
+		_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", i, err)
+		}
+	}
+
+	// Concurrently create index AND add new nodes.
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		if err := bs.CreatePropertyIndex(1, "name"); err != nil {
+			t.Errorf("CreatePropertyIndex: %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := int64(51); i <= 100; i++ {
+			n := types.NewNode(snowflake.ID(i), 1, nil)
+			_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+			if err := bs.PutNode(n); err != nil {
+				t.Errorf("PutNode(%d): %v", i, err)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// ALL 100 nodes must be in the index — both pre-existing and concurrent.
+	for i := int64(1); i <= 100; i++ {
+		name := fmt.Sprintf("node-%d", i)
+		nodes, err := bs.NodesByLabelAndProperty(1, "name", name, QueryOpts{})
+		if err != nil {
+			t.Fatalf("query node-%d: %v", i, err)
+		}
+		if len(nodes) != 1 {
+			t.Errorf("node-%d: expected 1 result, got %d", i, len(nodes))
+		}
+	}
+}
+
+func TestPropertyIndex_Contains(t *testing.T) {
+	t.Parallel()
+	idx := newPropertyIndex()
+
+	if idx.contains(snowflake.ID(1)) {
+		t.Error("empty index should not contain anything")
+	}
+
+	idx.add(snowflake.ID(1), "Alice")
+	idx.add(snowflake.ID(2), "Bob")
+
+	if !idx.contains(snowflake.ID(1)) {
+		t.Error("should contain ID 1")
+	}
+	if !idx.contains(snowflake.ID(2)) {
+		t.Error("should contain ID 2")
+	}
+	if idx.contains(snowflake.ID(3)) {
+		t.Error("should not contain ID 3")
 	}
 }

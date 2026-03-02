@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"hash"
 	"io"
 	"sort"
@@ -15,24 +16,41 @@ import (
 // VerifyNodeHashChain verifies the full hash chain for a node.
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
-// failure or if the node does not exist (ErrNodeNotFound).
+// failure or if the node never existed (no current entity AND no history).
+//
+// Handles deleted entities: if the current node is gone (ErrNodeNotFound) but
+// history exists, verifies the history chain alone. Labels are extracted from
+// the last history entry's internal tokens.
 func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 	current, err := g.store.GetNode(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return false, err
 	}
+	// current may be nil for deleted entities.
 
 	history, err := g.store.GetNodeHistory(id)
 	if err != nil {
 		return false, err
 	}
 
-	// Build chain: history (ascending version order) + current.
+	if current == nil && len(history) == 0 {
+		return false, ErrNodeNotFound
+	}
+
+	// Build chain: history (ascending version order) + current (if exists).
 	chain := make([]*types.Node, 0, len(history)+1)
 	chain = append(chain, history...)
-	chain = append(chain, current)
+	if current != nil {
+		chain = append(chain, current)
+	}
 
-	labels := g.NodeLabels(current)
+	// Extract labels from the best available source: current entity if alive,
+	// otherwise the last history entry (tombstone preserves labels).
+	labelsSource := current
+	if labelsSource == nil {
+		labelsSource = chain[len(chain)-1]
+	}
+	labels := g.NodeLabels(labelsSource)
 
 	for i, entry := range chain {
 		ig := entry.Integrity()
@@ -71,24 +89,39 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 // VerifyRelHashChain verifies the full hash chain for a relationship.
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
-// failure or if the relationship does not exist (ErrRelNotFound).
+// failure or if the relationship never existed (no current AND no history).
+//
+// Handles deleted entities: if the current relationship is gone (ErrRelNotFound)
+// but history exists, verifies the history chain alone.
 func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
 	current, err := g.store.GetRelationship(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return false, err
 	}
+	// current may be nil for deleted entities.
 
 	history, err := g.store.GetRelHistory(id)
 	if err != nil {
 		return false, err
 	}
 
-	// Build chain: history (ascending version order) + current.
+	if current == nil && len(history) == 0 {
+		return false, ErrRelNotFound
+	}
+
+	// Build chain: history (ascending version order) + current (if exists).
 	chain := make([]*types.Relationship, 0, len(history)+1)
 	chain = append(chain, history...)
-	chain = append(chain, current)
+	if current != nil {
+		chain = append(chain, current)
+	}
 
-	typeName := g.RelationshipType(current)
+	// Extract type name from the best available source.
+	typeSource := current
+	if typeSource == nil {
+		typeSource = chain[len(chain)-1]
+	}
+	typeName := g.RelationshipType(typeSource)
 
 	for i, entry := range chain {
 		ig := entry.Integrity()

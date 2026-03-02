@@ -42,7 +42,8 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `Store` | Persistence interface — CRUD, index/adjacency/bulk queries with cursor-based pagination (`QueryOpts`), batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
 | `BatchBuilder` | Fluent API for queuing graph operations with eager validation and deferred persistence — `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Execute` |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
-| `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
+| `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, LRU caches with dirty tracking |
+| `GraphTx` | Create-only transaction — holds graph write lock, tracks created entities, supports commit and rollback |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
 
@@ -56,7 +57,7 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
-Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After}` for cursor-based pagination; zero values mean "return all".
+Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After, ValidAt, ValidStart, ValidEnd}` for cursor-based pagination and temporal push-down; zero values mean "return all / no filter".
 
 Bulk queries: `AllNodes(opts)`, `AllRelationships(opts)`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
 
@@ -66,7 +67,11 @@ Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesB
 
 Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — intersects property index with point-in-time filter. `NodesByLabelPropertyDuring(label, key, value, start, end)` — intersects property index with interval filter.
 
-Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Returns `(true, nil)` if valid.
+Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Handles deleted entities (verifies history chain alone when current entity is gone). Returns `(true, nil)` if valid.
+
+Transactions: `BeginTx()` starts a create-only transaction holding the graph write lock. `tx.AddNode(labels, props)`, `tx.AddRelationship(typeName, start, end, props)` — delegate to Graph and track IDs for rollback. `tx.Commit()` releases the lock. `tx.Rollback()` deletes all created entities in reverse order (no tombstones — rolled-back entities vanish completely). `tx.CreatedNodeIDs()`, `tx.CreatedRelIDs()` for inspection.
+
+Reset: `Reset()` atomically clears all entities, indexes, history, and counters while preserving label and relationship type registries.
 
 Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 

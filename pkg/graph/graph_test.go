@@ -2699,6 +2699,105 @@ func TestGraphUpdateRelHashChanges(t *testing.T) {
 	}
 }
 
+// --- Hash chain verification for deleted entities ---
+
+func TestGraphVerifyNodeHashChain_DeletedEntity(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+
+	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeID := n.InternalID().SnowflakeID()
+
+	// Update to create version history.
+	_, err = g.UpdateNode(nodeID, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the node — tombstone saved to history.
+	if err := g.DeleteNode(nodeID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the hash chain of the deleted node — must succeed.
+	valid, err := g.VerifyNodeHashChain(nodeID)
+	if err != nil {
+		t.Fatalf("VerifyNodeHashChain on deleted node: %v", err)
+	}
+	if !valid {
+		t.Fatal("hash chain verification should succeed for deleted entity with history")
+	}
+}
+
+func TestGraphVerifyRelHashChain_DeletedEntity(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(1)})
+	relID := r.InternalID().SnowflakeID()
+
+	// Update to create version history.
+	_, err = g.UpdateRelationship(relID, map[string]any{"w": int64(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the relationship — tombstone saved to history.
+	if err := g.DeleteRelationship(relID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the hash chain of the deleted relationship — must succeed.
+	valid, err := g.VerifyRelHashChain(relID)
+	if err != nil {
+		t.Fatalf("VerifyRelHashChain on deleted rel: %v", err)
+	}
+	if !valid {
+		t.Fatal("hash chain verification should succeed for deleted relationship with history")
+	}
+}
+
+func TestGraphVerifyNodeHashChain_NeverExisted(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+
+	_, err = g.VerifyNodeHashChain(snowflake.ID(999))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestGraphVerifyRelHashChain_NeverExisted(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+
+	_, err = g.VerifyRelHashChain(snowflake.ID(999))
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+}
+
 // ─── Gap 1: Concurrency & Locks ─────────────────────────────────────────────
 
 func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
@@ -4233,5 +4332,43 @@ func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
 	}
 	if snap.RelCount != 1 {
 		t.Fatalf("expected 1 rel, got %d", snap.RelCount)
+	}
+}
+
+func TestGraphAddNode_DuplicateLabelsHashVerifies(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	// Pass duplicate labels — NewNode deduplicates internally.
+	n, err := g.AddNode([]string{"Person", "Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	// Hash chain must verify — the hash was computed from canonical (deduplicated) labels.
+	valid, err := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("VerifyNodeHashChain: %v", err)
+	}
+	if !valid {
+		t.Fatal("hash chain verification failed — hash was computed from raw labels, not canonical")
+	}
+}
+
+func TestGraphAddNode_DuplicateLabelsOnlyOneStored(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n, err := g.AddNode([]string{"Person", "Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	labels := g.NodeLabels(n)
+	if len(labels) != 1 {
+		t.Fatalf("expected 1 label after dedup, got %d: %v", len(labels), labels)
+	}
+	if labels[0] != "Person" {
+		t.Fatalf("expected 'Person', got %q", labels[0])
 	}
 }

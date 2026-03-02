@@ -29,7 +29,7 @@ License: Apache-2.0 (open source)
 Go: 1.26.0
 Dependencies: `github.com/bds421/rho-snowflake-2026` (IDs), `github.com/vmihailenco/msgpack/v5` (serialization), `github.com/dgraph-io/badger/v4` (persistence)
 
-Status: v3.0.25 — Phases 1a-1g and 2a-2i complete, Phase 2 review (6 issues) resolved, Phase 2h (5 architectural fixes) resolved. History preserved on delete (tombstones), temporal queries history-aware, property indexes persist across restarts, hash chain verification truncation-resilient, cursor-based pagination on 5 unbounded queries, combined label+property+temporal queries, entity locks on all delete paths, LockMany for multi-entity locking, AllNodeIDs/AllRelIDs ID-only queries, property index purge on corruption, graph-level RWMutex for Snapshot vs Batch isolation, temporal query push-down to Store layer, create-only GraphTx with rollback, atomic Graph.Reset.
+Status: v3.0.25 — Phases 1a-1g and 2a-2i complete, Phase 2 review (6 issues) resolved, Phase 2h (5 architectural fixes) resolved, 3 concurrency/integrity bugs fixed (CreatePropertyIndex concurrent data loss, ComputeNodeHash label dedup, VerifyHashChain deleted entities). History preserved on delete (tombstones), temporal queries history-aware, property indexes persist across restarts, hash chain verification truncation-resilient + handles deleted entities, cursor-based pagination on 5 unbounded queries, combined label+property+temporal queries, entity locks on all delete paths, LockMany for multi-entity locking, AllNodeIDs/AllRelIDs ID-only queries, property index purge on corruption, graph-level RWMutex for Snapshot vs Batch isolation, temporal query push-down to Store layer, create-only GraphTx with rollback, atomic Graph.Reset.
 
 ## Build & Test Commands
 

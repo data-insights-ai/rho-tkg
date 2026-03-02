@@ -86,7 +86,10 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
-	hash := ComputeNodeHash(n, labels)
+	// Hash from canonical (deduplicated) labels, not raw user input.
+	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
+	canonicalLabels := g.NodeLabels(n)
+	hash := ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
 
 	if err := checkCtx(ctx); err != nil {
