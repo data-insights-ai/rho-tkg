@@ -24,6 +24,8 @@ func entityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 // filter in opts. Returns true when no filter is set (zero values).
 //
 // ValidAt takes precedence over interval (ValidStart/ValidEnd).
+// Both ValidStart AND ValidEnd must be set for interval filtering;
+// setting only one is treated as no filter (returns true).
 //
 // Point-in-time: from <= t AND (to == 0 OR to > t)
 // Interval:      from < end AND (to == 0 OR to > start)

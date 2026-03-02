@@ -150,8 +150,8 @@ func TestTieredStore_PutGetNode_Event(t *testing.T) {
 	reg := newLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
-	_, _ = reg.GetOrCreate("Case")    // tok 1 = ref
-	_, _ = reg.GetOrCreate("User")    // tok 2 = ref
+	_, _ = reg.GetOrCreate("Case")            // tok 1 = ref
+	_, _ = reg.GetOrCreate("User")            // tok 2 = ref
 	signalTok, _ := reg.GetOrCreate("Signal") // tok 3 = event
 
 	gen := tieredNodeGen(t)
@@ -232,7 +232,7 @@ func TestTieredStore_SameShardRel_EventToEvent(t *testing.T) {
 	_, _ = reg.GetOrCreate("User")
 	signalTok, _ := reg.GetOrCreate("Signal")
 	relTypeTok, _ := newRelTypeRegistry().GetOrCreate("TRIGGERS") // standalone for token
-	_ = relTypeTok // not used directly
+	_ = relTypeTok                                                // not used directly
 
 	gen := tieredNodeGen(t)
 	n1 := types.NewNode(gen.Generate(), signalTok, nil)
@@ -3680,8 +3680,8 @@ func TestTieredStore_PropertyIndex_EventRejected(t *testing.T) {
 	reg := newLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
-	_, _ = reg.GetOrCreate("Case")   // token 1 = ref
-	_, _ = reg.GetOrCreate("User")   // token 2 = ref
+	_, _ = reg.GetOrCreate("Case")         // token 1 = ref
+	_, _ = reg.GetOrCreate("User")         // token 2 = ref
 	sigTok, _ := reg.GetOrCreate("Signal") // token 3 = event
 
 	// Creating a property index on an event label should fail.
@@ -4555,6 +4555,73 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 	for i, err := range checkoutErrs {
 		if err != nil {
 			t.Errorf("checkout goroutine %d: %v", i, err)
+		}
+	}
+}
+
+func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
+	// Verify that checkoutStore for cold shards holds shardMu while incrementing
+	// activeReqs — preventing the TOCTOU race where closeIdleShards closes the
+	// store between getStore return and activeReqs increment.
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(gen.Generate(), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	_ = ts.RotateHotShard()
+	ts.mu.Unlock()
+	demoteToCold(ts, hotName)
+
+	ts.mu.RLock()
+	coldES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+
+	ts.idleTimeout = time.Millisecond
+
+	// Rapid interleave: checkout+checkin vs closeIdleShards, 50 rounds.
+	// With the old code (getStore release shardMu then activeReqs.Add(1)),
+	// the race detector catches this. With the fix (atomic under shardMu),
+	// all checkouts succeed and the store is never used-after-close.
+	var wg sync.WaitGroup
+	errs := make([]error, 50)
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			store, err := coldES.checkoutStore(ts)
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			// Verify store is usable — if it were closed, this would panic/error.
+			_, _ = store.NodeCount()
+			coldES.checkinStore()
+		}(i)
+		go func() {
+			defer wg.Done()
+			// Force lastAccess to zero to trigger idle-close aggressively.
+			coldES.lastAccess.Store(0)
+			ts.closeIdleShards()
+		}()
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("checkout round %d: %v", i, err)
 		}
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -48,7 +48,9 @@ type ShardEntry struct {
 }
 
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
+// All methods are safe for concurrent access via an internal RWMutex.
 type ShardCatalog struct {
+	mu     sync.RWMutex
 	Shards []ShardEntry `json:"shards"`
 	path   string
 }
@@ -62,6 +64,8 @@ func NewShardCatalog(path string) *ShardCatalog {
 
 // Load reads the catalog from disk. Returns nil if the file doesn't exist.
 func (sc *ShardCatalog) Load() error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	data, err := os.ReadFile(sc.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -75,46 +79,32 @@ func (sc *ShardCatalog) Load() error {
 	return nil
 }
 
-// Save writes the catalog to disk atomically (write-tmp + rename).
+// Save writes the catalog to disk atomically (write-tmp + fsync + rename).
 func (sc *ShardCatalog) Save() error {
+	sc.mu.RLock()
 	data, err := json.MarshalIndent(sc, "", "  ")
+	sc.mu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("shard catalog: marshal: %w", err)
 	}
-
-	dir := filepath.Dir(sc.path)
-	tmp, err := os.CreateTemp(dir, "shard_catalog_*.tmp")
-	if err != nil {
-		return fmt.Errorf("shard catalog: create temp: %w", err)
-	}
-	tmpName := tmp.Name()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("shard catalog: write temp: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("shard catalog: close temp: %w", err)
-	}
-	if err := os.Rename(tmpName, sc.path); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("shard catalog: rename: %w", err)
-	}
-	return nil
+	return atomicWriteFile(sc.path, data, "shard catalog")
 }
 
 // AddShard appends a new shard entry to the catalog.
 func (sc *ShardCatalog) AddShard(entry ShardEntry) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	sc.Shards = append(sc.Shards, entry)
 }
 
 // GetShard looks up a shard by name.
 func (sc *ShardCatalog) GetShard(name string) (*ShardEntry, bool) {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
-			return &sc.Shards[i], true
+			entry := sc.Shards[i] // copy
+			return &entry, true
 		}
 	}
 	return nil, false
@@ -122,6 +112,8 @@ func (sc *ShardCatalog) GetShard(name string) (*ShardEntry, bool) {
 
 // EventShards returns all shards with Kind == ShardEvent.
 func (sc *ShardCatalog) EventShards() []ShardEntry {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
 	var out []ShardEntry
 	for _, s := range sc.Shards {
 		if s.Kind == ShardEvent {
@@ -131,22 +123,14 @@ func (sc *ShardCatalog) EventShards() []ShardEntry {
 	return out
 }
 
-// ColdEventShards returns all shards with Kind == ShardEvent and Tier == TierCold.
-func (sc *ShardCatalog) ColdEventShards() []ShardEntry {
-	var out []ShardEntry
-	for _, s := range sc.Shards {
-		if s.Kind == ShardEvent && s.Tier == TierCold {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 // HotEventShard returns the hot event shard, if any.
 func (sc *ShardCatalog) HotEventShard() (*ShardEntry, bool) {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Kind == ShardEvent && sc.Shards[i].Tier == TierHot {
-			return &sc.Shards[i], true
+			entry := sc.Shards[i] // copy
+			return &entry, true
 		}
 	}
 	return nil, false
@@ -154,6 +138,8 @@ func (sc *ShardCatalog) HotEventShard() (*ShardEntry, bool) {
 
 // UpdateShardTier changes the tier of a shard by name. Returns true if found.
 func (sc *ShardCatalog) UpdateShardTier(name string, tier ShardTier) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
 			sc.Shards[i].Tier = tier
@@ -165,6 +151,8 @@ func (sc *ShardCatalog) UpdateShardTier(name string, tier ShardTier) bool {
 
 // UpdateShardTimeEnd changes the time window end of a shard by name. Returns true if found.
 func (sc *ShardCatalog) UpdateShardTimeEnd(name string, timeEnd time.Time) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
 			sc.Shards[i].TimeEnd = timeEnd
@@ -176,6 +164,8 @@ func (sc *ShardCatalog) UpdateShardTimeEnd(name string, timeEnd time.Time) bool 
 
 // UpdateShardVerified sets the Verified flag on a shard by name. Returns true if found.
 func (sc *ShardCatalog) UpdateShardVerified(name string, verified bool) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
 			sc.Shards[i].Verified = verified
@@ -188,6 +178,8 @@ func (sc *ShardCatalog) UpdateShardVerified(name string, verified bool) bool {
 // UpdateShardStats sets the approximate node and relationship counts for a shard.
 // Returns true if found.
 func (sc *ShardCatalog) UpdateShardStats(name string, nodes, rels int) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
 			sc.Shards[i].ApproxNodes = nodes
@@ -198,8 +190,23 @@ func (sc *ShardCatalog) UpdateShardStats(name string, nodes, rels int) bool {
 	return false
 }
 
+// ColdEventShards returns all shards with Kind == ShardEvent and Tier == TierCold.
+func (sc *ShardCatalog) ColdEventShards() []ShardEntry {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	var out []ShardEntry
+	for _, s := range sc.Shards {
+		if s.Kind == ShardEvent && s.Tier == TierCold {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // AddLabel tracks a label in the given shard entry (idempotent).
 func (sc *ShardCatalog) AddLabel(shardName, label string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == shardName {
 			for _, l := range sc.Shards[i].Labels {
@@ -215,6 +222,8 @@ func (sc *ShardCatalog) AddLabel(shardName, label string) {
 
 // AddRelType tracks a relationship type in the given shard entry (idempotent).
 func (sc *ShardCatalog) AddRelType(shardName, relType string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == shardName {
 			for _, rt := range sc.Shards[i].RelTypes {

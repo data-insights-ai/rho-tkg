@@ -749,4 +749,3 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 		t.Fatalf("snapshot has %d rels, want 1", snap.RelCount)
 	}
 }
-

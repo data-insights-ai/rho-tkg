@@ -552,6 +552,9 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	// Update property indexes: remove old entries, add new.
 	if old, err := bs.getNodeLocked(id); err == nil {
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	} else {
+		// Cache miss or Badger error — brute-force purge to avoid orphaned entries.
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 	}
 	bs.nodeCache.Put(id, n.DeepCopy())
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
@@ -1821,8 +1824,6 @@ func (bs *BadgerStore) truncateHistoryByPrefix(prefix []byte, keepVersions int) 
 	return nil
 }
 
-
-
 // --- Counts (O(1) via atomic counters) ---
 
 // NodeCount returns the number of stored nodes. O(1).
@@ -2135,6 +2136,7 @@ func (bs *BadgerStore) persistPropertyIndexDefs() {
 	}
 	data, err := msgpack.Marshal(defs)
 	if err != nil {
+		slog.Error("graph: persist property index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
 	bs.appendOps(writeOp{opType: writeOpSet, key: propIndexDefsKey, value: data})
@@ -2229,7 +2231,10 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	for _, id := range ids {
 		n, err := bs.GetNode(id)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // orphaned index entry
+			}
+			return nil, err
 		}
 		if v, found := n.GetProperty(propKey); found {
 			if propertyValueKey(v) == targetKey {

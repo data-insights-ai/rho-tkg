@@ -246,4 +246,3 @@ func TestMemoryStore_NoFilter_BackwardCompatible(t *testing.T) {
 		t.Fatalf("no filter: got %d nodes, want 2", len(nodes))
 	}
 }
-

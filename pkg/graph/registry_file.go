@@ -15,7 +15,7 @@ type registryFileData struct {
 }
 
 // saveRegistryFile writes label and reltype name slices to a flat msgpack file.
-// Uses write-tmp + atomic rename for crash safety.
+// Uses write-tmp + fsync + atomic rename for crash safety.
 func saveRegistryFile(path string, labels, relTypes []string) error {
 	data, err := msgpack.Marshal(&registryFileData{
 		Labels:   labels,
@@ -24,26 +24,38 @@ func saveRegistryFile(path string, labels, relTypes []string) error {
 	if err != nil {
 		return fmt.Errorf("registry file: marshal: %w", err)
 	}
+	return atomicWriteFile(path, data, "registry file")
+}
 
+// atomicWriteFile writes data to path using write-tmp + fsync + rename.
+// The fsync ensures data reaches stable storage before the rename makes it
+// visible, preventing corruption if the OS crashes between write and rename.
+// The prefix is used in error messages for context.
+func atomicWriteFile(path string, data []byte, prefix string) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "registry_*.tmp")
+	tmp, err := os.CreateTemp(dir, "atomic_*.tmp")
 	if err != nil {
-		return fmt.Errorf("registry file: create temp: %w", err)
+		return fmt.Errorf("%s: create temp: %w", prefix, err)
 	}
 	tmpName := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return fmt.Errorf("registry file: write temp: %w", err)
+		return fmt.Errorf("%s: write temp: %w", prefix, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("%s: sync temp: %w", prefix, err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return fmt.Errorf("registry file: close temp: %w", err)
+		return fmt.Errorf("%s: close temp: %w", prefix, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
-		return fmt.Errorf("registry file: rename: %w", err)
+		return fmt.Errorf("%s: rename: %w", prefix, err)
 	}
 	return nil
 }

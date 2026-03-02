@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,15 +42,15 @@ type TieredStoreConfig struct {
 // eventShard wraps a BadgerStore with metadata for an event shard.
 type eventShard struct {
 	name       string
-	store      *BadgerStore   // nil when cold + closed (lazy-open)
+	store      *BadgerStore // nil when cold + closed (lazy-open)
 	tier       ShardTier
-	timeStart  time.Time      // shard window start (inclusive)
-	timeEnd    time.Time      // shard window end (exclusive)
-	readOnly   bool           // warm/cold shards are read-only
-	path       string         // relative path for lazy-open (e.g., "events/2026-W10")
-	shardMu    sync.Mutex     // protects lazy open/close
-	activeReqs atomic.Int64   // outstanding read requests; blocks idle-close
-	lastAccess atomic.Int64   // unix ms, idle-close tracking
+	timeStart  time.Time    // shard window start (inclusive)
+	timeEnd    time.Time    // shard window end (exclusive)
+	readOnly   bool         // warm/cold shards are read-only
+	path       string       // relative path for lazy-open (e.g., "events/2026-W10")
+	shardMu    sync.Mutex   // protects lazy open/close
+	activeReqs atomic.Int64 // outstanding read requests; blocks idle-close
+	lastAccess atomic.Int64 // unix ms, idle-close tracking
 }
 
 // getStore returns the BadgerStore for this shard, lazily opening it if cold.
@@ -77,13 +78,33 @@ func (es *eventShard) getStore(ts *TieredStore) (*BadgerStore, error) {
 // checkoutStore returns the BadgerStore and increments activeReqs to prevent
 // idle-close from closing the store while the caller is still using it.
 // Caller must call checkinStore() when done (typically via defer).
+//
+// For hot/warm shards: zero overhead (direct pointer return + atomic increment).
+// For cold shards: acquires shardMu, opens if nil, increments activeReqs while
+// still holding the lock to prevent TOCTOU race with closeIdleShards.
 func (es *eventShard) checkoutStore(ts *TieredStore) (*BadgerStore, error) {
-	store, err := es.getStore(ts)
-	if err != nil {
-		return nil, err
+	if es.tier != TierCold {
+		// Hot/warm: stores are always open, never closed by idle-close.
+		es.activeReqs.Add(1)
+		es.lastAccess.Store(time.Now().UnixMilli())
+		return es.store, nil
+	}
+	// Cold shard: acquire shardMu to atomically open + increment activeReqs.
+	// This prevents closeIdleShards from closing the store between open and
+	// the activeReqs increment (the v3.0.30 TOCTOU bug).
+	es.shardMu.Lock()
+	if es.store == nil {
+		store, err := ts.openBadgerStore(es.path, true) // ReadOnly
+		if err != nil {
+			es.shardMu.Unlock()
+			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
+		}
+		es.store = store
 	}
 	es.activeReqs.Add(1)
 	es.lastAccess.Store(time.Now().UnixMilli())
+	store := es.store
+	es.shardMu.Unlock()
 	return store, nil
 }
 
@@ -100,12 +121,12 @@ func (es *eventShard) checkinStore() {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type TieredStore struct {
-	mu          sync.RWMutex            // protects hotShard + eventShards during rotation
-	refShard    *BadgerStore            // reference shard (always hot)
-	refArchive  *BadgerStore            // nil until first archive/restore or DepthAll with archive catalog
-	archiveMu   sync.Mutex              // protects lazy-open of refArchive
-	eventShards map[string]*eventShard  // name -> event shard
-	hotShard    *eventShard             // convenience pointer to current hot shard
+	mu          sync.RWMutex           // protects hotShard + eventShards during rotation
+	refShard    *BadgerStore           // reference shard (always hot)
+	refArchive  *BadgerStore           // nil until first archive/restore or DepthAll with archive catalog
+	archiveMu   sync.Mutex             // protects lazy-open of refArchive
+	eventShards map[string]*eventShard // name -> event shard
+	hotShard    *eventShard            // convenience pointer to current hot shard
 	ontology    *OntologyMapping
 	catalog     *ShardCatalog
 	regFile     string // path to registry.msgpack
@@ -256,6 +277,12 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 			warmReadOnly := !cfg.InMemory
 			warmStore, err := ts.openBadgerStore(entry.Path, warmReadOnly)
 			if err != nil {
+				// Clean up already-opened warm shards to prevent file handle leaks.
+				for _, es := range ts.eventShards {
+					if es.store != nil {
+						_ = es.store.Close()
+					}
+				}
 				_ = hotStore.Close()
 				_ = refStore.Close()
 				return nil, fmt.Errorf("graph: open warm shard %s: %w", entry.Name, err)
@@ -315,7 +342,7 @@ func (ts *TieredStore) Close() error {
 		// Save catalog.
 		if !ts.inMemory && ts.catalog != nil {
 			if err := ts.catalog.Save(); err != nil {
-				closeErr = fmt.Errorf("graph: save catalog on close: %w", err)
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save catalog on close: %w", err))
 			}
 		}
 
@@ -323,7 +350,7 @@ func (ts *TieredStore) Close() error {
 		for _, es := range ts.eventShards {
 			if es.store != nil {
 				if err := es.store.Close(); err != nil {
-					closeErr = fmt.Errorf("graph: close event shard %s: %w", es.name, err)
+					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
 			}
 		}
@@ -331,14 +358,14 @@ func (ts *TieredStore) Close() error {
 		// Close reference archive if open.
 		if ts.refArchive != nil {
 			if err := ts.refArchive.Close(); err != nil {
-				closeErr = fmt.Errorf("graph: close ref archive: %w", err)
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w", err))
 			}
 		}
 
 		// Close reference shard.
 		if ts.refShard != nil {
 			if err := ts.refShard.Close(); err != nil {
-				closeErr = fmt.Errorf("graph: close ref shard: %w", err)
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w", err))
 			}
 		}
 	})
@@ -654,7 +681,19 @@ func (ts *TieredStore) eventShardSnapshot(depth ShardDepth) []*eventShard {
 
 // --- Registry file integration ---
 
+// SaveRegistries persists both registries atomically to the registry file.
+// Writing both halves in a single call eliminates the read-modify-write race
+// that existed when SaveLabelRegistry and SaveRelTypeRegistry were separate.
+func (ts *TieredStore) SaveRegistries(labelReg *labelRegistry, relTypeReg *relTypeRegistry) error {
+	if ts.inMemory {
+		return nil
+	}
+	return saveRegistryFile(ts.regFile, labelReg.ExportNames(), relTypeReg.ExportNames())
+}
+
 // SaveLabelRegistry persists the label registry to the registry file.
+// Deprecated: use SaveRegistries to avoid read-modify-write race.
+// Kept for backward compatibility with single-registry callers.
 func (ts *TieredStore) SaveLabelRegistry(reg *labelRegistry) error {
 	if ts.inMemory {
 		return nil
@@ -688,6 +727,8 @@ func (ts *TieredStore) LoadLabelRegistry(reg *labelRegistry) (int, error) {
 }
 
 // SaveRelTypeRegistry persists the reltype registry to the registry file.
+// Deprecated: use SaveRegistries to avoid read-modify-write race.
+// Kept for backward compatibility with single-registry callers.
 func (ts *TieredStore) SaveRelTypeRegistry(reg *relTypeRegistry) error {
 	if ts.inMemory {
 		return nil

@@ -6,12 +6,12 @@ import "encoding/binary"
 // All snowflake IDs are stored as big-endian uint64 (cast from int64) for correct
 // sort order. Tokens are stored as big-endian uint16.
 const (
-	keyNode    byte = 0x01 // + 8B nodeID                              =  9B
-	keyRel     byte = 0x02 // + 8B relID                               =  9B
-	keyLabel   byte = 0x03 // + 2B labelToken + 8B nodeID              = 11B
-	keyRelType byte = 0x04 // + 2B relTypeToken + 8B relID             = 11B
-	keyOut     byte = 0x05 // + 8B start + 2B type + 8B end + 8B rel   = 27B
-	keyIn      byte = 0x06 // + 8B end + 2B type + 8B start + 8B rel   = 27B
+	keyNode     byte = 0x01 // + 8B nodeID                              =  9B
+	keyRel      byte = 0x02 // + 8B relID                               =  9B
+	keyLabel    byte = 0x03 // + 2B labelToken + 8B nodeID              = 11B
+	keyRelType  byte = 0x04 // + 2B relTypeToken + 8B relID             = 11B
+	keyOut      byte = 0x05 // + 8B start + 2B type + 8B end + 8B rel   = 27B
+	keyIn       byte = 0x06 // + 8B end + 2B type + 8B start + 8B rel   = 27B
 	keyHistNode byte = 0x07 // + 8B nodeID + 8B version              = 17B
 	keyHistRel  byte = 0x08 // + 8B relID + 8B version               = 17B
 	keyMeta     byte = 0x0F // + variable (rare, only registry keys)

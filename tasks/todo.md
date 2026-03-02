@@ -2,7 +2,43 @@
 
 ## Status
 
-Library at v3.0.31. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented. v3.0.30: 5 bug fixes (idleCloseLoop race via checkout/checkin, shardForRelID cold skip, ArchiveNode/RestoreNode rollback, CreatePropertyIndex dirty-map tracking, BatchBuilder canonical label hash). v3.0.31: OOM fix — lazy ForEach iterators for temporal pipeline (~83% memory reduction).
+Library at v3.0.33. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented. v3.0.30: 5 bug fixes (idleCloseLoop race via checkout/checkin, shardForRelID cold skip, ArchiveNode/RestoreNode rollback, CreatePropertyIndex dirty-map tracking, BatchBuilder canonical label hash). v3.0.31: OOM fix — lazy ForEach iterators for temporal pipeline (~83% memory reduction). v3.0.32: ImportNodeWithID/ImportRelationshipWithID + GraphTx wrappers. v3.0.33: Pre-release code review fixes (1 BLOCKER + 10 MAJORs + 16 MINORs).
+
+---
+
+## v3.0.33 — Pre-Release Code Review Fixes
+
+### BLOCKER
+- [x] checkoutStore TOCTOU race — activeReqs increment outside shardMu
+
+### MAJORs
+- [x] M1: Missing fsync in shard_catalog.go + registry_file.go (crash data loss)
+- [x] M2: Registry save read-modify-write race (SaveRegistries atomic method)
+- [x] M3: ShardCatalog thread safety (sync.RWMutex)
+- [x] M4: append(outRels, inRels...) backing array corruption in context.go + tx.go
+- [x] M5: ReplaceNode property index cleanup on cache miss (badgerstore.go)
+- [x] M7: Float %v formatting in property_index.go (strconv.FormatFloat)
+- [x] M8: NodesByLabel hot-shard-only for event labels (fan-out)
+- [x] M9: Constructor warm shard leak on error (cleanup loop)
+- [x] M10: TieredStore.Close() loses errors (errors.Join)
+
+### MINORs (16)
+- [x] m1: Remove `_ = attempt` in context.go
+- [x] m2: `result.Failed += 1` → `result.Failed++` in batch.go
+- [x] m3: Document Execute returns (result, nil) in batch.go
+- [x] m6: Add doc comment "BatchBuilder is not safe for concurrent use"
+- [x] m4: Define ErrNotTieredStore sentinel in graph.go
+- [x] m7: Add slog.Error in persistPropertyIndexDefs
+- [x] m8: Distinguish ErrNodeNotFound from real errors in property scan
+- [x] m9: Move contains() to test file
+- [x] m11: Remove redundant archiveWritten/refWritten guards
+- [x] m12: Remove dead code ColdEventShards/AddLabel/AddRelType
+- [x] m13: Fix tkg_version comment in shadow.go
+- [x] m14: Document ValidStart+ValidEnd requirement in temporal_filter.go
+- [x] m15: Add panic("unreachable") in writePropertyValue default
+- [x] m16: Add pagination in MigrateFromBadger
+
+---
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 

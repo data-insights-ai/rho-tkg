@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.31 | Phases: 1a-1g, 2a-2i, 3a-3e
+Status: v3.0.33 | Phases: 1a-1g, 2a-2i, 3a-3e
 
 ## Build & Test Commands
 
@@ -74,7 +74,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations, string resolution, `Close()` lifecycle |
+| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
 | `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
@@ -94,12 +94,12 @@ These rules exist because every single one was violated at least once. Do not sk
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
 | `ontology.go` | `EntityClass` — classifies labels as reference or event for shard routing |
-| `shard_catalog.go` | JSON-persisted catalog of all shards with atomic write |
-| `registry_file.go` | Flat msgpack registry file save/load with atomic rename |
+| `shard_catalog.go` | JSON-persisted catalog of all shards with `sync.RWMutex`, atomic write via `atomicWriteFile` |
+| `registry_file.go` | Flat msgpack registry file save/load with `atomicWriteFile` (fsync before rename) |
 | `badgerstore_partial.go` | Unexported helpers for TieredStore cross-shard relationship routing |
-| `tieredstore.go` | Routes entities across ref shard + time-windowed event shards by ontology |
+| `tieredstore.go` | Routes entities across ref shard + time-windowed event shards; atomic `checkoutStore` for cold shards; `SaveRegistries` for atomic label+reltype persistence |
 | `tieredstore_write.go` | TieredStore writes — cross-shard split-write, archive/restore, batch partitioning |
-| `tieredstore_read.go` | TieredStore reads — ref probe + timestamp fallback, parallel merge queries, sequential ForEach |
+| `tieredstore_read.go` | TieredStore reads — ref probe + timestamp fallback, parallel merge queries, event label fan-out for NodesByLabel, sequential ForEach |
 | `tieredstore_admin.go` | Admin API: `ForceRotate`, `ListShards`, `RebuildCatalog`, `VerifyShard` |
 | `tieredstore_repair.go` | Cross-shard split-write consistency repair (orphaned/missing in/ entries) |
 | `tieredstore_migrate.go` | `MigrateFromBadger` — copy from single BadgerStore to TieredStore |

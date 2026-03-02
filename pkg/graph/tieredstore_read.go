@@ -71,9 +71,47 @@ func (ts *TieredStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relat
 // --- Label/type queries ---
 
 func (ts *TieredStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
-	// Single-shard by label classification.
-	shard := ts.shardForNode(token)
-	return shard.NodesByLabel(token, opts)
+	if ts.ontology.ClassifyByToken(token) == ClassReference {
+		return ts.refShard.NodesByLabel(token, stripDepth(opts))
+	}
+	// Event label: fan out across all event shards matching depth.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].nodes, results[i].err = store.NodesByLabel(token, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Node
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
+		}
+	}
+
+	merged := mergeNodeSlices(slices)
+	return applyNodePagination(merged, opts), nil
 }
 
 func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
@@ -325,9 +363,28 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 }
 
 func (ts *TieredStore) NodeCountByLabel(token uint16) (int, error) {
-	// Single-shard by label classification.
-	shard := ts.shardForNode(token)
-	return shard.NodeCountByLabel(token)
+	if ts.ontology.ClassifyByToken(token) == ClassReference {
+		return ts.refShard.NodeCountByLabel(token)
+	}
+	// Event label: sum across all event shards.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	total := 0
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return 0, err
+		}
+		n, err := store.NodeCountByLabel(token)
+		es.checkinStore()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
 }
 
 func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
@@ -360,8 +417,47 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 // --- Property indexes ---
 
 func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
-	shard := ts.shardForNode(labelToken)
-	return shard.NodesByLabelAndProperty(labelToken, key, value, opts)
+	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
+		return ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	}
+	// Event label: fan out across all event shards matching depth.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Node
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
+		}
+	}
+
+	merged := mergeNodeSlices(slices)
+	return applyNodePagination(merged, opts), nil
 }
 
 // --- ID enumeration ---

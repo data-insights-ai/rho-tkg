@@ -14,9 +14,10 @@ import (
 
 // Sentinel errors for entity management.
 var (
-	ErrNoLabels = errors.New("graph: node requires at least one label")
-	ErrNilNode  = errors.New("graph: node must not be nil")
-	ErrZeroID   = errors.New("graph: zero ID is not valid for import")
+	ErrNoLabels       = errors.New("graph: node requires at least one label")
+	ErrNilNode        = errors.New("graph: node must not be nil")
+	ErrZeroID         = errors.New("graph: zero ID is not valid for import")
+	ErrNotTieredStore = errors.New("graph: operation requires TieredStore")
 )
 
 // Sentinel errors for validation limits.
@@ -226,11 +227,8 @@ func (g *Graph) Close() error {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
 			}
 		case *TieredStore:
-			if err := s.SaveLabelRegistry(g.labels); err != nil {
-				closeErr = fmt.Errorf("graph: save label registry: %w", err)
-			}
-			if err := s.SaveRelTypeRegistry(g.relTypes); err != nil {
-				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
+			if err := s.SaveRegistries(g.labels, g.relTypes); err != nil {
+				closeErr = fmt.Errorf("graph: save registries: %w", err)
 			}
 		}
 		// Always close the store — even if registry saves failed.
@@ -629,7 +627,7 @@ func (g *Graph) ArchiveNode(id snowflake.ID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.ArchiveNode(id)
 	}
-	return fmt.Errorf("graph: ArchiveNode requires TieredStore")
+	return ErrNotTieredStore
 }
 
 // RestoreNode moves a reference node and its relationships from the reference
@@ -639,7 +637,7 @@ func (g *Graph) RestoreNode(id snowflake.ID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.RestoreNode(id)
 	}
-	return fmt.Errorf("graph: RestoreNode requires TieredStore")
+	return ErrNotTieredStore
 }
 
 // DecomposeID extracts the creation time, node ID, and sequence number from
@@ -653,7 +651,7 @@ func (g *Graph) ForceRotate() error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.ForceRotate()
 	}
-	return fmt.Errorf("graph: ForceRotate requires TieredStore")
+	return ErrNotTieredStore
 }
 
 // ListShards returns information about all shards. Only available with TieredStore.
@@ -661,7 +659,7 @@ func (g *Graph) ListShards() ([]ShardInfo, error) {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.ListShards(), nil
 	}
-	return nil, fmt.Errorf("graph: ListShards requires TieredStore")
+	return nil, ErrNotTieredStore
 }
 
 // RebuildCatalog reconstructs the shard catalog from live state.
@@ -670,7 +668,7 @@ func (g *Graph) RebuildCatalog() error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.RebuildCatalog()
 	}
-	return fmt.Errorf("graph: RebuildCatalog requires TieredStore")
+	return ErrNotTieredStore
 }
 
 // RunRepair scans for cross-shard consistency issues and fixes them.
@@ -679,7 +677,7 @@ func (g *Graph) RunRepair() (*RepairResult, error) {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.RunRepair()
 	}
-	return nil, fmt.Errorf("graph: RunRepair requires TieredStore")
+	return nil, ErrNotTieredStore
 }
 
 // VerifyShard runs hash chain verification on all entities in a shard.
@@ -688,7 +686,7 @@ func (g *Graph) VerifyShard(shardName string) (*VerifyResult, error) {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.VerifyShard(g, shardName)
 	}
-	return nil, fmt.Errorf("graph: VerifyShard requires TieredStore")
+	return nil, ErrNotTieredStore
 }
 
 // Reset atomically clears all entities, indexes, history, and counters from

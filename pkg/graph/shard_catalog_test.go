@@ -15,13 +15,13 @@ func TestShardCatalog_SaveLoadRoundTrip(t *testing.T) {
 	now := time.Now().Truncate(time.Second) // JSON loses sub-second precision in some configs.
 
 	sc.AddShard(ShardEntry{
-		Name:      "reference",
-		Kind:      ShardReference,
-		Tier:      TierHot,
-		Path:      "data/reference",
-		Labels:    []string{"Case", "User"},
-		RelTypes:  []string{},
-		Verified:  true,
+		Name:     "reference",
+		Kind:     ShardReference,
+		Tier:     TierHot,
+		Path:     "data/reference",
+		Labels:   []string{"Case", "User"},
+		RelTypes: []string{},
+		Verified: true,
 	})
 	sc.AddShard(ShardEntry{
 		Name:      "2026-W09",

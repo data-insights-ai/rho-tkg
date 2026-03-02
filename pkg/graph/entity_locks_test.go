@@ -24,8 +24,8 @@ func TestEntityLockManagerLockTwoDifferentShards(t *testing.T) {
 
 	// Choose IDs that map to different shards. shardIndex uses bits 22-29
 	// (low 8 bits of the timestamp field), so shift values above bit 22.
-	a := snowflake.ID(0 << 22)   // shard 0
-	b := snowflake.ID(1 << 22)   // shard 1
+	a := snowflake.ID(0 << 22) // shard 0
+	b := snowflake.ID(1 << 22) // shard 1
 
 	lm.LockTwo(a, b)
 	lm.UnlockTwo(a, b)

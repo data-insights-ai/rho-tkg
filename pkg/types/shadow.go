@@ -24,7 +24,7 @@ const (
 	// Provenance
 	ShadowCreatedBy = "tkg_created_by" // Both: string
 	ShadowUpdatedBy = "tkg_updated_by" // Both: string
-	ShadowVersion   = "tkg_version"    // Both: int
+	ShadowVersion   = "tkg_version"    // Both: uint32
 
 	// Integrity
 	ShadowHash     = "tkg_hash"      // Both: string

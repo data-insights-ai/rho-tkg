@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"strconv"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -60,17 +61,6 @@ func (pi *propertyIndex) remove(id snowflake.ID, value any) {
 	}
 }
 
-// contains returns true if the given node ID exists in any value bucket.
-// Used during index creation to avoid overwriting entries from concurrent writes.
-func (pi *propertyIndex) contains(id snowflake.ID) bool {
-	for _, idSet := range pi.entries {
-		if _, ok := idSet[id]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 // lookup returns the set of node IDs matching the given value.
 // Returns nil if no matches.
 func (pi *propertyIndex) lookup(value any) map[snowflake.ID]struct{} {
@@ -109,9 +99,9 @@ func propertyValueKey(v any) string {
 	case uint64:
 		return fmt.Sprintf("u64:%d", val)
 	case float32:
-		return fmt.Sprintf("f32:%v", val)
+		return "f32:" + strconv.FormatFloat(float64(val), 'g', -1, 32)
 	case float64:
-		return fmt.Sprintf("f64:%v", val)
+		return "f64:" + strconv.FormatFloat(val, 'g', -1, 64)
 	case bool:
 		if val {
 			return "b:true"

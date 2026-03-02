@@ -232,7 +232,10 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 	// Deduplicate self-loop rels and deep copy all.
 	seen := make(map[snowflake.ID]bool)
 	var relCopies []*types.Relationship
-	for _, r := range append(outRels, inRels...) {
+	allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
+	allRels = append(allRels, outRels...)
+	allRels = append(allRels, inRels...)
+	for _, r := range allRels {
 		rid := r.InternalID().SnowflakeID()
 		if seen[rid] {
 			continue

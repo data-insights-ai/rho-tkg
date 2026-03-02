@@ -1,10 +1,17 @@
 package graph
 
-import "fmt"
+import (
+	"fmt"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+)
 
 // MigrateFromBadger copies all nodes and relationships from a single BadgerStore
 // into a TieredStore. Entities are routed by the TieredStore's ontology — reference
 // labels go to refShard, event labels go to the hot event shard.
+//
+// Uses paginated iteration (ForEachNodeID + GetNode) instead of materializing all
+// entities into memory, making it safe for large graphs.
 //
 // No history migration: hash chains would need re-creation. This handles the 95%
 // case of migrating a single-BadgerStore deployment to tiered layout.
@@ -15,26 +22,43 @@ func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *labelRegistry
 	// Wire ontology for routing.
 	dst.SetLabelRegistry(labels)
 
-	// Migrate all nodes.
-	nodes, err := src.AllNodes(QueryOpts{})
-	if err != nil {
-		return fmt.Errorf("graph: migrate: read nodes: %w", err)
-	}
-	for _, n := range nodes {
-		if err := dst.PutNode(n); err != nil {
-			return fmt.Errorf("graph: migrate: put node %d: %w", n.InternalID().SnowflakeID(), err)
+	// Migrate nodes one at a time via ForEachNodeID.
+	var migrateErr error
+	if err := src.ForEachNodeID(func(id snowflake.ID) bool {
+		n, err := src.GetNode(id)
+		if err != nil {
+			migrateErr = fmt.Errorf("graph: migrate: get node %d: %w", id, err)
+			return false
 		}
+		if err := dst.PutNode(n); err != nil {
+			migrateErr = fmt.Errorf("graph: migrate: put node %d: %w", id, err)
+			return false
+		}
+		return true
+	}); err != nil {
+		return fmt.Errorf("graph: migrate: iterate nodes: %w", err)
+	}
+	if migrateErr != nil {
+		return migrateErr
 	}
 
-	// Migrate all relationships.
-	rels, err := src.AllRelationships(QueryOpts{})
-	if err != nil {
-		return fmt.Errorf("graph: migrate: read rels: %w", err)
-	}
-	for _, r := range rels {
-		if err := dst.PutRelationship(r); err != nil {
-			return fmt.Errorf("graph: migrate: put rel %d: %w", r.InternalID().SnowflakeID(), err)
+	// Migrate relationships one at a time via ForEachRelID.
+	if err := src.ForEachRelID(func(id snowflake.ID) bool {
+		r, err := src.GetRelationship(id)
+		if err != nil {
+			migrateErr = fmt.Errorf("graph: migrate: get rel %d: %w", id, err)
+			return false
 		}
+		if err := dst.PutRelationship(r); err != nil {
+			migrateErr = fmt.Errorf("graph: migrate: put rel %d: %w", id, err)
+			return false
+		}
+		return true
+	}); err != nil {
+		return fmt.Errorf("graph: migrate: iterate rels: %w", err)
+	}
+	if migrateErr != nil {
+		return migrateErr
 	}
 
 	return nil

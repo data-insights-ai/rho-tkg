@@ -329,8 +329,9 @@ func writePropertyValue(h hash.Hash, v any) {
 			mustWriteString(h, val[k])
 		}
 	default:
-		// Unknown type: write nothing beyond the tag.
-		// This case should not be reachable because PropertySlice.Set()
-		// validates types at insertion via the allowlist.
+		// PropertySlice.Set() validates types at insertion via the allowlist,
+		// so this case should never be reached. Panic to surface any future
+		// allowlist changes that add a type without a matching hash branch.
+		panic("graph: writePropertyValue: unreachable type in hash computation")
 	}
 }

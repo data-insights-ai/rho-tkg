@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.33] - 2026-03-02
+
+### Fixed (Pre-Release Code Review — 1 BLOCKER + 10 MAJORs + 16 MINORs)
+
+**BLOCKER:**
+- **checkoutStore TOCTOU race** — `activeReqs` increment moved inside `shardMu` for cold shards, eliminating race window between `getStore` return and ref-count increment that allowed `closeIdleShards` to close an in-use store.
+
+**MAJORs:**
+- **Atomic file persistence** — `atomicWriteFile` helper with `fsync` before rename in `shard_catalog.go` and `registry_file.go`. Prevents crash-induced corruption of catalog and registry files.
+- **Registry save race** — new `SaveRegistries(labels, relTypes)` writes both registries atomically in a single file operation, eliminating read-modify-write race between `SaveLabelRegistry` and `SaveRelTypeRegistry`.
+- **ShardCatalog thread safety** — added `sync.RWMutex` to `ShardCatalog`. All read methods take RLock, all write methods take Lock. `GetShard`/`HotEventShard` return copies instead of internal pointers.
+- **append backing array corruption** — replaced `append(outRels, inRels...)` with explicit allocation in `context.go` and `tx.go` to prevent writing into spare capacity of the `outRels` slice.
+- **ReplaceNode property index cleanup** — added `purgeNodeFromAllPropertyIndexes` fallback in `badgerstore.go` when `getNodeLocked` fails during Replace, preventing orphaned property index entries.
+- **Float formatting precision** — replaced `fmt.Sprintf("%v")` with `strconv.FormatFloat` for float32/float64 in `property_index.go`, ensuring deterministic round-trip-safe index keys.
+- **NodesByLabel event label fan-out** — `NodesByLabel`, `NodesByLabelAndProperty`, and `NodeCountByLabel` now fan out across all event shards (respecting `opts.Depth`), not just the hot shard.
+- **Constructor warm shard leak** — added cleanup loop in `NewTieredStore` to close already-opened warm shard stores when a subsequent warm shard fails to open.
+- **TieredStore.Close() error accumulation** — replaced `closeErr = fmt.Errorf(...)` with `errors.Join` so all close errors are reported, not just the last one.
+
+**MINORs:**
+- Removed unused `_ = attempt` variable in `context.go` retry loop
+- `result.Failed += 1` → `result.Failed++` in `batch.go`
+- Documented `Execute` return pattern and thread-safety in `batch.go`
+- Defined `ErrNotTieredStore` sentinel, replaced 7 ad-hoc `fmt.Errorf` strings in `graph.go`
+- Added `slog.Error` in `persistPropertyIndexDefs` for marshal failures
+- Distinguished `ErrNodeNotFound` from real errors in property scan fallback
+- Moved test-only `contains()` from `property_index.go` to `property_index_test.go`
+- Removed redundant `archiveWritten`/`refWritten` guard variables in `tieredstore_write.go`
+- Fixed `tkg_version` comment: `int` → `uint32` in `pkg/types/shadow.go`
+- Documented `ValidStart+ValidEnd` both-required for interval filtering in `temporal_filter.go`
+- Added `panic("unreachable")` in `writePropertyValue` default case in `integrity.go`
+- Rewrote `MigrateFromBadger` to use `ForEachNodeID`/`ForEachRelID` pagination instead of materializing all entities
+
+## [3.0.32] - 2026-03-02
+
+### Added
+
+- **`ImportNodeWithID(ctx, id, labels, props)`** — creates a node with a caller-specified snowflake ID. Returns `ErrNodeExists` if the ID is already in use, `ErrZeroID` if id == 0. Used for backup/restore where ID preservation is required.
+- **`ImportRelationshipWithID(ctx, id, typeName, startNode, endNode, props)`** — creates a relationship with a caller-specified snowflake ID. Returns `ErrRelExists` on collision.
+- **`GraphTx.ImportNodeWithID` / `GraphTx.ImportRelationshipWithID`** — transaction wrappers for both import methods, tracked for rollback.
+- **`ErrZeroID`** — new sentinel error for zero ID validation in import methods.
+- 8 new tests in `import_test.go`: basic, collision, zero ID, validation, rel import, tx commit, tx rollback.
+
 ## [3.0.31] - 2026-03-02
 
 ### Added (OOM Fix — Lazy ForEach Iterators for Temporal Pipeline)

@@ -403,7 +403,6 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	if err := ts.refArchive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
-	archiveWritten := true
 
 	for _, r := range rels {
 		// PutRelationship validates endpoint existence. If the other endpoint
@@ -422,10 +421,8 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 
 	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
 	if err := ts.refShard.DeleteNodeCascade(id); err != nil {
-		if archiveWritten {
-			// Best-effort rollback: remove data from archive since source delete failed.
-			_ = ts.refArchive.DeleteNodeCascade(id)
-		}
+		// Best-effort rollback: remove data from archive since source delete failed.
+		_ = ts.refArchive.DeleteNodeCascade(id)
 		return fmt.Errorf("graph: archive delete from ref: %w", err)
 	}
 
@@ -486,7 +483,6 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	if err := ts.refShard.PutNode(node); err != nil {
 		return fmt.Errorf("graph: restore write node: %w", err)
 	}
-	refWritten := true
 
 	for _, r := range rels {
 		err := ts.refShard.PutRelationship(r)
@@ -502,10 +498,8 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 
 	// 6. Delete from archive.
 	if err := ts.refArchive.DeleteNodeCascade(id); err != nil {
-		if refWritten {
-			// Best-effort rollback: remove data from refShard since archive delete failed.
-			_ = ts.refShard.DeleteNodeCascade(id)
-		}
+		// Best-effort rollback: remove data from refShard since archive delete failed.
+		_ = ts.refShard.DeleteNodeCascade(id)
 		return fmt.Errorf("graph: restore delete from archive: %w", err)
 	}
 

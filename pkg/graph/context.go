@@ -178,8 +178,7 @@ func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) erro
 	}
 
 	const maxRetries = 10
-	for attempt := range maxRetries {
-		_ = attempt
+	for range maxRetries {
 
 		// Phase A: read under node lock only.
 		g.entityLocks.LockEntity(id)
@@ -282,7 +281,9 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 
 	// Save tombstone for all connected relationships first.
 	seen := make(map[snowflake.ID]struct{})
-	allRels := append(outRels, inRels...)
+	allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
+	allRels = append(allRels, outRels...)
+	allRels = append(allRels, inRels...)
 	for _, r := range allRels {
 		rid := r.InternalID().SnowflakeID()
 		if _, ok := seen[rid]; ok {

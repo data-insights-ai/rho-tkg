@@ -13,6 +13,9 @@ import (
 // when Execute is called. Partial success is possible — individual
 // operation failures are collected in BatchResult.Errors.
 //
+// BatchBuilder is not safe for concurrent use. All Add/Update/Delete/Execute
+// calls must be serialized by the caller.
+//
 // Execute order: create nodes → create rels → update nodes → update rels →
 // delete rels → delete nodes. Nodes before rels (endpoints must exist),
 // deletes last (don't delete something that's about to be updated).
@@ -223,8 +226,9 @@ func (b *BatchBuilder) DeleteRelationship(id snowflake.ID) {
 // lock endpoints per-rel via LockTwo. Updates and deletes use existing Graph
 // methods (handles version history, entity locks, cascade).
 //
-// Returns a BatchResult with counts and per-operation errors. A nil error
-// means the batch completed (possibly with partial failures tracked in result).
+// Returns (result, nil) always — individual operation failures are tracked
+// in result.Errors, not returned as the error. The error return is reserved
+// for catastrophic failures that prevent the batch from starting.
 func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.g.mu.Lock()
 	defer b.g.mu.Unlock()
@@ -241,7 +245,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		if err := b.g.store.PutNodesBatch(nodes); err != nil {
 			// All node creates failed.
 			for _, pn := range b.nodes {
-				result.Failed += 1
+				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
 					ID:  pn.node.InternalID().SnowflakeID(),

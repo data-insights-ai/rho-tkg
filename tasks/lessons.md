@@ -186,7 +186,16 @@ E->R: ref shard in/ first. R->E: entity shard first. Verify both endpoints exist
 
 ```
 BAD:  store, _ := es.getStore(ts); store.AllNodes(opts)       // race with idle-close
-GOOD: store, _ := es.checkoutStore(ts); defer es.checkinStore()
+
+ALSO BAD:  // v3.0.30 fix was incomplete
+      func checkoutStore(ts) { store := getStore(ts); activeReqs.Add(1) }
+      // getStore releases shardMu, then activeReqs increments AFTER — TOCTOU gap
+
+GOOD: func checkoutStore(ts) {
+        shardMu.Lock()
+        // open store if nil, increment activeReqs, snapshot pointer — all under lock
+        shardMu.Unlock()
+      }
 ```
 
 ## B18. Shard Rotation: Boundary Alignment + Catalog Sync
@@ -205,6 +214,28 @@ Update both `eventShard.timeEnd` AND `ShardEntry.TimeEnd` on rotation.
 ```
 BAD:  shardForClass(ClassEvent).PutRelationship(r)  // always hot shard
 GOOD: shardForNodeID(startID)                        // actual shard via timestamp
+```
+
+## B20. Atomic File Persistence: Sync Before Rename
+
+```
+BAD:  tmp.Write(data); tmp.Close(); os.Rename(tmp, final)
+      // crash before OS writeback = corrupt final file
+
+GOOD: tmp.Write(data); tmp.Sync(); tmp.Close(); os.Rename(tmp, final)
+      // Sync forces data to stable storage before rename
+```
+
+Audit: `grep -rn 'os.Rename' pkg/` — every write-tmp+rename must have Sync() between Write and Close.
+
+## B21. Registry Save Must Be Atomic Across Both Halves
+
+```
+BAD:  // SaveLabelRegistry: load file, replace labels, save
+      // SaveRelTypeRegistry: load file, replace relTypes, save
+      // concurrent call → last writer wins, other half is stale
+
+GOOD: // Single SaveRegistries(labels, relTypes) call writes both atomically
 ```
 
 ---
