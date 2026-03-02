@@ -2,9 +2,13 @@ package graph
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
 func newTestGraph(t *testing.T) *Graph {
@@ -482,5 +486,113 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	v, _ := updated.GetProperty("name")
 	if v != "Bob" {
 		t.Errorf("name = %v, want Bob (partial failure should not roll back successes)", v)
+	}
+}
+
+// --- Fix 5: Batch vs Snapshot isolation tests ---
+
+func TestBatchExecuteBlocksSnapshot(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	// Create 50 nodes via batch. Concurrent Snapshot must see 0 or all 50.
+	const batchSize = 50
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	errCh := make(chan error, 1)
+
+	// Goroutine 1: execute batch.
+	go func() {
+		defer wg.Done()
+		b := NewBatchBuilder(g)
+		for range batchSize {
+			_, err := b.AddNode([]string{"Item"}, nil)
+			if err != nil {
+				errCh <- err
+				return
+			}
+		}
+		_, err := b.Execute()
+		if err != nil {
+			errCh <- err
+		}
+	}()
+
+	// Goroutine 2: take snapshots repeatedly.
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			snap, err := g.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
+			if err != nil {
+				continue
+			}
+			// Snapshot must see either 0 or batchSize nodes — never a partial batch.
+			if snap.NodeCount != 0 && snap.NodeCount != batchSize {
+				errCh <- fmt.Errorf("snapshot saw %d nodes, expected 0 or %d (torn read)", snap.NodeCount, batchSize)
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+}
+
+func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	const batches = 5
+	const nodesPerBatch = 10
+	const snapshotters = 3
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, batches+snapshotters)
+
+	// Launch batch goroutines.
+	for range batches {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			b := NewBatchBuilder(g)
+			for range nodesPerBatch {
+				if _, err := b.AddNode([]string{"Stress"}, nil); err != nil {
+					errCh <- err
+					return
+				}
+			}
+			if _, err := b.Execute(); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	// Launch snapshot goroutines.
+	for range snapshotters {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 20 {
+				snap, err := g.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
+				if err != nil {
+					continue
+				}
+				// Node count must be a multiple of nodesPerBatch (each batch is atomic).
+				if snap.NodeCount%nodesPerBatch != 0 {
+					errCh <- fmt.Errorf("snapshot saw %d nodes, not a multiple of %d", snap.NodeCount, nodesPerBatch)
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
 	}
 }

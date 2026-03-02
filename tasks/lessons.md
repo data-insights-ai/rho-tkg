@@ -230,7 +230,8 @@ Concurrent AddRelationship + DeleteNode.
 ## 11. Concurrency Patterns
 
 - **sync.Once** for idempotent `Close()`. Never nil-guard a function pointer across goroutines.
-- **Ascending shard order** for multi-lock acquisition. `LockTwo` normalizes before acquiring.
+- **Ascending shard order** for multi-lock acquisition. `LockTwo` normalizes before acquiring. `LockMany` deduplicates shards, sorts ascending, unlocks in reverse order.
+- **TOCTOU retry for dynamic lock sets.** When the set of entities to lock is discovered dynamically (e.g., node's adjacency list), re-verify after acquiring locks. Adjacency can change between discovery and locking. Phase A: read under narrow lock. Phase B: lock all, re-verify, retry if changed.
 - **Atomic counters** outside Badger transactions. OCC conflicts kill concurrent writes.
 - **Counters in the same WriteBatch** as data. Separate transactions = crash inconsistency.
 - **Version-aware dirty tracking.** `CollectDirty()` is read-only. `MarkFlushed()` is CAS.
@@ -326,3 +327,77 @@ GOOD: func GetNodesValidAt(t) {
           }
       }
 ```
+
+---
+
+## 18. Every Mutation Path Needs Entity Locks
+
+If a method mutates entity state (delete, update, create with shared endpoints), it MUST
+lock the entity. This seems obvious but was missed for `DeleteRelationshipWithContext` —
+the only mutation method without an entity lock. Audit checklist: grep for every method
+that calls a Store write method. If there's no `LockEntity`/`LockTwo`/`LockMany` before it,
+that's a data corruption bug under concurrency.
+
+```
+BAD:  func DeleteRelationshipWithContext(ctx, id) {
+          current, _ := store.GetRelationship(id)  // unlocked read
+          store.DeleteRelationship(id)               // unlocked write
+          // Concurrent UpdateRelationship reads stale data → corrupted version chain
+      }
+
+GOOD: func DeleteRelationshipWithContext(ctx, id) {
+          g.entityLocks.LockEntity(id)
+          defer g.entityLocks.UnlockEntity(id)
+          current, _ := store.GetRelationship(id)  // locked read
+          store.DeleteRelationship(id)               // locked write
+      }
+```
+
+---
+
+## 19. Corruption Paths Must Clean All Indexes
+
+When a corruption fallback skips entity data (because it's unavailable), it must still
+clean ALL indexes — not just the ones it can clean cheaply. The normal delete path uses
+the entity to target specific index entries. The corruption path can't do that, so
+brute-force purge is acceptable. Leaving stale entries in any index (label, property,
+adjacency) causes phantom results in queries.
+
+```
+BAD:  // Corruption path: node data unavailable
+      cleanLabelIndexes(id)      // ✓ brute-force scan
+      // property indexes? skipped — "we don't have the node data"
+      // Result: phantom entries in property index forever
+
+GOOD: // Corruption path: node data unavailable
+      cleanLabelIndexes(id)                          // ✓
+      purgeNodeFromAllPropertyIndexes(indexes, id)   // ✓ brute-force O(V) — acceptable for corruption
+      // All indexes clean, no phantom entries
+```
+
+---
+
+## 20. sync.RWMutex Is Not Reentrant
+
+Go's `sync.RWMutex` is NOT reentrant. If method A holds `RLock` and calls method B which
+also calls `RLock`, and a writer is waiting between the two `RLock` calls, deadlock occurs.
+Go's RWMutex gives priority to waiting writers — the second RLock blocks behind the writer,
+which blocks behind the first RLock. Solution: only the outermost method acquires the lock;
+inner methods must be lock-free.
+
+```
+BAD:  func Snapshot(t) {           // holds RLock
+          g.mu.RLock()
+          nodes := GetNodesValidAt(t)  // also tries RLock → deadlock if writer waiting
+          g.mu.RUnlock()
+      }
+
+GOOD: func Snapshot(t) {           // only outer method locks
+          g.mu.RLock()
+          defer g.mu.RUnlock()
+          nodes := GetNodesValidAt(t)  // does NOT acquire g.mu — lock-free
+      }
+      // GetNodesValidAt is callable both locked (from Snapshot) and unlocked (standalone)
+```
+
+This means: design internal methods to be lock-agnostic. The caller decides the lock scope.

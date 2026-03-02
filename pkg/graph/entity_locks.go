@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"sort"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -69,4 +70,35 @@ func (lm *entityLockManager) UnlockTwo(a, b snowflake.ID) {
 	}
 	lm.shards[sb].Unlock()
 	lm.shards[sa].Unlock()
+}
+
+// LockMany acquires locks for multiple entities in ascending shard order (deadlock-free).
+// Deduplicates shard indices so each shard is locked at most once.
+func (lm *entityLockManager) LockMany(ids []snowflake.ID) {
+	shards := lm.uniqueSortedShards(ids)
+	for _, s := range shards {
+		lm.shards[s].Lock()
+	}
+}
+
+// UnlockMany releases locks for multiple entities in reverse shard order.
+func (lm *entityLockManager) UnlockMany(ids []snowflake.ID) {
+	shards := lm.uniqueSortedShards(ids)
+	for i := len(shards) - 1; i >= 0; i-- {
+		lm.shards[shards[i]].Unlock()
+	}
+}
+
+// uniqueSortedShards returns the deduplicated, ascending-sorted shard indices for ids.
+func (lm *entityLockManager) uniqueSortedShards(ids []snowflake.ID) []uint8 {
+	seen := make(map[uint8]struct{}, len(ids))
+	for _, id := range ids {
+		seen[shardIndex(id)] = struct{}{}
+	}
+	shards := make([]uint8, 0, len(seen))
+	for s := range seen {
+		shards = append(shards, s)
+	}
+	sort.Slice(shards, func(i, j int) bool { return shards[i] < shards[j] })
+	return shards
 }

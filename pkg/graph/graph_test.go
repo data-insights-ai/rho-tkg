@@ -572,7 +572,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Animal"}, nil)
 
-	persons, err := g.NodesByLabel("Person")
+	persons, err := g.NodesByLabel("Person", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 		t.Fatalf("NodesByLabel(\"Person\") = %d, want 2", len(persons))
 	}
 
-	animals, err := g.NodesByLabel("Animal")
+	animals, err := g.NodesByLabel("Animal", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 	}
 
 	// Unregistered label.
-	unknown, err := g.NodesByLabel("Robot")
+	unknown, err := g.NodesByLabel("Robot", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +609,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 	g.AddRelationship("KNOWS", nB, nA, nil)
 	g.AddRelationship("LIKES", nA, nB, nil)
 
-	knows, err := g.RelationshipsByType("KNOWS")
+	knows, err := g.RelationshipsByType("KNOWS", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -617,7 +617,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 		t.Fatalf("RelationshipsByType(\"KNOWS\") = %d, want 2", len(knows))
 	}
 
-	likes, err := g.RelationshipsByType("LIKES")
+	likes, err := g.RelationshipsByType("LIKES", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 		t.Fatalf("RelationshipsByType(\"LIKES\") = %d, want 1", len(likes))
 	}
 
-	unknown, err := g.RelationshipsByType("HATES")
+	unknown, err := g.RelationshipsByType("HATES", QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2848,7 +2848,7 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 
 			for i := range opsPerWorker {
 				// Query.
-				g.NodesByLabel("Hub")
+				g.NodesByLabel("Hub", QueryOpts{})
 
 				// Update.
 				g.UpdateNode(wn.InternalID().SnowflakeID(), map[string]any{"iter": int64(i)})
@@ -2884,7 +2884,7 @@ func TestGraphAllNodes(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.AddNode([]string{"City"}, map[string]any{"name": "Vienna"})
 
-	got, err := g.AllNodes()
+	got, err := g.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -2897,7 +2897,7 @@ func TestGraphAllNodesEmpty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	got, err := g.AllNodes()
+	got, err := g.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -2916,7 +2916,7 @@ func TestGraphAllRels(t *testing.T) {
 	g.AddRelationship("KNOWS", nA, nB, nil)
 	g.AddRelationship("LIKES", nB, nC, nil)
 
-	got, err := g.AllRelationships()
+	got, err := g.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -2929,7 +2929,7 @@ func TestGraphAllRelsEmpty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	got, err := g.AllRelationships()
+	got, err := g.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3888,7 +3888,7 @@ func TestMemStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3908,7 +3908,7 @@ func TestMemStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Bob")
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Bob", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3925,7 +3925,7 @@ func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 
 	// No index — should fall back to scan.
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3942,7 +3942,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	g.CreatePropertyIndex("Person", "name")
 
 	// Verify index finds Alice.
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after add: expected 1, got %d", len(nodes))
 	}
@@ -3952,13 +3952,13 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value should be gone.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after update: old value still found, got %d", len(nodes))
 	}
 
 	// New value should be found.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after update: new value not found, got %d", len(nodes))
 	}
@@ -3966,7 +3966,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	// Delete the node.
 	g.DeleteNode(id)
 
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
@@ -4019,7 +4019,7 @@ func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4035,7 +4035,7 @@ func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Charlie")
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Charlie", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4048,7 +4048,7 @@ func TestGraphNodesByLabelAndProperty_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	nodes, err := g.NodesByLabelAndProperty("Unknown", "name", "Alice")
+	nodes, err := g.NodesByLabelAndProperty("Unknown", "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4066,12 +4066,12 @@ func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 2 {
 		t.Fatalf("expected 2 Alices, got %d", len(nodes))
 	}
 
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Bob")
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Bob", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 Bob, got %d", len(nodes))
 	}
@@ -4088,13 +4088,13 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value gone.
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("old value still found: %d", len(nodes))
 	}
 
 	// New value present.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("new value not found: %d", len(nodes))
 	}
@@ -4109,7 +4109,7 @@ func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
 
 	g.DeleteNode(n.InternalID().SnowflakeID())
 
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("deleted node still in index: %d", len(nodes))
 	}

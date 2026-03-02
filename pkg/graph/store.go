@@ -7,6 +7,19 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
+// QueryOpts controls pagination and temporal filtering for unbounded query methods.
+// Zero values mean "return all" — backward-compatible with existing callers.
+type QueryOpts struct {
+	Limit int          // Max results. 0 = no limit.
+	After snowflake.ID // Return entities with ID > After. 0 = from start.
+
+	// Temporal filters — zero values = no filter (backward-compatible).
+	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.
+	ValidAt    types.Instant // Point-in-time filter. 0 = disabled.
+	ValidStart types.Instant // Interval filter start. Both must be > 0 for interval filter.
+	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
+}
+
 // Store is the persistence contract for the graph layer.
 // Implementations handle entity storage and index maintenance.
 // Keys are snowflake.ID — the bridge from opaque entity IDs.
@@ -24,16 +37,16 @@ type Store interface {
 	DeleteRelationship(id snowflake.ID) error
 
 	// Index queries
-	NodesByLabel(token uint16) ([]*types.Node, error)
-	RelationshipsByType(token uint16) ([]*types.Relationship, error)
+	NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error)
+	RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error)
 
 	// Adjacency queries — token 0 means "all types"
 	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 
 	// Bulk queries
-	AllNodes() ([]*types.Node, error)
-	AllRelationships() ([]*types.Relationship, error)
+	AllNodes(opts QueryOpts) ([]*types.Node, error)
+	AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)
 	GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)
 
@@ -81,7 +94,15 @@ type Store interface {
 	DropPropertyIndex(labelToken uint16, propertyKey string) error
 	// NodesByLabelAndProperty returns nodes matching the label and property value.
 	// Uses the index if one exists; falls back to label scan + property filter otherwise.
-	NodesByLabelAndProperty(labelToken uint16, key string, value any) ([]*types.Node, error)
+	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
+
+	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
+	// Returns only IDs — no entity deserialization or deep copy.
+	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)
+
+	// AllRelIDs returns the IDs of all current relationships, with optional pagination.
+	// Returns only IDs — no entity deserialization or deep copy.
+	AllRelIDs(opts QueryOpts) ([]snowflake.ID, error)
 
 	// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 	// This includes deleted nodes whose history was preserved.

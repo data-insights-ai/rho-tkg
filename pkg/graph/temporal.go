@@ -142,23 +142,13 @@ func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship,
 
 // GetNodesByLabelValidAt returns all nodes with the given label that are valid
 // at the given instant. Returns nil if the label is not registered.
+// Uses temporal query push-down — the Store filters before deep-copy.
 func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	nodes, err := g.store.NodesByLabel(tok)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*types.Node
-	for _, n := range nodes {
-		if g.isNodeValidAt(n, t) {
-			result = append(result, n)
-		}
-	}
-	return result, nil
+	return g.store.NodesByLabel(tok, QueryOpts{ValidAt: t})
 }
 
 // GetNodesValidDuring returns all nodes whose validity overlaps [start, end).
@@ -391,14 +381,16 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 // --- Private helpers for history-aware queries ---
 
 // allKnownNodeIDs returns the union of current node IDs and history node IDs.
+// Uses AllNodeIDs (ID-only, no entity deserialization) instead of AllNodes
+// to avoid O(N) deep-copy waste when only IDs are needed.
 func (g *Graph) allKnownNodeIDs() (map[snowflake.ID]struct{}, error) {
-	all, err := g.store.AllNodes()
+	currentIDs, err := g.store.AllNodeIDs(QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
-	ids := make(map[snowflake.ID]struct{}, len(all))
-	for _, n := range all {
-		ids[n.InternalID().SnowflakeID()] = struct{}{}
+	ids := make(map[snowflake.ID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		ids[id] = struct{}{}
 	}
 
 	histIDs, err := g.store.AllNodeHistoryIDs()
@@ -413,14 +405,15 @@ func (g *Graph) allKnownNodeIDs() (map[snowflake.ID]struct{}, error) {
 }
 
 // allKnownRelIDs returns the union of current relationship IDs and history relationship IDs.
+// Uses AllRelIDs (ID-only, no entity deserialization) instead of AllRelationships.
 func (g *Graph) allKnownRelIDs() (map[snowflake.ID]struct{}, error) {
-	all, err := g.store.AllRelationships()
+	currentIDs, err := g.store.AllRelIDs(QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
-	ids := make(map[snowflake.ID]struct{}, len(all))
-	for _, r := range all {
-		ids[r.InternalID().SnowflakeID()] = struct{}{}
+	ids := make(map[snowflake.ID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		ids[id] = struct{}{}
 	}
 
 	histIDs, err := g.store.AllRelHistoryIDs()
@@ -554,7 +547,11 @@ func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*ty
 
 // Snapshot returns a complete graph state at the given instant.
 // Relationships are only included if both endpoints are valid at t.
+// Acquires g.mu.RLock to prevent torn reads from concurrent Batch execution.
 func (g *Graph) Snapshot(t types.Instant) (*GraphSnapshot, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
 	nodes, err := g.GetNodesValidAt(t)
 	if err != nil {
 		return nil, err
@@ -588,4 +585,52 @@ func (g *Graph) Snapshot(t types.Instant) (*GraphSnapshot, error) {
 		NodeCount:     len(nodes),
 		RelCount:      len(rels),
 	}, nil
+}
+
+// --- Combined label + property + temporal queries ---
+
+// NodesByLabelPropertyAndTime returns nodes matching the label and property value
+// that are valid at the given instant. Composes the property index (or fallback
+// scan) with temporal filtering. Returns nil if the label is not registered.
+func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t types.Instant) ([]*types.Node, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+
+	candidates, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*types.Node
+	for _, n := range candidates {
+		if g.isNodeValidAt(n, t) {
+			result = append(result, n)
+		}
+	}
+	return result, nil
+}
+
+// NodesByLabelPropertyDuring returns nodes matching the label and property value
+// whose validity overlaps [start, end). Composes the property index (or fallback
+// scan) with temporal interval filtering. Returns nil if the label is not registered.
+func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+
+	candidates, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*types.Node
+	for _, n := range candidates {
+		if g.isNodeValidDuring(n, start, end) {
+			result = append(result, n)
+		}
+	}
+	return result, nil
 }

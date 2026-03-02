@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
@@ -504,6 +505,154 @@ func TestCheckCtxBackground(t *testing.T) {
 	t.Parallel()
 	if err := checkCtx(context.Background()); err != nil {
 		t.Fatalf("checkCtx(Background) = %v, want nil", err)
+	}
+}
+
+// --- Fix 1: DeleteRelationshipWithContext entity lock tests ---
+
+func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, _ := g.AddNode([]string{"A"}, nil)
+	b, _ := g.AddNode([]string{"B"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"count": 0})
+	rID := r.InternalID().SnowflakeID()
+
+	// Concurrent delete + update on same rel. Under -race, this would fail
+	// without the entity lock in DeleteRelationshipWithContext.
+	const goroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			if idx%2 == 0 {
+				_ = g.DeleteRelationshipWithContext(context.Background(), rID)
+			} else {
+				_, _ = g.UpdateRelationshipWithContext(context.Background(), rID, map[string]any{"count": idx})
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Rel should be gone (at least one delete succeeded).
+	_, err := g.GetRelationship(rID)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound after concurrent delete, got %v", err)
+	}
+}
+
+func TestDeleteRelWithContext_ConcurrentUpdate(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, _ := g.AddNode([]string{"A"}, nil)
+	b, _ := g.AddNode([]string{"B"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": 1})
+	rID := r.InternalID().SnowflakeID()
+
+	// Delete wins, rel is gone, tombstone version exists.
+	err := g.DeleteRelationshipWithContext(context.Background(), rID)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	// Verify deleted.
+	_, err = g.GetRelationship(rID)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+
+	// Verify tombstone history preserved.
+	hist, err := g.GetRelHistory(rID)
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(hist) == 0 {
+		t.Fatal("expected tombstone version in history")
+	}
+	last := hist[len(hist)-1]
+	if tm := last.Temporal(); tm == nil || tm.DeletedAt == 0 {
+		t.Fatal("last version should have DeletedAt set (tombstone)")
+	}
+}
+
+// --- Fix 3: DeleteNodeWithContext relationship lock tests ---
+
+func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, _ := g.AddNode([]string{"A"}, nil)
+	b, _ := g.AddNode([]string{"B"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": 0})
+	aID := a.InternalID().SnowflakeID()
+	rID := r.InternalID().SnowflakeID()
+
+	// Concurrent delete node + update connected rel — race detector catches issues.
+	const goroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			if idx == 0 {
+				_ = g.DeleteNodeWithContext(context.Background(), aID)
+			} else {
+				_, _ = g.UpdateRelationshipWithContext(context.Background(), rID, map[string]any{"v": idx})
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Node and rel should be gone.
+	_, err := g.GetNode(aID)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+	_, err = g.GetRelationship(rID)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+}
+
+func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, _ := g.AddNode([]string{"A"}, nil)
+	b, _ := g.AddNode([]string{"B"}, nil)
+	aID := a.InternalID().SnowflakeID()
+
+	// Pre-create some rels.
+	for range 5 {
+		_, _ = g.AddRelationship("EDGE", a, b, nil)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Goroutine 1: delete node (cascade deletes all rels).
+	go func() {
+		defer wg.Done()
+		_ = g.DeleteNodeWithContext(context.Background(), aID)
+	}()
+
+	// Goroutine 2: try to add more rels while delete is happening.
+	go func() {
+		defer wg.Done()
+		for range 10 {
+			_, _ = g.AddRelationship("EDGE", a, b, nil)
+		}
+	}()
+
+	wg.Wait()
+
+	// Node should be gone.
+	_, err := g.GetNode(aID)
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
 }
 

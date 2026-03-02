@@ -90,6 +90,7 @@ type Graph struct {
 	store       Store
 	entityLocks *entityLockManager
 	validation  ValidationLimits
+	mu          sync.RWMutex // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
 }
 
@@ -425,24 +426,24 @@ func (g *Graph) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
 	return g.GetRelationshipWithContext(context.Background(), id)
 }
 
-// NodesByLabel returns all nodes with the given label (resolved from string).
-// Returns nil if the label is not registered.
-func (g *Graph) NodesByLabel(label string) ([]*types.Node, error) {
+// NodesByLabel returns nodes with the given label (resolved from string),
+// with optional pagination. Returns nil if the label is not registered.
+func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.NodesByLabel(tok)
+	return g.store.NodesByLabel(tok, opts)
 }
 
-// RelationshipsByType returns all relationships with the given type (resolved from string).
-// Returns nil if the type is not registered.
-func (g *Graph) RelationshipsByType(typeName string) ([]*types.Relationship, error) {
+// RelationshipsByType returns relationships with the given type (resolved from string),
+// with optional pagination. Returns nil if the type is not registered.
+func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.Relationship, error) {
 	tok, ok := g.relTypes.Lookup(typeName)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.RelationshipsByType(tok)
+	return g.store.RelationshipsByType(tok, opts)
 }
 
 // OutgoingRelationships returns all outgoing relationships from the given node.
@@ -485,11 +486,13 @@ func (g *Graph) RelationshipCount() (int, error) {
 	return g.store.RelationshipCount()
 }
 
-// AllNodes returns all nodes in the store.
-func (g *Graph) AllNodes() ([]*types.Node, error) { return g.store.AllNodes() }
+// AllNodes returns all nodes in the store, with optional pagination.
+func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) { return g.store.AllNodes(opts) }
 
-// AllRelationships returns all relationships in the store.
-func (g *Graph) AllRelationships() ([]*types.Relationship, error) { return g.store.AllRelationships() }
+// AllRelationships returns all relationships in the store, with optional pagination.
+func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+	return g.store.AllRelationships(opts)
+}
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.
 func (g *Graph) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
@@ -585,12 +588,13 @@ func (g *Graph) DropPropertyIndex(label, propertyKey string) error {
 	return g.store.DropPropertyIndex(tok, propertyKey)
 }
 
-// NodesByLabelAndProperty returns nodes matching the label and property value.
-// Resolves the label name to a token. Returns nil if the label is not registered.
-func (g *Graph) NodesByLabelAndProperty(label, key string, value any) ([]*types.Node, error) {
+// NodesByLabelAndProperty returns nodes matching the label and property value,
+// with optional pagination. Resolves the label name to a token.
+// Returns nil if the label is not registered.
+func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.NodesByLabelAndProperty(tok, key, value)
+	return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 }

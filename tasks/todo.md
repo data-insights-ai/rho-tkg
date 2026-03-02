@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.23. Phases 1a-1g and 2a-2e complete. Phase 2 review (6 issues) resolved.
+Library at v3.0.25. Phases 1a-1g and 2a-2g complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Two Store interface extensions identified from tkgd-v3 integration: temporal query push-down and transaction rollback.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -242,6 +242,95 @@ Complete. Implemented in v3.0.23.
 - [x] **Fix 1**: Temporal queries history-aware — `GetNodesValidAt`/`GetRelationshipsValidAt`/`GetNodesValidDuring`/`GetRelationshipsValidDuring`/`Snapshot` now include deleted entities; added `GetRelAt`, `AllNodeHistoryIDs`/`AllRelHistoryIDs` Store methods
 
 **~19 new tests**, all pass with race detector. Coverage 89.7%.
+
+### 2f. Cursor-Based Pagination ✓
+
+Complete. Addresses tkgd-v3 Issue 6 — `NodesByLabel("Person")` on a million-node graph allocates 1M deep copies.
+
+**Design:** `QueryOpts{Limit, After}` parameter added to 5 unbounded Store methods. Zero values mean "return all" (backward-compatible). Keyset cursor using `snowflake.ID`.
+
+**Store interface changes:**
+- [x] `NodesByLabel(token, opts QueryOpts)` — paginated
+- [x] `RelationshipsByType(token, opts QueryOpts)` — paginated
+- [x] `AllNodes(opts QueryOpts)` — paginated
+- [x] `AllRelationships(opts QueryOpts)` — paginated
+- [x] `NodesByLabelAndProperty(token, key, value, opts QueryOpts)` — paginated
+
+**Implementation:**
+- [x] `QueryOpts` struct in `store.go`
+- [x] `paginateIDs` shared helper (`pagination.go`) — binary search cursor, sort-before-fetch
+- [x] MemoryStore: 5 methods refactored to sort IDs → paginate → deep-copy subset only
+- [x] BadgerStore: 5 methods refactored with sort+paginate; `NodesByLabelAndProperty` lock scope fixed (snapshot-and-release pattern, early-stop on fallback scan)
+- [x] Graph layer: 5 passthrough methods gain `QueryOpts` parameter
+- [x] All internal callers pass `QueryOpts{}` (temporal.go, tutorials)
+
+**~30 tests total:** 8 paginateIDs unit tests, 8 MemoryStore integration (limit, multi-page walk, zero opts, indexed/fallback property query), 8 BadgerStore integration (mirrored), 3 Graph-layer. All pass with race detector.
+
+### 2g. Combined Label+Property+Temporal Queries ✓
+
+Complete. Addresses tkgd-v3 Issue 7 — finding "Person nodes named Alice valid at time T" required two calls plus Go-side filtering.
+
+**New Graph methods:**
+- [x] `NodesByLabelPropertyAndTime(label, key, value, t)` — intersects property index with point-in-time filter
+- [x] `NodesByLabelPropertyDuring(label, key, value, start, end)` — intersects property index with interval filter
+
+**7 tests:** found (all axes match), property mismatch, temporal mismatch, unregistered label, with property index, interval overlap, no overlap.
+
+### 2h. Architectural Fixes (5 Issues) ✓
+
+Complete. Implemented in v3.0.25.
+
+5 issues found during post-Phase-2 review, resolved in order 3 → 1 → 2 → 4 → 5:
+
+- [x] **Fix 1 (Issue #3)**: `DeleteRelationshipWithContext` missing entity lock — added `LockEntity`/`UnlockEntity` (2-line fix in `context.go`)
+- [x] **Fix 2 (Issue #1)**: `allKnownNodeIDs` O(N) deep-copy waste — added `AllNodeIDs`/`AllRelIDs` to Store interface (MemoryStore + BadgerStore), rewrote temporal helpers to use ID-only queries
+- [x] **Fix 3 (Issue #2)**: `DeleteNodeWithContext` missing relationship locks — added `LockMany`/`UnlockMany` to entity lock manager, rewrote delete with two-phase locking + TOCTOU retry
+- [x] **Fix 4 (Issue #4)**: Cascade corruption fallback skips property index cleanup — added `purgeNodeFromAllPropertyIndexes` brute-force purge helper, called in BadgerStore corruption path
+- [x] **Fix 5 (Issue #5)**: Snapshot vs Batch torn reads — added graph-level `sync.RWMutex`, Batch acquires write lock, Snapshot acquires read lock
+
+**25 new tests**, all pass with race detector. Coverage 89.6%.
+
+---
+
+## Store Interface Extensions (from tkgd-v3 integration)
+
+Gaps identified during tkgd-v3 development. Not blockers for Phase 3 tiering,
+but required for correct multi-step mutations and efficient temporal queries
+at the server layer.
+
+### 2h. Temporal Query Push-Down
+
+**Problem**: Every temporal query materializes all candidates, deep-copies them, then filters in Go. `GetNodesByLabelValidAt("Person", t)` with 100K "Person" nodes but 50 valid at time `t` deserializes all 100K (violates lesson #5). `Snapshot(t)` on a 5M-entity graph materializes everything.
+
+**Current state**: `QueryOpts` has `{Limit, After}` only — no temporal filter fields. The 5 paginated Store methods and 2 combined queries (`NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`) all fetch full candidate sets before Graph-layer temporal filtering.
+
+**Proposed**:
+- [ ] Add temporal filter fields to `QueryOpts` (`ValidAt types.Instant`, `ValidFrom types.Instant`, `ValidUntil types.Instant`)
+- [ ] MemoryStore: skip deep-copy for non-matching entities (check `TemporalMetadata` before copy)
+- [ ] BadgerStore: skip msgpack decode for entities outside temporal window (read `TemporalMetadata` prefix before full deserialization, or use in-memory index)
+- [ ] Refactor `GetNodesByLabelValidAt`, `GetNodesValidAt`, `GetNodesValidDuring`, `Snapshot` to delegate temporal filtering to Store via `QueryOpts`
+- [ ] Update `GetRelationshipsValidAt`, `GetRelationshipsValidDuring` similarly
+- [ ] Maintain backward compatibility: zero temporal fields = no filtering (current behavior)
+
+**Effort**: Medium | **Impact**: High for large graphs
+**Boundary semantics**: Must align with existing `isNodeValidAt` / `isNodeValidDuring` — `validFrom <= t AND (validTo == 0 OR validTo > t)` for point-in-time, interval overlap for range queries.
+
+### 2i. Transaction Rollback
+
+**Problem**: `BatchBuilder.Execute()` has partial-success semantics. If step 3 (update) fails after steps 1-2 (creates) succeeded, the creates persist with no rollback. Multi-step operations like Cypher `CREATE` or graph import can't undo committed mutations on later failure. `Graph.Reset()` isn't atomic.
+
+**Current state**: Atomicity is per-operation only. Individual Store methods (`PutNodesBatch`, `DeleteNodeCascade`, `ReplaceNodeWithHistory`) are all-or-nothing, but there's no cross-operation transaction boundary. The Store interface has no `BeginTx` / `Commit` / `Rollback`.
+
+**Proposed**:
+- [ ] Add `BeginTx() (Tx, error)`, `Tx.Commit() error`, `Tx.Rollback() error` to Store interface
+- [ ] MemoryStore: snapshot-and-restore (copy-on-write or journal-based undo log)
+- [ ] BadgerStore: leverage Badger's native `DB.NewTransaction()` or WAL-based undo log over the pending buffer
+- [ ] Graph-layer `BeginTx` / `Commit` / `Rollback` that wraps Store transactions + entity lock scope
+- [ ] `BatchBuilder` option to run within a transaction (all-or-nothing Execute)
+- [ ] Define isolation level: read-committed (default, simplest) vs snapshot isolation
+
+**Effort**: High | **Impact**: High for correctness of multi-step mutations
+**Design constraint**: Must not break async flush model in BadgerStore. Transaction scope must interact correctly with entity locks (locks held for duration of tx, or optimistic with conflict detection).
 
 ---
 

@@ -239,7 +239,7 @@ func main() {
 	start = time.Now()
 	for i := range labelQueryCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		nodes, err := gQuery.NodesByLabel(label)
+		nodes, err := gQuery.NodesByLabel(label, graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}

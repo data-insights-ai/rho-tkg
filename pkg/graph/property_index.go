@@ -121,6 +121,22 @@ func addNodeToPropertyIndexes(indexes map[propertyIndexKey]*propertyIndex, n *ty
 	}
 }
 
+// purgeNodeFromAllPropertyIndexes removes a node ID from every value set in
+// every property index. Brute-force O(V) fallback used when the node's data
+// is unavailable (corruption path). The normal path uses removeNodeFromPropertyIndexes
+// which is O(L*P) but requires the node object.
+// Caller must hold the store's write lock.
+func purgeNodeFromAllPropertyIndexes(indexes map[propertyIndexKey]*propertyIndex, id snowflake.ID) {
+	for _, idx := range indexes {
+		for valKey, idSet := range idx.entries {
+			delete(idSet, id)
+			if len(idSet) == 0 {
+				delete(idx.entries, valKey)
+			}
+		}
+	}
+}
+
 // removeNodeFromPropertyIndexes removes a node's properties from all matching property indexes.
 // Caller must hold the store's write lock.
 func removeNodeFromPropertyIndexes(indexes map[propertyIndexKey]*propertyIndex, n *types.Node, id snowflake.ID) {

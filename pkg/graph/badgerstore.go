@@ -854,9 +854,9 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 // --- Index queries ---
 
-// NodesByLabel returns all nodes with the given label token.
-// Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
+// NodesByLabel returns nodes with the given label token, with optional pagination
+// and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	set := bs.labelIdx[token]
 	ids := make([]snowflake.ID, 0, len(set))
@@ -869,25 +869,22 @@ func (bs *BadgerStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 		return nil, nil
 	}
 
-	nodes := make([]*types.Node, 0, len(ids))
-	for _, id := range ids {
-		n, err := bs.GetNode(id)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue // index orphan or tombstone
-			}
-			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
-		}
-		nodes = append(nodes, n)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter via Peek (zero allocation for cache hits).
+	ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	sortNodesByID(nodes)
-	return nodes, nil
+	return bs.fetchNodesWithTemporalFilter(ids, opts)
 }
 
-// RelationshipsByType returns all relationships with the given type token.
-// Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
+// RelationshipsByType returns relationships with the given type token, with optional pagination
+// and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
 	bs.idxMu.RLock()
 	set := bs.typeIdx[token]
 	ids := make([]snowflake.ID, 0, len(set))
@@ -900,20 +897,17 @@ func (bs *BadgerStore) RelationshipsByType(token uint16) ([]*types.Relationship,
 		return nil, nil
 	}
 
-	rels := make([]*types.Relationship, 0, len(ids))
-	for _, id := range ids {
-		r, err := bs.GetRelationship(id)
-		if err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue // index orphan or tombstone
-			}
-			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
-		}
-		rels = append(rels, r)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter via Peek.
+	ids = bs.filterRelIDsByTemporalPeek(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	sortRelsByID(rels)
-	return rels, nil
+	return bs.fetchRelsWithTemporalFilter(ids, opts)
 }
 
 // --- Adjacency queries ---
@@ -988,10 +982,10 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 
 // --- Bulk queries ---
 
-// AllNodes returns all stored nodes.
-// Snapshot nodeIDs under lock, then fetch each via GetNode.
+// AllNodes returns all stored nodes, with optional pagination and temporal filtering.
+// Snapshot nodeIDs under lock, sort + paginate, then fetch via GetNode.
 // Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) AllNodes() ([]*types.Node, error) {
+func (bs *BadgerStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	ids := make([]snowflake.ID, 0, len(bs.nodeIDs))
 	for id := range bs.nodeIDs {
@@ -1003,26 +997,23 @@ func (bs *BadgerStore) AllNodes() ([]*types.Node, error) {
 		return nil, nil
 	}
 
-	nodes := make([]*types.Node, 0, len(ids))
-	for _, id := range ids {
-		n, err := bs.GetNode(id)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue
-			}
-			return nil, fmt.Errorf("graph: all nodes %d: %w", id, err)
-		}
-		nodes = append(nodes, n)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter via Peek.
+	ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	sortNodesByID(nodes)
-	return nodes, nil
+	return bs.fetchNodesWithTemporalFilter(ids, opts)
 }
 
-// AllRelationships returns all stored relationships.
-// Snapshot relIDs under lock, then fetch each via GetRelationship.
-// Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) AllRelationships() ([]*types.Relationship, error) {
+// AllRelationships returns all stored relationships, with optional pagination
+// and temporal filtering. Snapshot relIDs under lock, sort + paginate, then
+// fetch via GetRelationship. Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	bs.idxMu.RLock()
 	ids := make([]snowflake.ID, 0, len(bs.relIDs))
 	for id := range bs.relIDs {
@@ -1034,20 +1025,17 @@ func (bs *BadgerStore) AllRelationships() ([]*types.Relationship, error) {
 		return nil, nil
 	}
 
-	rels := make([]*types.Relationship, 0, len(ids))
-	for _, id := range ids {
-		r, err := bs.GetRelationship(id)
-		if err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue
-			}
-			return nil, fmt.Errorf("graph: all relationships %d: %w", id, err)
-		}
-		rels = append(rels, r)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter via Peek.
+	ids = bs.filterRelIDsByTemporalPeek(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
 	}
 
-	sortRelsByID(rels)
-	return rels, nil
+	return bs.fetchRelsWithTemporalFilter(ids, opts)
 }
 
 // GetNodesByIDs returns nodes matching the given IDs.
@@ -1180,6 +1168,9 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
+		// Property indexes: node data unavailable, brute-force purge.
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, id)
 		bs.appendOps(ops...)
@@ -2137,52 +2128,83 @@ func (bs *BadgerStore) loadNodeFromBadger(txn *badger.Txn, id snowflake.ID) (*ty
 	return n, err
 }
 
-// NodesByLabelAndProperty returns nodes matching the label and property value.
-// Uses the property index if one exists; falls back to label scan + property filter.
+// NodesByLabelAndProperty returns nodes matching the label and property value,
+// with optional temporal filtering. Uses the property index if one exists;
+// falls back to label scan + property filter.
 // Results are sorted by snowflake.ID for deterministic output.
-func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any) ([]*types.Node, error) {
+func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	// Snapshot matching IDs under RLock, then release before entity I/O.
 	bs.idxMu.RLock()
-	defer bs.idxMu.RUnlock()
-
 	key := propertyIndexKey{labelToken: labelToken, propertyKey: propKey}
+	var ids []snowflake.ID
+
 	if idx, ok := bs.propertyIndexes[key]; ok {
-		// Indexed path.
-		nodeIDs := idx.lookup(value)
-		if len(nodeIDs) == 0 {
+		// Indexed path: snapshot matching IDs.
+		matchSet := idx.lookup(value)
+		if len(matchSet) == 0 {
+			bs.idxMu.RUnlock()
 			return nil, nil
 		}
-		result := make([]*types.Node, 0, len(nodeIDs))
-		for id := range nodeIDs {
-			n, err := bs.getNodeLocked(id)
-			if err != nil {
-				continue
-			}
-			result = append(result, n.DeepCopy())
+		ids = make([]snowflake.ID, 0, len(matchSet))
+		for id := range matchSet {
+			ids = append(ids, id)
 		}
-		sortNodesByID(result)
-		return result, nil
+		bs.idxMu.RUnlock()
+
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+		// Temporal pre-filter via Peek.
+		ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+
+		ids = paginateIDs(ids, opts.After, opts.Limit)
+		if len(ids) == 0 {
+			return nil, nil
+		}
+
+		return bs.fetchNodesWithTemporalFilter(ids, opts)
 	}
 
-	// Fallback: label scan + property filter.
-	nodeIDs := bs.labelIdx[labelToken]
-	if len(nodeIDs) == 0 {
+	// Fallback: snapshot label IDs, release lock, then scan properties.
+	labelIDs := bs.labelIdx[labelToken]
+	if len(labelIDs) == 0 {
+		bs.idxMu.RUnlock()
 		return nil, nil
 	}
+
+	ids = make([]snowflake.ID, 0, len(labelIDs))
+	for id := range labelIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
 
 	targetKey := propertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
 
+	// Sort label IDs, apply cursor skip, scan in order for property matches.
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = paginateIDs(ids, opts.After, 0) // apply cursor, not limit yet
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 	var result []*types.Node
-	for id := range nodeIDs {
-		n, err := bs.getNodeLocked(id)
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
 		if err != nil {
 			continue
 		}
 		if v, found := n.GetProperty(propKey); found {
 			if propertyValueKey(v) == targetKey {
-				result = append(result, n.DeepCopy())
+				if hasTemporal && !matchesTemporalFilter(id, n.Temporal(), opts) {
+					continue
+				}
+				result = append(result, n)
+				if opts.Limit > 0 && len(result) >= opts.Limit {
+					break
+				}
 			}
 		}
 	}
@@ -2190,8 +2212,51 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	if len(result) == 0 {
 		return nil, nil
 	}
-	sortNodesByID(result)
 	return result, nil
+}
+
+// --- ID-only queries ---
+
+// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
+// Returns only IDs — no entity deserialization or deep copy. O(N) in nodeIDs map size.
+func (bs *BadgerStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
+	bs.idxMu.RLock()
+	ids := make([]snowflake.ID, 0, len(bs.nodeIDs))
+	for id := range bs.nodeIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
+}
+
+// AllRelIDs returns the IDs of all current relationships, with optional pagination.
+// Returns only IDs — no entity deserialization or deep copy. O(N) in relIDs map size.
+func (bs *BadgerStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
+	bs.idxMu.RLock()
+	ids := make([]snowflake.ID, 0, len(bs.relIDs))
+	for id := range bs.relIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
 }
 
 // --- History ID scans ---
@@ -2462,6 +2527,98 @@ func (bs *BadgerStore) getRelLocked(id snowflake.ID) (*types.Relationship, error
 	}
 	bs.relCache.LoadClean(id, r)
 	return r, nil
+}
+
+// --- Temporal filtering helpers ---
+
+// filterNodeIDsByTemporalPeek removes IDs that don't match the temporal filter
+// using Peek (zero allocation for cache hits). Cache misses are kept as candidates
+// to be post-filtered after GetNode.
+func (bs *BadgerStore) filterNodeIDsByTemporalPeek(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+		return ids // no filter
+	}
+	filtered := make([]snowflake.ID, 0, len(ids))
+	for _, id := range ids {
+		v, status := bs.nodeCache.Peek(id)
+		switch status {
+		case cacheHit:
+			if matchesTemporalFilter(id, v.Temporal(), opts) {
+				filtered = append(filtered, id)
+			}
+		case cacheDeleted:
+			// skip — entity is deleted
+		case cacheMiss:
+			// Keep as candidate — will be post-filtered after GetNode.
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
+}
+
+// filterRelIDsByTemporalPeek removes IDs that don't match the temporal filter
+// using Peek. Cache misses are kept as candidates.
+func (bs *BadgerStore) filterRelIDsByTemporalPeek(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+		return ids // no filter
+	}
+	filtered := make([]snowflake.ID, 0, len(ids))
+	for _, id := range ids {
+		v, status := bs.relCache.Peek(id)
+		switch status {
+		case cacheHit:
+			if matchesTemporalFilter(id, v.Temporal(), opts) {
+				filtered = append(filtered, id)
+			}
+		case cacheDeleted:
+			// skip
+		case cacheMiss:
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
+}
+
+// fetchNodesWithTemporalFilter fetches nodes by ID and post-filters for temporal
+// match. Cache-miss candidates that were speculatively included are filtered here.
+func (bs *BadgerStore) fetchNodesWithTemporalFilter(ids []snowflake.ID, opts QueryOpts) ([]*types.Node, error) {
+	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	nodes := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
+		}
+		if hasTemporal && !matchesTemporalFilter(id, n.Temporal(), opts) {
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	return nodes, nil
+}
+
+// fetchRelsWithTemporalFilter fetches relationships by ID and post-filters for
+// temporal match.
+func (bs *BadgerStore) fetchRelsWithTemporalFilter(ids []snowflake.ID, opts QueryOpts) ([]*types.Relationship, error) {
+	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	rels := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		r, err := bs.GetRelationship(id)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
+		}
+		if hasTemporal && !matchesTemporalFilter(id, r.Temporal(), opts) {
+			continue
+		}
+		rels = append(rels, r)
+	}
+	return rels, nil
 }
 
 // collectNodeLabelTokens returns all label token values from a node.

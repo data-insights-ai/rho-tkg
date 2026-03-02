@@ -1227,3 +1227,160 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 		t.Fatalf("expected 0 rels after deletion, got %d", len(rels))
 	}
 }
+
+// --- Combined label + property + temporal query tests ---
+
+func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Set explicit validity: 1000-2000.
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Query at 1500 with matching label+property → should find.
+	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1, got %d", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Right label+time, wrong property value.
+	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Bob", 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected 0, got %d", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Right label+property, wrong time (after ValidTo).
+	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected 0, got %d", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyAndTime_UnregisteredLabel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	nodes, err := g.NodesByLabelPropertyAndTime("Unknown", "name", "Alice", nowMs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes != nil {
+		t.Fatalf("expected nil, got %d nodes", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Create an index — should use the indexed path.
+	_ = g.CreatePropertyIndex("Person", "name")
+
+	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1, got %d", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Interval [1500, 2500) overlaps [1000, 2000).
+	nodes, err := g.NodesByLabelPropertyDuring("Person", "name", "Alice", 1500, 2500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1, got %d", len(nodes))
+	}
+}
+
+func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+
+	current, _ := g.store.GetNode(n.InternalID().SnowflakeID())
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Interval [3000, 4000) does not overlap [1000, 2000).
+	nodes, err := g.NodesByLabelPropertyDuring("Person", "name", "Alice", 3000, 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected 0, got %d", len(nodes))
+	}
+}

@@ -225,6 +225,9 @@ func (b *BatchBuilder) DeleteRelationship(id snowflake.ID) {
 // Returns a BatchResult with counts and per-operation errors. A nil error
 // means the batch completed (possibly with partial failures tracked in result).
 func (b *BatchBuilder) Execute() (*BatchResult, error) {
+	b.g.mu.Lock()
+	defer b.g.mu.Unlock()
+
 	start := time.Now()
 	result := &BatchResult{}
 

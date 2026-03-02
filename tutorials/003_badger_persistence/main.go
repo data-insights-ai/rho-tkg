@@ -165,20 +165,20 @@ func main() {
 		fmt.Printf("Alice primary: %s\n", g.NodePrimaryLabel(alice))
 
 		// Query by label.
-		persons, err := g.NodesByLabel("Person")
+		persons, err := g.NodesByLabel("Person", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Person nodes: %d\n", len(persons))
 
-		developers, err := g.NodesByLabel("Developer")
+		developers, err := g.NodesByLabel("Developer", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Developer nodes: %d\n", len(developers))
 
 		// Query by relationship type.
-		knowsRels, err := g.RelationshipsByType("KNOWS")
+		knowsRels, err := g.RelationshipsByType("KNOWS", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}

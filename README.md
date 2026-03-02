@@ -39,7 +39,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | Type | Purpose |
 |------|---------|
 | `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`UpdateNode`/`UpdateRelationship`/`DeleteNode`), convenience property methods, shadow resolution, string resolution |
-| `Store` | Persistence interface — CRUD, index/adjacency/bulk queries, batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
+| `Store` | Persistence interface — CRUD, index/adjacency/bulk queries with cursor-based pagination (`QueryOpts`), batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
 | `BatchBuilder` | Fluent API for queuing graph operations with eager validation and deferred persistence — `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Execute` |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
 | `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, and label/type/adjacency indexes |
@@ -56,19 +56,21 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
-Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label)`, `RelationshipsByType(typeName)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`.
+Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After}` for cursor-based pagination; zero values mean "return all".
 
-Bulk queries: `AllNodes()`, `AllRelationships()`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
+Bulk queries: `AllNodes(opts)`, `AllRelationships(opts)`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
 
 Batch operations: `NewBatchBuilder(g)` creates a builder that queues operations with eager validation. Call `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)`, `DeleteRelationship(id)` to queue operations. Call `Execute()` to persist all operations in order (creates → updates → deletes). Returns a `BatchResult` with counts and per-operation errors. Store-level batch methods (`PutNodesBatch`, `DeleteNodesBatch`, etc.) use two-phase validate-then-apply for atomicity.
 
-Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries. `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries. `GetNodeAt(id, t)` — version-specific query. `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal. `Snapshot(t)` — full graph state at a point in time (endpoints-filtered). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
+Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries. `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries. `GetNodeAt(id, t)`, `GetRelAt(id, t)` — version-specific queries. `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal. `Snapshot(t)` — full graph state at a point in time (endpoints-filtered). All temporal queries are history-aware (include deleted entities). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
+
+Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — intersects property index with point-in-time filter. `NodesByLabelPropertyDuring(label, key, value, start, end)` — intersects property index with interval filter.
 
 Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Returns `(true, nil)` if valid.
 
 Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 
-Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value)` — O(1) indexed lookup. Indexes are automatically maintained across all node mutation paths.
+Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts.
 
 Validation limits: `Config.Validation` accepts a `ValidationLimits` struct with configurable maximums: `MaxLabelsPerNode` (default 50), `MaxPropertiesPerEntity` (default 1000), `MaxPropertyKeyLength` (default 256), `MaxPropertyValueSize` (default 65536), `MaxNameLength` (default 256). Enforced at all graph entry points. Zero values use defaults.
 

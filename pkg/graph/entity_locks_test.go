@@ -151,6 +151,94 @@ func TestEntityLockManagerConcurrentStress(t *testing.T) {
 	wg.Wait()
 }
 
+// ─── LockMany / UnlockMany ──────────────────────────────────────────────────
+
+func TestLockMany_Basic(t *testing.T) {
+	t.Parallel()
+	lm := newEntityLockManager()
+
+	// 3 IDs across different shards — no deadlock.
+	ids := []snowflake.ID{
+		snowflake.ID(0 << 22),
+		snowflake.ID(1 << 22),
+		snowflake.ID(2 << 22),
+	}
+	lm.LockMany(ids)
+	lm.UnlockMany(ids)
+}
+
+func TestLockMany_SameShard(t *testing.T) {
+	t.Parallel()
+	lm := newEntityLockManager()
+
+	// Multiple IDs mapping to same shard — dedup means single lock.
+	ids := []snowflake.ID{
+		snowflake.ID(0 << 22),
+		snowflake.ID(256 << 22), // wraps back to shard 0
+	}
+	lm.LockMany(ids)
+	lm.UnlockMany(ids)
+}
+
+func TestLockMany_DeadlockFree(t *testing.T) {
+	t.Parallel()
+	lm := newEntityLockManager()
+
+	// Two goroutines with overlapping ID sets — ascending shard order prevents deadlock.
+	setA := []snowflake.ID{snowflake.ID(0 << 22), snowflake.ID(1 << 22), snowflake.ID(2 << 22)}
+	setB := []snowflake.ID{snowflake.ID(2 << 22), snowflake.ID(1 << 22), snowflake.ID(3 << 22)}
+
+	const iterations = 1000
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			lm.LockMany(setA)
+			lm.UnlockMany(setA)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			lm.LockMany(setB)
+			lm.UnlockMany(setB)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestLockMany_MutualExclusion(t *testing.T) {
+	t.Parallel()
+	lm := newEntityLockManager()
+
+	// Shared counter protected by LockMany — must be correct.
+	ids := []snowflake.ID{snowflake.ID(0 << 22), snowflake.ID(1 << 22)}
+	counter := 0
+	const total = 10000
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for range 2 {
+		go func() {
+			defer wg.Done()
+			for range total / 2 {
+				lm.LockMany(ids)
+				counter++
+				lm.UnlockMany(ids)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if counter != total {
+		t.Fatalf("expected %d, got %d — mutual exclusion violated", total, counter)
+	}
+}
+
 // ─── Mutual exclusion correctness ───────────────────────────────────────────
 
 func TestEntityLockManagerMutualExclusion(t *testing.T) {

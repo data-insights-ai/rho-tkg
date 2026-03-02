@@ -206,6 +206,32 @@ func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 	}
 }
 
+// Peek returns a cached value WITHOUT deep-copy or MRU promotion.
+// Useful for checking metadata on cached entities without allocation.
+func (c *entityLRU[V]) Peek(key snowflake.ID) (V, cacheStatus) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	el, ok := c.items[key]
+	if !ok {
+		var zero V
+		return zero, cacheMiss
+	}
+
+	entry := el.Value.(*lruEntry[V])
+	if entry.deleted {
+		var zero V
+		return zero, cacheDeleted
+	}
+
+	return entry.value, cacheHit
+}
+
+// Cap returns the configured capacity of the cache.
+func (c *entityLRU[V]) Cap() int {
+	return c.capacity
+}
+
 // Len returns the number of entries in the cache (including tombstones).
 func (c *entityLRU[V]) Len() int {
 	c.mu.Lock()

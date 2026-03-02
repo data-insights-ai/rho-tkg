@@ -304,10 +304,10 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 	return nil
 }
 
-// NodesByLabel returns all nodes with the given label token.
-// Results are sorted by snowflake.ID for deterministic output.
+// NodesByLabel returns nodes with the given label token, with optional pagination
+// and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
 // MemoryStore never returns an error.
-func (ms *MemoryStore) NodesByLabel(token uint16) ([]*types.Node, error) {
+func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -315,20 +315,35 @@ func (ms *MemoryStore) NodesByLabel(token uint16) ([]*types.Node, error) {
 	if len(set) == 0 {
 		return nil, nil
 	}
-	result := make([]*types.Node, 0, len(set))
+
+	// Collect and sort IDs before fetching entities.
+	ids := make([]snowflake.ID, 0, len(set))
 	for id := range set {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter: read in-memory entity pointer (no deep-copy).
+	ids = ms.filterNodeIDsByTemporal(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
 		if n, ok := ms.nodes[id]; ok {
 			result = append(result, n.DeepCopy())
 		}
 	}
-	sortNodesByID(result)
 	return result, nil
 }
 
-// RelationshipsByType returns all relationships with the given type token.
-// Results are sorted by snowflake.ID for deterministic output.
+// RelationshipsByType returns relationships with the given type token, with optional pagination
+// and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
 // MemoryStore never returns an error.
-func (ms *MemoryStore) RelationshipsByType(token uint16) ([]*types.Relationship, error) {
+func (ms *MemoryStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -336,13 +351,27 @@ func (ms *MemoryStore) RelationshipsByType(token uint16) ([]*types.Relationship,
 	if len(set) == 0 {
 		return nil, nil
 	}
-	result := make([]*types.Relationship, 0, len(set))
+
+	ids := make([]snowflake.ID, 0, len(set))
 	for id := range set {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter.
+	ids = ms.filterRelIDsByTemporal(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
 		if r, ok := ms.rels[id]; ok {
 			result = append(result, r.DeepCopy())
 		}
 	}
-	sortRelsByID(result)
 	return result, nil
 }
 
@@ -710,33 +739,46 @@ func (ms *MemoryStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 	return nil
 }
 
-// NodesByLabelAndProperty returns nodes matching the label and property value.
-// Uses the property index if one exists; falls back to label scan + property filter.
+// NodesByLabelAndProperty returns nodes matching the label and property value,
+// with optional pagination and temporal filtering. Uses the property index if
+// one exists; falls back to label scan + property filter.
 // Results are sorted by snowflake.ID for deterministic output.
-func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any) ([]*types.Node, error) {
+func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	key := propertyIndexKey{labelToken: labelToken, propertyKey: propKey}
 	if idx, ok := ms.propertyIndexes[key]; ok {
-		// Indexed path.
-		nodeIDs := idx.lookup(value)
-		if len(nodeIDs) == 0 {
+		// Indexed path: collect matching IDs, sort, temporal filter, paginate, then fetch.
+		matchSet := idx.lookup(value)
+		if len(matchSet) == 0 {
 			return nil, nil
 		}
-		result := make([]*types.Node, 0, len(nodeIDs))
-		for id := range nodeIDs {
+		ids := make([]snowflake.ID, 0, len(matchSet))
+		for id := range matchSet {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+		ids = ms.filterNodeIDsByTemporal(ids, opts)
+
+		ids = paginateIDs(ids, opts.After, opts.Limit)
+		if len(ids) == 0 {
+			return nil, nil
+		}
+
+		result := make([]*types.Node, 0, len(ids))
+		for _, id := range ids {
 			if n, ok := ms.nodes[id]; ok {
 				result = append(result, n.DeepCopy())
 			}
 		}
-		sortNodesByID(result)
 		return result, nil
 	}
 
 	// Fallback: label scan + property filter.
-	nodeIDs := ms.labelIdx[labelToken]
-	if len(nodeIDs) == 0 {
+	labelIDs := ms.labelIdx[labelToken]
+	if len(labelIDs) == 0 {
 		return nil, nil
 	}
 
@@ -745,24 +787,82 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 		return nil, nil
 	}
 
-	var result []*types.Node
-	for id := range nodeIDs {
+	// Collect matching IDs from label scan.
+	var matchIDs []snowflake.ID
+	for id := range labelIDs {
 		n, ok := ms.nodes[id]
 		if !ok {
 			continue
 		}
 		if v, found := n.GetProperty(propKey); found {
 			if propertyValueKey(v) == targetKey {
-				result = append(result, n.DeepCopy())
+				matchIDs = append(matchIDs, id)
 			}
 		}
 	}
 
-	if len(result) == 0 {
+	if len(matchIDs) == 0 {
 		return nil, nil
 	}
-	sortNodesByID(result)
+	sort.Slice(matchIDs, func(i, j int) bool { return matchIDs[i] < matchIDs[j] })
+
+	// Temporal pre-filter.
+	matchIDs = ms.filterNodeIDsByTemporal(matchIDs, opts)
+
+	matchIDs = paginateIDs(matchIDs, opts.After, opts.Limit)
+	if len(matchIDs) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Node, 0, len(matchIDs))
+	for _, id := range matchIDs {
+		if n, ok := ms.nodes[id]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
 	return result, nil
+}
+
+// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
+// Returns only IDs — no entity deserialization or deep copy.
+func (ms *MemoryStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.nodes) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(ms.nodes))
+	for id := range ms.nodes {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
+}
+
+// AllRelIDs returns the IDs of all current relationships, with optional pagination.
+// Returns only IDs — no entity deserialization or deep copy.
+func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.rels) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(ms.rels))
+	for id := range ms.rels {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
 }
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
@@ -975,42 +1075,69 @@ func (ms *MemoryStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 
 // --- Bulk queries ---
 
-// AllNodes returns all stored nodes.
+// AllNodes returns all stored nodes, with optional pagination and temporal filtering.
 // Results are sorted by snowflake.ID for deterministic output.
-// Note: holds RLock for the entire iteration + DeepCopy pass. This is
-// acceptable for MemoryStore's use case (testing, small datasets). For
-// large production datasets, BadgerStore snapshots IDs under RLock and
-// fetches entities outside the lock.
-func (ms *MemoryStore) AllNodes() ([]*types.Node, error) {
+func (ms *MemoryStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	if len(ms.nodes) == 0 {
 		return nil, nil
 	}
-	result := make([]*types.Node, 0, len(ms.nodes))
-	for _, n := range ms.nodes {
-		result = append(result, n.DeepCopy())
+
+	ids := make([]snowflake.ID, 0, len(ms.nodes))
+	for id := range ms.nodes {
+		ids = append(ids, id)
 	}
-	sortNodesByID(result)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter.
+	ids = ms.filterNodeIDsByTemporal(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		if n, ok := ms.nodes[id]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
 	return result, nil
 }
 
-// AllRelationships returns all stored relationships.
+// AllRelationships returns all stored relationships, with optional pagination and temporal filtering.
 // Results are sorted by snowflake.ID for deterministic output.
-// Note: holds RLock for the entire iteration. See AllNodes for rationale.
-func (ms *MemoryStore) AllRelationships() ([]*types.Relationship, error) {
+func (ms *MemoryStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
 	if len(ms.rels) == 0 {
 		return nil, nil
 	}
-	result := make([]*types.Relationship, 0, len(ms.rels))
-	for _, r := range ms.rels {
-		result = append(result, r.DeepCopy())
+
+	ids := make([]snowflake.ID, 0, len(ms.rels))
+	for id := range ms.rels {
+		ids = append(ids, id)
 	}
-	sortRelsByID(result)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	// Temporal pre-filter.
+	ids = ms.filterRelIDsByTemporal(ids, opts)
+
+	ids = paginateIDs(ids, opts.After, opts.Limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := ms.rels[id]; ok {
+			result = append(result, r.DeepCopy())
+		}
+	}
 	return result, nil
 }
 
@@ -1058,6 +1185,48 @@ func (ms *MemoryStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relat
 	}
 	sortRelsByID(result)
 	return result, nil
+}
+
+// --- Temporal filtering helpers ---
+
+// filterNodeIDsByTemporal removes IDs that don't match the temporal filter in opts.
+// Reads the in-memory entity pointer directly — no deep-copy, no allocation per entity.
+// Caller must hold ms.mu (read or write).
+func (ms *MemoryStore) filterNodeIDsByTemporal(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+		return ids // no filter
+	}
+	filtered := ids[:0] // reuse backing array
+	for _, id := range ids {
+		n, ok := ms.nodes[id]
+		if !ok {
+			continue
+		}
+		if matchesTemporalFilter(id, n.Temporal(), opts) {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
+}
+
+// filterRelIDsByTemporal removes IDs that don't match the temporal filter in opts.
+// Reads the in-memory entity pointer directly — no deep-copy.
+// Caller must hold ms.mu (read or write).
+func (ms *MemoryStore) filterRelIDsByTemporal(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
+		return ids // no filter
+	}
+	filtered := ids[:0] // reuse backing array
+	for _, id := range ids {
+		r, ok := ms.rels[id]
+		if !ok {
+			continue
+		}
+		if matchesTemporalFilter(id, r.Temporal(), opts) {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 // sortNodesByID sorts nodes by snowflake.ID for deterministic output.

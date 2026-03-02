@@ -139,7 +139,7 @@ func main() {
 
 	fmt.Println("\n=== 4. Query Nodes by Label ===")
 
-	persons, err := g.NodesByLabel("Person")
+	persons, err := g.NodesByLabel("Person", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func main() {
 		fmt.Printf("  - %s (primary: %s)\n", name, g.NodePrimaryLabel(n))
 	}
 
-	employees, err := g.NodesByLabel("Employee")
+	employees, err := g.NodesByLabel("Employee", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,13 +161,13 @@ func main() {
 
 	fmt.Println("\n=== 5. Query Relationships by Type ===")
 
-	knowsRels, err := g.RelationshipsByType("KNOWS")
+	knowsRels, err := g.RelationshipsByType("KNOWS", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
-	worksRels, err := g.RelationshipsByType("WORKS_WITH")
+	worksRels, err := g.RelationshipsByType("WORKS_WITH", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -248,7 +248,7 @@ func TestBadgerStoreNodesByLabel(t *testing.T) {
 	putTestNode(t, bs, 200, 1, nil)
 	putTestNode(t, bs, 300, 2, nil) // different label
 
-	nodes, err := bs.NodesByLabel(1)
+	nodes, err := bs.NodesByLabel(1, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(1): %v", err)
 	}
@@ -257,7 +257,7 @@ func TestBadgerStoreNodesByLabel(t *testing.T) {
 	}
 
 	// Extra label search.
-	nodes2, err := bs.NodesByLabel(2)
+	nodes2, err := bs.NodesByLabel(2, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(2): %v", err)
 	}
@@ -276,7 +276,7 @@ func TestBadgerStoreRelationshipsByType(t *testing.T) {
 	putTestRel(t, bs, 501, 3, 10, 20)
 	putTestRel(t, bs, 502, 4, 10, 20)
 
-	rels, err := bs.RelationshipsByType(3)
+	rels, err := bs.RelationshipsByType(3, QueryOpts{})
 	if err != nil {
 		t.Fatalf("RelationshipsByType(3): %v", err)
 	}
@@ -289,7 +289,7 @@ func TestBadgerStoreNodesByLabelEmpty(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	nodes, err := bs.NodesByLabel(99)
+	nodes, err := bs.NodesByLabel(99, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(99): %v", err)
 	}
@@ -464,7 +464,7 @@ func TestBadgerStoreNodesByLabelSorted(t *testing.T) {
 	putTestNode(t, bs, 100, 1, nil)
 	putTestNode(t, bs, 200, 1, nil)
 
-	nodes, err := bs.NodesByLabel(1)
+	nodes, err := bs.NodesByLabel(1, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(1): %v", err)
 	}
@@ -488,7 +488,7 @@ func TestBadgerStoreRelsByTypeSorted(t *testing.T) {
 	putTestRel(t, bs, 501, 1, 10, 20)
 	putTestRel(t, bs, 502, 1, 10, 20)
 
-	rels, err := bs.RelationshipsByType(1)
+	rels, err := bs.RelationshipsByType(1, QueryOpts{})
 	if err != nil {
 		t.Fatalf("RelationshipsByType(1): %v", err)
 	}
@@ -1121,7 +1121,7 @@ func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	nodes, err := bs.NodesByLabel(1)
+	nodes, err := bs.NodesByLabel(1, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(1): %v", err)
 	}
@@ -1130,7 +1130,7 @@ func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
 	}
 
 	// Extra label index should also be cleaned.
-	nodes2, err := bs.NodesByLabel(2)
+	nodes2, err := bs.NodesByLabel(2, QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel(2): %v", err)
 	}
@@ -1359,21 +1359,21 @@ func TestBadgerStoreReopenAfterFlush(t *testing.T) {
 	defer bs2.Close()
 
 	// Label index rebuilt.
-	nodes, _ := bs2.NodesByLabel(1)
+	nodes, _ := bs2.NodesByLabel(1, QueryOpts{})
 	if len(nodes) != 2 {
 		t.Errorf("label 1: expected 2 nodes, got %d", len(nodes))
 	}
-	nodes, _ = bs2.NodesByLabel(2)
+	nodes, _ = bs2.NodesByLabel(2, QueryOpts{})
 	if len(nodes) != 2 { // node 10 (extra label 2) + node 30 (primary label 2)
 		t.Errorf("label 2: expected 2 nodes, got %d", len(nodes))
 	}
 
 	// Type index rebuilt.
-	rels, _ := bs2.RelationshipsByType(3)
+	rels, _ := bs2.RelationshipsByType(3, QueryOpts{})
 	if len(rels) != 2 {
 		t.Errorf("type 3: expected 2 rels, got %d", len(rels))
 	}
-	rels, _ = bs2.RelationshipsByType(4)
+	rels, _ = bs2.RelationshipsByType(4, QueryOpts{})
 	if len(rels) != 1 {
 		t.Errorf("type 4: expected 1 rel, got %d", len(rels))
 	}
@@ -1759,7 +1759,7 @@ func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
 	}
 
 	// NodesByLabel must surface the corruption error, not silently skip.
-	_, err = bs.NodesByLabel(1)
+	_, err = bs.NodesByLabel(1, QueryOpts{})
 	if err == nil {
 		t.Fatal("NodesByLabel should return error for corrupted node data")
 	}
@@ -1794,7 +1794,7 @@ func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
 		t.Fatalf("corrupt write: %v", err)
 	}
 
-	_, err = bs.RelationshipsByType(3)
+	_, err = bs.RelationshipsByType(3, QueryOpts{})
 	if err == nil {
 		t.Fatal("RelationshipsByType should return error for corrupted rel data")
 	}
@@ -2962,7 +2962,7 @@ func TestBadgerStoreAllNodesEmpty(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	got, err := bs.AllNodes()
+	got, err := bs.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -2979,7 +2979,7 @@ func TestBadgerStoreAllNodes(t *testing.T) {
 	putTestNode(t, bs, 2, 20, nil)
 	putTestNode(t, bs, 3, 10, nil)
 
-	got, err := bs.AllNodes()
+	got, err := bs.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -2997,7 +2997,7 @@ func TestBadgerStoreAllNodesSorted(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	got, err := bs.AllNodes()
+	got, err := bs.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -3019,7 +3019,7 @@ func TestBadgerStoreAllRelsEmpty(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	got, err := bs.AllRelationships()
+	got, err := bs.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3039,7 +3039,7 @@ func TestBadgerStoreAllRels(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 10, 20)
 	putTestRel(t, bs, 102, 5, 20, 10)
 
-	got, err := bs.AllRelationships()
+	got, err := bs.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3060,7 +3060,7 @@ func TestBadgerStoreAllRelsSorted(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 1, 2)
 	putTestRel(t, bs, 200, 5, 1, 2)
 
-	got, err := bs.AllRelationships()
+	got, err := bs.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3258,7 +3258,7 @@ func TestBadgerStorePutNodesBatch(t *testing.T) {
 	}
 
 	// Verify label index.
-	byLabel, _ := bs.NodesByLabel(10)
+	byLabel, _ := bs.NodesByLabel(10, QueryOpts{})
 	if len(byLabel) != 2 {
 		t.Fatalf("NodesByLabel(10) = %d nodes, want 2", len(byLabel))
 	}
@@ -3395,7 +3395,7 @@ func TestBadgerStoreDeleteNodesBatch(t *testing.T) {
 		t.Fatalf("NodeCount = %d, want 1", count)
 	}
 
-	byLabel, _ := bs.NodesByLabel(20)
+	byLabel, _ := bs.NodesByLabel(20, QueryOpts{})
 	if len(byLabel) != 0 {
 		t.Fatalf("NodesByLabel(20) = %d nodes, want 0 after delete", len(byLabel))
 	}
@@ -3605,7 +3605,7 @@ func TestBadgerStoreCreatePropertyIndex(t *testing.T) {
 	}
 
 	// Verify index populated from existing data.
-	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3660,7 +3660,7 @@ func TestBadgerStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 
 	_ = bs.CreatePropertyIndex(1, "name")
 
-	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3679,7 +3679,7 @@ func TestBadgerStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 
 	_ = bs.CreatePropertyIndex(1, "name")
 
-	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Charlie")
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Charlie", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3701,7 +3701,7 @@ func TestBadgerStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	_ = bs.PutNode(n2)
 
 	// No index — fallback scan.
-	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -3721,7 +3721,7 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 	_ = bs.CreatePropertyIndex(1, "name")
 
 	// Verify initial.
-	nodes, _ := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	nodes, _ := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after put: expected 1, got %d", len(nodes))
 	}
@@ -3731,18 +3731,18 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 	_ = updated.SetProperty("name", "Alicia")
 	_ = bs.ReplaceNode(updated)
 
-	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alice")
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after replace: old value still found, got %d", len(nodes))
 	}
-	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia")
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia", QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after replace: new value not found, got %d", len(nodes))
 	}
 
 	// Delete the node.
 	_ = bs.DeleteNode(snowflake.ID(1))
-	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia")
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
@@ -3993,7 +3993,7 @@ func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
 	}
 
 	// Verify works before close.
-	nodes, err := bs1.NodesByLabelAndProperty(1, "city", "Berlin")
+	nodes, err := bs1.NodesByLabelAndProperty(1, "city", "Berlin", QueryOpts{})
 	if err != nil {
 		t.Fatalf("before close: NodesByLabelAndProperty: %v", err)
 	}
@@ -4013,7 +4013,7 @@ func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
 	defer bs2.Close()
 
 	// Verify index still works without re-creating it.
-	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Berlin")
+	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Berlin", QueryOpts{})
 	if err != nil {
 		t.Fatalf("after reopen: NodesByLabelAndProperty: %v", err)
 	}
@@ -4022,7 +4022,7 @@ func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
 	}
 
 	// Verify other value too.
-	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Munich")
+	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Munich", QueryOpts{})
 	if err != nil {
 		t.Fatalf("after reopen: Munich: %v", err)
 	}
@@ -4170,5 +4170,124 @@ func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
 	}
 	if len(ids) != 1 {
 		t.Fatalf("expected 1 history ID after flush, got %d", len(ids))
+	}
+}
+
+// ─── BadgerStore: AllNodeIDs / AllRelIDs ────────────────────────────────────
+
+func TestBadgerStoreAllNodeIDs_Empty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	ids, err := bs.AllNodeIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids != nil {
+		t.Fatalf("expected nil, got %v", ids)
+	}
+}
+
+func TestBadgerStoreAllNodeIDs_ReturnsSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	for _, id := range []int64{50, 30, 10, 40, 20} {
+		putTestNode(t, bs, id, 1, nil)
+	}
+
+	ids, err := bs.AllNodeIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 5 {
+		t.Fatalf("got %d IDs, want 5", len(ids))
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("IDs not sorted at index %d", i)
+		}
+	}
+}
+
+func TestBadgerStoreAllNodeIDs_Pagination(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	for _, id := range []int64{10, 20, 30, 40, 50} {
+		putTestNode(t, bs, id, 1, nil)
+	}
+
+	ids, _ := bs.AllNodeIDs(QueryOpts{Limit: 2})
+	if len(ids) != 2 {
+		t.Fatalf("page1 len=%d, want 2", len(ids))
+	}
+
+	ids2, _ := bs.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1]})
+	if len(ids2) != 2 {
+		t.Fatalf("page2 len=%d, want 2", len(ids2))
+	}
+	if ids2[0] <= ids[1] {
+		t.Fatal("page2 first ID should be > page1 last ID")
+	}
+}
+
+func TestBadgerStoreAllRelIDs_Empty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	ids, err := bs.AllRelIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids != nil {
+		t.Fatalf("expected nil, got %v", ids)
+	}
+}
+
+func TestBadgerStoreAllRelIDs_ReturnsSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	for _, id := range []int64{50, 30, 10, 40, 20} {
+		putTestRel(t, bs, id, 1, 1, 2)
+	}
+
+	ids, err := bs.AllRelIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 5 {
+		t.Fatalf("got %d IDs, want 5", len(ids))
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("IDs not sorted at index %d", i)
+		}
+	}
+}
+
+func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	for _, id := range []int64{10, 20, 30, 40, 50} {
+		putTestRel(t, bs, id, 1, 1, 2)
+	}
+
+	ids, _ := bs.AllRelIDs(QueryOpts{Limit: 2})
+	if len(ids) != 2 {
+		t.Fatalf("page1 len=%d, want 2", len(ids))
+	}
+
+	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: ids[1]})
+	if len(ids2) != 2 {
+		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
 }

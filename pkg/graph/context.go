@@ -163,35 +163,121 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 // DeleteNodeWithContext atomically removes a node and all connected relationships.
 // Saves tombstone versions (with DeletedAt/ValidTo) for the node and all connected
 // relationships before deletion, preserving temporal history for past-time queries.
+//
+// Two-phase locking with TOCTOU retry:
+//
+//	Phase A (node lock only): read node + adjacency, collect all entity IDs.
+//	Phase B (all entities locked): re-read adjacency, verify unchanged, then mutate.
+//	If adjacency changed between phases, retry from Phase A.
 func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	const maxRetries = 10
+	for attempt := range maxRetries {
+		_ = attempt
 
-	if err := checkCtx(ctx); err != nil {
+		// Phase A: read under node lock only.
+		g.entityLocks.LockEntity(id)
+
+		if err := checkCtx(ctx); err != nil {
+			g.entityLocks.UnlockEntity(id)
+			return err
+		}
+
+		current, err := g.store.GetNode(id)
+		if err != nil {
+			g.entityLocks.UnlockEntity(id)
+			return err
+		}
+
+		outRels, err := g.store.OutgoingRelationships(id, 0)
+		if err != nil {
+			g.entityLocks.UnlockEntity(id)
+			return err
+		}
+		inRels, err := g.store.IncomingRelationships(id, 0)
+		if err != nil {
+			g.entityLocks.UnlockEntity(id)
+			return err
+		}
+
+		allIDs := collectDeleteIDs(id, outRels, inRels)
+		g.entityLocks.UnlockEntity(id)
+
+		// Phase B: lock ALL entities (node + rels), re-verify adjacency.
+		g.entityLocks.LockMany(allIDs)
+
+		// Re-read adjacency under full lock to detect TOCTOU changes.
+		outRels2, err := g.store.OutgoingRelationships(id, 0)
+		if err != nil {
+			g.entityLocks.UnlockMany(allIDs)
+			return err
+		}
+		inRels2, err := g.store.IncomingRelationships(id, 0)
+		if err != nil {
+			g.entityLocks.UnlockMany(allIDs)
+			return err
+		}
+
+		allIDs2 := collectDeleteIDs(id, outRels2, inRels2)
+		if !sameIDSet(allIDs, allIDs2) {
+			// Adjacency changed — retry.
+			g.entityLocks.UnlockMany(allIDs)
+			continue
+		}
+
+		// Adjacency stable — perform deletion under full lock.
+		err = g.deleteNodeLocked(ctx, id, current, outRels2, inRels2)
+		g.entityLocks.UnlockMany(allIDs)
 		return err
 	}
 
-	// Read current node state for tombstone.
-	current, err := g.store.GetNode(id)
-	if err != nil {
-		return err
-	}
+	return fmt.Errorf("graph: delete node %d: adjacency changed after %d retries", id, maxRetries)
+}
 
+// collectDeleteIDs builds a deduplicated slice of all entity IDs involved in a
+// node deletion: the node itself plus all connected relationship IDs.
+func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship) []snowflake.ID {
+	seen := make(map[snowflake.ID]struct{}, 1+len(outRels)+len(inRels))
+	seen[nodeID] = struct{}{}
+	for _, r := range outRels {
+		seen[r.InternalID().SnowflakeID()] = struct{}{}
+	}
+	for _, r := range inRels {
+		seen[r.InternalID().SnowflakeID()] = struct{}{}
+	}
+	ids := make([]snowflake.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// sameIDSet returns true if a and b contain the same set of IDs (order-independent).
+func sameIDSet(a, b []snowflake.ID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[snowflake.ID]struct{}, len(a))
+	for _, id := range a {
+		set[id] = struct{}{}
+	}
+	for _, id := range b {
+		if _, ok := set[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// deleteNodeLocked performs the actual deletion under full entity lock.
+// Creates tombstones for all connected rels and the node, then cascade deletes.
+func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *types.Node, outRels, inRels []*types.Relationship) error {
 	now := types.Instant(time.Now().UnixMilli())
 
 	// Save tombstone for all connected relationships first.
-	outRels, err := g.store.OutgoingRelationships(id, 0)
-	if err != nil {
-		return err
-	}
-	inRels, err := g.store.IncomingRelationships(id, 0)
-	if err != nil {
-		return err
-	}
 	seen := make(map[snowflake.ID]struct{})
 	allRels := append(outRels, inRels...)
 	for _, r := range allRels {
@@ -236,6 +322,9 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
+
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
 
 	// Read current state for tombstone.
 	current, err := g.store.GetRelationship(id)

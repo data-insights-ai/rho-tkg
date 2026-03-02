@@ -642,3 +642,83 @@ func TestLRUConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// --- Peek tests ---
+
+func TestPeek_Hit(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](10)
+	c.Put(snowflake.ID(1), 42)
+
+	val, status := c.Peek(snowflake.ID(1))
+	if status != cacheHit {
+		t.Fatalf("Peek hit: got status %d, want cacheHit", status)
+	}
+	if val != 42 {
+		t.Fatalf("Peek hit: got val %d, want 42", val)
+	}
+}
+
+func TestPeek_Miss(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](10)
+
+	_, status := c.Peek(snowflake.ID(999))
+	if status != cacheMiss {
+		t.Fatalf("Peek miss: got status %d, want cacheMiss", status)
+	}
+}
+
+func TestPeek_Deleted(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](10)
+	c.Put(snowflake.ID(1), 42)
+	c.MarkDeleted(snowflake.ID(1))
+
+	_, status := c.Peek(snowflake.ID(1))
+	if status != cacheDeleted {
+		t.Fatalf("Peek deleted: got status %d, want cacheDeleted", status)
+	}
+}
+
+func TestPeek_NoPromote(t *testing.T) {
+	t.Parallel()
+	// Fill cache: 1, 2, 3 (cap=3). Peek(1) should NOT move 1 to front.
+	// Then Put(4) should evict 1 (still LRU) if Peek didn't promote.
+	c := newEntityLRU[int](3)
+	c.LoadClean(snowflake.ID(1), 10)
+	c.LoadClean(snowflake.ID(2), 20)
+	c.LoadClean(snowflake.ID(3), 30)
+
+	// Peek at 1 — should not promote to MRU.
+	c.Peek(snowflake.ID(1))
+
+	// Access 2 via Get — promotes to MRU.
+	c.Get(snowflake.ID(2))
+
+	// Put 4 — should evict 1 (LRU, not promoted by Peek).
+	c.Put(snowflake.ID(4), 40)
+
+	_, status := c.Peek(snowflake.ID(1))
+	if status != cacheMiss {
+		t.Fatal("Peek should not promote: ID 1 should have been evicted")
+	}
+}
+
+// --- Cap test ---
+
+func TestCap(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](42)
+	if c.Cap() != 42 {
+		t.Fatalf("Cap: got %d, want 42", c.Cap())
+	}
+}
+
+func TestCap_MinimumOne(t *testing.T) {
+	t.Parallel()
+	c := newEntityLRU[int](0) // should be clamped to 1
+	if c.Cap() != 1 {
+		t.Fatalf("Cap minimum: got %d, want 1", c.Cap())
+	}
+}

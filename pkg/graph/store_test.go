@@ -79,14 +79,14 @@ func TestMemoryStoreDeleteNode(t *testing.T) {
 	}
 
 	// Label index must be cleaned up.
-	nodes, err2 := ms.NodesByLabel(10)
+	nodes, err2 := ms.NodesByLabel(10, QueryOpts{})
 	if err2 != nil {
 		t.Fatal(err2)
 	}
 	if len(nodes) != 0 {
 		t.Errorf("NodesByLabel(10) after delete: got %d nodes, want 0", len(nodes))
 	}
-	nodes, err2 = ms.NodesByLabel(20)
+	nodes, err2 = ms.NodesByLabel(20, QueryOpts{})
 	if err2 != nil {
 		t.Fatal(err2)
 	}
@@ -222,7 +222,7 @@ func TestMemoryStoreNodesByLabel(t *testing.T) {
 	ms.PutNode(n3)
 
 	// Label 10: n1 + n2.
-	got, err := ms.NodesByLabel(10)
+	got, err := ms.NodesByLabel(10, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestMemoryStoreNodesByLabel(t *testing.T) {
 	}
 
 	// Label 20: only n1 (extra label).
-	got, err = ms.NodesByLabel(20)
+	got, err = ms.NodesByLabel(20, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestMemoryStoreNodesByLabel(t *testing.T) {
 	}
 
 	// Label 99: none.
-	got, err = ms.NodesByLabel(99)
+	got, err = ms.NodesByLabel(99, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestMemoryStoreRelsByType(t *testing.T) {
 	ms.PutRelationship(r3)
 
 	// Type 5: r1 + r2.
-	got, err := ms.RelationshipsByType(5)
+	got, err := ms.RelationshipsByType(5, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestMemoryStoreRelsByType(t *testing.T) {
 	}
 
 	// Type 7: r3.
-	got, err = ms.RelationshipsByType(7)
+	got, err = ms.RelationshipsByType(7, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestMemoryStoreRelsByType(t *testing.T) {
 	}
 
 	// Type 99: none.
-	got, err = ms.RelationshipsByType(99)
+	got, err = ms.RelationshipsByType(99, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +494,7 @@ func TestMemoryStoreDeleteRelAdjacencyCleanup(t *testing.T) {
 	}
 
 	// Type index must be empty.
-	rels, err := ms.RelationshipsByType(5)
+	rels, err := ms.RelationshipsByType(5, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,7 +562,7 @@ func TestMemoryStoreNodesByLabelSortedByID(t *testing.T) {
 	ms.PutNode(n1)
 	ms.PutNode(n2)
 
-	result, err := ms.NodesByLabel(1)
+	result, err := ms.NodesByLabel(1, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +595,7 @@ func TestMemoryStoreRelsByTypeSortedByID(t *testing.T) {
 	ms.PutRelationship(r1)
 	ms.PutRelationship(r2)
 
-	result, err := ms.RelationshipsByType(5)
+	result, err := ms.RelationshipsByType(5, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,12 +770,12 @@ func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
 	}
 
 	// Call multiple times — must return the same order every time.
-	first, err := ms.NodesByLabel(1)
+	first, err := ms.NodesByLabel(1, QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 10 {
-		got, err := ms.NodesByLabel(1)
+		got, err := ms.NodesByLabel(1, QueryOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1434,7 +1434,7 @@ func TestMemoryStoreAllNodesEmpty(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
-	got, err := ms.AllNodes()
+	got, err := ms.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -1451,7 +1451,7 @@ func TestMemoryStoreAllNodes(t *testing.T) {
 	ms.PutNode(types.NewNode(snowflake.ID(2), 20, nil))
 	ms.PutNode(types.NewNode(snowflake.ID(3), 10, nil))
 
-	got, err := ms.AllNodes()
+	got, err := ms.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -1469,7 +1469,7 @@ func TestMemoryStoreAllNodesSorted(t *testing.T) {
 	ms.PutNode(types.NewNode(snowflake.ID(10), 1, nil))
 	ms.PutNode(types.NewNode(snowflake.ID(20), 1, nil))
 
-	got, err := ms.AllNodes()
+	got, err := ms.AllNodes(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -1491,7 +1491,7 @@ func TestMemoryStoreAllRelsEmpty(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
-	got, err := ms.AllRelationships()
+	got, err := ms.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -1513,7 +1513,7 @@ func TestMemoryStoreAllRels(t *testing.T) {
 	ms.PutRelationship(types.NewRelationship(snowflake.ID(101), 7, snowflake.ID(10), snowflake.ID(20)))
 	ms.PutRelationship(types.NewRelationship(snowflake.ID(102), 5, snowflake.ID(20), snowflake.ID(10)))
 
-	got, err := ms.AllRelationships()
+	got, err := ms.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -1536,7 +1536,7 @@ func TestMemoryStoreAllRelsSorted(t *testing.T) {
 	ms.PutRelationship(types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)))
 	ms.PutRelationship(types.NewRelationship(snowflake.ID(200), 5, snowflake.ID(1), snowflake.ID(2)))
 
-	got, err := ms.AllRelationships()
+	got, err := ms.AllRelationships(QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -1738,7 +1738,7 @@ func TestMemoryStorePutNodesBatch(t *testing.T) {
 	}
 
 	// Verify label index.
-	byLabel, _ := ms.NodesByLabel(10)
+	byLabel, _ := ms.NodesByLabel(10, QueryOpts{})
 	if len(byLabel) != 2 {
 		t.Fatalf("NodesByLabel(10) = %d nodes, want 2", len(byLabel))
 	}
@@ -1894,7 +1894,7 @@ func TestMemoryStoreDeleteNodesBatch(t *testing.T) {
 	}
 
 	// Verify label index cleaned up.
-	byLabel, _ := ms.NodesByLabel(20)
+	byLabel, _ := ms.NodesByLabel(20, QueryOpts{})
 	if len(byLabel) != 0 {
 		t.Fatalf("NodesByLabel(20) = %d nodes, want 0 after delete", len(byLabel))
 	}
@@ -2069,5 +2069,225 @@ func TestMemoryStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 	err := ms.ReplaceRelWithHistory(r, 0, r)
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("want ErrRelNotFound, got %v", err)
+	}
+}
+
+// ─── MemoryStore: AllNodeIDs / AllRelIDs ────────────────────────────────────
+
+func TestMemoryStoreAllNodeIDs_Empty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	ids, err := ms.AllNodeIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids != nil {
+		t.Fatalf("expected nil, got %v", ids)
+	}
+}
+
+func TestMemoryStoreAllNodeIDs_ReturnsSorted(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Insert 5 nodes.
+	for _, id := range []snowflake.ID{50, 30, 10, 40, 20} {
+		n := types.NewNode(id, 1, nil)
+		if err := ms.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ids, err := ms.AllNodeIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 5 {
+		t.Fatalf("got %d IDs, want 5", len(ids))
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("IDs not sorted at index %d: %d <= %d", i, ids[i], ids[i-1])
+		}
+	}
+}
+
+func TestMemoryStoreAllNodeIDs_Pagination(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	for _, id := range []snowflake.ID{10, 20, 30, 40, 50} {
+		n := types.NewNode(id, 1, nil)
+		if err := ms.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Page 1: Limit=2.
+	ids, _ := ms.AllNodeIDs(QueryOpts{Limit: 2})
+	if len(ids) != 2 {
+		t.Fatalf("page1 len=%d, want 2", len(ids))
+	}
+
+	// Page 2: After last ID from page 1.
+	ids2, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1]})
+	if len(ids2) != 2 {
+		t.Fatalf("page2 len=%d, want 2", len(ids2))
+	}
+	if ids2[0] <= ids[1] {
+		t.Fatal("page2 first ID should be > page1 last ID")
+	}
+
+	// Page 3: remaining.
+	ids3, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: ids2[1]})
+	if len(ids3) != 1 {
+		t.Fatalf("page3 len=%d, want 1", len(ids3))
+	}
+}
+
+func TestMemoryStoreAllRelIDs_Empty(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	ids, err := ms.AllRelIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids != nil {
+		t.Fatalf("expected nil, got %v", ids)
+	}
+}
+
+func TestMemoryStoreAllRelIDs_ReturnsSorted(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Need nodes for rel endpoints.
+	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	for _, id := range []snowflake.ID{50, 30, 10, 40, 20} {
+		r := types.NewRelationship(id, 1, snowflake.ID(1), snowflake.ID(2))
+		if err := ms.PutRelationship(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ids, err := ms.AllRelIDs(QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 5 {
+		t.Fatalf("got %d IDs, want 5", len(ids))
+	}
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("IDs not sorted at index %d", i)
+		}
+	}
+}
+
+func TestMemoryStoreAllRelIDs_Pagination(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+
+	for _, id := range []snowflake.ID{10, 20, 30, 40, 50} {
+		r := types.NewRelationship(id, 1, snowflake.ID(1), snowflake.ID(2))
+		_ = ms.PutRelationship(r)
+	}
+
+	// Page 1: Limit=2.
+	ids, _ := ms.AllRelIDs(QueryOpts{Limit: 2})
+	if len(ids) != 2 {
+		t.Fatalf("page1 len=%d, want 2", len(ids))
+	}
+
+	// Page 2.
+	ids2, _ := ms.AllRelIDs(QueryOpts{Limit: 2, After: ids[1]})
+	if len(ids2) != 2 {
+		t.Fatalf("page2 len=%d, want 2", len(ids2))
+	}
+}
+
+// ─── Property index purge tests ─────────────────────────────────────────────
+
+func TestPurgeNodeFromAllPropertyIndexes_Empty(t *testing.T) {
+	t.Parallel()
+	indexes := make(map[propertyIndexKey]*propertyIndex)
+	// Should not panic.
+	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(42))
+}
+
+func TestPurgeNodeFromAllPropertyIndexes_RemovesFromAll(t *testing.T) {
+	t.Parallel()
+	indexes := make(map[propertyIndexKey]*propertyIndex)
+
+	idx1 := newPropertyIndex()
+	idx1.add(snowflake.ID(1), "Alice")
+	idx1.add(snowflake.ID(2), "Bob")
+	indexes[propertyIndexKey{labelToken: 1, propertyKey: "name"}] = idx1
+
+	idx2 := newPropertyIndex()
+	idx2.add(snowflake.ID(1), 30)
+	idx2.add(snowflake.ID(3), 25)
+	indexes[propertyIndexKey{labelToken: 1, propertyKey: "age"}] = idx2
+
+	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(1))
+
+	// ID 1 should be gone from both indexes.
+	if s := idx1.lookup("Alice"); s != nil {
+		if _, ok := s[snowflake.ID(1)]; ok {
+			t.Error("ID 1 should be removed from name index")
+		}
+	}
+	if s := idx2.lookup(30); s != nil {
+		if _, ok := s[snowflake.ID(1)]; ok {
+			t.Error("ID 1 should be removed from age index")
+		}
+	}
+
+	// Other IDs should remain.
+	if s := idx1.lookup("Bob"); len(s) != 1 {
+		t.Errorf("Bob should still have 1 entry, got %d", len(s))
+	}
+	if s := idx2.lookup(25); len(s) != 1 {
+		t.Errorf("age 25 should still have 1 entry, got %d", len(s))
+	}
+}
+
+func TestPurgeNodeFromAllPropertyIndexes_OtherNodesUnaffected(t *testing.T) {
+	t.Parallel()
+	indexes := make(map[propertyIndexKey]*propertyIndex)
+
+	idx := newPropertyIndex()
+	idx.add(snowflake.ID(10), "val")
+	idx.add(snowflake.ID(20), "val")
+	idx.add(snowflake.ID(30), "other")
+	indexes[propertyIndexKey{labelToken: 1, propertyKey: "key"}] = idx
+
+	// Purge ID 10.
+	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(10))
+
+	// ID 20 and 30 should be unaffected.
+	s := idx.lookup("val")
+	if _, ok := s[snowflake.ID(20)]; !ok {
+		t.Error("ID 20 should still be in index")
+	}
+	s2 := idx.lookup("other")
+	if _, ok := s2[snowflake.ID(30)]; !ok {
+		t.Error("ID 30 should still be in index")
+	}
+
+	// Empty value sets should be cleaned up.
+	if _, ok := s[snowflake.ID(10)]; ok {
+		t.Error("ID 10 should be purged")
 	}
 }
