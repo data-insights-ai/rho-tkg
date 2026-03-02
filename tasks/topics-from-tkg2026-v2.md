@@ -42,35 +42,30 @@ Analysis of mature features in `tkg-2026-v3` that are worth porting to `rho/tkg-
 
 ---
 
-## Port with Phase 2 (temporal query layer)
+## Ported with Phase 2 (temporal query layer) — COMPLETE
 
-### 3. Temporal Indexing — Allen's Interval Algebra
+### 3. Temporal Indexing — Scan-Based ✓
 
-- [ ] Port interval algebra core: 13 Allen relations (before, after, meets, overlaps, during, starts, finishes, equals, and inverses)
-- [ ] Implement interval tree data structure for efficient temporal range queries
-- [ ] Add `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)` using interval index
-- [ ] Add `GetNodesValidDuring(start, end)` for interval overlap queries
-- [ ] Integrate with existing `TemporalMetadata` on Node/Relationship types
-- [ ] Port test suite (9500+ LOC in tkg-2026-v3 — covers all 13 relations exhaustively)
+- [x] `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)` — Phase 2a (v3.0.21), history-aware since v3.0.23
+- [x] `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — Phase 2a, history-aware
+- [x] Integrate with `TemporalMetadata` — `ValidFrom`/`ValidTo`/`UpdatedAt`/`DeletedAt` all used
+- [x] ~50 temporal tests (point-in-time, interval, version-specific, neighbor, snapshot, deleted entity queries, truncation resilience)
+- Not ported: Allen's 13 interval relations — basic overlap semantics (`start < end AND (ValidTo == 0 OR ValidTo > start)`) covers all current use cases. Allen's algebra formalizes 11 additional named relations beyond overlap; not needed for the query API
+- Not ported: Interval tree data structure — performance optimization for temporal range queries. Current O(N) scan works. Add interval tree + `0x09`/`0x0A` keys if temporal range queries become a bottleneck on large datasets
+- Not ported: v2 test suite (9500+ LOC) — tests Allen's algebra edge cases which aren't relevant. Own test suite written (~50 tests)
 
-**Source**: `tkg-2026-v3/services/tkg/pkg/index/temporal.go` (~420 LOC implementation, ~9500 LOC tests)
-**Effort**: Large | **Impact**: High (core Phase 2 enabler)
-**Why**: This is the foundation for `Snapshot(t)`, temporal Cypher queries, and point-in-time graph reconstruction. The exhaustive test suite alone saves weeks.
+**Implemented**: Phase 2a (v3.0.21), history-aware since v3.0.23
 
-### 4. Property Index — Label+Property+Value Lookups
+### 4. Property Index — Label+Property+Value Lookups ✓
 
-- [ ] Implement dual-layer index: RAM nested map (hot path, ~10ns) + Badger prefix scan (persistence)
-- [ ] Key schema: binary prefix `0x09/<labelToken>/<propertyHash>/<valueHash>/<nodeID>`
-- [ ] Add `FindByLabelAndProperty(label, property, value) []snowflake.ID` to Store interface
-- [ ] Add lifecycle hooks: `OnNodePut`, `OnNodeDelete`, `OnNodeUpdate` to maintain index
-- [ ] Support `CreateIndex(label, property)` / `DropIndex(label, property)` for selective indexing
-- [ ] Add `RebuildIndex(label, property)` for cold-start population
-- [ ] Write tests for: creation, deletion, update (old value removed, new value added), rebuild, concurrent access
+- [x] `NodesByLabelAndProperty(labelToken, key, value, opts)` — O(1) indexed lookup with fallback scan, paginated via `QueryOpts`
+- [x] `CreatePropertyIndex(labelToken, propertyKey)` / `DropPropertyIndex(labelToken, propertyKey)` — with `ErrIndexExists`/`ErrIndexNotFound`
+- [x] Lifecycle hooks in all 7 node mutation paths (both MemoryStore and BadgerStore) via `addNodeToPropertyIndexes`/`removeNodeFromPropertyIndexes`
+- [x] Rebuild on startup via `loadIndexes()` — reads persisted definitions from `0x0F/prop_indexes`, scans matching nodes
+- [x] 25 tests: 8 MemoryStore, 8 BadgerStore, 8 Graph-layer, 1 propertyValueKey type coverage
+- Different approach: In-memory index with definition persistence to `0x0F/prop_indexes`. No Badger prefix scan — index is always in RAM. No `0x09` key schema; using `propertyValueKey` canonical strings with type prefixes (`"s:"`, `"i:"`, `"f64:"`, `"b:"` etc.)
 
-**Source**: `tkg-2026-v3/services/tkg/pkg/storage/property_index.go` (~400 LOC)
-**Effort**: Medium | **Impact**: High
-**Why**: Without it, finding a node by property requires full label scan + filter (O(n)). With it, O(1).
-Already on rho/tkg-v3 roadmap as Phase 2c.
+**Implemented**: Phase 2c (v3.0.22), persistence fixed in v3.0.23 (Phase 2 review)
 
 ---
 
@@ -97,6 +92,6 @@ Already on rho/tkg-v3 roadmap as Phase 2c.
 |---|---------|----------|------|-----------|
 | 1 | LabelStats | P0 | **Done** | O(1) counters at Store level, 18 tests |
 | 2 | Validation limits | P0 | **Done** | 5 configurable limits, enforced at all entry points, ~30 tests |
-| 3 | Temporal queries | P1 | **Done** (scan-based) | Phase 2a (v3.0.21), 31 tests. Allen interval indexing deferred (perf opt) |
-| 4 | Property index | P1 | **Done** | Phase 2c (v3.0.22), in-memory with auto-maintenance, 25 tests |
+| 3 | Temporal queries | P1 | **Done** (scan-based) | Phase 2a (v3.0.21), history-aware since v3.0.23. ~50 tests. Allen algebra + interval tree deferred (perf opt, not needed for current API) |
+| 4 | Property index | P1 | **Done** | Phase 2c (v3.0.22), persistence in v3.0.23. In-memory index with `0x0F` definition persistence, 25 tests. Badger prefix scan keys deferred |
 | 5 | Event system | P2 | Defer | No consumers yet, add on demand |
