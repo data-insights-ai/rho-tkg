@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.22. Phases 1a-1g and 2a-2e complete. LabelStats upgraded to O(1), validation limits added.
+Library at v3.0.23. Phases 1a-1g and 2a-2e complete. Phase 2 review (6 issues) resolved.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -52,7 +52,7 @@ Complete. Implemented in v3.0.15.
 **Store interface:** `PutNodeVersion`, `GetNodeVersion`, `GetNodeHistory`, `TruncateNodeHistory` + relationship mirrors. `ErrVersionNotFound` sentinel for missing versions.
 **Graph layer:** `UpdateNode`/`UpdateRelationship` save pre-mutation state to history. `GetNodeHistory`/`GetRelHistory` passthroughs.
 **Key promotion:** `keyHistNode` (0x07) and `keyHistRel` (0x08) promoted from test-only stubs to production. Added `histNodePrefix`/`histRelPrefix` for prefix scanning.
-**Delete cleanup:** All delete paths (DeleteNode, DeleteNodeCascade, DeleteRelationship) clean up associated history entries. BadgerStore cascade uses three-phase approach.
+**Delete preserves history:** All delete paths preserve version history (append-only). `DeleteNodeWithContext`/`DeleteRelationshipWithContext` save tombstone versions with `DeletedAt`/`ValidTo` before deletion.
 
 **~50 tests total:** 17 MemoryStore (8 node + 9 rel), 19 BadgerStore (mirrored + 2 restart persistence), 14 graph-layer (5 node + 5 rel + 4 Badger persistence).
 All pass with race detector.
@@ -179,16 +179,17 @@ Complete. Initially implemented in v3.0.20 (scan-based O(N)). Upgraded to O(1) a
 
 ### 2a. Temporal Queries ✓
 
-Complete. Implemented in v3.0.21.
+Complete. Initially implemented in v3.0.21. Made history-aware in v3.0.23 (Phase 2 review).
 
-- [x] `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries
-- [x] `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries
-- [x] `GetNodeAt(id, t)` — version-specific query with version chain derivation
+- [x] `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries (history-aware: includes deleted entities)
+- [x] `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries (history-aware)
+- [x] `GetNodeAt(id, t)` — version-specific query with version chain derivation (handles deleted entities)
+- [x] `GetRelAt(id, t)` — mirrors `GetNodeAt` for relationships (added in v3.0.23)
 - [x] `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal
-- [x] `Snapshot(t)` — full graph state at time t (endpoint-filtered relationships)
-- [x] `GraphSnapshot` struct, `ErrNoVersionValidAt` sentinel, 6 internal helpers
-- [x] 31 tests: 12 point-in-time, 6 interval, 5 version-specific, 3 neighbor, 5 snapshot
-- [x] No Store interface change — scan-based filtering over existing methods
+- [x] `Snapshot(t)` — full graph state at time t (endpoint-filtered relationships, includes deleted entities)
+- [x] `GraphSnapshot` struct, `ErrNoVersionValidAt` sentinel
+- [x] Store interface: `AllNodeHistoryIDs()`, `AllRelHistoryIDs()` for history-aware queries (added in v3.0.23)
+- [x] ~50 tests total: point-in-time, interval, version-specific, neighbor, snapshot, deleted entity queries, truncation resilience
 
 ### 2c. Property Indexes ✓
 
@@ -226,6 +227,21 @@ Complete. Implemented post-v3.0.22.
 - [x] `PropertyCount()` on Node and Relationship — `properties.Len()` without deep copy
 
 **~30 tests:** defaults, zero-uses-defaults, custom limits, boundary tests (at-limit succeeds, one-over fails) for all 5 limits on AddNode/AddRelationship/UpdateNode/UpdateRelationship, batch mirroring, all sentinel errors tested with `errors.Is`
+
+### Phase 2 Review — 6 Issues ✓
+
+Complete. Implemented in v3.0.23.
+
+6 issues found during Phase 2 code review, resolved in order 5 → 6 → 4 → 3 → 2 → 1:
+
+- [x] **Fix 5**: Hash chain verification — truncation resilience (`i==0` → `entry.Version()==0`)
+- [x] **Fix 6**: GetNodeAt — truncation resilience (`i==0` → `entry.Version()==0`)
+- [x] **Fix 4**: CreatePropertyIndex — 3-phase lock scope (RLock→unlocked I/O→Lock)
+- [x] **Fix 3**: Property index persistence — definitions survive BadgerStore restart via `0x0F/prop_indexes` meta key
+- [x] **Fix 2**: Delete preserves history — removed `deleteHistoryByPrefix`, added tombstone versions with `DeletedAt`/`ValidTo`
+- [x] **Fix 1**: Temporal queries history-aware — `GetNodesValidAt`/`GetRelationshipsValidAt`/`GetNodesValidDuring`/`GetRelationshipsValidDuring`/`Snapshot` now include deleted entities; added `GetRelAt`, `AllNodeHistoryIDs`/`AllRelHistoryIDs` Store methods
+
+**~19 new tests**, all pass with race detector. Coverage 89.7%.
 
 ---
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -2145,7 +2146,7 @@ func TestGraphGetNodeHistoryEmpty(t *testing.T) {
 	}
 }
 
-func TestGraphDeleteNodeCleansHistory(t *testing.T) {
+func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close()
@@ -2160,9 +2161,10 @@ func TestGraphDeleteNodeCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
+	// History is preserved — v0 pre-mutation, v1 pre-mutation, + tombstone at v2.
 	history, _ := g.GetNodeHistory(id)
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after delete, got %d", len(history))
+	if len(history) < 3 {
+		t.Fatalf("expected at least 3 preserved history entries, got %d", len(history))
 	}
 }
 
@@ -2261,7 +2263,7 @@ func TestGraphGetRelHistoryEmpty(t *testing.T) {
 	}
 }
 
-func TestGraphDeleteRelCleansHistory(t *testing.T) {
+func TestGraphDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
 	defer g.Close()
@@ -2278,9 +2280,10 @@ func TestGraphDeleteRelCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
+	// History preserved: v0 pre-mutation, v1 pre-mutation + tombstone at v2.
 	history, _ := g.GetRelHistory(id)
-	if len(history) != 0 {
-		t.Fatalf("expected empty after delete, got %d", len(history))
+	if len(history) < 3 {
+		t.Fatalf("expected at least 3 preserved rel history entries, got %d", len(history))
 	}
 }
 
@@ -2357,7 +2360,7 @@ func TestGraphBadgerRelHistoryPersistence(t *testing.T) {
 	}
 }
 
-func TestGraphBadgerDeleteNodeCleansHistory(t *testing.T) {
+func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -2383,13 +2386,14 @@ func TestGraphBadgerDeleteNodeCleansHistory(t *testing.T) {
 	}
 	defer g2.Close()
 
+	// History is preserved after delete (v0 pre-mutation + tombstone).
 	history, _ := g2.GetNodeHistory(id)
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after reopen, got %d", len(history))
+	if len(history) < 2 {
+		t.Fatalf("expected preserved history after reopen, got %d", len(history))
 	}
 }
 
-func TestGraphBadgerDeleteRelCleansHistory(t *testing.T) {
+func TestGraphBadgerDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -2417,9 +2421,10 @@ func TestGraphBadgerDeleteRelCleansHistory(t *testing.T) {
 	}
 	defer g2.Close()
 
+	// History is preserved after delete (v0 pre-mutation + tombstone).
 	history, _ := g2.GetRelHistory(relID)
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after reopen, got %d", len(history))
+	if len(history) < 2 {
+		t.Fatalf("expected preserved rel history after reopen, got %d", len(history))
 	}
 }
 
@@ -4152,5 +4157,81 @@ func TestPropertyValueKey_AllTypes(t *testing.T) {
 	strKey := propertyValueKey("1")
 	if intKey == strKey {
 		t.Errorf("int(1) and string(\"1\") produced same key: %q", intKey)
+	}
+}
+
+// --- Badger-backed temporal query tests (Fix 1) ---
+
+func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	id := n.InternalID().SnowflakeID()
+
+	validTime := types.Instant(time.Now().UnixMilli())
+	time.Sleep(2 * time.Millisecond)
+
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Query at pre-deletion time — both nodes should appear.
+	nodes, err := g.GetNodesValidAt(validTime)
+	if err != nil {
+		t.Fatalf("GetNodesValidAt: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("expected 2 nodes at pre-deletion time, got %d", len(nodes))
+	}
+
+	// Query at current time — only Bob.
+	nodes, err = g.GetNodesValidAt(types.Instant(time.Now().UnixMilli()))
+	if err != nil {
+		t.Fatalf("GetNodesValidAt now: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node at current time, got %d", len(nodes))
+	}
+}
+
+func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.AddRelationship("KNOWS", a, b, nil)
+
+	snapshotTime := types.Instant(time.Now().UnixMilli())
+	time.Sleep(2 * time.Millisecond)
+
+	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Snapshot at pre-deletion time — both nodes and the rel.
+	snap, err := g.Snapshot(snapshotTime)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if snap.NodeCount != 2 {
+		t.Fatalf("expected 2 nodes, got %d", snap.NodeCount)
+	}
+	if snap.RelCount != 1 {
+		t.Fatalf("expected 1 rel, got %d", snap.RelCount)
 	}
 }

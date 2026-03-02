@@ -149,6 +149,9 @@ func metaKey(name string) []byte {
 	return b
 }
 
+// propIndexDefsKey is the Badger key for persisting property index definitions.
+var propIndexDefsKey = metaKey("prop_indexes")
+
 // --- Parser functions ---
 
 // parseIDFromKey extracts the 8-byte big-endian int64 at the given offset.

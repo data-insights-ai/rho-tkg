@@ -161,7 +161,8 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 }
 
 // DeleteNodeWithContext atomically removes a node and all connected relationships.
-// Checks context at entry and under the entity lock before cascade.
+// Saves tombstone versions (with DeletedAt/ValidTo) for the node and all connected
+// relationships before deletion, preserving temporal history for past-time queries.
 func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
@@ -174,15 +175,87 @@ func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) erro
 		return err
 	}
 
+	// Read current node state for tombstone.
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return err
+	}
+
+	now := types.Instant(time.Now().UnixMilli())
+
+	// Save tombstone for all connected relationships first.
+	outRels, err := g.store.OutgoingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+	inRels, err := g.store.IncomingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+	seen := make(map[snowflake.ID]struct{})
+	allRels := append(outRels, inRels...)
+	for _, r := range allRels {
+		rid := r.InternalID().SnowflakeID()
+		if _, ok := seen[rid]; ok {
+			continue // dedup self-loops
+		}
+		seen[rid] = struct{}{}
+		tombR := r.DeepCopy()
+		tmR := tombR.Temporal()
+		if tmR == nil {
+			tmR = &types.TemporalMetadata{}
+			tombR.SetTemporal(tmR)
+		}
+		tmR.DeletedAt = now
+		tmR.ValidTo = now
+		if err := g.store.PutRelVersion(rid, r.Version(), tombR); err != nil {
+			return err
+		}
+	}
+
+	// Save tombstone for the node itself.
+	tombN := current.DeepCopy()
+	tmN := tombN.Temporal()
+	if tmN == nil {
+		tmN = &types.TemporalMetadata{}
+		tombN.SetTemporal(tmN)
+	}
+	tmN.DeletedAt = now
+	tmN.ValidTo = now
+	if err := g.store.PutNodeVersion(id, current.Version(), tombN); err != nil {
+		return err
+	}
+
 	return g.store.DeleteNodeCascade(id)
 }
 
 // DeleteRelationshipWithContext removes a relationship from the store.
-// Checks context at entry before the store call.
+// Saves a tombstone version (with DeletedAt/ValidTo) before deletion,
+// preserving temporal history for past-time queries.
 func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
+
+	// Read current state for tombstone.
+	current, err := g.store.GetRelationship(id)
+	if err != nil {
+		return err
+	}
+
+	now := types.Instant(time.Now().UnixMilli())
+	tombR := current.DeepCopy()
+	tmR := tombR.Temporal()
+	if tmR == nil {
+		tmR = &types.TemporalMetadata{}
+		tombR.SetTemporal(tmR)
+	}
+	tmR.DeletedAt = now
+	tmR.ValidTo = now
+	if err := g.store.PutRelVersion(id, current.Version(), tombR); err != nil {
+		return err
+	}
+
 	return g.store.DeleteRelationship(id)
 }
 

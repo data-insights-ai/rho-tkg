@@ -528,3 +528,79 @@ func TestVerifyRelHashChain_PropertyChange(t *testing.T) {
 		t.Fatal("property-mutation rel chain should be valid")
 	}
 }
+
+// --- Truncation resilience tests ---
+
+func TestVerifyNodeHashChain_AfterTruncation(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
+	g.UpdateNode(id, map[string]any{"name": "Bob"})
+	g.UpdateNode(id, map[string]any{"name": "Charlie"})
+	g.UpdateNode(id, map[string]any{"name": "Diana"})
+
+	// Verify before truncation.
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("pre-truncate: unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("pre-truncate: chain should be valid")
+	}
+
+	// Truncate to keep only 1 history version.
+	if err := g.store.TruncateNodeHistory(id, 1); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	// Verify after truncation — chain[0] is no longer genesis.
+	valid, err = g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("post-truncate: unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("post-truncate: truncated chain should still verify (content integrity)")
+	}
+}
+
+func TestVerifyRelHashChain_AfterTruncation(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	id := r.InternalID().SnowflakeID()
+
+	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
+	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})
+	g.UpdateRelationship(id, map[string]any{"weight": int64(3)})
+	g.UpdateRelationship(id, map[string]any{"weight": int64(4)})
+
+	// Verify before truncation.
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("pre-truncate: unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("pre-truncate: rel chain should be valid")
+	}
+
+	// Truncate to keep only 1 history version.
+	if err := g.store.TruncateRelHistory(id, 1); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	// Verify after truncation — chain[0] is no longer genesis.
+	valid, err = g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("post-truncate: unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("post-truncate: truncated rel chain should still verify (content integrity)")
+	}
+}

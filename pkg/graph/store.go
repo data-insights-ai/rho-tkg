@@ -83,6 +83,13 @@ type Store interface {
 	// Uses the index if one exists; falls back to label scan + property filter otherwise.
 	NodesByLabelAndProperty(labelToken uint16, key string, value any) ([]*types.Node, error)
 
+	// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
+	// This includes deleted nodes whose history was preserved.
+	AllNodeHistoryIDs() ([]snowflake.ID, error)
+
+	// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+	AllRelHistoryIDs() ([]snowflake.ID, error)
+
 	// Close releases any resources held by the store.
 	// Safe to call multiple times. No-op for stores without resources.
 	Close() error

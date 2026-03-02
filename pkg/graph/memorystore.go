@@ -257,7 +257,6 @@ func (ms *MemoryStore) deleteRelLocked(id snowflake.ID) error {
 	}
 
 	delete(ms.rels, id)
-	delete(ms.relHistory, id)
 	return nil
 }
 
@@ -302,7 +301,6 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
 	delete(ms.nodes, id)
-	delete(ms.nodeHistory, id)
 	return nil
 }
 
@@ -765,6 +763,38 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	}
 	sortNodesByID(result)
 	return result, nil
+}
+
+// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
+func (ms *MemoryStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.nodeHistory) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(ms.nodeHistory))
+	for id := range ms.nodeHistory {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+func (ms *MemoryStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if len(ms.relHistory) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(ms.relHistory))
+	for id := range ms.relHistory {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
 
 // Close is a no-op for MemoryStore. Satisfies the Store interface.

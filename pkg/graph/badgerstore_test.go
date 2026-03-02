@@ -2233,7 +2233,7 @@ func TestBadgerStoreTruncateNodeHistoryAll(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreDeleteNodeCleansHistory(t *testing.T) {
+func TestBadgerStoreDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2248,9 +2248,10 @@ func TestBadgerStoreDeleteNodeCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
+	// History is preserved after cascade delete — temporal queries need it.
 	history, _ := bs.GetNodeHistory(snowflake.ID(1))
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after cascade, got %d", len(history))
+	if len(history) != 3 {
+		t.Fatalf("expected 3 preserved history entries after cascade, got %d", len(history))
 	}
 }
 
@@ -2442,7 +2443,7 @@ func TestBadgerStoreTruncateRelHistoryAll(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreDeleteRelCleansHistory(t *testing.T) {
+func TestBadgerStoreDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2460,13 +2461,14 @@ func TestBadgerStoreDeleteRelCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
+	// History is preserved after delete — temporal queries need it.
 	history, _ := bs.GetRelHistory(snowflake.ID(100))
-	if len(history) != 0 {
-		t.Fatalf("expected empty after delete, got %d", len(history))
+	if len(history) != 3 {
+		t.Fatalf("expected 3 preserved history entries after delete, got %d", len(history))
 	}
 }
 
-func TestBadgerStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
+func TestBadgerStoreDeleteNodeCascadePreservesHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2489,14 +2491,15 @@ func TestBadgerStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
+	// History is preserved after cascade delete — temporal queries need it.
 	relHistory, _ := bs.GetRelHistory(snowflake.ID(100))
-	if len(relHistory) != 0 {
-		t.Fatalf("expected empty rel history after cascade, got %d", len(relHistory))
+	if len(relHistory) != 3 {
+		t.Fatalf("expected 3 preserved rel history after cascade, got %d", len(relHistory))
 	}
 
 	nodeHistory, _ := bs.GetNodeHistory(snowflake.ID(10))
-	if len(nodeHistory) != 0 {
-		t.Fatalf("expected empty node history after cascade, got %d", len(nodeHistory))
+	if len(nodeHistory) != 3 {
+		t.Fatalf("expected 3 preserved node history after cascade, got %d", len(nodeHistory))
 	}
 }
 
@@ -3954,5 +3957,218 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 	cr, _ := bs2.RelCountByType(1)
 	if cr != 1 {
 		t.Fatalf("after reopen: type 1 = %d, want 1", cr)
+	}
+}
+
+func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Open, create index, add nodes, close.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+
+	// Store nodes with label token 1.
+	n1 := types.NewNode(snowflake.ID(100), 1, nil)
+	_ = n1.SetProperty("city", "Berlin")
+	if err := bs1.PutNode(n1); err != nil {
+		t.Fatalf("PutNode 1: %v", err)
+	}
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	_ = n2.SetProperty("city", "Munich")
+	if err := bs1.PutNode(n2); err != nil {
+		t.Fatalf("PutNode 2: %v", err)
+	}
+	n3 := types.NewNode(snowflake.ID(300), 1, nil)
+	_ = n3.SetProperty("city", "Berlin")
+	if err := bs1.PutNode(n3); err != nil {
+		t.Fatalf("PutNode 3: %v", err)
+	}
+
+	// Create property index.
+	if err := bs1.CreatePropertyIndex(1, "city"); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+
+	// Verify works before close.
+	nodes, err := bs1.NodesByLabelAndProperty(1, "city", "Berlin")
+	if err != nil {
+		t.Fatalf("before close: NodesByLabelAndProperty: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("before close: expected 2 Berlin nodes, got %d", len(nodes))
+	}
+
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Reopen — property index definitions should be loaded and rebuilt.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	// Verify index still works without re-creating it.
+	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Berlin")
+	if err != nil {
+		t.Fatalf("after reopen: NodesByLabelAndProperty: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("after reopen: expected 2 Berlin nodes, got %d", len(nodes))
+	}
+
+	// Verify other value too.
+	nodes, err = bs2.NodesByLabelAndProperty(1, "city", "Munich")
+	if err != nil {
+		t.Fatalf("after reopen: Munich: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("after reopen: expected 1 Munich node, got %d", len(nodes))
+	}
+}
+
+// --- AllNodeHistoryIDs / AllRelHistoryIDs ---
+
+func TestBadgerStoreAllNodeHistoryIDs(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// No history yet.
+	ids, err := bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("expected 0 history IDs, got %d", len(ids))
+	}
+
+	// Add nodes and create history versions.
+	putTestNode(t, bs, 100, 1, nil)
+	putTestNode(t, bs, 200, 1, nil)
+	putTestNode(t, bs, 300, 1, nil)
+
+	n100 := types.NewNode(snowflake.ID(100), 1, nil)
+	_ = n100.SetProperty("v", int64(1))
+	if err := bs.PutNodeVersion(snowflake.ID(100), 0, n100); err != nil {
+		t.Fatalf("PutNodeVersion(100): %v", err)
+	}
+
+	n300 := types.NewNode(snowflake.ID(300), 1, nil)
+	_ = n300.SetProperty("v", int64(1))
+	if err := bs.PutNodeVersion(snowflake.ID(300), 0, n300); err != nil {
+		t.Fatalf("PutNodeVersion(300): %v", err)
+	}
+
+	ids, err = bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 history IDs, got %d", len(ids))
+	}
+
+	// IDs should be sorted.
+	if ids[0] >= ids[1] {
+		t.Fatalf("IDs not sorted: %d >= %d", ids[0], ids[1])
+	}
+}
+
+func TestBadgerStoreAllNodeHistoryIDs_PendingBuffer(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Add node and version — don't flush, so it's in the pending buffer.
+	putTestNode(t, bs, 100, 1, nil)
+	n := types.NewNode(snowflake.ID(100), 1, nil)
+	if err := bs.PutNodeVersion(snowflake.ID(100), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+
+	// Should find it in pending buffer.
+	ids, err := bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 history ID from pending buffer, got %d", len(ids))
+	}
+
+	// Flush and verify still found.
+	bs.Flush()
+	ids, err = bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs after flush: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 history ID after flush, got %d", len(ids))
+	}
+}
+
+func TestBadgerStoreAllRelHistoryIDs(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// No history yet.
+	ids, err := bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("expected 0 history IDs, got %d", len(ids))
+	}
+
+	// Add rels and create history versions.
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+	putTestRel(t, bs, 100, 1, 1, 2)
+	putTestRel(t, bs, 200, 1, 1, 2)
+
+	r100 := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
+	if err := bs.PutRelVersion(snowflake.ID(100), 0, r100); err != nil {
+		t.Fatalf("PutRelVersion(100): %v", err)
+	}
+
+	ids, err = bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 history ID, got %d", len(ids))
+	}
+}
+
+func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+	putTestRel(t, bs, 100, 1, 1, 2)
+
+	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
+	if err := bs.PutRelVersion(snowflake.ID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+
+	// Should find in pending buffer before flush.
+	ids, err := bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 history ID from pending, got %d", len(ids))
+	}
+
+	bs.Flush()
+	ids, err = bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs after flush: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 history ID after flush, got %d", len(ids))
 	}
 }

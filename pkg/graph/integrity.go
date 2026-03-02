@@ -40,13 +40,13 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 			return false, nil
 		}
 
-		// Genesis: PrevHash must be empty.
-		if i == 0 {
+		if entry.Version() == 0 {
+			// Genesis: PrevHash must be empty.
 			if ig.PrevHash != "" {
 				return false, nil
 			}
-		} else {
-			// Non-genesis: PrevHash must link to previous entry's Hash.
+		} else if i > 0 {
+			// Non-genesis with predecessor in chain: verify PrevHash link.
 			prevIG := chain[i-1].Integrity()
 			if prevIG == nil {
 				return false, nil
@@ -55,6 +55,8 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 				return false, nil
 			}
 		}
+		// else: i == 0 && version != 0 → truncated history, skip link check.
+		// Hash recomputation below still verifies content integrity.
 
 		// Recompute hash and compare with stored.
 		computed := ComputeNodeHash(entry, labels)
@@ -94,13 +96,13 @@ func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
 			return false, nil
 		}
 
-		// Genesis: PrevHash must be empty.
-		if i == 0 {
+		if entry.Version() == 0 {
+			// Genesis: PrevHash must be empty.
 			if ig.PrevHash != "" {
 				return false, nil
 			}
-		} else {
-			// Non-genesis: PrevHash must link to previous entry's Hash.
+		} else if i > 0 {
+			// Non-genesis with predecessor in chain: verify PrevHash link.
 			prevIG := chain[i-1].Integrity()
 			if prevIG == nil {
 				return false, nil
@@ -109,6 +111,7 @@ func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
 				return false, nil
 			}
 		}
+		// else: i == 0 && version != 0 → truncated history, skip link check.
 
 		// Recompute hash and compare with stored.
 		computed := ComputeRelHash(entry, typeName)

@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"errors"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
@@ -90,36 +92,51 @@ func (g *Graph) isRelValidDuring(r *types.Relationship, start, end types.Instant
 // --- Public temporal query methods ---
 
 // GetNodesValidAt returns all nodes valid at the given instant.
-// Nodes without explicit temporal metadata derive their valid-from from the
-// snowflake ID timestamp and are treated as open-ended (ValidTo=0).
+// History-aware: includes deleted nodes that were valid at time t by consulting
+// version history in addition to current entities.
 func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
-	all, err := g.store.AllNodes()
+	allIDs, err := g.allKnownNodeIDs()
 	if err != nil {
 		return nil, err
 	}
 
 	var result []*types.Node
-	for _, n := range all {
-		if g.isNodeValidAt(n, t) {
-			result = append(result, n)
+	for id := range allIDs {
+		n, err := g.GetNodeAt(id, t)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, err
 		}
+		result = append(result, n)
 	}
+
+	sortNodesByID(result)
 	return result, nil
 }
 
 // GetRelationshipsValidAt returns all relationships valid at the given instant.
+// History-aware: includes deleted relationships that were valid at time t.
 func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, error) {
-	all, err := g.store.AllRelationships()
+	allIDs, err := g.allKnownRelIDs()
 	if err != nil {
 		return nil, err
 	}
 
 	var result []*types.Relationship
-	for _, r := range all {
-		if g.isRelValidAt(r, t) {
-			result = append(result, r)
+	for id := range allIDs {
+		r, err := g.GetRelAt(id, t)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, err
 		}
+		result = append(result, r)
 	}
+
+	sortRelsByID(result)
 	return result, nil
 }
 
@@ -145,34 +162,51 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 }
 
 // GetNodesValidDuring returns all nodes whose validity overlaps [start, end).
+// History-aware: includes deleted or updated nodes that had any version valid
+// during the interval.
 func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
-	all, err := g.store.AllNodes()
+	allIDs, err := g.allKnownNodeIDs()
 	if err != nil {
 		return nil, err
 	}
 
 	var result []*types.Node
-	for _, n := range all {
-		if g.isNodeValidDuring(n, start, end) {
-			result = append(result, n)
+	for id := range allIDs {
+		n, err := g.getNodeVersionDuring(id, start, end)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, err
 		}
+		result = append(result, n)
 	}
+
+	sortNodesByID(result)
 	return result, nil
 }
 
 // GetRelationshipsValidDuring returns all relationships whose validity overlaps [start, end).
+// History-aware: includes deleted or updated relationships.
 func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
-	all, err := g.store.AllRelationships()
+	allIDs, err := g.allKnownRelIDs()
 	if err != nil {
 		return nil, err
 	}
 
 	var result []*types.Relationship
-	for _, r := range all {
-		if g.isRelValidDuring(r, start, end) {
-			result = append(result, r)
+	for id := range allIDs {
+		r, err := g.getRelVersionDuring(id, start, end)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, err
 		}
+		result = append(result, r)
 	}
+
+	sortRelsByID(result)
 	return result, nil
 }
 
@@ -187,11 +221,224 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 //
 // Explicit ValidFrom/ValidTo on the entity override derived values.
 //
-// Returns ErrNodeNotFound if the node does not exist.
+// Handles deleted entities: if the current node is gone but history exists,
+// version resolution proceeds using only the history chain. The last entry
+// in a deleted entity's history has ValidTo set (tombstone).
+//
+// Returns ErrNodeNotFound if the node never existed (no current, no history).
 // Returns ErrNoVersionValidAt if no version covers the given time.
 func (g *Graph) GetNodeAt(id snowflake.ID, t types.Instant) (*types.Node, error) {
 	current, err := g.store.GetNode(id)
+	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+		return nil, err
+	}
+	// current may be nil for deleted entities.
+
+	history, err := g.store.GetNodeHistory(id)
 	if err != nil {
+		return nil, err
+	}
+
+	if current == nil && len(history) == 0 {
+		return nil, ErrNodeNotFound
+	}
+
+	// Build chain: history (ascending version order) + current (if exists).
+	chain := make([]*types.Node, 0, len(history)+1)
+	chain = append(chain, history...)
+	if current != nil {
+		chain = append(chain, current)
+	}
+
+	return g.resolveNodeVersionAt(chain, t)
+}
+
+// resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
+func (g *Graph) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
+	for i := len(chain) - 1; i >= 0; i-- {
+		entry := chain[i]
+		vStart, vEnd := g.nodeVersionBounds(chain, i)
+
+		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t).
+		if vStart <= t && (vEnd == 0 || vEnd > t) {
+			return entry, nil
+		}
+	}
+	return nil, ErrNoVersionValidAt
+}
+
+// nodeVersionBounds computes the effective [vStart, vEnd) for chain[i].
+func (g *Graph) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, types.Instant) {
+	entry := chain[i]
+	var vStart, vEnd types.Instant
+
+	// Determine version start.
+	if entry.Version() == 0 {
+		vStart = g.nodeValidFrom(entry)
+	} else {
+		if tm := entry.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			vStart = tm.UpdatedAt
+		} else {
+			vStart = g.nodeValidFrom(entry)
+		}
+	}
+
+	// Determine version end.
+	if i < len(chain)-1 {
+		next := chain[i+1]
+		if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			vEnd = tm.UpdatedAt
+		} else {
+			vEnd = g.nodeValidFrom(next)
+		}
+	}
+	// vEnd == 0 means open-ended (current version).
+
+	// Explicit ValidFrom/ValidTo override derived values.
+	if tm := entry.Temporal(); tm != nil {
+		if tm.ValidFrom != 0 {
+			vStart = tm.ValidFrom
+		}
+		if tm.ValidTo != 0 {
+			vEnd = tm.ValidTo
+		}
+	}
+
+	return vStart, vEnd
+}
+
+// GetRelAt returns the version of a relationship that was valid at the given instant.
+// Mirrors GetNodeAt for relationships. Handles deleted entities by consulting
+// version history when the current relationship is gone.
+//
+// Returns ErrRelNotFound if the relationship never existed (no current, no history).
+// Returns ErrNoVersionValidAt if no version covers the given time.
+func (g *Graph) GetRelAt(id snowflake.ID, t types.Instant) (*types.Relationship, error) {
+	current, err := g.store.GetRelationship(id)
+	if err != nil && !errors.Is(err, ErrRelNotFound) {
+		return nil, err
+	}
+	// current may be nil for deleted entities.
+
+	history, err := g.store.GetRelHistory(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if current == nil && len(history) == 0 {
+		return nil, ErrRelNotFound
+	}
+
+	// Build chain: history (ascending version order) + current (if exists).
+	chain := make([]*types.Relationship, 0, len(history)+1)
+	chain = append(chain, history...)
+	if current != nil {
+		chain = append(chain, current)
+	}
+
+	return g.resolveRelVersionAt(chain, t)
+}
+
+// resolveRelVersionAt finds the version valid at time t from a pre-built chain.
+func (g *Graph) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
+	for i := len(chain) - 1; i >= 0; i-- {
+		entry := chain[i]
+		vStart, vEnd := g.relVersionBounds(chain, i)
+
+		if vStart <= t && (vEnd == 0 || vEnd > t) {
+			return entry, nil
+		}
+	}
+	return nil, ErrNoVersionValidAt
+}
+
+// relVersionBounds computes the effective [vStart, vEnd) for chain[i].
+func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Instant, types.Instant) {
+	entry := chain[i]
+	var vStart, vEnd types.Instant
+
+	if entry.Version() == 0 {
+		vStart = g.relValidFrom(entry)
+	} else {
+		if tm := entry.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			vStart = tm.UpdatedAt
+		} else {
+			vStart = g.relValidFrom(entry)
+		}
+	}
+
+	if i < len(chain)-1 {
+		next := chain[i+1]
+		if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			vEnd = tm.UpdatedAt
+		} else {
+			vEnd = g.relValidFrom(next)
+		}
+	}
+
+	if tm := entry.Temporal(); tm != nil {
+		if tm.ValidFrom != 0 {
+			vStart = tm.ValidFrom
+		}
+		if tm.ValidTo != 0 {
+			vEnd = tm.ValidTo
+		}
+	}
+
+	return vStart, vEnd
+}
+
+// --- Private helpers for history-aware queries ---
+
+// allKnownNodeIDs returns the union of current node IDs and history node IDs.
+func (g *Graph) allKnownNodeIDs() (map[snowflake.ID]struct{}, error) {
+	all, err := g.store.AllNodes()
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[snowflake.ID]struct{}, len(all))
+	for _, n := range all {
+		ids[n.InternalID().SnowflakeID()] = struct{}{}
+	}
+
+	histIDs, err := g.store.AllNodeHistoryIDs()
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range histIDs {
+		ids[id] = struct{}{}
+	}
+
+	return ids, nil
+}
+
+// allKnownRelIDs returns the union of current relationship IDs and history relationship IDs.
+func (g *Graph) allKnownRelIDs() (map[snowflake.ID]struct{}, error) {
+	all, err := g.store.AllRelationships()
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[snowflake.ID]struct{}, len(all))
+	for _, r := range all {
+		ids[r.InternalID().SnowflakeID()] = struct{}{}
+	}
+
+	histIDs, err := g.store.AllRelHistoryIDs()
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range histIDs {
+		ids[id] = struct{}{}
+	}
+
+	return ids, nil
+}
+
+// getNodeVersionDuring returns the most recent version of a node whose validity
+// overlaps [start, end). Returns ErrNoVersionValidAt if none overlap.
+func (g *Graph) getNodeVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Node, error) {
+	current, err := g.store.GetNode(id)
+	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
 
@@ -200,51 +447,55 @@ func (g *Graph) GetNodeAt(id snowflake.ID, t types.Instant) (*types.Node, error)
 		return nil, err
 	}
 
-	// Build chain: history (ascending version order) + current.
+	if current == nil && len(history) == 0 {
+		return nil, ErrNodeNotFound
+	}
+
 	chain := make([]*types.Node, 0, len(history)+1)
 	chain = append(chain, history...)
-	chain = append(chain, current)
+	if current != nil {
+		chain = append(chain, current)
+	}
 
-	// Compute each version's validity period and find a match.
+	// Find the most recent version overlapping [start, end).
 	for i := len(chain) - 1; i >= 0; i-- {
-		entry := chain[i]
-		var vStart, vEnd types.Instant
-
-		// Determine version start.
-		if i == 0 {
-			vStart = g.nodeValidFrom(entry)
-		} else {
-			if tm := entry.Temporal(); tm != nil && tm.UpdatedAt != 0 {
-				vStart = tm.UpdatedAt
-			} else {
-				vStart = g.nodeValidFrom(entry)
-			}
+		vStart, vEnd := g.nodeVersionBounds(chain, i)
+		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
+		if vStart < end && (vEnd == 0 || vEnd > start) {
+			return chain[i], nil
 		}
+	}
 
-		// Determine version end.
-		if i < len(chain)-1 {
-			next := chain[i+1]
-			if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
-				vEnd = tm.UpdatedAt
-			} else {
-				vEnd = g.nodeValidFrom(next)
-			}
-		}
-		// vEnd == 0 means open-ended (current version).
+	return nil, ErrNoVersionValidAt
+}
 
-		// Explicit ValidFrom/ValidTo override derived values.
-		if tm := entry.Temporal(); tm != nil {
-			if tm.ValidFrom != 0 {
-				vStart = tm.ValidFrom
-			}
-			if tm.ValidTo != 0 {
-				vEnd = tm.ValidTo
-			}
-		}
+// getRelVersionDuring returns the most recent version of a relationship whose
+// validity overlaps [start, end). Returns ErrNoVersionValidAt if none overlap.
+func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Relationship, error) {
+	current, err := g.store.GetRelationship(id)
+	if err != nil && !errors.Is(err, ErrRelNotFound) {
+		return nil, err
+	}
 
-		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t).
-		if vStart <= t && (vEnd == 0 || vEnd > t) {
-			return entry, nil
+	history, err := g.store.GetRelHistory(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if current == nil && len(history) == 0 {
+		return nil, ErrRelNotFound
+	}
+
+	chain := make([]*types.Relationship, 0, len(history)+1)
+	chain = append(chain, history...)
+	if current != nil {
+		chain = append(chain, current)
+	}
+
+	for i := len(chain) - 1; i >= 0; i-- {
+		vStart, vEnd := g.relVersionBounds(chain, i)
+		if vStart < end && (vEnd == 0 || vEnd > start) {
+			return chain[i], nil
 		}
 	}
 

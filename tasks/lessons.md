@@ -49,7 +49,7 @@ GOOD: Add NodeCountByLabel to the Store interface. MemoryStore: len(labelIdx[tok
 
 If it's in memory and it matters, it needs a persistence path and a rebuild path.
 This has been violated twice: once for in-memory indexes (fixed in v3.0.10), once
-for property indexes (Phase 2c — not yet fixed).
+for property indexes (fixed in v3.0.23 — definitions persisted to `0x0F/prop_indexes`).
 
 ```
 BAD:  CreatePropertyIndex populates bs.propertyIndexes[key] in memory.
@@ -263,3 +263,66 @@ Concurrent AddRelationship + DeleteNode.
 - **Graph is the sole external API.** Add passthroughs rather than exposing Store.
 - **Doc comments must match behavior.** After changing logic, grep for stale descriptions.
 - **Validate before generating IDs.** `NewPropertySlice(props)` before `NextNodeID()`.
+
+---
+
+## 15. Array Position Is Not Identity
+
+Never use array position (`i == 0`) as a proxy for semantic identity (`version == 0`).
+Array position changes when elements are removed; semantic identity does not.
+
+```
+BAD:  if i == 0 { // "genesis version"
+          // This breaks after TruncateHistory removes earlier versions.
+          // chain[0] is now version 3 with a valid PrevHash.
+      }
+
+GOOD: if entry.Version() == 0 { // actually genesis
+          // Works regardless of truncation — genesis is always version 0.
+      }
+```
+
+This applies to any check that assumes the first element in a collection has special
+meaning. After truncation, filtering, or pagination, `[0]` is just the first *remaining*
+element, not the first *created* element.
+
+---
+
+## 16. Refactor Shared Logic When Adding Parallel Methods
+
+When adding a method that mirrors an existing one (e.g., `GetRelAt` mirrors `GetNodeAt`),
+factor out the shared algorithm into a helper instead of copy-pasting.
+
+```
+BAD:  GetNodeAt has 30 lines of version resolution logic.
+      GetRelAt copy-pastes the same 30 lines with s/Node/Rel/.
+      Bug fix must be applied in two places. They will drift.
+
+GOOD: nodeVersionBounds(chain, i) / relVersionBounds(chain, i) — type-specific bounds.
+      resolveNodeVersionAt(chain, t) / resolveRelVersionAt(chain, t) — shared algorithm.
+      GetNodeAt and GetRelAt call the helpers. Fix once, correct everywhere.
+```
+
+---
+
+## 17. History-Aware Queries Need ID Merging
+
+Temporal queries that should include deleted entities must merge IDs from two sources:
+current entities (from `AllNodes()`) and historical entities (from `AllNodeHistoryIDs()`).
+Querying only current entities makes deleted entities invisible to time-travel queries.
+
+```
+BAD:  func GetNodesValidAt(t) {
+          all := store.AllNodes()    // only current tip versions
+          return filter(all, t)      // deleted nodes are invisible
+      }
+
+GOOD: func GetNodesValidAt(t) {
+          currentIDs := store.AllNodes()
+          histIDs := store.AllNodeHistoryIDs()  // includes deleted entities
+          allIDs := merge(currentIDs, histIDs)
+          for id := range allIDs {
+              n := GetNodeAt(id, t)  // handles nil current via history chain
+          }
+      }
+```

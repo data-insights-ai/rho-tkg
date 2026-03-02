@@ -316,6 +316,33 @@ func (bs *BadgerStore) loadIndexes() error {
 			bs.getOrCreateTypeCounter(token).Store(int64(len(set)))
 		}
 
+		// Load property index definitions and rebuild index data.
+		item, err := txn.Get(propIndexDefsKey)
+		if err == nil {
+			var defs []propIdxDef
+			if e := item.Value(func(val []byte) error {
+				return msgpack.Unmarshal(val, &defs)
+			}); e == nil {
+				for _, def := range defs {
+					key := propertyIndexKey{labelToken: def.LabelToken, propertyKey: def.PropertyKey}
+					idx := newPropertyIndex()
+					if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+						for nodeID := range nodeIDs {
+							n, nerr := bs.loadNodeFromBadger(txn, nodeID)
+							if nerr != nil {
+								continue // tolerate missing/corrupt during rebuild
+							}
+							if val, found := n.GetProperty(def.PropertyKey); found {
+								idx.add(nodeID, val)
+							}
+						}
+					}
+					bs.propertyIndexes[key] = idx
+				}
+			}
+		}
+		// badger.ErrKeyNotFound is OK — no indexes defined yet.
+
 		return nil
 	})
 }
@@ -482,11 +509,6 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 			}
 		}
 		bs.getOrCreateLabelCounter(tok).Add(-1)
-	}
-
-	// Clean up version history.
-	if err := bs.deleteHistoryByPrefix(histNodePrefix(intID)); err != nil {
-		return fmt.Errorf("graph: delete node history: %w", err)
 	}
 
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
@@ -783,10 +805,6 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 		endID:   r.EndNodeID().SnowflakeID(),
 	})
 
-	// Clean up version history.
-	if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(id))); err != nil {
-		return fmt.Errorf("graph: delete rel history: %w", err)
-	}
 	return nil
 }
 
@@ -1088,27 +1106,13 @@ func (bs *BadgerStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relat
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.
 // Phases 1+2 (preflight + in-memory mutations) run under idxMu write lock.
-// Phase 3 (history cleanup) runs after releasing the lock — history keys are
-// NOT in any in-memory index and deleteHistoryByPrefix uses wbMu, not idxMu.
+// Version history is preserved — temporal queries can still reconstruct past state.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
-	toDelete, corruptErr, err := bs.cascadeDeleteLocked(id)
+	_, corruptErr, err := bs.cascadeDeleteLocked(id)
 	if err != nil {
 		return err
 	}
-
-	// Phase 3 — History cleanup runs WITHOUT idxMu held.
-	// deleteHistoryByPrefix does Badger db.View() iterator scans per entity.
-	// Holding idxMu during these scans would block all concurrent reads/writes.
-	for _, info := range toDelete {
-		if e := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); e != nil {
-			corruptErr = errors.Join(corruptErr, fmt.Errorf("graph: cascade delete rel history: %w", e))
-		}
-	}
-	if e := bs.deleteHistoryByPrefix(histNodePrefix(int64(id))); e != nil {
-		corruptErr = errors.Join(corruptErr, fmt.Errorf("graph: cascade delete node history: %w", e))
-	}
-
 	return corruptErr
 }
 
@@ -1413,10 +1417,6 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 			bs.getOrCreateLabelCounter(tok).Add(-1)
 		}
 
-		if err := bs.deleteHistoryByPrefix(histNodePrefix(intID)); err != nil {
-			return fmt.Errorf("graph: delete node history: %w", err)
-		}
-
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, id)
@@ -1460,9 +1460,6 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 	// Phase 2: apply — all validated, mutations cannot fail.
 	for _, info := range infos {
 		bs.deleteRelByInfo(info)
-		if err := bs.deleteHistoryByPrefix(histRelPrefix(int64(info.id))); err != nil {
-			return fmt.Errorf("graph: delete rel history: %w", err)
-		}
 	}
 
 	return nil
@@ -1825,42 +1822,7 @@ func (bs *BadgerStore) truncateHistoryByPrefix(prefix []byte, keepVersions int) 
 	return nil
 }
 
-// deleteHistoryByPrefix removes all history entries matching the given prefix
-// from both the pending buffer and Badger.
-func (bs *BadgerStore) deleteHistoryByPrefix(prefix []byte) error {
-	prefixStr := string(prefix)
 
-	// Remove matching entries from pending buffer.
-	bs.wbMu.Lock()
-	for k := range bs.pending {
-		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
-			delete(bs.pending, k)
-		}
-	}
-	bs.wbMu.Unlock()
-
-	// Scan Badger for persisted entries and queue deletes.
-	var ops []writeOp
-	err := bs.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().KeyCopy(nil)
-			ops = append(ops, writeOp{opType: writeOpDelete, key: key})
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if len(ops) > 0 {
-		bs.appendOps(ops...)
-	}
-	return nil
-}
 
 // --- Counts (O(1) via atomic counters) ---
 
@@ -2065,33 +2027,50 @@ func (bs *BadgerStore) gcLoop() {
 // --- Property indexes ---
 
 // CreatePropertyIndex creates a property index for the given label token and property key.
-// Scans all existing nodes with that label to populate the index.
+// Three-phase approach: snapshot IDs under RLock, fetch entities outside any lock,
+// install index under write Lock. This prevents blocking concurrent reads/writes
+// during the potentially slow Badger I/O phase.
 // Returns ErrIndexExists if the index already exists.
 func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
-	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
-
+	// Phase 1: Check existence + snapshot IDs under RLock.
+	bs.idxMu.RLock()
 	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
 	if _, exists := bs.propertyIndexes[key]; exists {
+		bs.idxMu.RUnlock()
 		return ErrIndexExists
 	}
-
-	idx := newPropertyIndex()
-
-	// Populate from existing nodes with this label.
+	var ids []snowflake.ID
 	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
-		for nodeID := range nodeIDs {
-			n, err := bs.getNodeLocked(nodeID)
-			if err != nil {
-				continue
+		ids = make([]snowflake.ID, 0, len(nodeIDs))
+		for id := range nodeIDs {
+			ids = append(ids, id)
+		}
+	}
+	bs.idxMu.RUnlock()
+
+	// Phase 2: Fetch node data OUTSIDE any lock via public GetNode.
+	idx := newPropertyIndex()
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // deleted between snapshot and fetch
 			}
-			if val, found := n.GetProperty(propertyKey); found {
-				idx.add(nodeID, val)
-			}
+			return fmt.Errorf("graph: create property index: %w", err)
+		}
+		if val, found := n.GetProperty(propertyKey); found {
+			idx.add(id, val)
 		}
 	}
 
+	// Phase 3: Install index under write Lock. Re-check for concurrent creation.
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	if _, exists := bs.propertyIndexes[key]; exists {
+		return ErrIndexExists
+	}
 	bs.propertyIndexes[key] = idx
+	bs.persistPropertyIndexDefs()
 	return nil
 }
 
@@ -2107,7 +2086,55 @@ func (bs *BadgerStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 	}
 
 	delete(bs.propertyIndexes, key)
+	bs.persistPropertyIndexDefs()
 	return nil
+}
+
+// propIdxDef is the serialization format for property index definitions.
+type propIdxDef struct {
+	LabelToken  uint16 `msgpack:"l"`
+	PropertyKey string `msgpack:"p"`
+}
+
+// persistPropertyIndexDefs serializes the current property index definitions to Badger.
+// Caller must hold bs.idxMu write lock.
+func (bs *BadgerStore) persistPropertyIndexDefs() {
+	var defs []propIdxDef
+	for key := range bs.propertyIndexes {
+		defs = append(defs, propIdxDef{LabelToken: key.labelToken, PropertyKey: key.propertyKey})
+	}
+	if len(defs) == 0 {
+		bs.appendOps(writeOp{opType: writeOpDelete, key: propIndexDefsKey})
+		return
+	}
+	data, err := msgpack.Marshal(defs)
+	if err != nil {
+		return // index still works in-memory; will retry on next change
+	}
+	bs.appendOps(writeOp{opType: writeOpSet, key: propIndexDefsKey, value: data})
+}
+
+// loadNodeFromBadger reads and unmarshals a node within an existing Badger transaction.
+// Does not interact with the LRU cache. Used during loadIndexes where the cache is
+// not yet populated and concurrent access has not started.
+func (bs *BadgerStore) loadNodeFromBadger(txn *badger.Txn, id snowflake.ID) (*types.Node, error) {
+	item, err := txn.Get(nodeKey(int64(id)))
+	if err == badger.ErrKeyNotFound {
+		return nil, ErrNodeNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var n *types.Node
+	err = item.Value(func(val []byte) error {
+		var w nodeWire
+		if err := msgpack.Unmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal node: %w", err)
+		}
+		n = wireToNode(w)
+		return nil
+	})
+	return n, err
 }
 
 // NodesByLabelAndProperty returns nodes matching the label and property value.
@@ -2165,6 +2192,100 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	}
 	sortNodesByID(result)
 	return result, nil
+}
+
+// --- History ID scans ---
+
+// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
+// Scans both the pending buffer and Badger for 0x07 prefix keys.
+func (bs *BadgerStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Check pending buffer for unflushed history writes.
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
+			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			seen[id] = struct{}{}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Scan Badger for persisted history keys.
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		pfx := []byte{keyHistNode}
+		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+			key := it.Item().Key()
+			if len(key) >= sizeHistKey {
+				id := snowflake.ID(parseIDFromKey(key, 1))
+				seen[id] = struct{}{}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: scan node history IDs: %w", err)
+	}
+
+	if len(seen) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+// Scans both the pending buffer and Badger for 0x08 prefix keys.
+func (bs *BadgerStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Check pending buffer for unflushed history writes.
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
+			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			seen[id] = struct{}{}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Scan Badger for persisted history keys.
+	err := bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		pfx := []byte{keyHistRel}
+		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+			key := it.Item().Key()
+			if len(key) >= sizeHistKey {
+				id := snowflake.ID(parseIDFromKey(key, 1))
+				seen[id] = struct{}{}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: scan rel history IDs: %w", err)
+	}
+
+	if len(seen) == 0 {
+		return nil, nil
+	}
+	ids := make([]snowflake.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
 
 // --- Lifecycle ---

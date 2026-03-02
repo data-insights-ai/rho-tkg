@@ -1181,7 +1181,7 @@ func TestMemoryStoreTruncateNodeHistoryAll(t *testing.T) {
 	}
 }
 
-func TestMemoryStoreDeleteNodeCleansHistory(t *testing.T) {
+func TestMemoryStoreDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
@@ -1199,9 +1199,10 @@ func TestMemoryStoreDeleteNodeCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
+	// History is preserved after cascade delete — temporal queries need it.
 	history, _ := ms.GetNodeHistory(snowflake.ID(1))
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after cascade delete, got %d", len(history))
+	if len(history) != 3 {
+		t.Fatalf("expected 3 preserved history entries after cascade delete, got %d", len(history))
 	}
 }
 
@@ -1363,7 +1364,7 @@ func TestMemoryStoreTruncateRelHistoryAll(t *testing.T) {
 	}
 }
 
-func TestMemoryStoreDeleteRelCleansHistory(t *testing.T) {
+func TestMemoryStoreDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
@@ -1385,13 +1386,14 @@ func TestMemoryStoreDeleteRelCleansHistory(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
+	// History is preserved after delete — temporal queries need it.
 	history, _ := ms.GetRelHistory(snowflake.ID(100))
-	if len(history) != 0 {
-		t.Fatalf("expected empty history after delete, got %d", len(history))
+	if len(history) != 3 {
+		t.Fatalf("expected 3 preserved history entries after delete, got %d", len(history))
 	}
 }
 
-func TestMemoryStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
+func TestMemoryStoreDeleteNodeCascadePreservesRelHistory(t *testing.T) {
 	t.Parallel()
 
 	ms := NewMemoryStore()
@@ -1413,16 +1415,16 @@ func TestMemoryStoreDeleteNodeCascadeCleansRelHistory(t *testing.T) {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
-	// Relationship history should be cleaned by cascade.
+	// History is preserved after cascade delete — temporal queries need it.
 	history, _ := ms.GetRelHistory(snowflake.ID(100))
-	if len(history) != 0 {
-		t.Fatalf("expected empty rel history after cascade, got %d", len(history))
+	if len(history) != 3 {
+		t.Fatalf("expected 3 preserved rel history after cascade, got %d", len(history))
 	}
 
-	// Node history should also be cleaned.
+	// Node has no version history entries (only rel versions were stored).
 	nHistory, _ := ms.GetNodeHistory(snowflake.ID(10))
 	if len(nHistory) != 0 {
-		t.Fatalf("expected empty node history after cascade, got %d", len(nHistory))
+		t.Fatalf("expected 0 node history (none created), got %d", len(nHistory))
 	}
 }
 
@@ -1954,10 +1956,10 @@ func TestMemoryStoreDeleteRelsBatch(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 0", count)
 	}
 
-	// Verify history cleaned up.
+	// History is preserved after delete — temporal queries need it.
 	history, _ := ms.GetRelHistory(snowflake.ID(100))
-	if len(history) != 0 {
-		t.Fatalf("GetRelHistory(100) = %d entries, want 0 after delete", len(history))
+	if len(history) != 1 {
+		t.Fatalf("GetRelHistory(100) = %d entries, want 1 (preserved after delete)", len(history))
 	}
 }
 

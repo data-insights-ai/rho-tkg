@@ -692,3 +692,538 @@ func TestSnapshot_SortedResults(t *testing.T) {
 	_ = n2
 	_ = n3
 }
+
+// --- Truncation resilience tests ---
+
+func TestGetNodeAt_AfterTruncation(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateNode(id, map[string]any{"name": "v1"})
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateNode(id, map[string]any{"name": "v2"})
+	time.Sleep(2 * time.Millisecond)
+	updated, _ := g.UpdateNode(id, map[string]any{"name": "v3"})
+
+	// Truncate to keep only 1 history version (v2 survives).
+	if err := g.store.TruncateNodeHistory(id, 1); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	// Query at the surviving version's UpdatedAt — should return it.
+	history, _ := g.store.GetNodeHistory(id)
+	if len(history) != 1 {
+		t.Fatalf("expected 1 history entry after truncation, got %d", len(history))
+	}
+	survivingVersion := history[0]
+	tm := survivingVersion.Temporal()
+	if tm == nil || tm.UpdatedAt == 0 {
+		t.Fatal("surviving version should have UpdatedAt set")
+	}
+
+	// Query at the surviving version's time.
+	result, err := g.GetNodeAt(id, tm.UpdatedAt)
+	if err != nil {
+		t.Fatalf("GetNodeAt at surviving version time: %v", err)
+	}
+	name, _ := result.GetProperty("name")
+	if name != "v2" {
+		t.Fatalf("expected name=v2 at surviving version time, got %v", name)
+	}
+
+	// Query at current time should return latest (v3).
+	result, err = g.GetNodeAt(id, nowMs())
+	if err != nil {
+		t.Fatalf("GetNodeAt at now: %v", err)
+	}
+	name, _ = result.GetProperty("name")
+	if name != "v3" {
+		t.Fatalf("expected name=v3 at now, got %v", name)
+	}
+	_ = updated
+}
+
+// --- Delete history preservation tests ---
+
+func TestDeleteNodePreservesHistory(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateNode(id, map[string]any{"name": "v1"})
+
+	// Delete the node.
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// History should still be available.
+	history, err := g.store.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory after delete: %v", err)
+	}
+	if len(history) == 0 {
+		t.Fatal("expected preserved history entries after delete, got 0")
+	}
+}
+
+func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	beforeDelete := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Check that tombstone entry exists with DeletedAt set.
+	history, _ := g.store.GetNodeHistory(id)
+	if len(history) == 0 {
+		t.Fatal("expected tombstone history entry")
+	}
+
+	// The tombstone should be the last history entry.
+	tombstone := history[len(history)-1]
+	tm := tombstone.Temporal()
+	if tm == nil {
+		t.Fatal("tombstone has nil temporal metadata")
+	}
+	if tm.DeletedAt == 0 {
+		t.Fatal("tombstone should have DeletedAt set")
+	}
+	if tm.DeletedAt <= types.Instant(beforeDelete) {
+		t.Fatalf("DeletedAt %d should be after beforeDelete %d", tm.DeletedAt, beforeDelete)
+	}
+	if tm.ValidTo == 0 {
+		t.Fatal("tombstone should have ValidTo set")
+	}
+}
+
+func TestDeleteRelPreservesHistory(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	rid := r.InternalID().SnowflakeID()
+
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
+
+	// Delete the relationship.
+	if err := g.DeleteRelationship(rid); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// History should still be available.
+	history, err := g.store.GetRelHistory(rid)
+	if err != nil {
+		t.Fatalf("GetRelHistory after delete: %v", err)
+	}
+	if len(history) == 0 {
+		t.Fatal("expected preserved rel history entries after delete, got 0")
+	}
+
+	// Tombstone should have DeletedAt.
+	tombstone := history[len(history)-1]
+	tm := tombstone.Temporal()
+	if tm == nil || tm.DeletedAt == 0 {
+		t.Fatal("rel tombstone should have DeletedAt set")
+	}
+}
+
+func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
+	rid := r.InternalID().SnowflakeID()
+	aid := a.InternalID().SnowflakeID()
+
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateRelationship(rid, map[string]any{"since": int64(2021)})
+
+	// Cascade delete node A — should preserve rel history.
+	if err := g.DeleteNode(aid); err != nil {
+		t.Fatalf("DeleteNode cascade: %v", err)
+	}
+
+	// Rel history should be preserved with tombstone.
+	history, err := g.store.GetRelHistory(rid)
+	if err != nil {
+		t.Fatalf("GetRelHistory after cascade: %v", err)
+	}
+	if len(history) == 0 {
+		t.Fatal("expected preserved rel history after cascade delete")
+	}
+
+	// Tombstone should have DeletedAt.
+	tombstone := history[len(history)-1]
+	tm := tombstone.Temporal()
+	if tm == nil || tm.DeletedAt == 0 {
+		t.Fatal("cascade-deleted rel tombstone should have DeletedAt set")
+	}
+
+	// Node history should also be preserved.
+	nodeHistory, err := g.store.GetNodeHistory(aid)
+	if err != nil {
+		t.Fatalf("GetNodeHistory after cascade: %v", err)
+	}
+	if len(nodeHistory) == 0 {
+		t.Fatal("expected preserved node history after cascade delete")
+	}
+}
+
+// --- History-aware temporal query tests (Fix 1) ---
+
+func TestGetNodeAt_DeletedEntity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Record a time when the node existed.
+	validTime := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	// Delete the node (creates tombstone with DeletedAt/ValidTo).
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// GetNodeAt at the pre-deletion time should return the node.
+	result, err := g.GetNodeAt(id, validTime)
+	if err != nil {
+		t.Fatalf("GetNodeAt at pre-deletion time: %v", err)
+	}
+	name, _ := result.GetProperty("name")
+	if name != "Alice" {
+		t.Fatalf("expected name=Alice, got %v", name)
+	}
+}
+
+func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	time.Sleep(2 * time.Millisecond)
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+
+	// GetNodeAt after deletion should return ErrNoVersionValidAt.
+	_, err := g.GetNodeAt(id, nowMs())
+	if !errors.Is(err, ErrNoVersionValidAt) {
+		t.Fatalf("expected ErrNoVersionValidAt after deletion, got %v", err)
+	}
+}
+
+func TestGetNodesValidAt_DeletedNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Also add a node that stays alive.
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+
+	validTime := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	// Delete Alice.
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Query at pre-deletion time — both nodes should appear.
+	nodes, err := g.GetNodesValidAt(validTime)
+	if err != nil {
+		t.Fatalf("GetNodesValidAt: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("expected 2 nodes at pre-deletion time, got %d", len(nodes))
+	}
+
+	// Query at current time — only Bob should appear.
+	nodes, err = g.GetNodesValidAt(nowMs())
+	if err != nil {
+		t.Fatalf("GetNodesValidAt now: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node at current time, got %d", len(nodes))
+	}
+}
+
+func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.InternalID().SnowflakeID()
+
+	creationTime := g.nodeValidFrom(n)
+	time.Sleep(2 * time.Millisecond)
+
+	g.UpdateNode(id, map[string]any{"name": "v1"})
+
+	// Query at creation time — should return v0.
+	nodes, err := g.GetNodesValidAt(creationTime)
+	if err != nil {
+		t.Fatalf("GetNodesValidAt: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	name, _ := nodes[0].GetProperty("name")
+	if name != "v0" {
+		t.Fatalf("expected v0 at creation time, got %v", name)
+	}
+}
+
+func TestGetRelAt_Basic(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	rid := r.InternalID().SnowflakeID()
+
+	creationTime := g.relValidFrom(r)
+	time.Sleep(2 * time.Millisecond)
+
+	g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
+	time.Sleep(2 * time.Millisecond)
+	g.UpdateRelationship(rid, map[string]any{"weight": int64(3)})
+
+	// Query at creation time — should return v0 with weight=1.
+	result, err := g.GetRelAt(rid, creationTime)
+	if err != nil {
+		t.Fatalf("GetRelAt at creation: %v", err)
+	}
+	w, _ := result.GetProperty("weight")
+	if w != int64(1) {
+		t.Fatalf("expected weight=1, got %v", w)
+	}
+
+	// Query at current time — should return latest with weight=3.
+	result, err = g.GetRelAt(rid, nowMs())
+	if err != nil {
+		t.Fatalf("GetRelAt now: %v", err)
+	}
+	w, _ = result.GetProperty("weight")
+	if w != int64(3) {
+		t.Fatalf("expected weight=3, got %v", w)
+	}
+}
+
+func TestGetRelAt_DeletedEntity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	rid := r.InternalID().SnowflakeID()
+
+	validTime := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	if err := g.DeleteRelationship(rid); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// Query at pre-deletion time — should return the rel.
+	result, err := g.GetRelAt(rid, validTime)
+	if err != nil {
+		t.Fatalf("GetRelAt at pre-deletion: %v", err)
+	}
+	w, _ := result.GetProperty("weight")
+	if w != int64(1) {
+		t.Fatalf("expected weight=1, got %v", w)
+	}
+
+	// Query at current time — should return ErrNoVersionValidAt.
+	time.Sleep(2 * time.Millisecond)
+	_, err = g.GetRelAt(rid, nowMs())
+	if !errors.Is(err, ErrNoVersionValidAt) {
+		t.Fatalf("expected ErrNoVersionValidAt after deletion, got %v", err)
+	}
+}
+
+func TestGetRelAt_NotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	_, err := g.GetRelAt(snowflake.ID(999), nowMs())
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+}
+
+func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddRelationship("KNOWS", a, b, nil)
+
+	validTime := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	// Delete the relationship via cascade (delete node a).
+	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Query at pre-deletion time — rel should appear.
+	rels, err := g.GetRelationshipsValidAt(validTime)
+	if err != nil {
+		t.Fatalf("GetRelationshipsValidAt: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 rel at pre-deletion time, got %d", len(rels))
+	}
+
+	// Query at current time — rel should not appear.
+	rels, err = g.GetRelationshipsValidAt(nowMs())
+	if err != nil {
+		t.Fatalf("GetRelationshipsValidAt now: %v", err)
+	}
+	if len(rels) != 0 {
+		t.Fatalf("expected 0 rels after deletion, got %d", len(rels))
+	}
+}
+
+func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.AddRelationship("KNOWS", a, b, nil)
+
+	snapshotTime := nowMs()
+	time.Sleep(2 * time.Millisecond)
+
+	// Delete Alice — cascades to the KNOWS relationship.
+	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Snapshot at pre-deletion time — should include both nodes and the rel.
+	snap, err := g.Snapshot(snapshotTime)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if snap.NodeCount != 2 {
+		t.Fatalf("expected 2 nodes in snapshot, got %d", snap.NodeCount)
+	}
+	if snap.RelCount != 1 {
+		t.Fatalf("expected 1 rel in snapshot, got %d", snap.RelCount)
+	}
+
+	// Snapshot at current time — only Bob.
+	snap, err = g.Snapshot(nowMs())
+	if err != nil {
+		t.Fatalf("Snapshot now: %v", err)
+	}
+	if snap.NodeCount != 1 {
+		t.Fatalf("expected 1 node in current snapshot, got %d", snap.NodeCount)
+	}
+	if snap.RelCount != 0 {
+		t.Fatalf("expected 0 rels in current snapshot, got %d", snap.RelCount)
+	}
+}
+
+func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	creationTime := g.nodeValidFrom(n)
+	time.Sleep(2 * time.Millisecond)
+
+	if err := g.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// Interval overlapping the entity's lifetime should include it.
+	nodes, err := g.GetNodesValidDuring(creationTime, nowMs())
+	if err != nil {
+		t.Fatalf("GetNodesValidDuring: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node during lifetime interval, got %d", len(nodes))
+	}
+
+	// Interval entirely after deletion should not include it.
+	afterDeletion := nowMs() + 1000
+	nodes, err = g.GetNodesValidDuring(afterDeletion, afterDeletion+1000)
+	if err != nil {
+		t.Fatalf("GetNodesValidDuring after deletion: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected 0 nodes after deletion, got %d", len(nodes))
+	}
+}
+
+func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+
+	creationTime := g.relValidFrom(r)
+	time.Sleep(2 * time.Millisecond)
+
+	rid := r.InternalID().SnowflakeID()
+	if err := g.DeleteRelationship(rid); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// Interval overlapping the rel's lifetime should include it.
+	rels, err := g.GetRelationshipsValidDuring(creationTime, nowMs())
+	if err != nil {
+		t.Fatalf("GetRelationshipsValidDuring: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 rel during lifetime, got %d", len(rels))
+	}
+
+	// Interval entirely after deletion should not include it.
+	afterDeletion := nowMs() + 1000
+	rels, err = g.GetRelationshipsValidDuring(afterDeletion, afterDeletion+1000)
+	if err != nil {
+		t.Fatalf("GetRelationshipsValidDuring after deletion: %v", err)
+	}
+	if len(rels) != 0 {
+		t.Fatalf("expected 0 rels after deletion, got %d", len(rels))
+	}
+}
