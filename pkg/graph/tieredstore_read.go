@@ -3,21 +3,38 @@ package graph
 import (
 	"errors"
 	"sort"
+	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
+// stripDepth returns a copy of opts without the Depth field.
+// Used when forwarding to single-shard queries (Depth is TieredStore-level).
+func stripDepth(opts QueryOpts) QueryOpts {
+	return QueryOpts{
+		ValidAt:    opts.ValidAt,
+		ValidStart: opts.ValidStart,
+		ValidEnd:   opts.ValidEnd,
+	}
+}
+
 // --- Entity reads ---
 // O(1) shard resolution: ref probe + timestamp extraction.
 
 func (ts *TieredStore) GetNode(id snowflake.ID) (*types.Node, error) {
-	shard := ts.shardForNodeID(id)
+	shard, err := ts.shardForNodeID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetNode(id)
 }
 
 func (ts *TieredStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
-	shard := ts.shardForRelID(id)
+	shard, err := ts.shardForRelID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetRelationship(id)
 }
 
@@ -60,36 +77,45 @@ func (ts *TieredStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 }
 
 func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
-	// Merge from ref + depth-filtered event shards.
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refRels, err := ts.refShard.RelationshipsByType(token, QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	})
+	refRels, err := ts.refShard.RelationshipsByType(token, stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+
+	type result struct {
+		rels []*types.Relationship
+		err  error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].rels, results[i].err = store.RelationshipsByType(token, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
 
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
 		slices = append(slices, refRels)
 	}
-
-	for _, store := range eventStores {
-		evtRels, err := store.RelationshipsByType(token, QueryOpts{
-			ValidAt:    opts.ValidAt,
-			ValidStart: opts.ValidStart,
-			ValidEnd:   opts.ValidEnd,
-		})
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtRels) > 0 {
-			slices = append(slices, evtRels)
+		if len(r.rels) > 0 {
+			slices = append(slices, r.rels)
 		}
 	}
 
@@ -101,34 +127,44 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 
 func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refNodes, err := ts.refShard.AllNodes(QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	})
+	refNodes, err := ts.refShard.AllNodes(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].nodes, results[i].err = store.AllNodes(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
 
 	var slices [][]*types.Node
 	if len(refNodes) > 0 {
 		slices = append(slices, refNodes)
 	}
-
-	for _, store := range eventStores {
-		evtNodes, err := store.AllNodes(QueryOpts{
-			ValidAt:    opts.ValidAt,
-			ValidStart: opts.ValidStart,
-			ValidEnd:   opts.ValidEnd,
-		})
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtNodes) > 0 {
-			slices = append(slices, evtNodes)
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
 		}
 	}
 
@@ -138,34 +174,44 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 
 func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refRels, err := ts.refShard.AllRelationships(QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	})
+	refRels, err := ts.refShard.AllRelationships(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+
+	type result struct {
+		rels []*types.Relationship
+		err  error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].rels, results[i].err = store.AllRelationships(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
 
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
 		slices = append(slices, refRels)
 	}
-
-	for _, store := range eventStores {
-		evtRels, err := store.AllRelationships(QueryOpts{
-			ValidAt:    opts.ValidAt,
-			ValidStart: opts.ValidStart,
-			ValidEnd:   opts.ValidEnd,
-		})
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtRels) > 0 {
-			slices = append(slices, evtRels)
+		if len(r.rels) > 0 {
+			slices = append(slices, r.rels)
 		}
 	}
 
@@ -177,13 +223,19 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 
 func (ts *TieredStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	// Entity + out/ are co-located in the node's shard.
-	shard := ts.shardForNodeID(nodeID)
+	shard, err := ts.shardForNodeID(nodeID)
+	if err != nil {
+		return nil, err
+	}
 	return shard.OutgoingRelationships(nodeID, typeToken)
 }
 
 func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	// Get relIDs from the node's shard inIdx.
-	shard := ts.shardForNodeID(nodeID)
+	shard, err := ts.shardForNodeID(nodeID)
+	if err != nil {
+		return nil, err
+	}
 	relIDs := shard.incomingRelIDs(nodeID, typeToken)
 
 	if len(relIDs) == 0 {
@@ -193,7 +245,10 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	// Fetch each rel entity via shard resolution (relID timestamp -> O(1) per entity).
 	result := make([]*types.Relationship, 0, len(relIDs))
 	for _, relID := range relIDs {
-		relShard := ts.shardForRelID(relID)
+		relShard, err := ts.shardForRelID(relID)
+		if err != nil {
+			return nil, err
+		}
 		r, err := relShard.GetRelationship(relID)
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
@@ -214,7 +269,7 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 
 func (ts *TieredStore) NodeCount() (int, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -224,7 +279,11 @@ func (ts *TieredStore) NodeCount() (int, error) {
 	}
 	total += n
 
-	for _, store := range eventStores {
+	for _, es := range eventShards {
+		store, err := es.getStore(ts)
+		if err != nil {
+			return 0, err
+		}
 		n, err := store.NodeCount()
 		if err != nil {
 			return 0, err
@@ -236,7 +295,7 @@ func (ts *TieredStore) NodeCount() (int, error) {
 
 func (ts *TieredStore) RelationshipCount() (int, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -246,7 +305,11 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 	}
 	total += n
 
-	for _, store := range eventStores {
+	for _, es := range eventShards {
+		store, err := es.getStore(ts)
+		if err != nil {
+			return 0, err
+		}
 		n, err := store.RelationshipCount()
 		if err != nil {
 			return 0, err
@@ -264,7 +327,7 @@ func (ts *TieredStore) NodeCountByLabel(token uint16) (int, error) {
 
 func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	total := 0
@@ -274,7 +337,11 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 	}
 	total += n
 
-	for _, store := range eventStores {
+	for _, es := range eventShards {
+		store, err := es.getStore(ts)
+		if err != nil {
+			return 0, err
+		}
 		n, err := store.RelCountByType(token)
 		if err != nil {
 			return 0, err
@@ -295,34 +362,44 @@ func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, va
 
 func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllNodeIDs(QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	})
+	refIDs, err := ts.refShard.AllNodeIDs(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].ids, results[i].err = store.AllNodeIDs(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
 
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
-
-	for _, store := range eventStores {
-		evtIDs, err := store.AllNodeIDs(QueryOpts{
-			ValidAt:    opts.ValidAt,
-			ValidStart: opts.ValidStart,
-			ValidEnd:   opts.ValidEnd,
-		})
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtIDs) > 0 {
-			slices = append(slices, evtIDs)
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
 		}
 	}
 
@@ -332,34 +409,44 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 
 func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(opts.Depth)
+	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllRelIDs(QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	})
+	refIDs, err := ts.refShard.AllRelIDs(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].ids, results[i].err = store.AllRelIDs(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
 
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
-
-	for _, store := range eventStores {
-		evtIDs, err := store.AllRelIDs(QueryOpts{
-			ValidAt:    opts.ValidAt,
-			ValidStart: opts.ValidStart,
-			ValidEnd:   opts.ValidEnd,
-		})
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtIDs) > 0 {
-			slices = append(slices, evtIDs)
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
 		}
 	}
 
@@ -370,28 +457,40 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 // --- History reads ---
 
 func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
-	shard := ts.shardForNodeID(id)
+	shard, err := ts.shardForNodeID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetNodeVersion(id, version)
 }
 
 func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
-	shard := ts.shardForNodeID(id)
+	shard, err := ts.shardForNodeID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetNodeHistory(id)
 }
 
 func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
-	shard := ts.shardForRelID(id)
+	shard, err := ts.shardForRelID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetRelVersion(id, version)
 }
 
 func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
-	shard := ts.shardForRelID(id)
+	shard, err := ts.shardForRelID(id)
+	if err != nil {
+		return nil, err
+	}
 	return shard.GetRelHistory(id)
 }
 
 func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	refIDs, err := ts.refShard.AllNodeHistoryIDs()
@@ -399,18 +498,36 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		return nil, err
 	}
 
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].ids, results[i].err = store.AllNodeHistoryIDs()
+		}(i, es)
+	}
+	wg.Wait()
+
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
-
-	for _, store := range eventStores {
-		evtIDs, err := store.AllNodeHistoryIDs()
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtIDs) > 0 {
-			slices = append(slices, evtIDs)
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
 		}
 	}
 
@@ -419,7 +536,7 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 
 func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	ts.mu.RLock()
-	eventStores := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	refIDs, err := ts.refShard.AllRelHistoryIDs()
@@ -427,18 +544,36 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 		return nil, err
 	}
 
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *eventShard) {
+			defer wg.Done()
+			store, err := es.getStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			results[i].ids, results[i].err = store.AllRelHistoryIDs()
+		}(i, es)
+	}
+	wg.Wait()
+
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
-
-	for _, store := range eventStores {
-		evtIDs, err := store.AllRelHistoryIDs()
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		if len(evtIDs) > 0 {
-			slices = append(slices, evtIDs)
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
 		}
 	}
 

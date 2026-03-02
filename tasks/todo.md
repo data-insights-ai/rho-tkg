@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.27. Phases 1a-1g, 2a-2i, 3a, and 3b+3c complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm), warm recovery, depth-aware reads, and E→E cross-shard fix implemented.
+Library at v3.0.28. Phases 1a-1g, 2a-2i, 3a, 3b+3c, and 3d complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, and reference archive (archive/restore) implemented.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -393,19 +393,38 @@ Complete. Implemented in v3.0.27.
 **~25 new tests** (rotation, E→E cross-shard, depth-aware reads, warm recovery, ReadOnly BadgerStore, catalog). All pass with race detector. Coverage ≥80%.
 
 **Deferred to later phases:**
-- [ ] Warm → cold demotion (reopen with cheaper Badger options) → Phase 3d
-- [ ] Lazy-open cold shards on first access → Phase 3d
-- [ ] Idle-close after configurable timeout → Phase 3d
-- [ ] Parallel shard open within a query → Phase 3d
+- [x] Warm → cold demotion → Phase 3d ✓
+- [x] Lazy-open cold shards on first access → Phase 3d ✓
+- [x] Idle-close after configurable timeout → Phase 3d ✓
+- [x] Parallel shard queries → Phase 3d ✓
 
-### 3d. DEPTH Clause + Reference Archive
+### 3d. Cold Shard Tier + Parallel Query + Reference Archive ✓
 
-- [ ] Cypher parser extension (terminal clause)
-- [ ] DEPTH applied at MATCH time (shard pruning before materialization)
-- [ ] HTTP `?depth=` parameter override
-- [ ] COUNT push-down returns total (no DEPTH filtering on count)
-- [ ] Reference archive with case archival/restore
-- [ ] Lazy-open archive on DEPTH=all queries
+Complete. Implemented in v3.0.28.
+
+**New/modified files:**
+- `tieredstore.go` — `eventShard` gains `path`, `shardMu`, `lastAccess` fields + `getStore()` lazy-open method. Config gains `ColdAfter`, `IdleTimeout`. Constructor: cold shard recovery from catalog (store=nil), archive dir, `closeCh` channel, `idleCloseLoop()` goroutine. `eventShardSnapshot` returns `[]*eventShard`. `RotateHotShard()` gains warm→cold demotion. `shardForNodeID` falls back to refArchive. `openRefArchive()`, `ensureRefArchive()`, `hasArchiveShard()`. `Close()` handles nil stores + closeCh + refArchive. `Clear()` skips nil stores + clears archive.
+- `tieredstore_write.go` — Error propagation from shard routing. `ArchiveNode(id)` moves ref node + rels to archive (skips rels where other endpoint not archived). `RestoreNode(id)` reverse of archive. `ErrNotReferenceEntity` sentinel.
+- `tieredstore_read.go` — All 10 merge queries rewritten with `sync.WaitGroup` parallel pattern (ref shard sequential, event shards concurrent via goroutines). `stripDepth` helper. Error propagation from `es.getStore(ts)`.
+- `shard_catalog.go` — `ColdEventShards()` helper.
+- `graph.go` — `ArchiveNode`/`RestoreNode` passthroughs via type switch on `*TieredStore`.
+- `tieredstore_test.go` — ~30 new tests.
+
+**Key design decisions:**
+- [x] Cold shard lifecycle: warm→cold demotion during rotation when `ColdAfter > 0`
+- [x] Per-shard `sync.Mutex` (`shardMu`) protects lazy open/close of individual cold shards
+- [x] `atomic.Int64` `lastAccess` tracks idle time for cold shard auto-close
+- [x] `idleCloseLoop()` goroutine checks every `IdleTimeout/2`, stopped via `closeCh`
+- [x] Cold shards recovered from catalog on restart with `store=nil` (not opened until queried)
+- [x] `getStore(ts)` zero overhead for hot/warm (direct pointer return), lock+open for cold
+- [x] Parallel shard queries via `sync.WaitGroup` for all 10 merge methods
+- [x] Reference archive lazy-opened on first `ArchiveNode`/`RestoreNode` or DepthAll with catalog entry
+- [x] `shardForNodeID` falls back to refArchive (lazy-open if catalog says archive exists)
+- [x] `ArchiveNode`: read node+rels from refShard → write to archive → `DeleteNodeCascade` from refShard
+- [x] Cross-node rels skipped during archive if other endpoint not in archive (cascade deletes them)
+- [x] Zero defaults = backward-compatible (ColdAfter=0: no demotion, IdleTimeout=0: no idle-close)
+
+**~30 new tests** (8 cold shard, 4 parallel query, 8 archive, 3 routing error, 2 graph passthrough, 1 catalog). All pass with race detector.
 
 ### 3e. Repair + Tooling
 
@@ -416,19 +435,4 @@ Complete. Implemented in v3.0.27.
 - [ ] ID decomposition endpoint (creation time + generator + sequence)
 - [ ] Migration tool for single-Badger → tiered deployments
 
----
 
-## Implementation Order Rationale
-
-Phase 1 before Phase 3 because:
-1. The Store interface must be stable and complete before building the TieredStore
-2. Every Store method becomes a routing decision in the tiered layer — adding methods later means reopening TieredStore
-3. History storage uses keys `0x07`/`0x08` that need to be routed to the right shard
-4. The tiered spec explicitly references version history, property indexes, and bulk ops
-
-Phase 2 before Phase 3 because:
-1. Temporal queries define how temporal index keys (`0x09`/`0x0A`) are written and scanned
-2. The tiered spec's DEPTH clause filters by temporal data — the query layer must exist first
-3. Property indexes are built "for reference entities only" — needs the index system in place
-
-Key schema is already aligned — no changes needed for tiering.

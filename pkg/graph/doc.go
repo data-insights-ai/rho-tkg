@@ -17,6 +17,11 @@
 //     dirty tracking, and in-memory indexes (nodeIDs, relIDs, labelIdx,
 //     typeIdx, outIdx, inIdx) rebuilt from Badger on startup via loadIndexes().
 //
+//   - TieredStore: multi-shard store routing entities across ref shard +
+//     time-windowed event shards by ontology classification (RefLabels config).
+//     Hot→warm→cold shard rotation. Warm/cold recovery on restart. Cross-shard
+//     relationship split-writes. Depth-aware reads via ShardDepth.
+//
 // # BadgerStore Architecture
 //
 // Read path: LRU cache hit → return; cache tombstone → ErrNotFound;
@@ -50,11 +55,26 @@
 // uses a two-stage approach: Peek pre-filter for zero-allocation cache hits,
 // then post-filter for cache misses.
 //
+// # TieredStore
+//
+// TieredStore routes entities across multiple BadgerStore instances by ontology
+// classification. Reference entities (configured via RefLabels) go to a single
+// reference shard; event entities go to time-windowed event shards. The hot
+// shard receives all new event writes. On window expiry, RotateHotShard demotes
+// hot→warm (read-only) and creates a new hot shard. Warm shards recover from
+// catalog on restart. Cold shards are lazy-opened on first access and auto-closed
+// after idle timeout. Cross-shard relationships use split writes: entity+out/ in
+// start shard, in/ in end shard. Merge queries run parallel goroutines per shard.
+// ShardDepth (DepthAll/DepthHot/DepthWarm) controls tier inclusion in queries.
+//
 // # Transactions
 //
-// GraphTx is a create-only transaction that holds the graph write lock for its
-// duration. AddNode/AddRelationship track created IDs; Commit releases the lock;
-// Rollback deletes entities in reverse order without tombstones.
+// GraphTx is a mutation transaction that holds the graph write lock for its
+// duration. It supports full CRUD: AddNode/AddRelationship track created IDs;
+// UpdateNode/UpdateRelationship snapshot pre-mutation state; DeleteNode/
+// DeleteRelationship snapshot before deletion. Commit releases the lock.
+// Rollback restores all mutations in reverse order: re-creates deleted entities,
+// reverts updates to snapshots, deletes created entities.
 // Graph.Reset atomically clears all entities via Store.Clear while preserving
 // registries.
 //

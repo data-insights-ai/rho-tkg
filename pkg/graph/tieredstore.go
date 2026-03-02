@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -30,16 +31,46 @@ type TieredStoreConfig struct {
 	CacheCapacity int
 	// FlushInterval is the per-shard flush interval. Default: 100ms.
 	FlushInterval time.Duration
+	// ColdAfter demotes warm shards to cold after this duration. 0 = never demote.
+	ColdAfter time.Duration
+	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
+	// Default: 5 minutes when ColdAfter > 0.
+	IdleTimeout time.Duration
 }
 
 // eventShard wraps a BadgerStore with metadata for an event shard.
 type eventShard struct {
-	name      string
-	store     *BadgerStore
-	tier      ShardTier
-	timeStart time.Time // shard window start (inclusive)
-	timeEnd   time.Time // shard window end (exclusive)
-	readOnly  bool      // warm/cold shards are read-only
+	name       string
+	store      *BadgerStore   // nil when cold + closed (lazy-open)
+	tier       ShardTier
+	timeStart  time.Time      // shard window start (inclusive)
+	timeEnd    time.Time      // shard window end (exclusive)
+	readOnly   bool           // warm/cold shards are read-only
+	path       string         // relative path for lazy-open (e.g., "events/2026-W10")
+	shardMu    sync.Mutex     // protects lazy open/close
+	lastAccess atomic.Int64   // unix ms, idle-close tracking
+}
+
+// getStore returns the BadgerStore for this shard, lazily opening it if cold.
+// For hot/warm shards: zero overhead (direct pointer return).
+// For cold shards: acquires shardMu, opens BadgerStore if nil, updates lastAccess.
+func (es *eventShard) getStore(ts *TieredStore) (*BadgerStore, error) {
+	if es.tier != TierCold {
+		return es.store, nil // hot/warm: zero overhead
+	}
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if es.store != nil {
+		es.lastAccess.Store(time.Now().UnixMilli())
+		return es.store, nil
+	}
+	store, err := ts.openBadgerStore(es.path, true) // ReadOnly
+	if err != nil {
+		return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
+	}
+	es.store = store
+	es.lastAccess.Store(time.Now().UnixMilli())
+	return store, nil
 }
 
 // TieredStore implements the Store interface by routing entities across
@@ -51,7 +82,8 @@ type eventShard struct {
 type TieredStore struct {
 	mu          sync.RWMutex            // protects hotShard + eventShards during rotation
 	refShard    *BadgerStore            // reference shard (always hot)
-	refArchive  *BadgerStore            // nil until Phase 3d
+	refArchive  *BadgerStore            // nil until first archive/restore or DepthAll with archive catalog
+	archiveMu   sync.Mutex              // protects lazy-open of refArchive
 	eventShards map[string]*eventShard  // name -> event shard
 	hotShard    *eventShard             // convenience pointer to current hot shard
 	ontology    *OntologyMapping
@@ -62,6 +94,9 @@ type TieredStore struct {
 	shardWindow time.Duration
 	cacheCap    int
 	flushInt    time.Duration
+	coldAfter   time.Duration
+	idleTimeout time.Duration
+	closeCh     chan struct{} // signals idle-close goroutine to stop
 	closeOnce   sync.Once
 }
 
@@ -84,6 +119,11 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		flushInt = defaultFlushInterval
 	}
 
+	idleTimeout := cfg.IdleTimeout
+	if idleTimeout == 0 && cfg.ColdAfter > 0 {
+		idleTimeout = 5 * time.Minute
+	}
+
 	ts := &TieredStore{
 		eventShards: make(map[string]*eventShard),
 		ontology:    NewOntologyMapping(cfg.RefLabels),
@@ -92,6 +132,9 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		shardWindow: window,
 		cacheCap:    cacheCap,
 		flushInt:    flushInt,
+		coldAfter:   cfg.ColdAfter,
+		idleTimeout: idleTimeout,
+		closeCh:     make(chan struct{}),
 	}
 
 	// Create directory layout for disk-backed stores.
@@ -100,6 +143,7 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 			filepath.Join(cfg.DataDir, "meta"),
 			filepath.Join(cfg.DataDir, "reference"),
 			filepath.Join(cfg.DataDir, "events"),
+			filepath.Join(cfg.DataDir, "archive"),
 		}
 		for _, d := range dirs {
 			if err := os.MkdirAll(d, 0o755); err != nil {
@@ -167,6 +211,7 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		timeStart: windowStart,
 		timeEnd:   windowEnd,
 		readOnly:  false,
+		path:      hotDir,
 	}
 	ts.eventShards[hotName] = es
 	ts.hotShard = es
@@ -183,9 +228,10 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		})
 	}
 
-	// Reopen warm event shards from catalog.
+	// Reopen warm and cold event shards from catalog.
 	for _, entry := range ts.catalog.EventShards() {
-		if entry.Tier == TierWarm {
+		switch entry.Tier {
+		case TierWarm:
 			// Read-only on disk; in-memory shards stay read-write (Badger limitation).
 			warmReadOnly := !cfg.InMemory
 			warmStore, err := ts.openBadgerStore(entry.Path, warmReadOnly)
@@ -201,10 +247,26 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 				timeStart: entry.TimeStart,
 				timeEnd:   entry.TimeEnd,
 				readOnly:  true,
+				path:      entry.Path,
 			}
 			ts.eventShards[entry.Name] = warmES
+		case TierCold:
+			// Cold shards are NOT opened on startup — lazy-open on first access.
+			coldES := &eventShard{
+				name:      entry.Name,
+				store:     nil, // lazy-open
+				tier:      TierCold,
+				timeStart: entry.TimeStart,
+				timeEnd:   entry.TimeEnd,
+				readOnly:  true,
+				path:      entry.Path,
+			}
+			ts.eventShards[entry.Name] = coldES
 		}
 	}
+
+	// Recover archive shard from catalog (lazy — just register, don't open).
+	// The archive will be opened on first access via ensureRefArchive().
 
 	// Persist catalog.
 	if !cfg.InMemory {
@@ -215,6 +277,11 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		}
 	}
 
+	// Start idle-close goroutine for cold shards.
+	if ts.idleTimeout > 0 {
+		go ts.idleCloseLoop()
+	}
+
 	return ts, nil
 }
 
@@ -222,6 +289,9 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 func (ts *TieredStore) Close() error {
 	var closeErr error
 	ts.closeOnce.Do(func() {
+		// Stop the idle-close goroutine.
+		close(ts.closeCh)
+
 		// Save catalog.
 		if !ts.inMemory && ts.catalog != nil {
 			if err := ts.catalog.Save(); err != nil {
@@ -229,10 +299,12 @@ func (ts *TieredStore) Close() error {
 			}
 		}
 
-		// Close all event shards.
+		// Close all event shards. Cold shards may have nil stores.
 		for _, es := range ts.eventShards {
-			if err := es.store.Close(); err != nil {
-				closeErr = fmt.Errorf("graph: close event shard %s: %w", es.name, err)
+			if es.store != nil {
+				if err := es.store.Close(); err != nil {
+					closeErr = fmt.Errorf("graph: close event shard %s: %w", es.name, err)
+				}
 			}
 		}
 
@@ -253,7 +325,7 @@ func (ts *TieredStore) Close() error {
 	return closeErr
 }
 
-// Clear clears all open shards.
+// Clear clears all open shards. Cold shards with nil stores are skipped.
 func (ts *TieredStore) Clear() error {
 	ts.mu.RLock()
 	shards := make([]*eventShard, 0, len(ts.eventShards))
@@ -266,8 +338,16 @@ func (ts *TieredStore) Clear() error {
 		return fmt.Errorf("graph: clear ref shard: %w", err)
 	}
 	for _, es := range shards {
+		if es.store == nil {
+			continue // cold shard not open
+		}
 		if err := es.store.Clear(); err != nil {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
+		}
+	}
+	if ts.refArchive != nil {
+		if err := ts.refArchive.Clear(); err != nil {
+			return fmt.Errorf("graph: clear ref archive: %w", err)
 		}
 	}
 	return nil
@@ -288,10 +368,23 @@ func (ts *TieredStore) shardForNode(primaryLabel uint16) *BadgerStore {
 }
 
 // shardForNodeID resolves which shard owns a node ID.
-// O(1): try ref (hasNodeID), miss -> timestamp extraction -> event shard.
-func (ts *TieredStore) shardForNodeID(id snowflake.ID) *BadgerStore {
+// O(1): try ref (hasNodeID), miss -> archive check -> timestamp extraction -> event shard.
+// Returns error if cold shard lazy-open fails.
+func (ts *TieredStore) shardForNodeID(id snowflake.ID) (*BadgerStore, error) {
 	if ts.refShard.hasNodeID(id) {
-		return ts.refShard
+		return ts.refShard, nil
+	}
+	// Check archive if open or catalog says it exists.
+	if ts.refArchive != nil && ts.refArchive.hasNodeID(id) {
+		return ts.refArchive, nil
+	}
+	if ts.refArchive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return nil, err
+		}
+		if ts.refArchive.hasNodeID(id) {
+			return ts.refArchive, nil
+		}
 	}
 	return ts.timestampToEventShard(id)
 }
@@ -301,26 +394,34 @@ func (ts *TieredStore) shardForNodeID(id snowflake.ID) *BadgerStore {
 // Probe is needed because cross-shard relationship entities may be stored in a
 // shard that doesn't match their creation timestamp (e.g., a rel created after
 // rotation whose entity lives in the start node's warm shard).
-func (ts *TieredStore) shardForRelID(id snowflake.ID) *BadgerStore {
+// Returns error if cold shard lazy-open fails.
+func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 	if ts.refShard.hasRelID(id) {
-		return ts.refShard
+		return ts.refShard, nil
 	}
 
 	// Try timestamp-based resolution first (fast path).
-	candidate := ts.timestampToEventShard(id)
+	candidate, err := ts.timestampToEventShard(id)
+	if err != nil {
+		return nil, err
+	}
 	if candidate.hasRelID(id) {
-		return candidate
+		return candidate, nil
 	}
 
 	// Probe all event shards (handles cross-shard entities in mismatched windows).
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	for _, es := range ts.eventShards {
-		if es.store.hasRelID(id) {
-			return es.store
+		store, err := es.getStore(ts)
+		if err != nil {
+			return nil, err
+		}
+		if store.hasRelID(id) {
+			return store, nil
 		}
 	}
-	return candidate // fallback to timestamp-based (will likely return ErrRelNotFound)
+	return candidate, nil // fallback to timestamp-based (will likely return ErrRelNotFound)
 }
 
 // classifyNodeID determines the EntityClass of a node by probing shards.
@@ -334,7 +435,8 @@ func (ts *TieredStore) classifyNodeID(id snowflake.ID) EntityClass {
 // timestampToEventShard extracts the creation timestamp from a snowflake ID
 // and maps it to the correct event shard. Falls back to the hot shard if no
 // shard window matches (entity from before the oldest shard).
-func (ts *TieredStore) timestampToEventShard(id snowflake.ID) *BadgerStore {
+// Returns error if cold shard lazy-open fails.
+func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, error) {
 	epochMs := snowflakeEpoch.UnixMilli()
 	timeMs := int64(uint64(id) >> 22)
 	created := time.UnixMilli(epochMs + timeMs)
@@ -344,10 +446,10 @@ func (ts *TieredStore) timestampToEventShard(id snowflake.ID) *BadgerStore {
 
 	for _, es := range ts.eventShards {
 		if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
-			return es.store
+			return es.getStore(ts)
 		}
 	}
-	return ts.hotShard.store // fallback: newest shard
+	return ts.hotShard.store, nil // fallback: newest shard (always open)
 }
 
 // --- Rotation and depth helpers ---
@@ -397,16 +499,17 @@ func (ts *TieredStore) RotateHotShard() error {
 		return fmt.Errorf("graph: open new hot shard: %w", err)
 	}
 
-	es := &eventShard{
+	newES := &eventShard{
 		name:      newName,
 		store:     newStore,
 		tier:      TierHot,
 		timeStart: windowStart,
 		timeEnd:   windowEnd,
 		readOnly:  false,
+		path:      newDir,
 	}
-	ts.eventShards[newName] = es
-	ts.hotShard = es
+	ts.eventShards[newName] = newES
+	ts.hotShard = newES
 
 	// Register in catalog and persist.
 	ts.catalog.AddShard(ShardEntry{
@@ -417,6 +520,19 @@ func (ts *TieredStore) RotateHotShard() error {
 		TimeStart: windowStart,
 		TimeEnd:   windowEnd,
 	})
+
+	// Demote warm shards to cold if they exceed ColdAfter threshold.
+	if ts.coldAfter > 0 {
+		coldThreshold := now.Add(-ts.coldAfter)
+		for _, es := range ts.eventShards {
+			if es.tier == TierWarm && es.timeEnd.Before(coldThreshold) {
+				es.tier = TierCold
+				ts.catalog.UpdateShardTier(es.name, TierCold)
+				// Do NOT close the store here — let idle-close handle it safely
+				// (avoids closing while in-flight reads hold pointers from snapshots).
+			}
+		}
+	}
 
 	if !ts.inMemory {
 		if err := ts.catalog.Save(); err != nil {
@@ -450,25 +566,66 @@ func (ts *TieredStore) checkRotation() error {
 	return ts.RotateHotShard()
 }
 
-// eventShardSnapshot returns a snapshot of event shard stores filtered by depth.
-// Caller must hold at least ts.mu.RLock.
-func (ts *TieredStore) eventShardSnapshot(depth ShardDepth) []*BadgerStore {
-	var stores []*BadgerStore
+// idleCloseLoop periodically checks cold shards and closes those that have been
+// idle longer than IdleTimeout. Runs every IdleTimeout/2. Stopped via closeCh.
+func (ts *TieredStore) idleCloseLoop() {
+	tick := time.NewTicker(ts.idleTimeout / 2)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-ts.closeCh:
+			return
+		case <-tick.C:
+			ts.closeIdleShards()
+		}
+	}
+}
+
+// closeIdleShards closes cold shards that have been idle longer than idleTimeout.
+func (ts *TieredStore) closeIdleShards() {
+	nowMs := time.Now().UnixMilli()
+	thresholdMs := ts.idleTimeout.Milliseconds()
+
+	ts.mu.RLock()
+	var coldShards []*eventShard
+	for _, es := range ts.eventShards {
+		if es.tier == TierCold {
+			coldShards = append(coldShards, es)
+		}
+	}
+	ts.mu.RUnlock()
+
+	for _, es := range coldShards {
+		es.shardMu.Lock()
+		if es.store != nil && (nowMs-es.lastAccess.Load()) > thresholdMs {
+			_ = es.store.Close()
+			es.store = nil
+		}
+		es.shardMu.Unlock()
+	}
+}
+
+// eventShardSnapshot returns a snapshot of event shards filtered by depth.
+// Caller must hold at least ts.mu.RLock. Returns []*eventShard so callers
+// can use es.getStore(ts) for lazy-open of cold shards.
+func (ts *TieredStore) eventShardSnapshot(depth ShardDepth) []*eventShard {
+	var shards []*eventShard
 	for _, es := range ts.eventShards {
 		switch depth {
 		case DepthHot:
 			if es.tier == TierHot {
-				stores = append(stores, es.store)
+				shards = append(shards, es)
 			}
 		case DepthWarm:
 			if es.tier == TierHot || es.tier == TierWarm {
-				stores = append(stores, es.store)
+				shards = append(shards, es)
 			}
 		default: // DepthAll
-			stores = append(stores, es.store)
+			shards = append(shards, es)
 		}
 	}
-	return stores
+	return shards
 }
 
 // --- Registry file integration ---
@@ -542,6 +699,48 @@ func (ts *TieredStore) LoadRelTypeRegistry(reg *relTypeRegistry) (int, error) {
 // SetLabelRegistry wires the ontology to the label registry for token resolution.
 func (ts *TieredStore) SetLabelRegistry(reg *labelRegistry) {
 	ts.ontology.SetLabelRegistry(reg)
+}
+
+// --- Reference archive ---
+
+// openRefArchive lazily opens the reference archive BadgerStore.
+// Caller must hold ts.archiveMu.Lock.
+func (ts *TieredStore) openRefArchive() error {
+	if ts.refArchive != nil {
+		return nil
+	}
+	store, err := ts.openBadgerStore("archive", false) // NOT read-only: archive needs writes
+	if err != nil {
+		return fmt.Errorf("graph: open ref archive: %w", err)
+	}
+	ts.refArchive = store
+
+	// Register archive shard in catalog if new.
+	if _, ok := ts.catalog.GetShard("archive"); !ok {
+		ts.catalog.AddShard(ShardEntry{
+			Name: "archive",
+			Kind: ShardArchive,
+			Tier: TierCold,
+			Path: "archive",
+		})
+		if !ts.inMemory {
+			_ = ts.catalog.Save() // best-effort persist
+		}
+	}
+	return nil
+}
+
+// ensureRefArchive opens the archive if needed. Thread-safe via archiveMu.
+func (ts *TieredStore) ensureRefArchive() error {
+	ts.archiveMu.Lock()
+	defer ts.archiveMu.Unlock()
+	return ts.openRefArchive()
+}
+
+// hasArchiveShard returns true if the catalog has an archive shard entry.
+func (ts *TieredStore) hasArchiveShard() bool {
+	_, ok := ts.catalog.GetShard("archive")
+	return ok
 }
 
 // --- Internal helpers ---

@@ -632,3 +632,18 @@ GOOD: boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
 
 Both the in-memory `eventShard.timeEnd` and the catalog's `ShardEntry.TimeEnd` must be
 updated. The catalog is persisted — warm shard recovery on restart depends on it.
+
+---
+
+## 31. Never Use Sub-Millisecond ShardWindow in Tests
+
+Snowflake IDs encode creation time at millisecond resolution (bits `>> 22`). Using
+`ShardWindow: time.Millisecond` in test configs causes the shard window to expire before
+or during the first `PutNode` call. `checkRotation()` auto-rotates mid-write, the node
+lands in a new hot shard, but its snowflake timestamp still resolves to the old (expired)
+shard window. Result: every `GetNode`/`shardForNodeID` call returns `ErrNodeNotFound`.
+
+**Rule**: Use the standard 1-week window (`newTestTieredStore`) and test cold/warm
+behavior via manual rotation + the `demoteToCold` test helper. Never rely on tiny
+`ShardWindow` or `ColdAfter` durations to trigger lifecycle transitions — they race
+with snowflake's millisecond clock.

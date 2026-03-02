@@ -621,6 +621,26 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 }
 
+// ArchiveNode moves a reference node and its relationships from the reference
+// shard to the reference archive. Only available with TieredStore.
+// Returns ErrNodeNotFound if the node is not in the reference shard.
+func (g *Graph) ArchiveNode(id snowflake.ID) error {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.ArchiveNode(id)
+	}
+	return fmt.Errorf("graph: ArchiveNode requires TieredStore")
+}
+
+// RestoreNode moves a reference node and its relationships from the reference
+// archive back to the reference shard. Only available with TieredStore.
+// Returns ErrNodeNotFound if the node is not in the archive.
+func (g *Graph) RestoreNode(id snowflake.ID) error {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.RestoreNode(id)
+	}
+	return fmt.Errorf("graph: RestoreNode requires TieredStore")
+}
+
 // Reset atomically clears all entities, indexes, history, and counters from
 // the graph while preserving registries (label and relationship type tokens).
 // Acquires the graph write lock to prevent concurrent operations.

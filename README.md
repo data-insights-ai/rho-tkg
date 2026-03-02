@@ -8,7 +8,7 @@ For the full product with Cypher queries, Vadalog reasoning, and an HTTP/gRPC se
 
 | Layer | Repository | What it provides |
 |---|---|---|
-| **tkg-v3** (this repo) | `rho/tkg-v3` | Graph types, registries, MemoryStore, BadgerStore, entity locks |
+| **tkg-v3** (this repo) | `rho/tkg-v3` | Graph types, registries, MemoryStore, BadgerStore, TieredStore, entity locks |
 | **tkgd-v3** | `rho/tkgd-v3` | Cypher engine, Vadalog reasoning, HTTP/gRPC server, REST API |
 
 ## Module
@@ -42,10 +42,13 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `Store` | Persistence interface — CRUD, index/adjacency/bulk queries with cursor-based pagination (`QueryOpts`), batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
 | `BatchBuilder` | Fluent API for queuing graph operations with eager validation and deferred persistence — `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Execute` |
 | `MemoryStore` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
-| `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, LRU caches with dirty tracking |
-| `GraphTx` | Create-only transaction — holds graph write lock, tracks created entities, supports commit and rollback |
-| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
-| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger on `Close()`) |
+| `BadgerStore` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, LRU caches with dirty tracking. Optional `ReadOnly` mode for warm/cold shards |
+| `TieredStore` | Multi-shard `Store` routing entities across ref shard + time-windowed event shards by ontology classification. Hot→warm→cold shard rotation, warm recovery on restart, lazy-open cold shards, depth-aware reads, cross-shard relationships |
+| `GraphTx` | Mutation transaction — holds graph write lock, tracks created/updated/deleted entities, supports commit and snapshot-based rollback (full CRUD) |
+| `OntologyMapping` | Classifies labels as `ClassReference` (long-lived) or `ClassEvent` (time-windowed, default). Lazy token cache backed by label registry |
+| `ShardCatalog` | JSON-persisted catalog of all shards — tracks time windows, tiers, labels, rel types. Atomic write via write-tmp + rename |
+| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
+| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
 
 Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
 
@@ -57,7 +60,7 @@ Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` �
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
-Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After, ValidAt, ValidStart, ValidEnd}` for cursor-based pagination and temporal push-down; zero values mean "return all / no filter".
+Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After, ValidAt, ValidStart, ValidEnd, Depth}` for cursor-based pagination, temporal push-down, and shard-depth filtering; zero values mean "return all / no filter / all tiers". `Depth` controls which TieredStore shard tiers to include: `DepthAll` (default), `DepthHot`, `DepthWarm`; ignored by MemoryStore/BadgerStore.
 
 Bulk queries: `AllNodes(opts)`, `AllRelationships(opts)`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
 
@@ -69,7 +72,7 @@ Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — inters
 
 Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Handles deleted entities (verifies history chain alone when current entity is gone). Returns `(true, nil)` if valid.
 
-Transactions: `BeginTx()` starts a create-only transaction holding the graph write lock. `tx.AddNode(labels, props)`, `tx.AddRelationship(typeName, start, end, props)` — delegate to Graph and track IDs for rollback. `tx.Commit()` releases the lock. `tx.Rollback()` deletes all created entities in reverse order (no tombstones — rolled-back entities vanish completely). `tx.CreatedNodeIDs()`, `tx.CreatedRelIDs()` for inspection.
+Transactions: `BeginTx()` starts a mutation transaction holding the graph write lock. `tx.AddNode(labels, props)`, `tx.AddRelationship(typeName, start, end, props)` — create entities and track IDs. `tx.UpdateNode(id, updates)`, `tx.UpdateRelationship(id, updates)` — snapshot pre-mutation state then apply. `tx.SetNodeProperty(id, key, value)`, `tx.DeleteNodeProperty(id, key)`, `tx.SetRelationshipProperty(id, key, value)`, `tx.DeleteRelationshipProperty(id, key)` — convenience wrappers. `tx.DeleteNode(id)` (cascade), `tx.DeleteRelationship(id)` — snapshot before deletion. `tx.Commit()` releases the lock. `tx.Rollback()` restores all mutations in reverse order: deleted entities are re-created, updates are reverted to snapshots, created entities are deleted. `tx.CreatedNodeIDs()`, `tx.CreatedRelIDs()` for inspection.
 
 Reset: `Reset()` atomically clears all entities, indexes, history, and counters while preserving label and relationship type registries.
 
@@ -79,7 +82,9 @@ Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(
 
 Validation limits: `Config.Validation` accepts a `ValidationLimits` struct with configurable maximums: `MaxLabelsPerNode` (default 50), `MaxPropertiesPerEntity` (default 1000), `MaxPropertyKeyLength` (default 256), `MaxPropertyValueSize` (default 65536), `MaxNameLength` (default 256). Enforced at all graph entry points. Zero values use defaults.
 
-Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
+Archive: `ArchiveNode(id)` moves a reference node and its relationships from the reference shard to the archive (TieredStore only). `RestoreNode(id)` moves it back.
+
+Lifecycle: `Close()` saves registries (BadgerStore or TieredStore), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. TieredStore.Close() saves catalog, closes all event shards, reference shard, and archive. Always call `Close()` when done — it is safe to call multiple times.
 
 ### Persistence (Badger)
 
@@ -95,6 +100,25 @@ g.Close() // saves registries + closes DB
 ```
 
 Data is serialized using msgpack. Keys use fixed-width binary encoding with single-byte prefix tags for correct sort order. Registries are persisted on `Close()` and restored on startup.
+
+### Tiered Persistence (TieredStore)
+
+For workloads with distinct reference data (Case, User) and high-volume events (Signal, Alert):
+
+```go
+ts, err := graph.NewTieredStore(graph.TieredStoreConfig{
+    DataDir:     "/path/to/data",
+    RefLabels:   []string{"Case", "Organization", "User"},
+    ShardWindow: 7 * 24 * time.Hour, // weekly event shards
+    ColdAfter:   30 * 24 * time.Hour, // demote warm→cold after 30 days
+})
+g, err := graph.New(graph.Config{
+    SnowflakeNodeID: 1,
+    Store:           ts,
+})
+```
+
+Directory layout: `data/meta/` (catalog + registry), `data/reference/` (ref shard), `data/events/<window>/` (event shards), `data/archive/` (archived reference entities). Hot shard receives all new event writes. On window expiry, `RotateHotShard()` demotes hot→warm (read-only) and creates a new hot shard. Warm shards are recovered from catalog on restart. Cold shards are lazy-opened on first access and auto-closed after idle timeout.
 
 ### Snowflake Configuration
 
@@ -124,7 +148,8 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Registry input validation**: `GetOrCreate("")` returns `ErrEmptyName`. Empty strings are never assigned tokens.
 - **Shared-pointer accessors**: `Temporal()` and `Integrity()` return the internal pointer — no defensive copy. The graph layer needs mutation access; external callers should treat as read-only.
 - **Bulk property construction**: `NewPropertySlice(map[string]any)` is O(N log N) — allocate once, validate all, sort once. Avoids the O(N²) per-property `SetProperty` loop for entity creation.
-- **Store is pure persistence**: The `Store` interface handles entity storage, index maintenance, and resource cleanup (`Close()`). Shadow resolution, referential integrity (cascade-delete), and string resolution live on Graph.
+- **Store is pure persistence**: The `Store` interface handles entity storage, index maintenance, and resource cleanup (`Close()`). Shadow resolution, referential integrity (cascade-delete), and string resolution live on Graph. Three implementations: MemoryStore (in-memory), BadgerStore (persistent), TieredStore (multi-shard).
+- **TieredStore shard routing**: Reference entities go to `refShard`; event entities go to time-windowed event shards. Shard resolution for existing entities is O(1) via `shardForNodeID` (ref probe + snowflake timestamp extraction). Cross-shard relationships use split writes: entity+out/ in start shard, in/ in end shard. `shardForRelID` probes all event shards for cross-shard entities. Merge queries use parallel goroutines per shard.
 - **Update operations**: `UpdateNode(id, updates)` / `UpdateRelationship(id, updates)` perform read-modify-write under entity lock. Property keys with `nil` values are deleted; non-nil values are set/overwritten. Each update bumps the version counter and sets `temporal.UpdatedAt`. Empty updates map is a no-op (no lock, no version bump). Pre-validates all keys (`tkg_` prefix rejected) and values (`ValidatePropertyValue`) before acquiring the lock.
 - **Replace vs Put semantics**: `ReplaceNode`/`ReplaceRelationship` (Store interface) require existence — return `ErrNodeNotFound`/`ErrRelNotFound` if missing. `PutNode`/`PutRelationship` reject duplicates — return `ErrNodeExists`/`ErrRelExists` if present. Replace overwrites entity data only; labels and relationship type/endpoints are immutable after creation — no index changes.
 - **Cascade-delete on node removal**: `Graph.DeleteNode` removes all outgoing and incoming relationships before the node. Self-loops are handled by skipping `ErrRelNotFound` in the incoming pass.

@@ -131,6 +131,17 @@ func (sc *ShardCatalog) EventShards() []ShardEntry {
 	return out
 }
 
+// ColdEventShards returns all shards with Kind == ShardEvent and Tier == TierCold.
+func (sc *ShardCatalog) ColdEventShards() []ShardEntry {
+	var out []ShardEntry
+	for _, s := range sc.Shards {
+		if s.Kind == ShardEvent && s.Tier == TierCold {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // HotEventShard returns the hot event shard, if any.
 func (sc *ShardCatalog) HotEventShard() (*ShardEntry, bool) {
 	for i := range sc.Shards {
