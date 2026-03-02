@@ -48,6 +48,19 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 		return nil, ErrNoLabels
 	}
 
+	// Validation limits.
+	if len(labels) > g.validation.MaxLabelsPerNode {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), g.validation.MaxLabelsPerNode)
+	}
+	for _, label := range labels {
+		if err := g.validateName(label); err != nil {
+			return nil, err
+		}
+	}
+	if err := g.validateProperties(props); err != nil {
+		return nil, err
+	}
+
 	// Bulk-build properties first — fail fast before generating an ID.
 	ps, err := types.NewPropertySlice(props)
 	if err != nil {
@@ -96,6 +109,14 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
+	}
+
+	// Validation limits.
+	if err := g.validateName(typeName); err != nil {
+		return nil, err
+	}
+	if err := g.validateProperties(props); err != nil {
+		return nil, err
 	}
 
 	// Bulk-build properties first — fail fast before generating an ID.
@@ -186,6 +207,14 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 			if err := types.ValidatePropertyValue(val); err != nil {
 				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
+			if err := g.validatePropertyEntry(key, val); err != nil {
+				return nil, err
+			}
+		} else {
+			// Even for deletions, check key length.
+			if len(key) > g.validation.MaxPropertyKeyLength {
+				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+			}
 		}
 	}
 
@@ -230,6 +259,11 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
 		}
+	}
+
+	// Check final property count after mutations (under entity lock, before persist).
+	if current.PropertyCount() > g.validation.MaxPropertiesPerEntity {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), g.validation.MaxPropertiesPerEntity)
 	}
 
 	current.SetVersion(current.Version() + 1)
@@ -279,6 +313,14 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 			if err := types.ValidatePropertyValue(val); err != nil {
 				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
+			if err := g.validatePropertyEntry(key, val); err != nil {
+				return nil, err
+			}
+		} else {
+			// Even for deletions, check key length.
+			if len(key) > g.validation.MaxPropertyKeyLength {
+				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+			}
 		}
 	}
 
@@ -323,6 +365,11 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
 		}
+	}
+
+	// Check final property count after mutations (under entity lock, before persist).
+	if current.PropertyCount() > g.validation.MaxPropertiesPerEntity {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), g.validation.MaxPropertiesPerEntity)
 	}
 
 	current.SetVersion(current.Version() + 1)

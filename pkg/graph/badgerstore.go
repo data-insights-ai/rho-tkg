@@ -97,6 +97,12 @@ type BadgerStore struct {
 	wbMu    sync.Mutex
 	pending map[string]writeOp
 
+	// Per-label and per-type counters — O(1) reads via atomic.Int64.
+	// Keys are uint16 tokens. Values are *atomic.Int64.
+	// Rebuilt from index sizes in loadIndexes; maintained incrementally at runtime.
+	labelCounts sync.Map // map[uint16]*atomic.Int64
+	typeCounts  sync.Map // map[uint16]*atomic.Int64
+
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[propertyIndexKey]*propertyIndex
 
@@ -302,6 +308,14 @@ func (bs *BadgerStore) loadIndexes() error {
 		}
 		bs.relCount.Store(relCount)
 
+		// Rebuild per-label and per-type counters from index sizes.
+		for token, set := range bs.labelIdx {
+			bs.getOrCreateLabelCounter(token).Store(int64(len(set)))
+		}
+		for token, set := range bs.typeIdx {
+			bs.getOrCreateTypeCounter(token).Store(int64(len(set)))
+		}
+
 		return nil
 	})
 }
@@ -376,6 +390,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 		}
 		bs.labelIdx[tv][id] = struct{}{}
 		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+		bs.getOrCreateLabelCounter(tv).Add(1)
 	}
 
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
@@ -466,6 +481,7 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 				delete(bs.labelIdx, tok)
 			}
 		}
+		bs.getOrCreateLabelCounter(tok).Add(-1)
 	}
 
 	// Clean up version history.
@@ -577,6 +593,7 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
+	bs.getOrCreateTypeCounter(relType).Add(1)
 	return nil
 }
 
@@ -814,6 +831,7 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
+	bs.getOrCreateTypeCounter(info.relType).Add(-1)
 }
 
 // --- Index queries ---
@@ -1155,6 +1173,7 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 					delete(bs.labelIdx, tok)
 				}
 				ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
 		bs.nodeCache.MarkDeleted(id)
@@ -1178,6 +1197,7 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 				delete(bs.labelIdx, tok)
 			}
 		}
+		bs.getOrCreateLabelCounter(tok).Add(-1)
 	}
 
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
@@ -1249,6 +1269,7 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 			}
 			bs.labelIdx[tv][nd.id] = struct{}{}
 			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+			bs.getOrCreateLabelCounter(tv).Add(1)
 		}
 		addNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 	}
@@ -1340,6 +1361,7 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, intID)})
 		ops = append(ops, writeOp{opType: writeOpSet, key: outKey(int64(rd.startID), rd.relType, int64(rd.endID), intID)})
 		ops = append(ops, writeOp{opType: writeOpSet, key: inKey(int64(rd.endID), rd.relType, int64(rd.startID), intID)})
+		bs.getOrCreateTypeCounter(rd.relType).Add(1)
 	}
 
 	bs.appendOps(ops...)
@@ -1388,6 +1410,7 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 					delete(bs.labelIdx, tok)
 				}
 			}
+			bs.getOrCreateLabelCounter(tok).Add(-1)
 		}
 
 		if err := bs.deleteHistoryByPrefix(histNodePrefix(intID)); err != nil {
@@ -1849,6 +1872,42 @@ func (bs *BadgerStore) NodeCount() (int, error) {
 // RelationshipCount returns the number of stored relationships. O(1).
 func (bs *BadgerStore) RelationshipCount() (int, error) {
 	return int(bs.relCount.Load()), nil // #nosec G115 — count is always non-negative and within int range
+}
+
+// NodeCountByLabel returns the number of nodes with the given label token. O(1).
+func (bs *BadgerStore) NodeCountByLabel(token uint16) (int, error) {
+	if v, ok := bs.labelCounts.Load(token); ok {
+		return int(v.(*atomic.Int64).Load()), nil // #nosec G115 — count is always non-negative and within int range
+	}
+	return 0, nil
+}
+
+// RelCountByType returns the number of relationships with the given type token. O(1).
+func (bs *BadgerStore) RelCountByType(token uint16) (int, error) {
+	if v, ok := bs.typeCounts.Load(token); ok {
+		return int(v.(*atomic.Int64).Load()), nil // #nosec G115 — count is always non-negative and within int range
+	}
+	return 0, nil
+}
+
+// getOrCreateLabelCounter returns the atomic counter for the given label token,
+// creating it if it doesn't exist.
+func (bs *BadgerStore) getOrCreateLabelCounter(token uint16) *atomic.Int64 {
+	if v, ok := bs.labelCounts.Load(token); ok {
+		return v.(*atomic.Int64)
+	}
+	v, _ := bs.labelCounts.LoadOrStore(token, &atomic.Int64{})
+	return v.(*atomic.Int64)
+}
+
+// getOrCreateTypeCounter returns the atomic counter for the given reltype token,
+// creating it if it doesn't exist.
+func (bs *BadgerStore) getOrCreateTypeCounter(token uint16) *atomic.Int64 {
+	if v, ok := bs.typeCounts.Load(token); ok {
+		return v.(*atomic.Int64)
+	}
+	v, _ := bs.typeCounts.LoadOrStore(token, &atomic.Int64{})
+	return v.(*atomic.Int64)
 }
 
 // --- Background flush ---

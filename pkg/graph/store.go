@@ -70,6 +70,8 @@ type Store interface {
 	// Counts
 	NodeCount() (int, error)
 	RelationshipCount() (int, error)
+	NodeCountByLabel(token uint16) (int, error)
+	RelCountByType(token uint16) (int, error)
 
 	// Property indexes — index node properties for O(1) lookup.
 	// CreatePropertyIndex creates an index on the given label/property combination.

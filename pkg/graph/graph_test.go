@@ -3219,6 +3219,610 @@ func TestAllRelTypeCounts_Multiple(t *testing.T) {
 	}
 }
 
+// --- Validation Limits ---
+
+func TestDefaultValidationLimits(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	v := g.ValidationDefaults()
+	if v.MaxLabelsPerNode != 50 {
+		t.Errorf("MaxLabelsPerNode = %d, want 50", v.MaxLabelsPerNode)
+	}
+	if v.MaxPropertiesPerEntity != 1000 {
+		t.Errorf("MaxPropertiesPerEntity = %d, want 1000", v.MaxPropertiesPerEntity)
+	}
+	if v.MaxPropertyKeyLength != 256 {
+		t.Errorf("MaxPropertyKeyLength = %d, want 256", v.MaxPropertyKeyLength)
+	}
+	if v.MaxPropertyValueSize != 65536 {
+		t.Errorf("MaxPropertyValueSize = %d, want 65536", v.MaxPropertyValueSize)
+	}
+	if v.MaxNameLength != 256 {
+		t.Errorf("MaxNameLength = %d, want 256", v.MaxNameLength)
+	}
+}
+
+func TestValidationLimitsZeroUsesDefaults(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{}})
+	v := g.ValidationDefaults()
+	if v.MaxLabelsPerNode != 50 {
+		t.Errorf("zero MaxLabelsPerNode should default to 50, got %d", v.MaxLabelsPerNode)
+	}
+}
+
+func TestValidationLimitsCustom(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 3}})
+	v := g.ValidationDefaults()
+	if v.MaxLabelsPerNode != 3 {
+		t.Errorf("MaxLabelsPerNode = %d, want 3", v.MaxLabelsPerNode)
+	}
+	// Other fields should still be defaults.
+	if v.MaxNameLength != 256 {
+		t.Errorf("MaxNameLength should still be 256, got %d", v.MaxNameLength)
+	}
+}
+
+func TestAddNodeTooManyLabels(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
+
+	_, err := g.AddNode([]string{"A", "B", "C"}, nil)
+	if err == nil {
+		t.Fatal("expected error for too many labels")
+	}
+	if !errors.Is(err, ErrTooManyLabels) {
+		t.Fatalf("expected ErrTooManyLabels, got: %v", err)
+	}
+}
+
+func TestAddNodeMaxLabels(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
+
+	n, err := g.AddNode([]string{"A", "B"}, nil)
+	if err != nil {
+		t.Fatalf("at-limit should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodeTooManyProperties(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
+
+	props := map[string]any{"a": 1, "b": 2, "c": 3}
+	_, err := g.AddNode([]string{"X"}, props)
+	if err == nil {
+		t.Fatal("expected error for too many properties")
+	}
+	if !errors.Is(err, ErrTooManyProperties) {
+		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+}
+
+func TestAddNodeMaxProperties(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
+
+	props := map[string]any{"a": 1, "b": 2}
+	n, err := g.AddNode([]string{"X"}, props)
+	if err != nil {
+		t.Fatalf("at-limit should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodePropertyKeyTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 5}})
+
+	props := map[string]any{"toolong": "val"}
+	_, err := g.AddNode([]string{"X"}, props)
+	if err == nil {
+		t.Fatal("expected error for key too long")
+	}
+	if !errors.Is(err, ErrKeyTooLong) {
+		t.Fatalf("expected ErrKeyTooLong, got: %v", err)
+	}
+}
+
+func TestAddNodePropertyKeyMaxLength(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 5}})
+
+	props := map[string]any{"abcde": "val"}
+	n, err := g.AddNode([]string{"X"}, props)
+	if err != nil {
+		t.Fatalf("at-limit key should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodePropertyValueTooLarge(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 10}})
+
+	props := map[string]any{"key": "12345678901"} // 11 bytes
+	_, err := g.AddNode([]string{"X"}, props)
+	if err == nil {
+		t.Fatal("expected error for value too large")
+	}
+	if !errors.Is(err, ErrValueTooLarge) {
+		t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+	}
+}
+
+func TestAddNodePropertyValueMaxSize(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 10}})
+
+	props := map[string]any{"key": "1234567890"} // exactly 10 bytes
+	n, err := g.AddNode([]string{"X"}, props)
+	if err != nil {
+		t.Fatalf("at-limit value should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 1}})
+
+	// Non-string values should not be checked against MaxPropertyValueSize.
+	props := map[string]any{"key": 99999}
+	n, err := g.AddNode([]string{"X"}, props)
+	if err != nil {
+		t.Fatalf("non-string value should be ignored: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodeLabelNameTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
+
+	_, err := g.AddNode([]string{"TooLong"}, nil)
+	if err == nil {
+		t.Fatal("expected error for label name too long")
+	}
+	if !errors.Is(err, ErrNameTooLong) {
+		t.Fatalf("expected ErrNameTooLong, got: %v", err)
+	}
+}
+
+func TestAddNodeLabelNameMaxLength(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
+
+	n, err := g.AddNode([]string{"ABCDE"}, nil)
+	if err != nil {
+		t.Fatalf("at-limit name should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddRelationshipTypeNameTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	_, err := g.AddRelationship("TOOLONG", a, b, nil)
+	if err == nil {
+		t.Fatal("expected error for type name too long")
+	}
+	if !errors.Is(err, ErrNameTooLong) {
+		t.Fatalf("expected ErrNameTooLong, got: %v", err)
+	}
+}
+
+func TestAddRelationshipTooManyProperties(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	_, err := g.AddRelationship("REL", a, b, map[string]any{"a": 1, "b": 2})
+	if err == nil {
+		t.Fatal("expected error for too many properties")
+	}
+	if !errors.Is(err, ErrTooManyProperties) {
+		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+}
+
+func TestAddRelationshipPropertyKeyTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	_, err := g.AddRelationship("REL", a, b, map[string]any{"toolong": "v"})
+	if err == nil {
+		t.Fatal("expected error for key too long")
+	}
+	if !errors.Is(err, ErrKeyTooLong) {
+		t.Fatalf("expected ErrKeyTooLong, got: %v", err)
+	}
+}
+
+func TestAddRelationshipPropertyValueTooLarge(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	_, err := g.AddRelationship("REL", a, b, map[string]any{"k": "toolong"})
+	if err == nil {
+		t.Fatal("expected error for value too large")
+	}
+	if !errors.Is(err, ErrValueTooLarge) {
+		t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+	}
+}
+
+func TestUpdateNodePropertyCountExceedsLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
+
+	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
+
+	// Try to add a 3rd property via update — should fail.
+	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"c": 3})
+	if err == nil {
+		t.Fatal("expected error for exceeding property limit on update")
+	}
+	if !errors.Is(err, ErrTooManyProperties) {
+		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+}
+
+func TestUpdateNodePropertyKeyTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
+
+	n, _ := g.AddNode([]string{"X"}, nil)
+
+	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"toolong": "v"})
+	if err == nil {
+		t.Fatal("expected error for key too long on update")
+	}
+	if !errors.Is(err, ErrKeyTooLong) {
+		t.Fatalf("expected ErrKeyTooLong, got: %v", err)
+	}
+}
+
+func TestUpdateNodePropertyValueTooLarge(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+	n, _ := g.AddNode([]string{"X"}, nil)
+
+	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"k": "toolong"})
+	if err == nil {
+		t.Fatal("expected error for value too large on update")
+	}
+	if !errors.Is(err, ErrValueTooLarge) {
+		t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+	}
+}
+
+func TestUpdateRelPropertyCountExceedsLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("REL", a, b, map[string]any{"a": 1})
+
+	_, err := g.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{"b": 2})
+	if err == nil {
+		t.Fatal("expected error for exceeding property limit on rel update")
+	}
+	if !errors.Is(err, ErrTooManyProperties) {
+		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+}
+
+func TestUpdateNodeReplacementWithinLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
+
+	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
+
+	// Replacing an existing property should not trip the limit.
+	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"a": 99})
+	if err != nil {
+		t.Fatalf("replacement should succeed: %v", err)
+	}
+	v, _ := updated.GetProperty("a")
+	if v != 99 {
+		t.Fatalf("expected 99, got %v", v)
+	}
+}
+
+func TestUpdateNodeDeleteThenAddWithinLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
+
+	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
+
+	// Delete one and add one — should still be at limit.
+	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"a": nil, "c": 3})
+	if err != nil {
+		t.Fatalf("delete+add should succeed: %v", err)
+	}
+	if updated.PropertyCount() != 2 {
+		t.Fatalf("PropertyCount = %d, want 2", updated.PropertyCount())
+	}
+}
+
+func TestBatchAddNodeTooManyLabels(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
+
+	batch := NewBatchBuilder(g)
+	_, err := batch.AddNode([]string{"A", "B"}, nil)
+	if err == nil {
+		t.Fatal("expected error for too many labels in batch")
+	}
+	if !errors.Is(err, ErrTooManyLabels) {
+		t.Fatalf("expected ErrTooManyLabels, got: %v", err)
+	}
+}
+
+func TestBatchAddRelationshipTypeNameTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 3}})
+
+	batch := NewBatchBuilder(g)
+	n, _ := batch.AddNode([]string{"X"}, nil)
+	m, _ := batch.AddNode([]string{"X"}, nil)
+	_, err := batch.AddRelationship("TOOLONG", n, m, nil)
+	if err == nil {
+		t.Fatal("expected error for type name too long in batch")
+	}
+	if !errors.Is(err, ErrNameTooLong) {
+		t.Fatalf("expected ErrNameTooLong, got: %v", err)
+	}
+}
+
+func TestBatchUpdateNodePropertyKeyTooLong(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
+
+	n, _ := g.AddNode([]string{"X"}, nil)
+
+	batch := NewBatchBuilder(g)
+	err := batch.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"toolong": "v"})
+	if err == nil {
+		t.Fatal("expected error for key too long in batch update")
+	}
+	if !errors.Is(err, ErrKeyTooLong) {
+		t.Fatalf("expected ErrKeyTooLong, got: %v", err)
+	}
+}
+
+func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+	a, _ := g.AddNode([]string{"X"}, nil)
+	b, _ := g.AddNode([]string{"X"}, nil)
+	r, _ := g.AddRelationship("REL", a, b, nil)
+
+	batch := NewBatchBuilder(g)
+	err := batch.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{"k": "toolong"})
+	if err == nil {
+		t.Fatal("expected error for value too large in batch update")
+	}
+	if !errors.Is(err, ErrValueTooLarge) {
+		t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+	}
+}
+
+// --- MemoryStore NodeCountByLabel / RelCountByType ---
+
+func TestMemStoreNodeCountByLabel_AfterPut(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n := types.NewNode(snowflake.ID(100), 1, []uint16{2})
+	if err := ms.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	c1, _ := ms.NodeCountByLabel(1)
+	c2, _ := ms.NodeCountByLabel(2)
+	c3, _ := ms.NodeCountByLabel(3) // non-existent
+	if c1 != 1 {
+		t.Fatalf("label 1 count = %d, want 1", c1)
+	}
+	if c2 != 1 {
+		t.Fatalf("label 2 count = %d, want 1", c2)
+	}
+	if c3 != 0 {
+		t.Fatalf("label 3 count = %d, want 0", c3)
+	}
+}
+
+func TestMemStoreNodeCountByLabel_AfterDelete(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n := types.NewNode(snowflake.ID(100), 1, nil)
+	ms.PutNode(n)
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	ms.PutNode(n2)
+
+	ms.DeleteNode(snowflake.ID(100))
+
+	c, _ := ms.NodeCountByLabel(1)
+	if c != 1 {
+		t.Fatalf("label 1 count after delete = %d, want 1", c)
+	}
+}
+
+func TestMemStoreNodeCountByLabel_MultiLabel(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	// Node with labels 1, 2, 3 — each label counter incremented.
+	n := types.NewNode(snowflake.ID(100), 1, []uint16{2, 3})
+	ms.PutNode(n)
+
+	for _, tok := range []uint16{1, 2, 3} {
+		c, _ := ms.NodeCountByLabel(tok)
+		if c != 1 {
+			t.Fatalf("label %d count = %d, want 1", tok, c)
+		}
+	}
+}
+
+func TestMemStoreRelCountByType_AfterPut(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(100), 1, nil)
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	ms.PutNode(n1)
+	ms.PutNode(n2)
+
+	r := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
+	ms.PutRelationship(r)
+
+	c, _ := ms.RelCountByType(5)
+	if c != 1 {
+		t.Fatalf("type 5 count = %d, want 1", c)
+	}
+	c0, _ := ms.RelCountByType(99) // non-existent
+	if c0 != 0 {
+		t.Fatalf("type 99 count = %d, want 0", c0)
+	}
+}
+
+func TestMemStoreRelCountByType_AfterDelete(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(100), 1, nil)
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	ms.PutNode(n1)
+	ms.PutNode(n2)
+
+	r1 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
+	r2 := types.NewRelationship(snowflake.ID(400), 5, snowflake.ID(200), snowflake.ID(100))
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+
+	ms.DeleteRelationship(snowflake.ID(300))
+
+	c, _ := ms.RelCountByType(5)
+	if c != 1 {
+		t.Fatalf("type 5 count after delete = %d, want 1", c)
+	}
+}
+
+func TestMemStoreNodeCountByLabel_CascadeDelete(t *testing.T) {
+	t.Parallel()
+	ms := NewMemoryStore()
+
+	n1 := types.NewNode(snowflake.ID(100), 1, []uint16{2})
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	ms.PutNode(n1)
+	ms.PutNode(n2)
+
+	r := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
+	ms.PutRelationship(r)
+
+	// Cascade deletes n1 and its relationship.
+	ms.DeleteNodeCascade(snowflake.ID(100))
+
+	c1, _ := ms.NodeCountByLabel(1)
+	if c1 != 1 {
+		t.Fatalf("label 1 count after cascade = %d, want 1", c1)
+	}
+	c2, _ := ms.NodeCountByLabel(2)
+	if c2 != 0 {
+		t.Fatalf("label 2 count after cascade = %d, want 0", c2)
+	}
+	ct, _ := ms.RelCountByType(5)
+	if ct != 0 {
+		t.Fatalf("type 5 count after cascade = %d, want 0", ct)
+	}
+}
+
+// --- Graph-level CountByLabel after batch add and cascade delete ---
+
+func TestNodeCountByLabel_BatchAdd(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+
+	batch := NewBatchBuilder(g)
+	batch.AddNode([]string{"Animal"}, nil)
+	batch.AddNode([]string{"Animal"}, nil)
+	batch.AddNode([]string{"Animal", "Pet"}, nil)
+	batch.Execute()
+
+	c, err := g.NodeCountByLabel("Animal")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c != 3 {
+		t.Fatalf("Animal count = %d, want 3", c)
+	}
+	cp, _ := g.NodeCountByLabel("Pet")
+	if cp != 1 {
+		t.Fatalf("Pet count = %d, want 1", cp)
+	}
+}
+
+func TestCountAfterCascadeDelete(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("LIKES", a, b, nil)
+
+	// Before delete.
+	nc, _ := g.NodeCountByLabel("Person")
+	if nc != 2 {
+		t.Fatalf("Person before cascade = %d, want 2", nc)
+	}
+
+	// Cascade delete a — removes 2 rels.
+	g.DeleteNode(a.InternalID().SnowflakeID())
+
+	nc, _ = g.NodeCountByLabel("Person")
+	if nc != 1 {
+		t.Fatalf("Person after cascade = %d, want 1", nc)
+	}
+	rk, _ := g.RelCountByType("KNOWS")
+	rl, _ := g.RelCountByType("LIKES")
+	if rk != 0 {
+		t.Fatalf("KNOWS after cascade = %d, want 0", rk)
+	}
+	if rl != 0 {
+		t.Fatalf("LIKES after cascade = %d, want 0", rl)
+	}
+}
+
 // --- MemoryStore Property Index tests ---
 
 func TestMemStoreCreatePropertyIndex(t *testing.T) {

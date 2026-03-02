@@ -582,3 +582,23 @@ func TestRelDeepCopyNilTemporalIntegrity(t *testing.T) {
 		t.Fatal("DeepCopy should preserve nil integrity")
 	}
 }
+
+func TestRelPropertyCount(t *testing.T) {
+	t.Parallel()
+	r := NewRelationship(snowflake.ID(1), 1, snowflake.ID(2), snowflake.ID(3))
+
+	if r.PropertyCount() != 0 {
+		t.Fatalf("PropertyCount = %d, want 0", r.PropertyCount())
+	}
+
+	r.SetProperty("a", "1")
+	r.SetProperty("b", "2")
+	if r.PropertyCount() != 2 {
+		t.Fatalf("PropertyCount = %d, want 2", r.PropertyCount())
+	}
+
+	r.DeleteProperty("a")
+	if r.PropertyCount() != 1 {
+		t.Fatalf("PropertyCount after delete = %d, want 1", r.PropertyCount())
+	}
+}

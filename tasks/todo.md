@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.22. Phases 1a-1g and 2a-2d complete.
+Library at v3.0.22. Phases 1a-1g and 2a-2e complete. LabelStats upgraded to O(1), validation limits added.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -166,12 +166,16 @@ Complete. Implemented in v3.0.19.
 
 ### 2d. Per-Label / Per-Type Statistics ✓
 
-Complete. Implemented in v3.0.20.
+Complete. Initially implemented in v3.0.20 (scan-based O(N)). Upgraded to O(1) atomic counters.
 
-- [x] `NodeCountByLabel(label)`, `RelCountByType(typeName)` — scan-based cardinality counts
-- [x] `AllLabelCounts()`, `AllRelTypeCounts()` — aggregated counts for all registered labels/types
-- [x] 12 tests: empty/unregistered/single/multiple/after-delete for both, plus AllLabelCounts and AllRelTypeCounts
-- [x] No Store interface change — delegates to existing NodesByLabel/RelationshipsByType
+**O(1) upgrade (post-v3.0.22):**
+- [x] Store interface: `NodeCountByLabel(token uint16)`, `RelCountByType(token uint16)` — O(1) delegation
+- [x] MemoryStore: `len(labelIdx[token])` / `len(typeIdx[token])` — trivial O(1) via existing index sizes
+- [x] BadgerStore: `sync.Map` + `atomic.Int64` counters — maintained in 9 mutation sites, rebuilt from index sizes in `loadIndexes()`
+- [x] Graph layer: O(1) delegation to Store (no longer materializes entities to count)
+- [x] `AllLabelCounts()` / `AllRelTypeCounts()` use `uint16(i)` as token directly (avoids redundant registry lookups)
+- [x] 8 MemoryStore counter tests, 8 BadgerStore counter tests (including persistence round-trip), 2 graph-level integration tests
+- [x] All pass with race detector. 100% coverage on all new methods
 
 ### 2a. Temporal Queries ✓
 
@@ -200,6 +204,28 @@ Complete. Implemented in v3.0.22.
 - [x] Auto-update hooks in all 7 node mutation paths (both MemoryStore and BadgerStore)
 - [x] `ErrIndexExists` / `ErrIndexNotFound` sentinel errors
 - [x] 25 tests: 8 MemoryStore, 8 BadgerStore, 8 Graph-layer, 1 propertyValueKey type coverage
+
+### 2e. Configurable Validation Limits ✓
+
+Complete. Implemented post-v3.0.22.
+
+**ValidationLimits struct** on `Graph.Config` with generous defaults:
+- `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (65536), `MaxNameLength` (256)
+- Zero values resolve to defaults in `New()`
+
+**Sentinel errors:** `ErrTooManyLabels`, `ErrTooManyProperties`, `ErrKeyTooLong`, `ErrValueTooLarge`, `ErrNameTooLong`
+
+**Enforcement:**
+- [x] `AddNodeWithContext` — MaxLabelsPerNode, MaxNameLength (each label), validateProperties
+- [x] `AddRelationshipWithContext` — MaxNameLength (type), validateProperties
+- [x] `UpdateNodeWithContext` — pre-lock entry validation + post-mutation MaxPropertiesPerEntity check under lock
+- [x] `UpdateRelationshipWithContext` — same pattern as UpdateNode
+- [x] Batch builder mirrors all graph-layer checks (`AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`)
+
+**Prerequisites:**
+- [x] `PropertyCount()` on Node and Relationship — `properties.Len()` without deep copy
+
+**~30 tests:** defaults, zero-uses-defaults, custom limits, boundary tests (at-limit succeeds, one-over fails) for all 5 limits on AddNode/AddRelationship/UpdateNode/UpdateRelationship, batch mirroring, all sentinel errors tested with `errors.Is`
 
 ---
 

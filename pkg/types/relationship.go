@@ -108,6 +108,11 @@ func (r *Relationship) DeleteProperty(key string) (bool, error) {
 	return r.properties.Delete(key)
 }
 
+// PropertyCount returns the number of properties on the relationship without copying.
+func (r *Relationship) PropertyCount() int {
+	return r.properties.Len()
+}
+
 // Properties returns a copy of the relationship's property slice.
 func (r *Relationship) Properties() PropertySlice {
 	return r.properties.DeepCopy()

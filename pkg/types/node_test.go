@@ -684,3 +684,23 @@ func TestNodeDeepCopyNilTemporalIntegrity(t *testing.T) {
 		t.Fatal("DeepCopy should preserve nil integrity")
 	}
 }
+
+func TestNodePropertyCount(t *testing.T) {
+	t.Parallel()
+	n := NewNode(snowflake.ID(1), 1, nil)
+
+	if n.PropertyCount() != 0 {
+		t.Fatalf("PropertyCount = %d, want 0", n.PropertyCount())
+	}
+
+	n.SetProperty("a", "1")
+	n.SetProperty("b", "2")
+	if n.PropertyCount() != 2 {
+		t.Fatalf("PropertyCount = %d, want 2", n.PropertyCount())
+	}
+
+	n.DeleteProperty("a")
+	if n.PropertyCount() != 1 {
+		t.Fatalf("PropertyCount after delete = %d, want 1", n.PropertyCount())
+	}
+}

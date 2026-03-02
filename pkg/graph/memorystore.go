@@ -416,6 +416,22 @@ func (ms *MemoryStore) RelationshipCount() (int, error) {
 	return len(ms.rels), nil
 }
 
+// NodeCountByLabel returns the number of nodes with the given label token. O(1).
+// MemoryStore never returns an error.
+func (ms *MemoryStore) NodeCountByLabel(token uint16) (int, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return len(ms.labelIdx[token]), nil
+}
+
+// RelCountByType returns the number of relationships with the given type token. O(1).
+// MemoryStore never returns an error.
+func (ms *MemoryStore) RelCountByType(token uint16) (int, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return len(ms.typeIdx[token]), nil
+}
+
 // --- Version history ---
 
 // PutNodeVersion stores a node snapshot at the given version.

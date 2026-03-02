@@ -76,6 +76,19 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, ErrNoLabels
 	}
 
+	// Validation limits.
+	if len(labels) > b.g.validation.MaxLabelsPerNode {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), b.g.validation.MaxLabelsPerNode)
+	}
+	for _, label := range labels {
+		if err := b.g.validateName(label); err != nil {
+			return nil, err
+		}
+	}
+	if err := b.g.validateProperties(props); err != nil {
+		return nil, err
+	}
+
 	ps, err := types.NewPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node properties: %w", err)
@@ -114,6 +127,14 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, ErrNilNode
 	}
 
+	// Validation limits.
+	if err := b.g.validateName(typeName); err != nil {
+		return nil, err
+	}
+	if err := b.g.validateProperties(props); err != nil {
+		return nil, err
+	}
+
 	ps, err := types.NewPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
@@ -148,6 +169,13 @@ func (b *BatchBuilder) UpdateNode(id snowflake.ID, updates map[string]any) error
 			if err := types.ValidatePropertyValue(val); err != nil {
 				return fmt.Errorf("graph: batch update node property %q: %w", key, err)
 			}
+			if err := b.g.validatePropertyEntry(key, val); err != nil {
+				return err
+			}
+		} else {
+			if len(key) > b.g.validation.MaxPropertyKeyLength {
+				return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), b.g.validation.MaxPropertyKeyLength)
+			}
 		}
 	}
 	b.nodeUpdates = append(b.nodeUpdates, pendingUpdate{id: id, updates: updates})
@@ -163,6 +191,13 @@ func (b *BatchBuilder) UpdateRelationship(id snowflake.ID, updates map[string]an
 		if val != nil {
 			if err := types.ValidatePropertyValue(val); err != nil {
 				return fmt.Errorf("graph: batch update relationship property %q: %w", key, err)
+			}
+			if err := b.g.validatePropertyEntry(key, val); err != nil {
+				return err
+			}
+		} else {
+			if len(key) > b.g.validation.MaxPropertyKeyLength {
+				return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), b.g.validation.MaxPropertyKeyLength)
 			}
 		}
 	}

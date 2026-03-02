@@ -18,6 +18,35 @@ var (
 	ErrNilNode  = errors.New("graph: node must not be nil")
 )
 
+// Sentinel errors for validation limits.
+var (
+	ErrTooManyLabels     = errors.New("graph: too many labels")
+	ErrTooManyProperties = errors.New("graph: too many properties")
+	ErrKeyTooLong        = errors.New("graph: property key too long")
+	ErrValueTooLarge     = errors.New("graph: property value too large")
+	ErrNameTooLong       = errors.New("graph: name too long")
+)
+
+// Default validation limits — generous enough for normal use, restrictive enough
+// to catch runaway callers.
+const (
+	defaultMaxLabelsPerNode       = 50
+	defaultMaxPropertiesPerEntity = 1000
+	defaultMaxPropertyKeyLength   = 256
+	defaultMaxPropertyValueSize   = 65536 // 64 KiB, string values only
+	defaultMaxNameLength          = 256   // label and reltype names
+)
+
+// ValidationLimits configures limits on entity structure.
+// Zero values are resolved to defaults in New().
+type ValidationLimits struct {
+	MaxLabelsPerNode       int // Default: 50
+	MaxPropertiesPerEntity int // Default: 1000
+	MaxPropertyKeyLength   int // Default: 256
+	MaxPropertyValueSize   int // Default: 65536 (string values only)
+	MaxNameLength          int // Default: 256 (label and reltype names)
+}
+
 // snowflakeEpoch is the custom epoch for all snowflake ID generation (2026-01-01 UTC).
 var snowflakeEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
@@ -40,6 +69,10 @@ type Config struct {
 	// BadgerInMemory enables in-memory Badger mode (useful for testing).
 	// If true and Store is nil, a BadgerStore with InMemory=true is created.
 	BadgerInMemory bool
+
+	// Validation configures limits on entity structure.
+	// Zero fields use defaults.
+	Validation ValidationLimits
 }
 
 // Graph is the central graph layer. It owns the label and relationship type
@@ -56,6 +89,7 @@ type Graph struct {
 	relIDGen    *snowflake.Node
 	store       Store
 	entityLocks *entityLockManager
+	validation  ValidationLimits
 	closeOnce   sync.Once
 }
 
@@ -93,12 +127,31 @@ func New(config Config) (*Graph, error) {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
 	}
 
+	// Resolve zero validation limits to defaults.
+	v := config.Validation
+	if v.MaxLabelsPerNode == 0 {
+		v.MaxLabelsPerNode = defaultMaxLabelsPerNode
+	}
+	if v.MaxPropertiesPerEntity == 0 {
+		v.MaxPropertiesPerEntity = defaultMaxPropertiesPerEntity
+	}
+	if v.MaxPropertyKeyLength == 0 {
+		v.MaxPropertyKeyLength = defaultMaxPropertyKeyLength
+	}
+	if v.MaxPropertyValueSize == 0 {
+		v.MaxPropertyValueSize = defaultMaxPropertyValueSize
+	}
+	if v.MaxNameLength == 0 {
+		v.MaxNameLength = defaultMaxNameLength
+	}
+
 	g := &Graph{
 		labels:      newLabelRegistry(),
 		relTypes:    newRelTypeRegistry(),
 		nodeIDGen:   nodeGen,
 		relIDGen:    relGen,
 		entityLocks: newEntityLockManager(),
+		validation:  v,
 	}
 
 	// Validate BadgerDir: reject whitespace-only strings (silent fallback hazard).
@@ -160,6 +213,46 @@ func (g *Graph) Close() error {
 		closeErr = errors.Join(closeErr, g.store.Close())
 	})
 	return closeErr
+}
+
+// ValidationDefaults returns the resolved validation limits (for testing).
+func (g *Graph) ValidationDefaults() ValidationLimits {
+	return g.validation
+}
+
+// validateName checks a label or relationship type name against MaxNameLength.
+func (g *Graph) validateName(name string) error {
+	if len(name) > g.validation.MaxNameLength {
+		return fmt.Errorf("%w: %q (%d > %d)", ErrNameTooLong, name, len(name), g.validation.MaxNameLength)
+	}
+	return nil
+}
+
+// validatePropertyEntry checks a single key-value pair against validation limits.
+// Checks MaxPropertyKeyLength and MaxPropertyValueSize (string values only).
+func (g *Graph) validatePropertyEntry(key string, val any) error {
+	if len(key) > g.validation.MaxPropertyKeyLength {
+		return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+	}
+	if s, ok := val.(string); ok {
+		if len(s) > g.validation.MaxPropertyValueSize {
+			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(s), g.validation.MaxPropertyValueSize)
+		}
+	}
+	return nil
+}
+
+// validateProperties checks all entries in a properties map against validation limits.
+func (g *Graph) validateProperties(props map[string]any) error {
+	if len(props) > g.validation.MaxPropertiesPerEntity {
+		return fmt.Errorf("%w: %d > %d", ErrTooManyProperties, len(props), g.validation.MaxPropertiesPerEntity)
+	}
+	for key, val := range props {
+		if err := g.validatePropertyEntry(key, val); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NextNodeID generates a unique snowflake ID for a new node.
@@ -410,32 +503,24 @@ func (g *Graph) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship
 
 // --- Per-label / per-type statistics ---
 
-// NodeCountByLabel returns the number of nodes with the given label.
+// NodeCountByLabel returns the number of nodes with the given label. O(1).
 // Returns 0 if the label has never been registered.
 func (g *Graph) NodeCountByLabel(label string) (int, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return 0, nil
 	}
-	nodes, err := g.store.NodesByLabel(tok)
-	if err != nil {
-		return 0, err
-	}
-	return len(nodes), nil
+	return g.store.NodeCountByLabel(tok)
 }
 
-// RelCountByType returns the number of relationships with the given type.
+// RelCountByType returns the number of relationships with the given type. O(1).
 // Returns 0 if the type has never been registered.
 func (g *Graph) RelCountByType(typeName string) (int, error) {
 	tok, ok := g.relTypes.Lookup(typeName)
 	if !ok {
 		return 0, nil
 	}
-	rels, err := g.store.RelationshipsByType(tok)
-	if err != nil {
-		return 0, err
-	}
-	return len(rels), nil
+	return g.store.RelCountByType(tok)
 }
 
 // AllLabelCounts returns a map of label name to node count for all registered labels.
@@ -446,7 +531,7 @@ func (g *Graph) AllLabelCounts() (map[string]int, error) {
 
 	// Skip index 0 (reserved empty string).
 	for i := 1; i < len(names); i++ {
-		count, err := g.NodeCountByLabel(names[i])
+		count, err := g.store.NodeCountByLabel(uint16(i))
 		if err != nil {
 			return nil, err
 		}
@@ -465,7 +550,7 @@ func (g *Graph) AllRelTypeCounts() (map[string]int, error) {
 
 	// Skip index 0 (reserved empty string).
 	for i := 1; i < len(names); i++ {
-		count, err := g.RelCountByType(names[i])
+		count, err := g.store.RelCountByType(uint16(i))
 		if err != nil {
 			return nil, err
 		}

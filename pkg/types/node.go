@@ -162,6 +162,11 @@ func (n *Node) DeleteProperty(key string) (bool, error) {
 	return n.properties.Delete(key)
 }
 
+// PropertyCount returns the number of properties on the node without copying.
+func (n *Node) PropertyCount() int {
+	return n.properties.Len()
+}
+
 // Properties returns a copy of the node's property slice.
 func (n *Node) Properties() PropertySlice {
 	return n.properties.DeepCopy()

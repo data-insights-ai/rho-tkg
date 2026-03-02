@@ -66,9 +66,11 @@ Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesB
 
 Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Returns `(true, nil)` if valid.
 
-Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — cardinality statistics for all labels and relationship types.
+Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 
 Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value)` — O(1) indexed lookup. Indexes are automatically maintained across all node mutation paths.
+
+Validation limits: `Config.Validation` accepts a `ValidationLimits` struct with configurable maximums: `MaxLabelsPerNode` (default 50), `MaxPropertiesPerEntity` (default 1000), `MaxPropertyKeyLength` (default 256), `MaxPropertyValueSize` (default 65536), `MaxNameLength` (default 256). Enforced at all graph entry points. Zero values use defaults.
 
 Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
 

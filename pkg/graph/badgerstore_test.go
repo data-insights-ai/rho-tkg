@@ -3744,3 +3744,215 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
 }
+
+// ─── Per-Label / Per-Type Counter Tests ──────────────────────────────────────
+
+func TestBadgerStoreNodeCountByLabel_AfterPut(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, []uint16{2})
+
+	c1, _ := bs.NodeCountByLabel(1)
+	c2, _ := bs.NodeCountByLabel(2)
+	c3, _ := bs.NodeCountByLabel(99) // non-existent
+	if c1 != 1 {
+		t.Fatalf("label 1 count = %d, want 1", c1)
+	}
+	if c2 != 1 {
+		t.Fatalf("label 2 count = %d, want 1", c2)
+	}
+	if c3 != 0 {
+		t.Fatalf("label 99 count = %d, want 0", c3)
+	}
+}
+
+func TestBadgerStoreNodeCountByLabel_AfterDelete(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, nil)
+	putTestNode(t, bs, 200, 1, nil)
+
+	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	c, _ := bs.NodeCountByLabel(1)
+	if c != 1 {
+		t.Fatalf("label 1 count after delete = %d, want 1", c)
+	}
+}
+
+func TestBadgerStoreNodeCountByLabel_MultiLabel(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, []uint16{2, 3})
+
+	for _, tok := range []uint16{1, 2, 3} {
+		c, _ := bs.NodeCountByLabel(tok)
+		if c != 1 {
+			t.Fatalf("label %d count = %d, want 1", tok, c)
+		}
+	}
+}
+
+func TestBadgerStoreRelCountByType_AfterPut(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, nil)
+	putTestNode(t, bs, 200, 1, nil)
+	putTestRel(t, bs, 300, 5, 100, 200)
+
+	c, _ := bs.RelCountByType(5)
+	if c != 1 {
+		t.Fatalf("type 5 count = %d, want 1", c)
+	}
+	c0, _ := bs.RelCountByType(99) // non-existent
+	if c0 != 0 {
+		t.Fatalf("type 99 count = %d, want 0", c0)
+	}
+}
+
+func TestBadgerStoreRelCountByType_AfterDelete(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, nil)
+	putTestNode(t, bs, 200, 1, nil)
+	putTestRel(t, bs, 300, 5, 100, 200)
+	putTestRel(t, bs, 400, 5, 200, 100)
+
+	if err := bs.DeleteRelationship(snowflake.ID(300)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	c, _ := bs.RelCountByType(5)
+	if c != 1 {
+		t.Fatalf("type 5 count after delete = %d, want 1", c)
+	}
+}
+
+func TestBadgerStoreCountByLabel_CascadeDelete(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, []uint16{2})
+	putTestNode(t, bs, 200, 1, nil)
+	putTestRel(t, bs, 300, 5, 100, 200)
+
+	if err := bs.DeleteNodeCascade(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	c1, _ := bs.NodeCountByLabel(1)
+	if c1 != 1 {
+		t.Fatalf("label 1 after cascade = %d, want 1", c1)
+	}
+	c2, _ := bs.NodeCountByLabel(2)
+	if c2 != 0 {
+		t.Fatalf("label 2 after cascade = %d, want 0", c2)
+	}
+	ct, _ := bs.RelCountByType(5)
+	if ct != 0 {
+		t.Fatalf("type 5 after cascade = %d, want 0", ct)
+	}
+}
+
+func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	nodes := []*types.Node{
+		types.NewNode(snowflake.ID(100), 1, nil),
+		types.NewNode(snowflake.ID(200), 1, []uint16{2}),
+		types.NewNode(snowflake.ID(300), 2, nil),
+	}
+	if err := bs.PutNodesBatch(nodes); err != nil {
+		t.Fatalf("PutNodesBatch: %v", err)
+	}
+
+	c1, _ := bs.NodeCountByLabel(1)
+	c2, _ := bs.NodeCountByLabel(2)
+	if c1 != 2 {
+		t.Fatalf("label 1 after batch = %d, want 2", c1)
+	}
+	if c2 != 2 {
+		t.Fatalf("label 2 after batch = %d, want 2", c2)
+	}
+
+	// Batch delete.
+	if err := bs.DeleteNodesBatch([]snowflake.ID{snowflake.ID(100), snowflake.ID(200)}); err != nil {
+		t.Fatalf("DeleteNodesBatch: %v", err)
+	}
+
+	c1, _ = bs.NodeCountByLabel(1)
+	c2, _ = bs.NodeCountByLabel(2)
+	if c1 != 0 {
+		t.Fatalf("label 1 after batch delete = %d, want 0", c1)
+	}
+	if c2 != 1 {
+		t.Fatalf("label 2 after batch delete = %d, want 1", c2)
+	}
+}
+
+func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Phase 1: open, add data, close.
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+
+	// Create registries for persistence.
+	labels := newLabelRegistry()
+	relTypes := newRelTypeRegistry()
+	labels.GetOrCreate("Person")  // token 1
+	labels.GetOrCreate("Company") // token 2
+	relTypes.GetOrCreate("KNOWS") // token 1
+
+	n1 := types.NewNode(snowflake.ID(100), 1, []uint16{2})
+	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	bs1.PutNode(n1)
+	bs1.PutNode(n2)
+
+	r1 := types.NewRelationship(snowflake.ID(300), 1, snowflake.ID(100), snowflake.ID(200))
+	bs1.PutRelationship(r1)
+
+	// Verify counts before close.
+	c, _ := bs1.NodeCountByLabel(1)
+	if c != 2 {
+		t.Fatalf("before close: label 1 = %d, want 2", c)
+	}
+
+	bs1.SaveLabelRegistry(labels)
+	bs1.SaveRelTypeRegistry(relTypes)
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Phase 2: reopen and verify counters rebuilt from indexes.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	c, _ = bs2.NodeCountByLabel(1)
+	if c != 2 {
+		t.Fatalf("after reopen: label 1 = %d, want 2", c)
+	}
+	c2, _ := bs2.NodeCountByLabel(2)
+	if c2 != 1 {
+		t.Fatalf("after reopen: label 2 = %d, want 1", c2)
+	}
+	cr, _ := bs2.RelCountByType(1)
+	if cr != 1 {
+		t.Fatalf("after reopen: type 1 = %d, want 1", cr)
+	}
+}
