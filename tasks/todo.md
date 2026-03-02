@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.28. Phases 1a-1g, 2a-2i, 3a, 3b+3c, and 3d complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, and reference archive (archive/restore) implemented.
+Library at v3.0.29. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -426,13 +426,30 @@ Complete. Implemented in v3.0.28.
 
 **~30 new tests** (8 cold shard, 4 parallel query, 8 archive, 3 routing error, 2 graph passthrough, 1 catalog). All pass with race detector.
 
-### 3e. Repair + Tooling
+### 3e. Repair + Tooling ✓
 
-- [ ] Split-write repair scan (startup + background)
-- [ ] Per-shard verification caching (immutable shards verified once)
-- [ ] Property indexes for reference entities only
-- [ ] Admin API: force rotation, list shards, archive/restore, rebuild catalog
-- [ ] ID decomposition endpoint (creation time + generator + sequence)
-- [ ] Migration tool for single-Badger → tiered deployments
+Complete. Implemented in v3.0.29.
 
+**New files (4):**
+- `id_decompose.go` — `IDComponents` struct, `DecomposeID()` function (bit extraction: time >> 22, node >> 12 & 0x3FF, seq & 0xFFF)
+- `tieredstore_admin.go` — `ShardInfo`/`VerifyResult` types, `ForceRotate`, `ListShards`, `RebuildCatalog`, `VerifyShard` (with immutable-shard caching), `resolveShardStore`, `allShardStoresWithLazyOpen`, `findRelInAnyShardStore`
+- `tieredstore_repair.go` — `RepairResult`, `RunRepair` (Phase 1: orphaned in/ detection+delete, Phase 2: missing in/ detection+re-create)
+- `tieredstore_migrate.go` — `MigrateFromBadger(src, dst, labels)` (copies nodes+rels with automatic ontology routing)
+
+**Modified files (4):**
+- `tieredstore_write.go` — `ErrEventPropertyIndex`, `CreatePropertyIndex` rejects event labels
+- `badgerstore_partial.go` — `deleteIncomingByRelID` (repair: scan pending buffer + Badger prefix for orphaned in/ keys)
+- `shard_catalog.go` — `UpdateShardVerified`, `UpdateShardStats`
+- `graph.go` — 6 passthroughs: `DecomposeID`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `RunRepair`, `VerifyShard`
+
+**Key design decisions:**
+- [x] ID decomposition uses same `snowflakeEpoch` as temporal filter — consistent time extraction
+- [x] Property indexes restricted to reference entities only (`ErrEventPropertyIndex`)
+- [x] Verification caching: immutable shards (warm/cold) verified once, result cached in catalog
+- [x] Cross-shard repair: Phase 1 removes orphaned in/ entries, Phase 2 re-creates missing in/ entries
+- [x] `deleteIncomingByRelID` handles unknown relType/startID via pending buffer scan + Badger prefix scan
+- [x] Migration tool routes by ontology — cross-shard rels handled automatically by TieredStore.PutRelationship
+- [x] Admin API methods are Go methods on TieredStore/Graph (not HTTP endpoints — pure library)
+
+**~29 new tests** (4 ID decompose, 3 property index, 2 catalog, 7 admin API, 3 verification, 4 repair, 4 migration, 1 Graph.DecomposeID, 1 admin-not-tiered). All pass with race detector. Coverage ≥80%.
 

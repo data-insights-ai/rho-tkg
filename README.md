@@ -46,7 +46,7 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `TieredStore` | Multi-shard `Store` routing entities across ref shard + time-windowed event shards by ontology classification. Hot→warm→cold shard rotation, warm recovery on restart, lazy-open cold shards, depth-aware reads, cross-shard relationships |
 | `GraphTx` | Mutation transaction — holds graph write lock, tracks created/updated/deleted entities, supports commit and snapshot-based rollback (full CRUD) |
 | `OntologyMapping` | Classifies labels as `ClassReference` (long-lived) or `ClassEvent` (time-windowed, default). Lazy token cache backed by label registry |
-| `ShardCatalog` | JSON-persisted catalog of all shards — tracks time windows, tiers, labels, rel types. Atomic write via write-tmp + rename |
+| `ShardCatalog` | JSON-persisted catalog of all shards — tracks time windows, tiers, labels, rel types, verification status. Atomic write via write-tmp + rename |
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
 
@@ -78,11 +78,17 @@ Reset: `Reset()` atomically clears all entities, indexes, history, and counters 
 
 Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 
-Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts.
+Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts. In TieredStore, property indexes are restricted to reference entities (`ErrEventPropertyIndex` for event labels).
 
 Validation limits: `Config.Validation` accepts a `ValidationLimits` struct with configurable maximums: `MaxLabelsPerNode` (default 50), `MaxPropertiesPerEntity` (default 1000), `MaxPropertyKeyLength` (default 256), `MaxPropertyValueSize` (default 65536), `MaxNameLength` (default 256). Enforced at all graph entry points. Zero values use defaults.
 
 Archive: `ArchiveNode(id)` moves a reference node and its relationships from the reference shard to the archive (TieredStore only). `RestoreNode(id)` moves it back.
+
+Admin & repair (TieredStore only): `ForceRotate()` triggers a safe hot-shard rotation with internal locking. `ListShards()` returns `[]ShardInfo` with live counts from open stores. `RebuildCatalog()` reconstructs the shard catalog from live state. `VerifyShard(name)` runs hash chain verification with immutable-shard caching. `RunRepair()` scans for cross-shard split-write inconsistencies and fixes orphaned/missing in/ entries.
+
+ID decomposition: `DecomposeID(id)` extracts `IDComponents{CreatedAt, NodeID, Sequence}` from any snowflake ID (works with all store types).
+
+Migration: `MigrateFromBadger(src, dst, labels)` copies all entities from a single BadgerStore to a TieredStore with automatic ontology-based routing.
 
 Lifecycle: `Close()` saves registries (BadgerStore or TieredStore), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. TieredStore.Close() saves catalog, closes all event shards, reference shard, and archive. Always call `Close()` when done — it is safe to call multiple times.
 

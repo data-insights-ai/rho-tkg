@@ -2,6 +2,7 @@ package graph
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -3581,5 +3582,825 @@ func TestShardCatalog_ColdEventShards(t *testing.T) {
 	cold := sc.ColdEventShards()
 	if len(cold) != 2 {
 		t.Errorf("ColdEventShards = %d, want 2", len(cold))
+	}
+}
+
+// ====================================================================
+// Phase 3e: Repair + Tooling tests
+// ====================================================================
+
+// --- Step 1: ID Decomposition ---
+
+func TestDecomposeID_KnownValues(t *testing.T) {
+	gen := newTestGen(t, 42)
+	id := gen.Generate()
+	c := DecomposeID(id)
+
+	if c.NodeID != 42 {
+		t.Errorf("NodeID = %d, want 42", c.NodeID)
+	}
+	if c.Sequence < 0 || c.Sequence > 4095 {
+		t.Errorf("Sequence = %d, out of range", c.Sequence)
+	}
+	if c.CreatedAt.IsZero() {
+		t.Error("CreatedAt is zero")
+	}
+}
+
+func TestDecomposeID_TimePrecision(t *testing.T) {
+	gen := newTestGen(t, 0)
+	before := time.Now()
+	id := gen.Generate()
+	after := time.Now()
+
+	c := DecomposeID(id)
+
+	// CreatedAt should be between before and after (within millisecond precision).
+	if c.CreatedAt.Before(before.Truncate(time.Millisecond)) {
+		t.Errorf("CreatedAt %v before %v", c.CreatedAt, before)
+	}
+	if c.CreatedAt.After(after.Add(time.Millisecond)) {
+		t.Errorf("CreatedAt %v after %v", c.CreatedAt, after)
+	}
+}
+
+func TestDecomposeID_NodeField(t *testing.T) {
+	// Test with different node IDs to verify the 10-bit node field.
+	for _, nodeID := range []int64{0, 1, 511, 1023} {
+		gen := newTestGen(t, nodeID)
+		id := gen.Generate()
+		c := DecomposeID(id)
+		if c.NodeID != nodeID {
+			t.Errorf("NodeID = %d, want %d", c.NodeID, nodeID)
+		}
+	}
+}
+
+func TestDecomposeID_ConsistentWithTemporalFilter(t *testing.T) {
+	gen := newTestGen(t, 0)
+	id := gen.Generate()
+
+	// DecomposeID time should match entityValidFrom derivation.
+	c := DecomposeID(id)
+	efrom := entityValidFrom(id, nil)
+	decomposedMs := c.CreatedAt.UnixMilli()
+	efromMs := int64(efrom)
+
+	if decomposedMs != efromMs {
+		t.Errorf("DecomposeID ms=%d, entityValidFrom ms=%d — mismatch", decomposedMs, efromMs)
+	}
+}
+
+// --- Step 2: Property Index Restriction ---
+
+func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+
+	// Create a ref node for the index to index.
+	gen := tieredNodeGen(t)
+	n := types.NewNode(gen.Generate(), caseTok, nil)
+	ps, _ := types.NewPropertySlice(map[string]any{"status": "open"})
+	n.SetProperties(ps)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	// Creating a property index on a reference label should succeed.
+	if err := ts.CreatePropertyIndex(caseTok, "status"); err != nil {
+		t.Errorf("CreatePropertyIndex ref label: %v", err)
+	}
+}
+
+func TestTieredStore_PropertyIndex_EventRejected(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	_, _ = reg.GetOrCreate("Case")   // token 1 = ref
+	_, _ = reg.GetOrCreate("User")   // token 2 = ref
+	sigTok, _ := reg.GetOrCreate("Signal") // token 3 = event
+
+	// Creating a property index on an event label should fail.
+	err := ts.CreatePropertyIndex(sigTok, "severity")
+	if err == nil {
+		t.Fatal("expected error for event label property index")
+	}
+	if !errors.Is(err, ErrEventPropertyIndex) {
+		t.Errorf("expected ErrEventPropertyIndex, got: %v", err)
+	}
+}
+
+func TestTieredStore_PropertyIndex_ErrorsIs(t *testing.T) {
+	// Verify ErrEventPropertyIndex works with errors.Is.
+	err := fmt.Errorf("wrapped: %w", ErrEventPropertyIndex)
+	if !errors.Is(err, ErrEventPropertyIndex) {
+		t.Error("errors.Is failed on wrapped ErrEventPropertyIndex")
+	}
+}
+
+// --- Step 3: Catalog Extensions ---
+
+func TestShardCatalog_UpdateVerified(t *testing.T) {
+	sc := NewShardCatalog("")
+	sc.AddShard(ShardEntry{Name: "shard1", Kind: ShardEvent, Tier: TierWarm})
+
+	if !sc.UpdateShardVerified("shard1", true) {
+		t.Error("UpdateShardVerified returned false for existing shard")
+	}
+	e, ok := sc.GetShard("shard1")
+	if !ok || !e.Verified {
+		t.Error("Verified not set")
+	}
+
+	// Set back to false.
+	sc.UpdateShardVerified("shard1", false)
+	e, _ = sc.GetShard("shard1")
+	if e.Verified {
+		t.Error("Verified should be false")
+	}
+
+	// Non-existent shard.
+	if sc.UpdateShardVerified("nope", true) {
+		t.Error("should return false for non-existent shard")
+	}
+}
+
+func TestShardCatalog_UpdateStats(t *testing.T) {
+	sc := NewShardCatalog("")
+	sc.AddShard(ShardEntry{Name: "s1", Kind: ShardEvent, Tier: TierHot})
+
+	if !sc.UpdateShardStats("s1", 100, 50) {
+		t.Error("UpdateShardStats returned false for existing shard")
+	}
+	e, ok := sc.GetShard("s1")
+	if !ok || e.ApproxNodes != 100 || e.ApproxRels != 50 {
+		t.Errorf("stats = (%d, %d), want (100, 50)", e.ApproxNodes, e.ApproxRels)
+	}
+
+	if sc.UpdateShardStats("nope", 1, 1) {
+		t.Error("should return false for non-existent shard")
+	}
+}
+
+// --- Step 4: Admin API ---
+
+func TestTieredStore_ForceRotate(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	oldHotName := ts.hotShard.name
+
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+
+	newHotName := ts.hotShard.name
+	if oldHotName == newHotName {
+		t.Error("hot shard name didn't change after rotation")
+	}
+
+	// Old hot should now be warm.
+	if es, ok := ts.eventShards[oldHotName]; !ok || es.tier != TierWarm {
+		t.Error("old hot shard should be warm")
+	}
+}
+
+func TestTieredStore_ForceRotate_ViaGraph(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+
+	if err := g.ForceRotate(); err != nil {
+		t.Fatalf("Graph.ForceRotate: %v", err)
+	}
+
+	// Verify a non-tiered store returns error.
+	g2, err := New(Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g2.Close() })
+
+	if err := g2.ForceRotate(); err == nil {
+		t.Error("ForceRotate on non-TieredStore should error")
+	}
+}
+
+func TestTieredStore_ListShards_Initial(t *testing.T) {
+	ts := newTestTieredStore(t)
+
+	infos := ts.ListShards()
+	if len(infos) < 2 {
+		t.Fatalf("ListShards = %d, want at least 2 (ref + hot)", len(infos))
+	}
+
+	// Find reference shard.
+	var foundRef, foundEvent bool
+	for _, si := range infos {
+		if si.Kind == ShardReference {
+			foundRef = true
+			if !si.Open {
+				t.Error("reference shard should be open")
+			}
+		}
+		if si.Kind == ShardEvent {
+			foundEvent = true
+		}
+	}
+	if !foundRef {
+		t.Error("no reference shard in ListShards")
+	}
+	if !foundEvent {
+		t.Error("no event shard in ListShards")
+	}
+}
+
+func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+
+	infos := ts.ListShards()
+	eventCount := 0
+	for _, si := range infos {
+		if si.Kind == ShardEvent {
+			eventCount++
+		}
+	}
+	if eventCount < 2 {
+		t.Errorf("expected at least 2 event shards after rotation, got %d", eventCount)
+	}
+}
+
+func TestTieredStore_ListShards_WithCold(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	// Rotate and demote to cold.
+	oldHot := ts.hotShard.name
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	demoteToCold(ts, oldHot)
+
+	infos := ts.ListShards()
+	var foundCold bool
+	for _, si := range infos {
+		if si.Name == oldHot && si.Tier == TierCold {
+			foundCold = true
+		}
+	}
+	if !foundCold {
+		t.Error("expected cold shard in ListShards")
+	}
+}
+
+func TestTieredStore_ListShards_LiveStats(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+
+	gen := tieredNodeGen(t)
+	n := makeRefNode(t, gen, ts)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	infos := ts.ListShards()
+	for _, si := range infos {
+		if si.Kind == ShardReference {
+			if si.Nodes != 1 {
+				t.Errorf("reference shard nodes = %d, want 1", si.Nodes)
+			}
+		}
+	}
+}
+
+func TestTieredStore_AdminNotTiered(t *testing.T) {
+	g, err := New(Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if err := g.ForceRotate(); err == nil {
+		t.Error("ForceRotate should fail")
+	}
+	if _, err := g.ListShards(); err == nil {
+		t.Error("ListShards should fail")
+	}
+	if err := g.RebuildCatalog(); err == nil {
+		t.Error("RebuildCatalog should fail")
+	}
+	if _, err := g.RunRepair(); err == nil {
+		t.Error("RunRepair should fail")
+	}
+	if _, err := g.VerifyShard("ref"); err == nil {
+		t.Error("VerifyShard should fail")
+	}
+}
+
+func TestTieredStore_RebuildCatalog(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	_, _ = reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+
+	// Add a ref node and an event node.
+	refNode := makeRefNode(t, gen, ts)
+	if err := ts.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	evtNode := makeEvtNode(t, gen, ts)
+	if err := ts.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	if err := ts.RebuildCatalog(); err != nil {
+		t.Fatalf("RebuildCatalog: %v", err)
+	}
+
+	// Check catalog got updated with counts.
+	entry, ok := ts.catalog.GetShard("reference")
+	if !ok {
+		t.Fatal("reference shard not in catalog")
+	}
+	if entry.ApproxNodes != 1 {
+		t.Errorf("reference ApproxNodes = %d, want 1", entry.ApproxNodes)
+	}
+
+	hotEntry, ok := ts.catalog.GetShard(ts.hotShard.name)
+	if !ok {
+		t.Fatal("hot shard not in catalog")
+	}
+	if hotEntry.ApproxNodes != 1 {
+		t.Errorf("hot ApproxNodes = %d, want 1", hotEntry.ApproxNodes)
+	}
+}
+
+// --- Step 5: Per-Shard Verification ---
+
+func TestTieredStore_VerifyShard_Hot(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	// Add a node to the hot shard.
+	n, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	_ = n
+
+	result, err := g.VerifyShard(ts.hotShard.name)
+	if err != nil {
+		t.Fatalf("VerifyShard: %v", err)
+	}
+	if result.NodesOK != 1 {
+		t.Errorf("NodesOK = %d, want 1", result.NodesOK)
+	}
+	if result.NodesFailed != 0 {
+		t.Errorf("NodesFailed = %d, want 0", result.NodesFailed)
+	}
+	if result.Cached {
+		t.Error("should not be cached for hot shard")
+	}
+}
+
+func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	// Add a node to hot, then rotate → becomes warm.
+	_, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	oldHot := ts.hotShard.name
+	if err := g.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+
+	// First verify: should scan and return non-cached.
+	result1, err := g.VerifyShard(oldHot)
+	if err != nil {
+		t.Fatalf("VerifyShard first: %v", err)
+	}
+	if result1.Cached {
+		t.Error("first verify should not be cached")
+	}
+	if result1.NodesOK != 1 {
+		t.Errorf("NodesOK = %d, want 1", result1.NodesOK)
+	}
+
+	// Second verify: should return cached result.
+	result2, err := g.VerifyShard(oldHot)
+	if err != nil {
+		t.Fatalf("VerifyShard second: %v", err)
+	}
+	if !result2.Cached {
+		t.Error("second verify should be cached")
+	}
+	if result2.NodesOK != result1.NodesOK {
+		t.Errorf("cached NodesOK = %d, want %d", result2.NodesOK, result1.NodesOK)
+	}
+}
+
+func TestTieredStore_VerifyShard_Unknown(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+
+	_, err := g.VerifyShard("nonexistent")
+	if err == nil {
+		t.Error("expected error for unknown shard")
+	}
+}
+
+// --- Step 6: Split-Write Repair ---
+
+func TestTieredStore_Repair_NoOrphans(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+
+	// Create a ref node and an event node with a cross-shard rel.
+	refNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode ref: %v", err)
+	}
+	evtNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode evt: %v", err)
+	}
+	_, err = g.AddRelationship("TRIGGERED", evtNode, refNode, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	result, err := g.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if result.OrphanedInEntries != 0 {
+		t.Errorf("OrphanedInEntries = %d, want 0", result.OrphanedInEntries)
+	}
+	if result.MissingInEntries != 0 {
+		t.Errorf("MissingInEntries = %d, want 0", result.MissingInEntries)
+	}
+	if result.ShardsScanned < 2 {
+		t.Errorf("ShardsScanned = %d, want >= 2", result.ShardsScanned)
+	}
+}
+
+func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	sigTok, _ := reg.GetOrCreate("Signal")
+	relTok, _ := newRelTypeRegistry().GetOrCreate("TRIGGERED")
+
+	gen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	// Create a ref node (Case) and an event node (Signal).
+	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	if err := ts.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	if err := ts.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	// Manually create an orphaned in/ entry on refShard pointing to a non-existent rel.
+	fakeRelID := relGen.Generate()
+	if err := ts.refShard.putRelIncoming(
+		refNode.InternalID().SnowflakeID(),
+		evtNode.InternalID().SnowflakeID(),
+		relTok,
+		fakeRelID,
+	); err != nil {
+		t.Fatalf("putRelIncoming: %v", err)
+	}
+
+	// Verify the orphaned in/ entry exists.
+	inIDs := ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	if len(inIDs) != 1 {
+		t.Fatalf("expected 1 incoming rel, got %d", len(inIDs))
+	}
+
+	// Run repair.
+	result, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if result.OrphanedInEntries != 1 {
+		t.Errorf("OrphanedInEntries = %d, want 1", result.OrphanedInEntries)
+	}
+
+	// Verify the orphaned in/ entry was removed.
+	inIDs = ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	if len(inIDs) != 0 {
+		t.Errorf("expected 0 incoming rels after repair, got %d", len(inIDs))
+	}
+}
+
+func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	sigTok, _ := reg.GetOrCreate("Signal")
+	relTypeTok, _ := newRelTypeRegistry().GetOrCreate("TRIGGERED")
+
+	gen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	// Create a ref node and an event node.
+	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	if err := ts.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	if err := ts.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	// Create a cross-shard relationship (E→R) but ONLY the entity+out side.
+	// This simulates a partial write failure where the in/ write didn't happen.
+	relID := relGen.Generate()
+	r := types.NewRelationship(relID, relTypeTok,
+		evtNode.InternalID().SnowflakeID(),
+		refNode.InternalID().SnowflakeID())
+
+	// Write only entity+out to the event shard (hotShard).
+	ts.mu.RLock()
+	hotStore := ts.hotShard.store
+	ts.mu.RUnlock()
+	if err := hotStore.putRelEntityAndOut(r); err != nil {
+		t.Fatalf("putRelEntityAndOut: %v", err)
+	}
+
+	// Verify the in/ entry is missing on refShard.
+	inIDs := ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	if len(inIDs) != 0 {
+		t.Fatalf("expected 0 incoming rels before repair, got %d", len(inIDs))
+	}
+
+	// Run repair.
+	result, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if result.MissingInEntries != 1 {
+		t.Errorf("MissingInEntries = %d, want 1", result.MissingInEntries)
+	}
+
+	// Verify the in/ entry was created.
+	inIDs = ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	if len(inIDs) != 1 {
+		t.Errorf("expected 1 incoming rel after repair, got %d", len(inIDs))
+	}
+}
+
+func TestTieredStore_Repair_ViaGraph(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+
+	result, err := g.RunRepair()
+	if err != nil {
+		t.Fatalf("Graph.RunRepair: %v", err)
+	}
+	if result.OrphanedInEntries != 0 || result.MissingInEntries != 0 {
+		t.Errorf("clean graph should have 0 repairs, got orphaned=%d missing=%d",
+			result.OrphanedInEntries, result.MissingInEntries)
+	}
+}
+
+// --- Step 7: Migration Tool ---
+
+func TestMigrateFromBadger_Empty(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	dst := newTestTieredStore(t)
+	reg := newLabelRegistry()
+
+	if err := MigrateFromBadger(src, dst, reg); err != nil {
+		t.Fatalf("MigrateFromBadger: %v", err)
+	}
+
+	nc, _ := dst.NodeCount()
+	if nc != 0 {
+		t.Errorf("NodeCount = %d, want 0", nc)
+	}
+}
+
+func TestMigrateFromBadger_NodesOnly(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	// Create label registry and register labels.
+	reg := newLabelRegistry()
+	caseTok, _ := reg.GetOrCreate("Case")
+	sigTok, _ := reg.GetOrCreate("Signal")
+
+	gen := newTestGen(t, 0)
+
+	// Add nodes to source.
+	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	if err := src.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	if err := src.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	dst := newTestTieredStore(t)
+
+	if err := MigrateFromBadger(src, dst, reg); err != nil {
+		t.Fatalf("MigrateFromBadger: %v", err)
+	}
+
+	// Ref node should be in refShard.
+	if !dst.refShard.hasNodeID(refNode.InternalID().SnowflakeID()) {
+		t.Error("ref node not in refShard")
+	}
+	// Event node should be in hotShard.
+	dst.mu.RLock()
+	hotStore := dst.hotShard.store
+	dst.mu.RUnlock()
+	if !hotStore.hasNodeID(evtNode.InternalID().SnowflakeID()) {
+		t.Error("event node not in hotShard")
+	}
+
+	nc, _ := dst.NodeCount()
+	if nc != 2 {
+		t.Errorf("NodeCount = %d, want 2", nc)
+	}
+}
+
+func TestMigrateFromBadger_WithRels(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	reg := newLabelRegistry()
+	caseTok, _ := reg.GetOrCreate("Case")
+
+	nodeGen := newTestGen(t, 0)
+	relGen := newTestGen(t, 1)
+
+	// Two ref nodes with a relationship.
+	n1 := types.NewNode(nodeGen.Generate(), caseTok, nil)
+	n2 := types.NewNode(nodeGen.Generate(), caseTok, nil)
+	if err := src.PutNode(n1); err != nil {
+		t.Fatalf("PutNode n1: %v", err)
+	}
+	if err := src.PutNode(n2); err != nil {
+		t.Fatalf("PutNode n2: %v", err)
+	}
+
+	rtReg := newRelTypeRegistry()
+	relTok, _ := rtReg.GetOrCreate("RELATED")
+
+	r := types.NewRelationship(relGen.Generate(), relTok,
+		n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	if err := src.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	dst := newTestTieredStore(t)
+	if err := MigrateFromBadger(src, dst, reg); err != nil {
+		t.Fatalf("MigrateFromBadger: %v", err)
+	}
+
+	nc, _ := dst.NodeCount()
+	rc, _ := dst.RelationshipCount()
+	if nc != 2 {
+		t.Errorf("NodeCount = %d, want 2", nc)
+	}
+	if rc != 1 {
+		t.Errorf("RelationshipCount = %d, want 1", rc)
+	}
+
+	// Verify the relationship is accessible.
+	gotRel, err := dst.GetRelationship(r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if gotRel.InternalID() != r.InternalID() {
+		t.Error("relationship ID mismatch")
+	}
+}
+
+func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	reg := newLabelRegistry()
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	sigTok, _ := reg.GetOrCreate("Signal")
+
+	nodeGen := newTestGen(t, 0)
+	relGen := newTestGen(t, 1)
+
+	// One ref node (Case) and one event node (Signal).
+	refNode := types.NewNode(nodeGen.Generate(), caseTok, nil)
+	evtNode := types.NewNode(nodeGen.Generate(), sigTok, nil)
+	if err := src.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	if err := src.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	rtReg := newRelTypeRegistry()
+	relTok, _ := rtReg.GetOrCreate("TRIGGERED")
+
+	// E→R relationship in source (single store, no cross-shard concern).
+	r := types.NewRelationship(relGen.Generate(), relTok,
+		evtNode.InternalID().SnowflakeID(), refNode.InternalID().SnowflakeID())
+	if err := src.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	dst := newTestTieredStore(t)
+	if err := MigrateFromBadger(src, dst, reg); err != nil {
+		t.Fatalf("MigrateFromBadger: %v", err)
+	}
+
+	// Verify cross-shard: entity+out in hotShard, in/ in refShard.
+	dst.mu.RLock()
+	hotStore := dst.hotShard.store
+	dst.mu.RUnlock()
+
+	if !hotStore.hasRelID(r.InternalID().SnowflakeID()) {
+		t.Error("rel entity should be in hot shard (event start node)")
+	}
+
+	// The ref shard should have the incoming index entry.
+	inIDs := dst.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	if len(inIDs) != 1 {
+		t.Errorf("refShard incoming rels = %d, want 1", len(inIDs))
+	}
+
+	// Total counts.
+	nc, _ := dst.NodeCount()
+	rc, _ := dst.RelationshipCount()
+	if nc != 2 {
+		t.Errorf("NodeCount = %d, want 2", nc)
+	}
+	if rc != 1 {
+		t.Errorf("RelationshipCount = %d, want 1", rc)
+	}
+}
+
+// --- Graph-layer DecomposeID test ---
+
+func TestGraph_DecomposeID(t *testing.T) {
+	g, err := New(Config{SnowflakeNodeID: 5, BadgerInMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	n, err := g.AddNode([]string{"Test"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	c := g.DecomposeID(n.InternalID().SnowflakeID())
+	// SnowflakeNodeID 5 → nodeGen uses 5*2=10, relGen uses 5*2+1=11.
+	if c.NodeID != 10 {
+		t.Errorf("NodeID = %d, want 10", c.NodeID)
+	}
+	if c.CreatedAt.IsZero() {
+		t.Error("CreatedAt is zero")
 	}
 }

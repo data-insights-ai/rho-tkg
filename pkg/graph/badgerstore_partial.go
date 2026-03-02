@@ -1,10 +1,12 @@
 package graph
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badger "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
@@ -176,6 +178,85 @@ func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
 	}
 	bs.appendOps(op)
 	return nil
+}
+
+// deleteIncomingByRelID removes a specific relationship from the inIdx of
+// a given end node. Used by repair to clean up orphaned in/ entries where
+// the relationship entity no longer exists.
+// Since we don't know the relType/startID (the entity is gone), we scan
+// the pending buffer for a matching Set op. If found, we replace it with a
+// Delete op; otherwise the in-memory removal is sufficient (the orphaned
+// Badger key will not be re-loaded because loadIndexes only re-adds keys
+// whose relIDs are still in the pending buffer or DB, and the in-memory
+// inIdx is authoritative during runtime).
+// Acquires idxMu.Lock internally.
+func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.ID) error {
+	bs.idxMu.Lock()
+
+	set, exists := bs.inIdx[endNodeID]
+	if !exists {
+		bs.idxMu.Unlock()
+		return nil // nothing to remove
+	}
+	if _, ok := set[relID]; !ok {
+		bs.idxMu.Unlock()
+		return nil // relID not in set
+	}
+
+	delete(set, relID)
+	if len(set) == 0 {
+		delete(bs.inIdx, endNodeID)
+	}
+	bs.idxMu.Unlock()
+
+	// Scan pending buffer to find and convert the Set op to a Delete op.
+	// The key format: 0x06 | endID(8B) | relType(2B) | startID(8B) | relID(8B) = 27B.
+	// The relID is at offset 19.
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if len(k) == sizeAdjacency && k[0] == keyIn && op.opType == writeOpSet {
+			keyRelID := int64(binary.BigEndian.Uint64([]byte(k[19:])))
+			if snowflake.ID(keyRelID) == relID {
+				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+				bs.wbMu.Unlock()
+				return nil
+			}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Not in pending buffer — scan Badger for the matching key.
+	return bs.scanAndDeleteIncoming(endNodeID, relID)
+}
+
+// scanAndDeleteIncoming scans Badger for the 0x06 key matching (endNodeID, relID)
+// and queues a delete op if found. Repair-only path; not performance critical.
+func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
+	prefix := make([]byte, 1+8)
+	prefix[0] = keyIn
+	putUint64(prefix, 1, int64(endNodeID))
+
+	return bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) == sizeAdjacency {
+				keyRelID := int64(binary.BigEndian.Uint64(key[19:]))
+				if snowflake.ID(keyRelID) == relID {
+					delKey := make([]byte, len(key))
+					copy(delKey, key)
+					bs.appendOps(writeOp{opType: writeOpDelete, key: delKey})
+					return nil
+				}
+			}
+		}
+		return nil // not found — already cleaned up or was never persisted
+	})
 }
 
 // --- Read helpers for TieredStore shard resolution ---

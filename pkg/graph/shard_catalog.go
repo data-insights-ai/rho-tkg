@@ -174,6 +174,30 @@ func (sc *ShardCatalog) UpdateShardTimeEnd(name string, timeEnd time.Time) bool 
 	return false
 }
 
+// UpdateShardVerified sets the Verified flag on a shard by name. Returns true if found.
+func (sc *ShardCatalog) UpdateShardVerified(name string, verified bool) bool {
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			sc.Shards[i].Verified = verified
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateShardStats sets the approximate node and relationship counts for a shard.
+// Returns true if found.
+func (sc *ShardCatalog) UpdateShardStats(name string, nodes, rels int) bool {
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			sc.Shards[i].ApproxNodes = nodes
+			sc.Shards[i].ApproxRels = rels
+			return true
+		}
+	}
+	return false
+}
+
 // AddLabel tracks a label in the given shard entry (idempotent).
 func (sc *ShardCatalog) AddLabel(shardName, label string) {
 	for i := range sc.Shards {

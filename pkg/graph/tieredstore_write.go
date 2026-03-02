@@ -325,9 +325,15 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 
 // --- Property indexes ---
 
+// ErrEventPropertyIndex is returned when attempting to create a property index
+// on an event label in a TieredStore. Only reference entities support indexes.
+var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in TieredStore")
+
 func (ts *TieredStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
-	shard := ts.shardForNode(labelToken)
-	return shard.CreatePropertyIndex(labelToken, propertyKey)
+	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
+		return ErrEventPropertyIndex
+	}
+	return ts.refShard.CreatePropertyIndex(labelToken, propertyKey)
 }
 
 func (ts *TieredStore) DropPropertyIndex(labelToken uint16, propertyKey string) error {
@@ -397,6 +403,8 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	if err := ts.refArchive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
+	archiveWritten := true
+
 	for _, r := range rels {
 		// PutRelationship validates endpoint existence. If the other endpoint
 		// isn't in the archive (partial archive), skip the rel — it will be
@@ -406,12 +414,18 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 			continue
 		}
 		if err != nil {
+			// Best-effort rollback: remove partially written data from archive.
+			_ = ts.refArchive.DeleteNodeCascade(id)
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}
 
 	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
 	if err := ts.refShard.DeleteNodeCascade(id); err != nil {
+		if archiveWritten {
+			// Best-effort rollback: remove data from archive since source delete failed.
+			_ = ts.refArchive.DeleteNodeCascade(id)
+		}
 		return fmt.Errorf("graph: archive delete from ref: %w", err)
 	}
 
@@ -472,14 +486,26 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	if err := ts.refShard.PutNode(node); err != nil {
 		return fmt.Errorf("graph: restore write node: %w", err)
 	}
+	refWritten := true
+
 	for _, r := range rels {
-		if err := ts.refShard.PutRelationship(r); err != nil {
+		err := ts.refShard.PutRelationship(r)
+		if errors.Is(err, ErrNodeNotFound) {
+			continue
+		}
+		if err != nil {
+			// Best-effort rollback: remove partially written data from refShard.
+			_ = ts.refShard.DeleteNodeCascade(id)
 			return fmt.Errorf("graph: restore write rel: %w", err)
 		}
 	}
 
 	// 6. Delete from archive.
 	if err := ts.refArchive.DeleteNodeCascade(id); err != nil {
+		if refWritten {
+			// Best-effort rollback: remove data from refShard since archive delete failed.
+			_ = ts.refShard.DeleteNodeCascade(id)
+		}
 		return fmt.Errorf("graph: restore delete from archive: %w", err)
 	}
 

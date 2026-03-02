@@ -16,6 +16,7 @@ type propertyIndexKey struct {
 // propertyIndex stores a reverse mapping from canonical value keys to sets of node IDs.
 type propertyIndex struct {
 	entries map[string]map[snowflake.ID]struct{}
+	mutated map[snowflake.ID]struct{} // non-nil during index creation Phase 2
 }
 
 // newPropertyIndex creates an empty property index.
@@ -36,6 +37,9 @@ func (pi *propertyIndex) add(id snowflake.ID, value any) {
 		pi.entries[vk] = make(map[snowflake.ID]struct{})
 	}
 	pi.entries[vk][id] = struct{}{}
+	if pi.mutated != nil {
+		pi.mutated[id] = struct{}{}
+	}
 }
 
 // remove deletes a node ID from the index for the given property value.
@@ -50,6 +54,9 @@ func (pi *propertyIndex) remove(id snowflake.ID, value any) {
 		if len(set) == 0 {
 			delete(pi.entries, vk)
 		}
+	}
+	if pi.mutated != nil {
+		pi.mutated[id] = struct{}{}
 	}
 }
 

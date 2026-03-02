@@ -48,6 +48,7 @@ type eventShard struct {
 	readOnly   bool           // warm/cold shards are read-only
 	path       string         // relative path for lazy-open (e.g., "events/2026-W10")
 	shardMu    sync.Mutex     // protects lazy open/close
+	activeReqs atomic.Int64   // outstanding read requests; blocks idle-close
 	lastAccess atomic.Int64   // unix ms, idle-close tracking
 }
 
@@ -71,6 +72,25 @@ func (es *eventShard) getStore(ts *TieredStore) (*BadgerStore, error) {
 	es.store = store
 	es.lastAccess.Store(time.Now().UnixMilli())
 	return store, nil
+}
+
+// checkoutStore returns the BadgerStore and increments activeReqs to prevent
+// idle-close from closing the store while the caller is still using it.
+// Caller must call checkinStore() when done (typically via defer).
+func (es *eventShard) checkoutStore(ts *TieredStore) (*BadgerStore, error) {
+	store, err := es.getStore(ts)
+	if err != nil {
+		return nil, err
+	}
+	es.activeReqs.Add(1)
+	es.lastAccess.Store(time.Now().UnixMilli())
+	return store, nil
+}
+
+// checkinStore decrements activeReqs, signalling that the caller is done
+// using the store returned by checkoutStore.
+func (es *eventShard) checkinStore() {
+	es.activeReqs.Add(-1)
 }
 
 // TieredStore implements the Store interface by routing entities across
@@ -409,10 +429,14 @@ func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 		return candidate, nil
 	}
 
-	// Probe all event shards (handles cross-shard entities in mismatched windows).
+	// Probe hot+warm event shards only (cold shards are immutable;
+	// cross-shard rels cannot be created on cold shards).
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	for _, es := range ts.eventShards {
+		if es.tier == TierCold {
+			continue // skip cold — no FD cost
+		}
 		store, err := es.getStore(ts)
 		if err != nil {
 			return nil, err
@@ -598,7 +622,7 @@ func (ts *TieredStore) closeIdleShards() {
 
 	for _, es := range coldShards {
 		es.shardMu.Lock()
-		if es.store != nil && (nowMs-es.lastAccess.Load()) > thresholdMs {
+		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
 			_ = es.store.Close()
 			es.store = nil
 		}

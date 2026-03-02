@@ -641,6 +641,55 @@ func (g *Graph) RestoreNode(id snowflake.ID) error {
 	return fmt.Errorf("graph: RestoreNode requires TieredStore")
 }
 
+// DecomposeID extracts the creation time, node ID, and sequence number from
+// a snowflake ID. Works with any store type.
+func (g *Graph) DecomposeID(id snowflake.ID) IDComponents {
+	return DecomposeID(id)
+}
+
+// ForceRotate triggers a hot-shard rotation. Only available with TieredStore.
+func (g *Graph) ForceRotate() error {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.ForceRotate()
+	}
+	return fmt.Errorf("graph: ForceRotate requires TieredStore")
+}
+
+// ListShards returns information about all shards. Only available with TieredStore.
+func (g *Graph) ListShards() ([]ShardInfo, error) {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.ListShards(), nil
+	}
+	return nil, fmt.Errorf("graph: ListShards requires TieredStore")
+}
+
+// RebuildCatalog reconstructs the shard catalog from live state.
+// Only available with TieredStore.
+func (g *Graph) RebuildCatalog() error {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.RebuildCatalog()
+	}
+	return fmt.Errorf("graph: RebuildCatalog requires TieredStore")
+}
+
+// RunRepair scans for cross-shard consistency issues and fixes them.
+// Only available with TieredStore.
+func (g *Graph) RunRepair() (*RepairResult, error) {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.RunRepair()
+	}
+	return nil, fmt.Errorf("graph: RunRepair requires TieredStore")
+}
+
+// VerifyShard runs hash chain verification on all entities in a shard.
+// Only available with TieredStore.
+func (g *Graph) VerifyShard(shardName string) (*VerifyResult, error) {
+	if ts, ok := g.store.(*TieredStore); ok {
+		return ts.VerifyShard(g, shardName)
+	}
+	return nil, fmt.Errorf("graph: VerifyShard requires TieredStore")
+}
+
 // Reset atomically clears all entities, indexes, history, and counters from
 // the graph while preserving registries (label and relationship type tokens).
 // Acquires the graph write lock to prevent concurrent operations.

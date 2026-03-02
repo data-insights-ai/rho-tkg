@@ -96,11 +96,12 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].rels, results[i].err = store.RelationshipsByType(token, stripDepth(opts))
 		}(i, es)
 	}
@@ -145,11 +146,12 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].nodes, results[i].err = store.AllNodes(stripDepth(opts))
 		}(i, es)
 	}
@@ -192,11 +194,12 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].rels, results[i].err = store.AllRelationships(stripDepth(opts))
 		}(i, es)
 	}
@@ -280,11 +283,12 @@ func (ts *TieredStore) NodeCount() (int, error) {
 	total += n
 
 	for _, es := range eventShards {
-		store, err := es.getStore(ts)
+		store, err := es.checkoutStore(ts)
 		if err != nil {
 			return 0, err
 		}
 		n, err := store.NodeCount()
+		es.checkinStore()
 		if err != nil {
 			return 0, err
 		}
@@ -306,11 +310,12 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 	total += n
 
 	for _, es := range eventShards {
-		store, err := es.getStore(ts)
+		store, err := es.checkoutStore(ts)
 		if err != nil {
 			return 0, err
 		}
 		n, err := store.RelationshipCount()
+		es.checkinStore()
 		if err != nil {
 			return 0, err
 		}
@@ -338,11 +343,12 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 	total += n
 
 	for _, es := range eventShards {
-		store, err := es.getStore(ts)
+		store, err := es.checkoutStore(ts)
 		if err != nil {
 			return 0, err
 		}
 		n, err := store.RelCountByType(token)
+		es.checkinStore()
 		if err != nil {
 			return 0, err
 		}
@@ -380,11 +386,12 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].ids, results[i].err = store.AllNodeIDs(stripDepth(opts))
 		}(i, es)
 	}
@@ -427,11 +434,12 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].ids, results[i].err = store.AllRelIDs(stripDepth(opts))
 		}(i, es)
 	}
@@ -508,11 +516,12 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].ids, results[i].err = store.AllNodeHistoryIDs()
 		}(i, es)
 	}
@@ -554,11 +563,12 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 		wg.Add(1)
 		go func(i int, es *eventShard) {
 			defer wg.Done()
-			store, err := es.getStore(ts)
+			store, err := es.checkoutStore(ts)
 			if err != nil {
 				results[i].err = err
 				return
 			}
+			defer es.checkinStore()
 			results[i].ids, results[i].err = store.AllRelHistoryIDs()
 		}(i, es)
 	}
