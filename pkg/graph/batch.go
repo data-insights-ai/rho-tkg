@@ -112,10 +112,11 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
-	hash := ComputeNodeHash(n, labels)
+	canonicalLabels := b.g.NodeLabels(n)
+	hash := ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
 
-	b.nodes = append(b.nodes, pendingNode{node: n, labels: labels})
+	b.nodes = append(b.nodes, pendingNode{node: n, labels: canonicalLabels})
 	return n, nil
 }
 

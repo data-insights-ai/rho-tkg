@@ -125,6 +125,26 @@ type Store interface {
 	// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
 	AllRelHistoryIDs() ([]snowflake.ID, error)
 
+	// ForEachNodeID iterates over all current node IDs, calling fn for each.
+	// Iteration stops early if fn returns false. No ordering guarantee.
+	// The callback must NOT call other methods on this Store (lock reentrancy).
+	ForEachNodeID(fn func(snowflake.ID) bool) error
+
+	// ForEachRelID iterates over all current relationship IDs, calling fn for each.
+	// Iteration stops early if fn returns false. No ordering guarantee.
+	// The callback must NOT call other methods on this Store (lock reentrancy).
+	ForEachRelID(fn func(snowflake.ID) bool) error
+
+	// ForEachNodeHistoryID iterates over all node IDs with version history entries.
+	// Iteration stops early if fn returns false. No ordering guarantee.
+	// The callback must NOT call other methods on this Store (lock reentrancy).
+	ForEachNodeHistoryID(fn func(snowflake.ID) bool) error
+
+	// ForEachRelHistoryID iterates over all relationship IDs with version history entries.
+	// Iteration stops early if fn returns false. No ordering guarantee.
+	// The callback must NOT call other methods on this Store (lock reentrancy).
+	ForEachRelHistoryID(fn func(snowflake.ID) bool) error
+
 	// Clear removes all entities, indexes, history, and counters.
 	// Preserves nothing. Registries are a Graph-layer concern (not cleared).
 	// After Clear(), the store is in the same state as NewMemoryStore() / fresh Badger.

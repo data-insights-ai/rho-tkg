@@ -596,3 +596,56 @@ func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// --- Fix 5: BatchBuilder.AddNode — canonical labels for hash ---
+
+func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
+	// Adding a node via batch with duplicate labels ["A", "B", "A"]
+	// should produce the same hash as recomputing with canonical labels.
+	// Deduplication happens in types.NewNode, so the hash must use canonical labels.
+	t.Parallel()
+	g := newTestGraph(t)
+
+	b := NewBatchBuilder(g)
+	batchNode, err := b.AddNode([]string{"A", "B", "A"}, map[string]any{"key": "val"})
+	if err != nil {
+		t.Fatalf("batch AddNode: %v", err)
+	}
+	batchHash := batchNode.Integrity().Hash
+
+	// Recompute with canonical labels — must match the stored hash.
+	canonicalLabels := g.NodeLabels(batchNode)
+	expectedHash := ComputeNodeHash(batchNode, canonicalLabels)
+	if batchHash != expectedHash {
+		t.Errorf("batch hash = %s, recomputed = %s (labels: %v)", batchHash, expectedHash, canonicalLabels)
+	}
+}
+
+func TestBatchBuilder_AddNode_HashChainVerification(t *testing.T) {
+	// Create a node via batch with duplicate labels, execute, verify hash chain.
+	t.Parallel()
+	g := newTestGraph(t)
+
+	b := NewBatchBuilder(g)
+	n, err := b.AddNode([]string{"Person", "Person", "Actor"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("batch AddNode: %v", err)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 1 {
+		t.Fatalf("expected 1 created, got %d", result.Created)
+	}
+
+	id := n.InternalID().SnowflakeID()
+	ok, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("VerifyNodeHashChain: %v", err)
+	}
+	if !ok {
+		t.Error("hash chain verification failed for batch-created node with duplicate labels")
+	}
+}

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -85,6 +86,50 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	tx.mu.Unlock()
 
 	r, err := tx.g.AddRelationship(typeName, startNode, endNode, props)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.mu.Lock()
+	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+	tx.mu.Unlock()
+
+	return r, nil
+}
+
+// ImportNodeWithID creates a node with a caller-specified snowflake ID within the transaction.
+// The node ID is tracked for rollback. Delegates to Graph.ImportNodeWithID.
+func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	n, err := tx.g.ImportNodeWithID(ctx, id, labels, props)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.mu.Lock()
+	tx.createdNodes = append(tx.createdNodes, n.InternalID().SnowflakeID())
+	tx.mu.Unlock()
+
+	return n, nil
+}
+
+// ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID within the transaction.
+// The relationship ID is tracked for rollback. Delegates to Graph.ImportRelationshipWithID.
+func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	r, err := tx.g.ImportRelationshipWithID(ctx, id, typeName, startNode, endNode, props)
 	if err != nil {
 		return nil, err
 	}

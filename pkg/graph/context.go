@@ -562,3 +562,139 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 
 	return current, nil
 }
+
+// ImportNodeWithID creates a node with a caller-specified snowflake ID.
+// Used for backup restore where ID preservation is required.
+// Returns ErrNodeExists if the ID is already in use, ErrZeroID if id == 0.
+func (g *Graph) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if id == 0 {
+		return nil, ErrZeroID
+	}
+
+	if len(labels) == 0 {
+		return nil, ErrNoLabels
+	}
+
+	if len(labels) > g.validation.MaxLabelsPerNode {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), g.validation.MaxLabelsPerNode)
+	}
+	for _, label := range labels {
+		if err := g.validateName(label); err != nil {
+			return nil, err
+		}
+	}
+	if err := g.validateProperties(props); err != nil {
+		return nil, err
+	}
+
+	ps, err := types.NewPropertySlice(props)
+	if err != nil {
+		return nil, fmt.Errorf("graph: node properties: %w", err)
+	}
+
+	primaryToken, err := g.labels.GetOrCreate(labels[0])
+	if err != nil {
+		return nil, fmt.Errorf("graph: primary label: %w", err)
+	}
+
+	var extraTokens []uint16
+	for _, label := range labels[1:] {
+		tok, err := g.labels.GetOrCreate(label)
+		if err != nil {
+			return nil, fmt.Errorf("graph: extra label %q: %w", label, err)
+		}
+		extraTokens = append(extraTokens, tok)
+	}
+
+	// Check for collision before creating.
+	if _, err := g.store.GetNode(id); err == nil {
+		return nil, ErrNodeExists
+	}
+
+	n := types.NewNode(id, primaryToken, extraTokens)
+	n.SetProperties(ps)
+
+	canonicalLabels := g.NodeLabels(n)
+	hash := ComputeNodeHash(n, canonicalLabels)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := g.store.PutNode(n); err != nil {
+		return nil, err
+	}
+
+	return n, nil
+}
+
+// ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID.
+// Used for backup restore where ID preservation is required.
+// Returns ErrRelExists if the ID is already in use, ErrZeroID if id == 0.
+func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if id == 0 {
+		return nil, ErrZeroID
+	}
+
+	if startNode == nil || endNode == nil {
+		return nil, ErrNilNode
+	}
+
+	if err := g.validateName(typeName); err != nil {
+		return nil, err
+	}
+	if err := g.validateProperties(props); err != nil {
+		return nil, err
+	}
+
+	ps, err := types.NewPropertySlice(props)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship properties: %w", err)
+	}
+
+	typeToken, err := g.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship type: %w", err)
+	}
+
+	startID := startNode.InternalID().SnowflakeID()
+	endID := endNode.InternalID().SnowflakeID()
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
+	g.entityLocks.LockTwo(startID, endID)
+	defer g.entityLocks.UnlockTwo(startID, endID)
+
+	// Check for collision.
+	if _, err := g.store.GetRelationship(id); err == nil {
+		return nil, ErrRelExists
+	}
+
+	r := types.NewRelationship(id, typeToken, startID, endID)
+	r.SetProperties(ps)
+
+	hash := ComputeRelHash(r, typeName)
+	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := g.store.PutRelationship(r); err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}

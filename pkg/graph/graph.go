@@ -16,6 +16,7 @@ import (
 var (
 	ErrNoLabels = errors.New("graph: node requires at least one label")
 	ErrNilNode  = errors.New("graph: node must not be nil")
+	ErrZeroID   = errors.New("graph: zero ID is not valid for import")
 )
 
 // Sentinel errors for validation limits.

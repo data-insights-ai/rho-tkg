@@ -865,6 +865,58 @@ func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	return ids, nil
 }
 
+// ForEachNodeID iterates over all current node IDs, calling fn for each.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (ms *MemoryStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	for id := range ms.nodes {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachRelID iterates over all current relationship IDs, calling fn for each.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (ms *MemoryStore) ForEachRelID(fn func(snowflake.ID) bool) error {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	for id := range ms.rels {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachNodeHistoryID iterates over all node IDs with version history entries.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (ms *MemoryStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	for id := range ms.nodeHistory {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachRelHistoryID iterates over all relationship IDs with version history entries.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (ms *MemoryStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	for id := range ms.relHistory {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 func (ms *MemoryStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	ms.mu.RLock()

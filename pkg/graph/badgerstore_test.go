@@ -4367,3 +4367,117 @@ func TestPropertyIndex_Contains(t *testing.T) {
 		t.Error("should not contain ID 3")
 	}
 }
+
+// --- Fix 4: CreatePropertyIndex dirty-map tracking ---
+
+func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {
+	// Create index while concurrently deleting a property.
+	// The deleted property must NOT be resurrected in the index.
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Pre-populate 100 nodes with "status" property.
+	for i := int64(1); i <= 100; i++ {
+		n := types.NewNode(snowflake.ID(i), 1, nil)
+		_ = n.SetProperty("status", "active")
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", i, err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Goroutine 1: create property index (blocks during Phase 2 while fetching nodes).
+	go func() {
+		defer wg.Done()
+		if err := bs.CreatePropertyIndex(1, "status"); err != nil {
+			t.Errorf("CreatePropertyIndex: %v", err)
+		}
+	}()
+
+	// Goroutine 2: delete the "status" property from nodes 1-50 via ReplaceNode.
+	go func() {
+		defer wg.Done()
+		for i := int64(1); i <= 50; i++ {
+			n := types.NewNode(snowflake.ID(i), 1, nil)
+			// No "status" property — effectively deleting it.
+			_ = n.SetProperty("other", "value")
+			if err := bs.ReplaceNode(n); err != nil {
+				t.Errorf("ReplaceNode(%d): %v", i, err)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// After index creation, only nodes 51-100 should have status="active".
+	// Nodes 1-50 had their "status" property removed.
+	results, err := bs.NodesByLabelAndProperty(1, "status", "active", QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty: %v", err)
+	}
+
+	// Due to concurrency, the exact count depends on timing.
+	// But we can verify NO deleted node is resurrected.
+	for _, node := range results {
+		id := node.InternalID().SnowflakeID()
+		// Re-read the current state of the node.
+		current, err := bs.GetNode(id)
+		if err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+		if _, found := current.GetProperty("status"); !found {
+			t.Errorf("node %d has status in index but not in actual data (resurrected)", id)
+		}
+	}
+}
+
+func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
+	// Create index while concurrently changing a property value.
+	// The new value must win.
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Pre-populate with nodes having status="old".
+	for i := int64(1); i <= 50; i++ {
+		n := types.NewNode(snowflake.ID(i), 1, nil)
+		_ = n.SetProperty("status", "old")
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", i, err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = bs.CreatePropertyIndex(1, "status")
+	}()
+
+	// Concurrently update nodes 1-25 to status="new".
+	go func() {
+		defer wg.Done()
+		for i := int64(1); i <= 25; i++ {
+			n := types.NewNode(snowflake.ID(i), 1, nil)
+			_ = n.SetProperty("status", "new")
+			_ = bs.ReplaceNode(n)
+		}
+	}()
+
+	wg.Wait()
+
+	// Verify: no node should appear under "old" if its current value is "new".
+	oldResults, _ := bs.NodesByLabelAndProperty(1, "status", "old", QueryOpts{})
+	for _, node := range oldResults {
+		id := node.InternalID().SnowflakeID()
+		current, err := bs.GetNode(id)
+		if err != nil {
+			t.Fatalf("GetNode(%d): %v", id, err)
+		}
+		if val, found := current.GetProperty("status"); found && val == "new" {
+			t.Errorf("node %d indexed under 'old' but current value is 'new' (stale)", id)
+		}
+	}
+}

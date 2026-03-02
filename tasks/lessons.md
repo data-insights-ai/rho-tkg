@@ -443,3 +443,31 @@ Phase 2 in `propertyIndex.mutated`. Phase 3 checks `mutated[id]` instead of `con
 - **Depth-limited.** Every recursive function on untrusted input needs `maxDepth`.
 
 (Covered in CLAUDE.md design invariants — kept here as the bug origin story.)
+
+---
+
+## C4. ForEach Pattern for OOM-Safe Iteration
+
+When a query needs the union of entity IDs across multiple shards, **never** materialize all
+per-shard slices + merge them. Use `ForEach*ID` iterators that call a callback for each ID.
+
+Two constraints make this safe:
+1. **Lock reentrancy (B15):** Go's `sync.RWMutex` is NOT reentrant. ForEach holds the store lock,
+   so the callback must NOT call store methods (GetNode, etc.) — deadlock. Solution: two-phase.
+   Phase 1 collects IDs into a `seen` map (callback is trivial). Phase 2 processes IDs after
+   ForEach returns (lock released).
+2. **Sequential shard iteration:** TieredStore iterates shards one at a time (not parallel).
+   Only one shard is open via checkout/checkin at a time. This trades parallelism for
+   ~83% memory reduction.
+
+```
+BAD:  ids := store.AllNodeIDs()            // ~176 MB for 12 shards × 10M
+      merged := mergeIDSlices(shardSlices) // ~80 MB merge output
+      dedup := map[id]struct{}{...}        // ~160 MB dedup map
+      // peak: ~416 MB just for node IDs
+
+GOOD: seen := map[id]struct{}{}
+      store.ForEachNodeID(func(id) bool { seen[id] = struct{}{}; return true })
+      store.ForEachNodeHistoryID(func(id) bool { seen[id] = struct{}{}; return true })
+      // peak: ~160 MB (just the dedup map)
+```

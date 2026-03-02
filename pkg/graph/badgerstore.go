@@ -2045,6 +2045,7 @@ func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 		return ErrIndexExists
 	}
 	liveIdx := newPropertyIndex()
+	liveIdx.mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
 	var ids []snowflake.ID
 	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
@@ -2082,8 +2083,8 @@ func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 	defer bs.idxMu.Unlock()
 	for vk, idSet := range backfill.entries {
 		for id := range idSet {
-			if liveIdx.contains(id) {
-				continue // concurrent write already indexed this ID
+			if _, mutated := liveIdx.mutated[id]; mutated {
+				continue // concurrent write handled this ID during Phase 2
 			}
 			if _, alive := bs.nodeIDs[id]; !alive {
 				continue // node deleted during Phase 2
@@ -2094,6 +2095,7 @@ func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 			liveIdx.entries[vk][id] = struct{}{}
 		}
 	}
+	liveIdx.mutated = nil // stop tracking — index creation complete
 	bs.persistPropertyIndexDefs()
 	return nil
 }
@@ -2290,6 +2292,128 @@ func (bs *BadgerStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 		return nil, nil
 	}
 	return ids, nil
+}
+
+// --- ForEach iterators ---
+
+// ForEachNodeID iterates over all current node IDs, calling fn for each.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (bs *BadgerStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	for id := range bs.nodeIDs {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachRelID iterates over all current relationship IDs, calling fn for each.
+// Iteration stops early if fn returns false. No ordering guarantee.
+func (bs *BadgerStore) ForEachRelID(fn func(snowflake.ID) bool) error {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	for id := range bs.relIDs {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachNodeHistoryID iterates over all node IDs with version history entries.
+// Scans both the pending buffer and Badger for 0x07 prefix keys.
+// Iteration stops early if fn returns false.
+func (bs *BadgerStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Phase 1: pending buffer.
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
+			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			seen[id] = struct{}{}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Emit pending IDs.
+	for id := range seen {
+		if !fn(id) {
+			return nil
+		}
+	}
+
+	// Phase 2: Badger prefix scan.
+	return bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		pfx := []byte{keyHistNode}
+		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+			key := it.Item().Key()
+			if len(key) >= sizeHistKey {
+				id := snowflake.ID(parseIDFromKey(key, 1))
+				if _, ok := seen[id]; ok {
+					continue // already emitted
+				}
+				seen[id] = struct{}{}
+				if !fn(id) {
+					return nil
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// ForEachRelHistoryID iterates over all relationship IDs with version history entries.
+// Scans both the pending buffer and Badger for 0x08 prefix keys.
+// Iteration stops early if fn returns false.
+func (bs *BadgerStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Phase 1: pending buffer.
+	bs.wbMu.Lock()
+	for k, op := range bs.pending {
+		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
+			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			seen[id] = struct{}{}
+		}
+	}
+	bs.wbMu.Unlock()
+
+	// Emit pending IDs.
+	for id := range seen {
+		if !fn(id) {
+			return nil
+		}
+	}
+
+	// Phase 2: Badger prefix scan.
+	return bs.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		pfx := []byte{keyHistRel}
+		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+			key := it.Item().Key()
+			if len(key) >= sizeHistKey {
+				id := snowflake.ID(parseIDFromKey(key, 1))
+				if _, ok := seen[id]; ok {
+					continue // already emitted
+				}
+				seen[id] = struct{}{}
+				if !fn(id) {
+					return nil
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // --- History ID scans ---

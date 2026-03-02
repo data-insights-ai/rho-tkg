@@ -590,6 +590,252 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	return mergeIDSlices(slices), nil
 }
 
+// --- ForEach iterators ---
+// Sequential shard iteration — one shard at a time, no goroutines, no mergeIDSlices.
+// This eliminates the O(N) per-shard slice allocations that cause OOM on large graphs.
+
+func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachNodeID(func(id snowflake.ID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	// Archive shard (if open).
+	ts.archiveMu.Lock()
+	archive := ts.refArchive
+	ts.archiveMu.Unlock()
+	if archive != nil {
+		if err := archive.ForEachNodeID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	// Event shards — sequential, depth=all.
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachNodeID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachRelID(func(id snowflake.ID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	ts.archiveMu.Lock()
+	archive := ts.refArchive
+	ts.archiveMu.Unlock()
+	if archive != nil {
+		if err := archive.ForEachRelID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachRelID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	ts.archiveMu.Lock()
+	archive := ts.refArchive
+	ts.archiveMu.Unlock()
+	if archive != nil {
+		if err := archive.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	ts.archiveMu.Lock()
+	archive := ts.refArchive
+	ts.archiveMu.Unlock()
+	if archive != nil {
+		if err := archive.ForEachRelHistoryID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachRelHistoryID(func(id snowflake.ID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
 // --- Merge helpers ---
 // Standard k-way merge of pre-sorted slices. For Phase 3a with 2 shards,
 // this is a simple 2-way merge.

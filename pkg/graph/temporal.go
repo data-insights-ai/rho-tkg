@@ -95,23 +95,21 @@ func (g *Graph) isRelValidDuring(r *types.Relationship, start, end types.Instant
 // History-aware: includes deleted nodes that were valid at time t by consulting
 // version history in addition to current entities.
 func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
-	allIDs, err := g.allKnownNodeIDs()
-	if err != nil {
-		return nil, err
-	}
-
 	var result []*types.Node
-	for id := range allIDs {
+	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
-				continue
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sortNodesByID(result)
 	return result, nil
 }
@@ -119,23 +117,21 @@ func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 // GetRelationshipsValidAt returns all relationships valid at the given instant.
 // History-aware: includes deleted relationships that were valid at time t.
 func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, error) {
-	allIDs, err := g.allKnownRelIDs()
-	if err != nil {
-		return nil, err
-	}
-
 	var result []*types.Relationship
-	for id := range allIDs {
+	err := g.forEachKnownRelID(func(id snowflake.ID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
-				continue
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sortRelsByID(result)
 	return result, nil
 }
@@ -155,23 +151,21 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 // History-aware: includes deleted or updated nodes that had any version valid
 // during the interval.
 func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
-	allIDs, err := g.allKnownNodeIDs()
-	if err != nil {
-		return nil, err
-	}
-
 	var result []*types.Node
-	for id := range allIDs {
+	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
 		n, err := g.getNodeVersionDuring(id, start, end)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
-				continue
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sortNodesByID(result)
 	return result, nil
 }
@@ -179,23 +173,21 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 // GetRelationshipsValidDuring returns all relationships whose validity overlaps [start, end).
 // History-aware: includes deleted or updated relationships.
 func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
-	allIDs, err := g.allKnownRelIDs()
-	if err != nil {
-		return nil, err
-	}
-
 	var result []*types.Relationship
-	for id := range allIDs {
+	err := g.forEachKnownRelID(func(id snowflake.ID) error {
 		r, err := g.getRelVersionDuring(id, start, end)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
-				continue
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sortRelsByID(result)
 	return result, nil
 }
@@ -380,51 +372,63 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 
 // --- Private helpers for history-aware queries ---
 
-// allKnownNodeIDs returns the union of current node IDs and history node IDs.
-// Uses AllNodeIDs (ID-only, no entity deserialization) instead of AllNodes
-// to avoid O(N) deep-copy waste when only IDs are needed.
-func (g *Graph) allKnownNodeIDs() (map[snowflake.ID]struct{}, error) {
-	currentIDs, err := g.store.AllNodeIDs(QueryOpts{})
-	if err != nil {
-		return nil, err
+// forEachKnownNodeID collects the union of current + history node IDs
+// via lazy ForEach iteration, then calls fn for each unique ID.
+// Two-phase: collect (under store locks), then process (locks released).
+// This avoids materializing all IDs from all shards into giant slices.
+func (g *Graph) forEachKnownNodeID(fn func(snowflake.ID) error) error {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Phase 1: collect unique IDs (no store method calls in callbacks — lock reentrancy).
+	if err := g.store.ForEachNodeID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
 	}
-	ids := make(map[snowflake.ID]struct{}, len(currentIDs))
-	for _, id := range currentIDs {
-		ids[id] = struct{}{}
+	if err := g.store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
 	}
 
-	histIDs, err := g.store.AllNodeHistoryIDs()
-	if err != nil {
-		return nil, err
+	// Phase 2: process (store locks released, safe to call GetNodeAt etc.).
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
 	}
-	for _, id := range histIDs {
-		ids[id] = struct{}{}
-	}
-
-	return ids, nil
+	return nil
 }
 
-// allKnownRelIDs returns the union of current relationship IDs and history relationship IDs.
-// Uses AllRelIDs (ID-only, no entity deserialization) instead of AllRelationships.
-func (g *Graph) allKnownRelIDs() (map[snowflake.ID]struct{}, error) {
-	currentIDs, err := g.store.AllRelIDs(QueryOpts{})
-	if err != nil {
-		return nil, err
+// forEachKnownRelID collects the union of current + history relationship IDs
+// via lazy ForEach iteration, then calls fn for each unique ID.
+// Two-phase: collect (under store locks), then process (locks released).
+func (g *Graph) forEachKnownRelID(fn func(snowflake.ID) error) error {
+	seen := make(map[snowflake.ID]struct{})
+
+	// Phase 1: collect unique IDs.
+	if err := g.store.ForEachRelID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
 	}
-	ids := make(map[snowflake.ID]struct{}, len(currentIDs))
-	for _, id := range currentIDs {
-		ids[id] = struct{}{}
+	if err := g.store.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
 	}
 
-	histIDs, err := g.store.AllRelHistoryIDs()
-	if err != nil {
-		return nil, err
+	// Phase 2: process (store locks released).
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
 	}
-	for _, id := range histIDs {
-		ids[id] = struct{}{}
-	}
-
-	return ids, nil
+	return nil
 }
 
 // getNodeVersionDuring returns the most recent version of a node whose validity

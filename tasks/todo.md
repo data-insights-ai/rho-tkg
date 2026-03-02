@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.29. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented.
+Library at v3.0.31. Phases 1a-1g, 2a-2i, 3a, 3b+3c, 3d, and 3e complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm→cold), warm recovery, depth-aware reads, E→E cross-shard fix, cold shard lifecycle (lazy-open, idle-close), parallel shard queries, reference archive (archive/restore), and repair/tooling (cross-shard repair, verification caching, admin API, ID decomposition, migration tool) implemented. v3.0.30: 5 bug fixes (idleCloseLoop race via checkout/checkin, shardForRelID cold skip, ArchiveNode/RestoreNode rollback, CreatePropertyIndex dirty-map tracking, BatchBuilder canonical label hash). v3.0.31: OOM fix — lazy ForEach iterators for temporal pipeline (~83% memory reduction).
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
