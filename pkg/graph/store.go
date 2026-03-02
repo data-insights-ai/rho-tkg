@@ -71,6 +71,16 @@ type Store interface {
 	NodeCount() (int, error)
 	RelationshipCount() (int, error)
 
+	// Property indexes — index node properties for O(1) lookup.
+	// CreatePropertyIndex creates an index on the given label/property combination.
+	// Scans existing nodes to populate the index. Returns ErrIndexExists on duplicate.
+	CreatePropertyIndex(labelToken uint16, propertyKey string) error
+	// DropPropertyIndex removes a property index. Returns ErrIndexNotFound if not found.
+	DropPropertyIndex(labelToken uint16, propertyKey string) error
+	// NodesByLabelAndProperty returns nodes matching the label and property value.
+	// Uses the index if one exists; falls back to label scan + property filter otherwise.
+	NodesByLabelAndProperty(labelToken uint16, key string, value any) ([]*types.Node, error)
+
 	// Close releases any resources held by the store.
 	// Safe to call multiple times. No-op for stores without resources.
 	Close() error
@@ -78,9 +88,12 @@ type Store interface {
 
 // Sentinel errors for store operations.
 var (
-	ErrNodeNotFound = errors.New("graph: node not found")
-	ErrRelNotFound  = errors.New("graph: relationship not found")
-	ErrNodeExists   = errors.New("graph: node already exists")
-	ErrRelExists       = errors.New("graph: relationship already exists")
-	ErrVersionNotFound = errors.New("graph: version not found")
+	ErrNodeNotFound     = errors.New("graph: node not found")
+	ErrRelNotFound      = errors.New("graph: relationship not found")
+	ErrNodeExists       = errors.New("graph: node already exists")
+	ErrRelExists        = errors.New("graph: relationship already exists")
+	ErrVersionNotFound  = errors.New("graph: version not found")
+	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
+	ErrIndexExists      = errors.New("graph: property index already exists")
+	ErrIndexNotFound    = errors.New("graph: property index not found")
 )

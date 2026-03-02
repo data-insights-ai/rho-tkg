@@ -62,6 +62,14 @@ Bulk queries: `AllNodes()`, `AllRelationships()`, `GetNodesByIDs(ids)`, `GetRela
 
 Batch operations: `NewBatchBuilder(g)` creates a builder that queues operations with eager validation. Call `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)`, `DeleteRelationship(id)` to queue operations. Call `Execute()` to persist all operations in order (creates → updates → deletes). Returns a `BatchResult` with counts and per-operation errors. Store-level batch methods (`PutNodesBatch`, `DeleteNodesBatch`, etc.) use two-phase validate-then-apply for atomicity.
 
+Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries. `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries. `GetNodeAt(id, t)` — version-specific query. `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal. `Snapshot(t)` — full graph state at a point in time (endpoints-filtered). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
+
+Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Returns `(true, nil)` if valid.
+
+Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — cardinality statistics for all labels and relationship types.
+
+Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value)` — O(1) indexed lookup. Indexes are automatically maintained across all node mutation paths.
+
 Lifecycle: `Close()` saves registries (Badger only), then calls `store.Close()` on every Store implementation. MemoryStore.Close() returns nil. Always call `Close()` when done — it is safe to call multiple times.
 
 ### Persistence (Badger)

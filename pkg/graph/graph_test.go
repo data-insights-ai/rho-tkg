@@ -3005,3 +3005,548 @@ func TestGraphGetRelsByIDsEmpty(t *testing.T) {
 		t.Fatalf("GetRelationshipsByIDs(nil) = %v, want nil", got)
 	}
 }
+
+// --- Per-Label / Per-Type Statistics tests ---
+
+func TestNodeCountByLabel_Empty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	// Register label but add no nodes.
+	g.GetOrCreateLabel("Person")
+
+	count, err := g.NodeCountByLabel("Person")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("NodeCountByLabel = %d, want 0", count)
+	}
+}
+
+func TestNodeCountByLabel_UnregisteredLabel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	count, err := g.NodeCountByLabel("NeverRegistered")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("NodeCountByLabel = %d, want 0", count)
+	}
+}
+
+func TestNodeCountByLabel_SingleNode(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+
+	count, err := g.NodeCountByLabel("Person")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("NodeCountByLabel = %d, want 1", count)
+	}
+}
+
+func TestNodeCountByLabel_MultipleNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Charlie"})
+
+	count, err := g.NodeCountByLabel("Person")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("NodeCountByLabel = %d, want 3", count)
+	}
+}
+
+func TestNodeCountByLabel_AfterDelete(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n1, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddNode([]string{"Person"}, nil)
+
+	g.DeleteNode(n1.InternalID().SnowflakeID())
+
+	count, err := g.NodeCountByLabel("Person")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("NodeCountByLabel after delete = %d, want 1", count)
+	}
+}
+
+func TestRelCountByType_Empty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateRelType("KNOWS")
+
+	count, err := g.RelCountByType("KNOWS")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("RelCountByType = %d, want 0", count)
+	}
+}
+
+func TestRelCountByType_UnregisteredType(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	count, err := g.RelCountByType("NeverRegistered")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("RelCountByType = %d, want 0", count)
+	}
+}
+
+func TestRelCountByType_SingleRel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddRelationship("KNOWS", a, b, nil)
+
+	count, err := g.RelCountByType("KNOWS")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("RelCountByType = %d, want 1", count)
+	}
+}
+
+func TestRelCountByType_AfterDelete(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r1, _ := g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("KNOWS", b, a, nil)
+
+	g.DeleteRelationship(r1.InternalID().SnowflakeID())
+
+	count, err := g.RelCountByType("KNOWS")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("RelCountByType after delete = %d, want 1", count)
+	}
+}
+
+func TestAllLabelCounts_Empty(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	counts, err := g.AllLabelCounts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(counts) != 0 {
+		t.Fatalf("AllLabelCounts = %v, want empty map", counts)
+	}
+}
+
+func TestAllLabelCounts_Multiple(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, nil)
+	g.AddNode([]string{"Person"}, nil)
+	g.AddNode([]string{"Company"}, nil)
+	// Register a label but don't add nodes — should be omitted.
+	g.GetOrCreateLabel("Empty")
+
+	counts, err := g.AllLabelCounts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if counts["Person"] != 2 {
+		t.Errorf("Person count = %d, want 2", counts["Person"])
+	}
+	if counts["Company"] != 1 {
+		t.Errorf("Company count = %d, want 1", counts["Company"])
+	}
+	if _, ok := counts["Empty"]; ok {
+		t.Error("Empty label should be omitted from AllLabelCounts")
+	}
+}
+
+func TestAllRelTypeCounts_Multiple(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	c, _ := g.AddNode([]string{"Company"}, nil)
+
+	g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("KNOWS", b, a, nil)
+	g.AddRelationship("WORKS_AT", a, c, nil)
+	// Register a type but don't add rels — should be omitted.
+	g.GetOrCreateRelType("EMPTY")
+
+	counts, err := g.AllRelTypeCounts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if counts["KNOWS"] != 2 {
+		t.Errorf("KNOWS count = %d, want 2", counts["KNOWS"])
+	}
+	if counts["WORKS_AT"] != 1 {
+		t.Errorf("WORKS_AT count = %d, want 1", counts["WORKS_AT"])
+	}
+	if _, ok := counts["EMPTY"]; ok {
+		t.Error("EMPTY type should be omitted from AllRelTypeCounts")
+	}
+}
+
+// --- MemoryStore Property Index tests ---
+
+func TestMemStoreCreatePropertyIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+
+	err := g.CreatePropertyIndex("Person", "name")
+	if err != nil {
+		t.Fatalf("CreatePropertyIndex failed: %v", err)
+	}
+}
+
+func TestMemStoreCreatePropertyIndex_Duplicate(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateLabel("Person")
+	g.CreatePropertyIndex("Person", "name")
+
+	err := g.CreatePropertyIndex("Person", "name")
+	if !errors.Is(err, ErrIndexExists) {
+		t.Fatalf("expected ErrIndexExists, got %v", err)
+	}
+}
+
+func TestMemStoreDropPropertyIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateLabel("Person")
+	g.CreatePropertyIndex("Person", "name")
+
+	err := g.DropPropertyIndex("Person", "name")
+	if err != nil {
+		t.Fatalf("DropPropertyIndex failed: %v", err)
+	}
+}
+
+func TestMemStoreDropPropertyIndex_NotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateLabel("Person")
+
+	err := g.DropPropertyIndex("Person", "name")
+	if !errors.Is(err, ErrIndexNotFound) {
+		t.Fatalf("expected ErrIndexNotFound, got %v", err)
+	}
+}
+
+func TestMemStoreNodesByLabelAndProperty_Hit(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.CreatePropertyIndex("Person", "name")
+
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	name, _ := nodes[0].GetProperty("name")
+	if name != "Alice" {
+		t.Fatalf("expected name=Alice, got %v", name)
+	}
+}
+
+func TestMemStoreNodesByLabelAndProperty_Miss(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.CreatePropertyIndex("Person", "name")
+
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Bob")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if nodes != nil {
+		t.Fatalf("expected nil, got %d nodes", len(nodes))
+	}
+}
+
+func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+
+	// No index — should fall back to scan.
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("fallback scan: expected 1 node, got %d", len(nodes))
+	}
+}
+
+func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.CreatePropertyIndex("Person", "name")
+
+	// Verify index finds Alice.
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if len(nodes) != 1 {
+		t.Fatalf("after add: expected 1, got %d", len(nodes))
+	}
+
+	// Update the property.
+	id := n.InternalID().SnowflakeID()
+	g.UpdateNode(id, map[string]any{"name": "Alicia"})
+
+	// Old value should be gone.
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if len(nodes) != 0 {
+		t.Fatalf("after update: old value still found, got %d", len(nodes))
+	}
+
+	// New value should be found.
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	if len(nodes) != 1 {
+		t.Fatalf("after update: new value not found, got %d", len(nodes))
+	}
+
+	// Delete the node.
+	g.DeleteNode(id)
+
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	if len(nodes) != 0 {
+		t.Fatalf("after delete: node still in index, got %d", len(nodes))
+	}
+}
+
+// --- Graph-layer Property Index tests ---
+
+func TestGraphCreatePropertyIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateLabel("Person")
+
+	err := g.CreatePropertyIndex("Person", "name")
+	if err != nil {
+		t.Fatalf("CreatePropertyIndex failed: %v", err)
+	}
+
+	// Unregistered label → no-op (no error).
+	err = g.CreatePropertyIndex("Unknown", "name")
+	if err != nil {
+		t.Fatalf("unregistered label should return nil, got %v", err)
+	}
+}
+
+func TestGraphDropPropertyIndex(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.GetOrCreateLabel("Person")
+	g.CreatePropertyIndex("Person", "name")
+
+	err := g.DropPropertyIndex("Person", "name")
+	if err != nil {
+		t.Fatalf("DropPropertyIndex failed: %v", err)
+	}
+
+	// Unregistered label → no-op.
+	err = g.DropPropertyIndex("Unknown", "name")
+	if err != nil {
+		t.Fatalf("unregistered label should return nil, got %v", err)
+	}
+}
+
+func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
+	g.CreatePropertyIndex("Person", "name")
+
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1, got %d", len(nodes))
+	}
+}
+
+func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.CreatePropertyIndex("Person", "name")
+
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Charlie")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if nodes != nil {
+		t.Fatalf("expected nil, got %d nodes", len(nodes))
+	}
+}
+
+func TestGraphNodesByLabelAndProperty_UnregisteredLabel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	nodes, err := g.NodesByLabelAndProperty("Unknown", "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if nodes != nil {
+		t.Fatalf("expected nil for unregistered label, got %d", len(nodes))
+	}
+}
+
+func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.CreatePropertyIndex("Person", "name")
+
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if len(nodes) != 2 {
+		t.Fatalf("expected 2 Alices, got %d", len(nodes))
+	}
+
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Bob")
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 Bob, got %d", len(nodes))
+	}
+}
+
+func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.CreatePropertyIndex("Person", "name")
+
+	id := n.InternalID().SnowflakeID()
+	g.UpdateNode(id, map[string]any{"name": "Alicia"})
+
+	// Old value gone.
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if len(nodes) != 0 {
+		t.Fatalf("old value still found: %d", len(nodes))
+	}
+
+	// New value present.
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia")
+	if len(nodes) != 1 {
+		t.Fatalf("new value not found: %d", len(nodes))
+	}
+}
+
+func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.CreatePropertyIndex("Person", "name")
+
+	g.DeleteNode(n.InternalID().SnowflakeID())
+
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice")
+	if len(nodes) != 0 {
+		t.Fatalf("deleted node still in index: %d", len(nodes))
+	}
+}
+
+func TestPropertyValueKey_AllTypes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{"string", "hello", "s:hello"},
+		{"int", int(42), "i:42"},
+		{"int8", int8(8), "i8:8"},
+		{"int16", int16(16), "i16:16"},
+		{"int32", int32(32), "i32:32"},
+		{"int64", int64(64), "i64:64"},
+		{"uint", uint(10), "u:10"},
+		{"uint8", uint8(8), "u8:8"},
+		{"uint16", uint16(16), "u16:16"},
+		{"uint32", uint32(32), "u32:32"},
+		{"uint64", uint64(64), "u64:64"},
+		{"float32", float32(3.14), "f32:3.14"},
+		{"float64", float64(2.718), "f64:2.718"},
+		{"bool_true", true, "b:true"},
+		{"bool_false", false, "b:false"},
+		{"slice_not_indexed", []string{"a"}, ""},
+		{"map_not_indexed", map[string]any{"k": "v"}, ""},
+		{"nil_not_indexed", nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := propertyValueKey(tt.value)
+			if got != tt.expected {
+				t.Errorf("propertyValueKey(%v) = %q, want %q", tt.value, got, tt.expected)
+			}
+		})
+	}
+
+	// Verify type-safety: int(1) vs string("1") produce different keys.
+	intKey := propertyValueKey(int(1))
+	strKey := propertyValueKey("1")
+	if intKey == strKey {
+		t.Errorf("int(1) and string(\"1\") produced same key: %q", intKey)
+	}
+}

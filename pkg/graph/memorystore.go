@@ -29,19 +29,23 @@ type MemoryStore struct {
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[snowflake.ID]map[uint32]*types.Node
 	relHistory  map[snowflake.ID]map[uint32]*types.Relationship
+
+	// Property indexes — label+property → value → set of node IDs.
+	propertyIndexes map[propertyIndexKey]*propertyIndex
 }
 
 // NewMemoryStore creates an empty MemoryStore with all indexes initialized.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:       make(map[snowflake.ID]*types.Node),
-		rels:        make(map[snowflake.ID]*types.Relationship),
-		labelIdx:    make(map[uint16]map[snowflake.ID]struct{}),
-		typeIdx:     make(map[uint16]map[snowflake.ID]struct{}),
-		outIdx:      make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		inIdx:       make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		nodeHistory: make(map[snowflake.ID]map[uint32]*types.Node),
-		relHistory:  make(map[snowflake.ID]map[uint32]*types.Relationship),
+		nodes:           make(map[snowflake.ID]*types.Node),
+		rels:            make(map[snowflake.ID]*types.Relationship),
+		labelIdx:        make(map[uint16]map[snowflake.ID]struct{}),
+		typeIdx:         make(map[uint16]map[snowflake.ID]struct{}),
+		outIdx:          make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		inIdx:           make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		nodeHistory:     make(map[snowflake.ID]map[uint32]*types.Node),
+		relHistory:      make(map[snowflake.ID]map[uint32]*types.Relationship),
+		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 	}
 }
 
@@ -68,6 +72,7 @@ func (ms *MemoryStore) PutNode(n *types.Node) error {
 		ms.labelIdx[tv][id] = struct{}{}
 	}
 
+	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
 	return nil
 }
 
@@ -107,23 +112,28 @@ func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
 		}
 	}
 
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
 	delete(ms.nodes, id)
 	return nil
 }
 
 // ReplaceNode overwrites an existing node's data in-place.
 // Returns ErrNodeNotFound if the node does not exist.
-// No index changes — labels are immutable after creation.
+// No label index changes — labels are immutable after creation.
+// Property indexes are updated to reflect property changes.
 func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
 	id := n.InternalID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	if _, exists := ms.nodes[id]; !exists {
+	old, exists := ms.nodes[id]
+	if !exists {
 		return ErrNodeNotFound
 	}
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
 	ms.nodes[id] = n.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
 	return nil
 }
 
@@ -290,6 +300,7 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 		}
 	}
 
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
 	delete(ms.nodes, id)
 	delete(ms.nodeHistory, id)
 	return nil
@@ -592,7 +603,8 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	if _, exists := ms.nodes[id]; !exists {
+	old, exists := ms.nodes[id]
+	if !exists {
 		return ErrNodeNotFound
 	}
 
@@ -604,8 +616,10 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	}
 	inner[prevVersion] = prevState.DeepCopy()
 
-	// Replace current entity.
+	// Replace current entity with property index update.
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
 	ms.nodes[id] = current.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, current, id)
 	return nil
 }
 
@@ -632,6 +646,109 @@ func (ms *MemoryStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 	// Replace current entity.
 	ms.rels[id] = current.DeepCopy()
 	return nil
+}
+
+// --- Property indexes ---
+
+// CreatePropertyIndex creates a property index for the given label token and property key.
+// Scans all existing nodes with that label to populate the index.
+// Returns ErrIndexExists if the index already exists.
+func (ms *MemoryStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := ms.propertyIndexes[key]; exists {
+		return ErrIndexExists
+	}
+
+	idx := newPropertyIndex()
+
+	// Populate from existing nodes with this label.
+	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n := ms.nodes[nodeID]
+			if n == nil {
+				continue
+			}
+			if val, found := n.GetProperty(propertyKey); found {
+				idx.add(nodeID, val)
+			}
+		}
+	}
+
+	ms.propertyIndexes[key] = idx
+	return nil
+}
+
+// DropPropertyIndex removes a property index.
+// Returns ErrIndexNotFound if the index does not exist.
+func (ms *MemoryStore) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := ms.propertyIndexes[key]; !exists {
+		return ErrIndexNotFound
+	}
+
+	delete(ms.propertyIndexes, key)
+	return nil
+}
+
+// NodesByLabelAndProperty returns nodes matching the label and property value.
+// Uses the property index if one exists; falls back to label scan + property filter.
+// Results are sorted by snowflake.ID for deterministic output.
+func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any) ([]*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propKey}
+	if idx, ok := ms.propertyIndexes[key]; ok {
+		// Indexed path.
+		nodeIDs := idx.lookup(value)
+		if len(nodeIDs) == 0 {
+			return nil, nil
+		}
+		result := make([]*types.Node, 0, len(nodeIDs))
+		for id := range nodeIDs {
+			if n, ok := ms.nodes[id]; ok {
+				result = append(result, n.DeepCopy())
+			}
+		}
+		sortNodesByID(result)
+		return result, nil
+	}
+
+	// Fallback: label scan + property filter.
+	nodeIDs := ms.labelIdx[labelToken]
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	targetKey := propertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+
+	var result []*types.Node
+	for id := range nodeIDs {
+		n, ok := ms.nodes[id]
+		if !ok {
+			continue
+		}
+		if v, found := n.GetProperty(propKey); found {
+			if propertyValueKey(v) == targetKey {
+				result = append(result, n.DeepCopy())
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	sortNodesByID(result)
+	return result, nil
 }
 
 // Close is a no-op for MemoryStore. Satisfies the Store interface.
@@ -676,6 +793,7 @@ func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
 			}
 			ms.labelIdx[tv][id] = struct{}{}
 		}
+		addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
 	}
 
 	return nil
@@ -774,6 +892,7 @@ func (ms *MemoryStore) DeleteNodesBatch(ids []snowflake.ID) error {
 				}
 			}
 		}
+		removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
 		delete(ms.nodes, id)
 	}
 

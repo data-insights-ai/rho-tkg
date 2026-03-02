@@ -407,3 +407,105 @@ func (g *Graph) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
 func (g *Graph) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
 	return g.store.GetRelationshipsByIDs(ids)
 }
+
+// --- Per-label / per-type statistics ---
+
+// NodeCountByLabel returns the number of nodes with the given label.
+// Returns 0 if the label has never been registered.
+func (g *Graph) NodeCountByLabel(label string) (int, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return 0, nil
+	}
+	nodes, err := g.store.NodesByLabel(tok)
+	if err != nil {
+		return 0, err
+	}
+	return len(nodes), nil
+}
+
+// RelCountByType returns the number of relationships with the given type.
+// Returns 0 if the type has never been registered.
+func (g *Graph) RelCountByType(typeName string) (int, error) {
+	tok, ok := g.relTypes.Lookup(typeName)
+	if !ok {
+		return 0, nil
+	}
+	rels, err := g.store.RelationshipsByType(tok)
+	if err != nil {
+		return 0, err
+	}
+	return len(rels), nil
+}
+
+// AllLabelCounts returns a map of label name to node count for all registered labels.
+// Labels with zero nodes are omitted.
+func (g *Graph) AllLabelCounts() (map[string]int, error) {
+	names := g.labels.ExportNames()
+	result := make(map[string]int)
+
+	// Skip index 0 (reserved empty string).
+	for i := 1; i < len(names); i++ {
+		count, err := g.NodeCountByLabel(names[i])
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			result[names[i]] = count
+		}
+	}
+	return result, nil
+}
+
+// AllRelTypeCounts returns a map of relationship type name to relationship count
+// for all registered types. Types with zero relationships are omitted.
+func (g *Graph) AllRelTypeCounts() (map[string]int, error) {
+	names := g.relTypes.ExportNames()
+	result := make(map[string]int)
+
+	// Skip index 0 (reserved empty string).
+	for i := 1; i < len(names); i++ {
+		count, err := g.RelCountByType(names[i])
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			result[names[i]] = count
+		}
+	}
+	return result, nil
+}
+
+// --- Property indexes ---
+
+// CreatePropertyIndex creates a property index on the given label and property key.
+// Resolves the label name to a token. Returns ErrIndexExists if the index already exists.
+// Returns nil if the label has never been registered (nothing to index).
+func (g *Graph) CreatePropertyIndex(label, propertyKey string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.CreatePropertyIndex(tok, propertyKey)
+}
+
+// DropPropertyIndex removes a property index.
+// Resolves the label name to a token. Returns ErrIndexNotFound if the index does not exist.
+// Returns nil if the label has never been registered.
+func (g *Graph) DropPropertyIndex(label, propertyKey string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.DropPropertyIndex(tok, propertyKey)
+}
+
+// NodesByLabelAndProperty returns nodes matching the label and property value.
+// Resolves the label name to a token. Returns nil if the label is not registered.
+func (g *Graph) NodesByLabelAndProperty(label, key string, value any) ([]*types.Node, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	return g.store.NodesByLabelAndProperty(tok, key, value)
+}

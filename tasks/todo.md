@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.18. Phases 1a-1g complete (Update, Version History, Hash Chain, Bulk Queries, FlushInterval/LRU Fix, Batch Operations, Context-Aware Operations).
+Library at v3.0.22. Phases 1a-1g and 2a-2d complete.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -156,62 +156,50 @@ Complete. Implemented in v3.0.18.
 
 Make tkg-v3 a proper temporal graph. The "T" in TKG.
 
-### 2a. Temporal Queries
+### 2b. Hash Chain Verification ✓
 
-Point-in-time and interval queries over valid time.
+Complete. Implemented in v3.0.19.
 
-**Graph methods:**
-- [ ] `GetNodesValidAt(t types.Instant) ([]*types.Node, error)`
-- [ ] `GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, error)`
-- [ ] `GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.Node, error)`
-- [ ] `GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error)`
-- [ ] `GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error)`
-- [ ] `GetNodeAt(id snowflake.ID, t types.Instant) (*types.Node, error)` — version valid at t
-- [ ] `GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*types.Node, error)`
-- [ ] `Snapshot(t types.Instant) (*GraphSnapshot, error)` — full graph state at time t
+- [x] `VerifyNodeHashChain(id)` — verifies genesis PrevHash="", PrevHash chain links, recomputes hashes
+- [x] `VerifyRelHashChain(id)` — mirrors node verification for relationships
+- [x] 14 tests (7 node + 7 rel): genesis-only, multiple updates, tampered hash, broken PrevHash, non-existent, nil integrity, property change
 
-**Implementation options:**
-- Simple: scan all nodes/history, filter by ValidFrom/ValidTo interval
-- Indexed: use temporal index keys (`0x09`/`0x0A`) for O(log N) queries
-- Start simple, add indexes when performance requires it
+### 2d. Per-Label / Per-Type Statistics ✓
 
-### 2b. Hash Chain Verification
+Complete. Implemented in v3.0.20.
 
-Prove integrity of version chains.
+- [x] `NodeCountByLabel(label)`, `RelCountByType(typeName)` — scan-based cardinality counts
+- [x] `AllLabelCounts()`, `AllRelTypeCounts()` — aggregated counts for all registered labels/types
+- [x] 12 tests: empty/unregistered/single/multiple/after-delete for both, plus AllLabelCounts and AllRelTypeCounts
+- [x] No Store interface change — delegates to existing NodesByLabel/RelationshipsByType
 
-- [ ] `VerifyNodeHashChain(id snowflake.ID) (bool, error)`
-  - Get full history
-  - Verify each version's ContentHash matches computed hash
-  - Verify PreviousHash chain links correctly
-  - Genesis version must have zero PreviousHash
-- [ ] `VerifyRelHashChain(id snowflake.ID) (bool, error)`
+### 2a. Temporal Queries ✓
 
-### 2c. Property Indexes
+Complete. Implemented in v3.0.21.
 
-O(1) property lookups for Cypher WHERE clauses.
+- [x] `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries
+- [x] `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries
+- [x] `GetNodeAt(id, t)` — version-specific query with version chain derivation
+- [x] `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal
+- [x] `Snapshot(t)` — full graph state at time t (endpoint-filtered relationships)
+- [x] `GraphSnapshot` struct, `ErrNoVersionValidAt` sentinel, 6 internal helpers
+- [x] 31 tests: 12 point-in-time, 6 interval, 5 version-specific, 3 neighbor, 5 snapshot
+- [x] No Store interface change — scan-based filtering over existing methods
 
-**Store interface:**
-- [ ] `CreatePropertyIndex(labelToken uint16, propertyKey string) error`
-- [ ] `DropPropertyIndex(labelToken uint16, propertyKey string) error`
-- [ ] `NodesByLabelAndProperty(labelToken uint16, key string, value any) ([]*types.Node, error)`
+### 2c. Property Indexes ✓
 
-**Implementation:**
-- In-memory index maintained alongside label/type indexes
-- Persisted to Badger for restart recovery
-- Auto-updated on PutNode/DeleteNode
+Complete. Implemented in v3.0.22.
 
-### 2d. Per-Label / Per-Type Statistics
-
-Cardinality statistics for query optimization (Cypher join ordering).
-
-- [ ] `NodeCountByLabel(label string) (int, error)`
-- [ ] `RelCountByType(typeName string) (int, error)`
-- [ ] `AllLabelCounts() (map[string]int, error)`
-- [ ] `AllRelTypeCounts() (map[string]int, error)`
+**Store interface additions:**
+- [x] `CreatePropertyIndex(labelToken, propertyKey)` — creates in-memory index, scans existing nodes
+- [x] `DropPropertyIndex(labelToken, propertyKey)` — removes index
+- [x] `NodesByLabelAndProperty(labelToken, key, value)` — O(1) indexed lookup with fallback scan
 
 **Implementation:**
-- Atomic counters maintained in-memory, persisted in Badger flush
-- Updated on Add/Delete/Update (label changes)
+- [x] `propertyValueKey` — type-prefixed canonical string for 14 primitive types
+- [x] Auto-update hooks in all 7 node mutation paths (both MemoryStore and BadgerStore)
+- [x] `ErrIndexExists` / `ErrIndexNotFound` sentinel errors
+- [x] 25 tests: 8 MemoryStore, 8 BadgerStore, 8 Graph-layer, 1 propertyValueKey type coverage
 
 ---
 

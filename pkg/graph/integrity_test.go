@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -250,5 +251,280 @@ func TestHashNestedMapDeterministic(t *testing.T) {
 		if h != first {
 			t.Fatalf("iteration %d: nested map hash differs", i)
 		}
+	}
+}
+
+// --- VerifyNodeHashChain tests ---
+
+func TestVerifyNodeHashChain_GenesisOnly(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+
+	valid, err := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("genesis-only chain should be valid")
+	}
+}
+
+func TestVerifyNodeHashChain_MultipleUpdates(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	g.UpdateNode(id, map[string]any{"name": "Bob"})
+	g.UpdateNode(id, map[string]any{"name": "Charlie"})
+	g.UpdateNode(id, map[string]any{"age": int64(30)})
+
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("multi-update chain should be valid")
+	}
+}
+
+func TestVerifyNodeHashChain_TamperedHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	// Tamper with the stored hash.
+	current, _ := g.store.GetNode(id)
+	current.SetIntegrity(&types.NodeIntegrity{Hash: "tampered", PrevHash: ""})
+	_ = g.store.ReplaceNode(current)
+
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("tampered hash should be detected as invalid")
+	}
+}
+
+func TestVerifyNodeHashChain_BrokenPrevHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	g.UpdateNode(id, map[string]any{"name": "Bob"})
+
+	// Break the PrevHash link on the current version.
+	current, _ := g.store.GetNode(id)
+	ig := current.Integrity()
+	current.SetIntegrity(&types.NodeIntegrity{Hash: ig.Hash, PrevHash: "broken"})
+	_ = g.store.ReplaceNode(current)
+
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("broken PrevHash should be detected as invalid")
+	}
+}
+
+func TestVerifyNodeHashChain_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+
+	_, err := g.VerifyNodeHashChain(snowflake.ID(999))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestVerifyNodeHashChain_NilIntegrity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	// Clear integrity metadata.
+	current, _ := g.store.GetNode(id)
+	current.SetIntegrity(nil)
+	_ = g.store.ReplaceNode(current)
+
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("nil integrity should be detected as invalid")
+	}
+}
+
+func TestVerifyNodeHashChain_PropertyChange(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.InternalID().SnowflakeID()
+
+	g.UpdateNode(id, map[string]any{"name": "Bob"})
+	g.UpdateNode(id, map[string]any{"name": nil, "age": int64(25)})
+
+	valid, err := g.VerifyNodeHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("property-mutation chain should be valid")
+	}
+}
+
+// --- VerifyRelHashChain tests ---
+
+func TestVerifyRelHashChain_GenesisOnly(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
+
+	valid, err := g.VerifyRelHashChain(r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("genesis-only rel chain should be valid")
+	}
+}
+
+func TestVerifyRelHashChain_MultipleUpdates(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	id := r.InternalID().SnowflakeID()
+
+	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})
+	g.UpdateRelationship(id, map[string]any{"weight": int64(3)})
+	g.UpdateRelationship(id, map[string]any{"note": "old friends"})
+
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("multi-update rel chain should be valid")
+	}
+}
+
+func TestVerifyRelHashChain_TamperedHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	id := r.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetRelationship(id)
+	current.SetIntegrity(&types.RelIntegrity{Hash: "tampered", PrevHash: ""})
+	_ = g.store.ReplaceRelationship(current)
+
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("tampered rel hash should be detected as invalid")
+	}
+}
+
+func TestVerifyRelHashChain_BrokenPrevHash(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	id := r.InternalID().SnowflakeID()
+
+	g.UpdateRelationship(id, map[string]any{"weight": int64(5)})
+
+	current, _ := g.store.GetRelationship(id)
+	ig := current.Integrity()
+	current.SetIntegrity(&types.RelIntegrity{Hash: ig.Hash, PrevHash: "broken"})
+	_ = g.store.ReplaceRelationship(current)
+
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("broken rel PrevHash should be detected as invalid")
+	}
+}
+
+func TestVerifyRelHashChain_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+
+	_, err := g.VerifyRelHashChain(snowflake.ID(999))
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+}
+
+func TestVerifyRelHashChain_NilIntegrity(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	id := r.InternalID().SnowflakeID()
+
+	current, _ := g.store.GetRelationship(id)
+	current.SetIntegrity(nil)
+	_ = g.store.ReplaceRelationship(current)
+
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if valid {
+		t.Fatal("nil rel integrity should be detected as invalid")
+	}
+}
+
+func TestVerifyRelHashChain_PropertyChange(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	id := r.InternalID().SnowflakeID()
+
+	g.UpdateRelationship(id, map[string]any{"weight": int64(10)})
+	g.UpdateRelationship(id, map[string]any{"weight": nil, "note": "test"})
+
+	valid, err := g.VerifyRelHashChain(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !valid {
+		t.Fatal("property-mutation rel chain should be valid")
 	}
 }

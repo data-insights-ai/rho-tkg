@@ -8,8 +8,117 @@ import (
 	"io"
 	"sort"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// VerifyNodeHashChain verifies the full hash chain for a node.
+// Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
+// mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
+// failure or if the node does not exist (ErrNodeNotFound).
+func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return false, err
+	}
+
+	history, err := g.store.GetNodeHistory(id)
+	if err != nil {
+		return false, err
+	}
+
+	// Build chain: history (ascending version order) + current.
+	chain := make([]*types.Node, 0, len(history)+1)
+	chain = append(chain, history...)
+	chain = append(chain, current)
+
+	labels := g.NodeLabels(current)
+
+	for i, entry := range chain {
+		ig := entry.Integrity()
+		if ig == nil {
+			return false, nil
+		}
+
+		// Genesis: PrevHash must be empty.
+		if i == 0 {
+			if ig.PrevHash != "" {
+				return false, nil
+			}
+		} else {
+			// Non-genesis: PrevHash must link to previous entry's Hash.
+			prevIG := chain[i-1].Integrity()
+			if prevIG == nil {
+				return false, nil
+			}
+			if ig.PrevHash != prevIG.Hash {
+				return false, nil
+			}
+		}
+
+		// Recompute hash and compare with stored.
+		computed := ComputeNodeHash(entry, labels)
+		if ig.Hash != computed {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// VerifyRelHashChain verifies the full hash chain for a relationship.
+// Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
+// mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
+// failure or if the relationship does not exist (ErrRelNotFound).
+func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
+	current, err := g.store.GetRelationship(id)
+	if err != nil {
+		return false, err
+	}
+
+	history, err := g.store.GetRelHistory(id)
+	if err != nil {
+		return false, err
+	}
+
+	// Build chain: history (ascending version order) + current.
+	chain := make([]*types.Relationship, 0, len(history)+1)
+	chain = append(chain, history...)
+	chain = append(chain, current)
+
+	typeName := g.RelationshipType(current)
+
+	for i, entry := range chain {
+		ig := entry.Integrity()
+		if ig == nil {
+			return false, nil
+		}
+
+		// Genesis: PrevHash must be empty.
+		if i == 0 {
+			if ig.PrevHash != "" {
+				return false, nil
+			}
+		} else {
+			// Non-genesis: PrevHash must link to previous entry's Hash.
+			prevIG := chain[i-1].Integrity()
+			if prevIG == nil {
+				return false, nil
+			}
+			if ig.PrevHash != prevIG.Hash {
+				return false, nil
+			}
+		}
+
+		// Recompute hash and compare with stored.
+		computed := ComputeRelHash(entry, typeName)
+		if ig.Hash != computed {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
 
 // mustWrite writes binary data to a hash.Hash, panicking on error.
 // hash.Hash.Write is documented to never return an error, but

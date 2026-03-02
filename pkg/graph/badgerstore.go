@@ -97,6 +97,9 @@ type BadgerStore struct {
 	wbMu    sync.Mutex
 	pending map[string]writeOp
 
+	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
+	propertyIndexes map[propertyIndexKey]*propertyIndex
+
 	// Lifecycle.
 	inMemory  bool
 	flushInt  time.Duration
@@ -149,23 +152,24 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	}
 
 	bs := &BadgerStore{
-		db:        db,
-		nodeIDs:   make(map[snowflake.ID]struct{}),
-		relIDs:    make(map[snowflake.ID]struct{}),
-		labelIdx:  make(map[uint16]map[snowflake.ID]struct{}),
-		typeIdx:   make(map[uint16]map[snowflake.ID]struct{}),
-		outIdx:    make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		inIdx:     make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		nodeCache: newEntityLRU[*types.Node](capacity),
-		relCache:  newEntityLRU[*types.Relationship](capacity),
-		pending:   make(map[string]writeOp),
-		inMemory:  cfg.InMemory,
-		flushInt:  flushInt,
-		gcInt:     gcInt,
-		gcRatio:   gcRatio,
-		stopCh:    make(chan struct{}),
-		flushDone: make(chan struct{}),
-		gcDone:    make(chan struct{}),
+		db:              db,
+		nodeIDs:         make(map[snowflake.ID]struct{}),
+		relIDs:          make(map[snowflake.ID]struct{}),
+		labelIdx:        make(map[uint16]map[snowflake.ID]struct{}),
+		typeIdx:         make(map[uint16]map[snowflake.ID]struct{}),
+		outIdx:          make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		inIdx:           make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		nodeCache:       newEntityLRU[*types.Node](capacity),
+		relCache:        newEntityLRU[*types.Relationship](capacity),
+		pending:         make(map[string]writeOp),
+		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
+		inMemory:        cfg.InMemory,
+		flushInt:        flushInt,
+		gcInt:           gcInt,
+		gcRatio:         gcRatio,
+		stopCh:          make(chan struct{}),
+		flushDone:       make(chan struct{}),
+		gcDone:          make(chan struct{}),
 	}
 
 	if err := bs.loadIndexes(); err != nil {
@@ -374,6 +378,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
 	}
 
+	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
 	return nil
@@ -468,6 +473,8 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 		return fmt.Errorf("graph: delete node history: %w", err)
 	}
 
+	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, id)
@@ -478,7 +485,8 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 
 // ReplaceNode overwrites an existing node's data in-place.
 // Returns ErrNodeNotFound if the node does not exist.
-// No index changes — labels are immutable after creation.
+// No label index changes — labels are immutable after creation.
+// Property indexes are updated to reflect property changes.
 func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	id := n.InternalID().SnowflakeID()
 
@@ -495,7 +503,12 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 		return ErrNodeNotFound
 	}
 
+	// Update property indexes: remove old entries, add new.
+	if old, err := bs.getNodeLocked(id); err == nil {
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	}
 	bs.nodeCache.Put(id, n.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
 	return nil
 }
@@ -644,7 +657,10 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 		return ErrNodeNotFound
 	}
 
+	// Update property indexes: remove old entries based on prevState, add new from current.
+	removeNodeFromPropertyIndexes(bs.propertyIndexes, prevState, id)
 	bs.nodeCache.Put(id, current.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := histNodeKey(int64(id), uint64(prevVersion))
@@ -1164,6 +1180,8 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 		}
 	}
 
+	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, id)
@@ -1232,6 +1250,7 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 			bs.labelIdx[tv][nd.id] = struct{}{}
 			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
 		}
+		addNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 	}
 
 	bs.appendOps(ops...)
@@ -1375,6 +1394,7 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 			return fmt.Errorf("graph: delete node history: %w", err)
 		}
 
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, id)
 		bs.appendOps(ops...)
@@ -1981,6 +2001,111 @@ func (bs *BadgerStore) gcLoop() {
 			}
 		}
 	}
+}
+
+// --- Property indexes ---
+
+// CreatePropertyIndex creates a property index for the given label token and property key.
+// Scans all existing nodes with that label to populate the index.
+// Returns ErrIndexExists if the index already exists.
+func (bs *BadgerStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := bs.propertyIndexes[key]; exists {
+		return ErrIndexExists
+	}
+
+	idx := newPropertyIndex()
+
+	// Populate from existing nodes with this label.
+	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n, err := bs.getNodeLocked(nodeID)
+			if err != nil {
+				continue
+			}
+			if val, found := n.GetProperty(propertyKey); found {
+				idx.add(nodeID, val)
+			}
+		}
+	}
+
+	bs.propertyIndexes[key] = idx
+	return nil
+}
+
+// DropPropertyIndex removes a property index.
+// Returns ErrIndexNotFound if the index does not exist.
+func (bs *BadgerStore) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := bs.propertyIndexes[key]; !exists {
+		return ErrIndexNotFound
+	}
+
+	delete(bs.propertyIndexes, key)
+	return nil
+}
+
+// NodesByLabelAndProperty returns nodes matching the label and property value.
+// Uses the property index if one exists; falls back to label scan + property filter.
+// Results are sorted by snowflake.ID for deterministic output.
+func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string, value any) ([]*types.Node, error) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+
+	key := propertyIndexKey{labelToken: labelToken, propertyKey: propKey}
+	if idx, ok := bs.propertyIndexes[key]; ok {
+		// Indexed path.
+		nodeIDs := idx.lookup(value)
+		if len(nodeIDs) == 0 {
+			return nil, nil
+		}
+		result := make([]*types.Node, 0, len(nodeIDs))
+		for id := range nodeIDs {
+			n, err := bs.getNodeLocked(id)
+			if err != nil {
+				continue
+			}
+			result = append(result, n.DeepCopy())
+		}
+		sortNodesByID(result)
+		return result, nil
+	}
+
+	// Fallback: label scan + property filter.
+	nodeIDs := bs.labelIdx[labelToken]
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	targetKey := propertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+
+	var result []*types.Node
+	for id := range nodeIDs {
+		n, err := bs.getNodeLocked(id)
+		if err != nil {
+			continue
+		}
+		if v, found := n.GetProperty(propKey); found {
+			if propertyValueKey(v) == targetKey {
+				result = append(result, n.DeepCopy())
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	sortNodesByID(result)
+	return result, nil
 }
 
 // --- Lifecycle ---

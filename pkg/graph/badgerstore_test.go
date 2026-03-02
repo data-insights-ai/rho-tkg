@@ -3585,3 +3585,162 @@ func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 		t.Fatalf("want ErrRelNotFound, got %v", err)
 	}
 }
+
+// --- BadgerStore Property Index tests ---
+
+func TestBadgerStoreCreatePropertyIndex(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = n.SetProperty("name", "Alice")
+	_ = bs.PutNode(n)
+
+	err := bs.CreatePropertyIndex(1, "name")
+	if err != nil {
+		t.Fatalf("CreatePropertyIndex failed: %v", err)
+	}
+
+	// Verify index populated from existing data.
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+}
+
+func TestBadgerStoreCreatePropertyIndex_Duplicate(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	_ = bs.CreatePropertyIndex(1, "name")
+	err := bs.CreatePropertyIndex(1, "name")
+	if !errors.Is(err, ErrIndexExists) {
+		t.Fatalf("expected ErrIndexExists, got %v", err)
+	}
+}
+
+func TestBadgerStoreDropPropertyIndex(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	_ = bs.CreatePropertyIndex(1, "name")
+	err := bs.DropPropertyIndex(1, "name")
+	if err != nil {
+		t.Fatalf("DropPropertyIndex failed: %v", err)
+	}
+}
+
+func TestBadgerStoreDropPropertyIndex_NotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	err := bs.DropPropertyIndex(1, "name")
+	if !errors.Is(err, ErrIndexNotFound) {
+		t.Fatalf("expected ErrIndexNotFound, got %v", err)
+	}
+}
+
+func TestBadgerStoreNodesByLabelAndProperty_Hit(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = n1.SetProperty("name", "Alice")
+	_ = bs.PutNode(n1)
+
+	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	_ = n2.SetProperty("name", "Bob")
+	_ = bs.PutNode(n2)
+
+	_ = bs.CreatePropertyIndex(1, "name")
+
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+}
+
+func TestBadgerStoreNodesByLabelAndProperty_Miss(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = n.SetProperty("name", "Alice")
+	_ = bs.PutNode(n)
+
+	_ = bs.CreatePropertyIndex(1, "name")
+
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Charlie")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if nodes != nil {
+		t.Fatalf("expected nil, got %d nodes", len(nodes))
+	}
+}
+
+func TestBadgerStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = n1.SetProperty("name", "Alice")
+	_ = bs.PutNode(n1)
+
+	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	_ = n2.SetProperty("name", "Bob")
+	_ = bs.PutNode(n2)
+
+	// No index — fallback scan.
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("fallback scan: expected 1 node, got %d", len(nodes))
+	}
+}
+
+func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = n.SetProperty("name", "Alice")
+	_ = bs.PutNode(n)
+
+	_ = bs.CreatePropertyIndex(1, "name")
+
+	// Verify initial.
+	nodes, _ := bs.NodesByLabelAndProperty(1, "name", "Alice")
+	if len(nodes) != 1 {
+		t.Fatalf("after put: expected 1, got %d", len(nodes))
+	}
+
+	// Replace with updated property.
+	updated := types.NewNode(snowflake.ID(1), 1, nil)
+	_ = updated.SetProperty("name", "Alicia")
+	_ = bs.ReplaceNode(updated)
+
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alice")
+	if len(nodes) != 0 {
+		t.Fatalf("after replace: old value still found, got %d", len(nodes))
+	}
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia")
+	if len(nodes) != 1 {
+		t.Fatalf("after replace: new value not found, got %d", len(nodes))
+	}
+
+	// Delete the node.
+	_ = bs.DeleteNode(snowflake.ID(1))
+	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia")
+	if len(nodes) != 0 {
+		t.Fatalf("after delete: node still in index, got %d", len(nodes))
+	}
+}
