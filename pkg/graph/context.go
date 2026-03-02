@@ -152,6 +152,10 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	hash := ComputeRelHash(r, typeName)
 	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
 
+	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
+		return nil, err
+	}
+
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -688,6 +692,10 @@ func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, t
 
 	hash := ComputeRelHash(r, typeName)
 	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+
+	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
+		return nil, err
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

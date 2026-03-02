@@ -341,6 +341,88 @@ func (ts *TieredStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 	return shard.DropPropertyIndex(labelToken, propertyKey)
 }
 
+// --- Temporal indexes ---
+
+// CreateTemporalIndex creates a temporal index on nodes with the given label token
+// across all shards (reference + all event shards). New hot shards created via
+// rotation will also inherit the index.
+func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
+	ts.mu.RLock()
+	shards := ts.allActiveShards()
+	ts.mu.RUnlock()
+
+	for _, shard := range shards {
+		if err := shard.CreateTemporalIndex(labelToken); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
+			return err
+		}
+	}
+
+	ts.tempIdxMu.Lock()
+	// Record label token if not already tracked.
+	found := false
+	for _, tok := range ts.tempIdxLabels {
+		if tok == labelToken {
+			found = true
+			break
+		}
+	}
+	if !found {
+		ts.tempIdxLabels = append(ts.tempIdxLabels, labelToken)
+	}
+	ts.tempIdxMu.Unlock()
+	return nil
+}
+
+// DropTemporalIndex removes the temporal index for the given label token
+// from all shards.
+func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
+	ts.mu.RLock()
+	shards := ts.allActiveShards()
+	ts.mu.RUnlock()
+
+	var lastErr error
+	found := false
+	for _, shard := range shards {
+		if err := shard.DropTemporalIndex(labelToken); err != nil {
+			if !errors.Is(err, ErrTemporalIndexNotFound) {
+				lastErr = err
+			}
+		} else {
+			found = true
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+
+	ts.tempIdxMu.Lock()
+	for i, tok := range ts.tempIdxLabels {
+		if tok == labelToken {
+			ts.tempIdxLabels = append(ts.tempIdxLabels[:i], ts.tempIdxLabels[i+1:]...)
+			break
+		}
+	}
+	ts.tempIdxMu.Unlock()
+
+	if !found {
+		return ErrTemporalIndexNotFound
+	}
+	return nil
+}
+
+// allActiveShards returns all currently open BadgerStores (refShard + event shards).
+// Caller must hold ts.mu.RLock or ts.mu.Lock.
+func (ts *TieredStore) allActiveShards() []*BadgerStore {
+	shards := make([]*BadgerStore, 0, 1+len(ts.eventShards))
+	shards = append(shards, ts.refShard)
+	for _, es := range ts.eventShards {
+		if es.store != nil {
+			shards = append(shards, es.store)
+		}
+	}
+	return shards
+}
+
 // --- Reference archive ---
 
 // ErrNotReferenceEntity is returned when attempting to archive a non-reference entity.

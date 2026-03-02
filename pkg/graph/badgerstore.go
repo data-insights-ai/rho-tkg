@@ -109,6 +109,9 @@ type BadgerStore struct {
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[propertyIndexKey]*propertyIndex
 
+	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
+	temporalIndexes map[uint16]*temporalIndex
+
 	// Lifecycle.
 	inMemory  bool
 	readOnly  bool
@@ -119,6 +122,11 @@ type BadgerStore struct {
 	flushDone chan struct{}
 	gcDone    chan struct{}
 	closeOnce sync.Once
+	// dbClosed is set to true immediately before bs.db.Close() in Close().
+	// flush() checks this before calling WriteBatch.Flush() to avoid
+	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
+	// is closed while a WriteBatch is in progress.
+	dbClosed atomic.Bool
 }
 
 var (
@@ -176,6 +184,7 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		relCache:        newEntityLRU[*types.Relationship](capacity),
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
+		temporalIndexes: make(map[uint16]*temporalIndex),
 		inMemory:        cfg.InMemory,
 		readOnly:        cfg.ReadOnly,
 		flushInt:        flushInt,
@@ -351,6 +360,31 @@ func (bs *BadgerStore) loadIndexes() error {
 		}
 		// badger.ErrKeyNotFound is OK — no indexes defined yet.
 
+		// Load temporal index label tokens and rebuild index data.
+		item, err = txn.Get(temporalIndexDefsKey)
+		if err == nil {
+			var tokens []uint16
+			if e := item.Value(func(val []byte) error {
+				return msgpack.Unmarshal(val, &tokens)
+			}); e == nil {
+				for _, tok := range tokens {
+					ti := newTemporalIndex()
+					if nodeIDs, ok := bs.labelIdx[tok]; ok {
+						for nodeID := range nodeIDs {
+							n, nerr := bs.loadNodeFromBadger(txn, nodeID)
+							if nerr != nil {
+								continue // tolerate missing/corrupt during rebuild
+							}
+							from, to := nodeTemporalBounds(nodeID, n.Temporal())
+							ti.add(nodeID, from, to)
+						}
+					}
+					bs.temporalIndexes[tok] = ti
+				}
+			}
+		}
+		// badger.ErrKeyNotFound is OK — no temporal indexes defined yet.
+
 		return nil
 	})
 }
@@ -429,6 +463,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	}
 
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
 	return nil
@@ -520,6 +555,7 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	}
 
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+	removeNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
@@ -549,15 +585,18 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 		return ErrNodeNotFound
 	}
 
-	// Update property indexes: remove old entries, add new.
+	// Update property and temporal indexes: remove old entries, add new.
 	if old, err := bs.getNodeLocked(id); err == nil {
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	} else {
 		// Cache miss or Badger error — brute-force purge to avoid orphaned entries.
 		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 	}
 	bs.nodeCache.Put(id, n.DeepCopy())
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
 	return nil
 }
@@ -707,10 +746,12 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 		return ErrNodeNotFound
 	}
 
-	// Update property indexes: remove old entries based on prevState, add new from current.
+	// Update property and temporal indexes: remove old entries based on prevState, add new from current.
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, prevState, id)
+	removeNodeFromTemporalIndexes(bs.temporalIndexes, prevState, id)
 	bs.nodeCache.Put(id, current.DeepCopy())
 	addNodeToPropertyIndexes(bs.propertyIndexes, current, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := histNodeKey(int64(id), uint64(prevVersion))
@@ -867,8 +908,29 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 // NodesByLabel returns nodes with the given label token, with optional pagination
 // and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
+// Uses the temporal index fast path when available and a temporal filter is set.
 func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	bs.idxMu.RLock()
+
+	// Temporal index fast path: avoids iterating the full label set when a
+	// temporal index exists and a temporal filter is active.
+	if ti, ok := bs.temporalIndexes[token]; ok {
+		var ids []snowflake.ID
+		if opts.ValidAt != 0 {
+			ids = ti.queryAt(opts.ValidAt)
+		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+			ids = ti.queryOverlap(opts.ValidStart, opts.ValidEnd)
+		}
+		if ids != nil {
+			bs.idxMu.RUnlock()
+			ids = paginateIDs(ids, opts.After, opts.Limit)
+			if len(ids) == 0 {
+				return nil, nil
+			}
+			return bs.fetchNodesWithTemporalFilter(ids, opts)
+		}
+	}
+
 	set := bs.labelIdx[token]
 	ids := make([]snowflake.ID, 0, len(set))
 	for id := range set {
@@ -1179,8 +1241,9 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
-		// Property indexes: node data unavailable, brute-force purge.
+		// Property and temporal indexes: node data unavailable, brute-force purge.
 		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, id)
@@ -1207,6 +1270,7 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 	}
 
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+	removeNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
@@ -1278,6 +1342,7 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 			bs.getOrCreateLabelCounter(tv).Add(1)
 		}
 		addNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
+		addNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
 	}
 
 	bs.appendOps(ops...)
@@ -1960,6 +2025,13 @@ func (bs *BadgerStore) flush() error {
 		return fmt.Errorf("graph: write batch set counter: %w", err)
 	}
 
+	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
+	// when called after db.Close() (WaitForMark blocks on a stopped oracle).
+	if bs.dbClosed.Load() {
+		wb.Cancel()
+		bs.requeueOps(ops)
+		return fmt.Errorf("graph: write batch flush: %w", badger.ErrDBClosed)
+	}
 	if err := wb.Flush(); err != nil {
 		bs.requeueOps(ops)
 		return fmt.Errorf("graph: write batch flush: %w", err)
@@ -2121,6 +2193,112 @@ func (bs *BadgerStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 type propIdxDef struct {
 	LabelToken  uint16 `msgpack:"l"`
 	PropertyKey string `msgpack:"p"`
+}
+
+// --- Temporal indexes ---
+
+// CreateTemporalIndex creates a temporal index on nodes with the given label token.
+// Three-phase approach (same as CreatePropertyIndex) for safe concurrent operation.
+// Returns ErrTemporalIndexExists if the index already exists.
+func (bs *BadgerStore) CreateTemporalIndex(labelToken uint16) error {
+	// Phase 1: Install empty live index + snapshot IDs under write Lock.
+	bs.idxMu.Lock()
+	if _, exists := bs.temporalIndexes[labelToken]; exists {
+		bs.idxMu.Unlock()
+		return ErrTemporalIndexExists
+	}
+	liveTI := newTemporalIndex()
+	bs.temporalIndexes[labelToken] = liveTI
+	var ids []snowflake.ID
+	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
+		ids = make([]snowflake.ID, 0, len(nodeIDs))
+		for id := range nodeIDs {
+			ids = append(ids, id)
+		}
+	}
+	bs.idxMu.Unlock()
+
+	// Phase 2: Fetch node data OUTSIDE any lock via public GetNode.
+	type nodeEntry struct {
+		id   snowflake.ID
+		from types.Instant
+		to   types.Instant
+	}
+	backfill := make([]nodeEntry, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // deleted between snapshot and fetch
+			}
+			// Fatal error — remove the incomplete index.
+			bs.idxMu.Lock()
+			delete(bs.temporalIndexes, labelToken)
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: create temporal index: %w", err)
+		}
+		from, to := nodeTemporalBounds(id, n.Temporal())
+		backfill = append(backfill, nodeEntry{id: id, from: from, to: to})
+	}
+
+	// Phase 3: Merge backfill into live index under write Lock.
+	// Skip IDs that were touched by concurrent mutations during Phase 2.
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	for _, entry := range backfill {
+		if _, alive := bs.nodeIDs[entry.id]; !alive {
+			continue // node deleted during Phase 2
+		}
+		// Only add if not already handled by a concurrent write.
+		// The live index starts empty; any entry already present was added
+		// by a concurrent PutNode/ReplaceNode that ran during Phase 2.
+		found := false
+		for _, e := range liveTI.entries {
+			if e.id == entry.id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			liveTI.add(entry.id, entry.from, entry.to)
+		}
+	}
+	bs.persistTemporalIndexDefs()
+	return nil
+}
+
+// DropTemporalIndex removes a temporal index.
+// Returns ErrTemporalIndexNotFound if the index does not exist.
+func (bs *BadgerStore) DropTemporalIndex(labelToken uint16) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.temporalIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+
+	delete(bs.temporalIndexes, labelToken)
+	bs.persistTemporalIndexDefs()
+	return nil
+}
+
+// persistTemporalIndexDefs serializes the current temporal index label tokens to Badger.
+// Caller must hold bs.idxMu write lock.
+func (bs *BadgerStore) persistTemporalIndexDefs() {
+	tokens := make([]uint16, 0, len(bs.temporalIndexes))
+	for tok := range bs.temporalIndexes {
+		tokens = append(tokens, tok)
+	}
+	if len(tokens) == 0 {
+		bs.appendOps(writeOp{opType: writeOpDelete, key: temporalIndexDefsKey})
+		return
+	}
+	data, err := msgpack.Marshal(tokens)
+	if err != nil {
+		slog.Error("graph: persist temporal index defs: marshal failed", "error", err)
+		return // index still works in-memory; will retry on next change
+	}
+	bs.appendOps(writeOp{opType: writeOpSet, key: temporalIndexDefsKey, value: data})
 }
 
 // persistPropertyIndexDefs serializes the current property index definitions to Badger.
@@ -2574,6 +2752,10 @@ func (bs *BadgerStore) Close() error {
 		if e := bs.flush(); e != nil {
 			err = e
 		}
+		// Mark DB as closed BEFORE db.Close() so any concurrent flush()
+		// calls (e.g., from tests that close the DB directly) return an error
+		// instead of blocking in Badger's WaitForMark.
+		bs.dbClosed.Store(true)
 		err = errors.Join(err, bs.db.Close())
 	})
 	return err

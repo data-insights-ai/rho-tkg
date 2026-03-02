@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -139,6 +140,10 @@ type TieredStore struct {
 	idleTimeout time.Duration
 	closeCh     chan struct{} // signals idle-close goroutine to stop
 	closeOnce   sync.Once
+
+	// Temporal indexes — tracked so new hot shards inherit them on rotation.
+	tempIdxMu     sync.Mutex
+	tempIdxLabels []uint16
 }
 
 // NewTieredStore creates a TieredStore with a reference shard and one hot event shard.
@@ -549,6 +554,16 @@ func (ts *TieredStore) RotateHotShard() error {
 	if err != nil {
 		return fmt.Errorf("graph: open new hot shard: %w", err)
 	}
+
+	// Set up temporal indexes on the new hot shard before it begins accepting writes.
+	ts.tempIdxMu.Lock()
+	for _, tok := range ts.tempIdxLabels {
+		// Errors other than ErrTemporalIndexExists are unexpected on a fresh shard.
+		if err := newStore.CreateTemporalIndex(tok); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
+			slog.Error("graph: create temporal index on new hot shard", "token", tok, "error", err)
+		}
+	}
+	ts.tempIdxMu.Unlock()
 
 	newES := &eventShard{
 		name:      newName,

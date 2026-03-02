@@ -4521,7 +4521,10 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	bs.pending[string(injectedKey)] = writeOp{key: injectedKey, value: []byte{0x01}, opType: writeOpSet}
 	bs.wbMu.Unlock()
 
-	// Close the underlying Badger DB. WriteBatch.Flush() will now return an error.
+	// Signal DB closed BEFORE calling db.Close(): Badger v4's WriteBatch.Flush()
+	// blocks forever in WaitForMark when the DB is closed (oracle goroutines stopped).
+	// Our flush() checks dbClosed and returns ErrDBClosed immediately instead.
+	bs.dbClosed.Store(true)
 	if dbErr := bs.db.Close(); dbErr != nil {
 		t.Fatalf("bs.db.Close: %v", dbErr)
 	}

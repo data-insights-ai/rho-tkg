@@ -228,6 +228,25 @@ GOOD: tmp.Write(data); tmp.Sync(); tmp.Close(); os.Rename(tmp, final)
 
 Audit: `grep -rn 'os.Rename' pkg/` — every write-tmp+rename must have Sync() between Write and Close.
 
+## B22. Badger WriteBatch.Flush() Blocks Forever on Closed DB
+
+```
+BAD:  bs.db.Close()
+      bs.flush()   // hangs: WaitForMark blocks (oracle goroutines stopped)
+
+GOOD: bs.dbClosed.Store(true)  // set BEFORE db.Close()
+      bs.db.Close()
+      // flush() checks dbClosed and returns ErrDBClosed immediately
+```
+
+Badger v4's `WriteBatch.Flush()` → `commit()` → `oracle.readTs()` →
+`WaitForMark(context.Background(), ...)` uses a Background context, so it
+blocks forever once DB goroutines stop. Fix: add `dbClosed atomic.Bool` to
+`BadgerStore`, check it in `flush()` before calling `wb.Flush()`, set it in
+`Close()` and in any test that directly closes `bs.db`.
+
+Tests that close `bs.db` directly MUST set `bs.dbClosed.Store(true)` first.
+
 ## B21. Registry Save Must Be Atomic Across Both Halves
 
 ```

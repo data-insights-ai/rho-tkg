@@ -92,7 +92,8 @@ type Graph struct {
 	store       Store
 	entityLocks *entityLockManager
 	validation  ValidationLimits
-	mu          sync.RWMutex // serializes batch writes vs whole-graph temporal reads (Snapshot)
+	constraints ConstraintSet  // temporal constraints checked at relationship write time
+	mu          sync.RWMutex   // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
 }
 
@@ -240,6 +241,24 @@ func (g *Graph) Close() error {
 // ValidationDefaults returns the resolved validation limits (for testing).
 func (g *Graph) ValidationDefaults() ValidationLimits {
 	return g.validation
+}
+
+// AddTemporalConstraint appends a constraint to the current constraint set.
+// Constraints are checked at relationship write time (AddRelationship, ImportRelationshipWithID).
+// Typically called once at startup before any writes.
+func (g *Graph) AddTemporalConstraint(c TemporalConstraint) {
+	g.constraints = g.constraints.Add(c)
+}
+
+// SetTemporalConstraints replaces the entire constraint set.
+// Pass an empty ConstraintSet to remove all constraints.
+func (g *Graph) SetTemporalConstraints(cs ConstraintSet) {
+	g.constraints = cs
+}
+
+// TemporalConstraints returns the current constraint set (defensive copy).
+func (g *Graph) TemporalConstraints() ConstraintSet {
+	return g.constraints
 }
 
 // validateName checks a label or relationship type name against MaxNameLength.
@@ -607,6 +626,29 @@ func (g *Graph) DropPropertyIndex(label, propertyKey string) error {
 		return nil
 	}
 	return g.store.DropPropertyIndex(tok, propertyKey)
+}
+
+// CreateTemporalIndex creates a temporal index on nodes with the given label.
+// Accelerates temporal queries (ValidAt/interval filter) for that label.
+// Returns ErrTemporalIndexExists if the index already exists.
+// Returns nil if the label has never been registered.
+func (g *Graph) CreateTemporalIndex(label string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.CreateTemporalIndex(tok)
+}
+
+// DropTemporalIndex removes a temporal index for the given label.
+// Returns ErrTemporalIndexNotFound if the index does not exist.
+// Returns nil if the label has never been registered.
+func (g *Graph) DropTemporalIndex(label string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.DropTemporalIndex(tok)
 }
 
 // NodesByLabelAndProperty returns nodes matching the label and property value,

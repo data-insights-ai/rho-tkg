@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.33 | Phases: 1a-1g, 2a-2i, 3a-3e
+Status: v3.0.36 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.3
 
 ## Build & Test Commands
 
@@ -69,6 +69,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
 | `temporal.go` | `Instant` type (Unix ms), `entityID`, `TemporalMetadata` struct |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` — hash chain (`Hash`, `PrevHash`) |
+| `allen.go` | Allen's 13 interval relations — `AllenRelation`, `AllenRelationSet`, `Relate()`, `Compose()`, `ComposeSets()`, composition table |
 
 ### `pkg/graph`
 
@@ -90,6 +91,9 @@ These rules exist because every single one was violated at least once. Do not sk
 | `context.go` | `WithContext` methods, `ValidationLimits` enforcement, two-phase delete with TOCTOU retry |
 | `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
 | `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
+| `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
+| `temporal_constraint.go` | Temporal constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, 6 sentinel errors, `checkTemporalConstraints` enforcement |
+| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, binary search), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
 | `tx.go` | `GraphTx` — create-only transaction holding graph write lock |
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
@@ -157,6 +161,7 @@ These rules exist because every single one was violated at least once. Do not sk
 - **Close() must flush unconditionally**: Even when `flushLoop` was never started (InMemory mode).
 - **In-memory state must survive restart**: If it's in memory and it matters, it needs a persistence path and a rebuild path. If `loadIndexes()` doesn't rebuild it, it doesn't survive restart.
 - **Counters in same WriteBatch as data**: Separate transactions = crash inconsistency.
+- **Badger WriteBatch.Flush() blocks forever on closed DB**: Badger v4 uses `context.Background()` in `oracle.readTs()` → `WaitForMark()`, so closing the DB stops oracle goroutines and any in-flight `WriteBatch.Flush()` blocks forever. Fix: `BadgerStore.dbClosed atomic.Bool` is set to `true` in `Close()` BEFORE `db.Close()`. `flush()` checks it and returns `ErrDBClosed` immediately. Any test that calls `bs.db.Close()` directly MUST set `bs.dbClosed.Store(true)` first. Never call `WriteBatch.Flush()` after `db.Close()`.
 
 ### Version History
 

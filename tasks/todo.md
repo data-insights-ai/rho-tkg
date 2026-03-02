@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.35. Core engine complete (Phases 1-3). Now closing v2 feature gaps.
+Library at v3.0.36. Core engine complete (Phases 1-3). Phases 4.1–4.3 complete.
 
 ---
 
@@ -35,6 +35,7 @@ Library at v3.0.35. Core engine complete (Phases 1-3). Now closing v2 feature ga
 | v3.0.33 | review | Pre-release code review (1 BLOCKER + 10 MAJORs + 16 MINORs) |
 | v3.0.34 | 4.1 | Allen's 13 interval relations |
 | v3.0.35 | coverage | Carry-forward test gaps: ImportNames validation, wire.go helpers, flush() error path |
+| v3.0.36 | 4.2 + 4.3 | Temporal constraints (ConstraintSet, enforcement hooks) + temporal indexes (CreateTemporalIndex, fast-path NodesByLabel, TieredStore delegation, BadgerStore persistence); fix B22 (Badger WriteBatch.Flush blocks on closed DB) |
 
 ---
 
@@ -49,30 +50,21 @@ Complete. `types.AllenRelation` (13 relations), `AllenRelationSet` (uint16 bitse
 `RelateNodes`/`RelateRels`. 48 tests. No `EnforcePathConsistency` yet (deferred until
 tkgd-v3 needs constraint networks).
 
-### 4.2. Temporal Constraints — High
+### 4.2. Temporal Constraints ✓ (v3.0.36)
 
-**v2:** `types.TemporalConstraint` and `ConstraintSet` — enforce rules like "relationship R
-must exist within the validity of its endpoints".
+Complete. `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet` (value type, zero = no constraints).
+`ConstraintRelWithinEndpoints` enforces relationship validity ⊆ intersection of both endpoint nodes' validity.
+6 sentinel errors wrapping `ErrTemporalConstraint` (errors.Is on outer or specific leaf).
+Hook in `AddRelationshipWithContext` and `ImportRelationshipWithID`. 13 tests.
 
-**v3:** None. Temporal metadata stored but no constraint enforcement.
+### 4.3. Advanced Temporal Indexes ✓ (v3.0.36)
 
-- [ ] `TemporalConstraint` type (relationship validity ⊆ endpoint validity)
-- [ ] `ConstraintSet` for composing multiple constraints
-- [ ] Enforcement hooks in AddRelationship / UpdateRelationship
-- [ ] Constraint violation sentinel errors
-
-### 4.3. Advanced Temporal Indexes — High
-
-**v2:** `AdvancedTemporalIndex` (interval tree), `HighFrequencyIndex`, `TimeWindowIndex`,
-`IndexManager` — specialized index structures for temporal queries.
-
-**v3:** Property indexes only (`CreatePropertyIndex` / `NodesByLabelAndProperty`).
-Temporal queries do full-scan with ForEach iterators.
-
-- [ ] Interval tree data structure for `[ValidFrom, ValidTo)` ranges
-- [ ] `CreateTemporalIndex(labelToken)` on Store interface
-- [ ] Temporal push-down uses index when available, falls back to scan
-- [ ] Integration with TieredStore per-shard indexes
+Complete. `temporalIndex` sorted-slice interval index (binary search insertion, O(n) queries).
+`CreateTemporalIndex(label)` / `DropTemporalIndex(label)` on `Store` interface + `Graph` public API.
+`NodesByLabel` uses temporal index fast path when available and a temporal filter is active.
+BadgerStore: 3-phase creation (same pattern as property indexes), index label tokens persisted to Badger,
+rebuilt from nodes on startup. TieredStore: delegates to all shards, `tempIndexLabels` ensures new hot
+shards inherit indexes on rotation. MemoryStore: full integration. 11 unit tests + helper tests.
 
 ### 4.4. Version Chain Navigation — Medium
 
@@ -169,8 +161,8 @@ but no cache hit/miss metrics or operation counters.
 | # | Feature | Priority | Effort |
 |---|---------|----------|--------|
 | ~~4.1~~ | ~~Allen's interval algebra~~ | ~~High~~ | ✓ Complete (v3.0.34) |
-| 4.2 | Temporal constraints | High | Medium — constraint types + enforcement hooks |
-| 4.3 | Advanced temporal indexes | High | Large — interval tree data structure |
+| ~~4.2~~ | ~~Temporal constraints~~ | ~~High~~ | ✓ Complete (v3.0.36) |
+| ~~4.3~~ | ~~Advanced temporal indexes~~ | ~~High~~ | ✓ Complete (v3.0.36) |
 | 4.4 | Version chain navigation | Medium | Small — add Next/Prev/Close methods |
 | 4.5 | Event system | Medium | Medium — dispatcher + subscriber pattern |
 | 4.6 | CRUD diff exporter | Medium | Medium — compare two snapshots |

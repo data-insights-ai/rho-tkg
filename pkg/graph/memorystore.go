@@ -32,6 +32,9 @@ type MemoryStore struct {
 
 	// Property indexes — label+property → value → set of node IDs.
 	propertyIndexes map[propertyIndexKey]*propertyIndex
+
+	// Temporal indexes — labelToken → interval index for temporal push-down.
+	temporalIndexes map[uint16]*temporalIndex
 }
 
 // NewMemoryStore creates an empty MemoryStore with all indexes initialized.
@@ -46,6 +49,7 @@ func NewMemoryStore() *MemoryStore {
 		nodeHistory:     make(map[snowflake.ID]map[uint32]*types.Node),
 		relHistory:      make(map[snowflake.ID]map[uint32]*types.Relationship),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
+		temporalIndexes: make(map[uint16]*temporalIndex),
 	}
 }
 
@@ -73,6 +77,7 @@ func (ms *MemoryStore) PutNode(n *types.Node) error {
 	}
 
 	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, n, id)
 	return nil
 }
 
@@ -113,6 +118,7 @@ func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
 	}
 
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, id)
 	delete(ms.nodes, id)
 	return nil
 }
@@ -132,8 +138,10 @@ func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
 		return ErrNodeNotFound
 	}
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
 	ms.nodes[id] = n.DeepCopy()
 	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, n, id)
 	return nil
 }
 
@@ -300,12 +308,14 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 	}
 
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, id)
 	delete(ms.nodes, id)
 	return nil
 }
 
 // NodesByLabel returns nodes with the given label token, with optional pagination
 // and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
+// Uses the temporal index for fast filtering when one exists and a temporal filter is set.
 // MemoryStore never returns an error.
 func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
@@ -316,7 +326,30 @@ func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 		return nil, nil
 	}
 
-	// Collect and sort IDs before fetching entities.
+	// Temporal index fast path: use interval index if one exists for this label.
+	if ti, ok := ms.temporalIndexes[token]; ok {
+		var ids []snowflake.ID
+		if opts.ValidAt != 0 {
+			ids = ti.queryAt(opts.ValidAt)
+		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+			ids = ti.queryOverlap(opts.ValidStart, opts.ValidEnd)
+		}
+		if ids != nil {
+			ids = paginateIDs(ids, opts.After, opts.Limit)
+			if len(ids) == 0 {
+				return nil, nil
+			}
+			result := make([]*types.Node, 0, len(ids))
+			for _, id := range ids {
+				if n, ok := ms.nodes[id]; ok {
+					result = append(result, n.DeepCopy())
+				}
+			}
+			return result, nil
+		}
+	}
+
+	// Standard path: collect and sort IDs before fetching entities.
 	ids := make([]snowflake.ID, 0, len(set))
 	for id := range set {
 		ids = append(ids, id)
@@ -659,10 +692,12 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	}
 	inner[prevVersion] = prevState.DeepCopy()
 
-	// Replace current entity with property index update.
+	// Replace current entity with property and temporal index updates.
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
 	ms.nodes[id] = current.DeepCopy()
 	addNodeToPropertyIndexes(ms.propertyIndexes, current, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, current, id)
 	return nil
 }
 
@@ -736,6 +771,48 @@ func (ms *MemoryStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 	}
 
 	delete(ms.propertyIndexes, key)
+	return nil
+}
+
+// --- Temporal indexes ---
+
+// CreateTemporalIndex creates a temporal interval index on nodes with the given label token.
+// Scans existing nodes with that label to populate the index.
+// Returns ErrTemporalIndexExists if an index already exists for this label.
+func (ms *MemoryStore) CreateTemporalIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	ti := newTemporalIndex()
+	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n := ms.nodes[nodeID]
+			if n == nil {
+				continue
+			}
+			from, to := nodeTemporalBounds(nodeID, n.Temporal())
+			ti.add(nodeID, from, to)
+		}
+	}
+
+	ms.temporalIndexes[labelToken] = ti
+	return nil
+}
+
+// DropTemporalIndex removes a temporal index for the given label token.
+// Returns ErrTemporalIndexNotFound if no index exists.
+func (ms *MemoryStore) DropTemporalIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(ms.temporalIndexes, labelToken)
 	return nil
 }
 

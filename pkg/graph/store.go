@@ -110,6 +110,13 @@ type Store interface {
 	// Uses the index if one exists; falls back to label scan + property filter otherwise.
 	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
 
+	// Temporal indexes — index nodes by validity interval for O(log n + k) temporal queries.
+	// CreateTemporalIndex creates a temporal index on nodes with the given label token.
+	// Scans existing nodes to populate the index. Returns ErrTemporalIndexExists on duplicate.
+	CreateTemporalIndex(labelToken uint16) error
+	// DropTemporalIndex removes a temporal index. Returns ErrTemporalIndexNotFound if not found.
+	DropTemporalIndex(labelToken uint16) error
+
 	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
 	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)
@@ -163,7 +170,9 @@ var (
 	ErrRelExists        = errors.New("graph: relationship already exists")
 	ErrVersionNotFound  = errors.New("graph: version not found")
 	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
-	ErrIndexExists      = errors.New("graph: property index already exists")
-	ErrIndexNotFound    = errors.New("graph: property index not found")
-	ErrTxDone           = errors.New("graph: transaction already committed or rolled back")
+	ErrIndexExists              = errors.New("graph: property index already exists")
+	ErrIndexNotFound            = errors.New("graph: property index not found")
+	ErrTemporalIndexExists      = errors.New("graph: temporal index already exists")
+	ErrTemporalIndexNotFound    = errors.New("graph: temporal index not found")
+	ErrTxDone                   = errors.New("graph: transaction already committed or rolled back")
 )
