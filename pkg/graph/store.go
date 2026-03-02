@@ -111,6 +111,11 @@ type Store interface {
 	// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
 	AllRelHistoryIDs() ([]snowflake.ID, error)
 
+	// Clear removes all entities, indexes, history, and counters.
+	// Preserves nothing. Registries are a Graph-layer concern (not cleared).
+	// After Clear(), the store is in the same state as NewMemoryStore() / fresh Badger.
+	Clear() error
+
 	// Close releases any resources held by the store.
 	// Safe to call multiple times. No-op for stores without resources.
 	Close() error
@@ -126,4 +131,5 @@ var (
 	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
 	ErrIndexExists      = errors.New("graph: property index already exists")
 	ErrIndexNotFound    = errors.New("graph: property index not found")
+	ErrTxDone           = errors.New("graph: transaction already committed or rolled back")
 )

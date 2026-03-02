@@ -598,3 +598,12 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	}
 	return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 }
+
+// Reset atomically clears all entities, indexes, history, and counters from
+// the graph while preserving registries (label and relationship type tokens).
+// Acquires the graph write lock to prevent concurrent operations.
+func (g *Graph) Reset() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.store.Clear()
+}

@@ -42,6 +42,22 @@
 // mode where flushLoop was never spawned), then closes Badger. Idempotent
 // via sync.Once.
 //
+// # Temporal Push-Down
+//
+// QueryOpts supports ValidAt (point-in-time) and ValidStart/ValidEnd (interval)
+// temporal filters. Both MemoryStore and BadgerStore evaluate these filters
+// before deep-copying entities, avoiding O(N) materialization waste. BadgerStore
+// uses a two-stage approach: Peek pre-filter for zero-allocation cache hits,
+// then post-filter for cache misses.
+//
+// # Transactions
+//
+// GraphTx is a create-only transaction that holds the graph write lock for its
+// duration. AddNode/AddRelationship track created IDs; Commit releases the lock;
+// Rollback deletes entities in reverse order without tombstones.
+// Graph.Reset atomically clears all entities via Store.Clear while preserving
+// registries.
+//
 // # Concurrency
 //
 // An entity lock manager (256-shard mutex array) serializes operations on

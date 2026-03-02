@@ -2353,6 +2353,46 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	return ids, nil
 }
 
+// --- Clear ---
+
+// Clear removes all entities, indexes, history, counters, and property indexes.
+// After Clear(), the BadgerStore is in the same state as a freshly opened store.
+// Registries are a Graph-layer concern — not cleared here.
+func (bs *BadgerStore) Clear() error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	// Clear in-memory indexes.
+	bs.nodeIDs = make(map[snowflake.ID]struct{})
+	bs.relIDs = make(map[snowflake.ID]struct{})
+	bs.labelIdx = make(map[uint16]map[snowflake.ID]struct{})
+	bs.typeIdx = make(map[uint16]map[snowflake.ID]struct{})
+	bs.outIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
+	bs.inIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
+
+	// Reset atomic counters.
+	bs.nodeCount.Store(0)
+	bs.relCount.Store(0)
+	bs.labelCounts = sync.Map{}
+	bs.typeCounts = sync.Map{}
+
+	// Re-create LRU caches with same capacity.
+	cap := bs.nodeCache.Cap()
+	bs.nodeCache = newEntityLRU[*types.Node](cap)
+	bs.relCache = newEntityLRU[*types.Relationship](cap)
+
+	// Clear pending buffer.
+	bs.wbMu.Lock()
+	bs.pending = make(map[string]writeOp)
+	bs.wbMu.Unlock()
+
+	// Clear property indexes.
+	bs.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
+
+	// Drop all data from Badger — atomically removes all KV pairs.
+	return bs.db.DropAll()
+}
+
 // --- Lifecycle ---
 
 // Close stops background goroutines, performs a final flush (including counters),

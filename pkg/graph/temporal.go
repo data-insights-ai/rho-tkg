@@ -590,47 +590,23 @@ func (g *Graph) Snapshot(t types.Instant) (*GraphSnapshot, error) {
 // --- Combined label + property + temporal queries ---
 
 // NodesByLabelPropertyAndTime returns nodes matching the label and property value
-// that are valid at the given instant. Composes the property index (or fallback
-// scan) with temporal filtering. Returns nil if the label is not registered.
+// that are valid at the given instant. Uses temporal query push-down.
+// Returns nil if the label is not registered.
 func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t types.Instant) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-
-	candidates, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*types.Node
-	for _, n := range candidates {
-		if g.isNodeValidAt(n, t) {
-			result = append(result, n)
-		}
-	}
-	return result, nil
+	return g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{ValidAt: t})
 }
 
 // NodesByLabelPropertyDuring returns nodes matching the label and property value
-// whose validity overlaps [start, end). Composes the property index (or fallback
-// scan) with temporal interval filtering. Returns nil if the label is not registered.
+// whose validity overlaps [start, end). Uses temporal query push-down.
+// Returns nil if the label is not registered.
 func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-
-	candidates, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*types.Node
-	for _, n := range candidates {
-		if g.isNodeValidDuring(n, start, end) {
-			result = append(result, n)
-		}
-	}
-	return result, nil
+	return g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{ValidStart: start, ValidEnd: end})
 }

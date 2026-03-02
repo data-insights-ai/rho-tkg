@@ -897,6 +897,24 @@ func (ms *MemoryStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	return ids, nil
 }
 
+// Clear removes all entities, indexes, history, and property indexes.
+// After Clear(), the MemoryStore is empty (same state as NewMemoryStore()).
+func (ms *MemoryStore) Clear() error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	ms.nodes = make(map[snowflake.ID]*types.Node)
+	ms.rels = make(map[snowflake.ID]*types.Relationship)
+	ms.labelIdx = make(map[uint16]map[snowflake.ID]struct{})
+	ms.typeIdx = make(map[uint16]map[snowflake.ID]struct{})
+	ms.outIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
+	ms.inIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
+	ms.nodeHistory = make(map[snowflake.ID]map[uint32]*types.Node)
+	ms.relHistory = make(map[snowflake.ID]map[uint32]*types.Relationship)
+	ms.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
+	return nil
+}
+
 // Close is a no-op for MemoryStore. Satisfies the Store interface.
 func (ms *MemoryStore) Close() error { return nil }
 

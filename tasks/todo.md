@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.25. Phases 1a-1g and 2a-2g complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Two Store interface extensions identified from tkgd-v3 integration: temporal query push-down and transaction rollback.
+Library at v3.0.25. Phases 1a-1g and 2a-2i complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -298,39 +298,33 @@ Gaps identified during tkgd-v3 development. Not blockers for Phase 3 tiering,
 but required for correct multi-step mutations and efficient temporal queries
 at the server layer.
 
-### 2h. Temporal Query Push-Down
+### 2h. Temporal Query Push-Down ✓
 
-**Problem**: Every temporal query materializes all candidates, deep-copies them, then filters in Go. `GetNodesByLabelValidAt("Person", t)` with 100K "Person" nodes but 50 valid at time `t` deserializes all 100K (violates lesson #5). `Snapshot(t)` on a 5M-entity graph materializes everything.
+Complete. Temporal filtering pushed down to Store layer, eliminating O(N) deep-copy waste.
 
-**Current state**: `QueryOpts` has `{Limit, After}` only — no temporal filter fields. The 5 paginated Store methods and 2 combined queries (`NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`) all fetch full candidate sets before Graph-layer temporal filtering.
+**QueryOpts extension:** `ValidAt types.Instant` (point-in-time), `ValidStart/ValidEnd types.Instant` (interval). Zero values = no filter (backward-compatible).
 
-**Proposed**:
-- [ ] Add temporal filter fields to `QueryOpts` (`ValidAt types.Instant`, `ValidFrom types.Instant`, `ValidUntil types.Instant`)
-- [ ] MemoryStore: skip deep-copy for non-matching entities (check `TemporalMetadata` before copy)
-- [ ] BadgerStore: skip msgpack decode for entities outside temporal window (read `TemporalMetadata` prefix before full deserialization, or use in-memory index)
-- [ ] Refactor `GetNodesByLabelValidAt`, `GetNodesValidAt`, `GetNodesValidDuring`, `Snapshot` to delegate temporal filtering to Store via `QueryOpts`
-- [ ] Update `GetRelationshipsValidAt`, `GetRelationshipsValidDuring` similarly
-- [ ] Maintain backward compatibility: zero temporal fields = no filtering (current behavior)
+**Implementation:**
+- [x] `temporal_filter.go` — `entityValidFrom` (explicit ValidFrom or snowflake ID bit extraction), `matchesTemporalFilter` (point-in-time: `from <= t AND (to == 0 OR to > t)`, interval overlap: `from < end AND (to == 0 OR to > start)`)
+- [x] `lru.go` — `Peek(key)` for zero-allocation cache lookup (no deep-copy, no MRU promotion), `Cap()` for cache recreation
+- [x] MemoryStore: 5 paginated methods filter before deep-copy via `filterNodeIDsByTemporal`/`filterRelIDsByTemporal` (reads in-memory entity pointers directly)
+- [x] BadgerStore: two-stage filtering — `filterNodeIDsByTemporalPeek` pre-filters cache hits (zero allocation), `fetchNodesWithTemporalFilter` post-filters cache misses after GetNode
+- [x] Graph-layer refactor: `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring` now push temporal filters into Store calls via QueryOpts
 
-**Effort**: Medium | **Impact**: High for large graphs
-**Boundary semantics**: Must align with existing `isNodeValidAt` / `isNodeValidDuring` — `validFrom <= t AND (validTo == 0 OR validTo > t)` for point-in-time, interval overlap for range queries.
+**~30 tests:** 9 temporal_filter, 6 LRU (Peek/Cap), 8 MemoryStore temporal, 7 BadgerStore temporal. All pass with race detector.
 
-### 2i. Transaction Rollback
+### 2i. Graph Transactions + Reset ✓
 
-**Problem**: `BatchBuilder.Execute()` has partial-success semantics. If step 3 (update) fails after steps 1-2 (creates) succeeded, the creates persist with no rollback. Multi-step operations like Cypher `CREATE` or graph import can't undo committed mutations on later failure. `Graph.Reset()` isn't atomic.
+Complete. Create-only transaction with full rollback + atomic graph reset.
 
-**Current state**: Atomicity is per-operation only. Individual Store methods (`PutNodesBatch`, `DeleteNodeCascade`, `ReplaceNodeWithHistory`) are all-or-nothing, but there's no cross-operation transaction boundary. The Store interface has no `BeginTx` / `Commit` / `Rollback`.
+**Implementation:**
+- [x] `Store.Clear()` — removes all entities, indexes, history, counters. MemoryStore reinitializes 9 maps. BadgerStore clears indexes + counters + LRU caches + pending buffer + `db.DropAll()`
+- [x] `ErrTxDone` sentinel error for post-commit/rollback method calls
+- [x] `GraphTx` (`tx.go`) — create-only transaction holding graph write lock. `BeginTx()`, `AddNode`, `AddRelationship`, `Commit`, `Rollback`, `CreatedNodeIDs`, `CreatedRelIDs`
+- [x] Rollback uses `store.Delete*` directly (no tombstone versions — rolled-back entities vanish completely). Reverse creation order. Best-effort: continues on error, returns first error
+- [x] `Graph.Reset()` — acquires graph write lock, calls `store.Clear()`. Preserves registries (Graph-layer concern, not cleared by Store)
 
-**Proposed**:
-- [ ] Add `BeginTx() (Tx, error)`, `Tx.Commit() error`, `Tx.Rollback() error` to Store interface
-- [ ] MemoryStore: snapshot-and-restore (copy-on-write or journal-based undo log)
-- [ ] BadgerStore: leverage Badger's native `DB.NewTransaction()` or WAL-based undo log over the pending buffer
-- [ ] Graph-layer `BeginTx` / `Commit` / `Rollback` that wraps Store transactions + entity lock scope
-- [ ] `BatchBuilder` option to run within a transaction (all-or-nothing Execute)
-- [ ] Define isolation level: read-committed (default, simplest) vs snapshot isolation
-
-**Effort**: High | **Impact**: High for correctness of multi-step mutations
-**Design constraint**: Must not break async flush model in BadgerStore. Transaction scope must interact correctly with entity locks (locks held for duration of tx, or optimistic with conflict detection).
+**~25 tests:** 8 Store.Clear (4 MemoryStore + 4 BadgerStore), 12 GraphTx (commit/rollback/double-commit/ErrTxDone/concurrent access/rollback-leaves-no-history), 4 Graph.Reset (empty/clears entities/preserves registries/clears history). All pass with race detector.
 
 ---
 
