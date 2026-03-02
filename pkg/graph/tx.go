@@ -7,26 +7,49 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
-// GraphTx is a create-only transaction that tracks created entities for rollback.
+// nodeSnapshot captures pre-mutation state for rollback.
+type nodeSnapshot struct {
+	id   snowflake.ID
+	prev *types.Node // DeepCopy before first mutation
+}
+
+// relSnapshot captures pre-mutation state for rollback.
+type relSnapshot struct {
+	id   snowflake.ID
+	prev *types.Relationship // DeepCopy before first mutation
+}
+
+// deletedNodeSnapshot captures a deleted node and its cascade-deleted relationships.
+type deletedNodeSnapshot struct {
+	node *types.Node
+	rels []*types.Relationship // cascade-deleted rels
+}
+
+// GraphTx is a mutation transaction with snapshot-based rollback.
 // It holds the graph write lock for the entire duration of the transaction,
-// blocking concurrent Batch/Snapshot operations. Not suitable for long-running
-// transactions, but acceptable for create-only transactions (fast).
+// blocking concurrent Batch/Snapshot operations. All mutations (create, update,
+// delete) are tracked so Rollback can restore pre-transaction state.
 //
 // All methods check the done flag and return ErrTxDone after Commit/Rollback.
 type GraphTx struct {
 	g            *Graph
 	createdNodes []snowflake.ID
 	createdRels  []snowflake.ID
-	mu           sync.Mutex // protects done flag
+	updatedNodes []nodeSnapshot
+	updatedRels  []relSnapshot
+	deletedNodes []deletedNodeSnapshot
+	deletedRels  []*types.Relationship
+	snapshotSet  map[snowflake.ID]bool // tracks already-snapshotted entities (first mutation only)
+	mu           sync.Mutex            // protects done flag and snapshot tracking
 	done         bool
 }
 
-// BeginTx starts a new create-only transaction.
+// BeginTx starts a new mutation transaction.
 // Acquires the graph write lock, blocking concurrent Batch/Snapshot operations.
 // The lock is released on Commit() or Rollback().
 func (g *Graph) BeginTx() *GraphTx {
 	g.mu.Lock()
-	return &GraphTx{g: g}
+	return &GraphTx{g: g, snapshotSet: make(map[snowflake.ID]bool)}
 }
 
 // AddNode creates a new node within the transaction.
@@ -73,7 +96,201 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	return r, nil
 }
 
-// Commit finalizes the transaction, making all created entities permanent.
+// UpdateNode applies property updates to a node within the transaction.
+// Snapshots the pre-mutation state on first mutation (for rollback).
+// Delegates the actual update to Graph.UpdateNode.
+func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	if err := tx.snapshotNode(id); err != nil {
+		return nil, err
+	}
+
+	return tx.g.UpdateNode(id, updates)
+}
+
+// UpdateRelationship applies property updates to a relationship within the transaction.
+// Snapshots the pre-mutation state on first mutation (for rollback).
+// Delegates the actual update to Graph.UpdateRelationship.
+func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	if err := tx.snapshotRel(id); err != nil {
+		return nil, err
+	}
+
+	return tx.g.UpdateRelationship(id, updates)
+}
+
+// SetNodeProperty sets a single property on a node within the transaction.
+func (tx *GraphTx) SetNodeProperty(id snowflake.ID, key string, value any) error {
+	_, err := tx.UpdateNode(id, map[string]any{key: value})
+	return err
+}
+
+// DeleteNodeProperty removes a single property from a node within the transaction.
+func (tx *GraphTx) DeleteNodeProperty(id snowflake.ID, key string) error {
+	_, err := tx.UpdateNode(id, map[string]any{key: nil})
+	return err
+}
+
+// SetRelationshipProperty sets a single property on a relationship within the transaction.
+func (tx *GraphTx) SetRelationshipProperty(id snowflake.ID, key string, value any) error {
+	_, err := tx.UpdateRelationship(id, map[string]any{key: value})
+	return err
+}
+
+// DeleteRelationshipProperty removes a single property from a relationship within the transaction.
+func (tx *GraphTx) DeleteRelationshipProperty(id snowflake.ID, key string) error {
+	_, err := tx.UpdateRelationship(id, map[string]any{key: nil})
+	return err
+}
+
+// DeleteNode removes a node and all connected relationships within the transaction.
+// Snapshots the node and all cascade-deleted relationships for rollback.
+// Delegates the actual deletion to Graph.DeleteNode.
+func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	// Snapshot the node before deletion.
+	node, err := tx.g.store.GetNode(id)
+	if err != nil {
+		return err
+	}
+	nodeCopy := node.DeepCopy()
+
+	// Snapshot all connected relationships before cascade deletion.
+	outRels, err := tx.g.store.OutgoingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+	inRels, err := tx.g.store.IncomingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+
+	// Deduplicate self-loop rels and deep copy all.
+	seen := make(map[snowflake.ID]bool)
+	var relCopies []*types.Relationship
+	for _, r := range append(outRels, inRels...) {
+		rid := r.InternalID().SnowflakeID()
+		if seen[rid] {
+			continue
+		}
+		seen[rid] = true
+		relCopies = append(relCopies, r.DeepCopy())
+	}
+
+	// Perform the actual deletion.
+	if err := tx.g.DeleteNode(id); err != nil {
+		return err
+	}
+
+	tx.mu.Lock()
+	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
+		node: nodeCopy,
+		rels: relCopies,
+	})
+	tx.mu.Unlock()
+
+	return nil
+}
+
+// DeleteRelationship removes a relationship within the transaction.
+// Snapshots the relationship for rollback. Delegates to Graph.DeleteRelationship.
+func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	// Snapshot the relationship before deletion.
+	rel, err := tx.g.store.GetRelationship(id)
+	if err != nil {
+		return err
+	}
+	relCopy := rel.DeepCopy()
+
+	// Perform the actual deletion.
+	if err := tx.g.DeleteRelationship(id); err != nil {
+		return err
+	}
+
+	tx.mu.Lock()
+	tx.deletedRels = append(tx.deletedRels, relCopy)
+	tx.mu.Unlock()
+
+	return nil
+}
+
+// snapshotNode captures the pre-mutation state of a node on first mutation only.
+// If the node was already snapshotted in this transaction, this is a no-op.
+func (tx *GraphTx) snapshotNode(id snowflake.ID) error {
+	tx.mu.Lock()
+	if tx.snapshotSet[id] {
+		tx.mu.Unlock()
+		return nil
+	}
+	tx.mu.Unlock()
+
+	node, err := tx.g.store.GetNode(id)
+	if err != nil {
+		return err
+	}
+	prev := node.DeepCopy()
+
+	tx.mu.Lock()
+	// Double-check after re-acquiring lock.
+	if !tx.snapshotSet[id] {
+		tx.snapshotSet[id] = true
+		tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{id: id, prev: prev})
+	}
+	tx.mu.Unlock()
+	return nil
+}
+
+// snapshotRel captures the pre-mutation state of a relationship on first mutation only.
+func (tx *GraphTx) snapshotRel(id snowflake.ID) error {
+	tx.mu.Lock()
+	if tx.snapshotSet[id] {
+		tx.mu.Unlock()
+		return nil
+	}
+	tx.mu.Unlock()
+
+	rel, err := tx.g.store.GetRelationship(id)
+	if err != nil {
+		return err
+	}
+	prev := rel.DeepCopy()
+
+	tx.mu.Lock()
+	if !tx.snapshotSet[id] {
+		tx.snapshotSet[id] = true
+		tx.updatedRels = append(tx.updatedRels, relSnapshot{id: id, prev: prev})
+	}
+	tx.mu.Unlock()
+	return nil
+}
+
+// Commit finalizes the transaction, making all mutations permanent.
 // Releases the graph write lock. After Commit, all tx methods return ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	tx.mu.Lock()
@@ -87,9 +304,18 @@ func (tx *GraphTx) Commit() error {
 	return nil
 }
 
-// Rollback undoes all entity creations in reverse order, then releases the
-// graph write lock. Uses store.Delete* directly to avoid writing tombstone
-// versions — rolled-back entities should vanish completely.
+// Rollback undoes all mutations in reverse order, then releases the graph write lock.
+//
+// Rollback order (reverse of application):
+//  1. Restore deleted relationships (standalone deletes)
+//  2. Restore deleted nodes + their cascade-deleted relationships
+//  3. Restore updated relationships to pre-mutation state
+//  4. Restore updated nodes to pre-mutation state
+//  5. Delete created relationships (reverse creation order)
+//  6. Delete created nodes (reverse creation order, cascade)
+//
+// Known limitation: rolled-back updates/deletes may leave phantom version history
+// entries. Entity state is correct; history may have extra entries.
 //
 // Best-effort: continues on error, returns the first error encountered.
 // After Rollback, all tx methods return ErrTxDone.
@@ -103,23 +329,44 @@ func (tx *GraphTx) Rollback() error {
 	tx.done = true
 
 	var firstErr error
-
-	// Delete relationships in reverse creation order.
-	for i := len(tx.createdRels) - 1; i >= 0; i-- {
-		if err := tx.g.store.DeleteRelationship(tx.createdRels[i]); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+	capture := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 
-	// Delete nodes in reverse creation order (cascade to handle any remaining refs).
-	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
-		if err := tx.g.store.DeleteNodeCascade(tx.createdNodes[i]); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+	// 1. Restore standalone-deleted relationships (reverse order).
+	for i := len(tx.deletedRels) - 1; i >= 0; i-- {
+		capture(tx.g.store.PutRelationship(tx.deletedRels[i]))
+	}
+
+	// 2. Restore deleted nodes + their cascade-deleted relationships (reverse order).
+	for i := len(tx.deletedNodes) - 1; i >= 0; i-- {
+		snap := tx.deletedNodes[i]
+		capture(tx.g.store.PutNode(snap.node))
+		for _, r := range snap.rels {
+			capture(tx.g.store.PutRelationship(r))
 		}
+	}
+
+	// 3. Restore updated relationships to pre-mutation snapshot (reverse order).
+	for i := len(tx.updatedRels) - 1; i >= 0; i-- {
+		capture(tx.g.store.ReplaceRelationship(tx.updatedRels[i].prev))
+	}
+
+	// 4. Restore updated nodes to pre-mutation snapshot (reverse order).
+	for i := len(tx.updatedNodes) - 1; i >= 0; i-- {
+		capture(tx.g.store.ReplaceNode(tx.updatedNodes[i].prev))
+	}
+
+	// 5. Delete created relationships in reverse creation order.
+	for i := len(tx.createdRels) - 1; i >= 0; i-- {
+		capture(tx.g.store.DeleteRelationship(tx.createdRels[i]))
+	}
+
+	// 6. Delete created nodes in reverse creation order (cascade).
+	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
+		capture(tx.g.store.DeleteNodeCascade(tx.createdNodes[i]))
 	}
 
 	tx.g.mu.Unlock()

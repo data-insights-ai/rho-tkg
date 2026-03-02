@@ -458,3 +458,177 @@ GOOD: Phase 1 (Lock): install empty index, snapshot IDs
       Phase 2 (no lock): concurrent PutNode → addNodeToPropertyIndexes → index exists → added
       Phase 3 (Lock): merge backfill, skip IDs already in live index
 ```
+
+---
+
+## 24. Cross-Shard Split Writes Must Have Defined Ordering
+
+When a relationship spans two shards, the 7-key write is split. Without a defined ordering,
+partial failures leave the system in an inconsistent state with no recovery path.
+
+```
+BAD:  putRelEntityAndOut(eventShard, rel)   // event shard first
+      putRelIncoming(refShard, ...)          // ref shard second
+      // If event shard write succeeds but ref fails: entity exists without inIdx.
+      // IncomingRelationships(caseID) misses the signal. The dominant query is broken.
+
+GOOD: putRelIncoming(refShard, ...)          // ref shard first (E→R pattern)
+      putRelEntityAndOut(eventShard, rel)    // event shard second
+      // If ref succeeds but event fails: orphaned inIdx entry in ref shard.
+      // IncomingRelationships sees the relID, GetRelationship returns ErrRelNotFound.
+      // Detectable by repair scan. The dominant query path is never silently wrong.
+```
+
+The ordering is pattern-dependent:
+- **E→R**: ref shard in/ first (critical path for `Case ← Signal` queries)
+- **R→E**: entity shard first (entity is the critical path)
+
+Always verify both endpoints exist before any partial writes begin.
+
+---
+
+## 25. Snowflake ID Is the Shard Address
+
+Every snowflake ID carries its creation timestamp in bits 22–62. This eliminates the need
+for range tables, bloom filters, or shard-mapping indexes. The ID itself is the O(1) shard
+address: extract timestamp → map to shard window → direct read.
+
+```
+BAD:  func findShard(id snowflake.ID) *BadgerStore {
+          for _, shard := range allShards {
+              if shard.hasNodeID(id) { return shard }  // O(N) fan-out across all shards
+          }
+      }
+
+GOOD: func findShard(id snowflake.ID) *BadgerStore {
+          epochMs := snowflakeEpoch.UnixMilli()
+          timeMs := int64(uint64(id) >> 22)
+          created := time.UnixMilli(epochMs + timeMs)
+          // O(1): map timestamp to shard window
+          for _, es := range eventShards {
+              if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
+                  return es.store
+              }
+          }
+          return hotShard.store  // fallback: newest shard
+      }
+```
+
+For reference entities: probe `refShard.hasNodeID(id)` first (O(1) existence check).
+If miss, fall through to timestamp extraction for event shards.
+
+---
+
+## 26. Registry Persistence Differs by Store Type
+
+BadgerStore persists label/reltype registries inside Badger itself (`meta/label_tokens`,
+`meta/reltype_tokens`). TieredStore cannot do this because it manages multiple BadgerStores.
+Instead, TieredStore uses a separate flat msgpack file (`data/meta/registry.msgpack`) with
+atomic write-tmp+rename.
+
+When adding a new Store implementation, ask: "Where do registries live?" The Graph layer
+saves/loads registries via type switch in `New()` and `Close()`. Missing the type switch
+means registries silently vanish on restart.
+
+---
+
+## 27. Class-Based Routing Breaks with Multi-Tier Event Shards
+
+With a single hot event shard, routing by `EntityClass` (ClassEvent → hotShard) works.
+Once warm shards exist, two event entities may live in different shards — both classify as
+`ClassEvent`, but `shardForClass(ClassEvent)` returns only the hot shard. Relationship writes
+to hot shard break `OutgoingRelationships` for warm-shard nodes.
+
+```
+BAD:  startClass := classifyNodeID(startID)  // ClassEvent
+      endClass := classifyNodeID(endID)      // ClassEvent
+      if startClass == endClass {
+          shardForClass(ClassEvent).PutRelationship(r)  // always hot shard
+      }
+      // Start node is in warm shard — entity+out/ keys land in wrong shard
+
+GOOD: startShard := shardForNodeID(startID)  // warm shard
+      endShard := shardForNodeID(endID)      // hot shard
+      if startShard != endShard {
+          // Cross-shard split-write: entity+out/ in startShard, in/ in endShard
+      }
+```
+
+Rule: always resolve the **actual shard** (via snowflake ID timestamp or ref probe), never
+the **class**. Class tells you where new entities go; shard tells you where existing entities live.
+
+---
+
+## 28. sync.RWMutex Snapshot Pattern for Rotation Safety
+
+When a mutable pointer (e.g., `ts.hotShard`) can change during a read operation, the
+read path must snapshot the pointer under RLock, release the lock, then operate on the
+snapshot. Holding RLock during the entire I/O blocks rotation unnecessarily.
+
+```
+BAD:  ts.mu.RLock()
+      nodes, _ := ts.hotShard.store.AllNodes(opts)  // holds RLock during full scan
+      ts.mu.RUnlock()
+      // Rotation blocked for entire scan duration
+
+GOOD: ts.mu.RLock()
+      eventStores := ts.eventShardSnapshot(opts.Depth)  // snapshot pointers
+      ts.mu.RUnlock()
+      for _, store := range eventStores {
+          nodes, _ := store.AllNodes(opts)  // I/O outside lock
+      }
+```
+
+For rotation: acquire Lock, double-check condition (another goroutine may have rotated),
+mutate pointers, release Lock. This is the standard double-checked locking pattern.
+
+---
+
+## 29. Shard Boundaries Must Align with ID Precision
+
+Snowflake IDs encode creation time at millisecond resolution. Shard time boundaries with
+nanosecond precision create gaps: an entity created at `t=1000.000ms` might have a
+snowflake timestamp of `1000ms`, but if the shard boundary is `1000.000001ms` (nanosecond
+from `time.Now()`), the entity resolves to the wrong shard.
+
+```
+BAD:  boundary := time.Now()                    // nanosecond precision
+      oldHot.timeEnd = boundary
+      newShard.timeStart = boundary
+      // Entity at 1000ms: created.Before(1000.000001ms) → true → lands in old shard
+      // But it was written to new shard after rotation
+
+GOOD: boundary := time.Now().Truncate(time.Millisecond).Add(time.Millisecond)
+      oldHot.timeEnd = boundary                 // e.g., 1001ms
+      newShard.timeStart = boundary             // contiguous, no gap
+      // Entity at 1000ms: created.Before(1001ms) → true → correctly in old shard
+      // Entity at 1001ms: created.Before(1001ms) → false → correctly in new shard
+```
+
+Rule: truncate to the ID's precision, add one unit. This ensures entities created in the
+same unit as the rotation boundary resolve to the old shard (where they were actually written).
+
+---
+
+## 30. Catalog Entries Must Reflect Actual Shard Windows After Rotation
+
+When rotating a hot shard to warm, the catalog entry's `TimeEnd` must be updated to the
+actual rotation time — not left at the original window end. If the original window was
+`2026-W10` (ending Sunday midnight) but rotation happens Wednesday, entities created
+Thursday through Sunday would have snowflake timestamps inside the original window but
+actually live in the new hot shard.
+
+```
+BAD:  oldHot.timeEnd = originalWindowEnd  // Sunday midnight
+      // Entity created Thursday: timestamp is in [Monday, Sunday) → resolves to warm shard
+      // But entity was written to new hot shard → ErrNodeNotFound
+
+GOOD: boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
+      oldHot.timeEnd = boundary            // Wednesday actual rotation time
+      catalog.UpdateShardTimeEnd(name, boundary)
+      newHot.timeStart = boundary          // contiguous
+      // Entity created Thursday: timestamp >= boundary → resolves to new hot shard ✓
+```
+
+Both the in-memory `eventShard.timeEnd` and the catalog's `ShardEntry.TimeEnd` must be
+updated. The catalog is persisted — warm shard recovery on restart depends on it.

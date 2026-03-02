@@ -190,6 +190,20 @@ func New(config Config) (*Graph, error) {
 	}
 
 	g.store = store
+
+	// Wire TieredStore to the label registry for ontology token resolution.
+	if ts, ok := store.(*TieredStore); ok {
+		ts.SetLabelRegistry(g.labels)
+		if _, err := ts.LoadLabelRegistry(g.labels); err != nil {
+			_ = ts.Close()
+			return nil, fmt.Errorf("graph: load label registry: %w", err)
+		}
+		if _, err := ts.LoadRelTypeRegistry(g.relTypes); err != nil {
+			_ = ts.Close()
+			return nil, fmt.Errorf("graph: load reltype registry: %w", err)
+		}
+	}
+
 	return g, nil
 }
 
@@ -201,12 +215,20 @@ func New(config Config) (*Graph, error) {
 func (g *Graph) Close() error {
 	var closeErr error
 	g.closeOnce.Do(func() {
-		// Save registries if the store supports it (Badger-specific).
-		if bs, ok := g.store.(*BadgerStore); ok {
-			if err := bs.SaveLabelRegistry(g.labels); err != nil {
+		// Save registries if the store supports it.
+		switch s := g.store.(type) {
+		case *BadgerStore:
+			if err := s.SaveLabelRegistry(g.labels); err != nil {
 				closeErr = fmt.Errorf("graph: save label registry: %w", err)
 			}
-			if err := bs.SaveRelTypeRegistry(g.relTypes); err != nil {
+			if err := s.SaveRelTypeRegistry(g.relTypes); err != nil {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
+			}
+		case *TieredStore:
+			if err := s.SaveLabelRegistry(g.labels); err != nil {
+				closeErr = fmt.Errorf("graph: save label registry: %w", err)
+			}
+			if err := s.SaveRelTypeRegistry(g.relTypes); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
 			}
 		}

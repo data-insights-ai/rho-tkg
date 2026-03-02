@@ -42,6 +42,9 @@ type BadgerStoreConfig struct {
 	GCInterval time.Duration
 	// GCDiscardRatio is the discard ratio for RunValueLogGC. Default: 0.5.
 	GCDiscardRatio float64
+	// ReadOnly opens Badger in read-only mode. No flushLoop, no gcLoop,
+	// no write operations. Used for warm/cold shards in TieredStore.
+	ReadOnly bool
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -108,6 +111,7 @@ type BadgerStore struct {
 
 	// Lifecycle.
 	inMemory  bool
+	readOnly  bool
 	flushInt  time.Duration
 	gcInt     time.Duration
 	gcRatio   float64
@@ -128,6 +132,9 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	opts := badger.DefaultOptions(cfg.Dir)
 	if cfg.InMemory {
 		opts = opts.WithInMemory(true)
+	}
+	if cfg.ReadOnly {
+		opts = opts.WithReadOnly(true)
 	}
 	if cfg.Logger != nil {
 		opts = opts.WithLogger(cfg.Logger)
@@ -170,6 +177,7 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 		inMemory:        cfg.InMemory,
+		readOnly:        cfg.ReadOnly,
 		flushInt:        flushInt,
 		gcInt:           gcInt,
 		gcRatio:         gcRatio,
@@ -183,13 +191,13 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
 
-	// Start background goroutines (skip for InMemory mode with no flush interval).
-	if flushInt > 0 {
+	// Start background goroutines (skip when read-only or no flush interval).
+	if flushInt > 0 && !cfg.ReadOnly {
 		go bs.flushLoop()
 	} else {
 		close(bs.flushDone)
 	}
-	if gcInt > 0 && !cfg.InMemory {
+	if gcInt > 0 && !cfg.InMemory && !cfg.ReadOnly {
 		go bs.gcLoop()
 	} else {
 		close(bs.gcDone)

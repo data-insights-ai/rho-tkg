@@ -2,7 +2,7 @@
 
 ## Status
 
-Library at v3.0.25. Phases 1a-1g and 2a-2i complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented.
+Library at v3.0.27. Phases 1a-1g, 2a-2i, 3a, and 3b+3c complete. Phase 2 review (6 issues) resolved. Phase 2h (5 architectural fixes) complete. Store interface extensions (temporal query push-down + graph transactions) implemented. TieredStore with reference/event split, shard rotation (hot→warm), warm recovery, depth-aware reads, and E→E cross-shard fix implemented.
 
 ## Gap Analysis: tkg-2025-v2 vs rho/tkg-v3
 
@@ -333,34 +333,70 @@ Complete. Create-only transaction with full rollback + atomic graph reset.
 The multi-shard architecture from the Tiered Temporal Storage spec.
 Built behind the Store interface — single-instance deployments unaffected.
 
-### 3a. Snowflake + Registry + Reference/Event Split
+### 3a. Snowflake + Registry + Reference/Event Split ✓
 
-- [ ] Ontology mapping (label → reference/event classification)
-- [ ] TieredStore skeleton implementing Store interface
-- [ ] Registry as flat msgpack file (tokens only, ~2KB)
-- [ ] Reference shard (single BadgerStore, always hot)
-- [ ] Hot event shard (single BadgerStore, current time window)
-- [ ] Shard catalog (JSON, time windows, tier tracking)
-- [ ] Entity routing by label classification
-- [ ] Relationship key routing (in/ keys to reference shard, out/ keys to event shard)
-- [ ] All 4 relationship patterns routed correctly (E→R, E→E, R→R, R→E)
+Complete. Implemented in v3.0.26.
 
-### 3b. Timestamp Resolution + Split Writes + Read Fan-Out
+**New files (12):**
+- `ontology.go` + `ontology_test.go` — EntityClass, OntologyMapping (label → ref/event classification, lazy token cache)
+- `shard_catalog.go` + `shard_catalog_test.go` — ShardCatalog, ShardEntry, ShardKind, ShardTier (JSON persistence, atomic write)
+- `registry_file.go` + `registry_file_test.go` — Flat msgpack registry save/load (write-tmp+rename)
+- `badgerstore_partial.go` + `badgerstore_partial_test.go` — Split rel write/delete helpers (putRelEntityAndOut, putRelIncoming, deleteRelEntityAndOut, deleteRelIncoming, hasNodeID, hasRelID, incomingRelIDs, outgoingRelIDs)
+- `tieredstore.go` — TieredStoreConfig, TieredStore, eventShard, constructor, Close, Clear, shard routing, timestamp-to-shard resolution, registry file integration
+- `tieredstore_write.go` — Node/Rel Put/Delete/Replace/Batch, cross-shard relationship routing (E→R ref-first, R→E entity-first), DeleteNodeCascade, history writes, property indexes
+- `tieredstore_read.go` — Get/Query/Count/Adjacency/History reads, merge helpers (k-way merge of sorted slices), pagination helpers, IncomingRelationships cross-shard fetch
+- `tieredstore_test.go` — 40 integration tests covering ontology routing, CRUD, cross-shard rels, merge queries, cascade, history, batch, property indexes, lifecycle, registry round-trip, pagination, disk-backed, mid-window restart
 
-- [ ] Timestamp extraction from snowflake IDs for shard resolution
-- [ ] Full CRUD through TieredStore
-- [ ] Cross-shard split-write with reference-first ordering
-- [ ] Depth-aware reads (hot/warm/cold/all)
-- [ ] Cache-miss routing: extract timestamp → target shard
+**Modified files (1):**
+- `graph.go` — TieredStore type switch in Close() for registry saves, TieredStore setup in New() (SetLabelRegistry, LoadLabelRegistry, LoadRelTypeRegistry)
 
-### 3c. Rotation + Demotion
+**Key design decisions:**
+- [x] Ontology mapping (label → reference/event classification)
+- [x] TieredStore skeleton implementing Store interface (all 43 methods)
+- [x] Registry as flat msgpack file (tokens only, ~2KB)
+- [x] Reference shard (single BadgerStore, always hot)
+- [x] Hot event shard (single BadgerStore, current time window)
+- [x] Shard catalog (JSON, time windows, tier tracking)
+- [x] Entity routing by label classification
+- [x] Relationship key routing (in/ keys to endpoint shard, entity+out/ to start shard)
+- [x] All 4 relationship patterns routed correctly (E→R, E→E, R→R, R→E)
+- [x] Snowflake ID timestamp extraction for shard resolution (O(1), no fan-out)
+- [x] Cross-shard split-write with reference-first ordering (§12)
+- [x] Cross-shard DeleteRelationship and DeleteNodeCascade
+- [x] Mid-window restart (reopen existing hot shard from catalog)
 
-- [ ] Background rotation task (hot → warm on time window expiry)
-- [ ] Warm → cold demotion (reopen with cheaper Badger options)
-- [ ] Lazy-open cold shards on first access
-- [ ] Idle-close after configurable timeout
-- [ ] Parallel shard open within a query
-- [ ] Mid-window restart handling (reopen existing hot shard from catalog)
+**52 tests total.** All pass with race detector. Coverage ≥80% on all public methods.
+
+### 3b+3c. Shard Rotation + Warm Tier + Depth-Aware Reads ✓
+
+Complete. Implemented in v3.0.27.
+
+**New/modified files:**
+- `store.go` — `ShardDepth` type (DepthAll/DepthHot/DepthWarm), `Depth` field on `QueryOpts`
+- `badgerstore.go` — `ReadOnly` config, opens Badger read-only, skips flushLoop/gcLoop
+- `shard_catalog.go` — `UpdateShardTier`, `UpdateShardTimeEnd` methods
+- `tieredstore.go` — `mu sync.RWMutex`, `RotateHotShard()`, `checkRotation()`, `eventShardSnapshot(depth)`, warm shard recovery in constructor, `shardForRelID` probe-all-shards fallback
+- `tieredstore_write.go` — shard-based routing (replaces class-based), `checkRotation()` on write paths, batch partitioning by `*BadgerStore` pointer
+- `tieredstore_read.go` — all merge queries use `eventShardSnapshot(opts.Depth)` with `mu.RLock` snapshot pattern
+
+**Key design decisions:**
+- [x] ShardDepth type — zero=all tiers (backward-compatible)
+- [x] BadgerStore ReadOnly mode (warm/cold shards)
+- [x] Shard rotation: hot→warm on time window expiry via `checkRotation()`
+- [x] Millisecond-aligned shard boundaries (snowflake ID ms resolution)
+- [x] Warm shard recovery from catalog on restart
+- [x] E→E cross-shard fix: shard-based routing via `shardForNodeID` (not class-based)
+- [x] `shardForRelID` probe-all-shards fallback for cross-shard relationship entities
+- [x] Depth-aware merge queries (hot/warm/all)
+- [x] sync.RWMutex snapshot pattern for rotation safety
+
+**~25 new tests** (rotation, E→E cross-shard, depth-aware reads, warm recovery, ReadOnly BadgerStore, catalog). All pass with race detector. Coverage ≥80%.
+
+**Deferred to later phases:**
+- [ ] Warm → cold demotion (reopen with cheaper Badger options) → Phase 3d
+- [ ] Lazy-open cold shards on first access → Phase 3d
+- [ ] Idle-close after configurable timeout → Phase 3d
+- [ ] Parallel shard open within a query → Phase 3d
 
 ### 3d. DEPTH Clause + Reference Archive
 
