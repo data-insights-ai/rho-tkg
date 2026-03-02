@@ -1,410 +1,23 @@
 # Lessons — tkg-v3
 
-These are patterns that caused real bugs. Organized by principle, not by date.
+Patterns that caused real bugs, organized by effectiveness tier.
 Read before implementing. Re-read before marking done.
 
----
-
-## 1. Challenge the Plan
-
-A detailed plan is a hypothesis, not a specification. Before implementing any method,
-ask these three questions:
-
-**"Does this algorithm actually deliver what the method name promises?"**
-
-```
-BAD:  Snapshot(t) calls AllNodes() → filter. AllNodes() only returns current tip versions.
-      A "snapshot from 3 days ago" includes today's property values and omits deleted nodes.
-      The name says time-travel; the algorithm does current-state filtering.
-
-GOOD: Snapshot(t) walks the 0x07 history tape and reconstructs each entity's state at time t.
-      Deleted nodes appear (via their last historical version). Properties match their values at t.
-```
-
-**"Does this interact with an existing feature that could break it?"**
-
-```
-BAD:  VerifyNodeHashChain checks if chain[0].PrevHash == "". But TruncateNodeHistory
-      removes old versions. After truncation, chain[0] is no longer genesis — it has a
-      valid PrevHash pointing to truncated history. Verification permanently returns false.
-
-GOOD: Check entry.Version() == 0 for genesis, not array position. If the oldest version
-      in the chain isn't genesis, verify only the links that exist.
-```
-
-**"Does the constraint make sense?"**
-
-```
-BAD:  Plan says "No Store interface change." So NodeCountByLabel calls
-      NodesByLabel(tok) — allocates, deep-copies, sorts 5M nodes — then returns len().
-      Both stores already have labelIdx maps. len(labelIdx[tok]) is O(1).
-
-GOOD: Add NodeCountByLabel to the Store interface. MemoryStore: len(labelIdx[tok]).
-      BadgerStore: atomic counter. Question constraints that force bad solutions.
-```
+**How tiers work:**
+- **Tier A — Audit Rules**: Cross-cutting patterns that require grepping ALL call sites. These FAIL when written as principles — they need checklists.
+- **Tier B — Structural Rules**: Patterns baked into architecture (lock ordering, two-phase, split-write). These WORK well as lessons.
+- **Tier C — Reference**: Project-specific context. Less likely to cause repeat bugs, but needed for understanding.
 
 ---
 
-## 2. In-Memory State Must Survive Restart
+# Tier A — Audit Rules
 
-If it's in memory and it matters, it needs a persistence path and a rebuild path.
-This has been violated twice: once for in-memory indexes (fixed in v3.0.10), once
-for property indexes (fixed in v3.0.23 — definitions persisted to `0x0F/prop_indexes`).
-
-```
-BAD:  CreatePropertyIndex populates bs.propertyIndexes[key] in memory.
-      On restart, map is empty. NodesByLabelAndProperty silently degrades to O(N) scan.
-      Plan said "persist via 0x0F/prop_indexes meta key" — never implemented.
-
-GOOD: Serialize index definitions to Badger during flush(). In loadIndexes(),
-      read definitions back, scan matching nodes, rebuild in-memory entries.
-      Same pattern as labelIdx/typeIdx/outIdx/inIdx rebuild.
-```
-
-The pattern: if `loadIndexes()` doesn't rebuild it, it doesn't survive restart.
+These lessons describe patterns that recur because the fix is correct but incomplete.
+After applying a fix in this tier, **grep for ALL call sites** — the bug is never in just one place.
 
 ---
 
-## 3. Lock Scope: Fast Mutations vs Slow I/O
-
-Never hold idxMu.Lock during disk I/O. Collect IDs fast, release lock, process outside.
-This was learned in v3.0.18 (cascade history cleanup) and immediately re-violated
-in Phase 2c (CreatePropertyIndex).
-
-```
-BAD:  bs.idxMu.Lock()
-      for nodeID := range nodeIDs {
-          bs.getNodeLocked(nodeID)  // msgpack deserialization, Badger reads
-      }
-      bs.idxMu.Unlock()
-      // All concurrent reads/writes blocked for entire scan duration
-
-GOOD: bs.idxMu.RLock()
-      ids := collectIDs(nodeIDs)  // snapshot IDs quickly
-      bs.idxMu.RUnlock()
-      for _, id := range ids {
-          node := bs.GetNode(id)  // I/O outside lock
-          idx.add(id, node)       // index-specific lock, not global
-      }
-```
-
----
-
-## 4. Temporal Data Is Append-Only
-
-In a temporal database, you never physically delete history. You append a tombstone.
-Phase 1's `DeleteNodeCascade` calls `deleteHistoryByPrefix`, erasing the 0x07 tape.
-This makes it impossible to reconstruct past states.
-
-```
-BAD:  DeleteNode → remove from store → deleteHistoryByPrefix
-      The node and all its versions are gone. Snapshot(t) for any past t cannot find it.
-
-GOOD: DeleteNode → append final version with DeletedAt timestamp → set ValidTo
-      The node is "deleted" but its history survives. Snapshot(t) before deletion sees it.
-```
-
----
-
-## 5. Don't Materialize Data You Won't Use
-
-When an in-memory index gives you the answer, use the index. Don't round-trip through
-entity deserialization, deep copy, and sort just to count or check existence.
-
-```
-BAD:  func NodeCountByLabel(label) int {
-          nodes, _ := store.NodesByLabel(tok)  // alloc + DeepCopy + sort 5M nodes
-          return len(nodes)                     // throw them all away
-      }
-
-GOOD: func NodeCountByLabel(tok uint16) int {
-          return len(ms.labelIdx[tok])  // O(1), zero allocations
-      }
-```
-
-Same principle applies to existence checks: `nodeIDs[id]` is O(1). Don't call
-`GetNode(id)` just to check if it exists.
-
----
-
-## 6. Two-Phase Operations: Preflight Then Apply
-
-Multi-step mutations must be all-or-nothing. Phase 1: read everything, fail fast.
-Phase 2: apply everything, no error exits.
-
-```
-BAD:  for _, relID := range rels {
-          deleteRelLocked(relID)  // mutates indexes on each iteration
-      }
-      // If iteration 5 fails, iterations 1-4 already mutated indexes.
-      // Graph is permanently split.
-
-GOOD: // Phase 1: preflight — read all, mutate nothing
-      infos := make([]relDeleteInfo, len(rels))
-      for i, relID := range rels {
-          info, err := getRelLocked(relID)
-          if err != nil { return err }  // zero mutations happened
-          infos[i] = info
-      }
-      // Phase 2: apply — all mutations, no error exits
-      for _, info := range infos {
-          deleteRelByInfo(info)  // pure mutations, cannot fail
-      }
-```
-
----
-
-## 7. Store Boundary = Trust Boundary
-
-Entities must be deep-copied at the store boundary. Cache and caller must never
-share pointers. Pick one side: copy on Put, or copy on Get.
-
-```
-BAD:  func PutNode(n *types.Node) {
-          ms.nodes[id] = n  // caller and cache share same pointer
-      }
-      // Caller mutates n.SetProperty("x", "y") → cache is silently corrupted
-
-GOOD: func PutNode(n *types.Node) {
-          ms.nodes[id] = n.DeepCopy()  // cache owns independent copy
-      }
-```
-
----
-
-## 8. Error Handling: Sentinel Discrimination
-
-Never bare `continue` on error. Check the specific sentinel. Propagate everything else.
-
-```
-BAD:  for _, id := range index {
-          node, err := GetNode(id)
-          if err != nil { continue }  // swallows corruption, I/O errors
-      }
-
-GOOD: for _, id := range index {
-          node, err := GetNode(id)
-          if errors.Is(err, ErrNodeNotFound) { continue }  // orphan: skip
-          if err != nil { return nil, err }                  // real error: propagate
-      }
-```
-
-Every sentinel error test must use `errors.Is`, not just `err != nil`.
-
----
-
-## 9. Validation: Allowlists, Recursion, Depth Limits
-
-- **Allowlist > denylist.** Enumerate what's safe. Reject everything else.
-- **Recursive.** `[]any{&myStruct{}}` bypasses top-level-only checks.
-- **Depth-limited.** Every recursive function on untrusted input needs `maxDepth`.
-- **At boundaries.** Validate before data enters internal state. Registries reject `""`.
-
-```
-BAD:  if kind == reflect.Ptr || kind == reflect.Struct { reject }
-      // Arrays, channels, functions, unsafe.Pointer all pass through
-
-GOOD: switch kind {
-      case reflect.Bool, reflect.String, reflect.Int, ...: // safe
-      case reflect.Slice, reflect.Map: recurse(depth+1)
-      default: reject  // unknown = unsafe
-      }
-```
-
----
-
-## 10. Testing Discipline
-
-**Coverage gates.** Run `make cover` before marking done. 0% on any public method is a blocker.
-
-**Node/Rel parity.** They are structural mirrors. Every node test needs a relationship equivalent.
-
-**Feature interactions.** After writing happy-path tests, ask: "What existing features
-could produce different inputs?" TruncateHistory + VerifyHashChain. Delete + Snapshot.
-Concurrent AddRelationship + DeleteNode.
-
-**Every branch.** Every `case` in a type switch. Every `if/else` path. The test IS the proof.
-
----
-
-## 11. Concurrency Patterns
-
-- **sync.Once** for idempotent `Close()`. Never nil-guard a function pointer across goroutines.
-- **Ascending shard order** for multi-lock acquisition. `LockTwo` normalizes before acquiring. `LockMany` deduplicates shards, sorts ascending, unlocks in reverse order.
-- **TOCTOU retry for dynamic lock sets.** When the set of entities to lock is discovered dynamically (e.g., node's adjacency list), re-verify after acquiring locks. Adjacency can change between discovery and locking. Phase A: read under narrow lock. Phase B: lock all, re-verify, retry if changed.
-- **Atomic counters** outside Badger transactions. OCC conflicts kill concurrent writes.
-- **Counters in the same WriteBatch** as data. Separate transactions = crash inconsistency.
-- **Version-aware dirty tracking.** `CollectDirty()` is read-only. `MarkFlushed()` is CAS.
-- **Last-write-wins buffers.** `map[string]writeOp`, not `[]writeOp`. Retries must not replay stale writes.
-- **Tombstones** in cache-first architectures. A cache miss must not fall through to stale Badger data.
-
----
-
-## 12. Async Persistence
-
-- `Close()` must call `flush()` unconditionally — even when `flushLoop` was never started.
-- Background loop errors must be logged (`slog.Error`), never `_ = fn()`.
-- Tests verifying durability must `Flush()` or `Close()` before reopening the DB.
-- `FlushInterval: 0` means "use default", not "disabled". Use large values to disable.
-
----
-
-## 13. Determinism
-
-- Sort by `snowflake.ID` before returning slices from map iteration.
-- Never `fmt.Sprintf("%v")` for hash inputs. Maps have random iteration order.
-- Use typed binary serialization with sorted keys for hash computation.
-
----
-
-## 14. API Design
-
-- **Config fields must be used or removed.** Never accept input that does nothing.
-- **Opaque wrappers must wrap the real type.** `type nodeID snowflake.ID`, not `int64`.
-- **Graph is the sole external API.** Add passthroughs rather than exposing Store.
-- **Doc comments must match behavior.** After changing logic, grep for stale descriptions.
-- **Validate before generating IDs.** `NewPropertySlice(props)` before `NextNodeID()`.
-
----
-
-## 15. Array Position Is Not Identity
-
-Never use array position (`i == 0`) as a proxy for semantic identity (`version == 0`).
-Array position changes when elements are removed; semantic identity does not.
-
-```
-BAD:  if i == 0 { // "genesis version"
-          // This breaks after TruncateHistory removes earlier versions.
-          // chain[0] is now version 3 with a valid PrevHash.
-      }
-
-GOOD: if entry.Version() == 0 { // actually genesis
-          // Works regardless of truncation — genesis is always version 0.
-      }
-```
-
-This applies to any check that assumes the first element in a collection has special
-meaning. After truncation, filtering, or pagination, `[0]` is just the first *remaining*
-element, not the first *created* element.
-
----
-
-## 16. Refactor Shared Logic When Adding Parallel Methods
-
-When adding a method that mirrors an existing one (e.g., `GetRelAt` mirrors `GetNodeAt`),
-factor out the shared algorithm into a helper instead of copy-pasting.
-
-```
-BAD:  GetNodeAt has 30 lines of version resolution logic.
-      GetRelAt copy-pastes the same 30 lines with s/Node/Rel/.
-      Bug fix must be applied in two places. They will drift.
-
-GOOD: nodeVersionBounds(chain, i) / relVersionBounds(chain, i) — type-specific bounds.
-      resolveNodeVersionAt(chain, t) / resolveRelVersionAt(chain, t) — shared algorithm.
-      GetNodeAt and GetRelAt call the helpers. Fix once, correct everywhere.
-```
-
----
-
-## 17. History-Aware Queries Need ID Merging
-
-Temporal queries that should include deleted entities must merge IDs from two sources:
-current entities (from `AllNodes()`) and historical entities (from `AllNodeHistoryIDs()`).
-Querying only current entities makes deleted entities invisible to time-travel queries.
-
-```
-BAD:  func GetNodesValidAt(t) {
-          all := store.AllNodes()    // only current tip versions
-          return filter(all, t)      // deleted nodes are invisible
-      }
-
-GOOD: func GetNodesValidAt(t) {
-          currentIDs := store.AllNodes()
-          histIDs := store.AllNodeHistoryIDs()  // includes deleted entities
-          allIDs := merge(currentIDs, histIDs)
-          for id := range allIDs {
-              n := GetNodeAt(id, t)  // handles nil current via history chain
-          }
-      }
-```
-
----
-
-## 18. Every Mutation Path Needs Entity Locks
-
-If a method mutates entity state (delete, update, create with shared endpoints), it MUST
-lock the entity. This seems obvious but was missed for `DeleteRelationshipWithContext` —
-the only mutation method without an entity lock. Audit checklist: grep for every method
-that calls a Store write method. If there's no `LockEntity`/`LockTwo`/`LockMany` before it,
-that's a data corruption bug under concurrency.
-
-```
-BAD:  func DeleteRelationshipWithContext(ctx, id) {
-          current, _ := store.GetRelationship(id)  // unlocked read
-          store.DeleteRelationship(id)               // unlocked write
-          // Concurrent UpdateRelationship reads stale data → corrupted version chain
-      }
-
-GOOD: func DeleteRelationshipWithContext(ctx, id) {
-          g.entityLocks.LockEntity(id)
-          defer g.entityLocks.UnlockEntity(id)
-          current, _ := store.GetRelationship(id)  // locked read
-          store.DeleteRelationship(id)               // locked write
-      }
-```
-
----
-
-## 19. Corruption Paths Must Clean All Indexes
-
-When a corruption fallback skips entity data (because it's unavailable), it must still
-clean ALL indexes — not just the ones it can clean cheaply. The normal delete path uses
-the entity to target specific index entries. The corruption path can't do that, so
-brute-force purge is acceptable. Leaving stale entries in any index (label, property,
-adjacency) causes phantom results in queries.
-
-```
-BAD:  // Corruption path: node data unavailable
-      cleanLabelIndexes(id)      // ✓ brute-force scan
-      // property indexes? skipped — "we don't have the node data"
-      // Result: phantom entries in property index forever
-
-GOOD: // Corruption path: node data unavailable
-      cleanLabelIndexes(id)                          // ✓
-      purgeNodeFromAllPropertyIndexes(indexes, id)   // ✓ brute-force O(V) — acceptable for corruption
-      // All indexes clean, no phantom entries
-```
-
----
-
-## 20. sync.RWMutex Is Not Reentrant
-
-Go's `sync.RWMutex` is NOT reentrant. If method A holds `RLock` and calls method B which
-also calls `RLock`, and a writer is waiting between the two `RLock` calls, deadlock occurs.
-Go's RWMutex gives priority to waiting writers — the second RLock blocks behind the writer,
-which blocks behind the first RLock. Solution: only the outermost method acquires the lock;
-inner methods must be lock-free.
-
-```
-BAD:  func Snapshot(t) {           // holds RLock
-          g.mu.RLock()
-          nodes := GetNodesValidAt(t)  // also tries RLock → deadlock if writer waiting
-          g.mu.RUnlock()
-      }
-
-GOOD: func Snapshot(t) {           // only outer method locks
-          g.mu.RLock()
-          defer g.mu.RUnlock()
-          nodes := GetNodesValidAt(t)  // does NOT acquire g.mu — lock-free
-      }
-      // GetNodesValidAt is callable both locked (from Snapshot) and unlocked (standalone)
-```
-
-This means: design internal methods to be lock-agnostic. The caller decides the lock scope.
-
----
-
-## 21. Hash Inputs Must Come From Canonical Internal State
+## A1. Hash Inputs Must Come From Canonical Internal State
 
 Never hash raw user input when the internal representation differs. Token deduplication,
 normalization, and ordering happen during construction — the hash must reflect the canonical
@@ -421,65 +34,323 @@ GOOD: n := types.NewNode(id, primaryToken, extraTokens)
       hash := ComputeNodeHash(n, canonicalLabels)         // hashes canonical state
 ```
 
----
+**Audit checklist** (this lesson existed when v3.0.30 bug #5 was found — `BatchBuilder.AddNode`
+repeated the exact same pattern as v3.0.26's `AddNodeWithContext`. The lesson described the fix
+but didn't enforce the audit):
 
-## 22. Verification Must Handle Deleted Entities
-
-Any verification function that reads entity state must tolerate the entity being deleted.
-If the entity has history but no current state, verification should proceed using history alone.
-
-```
-BAD:  func VerifyNodeHashChain(id) {
-          current, err := store.GetNode(id)
-          if err != nil { return false, err }  // ErrNodeNotFound → can't verify deleted
-      }
-
-GOOD: func VerifyNodeHashChain(id) {
-          current, err := store.GetNode(id)
-          if err != nil && !errors.Is(err, ErrNodeNotFound) { return false, err }
-          // current may be nil — build chain from history + current (if exists)
-      }
-```
+1. `grep -rn 'ComputeNodeHash\|ComputeRelHash' pkg/` — every call site must pass canonical labels/type
+2. Check `AddNode`, `AddNodeWithContext`, `BatchBuilder.AddNode`, and any future node-creation path
+3. If a new hash-computation path is added, verify it resolves labels via registry, not raw input
 
 ---
 
-## 23. Index Creation Must Be Visible to Concurrent Writes
+## A2. Every Mutation Path Needs Entity Locks
 
-When building an index in phases (snapshot → fetch → install), the index must be
-installed as an empty placeholder BEFORE the I/O phase. Otherwise concurrent writes
-that check `if idx, ok := indexes[key]; ok` see nothing and skip index maintenance.
+If a method mutates entity state (delete, update, create with shared endpoints), it MUST
+lock the entity. This was missed for `DeleteRelationshipWithContext` — the only mutation
+method without an entity lock.
+
+**Audit checklist:**
+1. `grep -rn 'store\.Put\|store\.Delete\|store\.Replace' pkg/graph/` — every Store write call
+2. Each must have `LockEntity`/`LockTwo`/`LockMany` before it
+3. No lock = data corruption under concurrency
+
+```
+BAD:  func DeleteRelationshipWithContext(ctx, id) {
+          current, _ := store.GetRelationship(id)  // unlocked read
+          store.DeleteRelationship(id)               // unlocked write
+      }
+
+GOOD: func DeleteRelationshipWithContext(ctx, id) {
+          g.entityLocks.LockEntity(id)
+          defer g.entityLocks.UnlockEntity(id)
+          current, _ := store.GetRelationship(id)
+          store.DeleteRelationship(id)
+      }
+```
+
+---
+
+## A3. Corruption Paths Must Clean All Indexes
+
+When a corruption fallback skips entity data (because it's unavailable), it must still
+clean ALL indexes — not just the ones it can clean cheaply. Leaving stale entries in any
+index (label, property, adjacency) causes phantom results in queries.
+
+**Audit checklist:**
+1. Every delete path that handles missing entities must purge label, property, AND adjacency indexes
+2. Brute-force purge is acceptable for corruption paths
+
+```
+BAD:  cleanLabelIndexes(id)      // ✓
+      // property indexes? skipped — "we don't have the node data"
+
+GOOD: cleanLabelIndexes(id)                          // ✓
+      purgeNodeFromAllPropertyIndexes(indexes, id)   // ✓ brute-force O(V)
+```
+
+---
+
+## A4. Index Creation: Visibility + Dirty-Map Tracking
+
+Combines two related bugs from `CreatePropertyIndex`:
+
+**Phase 1 bug (v3.0.26):** The index must be installed as an empty placeholder BEFORE the I/O phase.
+Otherwise concurrent writes that check `if idx, ok := indexes[key]; ok` see nothing and skip maintenance.
+
+**Phase 3 bug (v3.0.30):** `contains(id)` during Phase 3 can't distinguish "never touched" from
+"property deleted during Phase 2". A concurrent delete removes the ID, `contains()` returns false,
+Phase 3 re-adds the stale value.
+
+Solution: Track all IDs mutated during Phase 2 in `propertyIndex.mutated`. Phase 3 checks
+`mutated[id]` instead of `contains(id)`.
 
 ```
 BAD:  Phase 1 (RLock): snapshot IDs, index not installed
-      Phase 2 (no lock): concurrent PutNode → addNodeToPropertyIndexes → no-op
-      Phase 3 (Lock): install index → missing concurrent writes
+      Phase 3: if liveIdx.contains(id) { continue }  // false after concurrent delete
 
 GOOD: Phase 1 (Lock): install empty index, snapshot IDs
-      Phase 2 (no lock): concurrent PutNode → addNodeToPropertyIndexes → index exists → added
-      Phase 3 (Lock): merge backfill, skip IDs already in live index
+      Phase 3: if _, mutated := liveIdx.mutated[id]; mutated { continue }
 ```
 
 ---
 
-## 24. Cross-Shard Split Writes Must Have Defined Ordering
+# Tier B — Structural Rules
 
-When a relationship spans two shards, the 7-key write is split. Without a defined ordering,
-partial failures leave the system in an inconsistent state with no recovery path.
+These lessons describe architectural patterns. They work well because they're baked into
+the code structure — following the pattern once protects all future code in that area.
+
+---
+
+## B1. Challenge the Plan
+
+A detailed plan is a hypothesis, not a specification. Before implementing any method, ask:
+**"Does this algorithm actually deliver what the method name promises?"** and
+**"Does this interact with an existing feature that could break it?"** and
+**"Does the constraint make sense?"**
+
+Example: `Snapshot(t)` calling `AllNodes()` only returns current tip versions — a "snapshot from
+3 days ago" includes today's property values and omits deleted nodes. The name says time-travel;
+the algorithm does current-state filtering. Fix: walk the 0x07 history tape.
+
+---
+
+## B2. In-Memory State Must Survive Restart
+
+If it's in memory and it matters, it needs a persistence path and a rebuild path.
+Violated twice: once for in-memory indexes (v3.0.10), once for property indexes (v3.0.23).
+
+The pattern: if `loadIndexes()` doesn't rebuild it, it doesn't survive restart.
 
 ```
-BAD:  putRelEntityAndOut(eventShard, rel)   // event shard first
-      putRelIncoming(refShard, ...)          // ref shard second
-      // If event shard write succeeds but ref fails: entity exists without inIdx.
-      // IncomingRelationships(caseID) misses the signal. The dominant query is broken.
+BAD:  CreatePropertyIndex populates bs.propertyIndexes[key] in memory.
+      On restart, map is empty. NodesByLabelAndProperty silently degrades to O(N) scan.
 
-GOOD: putRelIncoming(refShard, ...)          // ref shard first (E→R pattern)
-      putRelEntityAndOut(eventShard, rel)    // event shard second
-      // If ref succeeds but event fails: orphaned inIdx entry in ref shard.
-      // IncomingRelationships sees the relID, GetRelationship returns ErrRelNotFound.
-      // Detectable by repair scan. The dominant query path is never silently wrong.
+GOOD: Serialize index definitions to Badger during flush(). In loadIndexes(),
+      read definitions back, scan matching nodes, rebuild in-memory entries.
 ```
 
-The ordering is pattern-dependent:
+---
+
+## B3. Lock Scope: Fast Mutations vs Slow I/O
+
+Never hold idxMu.Lock during disk I/O. Collect IDs fast, release lock, process outside.
+
+```
+BAD:  bs.idxMu.Lock()
+      for nodeID := range nodeIDs {
+          bs.getNodeLocked(nodeID)  // msgpack deserialization, Badger reads
+      }
+      bs.idxMu.Unlock()
+
+GOOD: bs.idxMu.RLock()
+      ids := collectIDs(nodeIDs)  // snapshot IDs quickly
+      bs.idxMu.RUnlock()
+      for _, id := range ids {
+          node := bs.GetNode(id)  // I/O outside lock
+      }
+```
+
+---
+
+## B4. Temporal Data Is Append-Only
+
+In a temporal database, you never physically delete history. You append a tombstone.
+Phase 1's `DeleteNodeCascade` called `deleteHistoryByPrefix`, erasing the 0x07 tape.
+
+```
+BAD:  DeleteNode → remove from store → deleteHistoryByPrefix
+GOOD: DeleteNode → append final version with DeletedAt timestamp → set ValidTo
+```
+
+---
+
+## B5. Don't Materialize Data You Won't Use
+
+When an in-memory index gives you the answer, use the index.
+
+```
+BAD:  nodes, _ := store.NodesByLabel(tok)  // alloc + DeepCopy + sort 5M nodes
+      return len(nodes)
+
+GOOD: return len(ms.labelIdx[tok])  // O(1), zero allocations
+```
+
+---
+
+## B6. Two-Phase Operations: Preflight Then Apply
+
+Multi-step mutations must be all-or-nothing. Phase 1: read everything, fail fast.
+Phase 2: apply everything, no error exits.
+
+```
+BAD:  for _, relID := range rels {
+          deleteRelLocked(relID)  // mutates indexes on each iteration
+      }
+      // If iteration 5 fails, iterations 1-4 already mutated indexes.
+
+GOOD: // Phase 1: preflight — read all, mutate nothing
+      infos := make([]relDeleteInfo, len(rels))
+      for i, relID := range rels {
+          info, err := getRelLocked(relID)
+          if err != nil { return err }
+      }
+      // Phase 2: apply — all mutations, no error exits
+      for _, info := range infos {
+          deleteRelByInfo(info)
+      }
+```
+
+---
+
+## B7. Multi-Shard Move Must Rollback on Partial Failure
+
+Cross-shard operations that move data (ArchiveNode/RestoreNode) must undo completed
+steps when a later step fails. Otherwise partial failure leaves data duplicated or orphaned.
+
+Found in v3.0.30: `ArchiveNode` wrote nodes+rels to archive, then failed deleting from
+refShard. Result: entity existed in both shards.
+
+```
+BAD:  archiveStore.PutNode(node)        // step 1: succeeds
+      archiveStore.PutRelationship(r)   // step 2: succeeds
+      refShard.DeleteNode(id)           // step 3: FAILS
+      // Node now in both refShard AND archive
+
+GOOD: archiveStore.PutNode(node)
+      archiveStore.PutRelationship(r)
+      if err := refShard.DeleteNode(id); err != nil {
+          archiveStore.DeleteNode(id)   // rollback step 1
+          // rollback rels too
+          return err
+      }
+```
+
+---
+
+## B8. Store Boundary = Trust Boundary
+
+Entities must be deep-copied at the store boundary. Cache and caller must never share pointers.
+
+```
+BAD:  func PutNode(n *types.Node) {
+          ms.nodes[id] = n  // caller and cache share same pointer
+      }
+
+GOOD: func PutNode(n *types.Node) {
+          ms.nodes[id] = n.DeepCopy()
+      }
+```
+
+---
+
+## B9. Error Handling: Sentinel Discrimination
+
+Never bare `continue` on error. Check the specific sentinel. Propagate everything else.
+
+```
+BAD:  if err != nil { continue }  // swallows corruption, I/O errors
+
+GOOD: if errors.Is(err, ErrNodeNotFound) { continue }  // orphan: skip
+      if err != nil { return nil, err }                  // real error: propagate
+```
+
+---
+
+## B10. Testing Discipline
+
+- **Coverage gates.** Run `make cover` before marking done. 0% on any public method is a blocker.
+- **Node/Rel parity.** They are structural mirrors. Every node test needs a relationship equivalent.
+- **Feature interactions.** After happy-path tests: "What existing features could produce different inputs?"
+- **Every branch.** Every `case` in a type switch. Every `if/else` path. The test IS the proof.
+
+---
+
+## B11. Concurrency Patterns
+
+- **sync.Once** for idempotent `Close()`. Never nil-guard a function pointer across goroutines.
+- **Ascending shard order** for multi-lock acquisition. `LockTwo` normalizes. `LockMany` deduplicates+sorts.
+- **TOCTOU retry for dynamic lock sets.** Re-verify after acquiring locks. Adjacency can change between discovery and locking.
+- **Atomic counters** outside Badger transactions. OCC conflicts kill concurrent writes.
+- **Counters in the same WriteBatch** as data. Separate transactions = crash inconsistency.
+- **Version-aware dirty tracking.** `CollectDirty()` is read-only. `MarkFlushed()` is CAS.
+- **Last-write-wins buffers.** `map[string]writeOp`, not `[]writeOp`. Retries must not replay stale writes.
+- **Tombstones** in cache-first architectures. A cache miss must not fall through to stale Badger data.
+
+---
+
+## B12. Async Persistence
+
+- `Close()` must call `flush()` unconditionally — even when `flushLoop` was never started.
+- Background loop errors must be logged (`slog.Error`), never `_ = fn()`.
+- Tests verifying durability must `Flush()` or `Close()` before reopening the DB.
+- `FlushInterval: 0` means "use default", not "disabled". Use large values to disable.
+
+---
+
+## B13. Array Position Is Not Identity
+
+Never use array position (`i == 0`) as a proxy for semantic identity (`version == 0`).
+Array position changes when elements are removed; semantic identity does not.
+
+```
+BAD:  if i == 0 { // "genesis version" — breaks after TruncateHistory }
+
+GOOD: if entry.Version() == 0 { // actually genesis — works regardless of truncation }
+```
+
+---
+
+## B14. History-Aware Queries Need ID Merging
+
+Temporal queries that should include deleted entities must merge IDs from two sources:
+current entities (from `AllNodes()`) and historical entities (from `AllNodeHistoryIDs()`).
+
+```
+BAD:  all := store.AllNodes()    // only current — deleted invisible
+GOOD: allIDs := merge(store.AllNodes(), store.AllNodeHistoryIDs())
+```
+
+---
+
+## B15. sync.RWMutex Is Not Reentrant
+
+If method A holds `RLock` and calls method B which also calls `RLock`, and a writer is waiting
+between them, deadlock occurs. Solution: only the outermost method acquires the lock; inner
+methods must be lock-free.
+
+```
+BAD:  func Snapshot(t) { g.mu.RLock(); GetNodesValidAt(t) /* also RLocks */ }
+GOOD: func Snapshot(t) { g.mu.RLock(); getNodesValidAtLocked(t) /* no lock */ }
+```
+
+---
+
+## B16. Cross-Shard Split Writes Must Have Defined Ordering
+
+When a relationship spans two shards, the 7-key write is split. Without defined ordering,
+partial failures leave the system inconsistent.
+
 - **E→R**: ref shard in/ first (critical path for `Case ← Signal` queries)
 - **R→E**: entity shard first (entity is the critical path)
 
@@ -487,71 +358,49 @@ Always verify both endpoints exist before any partial writes begin.
 
 ---
 
-## 25. Snowflake ID Is the Shard Address
+## B17. Cold Shard Checkout/Checkin for Reference Counting
 
-Every snowflake ID carries its creation timestamp in bits 22–62. This eliminates the need
-for range tables, bloom filters, or shard-mapping indexes. The ID itself is the O(1) shard
-address: extract timestamp → map to shard window → direct read.
+Returning a `*BadgerStore` pointer from `getStore()` and releasing the lock creates a race:
+`closeIdleShards()` can close the store while a caller is still using it.
 
 ```
-BAD:  func findShard(id snowflake.ID) *BadgerStore {
-          for _, shard := range allShards {
-              if shard.hasNodeID(id) { return shard }  // O(N) fan-out across all shards
-          }
-      }
+BAD:  store, _ := es.getStore(ts)   // returns pointer, releases lock
+      store.AllNodes(opts)            // idle-close can close store here
 
-GOOD: func findShard(id snowflake.ID) *BadgerStore {
-          epochMs := snowflakeEpoch.UnixMilli()
-          timeMs := int64(uint64(id) >> 22)
-          created := time.UnixMilli(epochMs + timeMs)
-          // O(1): map timestamp to shard window
-          for _, es := range eventShards {
-              if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
-                  return es.store
-              }
-          }
-          return hotShard.store  // fallback: newest shard
-      }
+GOOD: store, _ := es.checkoutStore(ts)  // increments activeReqs
+      defer es.checkinStore()             // decrements when done
 ```
-
-For reference entities: probe `refShard.hasNodeID(id)` first (O(1) existence check).
-If miss, fall through to timestamp extraction for event shards.
 
 ---
 
-## 26. Registry Persistence Differs by Store Type
+## B18. Shard Rotation: Boundary Alignment + Catalog Update
 
-BadgerStore persists label/reltype registries inside Badger itself (`meta/label_tokens`,
-`meta/reltype_tokens`). TieredStore cannot do this because it manages multiple BadgerStores.
-Instead, TieredStore uses a separate flat msgpack file (`data/meta/registry.msgpack`) with
-atomic write-tmp+rename.
+Two related bugs from v3.0.28:
 
-When adding a new Store implementation, ask: "Where do registries live?" The Graph layer
-saves/loads registries via type switch in `New()` and `Close()`. Missing the type switch
-means registries silently vanish on restart.
+**Boundary alignment:** Snowflake IDs encode time at millisecond resolution. Shard boundaries
+with nanosecond precision create gaps. Fix: truncate to millisecond, add one unit.
+
+```
+BAD:  boundary := time.Now()                           // nanosecond precision
+GOOD: boundary := time.Now().Truncate(time.Millisecond).Add(time.Millisecond)
+```
+
+**Catalog sync:** When rotating hot→warm, the catalog entry's `TimeEnd` must be updated to the
+actual rotation time — not left at the original window end. Both in-memory `eventShard.timeEnd`
+AND the catalog's `ShardEntry.TimeEnd` must be updated. The catalog is persisted — warm shard
+recovery on restart depends on it.
 
 ---
 
-## 27. Class-Based Routing Breaks with Multi-Tier Event Shards
+## B19. Class-Based Routing Breaks with Multi-Tier Event Shards
 
-With a single hot event shard, routing by `EntityClass` (ClassEvent → hotShard) works.
-Once warm shards exist, two event entities may live in different shards — both classify as
-`ClassEvent`, but `shardForClass(ClassEvent)` returns only the hot shard. Relationship writes
-to hot shard break `OutgoingRelationships` for warm-shard nodes.
+With a single hot event shard, routing by `EntityClass` works. Once warm shards exist,
+two event entities may live in different shards — both classify as `ClassEvent`, but
+`shardForClass(ClassEvent)` returns only the hot shard.
 
 ```
-BAD:  startClass := classifyNodeID(startID)  // ClassEvent
-      endClass := classifyNodeID(endID)      // ClassEvent
-      if startClass == endClass {
-          shardForClass(ClassEvent).PutRelationship(r)  // always hot shard
-      }
-      // Start node is in warm shard — entity+out/ keys land in wrong shard
-
-GOOD: startShard := shardForNodeID(startID)  // warm shard
-      endShard := shardForNodeID(endID)      // hot shard
-      if startShard != endShard {
-          // Cross-shard split-write: entity+out/ in startShard, in/ in endShard
-      }
+BAD:  shardForClass(ClassEvent).PutRelationship(r)  // always hot shard
+GOOD: shardForNodeID(startID)                        // actual shard via timestamp
 ```
 
 Rule: always resolve the **actual shard** (via snowflake ID timestamp or ref probe), never
@@ -559,91 +408,38 @@ the **class**. Class tells you where new entities go; shard tells you where exis
 
 ---
 
-## 28. sync.RWMutex Snapshot Pattern for Rotation Safety
+# Tier C — Reference
 
-When a mutable pointer (e.g., `ts.hotShard`) can change during a read operation, the
-read path must snapshot the pointer under RLock, release the lock, then operate on the
-snapshot. Holding RLock during the entire I/O blocks rotation unnecessarily.
-
-```
-BAD:  ts.mu.RLock()
-      nodes, _ := ts.hotShard.store.AllNodes(opts)  // holds RLock during full scan
-      ts.mu.RUnlock()
-      // Rotation blocked for entire scan duration
-
-GOOD: ts.mu.RLock()
-      eventStores := ts.eventShardSnapshot(opts.Depth)  // snapshot pointers
-      ts.mu.RUnlock()
-      for _, store := range eventStores {
-          nodes, _ := store.AllNodes(opts)  // I/O outside lock
-      }
-```
-
-For rotation: acquire Lock, double-check condition (another goroutine may have rotated),
-mutate pointers, release Lock. This is the standard double-checked locking pattern.
+Project-specific patterns documented for context.
 
 ---
 
-## 29. Shard Boundaries Must Align with ID Precision
+## C1. Verification Must Handle Deleted Entities
 
-Snowflake IDs encode creation time at millisecond resolution. Shard time boundaries with
-nanosecond precision create gaps: an entity created at `t=1000.000ms` might have a
-snowflake timestamp of `1000ms`, but if the shard boundary is `1000.000001ms` (nanosecond
-from `time.Now()`), the entity resolves to the wrong shard.
+Any verification function that reads entity state must tolerate the entity being deleted.
+If the entity has history but no current state, proceed using history alone.
 
 ```
-BAD:  boundary := time.Now()                    // nanosecond precision
-      oldHot.timeEnd = boundary
-      newShard.timeStart = boundary
-      // Entity at 1000ms: created.Before(1000.000001ms) → true → lands in old shard
-      // But it was written to new shard after rotation
-
-GOOD: boundary := time.Now().Truncate(time.Millisecond).Add(time.Millisecond)
-      oldHot.timeEnd = boundary                 // e.g., 1001ms
-      newShard.timeStart = boundary             // contiguous, no gap
-      // Entity at 1000ms: created.Before(1001ms) → true → correctly in old shard
-      // Entity at 1001ms: created.Before(1001ms) → false → correctly in new shard
+BAD:  if err != nil { return false, err }  // ErrNodeNotFound → can't verify deleted
+GOOD: if err != nil && !errors.Is(err, ErrNodeNotFound) { return false, err }
 ```
-
-Rule: truncate to the ID's precision, add one unit. This ensures entities created in the
-same unit as the rotation boundary resolve to the old shard (where they were actually written).
 
 ---
 
-## 30. Catalog Entries Must Reflect Actual Shard Windows After Rotation
+## C2. Dirty-Map Tracking for Concurrent Index Creation
 
-When rotating a hot shard to warm, the catalog entry's `TimeEnd` must be updated to the
-actual rotation time — not left at the original window end. If the original window was
-`2026-W10` (ending Sunday midnight) but rotation happens Wednesday, entities created
-Thursday through Sunday would have snowflake timestamps inside the original window but
-actually live in the new hot shard.
+`propertyIndex.contains(id)` during Phase 3 of `CreatePropertyIndex` can't distinguish
+"never touched" from "property deleted during Phase 2". Track all IDs mutated during
+Phase 2 in `propertyIndex.mutated`. Phase 3 checks `mutated[id]` instead of `contains(id)`.
 
-```
-BAD:  oldHot.timeEnd = originalWindowEnd  // Sunday midnight
-      // Entity created Thursday: timestamp is in [Monday, Sunday) → resolves to warm shard
-      // But entity was written to new hot shard → ErrNodeNotFound
-
-GOOD: boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
-      oldHot.timeEnd = boundary            // Wednesday actual rotation time
-      catalog.UpdateShardTimeEnd(name, boundary)
-      newHot.timeStart = boundary          // contiguous
-      // Entity created Thursday: timestamp >= boundary → resolves to new hot shard ✓
-```
-
-Both the in-memory `eventShard.timeEnd` and the catalog's `ShardEntry.TimeEnd` must be
-updated. The catalog is persisted — warm shard recovery on restart depends on it.
+(See A4 for the full pattern — this is the implementation detail.)
 
 ---
 
-## 31. Never Use Sub-Millisecond ShardWindow in Tests
+## C3. Validation: Allowlists, Recursion, Depth Limits
 
-Snowflake IDs encode creation time at millisecond resolution (bits `>> 22`). Using
-`ShardWindow: time.Millisecond` in test configs causes the shard window to expire before
-or during the first `PutNode` call. `checkRotation()` auto-rotates mid-write, the node
-lands in a new hot shard, but its snowflake timestamp still resolves to the old (expired)
-shard window. Result: every `GetNode`/`shardForNodeID` call returns `ErrNodeNotFound`.
+- **Allowlist > denylist.** Enumerate what's safe. Reject everything else.
+- **Recursive.** `[]any{&myStruct{}}` bypasses top-level-only checks.
+- **Depth-limited.** Every recursive function on untrusted input needs `maxDepth`.
 
-**Rule**: Use the standard 1-week window (`newTestTieredStore`) and test cold/warm
-behavior via manual rotation + the `demoteToCold` test helper. Never rely on tiny
-`ShardWindow` or `ColdAfter` durations to trigger lifecycle transitions — they race
-with snowflake's millisecond clock.
+(Covered in CLAUDE.md design invariants — kept here as the bug origin story.)

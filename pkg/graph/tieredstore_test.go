@@ -1842,7 +1842,7 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 	oldHotName := ts.hotShard.name
 	forceRotation(t, ts)
 
-	// Warm shard must stay in the eventShards map (Lesson 25).
+	// Warm shard must stay in the eventShards map for snowflake ID → shard resolution.
 	if _, ok := ts.eventShards[oldHotName]; !ok {
 		t.Error("warm shard must stay in eventShards map for snowflake ID resolution")
 	}
