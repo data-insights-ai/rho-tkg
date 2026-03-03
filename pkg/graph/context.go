@@ -31,7 +31,11 @@ func (g *Graph) GetNodeWithContext(ctx context.Context, id snowflake.ID) (*types
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	return g.store.GetNode(id)
+	n, err := g.store.GetNode(id)
+	if err == nil {
+		g.opNodeReads.Add(1)
+	}
+	return n, err
 }
 
 // GetRelationshipWithContext retrieves a relationship by snowflake ID with context support.
@@ -39,7 +43,11 @@ func (g *Graph) GetRelationshipWithContext(ctx context.Context, id snowflake.ID)
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	return g.store.GetRelationship(id)
+	r, err := g.store.GetRelationship(id)
+	if err == nil {
+		g.opRelReads.Add(1)
+	}
+	return r, err
 }
 
 // AddNodeWithContext creates a new node with the given labels and properties.
@@ -105,6 +113,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 		return nil, err
 	}
 
+	g.opNodeAdds.Add(1)
 	g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant())
 	return n, nil
 }
@@ -170,6 +179,7 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 		return nil, err
 	}
 
+	g.opRelAdds.Add(1)
 	g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant())
 	return r, nil
 }
@@ -330,6 +340,7 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 	if err := g.store.DeleteNodeCascade(id); err != nil {
 		return err
 	}
+	g.opNodeDeletes.Add(1)
 	g.publishEvent(EventNodeDelete, id, now)
 	return nil
 }
@@ -367,6 +378,7 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 	if err := g.store.DeleteRelationship(id); err != nil {
 		return err
 	}
+	g.opRelDeletes.Add(1)
 	g.publishEvent(EventRelDelete, id, now)
 	return nil
 }
@@ -474,6 +486,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 		return nil, err
 	}
 
+	g.opNodeUpdates.Add(1)
 	g.publishEvent(EventNodeUpdate, id, now)
 	return current, nil
 }
@@ -581,6 +594,7 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 		return nil, err
 	}
 
+	g.opRelUpdates.Add(1)
 	g.publishEvent(EventRelUpdate, id, now)
 	return current, nil
 }
@@ -723,4 +737,229 @@ func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, t
 	}
 
 	return r, nil
+}
+
+// UpdateNodeInPlace applies property updates to a node without creating a version history entry.
+// Version number is NOT incremented. PrevHash in the integrity chain is preserved.
+// Use for high-frequency counter updates where history accumulation is undesirable.
+// Returns ErrNodeNotFound if the node does not exist. Empty updates map is a no-op.
+func (g *Graph) UpdateNodeInPlace(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	return g.UpdateNodeInPlaceWithContext(context.Background(), id, updates)
+}
+
+// UpdateRelInPlace applies property updates to a relationship without creating a version history entry.
+// Version number is NOT incremented. PrevHash in the integrity chain is preserved.
+// Returns ErrRelNotFound if the relationship does not exist. Empty updates map is a no-op.
+func (g *Graph) UpdateRelInPlace(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	return g.UpdateRelInPlaceWithContext(context.Background(), id, updates)
+}
+
+// UpdateNodeInPlaceWithContext applies property updates to a node without history.
+// Identical to UpdateNodeWithContext except:
+//  1. Version number is NOT incremented.
+//  2. store.ReplaceNode is used instead of store.ReplaceNodeWithHistory.
+//  3. PrevHash is preserved (not advanced) in the integrity chain.
+func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if len(updates) == 0 {
+		return g.GetNodeWithContext(ctx, id)
+	}
+
+	// Phase 1: Pre-validate before acquiring entity lock.
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return nil, fmt.Errorf("graph: update node in place: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+			if err := g.validatePropertyEntry(key, val); err != nil {
+				return nil, err
+			}
+		} else {
+			if len(key) > g.validation.MaxPropertyKeyLength {
+				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+			}
+		}
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Entity lock → read-modify-write under serialization.
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Preserve existing PrevHash — no new chain link for in-place updates.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.PrevHash
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	for key, val := range updates {
+		if val == nil {
+			if _, err := current.DeleteProperty(key); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+		} else {
+			if err := current.SetProperty(key, val); err != nil {
+				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+			}
+		}
+	}
+
+	// Check final property count.
+	if current.PropertyCount() > g.validation.MaxPropertiesPerEntity {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), g.validation.MaxPropertiesPerEntity)
+	}
+
+	// NO version bump — in-place update preserves version.
+
+	now := types.Instant(time.Now().UnixMilli())
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.UpdatedAt = now
+
+	nodeLabels := g.NodeLabels(current)
+	hash := ComputeNodeHash(current, nodeLabels)
+	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	// ReplaceNode instead of ReplaceNodeWithHistory — no history entry written.
+	if err := g.store.ReplaceNode(current); err != nil {
+		return nil, err
+	}
+
+	g.opNodeUpdates.Add(1)
+	g.publishEvent(EventNodeUpdate, id, now)
+	return current, nil
+}
+
+// UpdateRelInPlaceWithContext applies property updates to a relationship without history.
+// Identical to UpdateRelationshipWithContext except:
+//  1. Version number is NOT incremented.
+//  2. store.ReplaceRelationship is used instead of store.ReplaceRelWithHistory.
+//  3. PrevHash is preserved (not advanced) in the integrity chain.
+func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	if len(updates) == 0 {
+		return g.GetRelationshipWithContext(ctx, id)
+	}
+
+	// Phase 1: Pre-validate before acquiring entity lock.
+	for key, val := range updates {
+		if types.IsShadowKey(key) {
+			return nil, fmt.Errorf("graph: update relationship in place: %w: %q", types.ErrReservedPrefix, key)
+		}
+		if val != nil {
+			if err := types.ValidatePropertyValue(val); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+			if err := g.validatePropertyEntry(key, val); err != nil {
+				return nil, err
+			}
+		} else {
+			if len(key) > g.validation.MaxPropertyKeyLength {
+				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+			}
+		}
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Entity lock on rel ID only.
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	current, err := g.store.GetRelationship(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Preserve existing PrevHash — no new chain link for in-place updates.
+	prevHash := ""
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.PrevHash
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	for key, val := range updates {
+		if val == nil {
+			if _, err := current.DeleteProperty(key); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+		} else {
+			if err := current.SetProperty(key, val); err != nil {
+				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+			}
+		}
+	}
+
+	// Check final property count.
+	if current.PropertyCount() > g.validation.MaxPropertiesPerEntity {
+		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), g.validation.MaxPropertiesPerEntity)
+	}
+
+	// NO version bump — in-place update preserves version.
+
+	now := types.Instant(time.Now().UnixMilli())
+	tm := current.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		current.SetTemporal(tm)
+	}
+	tm.UpdatedAt = now
+
+	relTypeName := g.RelationshipType(current)
+	hash := ComputeRelHash(current, relTypeName)
+	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	// ReplaceRelationship instead of ReplaceRelWithHistory — no history entry written.
+	if err := g.store.ReplaceRelationship(current); err != nil {
+		return nil, err
+	}
+
+	g.opRelUpdates.Add(1)
+	g.publishEvent(EventRelUpdate, id, now)
+	return current, nil
 }

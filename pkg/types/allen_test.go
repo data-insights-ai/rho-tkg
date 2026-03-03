@@ -10,7 +10,7 @@ import (
 func TestRelate_ZeroEndpoints(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name                   string
+		name                       string
 		aStart, aEnd, bStart, bEnd Instant
 	}{
 		{"aStart=0", 0, 10, 20, 30},
@@ -88,11 +88,11 @@ func TestRelate_AllRelations(t *testing.T) {
 		{"Equals", 1, 10, 1, 10, Equals},
 
 		// Boundary variations
-		{"Before_adjacent", 1, 4, 5, 8, Before},       // gap of 1
-		{"Before_wide_gap", 1, 3, 100, 200, Before},    // large gap
-		{"Overlaps_minimal", 1, 3, 2, 5, Overlaps},     // 1 unit overlap
-		{"During_minimal", 2, 3, 1, 4, During},         // barely inside
-		{"Contains_minimal", 1, 4, 2, 3, Contains},     // barely containing
+		{"Before_adjacent", 1, 4, 5, 8, Before},     // gap of 1
+		{"Before_wide_gap", 1, 3, 100, 200, Before}, // large gap
+		{"Overlaps_minimal", 1, 3, 2, 5, Overlaps},  // 1 unit overlap
+		{"During_minimal", 2, 3, 1, 4, During},      // barely inside
+		{"Contains_minimal", 1, 4, 2, 3, Contains},  // barely containing
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

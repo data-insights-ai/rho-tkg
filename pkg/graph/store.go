@@ -117,6 +117,12 @@ type Store interface {
 	// DropTemporalIndex removes a temporal index. Returns ErrTemporalIndexNotFound if not found.
 	DropTemporalIndex(labelToken uint16) error
 
+	// RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
+	// No version bump; no history entry. The graph layer has already applied the label
+	// removal to updatedNode (via RemoveLabelTokenRaw) and recomputed the hash.
+	// Returns ErrNodeNotFound if the node does not exist.
+	RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error
+
 	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
 	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)
@@ -152,6 +158,20 @@ type Store interface {
 	// The callback must NOT call other methods on this Store (lock reentrancy).
 	ForEachRelHistoryID(fn func(snowflake.ID) bool) error
 
+	// Vector indexes — in-memory brute-force k-NN index on node properties.
+	// Not persisted; the index must be rebuilt from nodes after restart.
+	// CreateVectorIndex creates an index for nodes with the given label token,
+	// on the given property key, expecting vectors of length dims.
+	// Returns ErrVectorIndexExists on duplicate.
+	CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error
+	// DropVectorIndex removes a vector index. Returns ErrVectorIndexNotFound if not found.
+	DropVectorIndex(labelToken uint16, propertyKey string) error
+	// SearchNearestNodes returns the k closest nodes by vector distance.
+	// Returns nil (no error) if the index is empty.
+	// Returns ErrVectorIndexNotFound if no index exists for label/propertyKey.
+	// Returns ErrDimensionMismatch if query length differs from the index's dimensions.
+	SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error)
+
 	// Clear removes all entities, indexes, history, and counters.
 	// Preserves nothing. Registries are a Graph-layer concern (not cleared).
 	// After Clear(), the store is in the same state as NewMemoryStore() / fresh Badger.
@@ -164,15 +184,15 @@ type Store interface {
 
 // Sentinel errors for store operations.
 var (
-	ErrNodeNotFound     = errors.New("graph: node not found")
-	ErrRelNotFound      = errors.New("graph: relationship not found")
-	ErrNodeExists       = errors.New("graph: node already exists")
-	ErrRelExists        = errors.New("graph: relationship already exists")
-	ErrVersionNotFound  = errors.New("graph: version not found")
-	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
-	ErrIndexExists              = errors.New("graph: property index already exists")
-	ErrIndexNotFound            = errors.New("graph: property index not found")
-	ErrTemporalIndexExists      = errors.New("graph: temporal index already exists")
-	ErrTemporalIndexNotFound    = errors.New("graph: temporal index not found")
-	ErrTxDone                   = errors.New("graph: transaction already committed or rolled back")
+	ErrNodeNotFound          = errors.New("graph: node not found")
+	ErrRelNotFound           = errors.New("graph: relationship not found")
+	ErrNodeExists            = errors.New("graph: node already exists")
+	ErrRelExists             = errors.New("graph: relationship already exists")
+	ErrVersionNotFound       = errors.New("graph: version not found")
+	ErrNoVersionValidAt      = errors.New("graph: no version valid at the given time")
+	ErrIndexExists           = errors.New("graph: property index already exists")
+	ErrIndexNotFound         = errors.New("graph: property index not found")
+	ErrTemporalIndexExists   = errors.New("graph: temporal index already exists")
+	ErrTemporalIndexNotFound = errors.New("graph: temporal index not found")
+	ErrTxDone                = errors.New("graph: transaction already committed or rolled back")
 )

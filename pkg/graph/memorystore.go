@@ -35,6 +35,9 @@ type MemoryStore struct {
 
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*temporalIndex
+
+	// Vector indexes — in-memory brute-force k-NN index on node properties.
+	vectorIndexes map[vectorIndexKey]*vectorIndex
 }
 
 // NewMemoryStore creates an empty MemoryStore with all indexes initialized.
@@ -50,6 +53,7 @@ func NewMemoryStore() *MemoryStore {
 		relHistory:      make(map[snowflake.ID]map[uint32]*types.Relationship),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 		temporalIndexes: make(map[uint16]*temporalIndex),
+		vectorIndexes:   make(map[vectorIndexKey]*vectorIndex),
 	}
 }
 
@@ -78,6 +82,7 @@ func (ms *MemoryStore) PutNode(n *types.Node) error {
 
 	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(ms.temporalIndexes, n, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, n, id)
 	return nil
 }
 
@@ -119,7 +124,39 @@ func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
 
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
 	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, n, id)
 	delete(ms.nodes, id)
+	return nil
+}
+
+// RemoveNodeLabelToken removes tok from the label index for id and stores updatedNode.
+// updatedNode must already have the label removed (via RemoveLabelTokenRaw).
+// Returns ErrNodeNotFound if the node does not exist.
+func (ms *MemoryStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	old, exists := ms.nodes[id]
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	// Remove only the specified token from the label index.
+	if set, ok := ms.labelIdx[tok]; ok {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.labelIdx, tok)
+		}
+	}
+
+	// Update property, temporal, and vector indexes (properties may have changed due to hash update).
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, old, id)
+	ms.nodes[id] = updatedNode.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, id)
 	return nil
 }
 
@@ -139,9 +176,11 @@ func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
 	}
 	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
 	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, old, id)
 	ms.nodes[id] = n.DeepCopy()
 	addNodeToPropertyIndexes(ms.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(ms.temporalIndexes, n, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, n, id)
 	return nil
 }
 
@@ -816,6 +855,90 @@ func (ms *MemoryStore) DropTemporalIndex(labelToken uint16) error {
 	return nil
 }
 
+// CreateVectorIndex creates a vector similarity index for nodes with the given label token,
+// on the given property key, expecting vectors of length dims.
+// Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
+func (ms *MemoryStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := ms.vectorIndexes[key]; exists {
+		return ErrVectorIndexExists
+	}
+	vi := &vectorIndex{dims: dims, metric: metric}
+	ms.vectorIndexes[key] = vi
+
+	// Populate from existing nodes.
+	for id, n := range ms.nodes {
+		if !n.HasLabelTokenRaw(labelToken) {
+			continue
+		}
+		val, ok := n.GetProperty(propertyKey)
+		if !ok {
+			continue
+		}
+		vec, ok := toFloat32Slice(val)
+		if !ok {
+			continue
+		}
+		_ = vi.add(id, vec)
+	}
+	return nil
+}
+
+// DropVectorIndex removes a vector index.
+// Returns ErrVectorIndexNotFound if the index does not exist.
+func (ms *MemoryStore) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := ms.vectorIndexes[key]; !exists {
+		return ErrVectorIndexNotFound
+	}
+	delete(ms.vectorIndexes, key)
+	return nil
+}
+
+// SearchNearestNodes returns the k nodes with vectors closest to query
+// under the index defined for labelToken+propertyKey.
+// Results are ordered by ascending distance (closest first).
+// Returns ErrVectorIndexNotFound if no index exists.
+// Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns nil, nil if the index exists but has no entries.
+func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+	ms.mu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := ms.vectorIndexes[key]
+	ms.mu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+
+	ids, err := vi.searchNearest(query, k)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		if n, ok := ms.nodes[id]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 // NodesByLabelAndProperty returns nodes matching the label and property value,
 // with optional pagination and temporal filtering. Uses the property index if
 // one exists; falls back to label scan + property filter.
@@ -1041,6 +1164,8 @@ func (ms *MemoryStore) Clear() error {
 	ms.nodeHistory = make(map[snowflake.ID]map[uint32]*types.Node)
 	ms.relHistory = make(map[snowflake.ID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
+	ms.temporalIndexes = make(map[uint16]*temporalIndex)
+	ms.vectorIndexes = make(map[vectorIndexKey]*vectorIndex)
 	return nil
 }
 

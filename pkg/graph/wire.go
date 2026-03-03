@@ -245,6 +245,7 @@ const (
 	ptSliceAny   byte = 21
 	ptMapStrAny  byte = 22
 	ptMapStrStr  byte = 23
+	ptSliceF32   byte = 24
 )
 
 // propertyTypeTag returns the type tag for a property value.
@@ -284,6 +285,8 @@ func propertyTypeTag(v any) byte {
 		return ptSliceInt
 	case []int64:
 		return ptSliceInt64
+	case []float32:
+		return ptSliceF32
 	case []float64:
 		return ptSliceF64
 	case []byte:
@@ -355,6 +358,8 @@ func reconstructTypedValue(v any, tag byte) any {
 		return toIntSlice(v)
 	case ptSliceInt64:
 		return toInt64Slice(v)
+	case ptSliceF32:
+		return toFloat32SliceWire(v)
 	case ptSliceF64:
 		return toFloat64Slice(v)
 	case ptSliceByte:
@@ -484,6 +489,27 @@ func toFloat64Slice(v any) []float64 {
 		for i, e := range s {
 			if f, ok := e.(float64); ok {
 				out[i] = f
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// toFloat32SliceWire reconstructs a []float32 from a msgpack-decoded value.
+// Msgpack encodes float32 elements as float32 in a typed slice.
+func toFloat32SliceWire(v any) []float32 {
+	switch s := v.(type) {
+	case []float32:
+		return s
+	case []any:
+		out := make([]float32, len(s))
+		for i, e := range s {
+			switch f := e.(type) {
+			case float32:
+				out[i] = f
+			case float64:
+				out[i] = float32(f)
 			}
 		}
 		return out

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -14,12 +15,14 @@ import (
 
 // Sentinel errors for entity management.
 var (
-	ErrNoLabels       = errors.New("graph: node requires at least one label")
-	ErrNilNode        = errors.New("graph: node must not be nil")
-	ErrZeroID         = errors.New("graph: zero ID is not valid for import")
-	ErrNotTieredStore = errors.New("graph: operation requires TieredStore")
-	ErrAlreadyClosed  = errors.New("graph: entity already closed")
+	ErrNoLabels         = errors.New("graph: node requires at least one label")
+	ErrNilNode          = errors.New("graph: node must not be nil")
+	ErrZeroID           = errors.New("graph: zero ID is not valid for import")
+	ErrNotTieredStore   = errors.New("graph: operation requires TieredStore")
+	ErrAlreadyClosed    = errors.New("graph: entity already closed")
 	ErrInvalidTimeRange = errors.New("graph: invalid time range")
+	ErrLabelNotFound    = errors.New("graph: node does not have the specified label")
+	ErrLastLabel        = errors.New("graph: cannot remove the last label from a node")
 )
 
 // Sentinel errors for validation limits.
@@ -94,10 +97,20 @@ type Graph struct {
 	store       Store
 	entityLocks *entityLockManager
 	validation  ValidationLimits
-	constraints ConstraintSet  // temporal constraints checked at relationship write time
-	events      *EventBus      // nil = no event publishing; set via SetEventBus
-	mu          sync.RWMutex   // serializes batch writes vs whole-graph temporal reads (Snapshot)
+	constraints ConstraintSet // temporal constraints checked at relationship write time
+	events      *EventBus     // nil = no event publishing; set via SetEventBus
+	mu          sync.RWMutex  // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
+
+	// Operation counters — incremented atomically on every successful operation.
+	opNodeAdds    atomic.Int64
+	opNodeReads   atomic.Int64
+	opNodeUpdates atomic.Int64
+	opNodeDeletes atomic.Int64
+	opRelAdds     atomic.Int64
+	opRelReads    atomic.Int64
+	opRelUpdates  atomic.Int64
+	opRelDeletes  atomic.Int64
 }
 
 // New creates a new Graph with the given configuration.
@@ -654,6 +667,45 @@ func (g *Graph) DropTemporalIndex(label string) error {
 	return g.store.DropTemporalIndex(tok)
 }
 
+// --- Vector indexes ---
+
+// CreateVectorIndex creates a vector similarity index on the given label and property key.
+// dims is the expected vector dimension. metric selects the distance function.
+// Returns nil if the label has never been registered (no-op).
+// Returns ErrVectorIndexExists if the index already exists.
+func (g *Graph) CreateVectorIndex(label, propertyKey string, dims int, metric DistanceMetric) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.CreateVectorIndex(tok, propertyKey, dims, metric)
+}
+
+// DropVectorIndex removes a vector index.
+// Returns nil if the label has never been registered.
+// Returns ErrVectorIndexNotFound if the index does not exist.
+func (g *Graph) DropVectorIndex(label, propertyKey string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.DropVectorIndex(tok, propertyKey)
+}
+
+// SearchNearestNodes returns the k nodes with vectors closest to query
+// under the index defined for label+propertyKey.
+// Returns ErrVectorIndexNotFound if no index exists.
+// Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns nil, nil if the index exists but has no entries.
+// Returns nil, nil if the label has never been registered.
+func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	return g.store.SearchNearestNodes(tok, propertyKey, query, k, opts)
+}
+
 // NodesByLabelAndProperty returns nodes matching the label and property value,
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
@@ -764,6 +816,86 @@ func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant) {
 		return
 	}
 	g.events.publish(Event{Type: typ, EntityID: id, Timestamp: t})
+}
+
+// Stats returns a snapshot of graph operation counters and optional cache metrics.
+// Cache metrics are populated only when the underlying store implements StoreStats
+// (currently BadgerStore only); all cache fields are zero for MemoryStore and TieredStore.
+func (g *Graph) Stats() GraphStats {
+	s := GraphStats{
+		NodesAdded:   g.opNodeAdds.Load(),
+		NodesRead:    g.opNodeReads.Load(),
+		NodesUpdated: g.opNodeUpdates.Load(),
+		NodesDeleted: g.opNodeDeletes.Load(),
+		RelsAdded:    g.opRelAdds.Load(),
+		RelsRead:     g.opRelReads.Load(),
+		RelsUpdated:  g.opRelUpdates.Load(),
+		RelsDeleted:  g.opRelDeletes.Load(),
+	}
+	if ss, ok := g.store.(StoreStats); ok {
+		s.NodeCacheHits = ss.NodeCacheHits()
+		s.NodeCacheMisses = ss.NodeCacheMisses()
+		s.RelCacheHits = ss.RelCacheHits()
+		s.RelCacheMisses = ss.RelCacheMisses()
+	}
+	return s
+}
+
+// RemoveNodeLabel removes the given label from an existing node.
+// The label index is updated atomically; the hash chain is recomputed.
+//
+// Error cases:
+//   - ErrNodeNotFound: node does not exist
+//   - ErrLabelNotFound: node does not have that label (or label not registered)
+//   - ErrLastLabel: cannot remove the only remaining label
+func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return ErrLabelNotFound
+	}
+
+	g.entityLocks.LockEntity(id)
+	defer g.entityLocks.UnlockEntity(id)
+
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		return err
+	}
+
+	if !current.HasLabelTokenRaw(tok) {
+		return ErrLabelNotFound
+	}
+	if current.LabelTokenCount() == 1 {
+		return ErrLastLabel
+	}
+
+	copy := current.DeepCopy()
+	copy.RemoveLabelTokenRaw(tok)
+
+	// Recompute hash after label change.
+	prevHash := ""
+	if ig := copy.Integrity(); ig != nil {
+		prevHash = ig.PrevHash
+	}
+	nodeLabels := g.NodeLabels(copy)
+	hash := ComputeNodeHash(copy, nodeLabels)
+	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+
+	// Set UpdatedAt.
+	now := types.Instant(time.Now().UnixMilli())
+	tm := copy.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		copy.SetTemporal(tm)
+	}
+	tm.UpdatedAt = now
+
+	if err := g.store.RemoveNodeLabelToken(id, tok, copy); err != nil {
+		return err
+	}
+	g.publishEvent(EventNodeUpdate, id, now)
+	g.opNodeUpdates.Add(1)
+	return nil
 }
 
 // --- Version chain navigation ---

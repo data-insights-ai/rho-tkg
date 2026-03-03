@@ -3,6 +3,7 @@ package graph
 import (
 	"container/list"
 	"sync"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
@@ -40,8 +41,10 @@ type entityLRU[V any] struct {
 	capacity   int // soft limit — dirty entries can exceed
 	cleanCount int // number of evictable entries (dirtyVer == 0, !deleted)
 	items      map[snowflake.ID]*list.Element
-	order      *list.List // front = most recent, back = LRU
-	nextVer    uint64     // monotonic dirty version counter
+	order      *list.List   // front = most recent, back = LRU
+	nextVer    uint64       // monotonic dirty version counter
+	hits       atomic.Int64 // total cache hits (cacheHit + cacheDeleted)
+	misses     atomic.Int64 // total cache misses (cacheMiss)
 }
 
 // newEntityLRU creates an LRU cache with the given capacity.
@@ -68,6 +71,7 @@ func (c *entityLRU[V]) Get(key snowflake.ID) (V, cacheStatus) {
 	el, ok := c.items[key]
 	if !ok {
 		var zero V
+		c.misses.Add(1)
 		return zero, cacheMiss
 	}
 
@@ -76,9 +80,11 @@ func (c *entityLRU[V]) Get(key snowflake.ID) (V, cacheStatus) {
 
 	if entry.deleted {
 		var zero V
+		c.hits.Add(1)
 		return zero, cacheDeleted
 	}
 
+	c.hits.Add(1)
 	return entry.value, cacheHit
 }
 
@@ -245,6 +251,12 @@ func (c *entityLRU[V]) CleanCount() int {
 	defer c.mu.Unlock()
 	return c.cleanCount
 }
+
+// Hits returns the total number of cache hits (cacheHit + cacheDeleted) since creation.
+func (c *entityLRU[V]) Hits() int64 { return c.hits.Load() }
+
+// Misses returns the total number of cache misses (cacheMiss) since creation.
+func (c *entityLRU[V]) Misses() int64 { return c.misses.Load() }
 
 // evictClean removes LRU clean entries until the cache is at capacity.
 // Only clean (dirtyVer == 0, !deleted) entries are candidates for eviction.

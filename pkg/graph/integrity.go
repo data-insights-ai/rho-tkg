@@ -281,6 +281,11 @@ func writePropertyValue(h hash.Hash, v any) {
 		for _, n := range val {
 			mustWrite(h, n)
 		}
+	case []float32:
+		mustWrite(h, uint32(len(val)))
+		for _, f := range val {
+			mustWrite(h, f)
+		}
 	case []float64:
 		mustWrite(h, uint32(len(val)))
 		for _, f := range val {

@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Session Protocol
 
-- **Session start**: Read `tasks/lessons.md` and `tasks/todo.md` before doing any work
+- **Session start**: Read `tasks/lessons.md` and `CHANGELOG.md` (source of truth for version history) before doing any work
 - **Before planning**: Read the full API of ALL files involved in the change — not snippets around suspected bug locations. Understanding the complete API prevents plans based on wrong assumptions
 - **Challenge the plan**: Before implementing any method, ask: "Does this algorithm deliver what the method name promises?" and "Does this interact with an existing feature that could break it?"
 - **After corrections**: Update `tasks/lessons.md` with the pattern and a rule to prevent recurrence
-- **Session end**: Update `tasks/lessons.md` with new lessons, clean up `tasks/todo.md`
+- **Session end**: Update `tasks/lessons.md` with new lessons
 
 ## Project Overview
 
@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.36 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.3
+Status: v3.0.43 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.12 (complete)
 
 ## Build & Test Commands
 
@@ -65,11 +65,13 @@ These rules exist because every single one was violated at least once. Do not sk
 |---|---|
 | `node.go` | Node (graph vertex, 80B) — `nodeID` wrapping `snowflake.ID`, labels as `labelToken`, properties, version, temporal, integrity |
 | `relationship.go` | Relationship (directed edge, 72B) — `relID`, `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity |
-| `propertyslice.go` | Sorted key-value store with binary search; recursive allowlist validation; depth-limited to 32 levels |
+| `propertyslice.go` | Sorted key-value store with binary search; recursive allowlist validation; depth-limited to 32 levels; `[]float32` support |
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
 | `temporal.go` | `Instant` type (Unix ms), `entityID`, `TemporalMetadata` struct |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` — hash chain (`Hash`, `PrevHash`) |
 | `allen.go` | Allen's 13 interval relations — `AllenRelation`, `AllenRelationSet`, `Relate()`, `Compose()`, `ComposeSets()`, composition table |
+| `granularity.go` | `TimeGranularity` (8 levels), `TruncateInstant`, `RoundInstant`, `CeilInstant` — ISO 8601 week truncation |
+| `recurrence.go` | `RecurrencePattern`, `RecurrenceFrequency`, `WeekdayMask`, `Interval` — `Validate()` + `Expand(from, to)` |
 
 ### `pkg/graph`
 
@@ -94,9 +96,12 @@ These rules exist because every single one was violated at least once. Do not sk
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
 | `temporal_constraint.go` | Temporal constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, 6 sentinel errors, `checkTemporalConstraints` enforcement |
 | `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, binary search), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
-| `tx.go` | `GraphTx` — create-only transaction holding graph write lock |
+| `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback |
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
+| `events.go` | `EventType` (6 constants), `Event`, `EventBus` — subscribe/publish with copy-outside-lock pattern |
+| `stats.go` | `GraphStats` (8 operation counters + 4 cache metrics), `StoreStats` optional interface |
+| `vector_index.go` | In-memory brute-force k-NN `vectorIndex` — `DistanceMetric` (Cosine/Euclidean), `CreateVectorIndex`/`DropVectorIndex`/`SearchNearestNodes` |
 | `ontology.go` | `EntityClass` — classifies labels as reference or event for shard routing |
 | `shard_catalog.go` | JSON-persisted catalog of all shards with `sync.RWMutex`, atomic write via `atomicWriteFile` |
 | `registry_file.go` | Flat msgpack registry file save/load with `atomicWriteFile` (fsync before rename) |
@@ -196,6 +201,25 @@ These rules exist because every single one was violated at least once. Do not sk
 - **Index cleanup on corruption**: When a corruption fallback skips entity data, it must still clean ALL indexes (label, property, adjacency). Leaving stale entries causes phantom results.
 - **3-phase index creation**: (1) Install empty placeholder under Lock (visibility for concurrent writes), (2) unlocked I/O to build, (3) Lock to install with dirty-map tracking (`mutated[id]` not `contains(id)` — prevents re-adding concurrently deleted values).
 - **API design rules**: Config fields must be used or removed. Opaque wrappers must wrap the real type. Graph is sole external API. Doc comments must match behavior.
+
+### Events & Stats
+
+- **EventBus is opt-in**: `Graph.SetEventBus(bus)` — nil by default (zero overhead). Handlers are copied under RLock, invoked outside the lock (prevents deadlocks from re-entrant Graph calls in handlers).
+- **StoreStats opt-in**: Type-asserted in `Graph.Stats()` — avoids polluting the `Store` interface.
+- **Atomic operation counters**: 8 `atomic.Int64` fields on Graph — incremented after every successful store write.
+
+### Vector Indexes
+
+- **Not persisted**: Vector indexes are rebuilt from node properties on restart. This is a documented limitation — acceptable for brute-force k-NN.
+- **Store-level scope in TieredStore**: Vector indexes live at the `TieredStore` level (not per-shard) with their own `vectorIdxMu sync.RWMutex`.
+- **Auto-maintenance**: All mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`) update vector indexes.
+
+### Code Review Lessons
+
+- **Every fix needs a grep audit**: When fixing a pattern in one call site, grep for the same pattern across all files. The canonical hash bug (A1) was fixed in `context.go` but missed in `batch.go`, requiring a second review round.
+- **Fix descriptions must include exact signatures**: Telling a developer to "use lazy iterators" without specifying the callback shape led to 5 rounds of partial fixes for the OOM issue (C4). Specify the exact interface.
+- **Review by feature, not by file**: Single-file reviews missed cross-file interactions. The `batch.go` hash bug was only caught when reviewing `batch.go`, not when reviewing `integrity.go` where the hash function lives.
+- **Repair tools complement but don't replace correctness**: The cross-shard rollback issue (B7) was accepted as "mitigated" by `RunRepair` when it should have been fixed inline.
 
 ## Audit Checklists
 

@@ -16,15 +16,36 @@ func (ts *TieredStore) PutNode(n *types.Node) error {
 		return err
 	}
 	shard := ts.shardForNode(n.PrimaryLabelToken().Value())
-	return shard.PutNode(n)
+	if err := shard.PutNode(n); err != nil {
+		return err
+	}
+	id := n.InternalID().SnowflakeID()
+	ts.vectorIdxMu.Lock()
+	addNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 func (ts *TieredStore) ReplaceNode(n *types.Node) error {
-	shard, err := ts.shardForNodeID(n.InternalID().SnowflakeID())
+	id := n.InternalID().SnowflakeID()
+	shard, err := ts.shardForNodeID(id)
 	if err != nil {
 		return err
 	}
-	return shard.ReplaceNode(n)
+	// Read old state for accurate vector index removal.
+	old, _ := shard.GetNode(id)
+	if err := shard.ReplaceNode(n); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	addNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
@@ -32,7 +53,40 @@ func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
 	if err != nil {
 		return err
 	}
-	return shard.DeleteNode(id)
+	// Read node before deletion for vector index maintenance.
+	old, _ := shard.GetNode(id)
+	if err := shard.DeleteNode(id); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	ts.vectorIdxMu.Unlock()
+	return nil
+}
+
+func (ts *TieredStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	shard, err := ts.shardForNodeID(id)
+	if err != nil {
+		return err
+	}
+	// Read old state for accurate vector index removal.
+	old, _ := shard.GetNode(id)
+	if err := shard.RemoveNodeLabelToken(id, tok, updatedNode); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
@@ -408,6 +462,97 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 		return ErrTemporalIndexNotFound
 	}
 	return nil
+}
+
+// CreateVectorIndex creates a vector similarity index spanning all shards.
+// The index is maintained at the TieredStore level (not per-shard).
+// Scans existing nodes across all shards to populate the index.
+// Returns ErrVectorIndexExists on duplicate.
+func (ts *TieredStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+
+	ts.vectorIdxMu.Lock()
+	if _, exists := ts.vectorIndexes[key]; exists {
+		ts.vectorIdxMu.Unlock()
+		return ErrVectorIndexExists
+	}
+	vi := &vectorIndex{dims: dims, metric: metric}
+	ts.vectorIndexes[key] = vi
+	ts.vectorIdxMu.Unlock()
+
+	// Populate from all existing nodes across all shards.
+	nodes, err := ts.AllNodes(QueryOpts{})
+	if err != nil {
+		return err
+	}
+	for _, n := range nodes {
+		if !n.HasLabelTokenRaw(labelToken) {
+			continue
+		}
+		val, ok := n.GetProperty(propertyKey)
+		if !ok {
+			continue
+		}
+		vec, ok := toFloat32Slice(val)
+		if !ok {
+			continue
+		}
+		id := n.InternalID().SnowflakeID()
+		_ = vi.add(id, vec)
+	}
+	return nil
+}
+
+// DropVectorIndex removes a vector index.
+// Returns ErrVectorIndexNotFound if the index does not exist.
+func (ts *TieredStore) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	ts.vectorIdxMu.Lock()
+	defer ts.vectorIdxMu.Unlock()
+
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := ts.vectorIndexes[key]; !exists {
+		return ErrVectorIndexNotFound
+	}
+	delete(ts.vectorIndexes, key)
+	return nil
+}
+
+// SearchNearestNodes returns the k nodes with vectors closest to query
+// under the index defined for labelToken+propertyKey.
+// Results are ordered by ascending distance (closest first).
+// Returns ErrVectorIndexNotFound if no index exists.
+// Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns nil, nil if the index exists but has no entries.
+func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+	ts.vectorIdxMu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := ts.vectorIndexes[key]
+	ts.vectorIdxMu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+
+	ids, err := vi.searchNearest(query, k)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := ts.GetNode(id)
+		if err != nil {
+			continue // node may have been deleted concurrently
+		}
+		result = append(result, n)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
 }
 
 // allActiveShards returns all currently open BadgerStores (refShard + event shards).

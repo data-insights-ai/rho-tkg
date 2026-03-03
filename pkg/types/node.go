@@ -213,6 +213,34 @@ func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 	n.integrity = ig
 }
 
+// RemoveLabelTokenRaw removes the label with the given raw uint16 token from this node.
+// Returns false if tok == 0 or the token is not present on this node.
+// If the removed label is the primary label, the first extra label is promoted to primary.
+// Callers must ensure LabelTokenCount() > 1 before calling — removing the last label
+// is not allowed and the caller is responsible for enforcing this invariant.
+func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
+	if tok == 0 {
+		return false
+	}
+	// Case 1: removing an extra label.
+	if uint16(n.primaryLabel) != tok {
+		for i, t := range n.extraLabels {
+			if uint16(t) == tok {
+				n.extraLabels = append(n.extraLabels[:i], n.extraLabels[i+1:]...)
+				return true
+			}
+		}
+		return false
+	}
+	// Case 2: removing the primary label — promote first extra to primary.
+	if len(n.extraLabels) == 0 {
+		return false // would leave node without a label; caller should prevent this
+	}
+	n.primaryLabel = n.extraLabels[0]
+	n.extraLabels = n.extraLabels[1:]
+	return true
+}
+
 // DeepCopy returns a fully independent clone of the node.
 // All nested reference types (extraLabels, properties, temporal, integrity)
 // are deep-copied so mutations to the copy never affect the original.

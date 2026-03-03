@@ -112,6 +112,9 @@ type BadgerStore struct {
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*temporalIndex
 
+	// Vector indexes — in-memory only. Not persisted; rebuilt via CreateVectorIndex after restart.
+	vectorIndexes map[vectorIndexKey]*vectorIndex
+
 	// Lifecycle.
 	inMemory  bool
 	readOnly  bool
@@ -185,6 +188,7 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 		temporalIndexes: make(map[uint16]*temporalIndex),
+		vectorIndexes:   make(map[vectorIndexKey]*vectorIndex),
 		inMemory:        cfg.InMemory,
 		readOnly:        cfg.ReadOnly,
 		flushInt:        flushInt,
@@ -464,6 +468,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
 	return nil
@@ -556,6 +561,7 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 
 	removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	removeNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	removeNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
@@ -585,19 +591,75 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 		return ErrNodeNotFound
 	}
 
-	// Update property and temporal indexes: remove old entries, add new.
+	// Update property, temporal, and vector indexes: remove old entries, add new.
 	if old, err := bs.getNodeLocked(id); err == nil {
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	} else {
 		// Cache miss or Badger error — brute-force purge to avoid orphaned entries.
 		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
 	}
 	bs.nodeCache.Put(id, n.DeepCopy())
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
+	return nil
+}
+
+// RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
+// updatedNode must already have the label removed (via RemoveLabelTokenRaw).
+// No version bump; no history entry. Returns ErrNodeNotFound if the node does not exist.
+func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	intID := int64(id)
+
+	w := nodeToWire(updatedNode)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		return ErrNodeNotFound
+	}
+
+	// Update property, temporal, and vector indexes using the cached old node.
+	if old, err := bs.getNodeLocked(id); err == nil {
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	}
+
+	// Remove tok from the in-memory label index.
+	if set, ok := bs.labelIdx[tok]; ok {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(bs.labelIdx, tok)
+		}
+	}
+	bs.getOrCreateLabelCounter(tok).Add(-1)
+
+	// Update cache and property/temporal/vector indexes for the new node state.
+	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+
+	// Queue: set node data + delete label index entry.
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
+		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
+	)
 	return nil
 }
 
@@ -2301,6 +2363,103 @@ func (bs *BadgerStore) persistTemporalIndexDefs() {
 	bs.appendOps(writeOp{opType: writeOpSet, key: temporalIndexDefsKey, value: data})
 }
 
+// CreateVectorIndex creates a vector similarity index for nodes with the given label token,
+// on the given property key, expecting vectors of length dims.
+// Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
+// Vector indexes are in-memory only and are not persisted.
+func (bs *BadgerStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+
+	// Phase 1: Install empty placeholder under write lock for concurrent-write visibility.
+	bs.idxMu.Lock()
+	if _, exists := bs.vectorIndexes[key]; exists {
+		bs.idxMu.Unlock()
+		return ErrVectorIndexExists
+	}
+	vi := &vectorIndex{dims: dims, metric: metric}
+	bs.vectorIndexes[key] = vi
+
+	// Snapshot existing node IDs for population scan.
+	nodeIDs := make([]snowflake.ID, 0, len(bs.nodeIDs))
+	for id := range bs.nodeIDs {
+		nodeIDs = append(nodeIDs, id)
+	}
+	bs.idxMu.Unlock()
+
+	// Phase 2: Populate from existing nodes (unlocked I/O).
+	for _, id := range nodeIDs {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			continue // node may have been deleted concurrently
+		}
+		if !n.HasLabelTokenRaw(labelToken) {
+			continue
+		}
+		val, ok := n.GetProperty(propertyKey)
+		if !ok {
+			continue
+		}
+		vec, ok := toFloat32Slice(val)
+		if !ok {
+			continue
+		}
+		_ = vi.add(id, vec)
+	}
+	return nil
+}
+
+// DropVectorIndex removes a vector index.
+// Returns ErrVectorIndexNotFound if the index does not exist.
+func (bs *BadgerStore) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	if _, exists := bs.vectorIndexes[key]; !exists {
+		return ErrVectorIndexNotFound
+	}
+	delete(bs.vectorIndexes, key)
+	return nil
+}
+
+// SearchNearestNodes returns the k nodes with vectors closest to query
+// under the index defined for labelToken+propertyKey.
+// Results are ordered by ascending distance (closest first).
+// Returns ErrVectorIndexNotFound if no index exists.
+// Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns nil, nil if the index exists but has no entries.
+func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+	bs.idxMu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := bs.vectorIndexes[key]
+	bs.idxMu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+
+	ids, err := vi.searchNearest(query, k)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n, err := bs.GetNode(id)
+		if err != nil {
+			continue // node may have been deleted concurrently
+		}
+		result = append(result, n)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 // persistPropertyIndexDefs serializes the current property index definitions to Badger.
 // Caller must hold bs.idxMu write lock.
 func (bs *BadgerStore) persistPropertyIndexDefs() {
@@ -2760,6 +2919,25 @@ func (bs *BadgerStore) Close() error {
 	})
 	return err
 }
+
+// --- StoreStats implementation ---
+
+// NodeCacheHits returns the total number of node cache hits since store creation.
+// Implements StoreStats. Both cacheHit and cacheDeleted (tombstone) results count
+// as hits, because both avoid a Badger read.
+func (bs *BadgerStore) NodeCacheHits() int64 { return bs.nodeCache.Hits() }
+
+// NodeCacheMisses returns the total number of node cache misses since store creation.
+// Implements StoreStats.
+func (bs *BadgerStore) NodeCacheMisses() int64 { return bs.nodeCache.Misses() }
+
+// RelCacheHits returns the total number of relationship cache hits since store creation.
+// Implements StoreStats.
+func (bs *BadgerStore) RelCacheHits() int64 { return bs.relCache.Hits() }
+
+// RelCacheMisses returns the total number of relationship cache misses since store creation.
+// Implements StoreStats.
+func (bs *BadgerStore) RelCacheMisses() int64 { return bs.relCache.Misses() }
 
 // --- Registry persistence ---
 

@@ -10,7 +10,7 @@ import (
 // intervalEntry is a single entry in the temporal index.
 type intervalEntry struct {
 	from types.Instant
-	to   types.Instant  // 0 = open-ended / still valid
+	to   types.Instant // 0 = open-ended / still valid
 	id   snowflake.ID
 }
 

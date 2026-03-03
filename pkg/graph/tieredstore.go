@@ -144,6 +144,11 @@ type TieredStore struct {
 	// Temporal indexes — tracked so new hot shards inherit them on rotation.
 	tempIdxMu     sync.Mutex
 	tempIdxLabels []uint16
+
+	// Vector indexes — in-memory brute-force k-NN index spanning all shards.
+	// Not persisted; must be rebuilt via CreateVectorIndex after restart.
+	vectorIdxMu   sync.RWMutex
+	vectorIndexes map[vectorIndexKey]*vectorIndex
 }
 
 // NewTieredStore creates a TieredStore with a reference shard and one hot event shard.
@@ -171,16 +176,17 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 	}
 
 	ts := &TieredStore{
-		eventShards: make(map[string]*eventShard),
-		ontology:    NewOntologyMapping(cfg.RefLabels),
-		dataDir:     cfg.DataDir,
-		inMemory:    cfg.InMemory,
-		shardWindow: window,
-		cacheCap:    cacheCap,
-		flushInt:    flushInt,
-		coldAfter:   cfg.ColdAfter,
-		idleTimeout: idleTimeout,
-		closeCh:     make(chan struct{}),
+		eventShards:   make(map[string]*eventShard),
+		ontology:      NewOntologyMapping(cfg.RefLabels),
+		dataDir:       cfg.DataDir,
+		inMemory:      cfg.InMemory,
+		shardWindow:   window,
+		cacheCap:      cacheCap,
+		flushInt:      flushInt,
+		coldAfter:     cfg.ColdAfter,
+		idleTimeout:   idleTimeout,
+		closeCh:       make(chan struct{}),
+		vectorIndexes: make(map[vectorIndexKey]*vectorIndex),
 	}
 
 	// Create directory layout for disk-backed stores.

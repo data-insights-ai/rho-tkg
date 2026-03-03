@@ -33,13 +33,13 @@ type RelUpdate struct {
 // Entities valid at both with a different integrity hash → Updated.
 // Entities valid at T1 but not T2 → Deleted.
 type SnapshotDiff struct {
-	T1, T2          types.Instant
-	NodesCreated    []*types.Node
-	NodesUpdated    []NodeUpdate
-	NodesDeleted    []*types.Node
-	RelsCreated     []*types.Relationship
-	RelsUpdated     []RelUpdate
-	RelsDeleted     []*types.Relationship
+	T1, T2       types.Instant
+	NodesCreated []*types.Node
+	NodesUpdated []NodeUpdate
+	NodesDeleted []*types.Node
+	RelsCreated  []*types.Relationship
+	RelsUpdated  []RelUpdate
+	RelsDeleted  []*types.Relationship
 }
 
 // --- Internal helpers ---

@@ -188,6 +188,10 @@ func deepCopyValue(v any, depth int) any {
 		cp := make([]int64, len(val))
 		copy(cp, val)
 		return cp
+	case []float32:
+		cp := make([]float32, len(val))
+		copy(cp, val)
+		return cp
 	case []float64:
 		cp := make([]float64, len(val))
 		copy(cp, val)

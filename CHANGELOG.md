@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.43] - 2026-03-02
+
+### Added (VectorField Index — Phase 4.9)
+
+- **`DistanceMetric uint8`** — `DistanceCosine` and `DistanceEuclidean` constants.
+- **`vectorIndex`** (unexported) — in-memory brute-force k-NN index: `add`, `remove`, `searchNearest`. O(n × dims) per query. Thread-safe via `sync.RWMutex`. `add` replaces existing entry for same ID (upsert).
+- **`[]float32` property support** — added to `wire.go` (`ptSliceF32 = 24`), `integrity.go` (hash computation), and `propertyslice.go` (deep copy). `[]float32` values are now fully round-trip serializable.
+- **`Store.CreateVectorIndex(labelToken, propertyKey, dims, metric)`** — creates in-memory k-NN index on nodes with the given label. Scans existing nodes to populate. Returns `ErrVectorIndexExists` on duplicate. Implemented in MemoryStore, BadgerStore, TieredStore.
+- **`Store.DropVectorIndex(labelToken, propertyKey)`** — removes the index. Returns `ErrVectorIndexNotFound` if not present.
+- **`Store.SearchNearestNodes(labelToken, propertyKey, query, k, opts)`** — returns the k closest nodes by vector distance in ranked order. Returns `ErrVectorIndexNotFound` / `ErrDimensionMismatch` on error; nil slice (no error) if index is empty.
+- **`Graph.CreateVectorIndex(label, propertyKey, dims, metric)`** / **`DropVectorIndex`** / **`SearchNearestNodes`** — Graph-layer API resolving label string to token; returns nil for unregistered labels.
+- **Auto-maintenance** — all mutation paths (PutNode, ReplaceNode, DeleteNode, RemoveNodeLabelToken) update vector indexes in MemoryStore, BadgerStore, and TieredStore.
+- **`ErrVectorIndexExists`** / **`ErrVectorIndexNotFound`** / **`ErrDimensionMismatch`** — new sentinel errors in `graph` package.
+- **TieredStore** holds vector indexes at the store level (not per-shard) with its own `vectorIdxMu sync.RWMutex`.
+- **Not persisted** — vector indexes are rebuilt from node properties after restart (documented limitation).
+- Internal-package tests in `vector_badger_test.go` covering BadgerStore and TieredStore implementations directly (12 tests). External-package tests in `vector_index_test.go` (12 tests).
+
+## [3.0.42] - 2026-03-02
+
+### Added (Recurrence Patterns — Phase 4.7)
+
+- **`RecurrenceFrequency uint8`** — `RecurrenceDaily`, `RecurrenceWeekly`, `RecurrenceMonthly`, `RecurrenceYearly`.
+- **`WeekdayMask uint8`** — bit-per-weekday bitmask: `MaskMonday` (bit 0) through `MaskSunday` (bit 6), plus `MaskWeekdays`, `MaskWeekend`, `MaskAllDays` composites.
+- **`Interval`** — `{Start, End Instant}` — closed-open `[Start, End)` temporal interval.
+- **`RecurrencePattern`** — struct with `Frequency`, `Days` (WeekdayMask), `DayOfMonth` (1–28; 0 = last day of month), `Month` (time.Month for Yearly), `DayStart`/`DayEnd` (time.Duration from UTC midnight).
+- **`RecurrencePattern.Validate()`** — validates frequency, non-empty Days for Daily/Weekly, DayStart < DayEnd, DayOfMonth ∈ [0, 28].
+- **`RecurrencePattern.Expand(from, to)`** — walks days from `TruncateInstant(from, GranDay)` to `TruncateInstant(to, GranDay)`, checks day-of-week / day-of-month / month match, emits `[day+DayStart, day+DayEnd)` clipped to `[from, to)`. All calculations UTC. Returns `ErrInvalidTimeRange` if `from >= to`.
+- 8 new tests in `pkg/types/recurrence_test.go`: Daily_Weekdays, Weekly_Monday, Monthly_NthDay, Yearly, Clipped, EmptyResult, Validate_Errors (5 sub-cases), Expand_InvalidRange.
+
+## [3.0.41] - 2026-03-02
+
+### Added (Remove Label from Node — Phase 4.10)
+
+- **`Node.RemoveLabelTokenRaw(tok uint16) bool`** — removes a label token from the node's label set. If `tok` is the primary label, promotes `extraLabels[0]` to primary. Returns false if `tok == 0` or not present. Caller must ensure `LabelTokenCount() > 1`.
+- **`Store.RemoveNodeLabelToken(id, tok, updatedNode)`** — removes `tok` from the label index for `id` and persists `updatedNode` (no version bump, no history entry). Implemented in MemoryStore, BadgerStore, and TieredStore.
+- **`Graph.RemoveNodeLabel(id snowflake.ID, label string)`** — resolves label string to token, locks the entity, validates the node has the label and has more than one label, deep-copies + mutates, recomputes hash (preserving PrevHash), delegates to `store.RemoveNodeLabelToken`, publishes `EventNodeUpdate`, increments `opNodeUpdates`.
+- **`ErrLabelNotFound`** — new sentinel: `"graph: node does not have the specified label"`.
+- **`ErrLastLabel`** — new sentinel: `"graph: cannot remove the last label from a node"`.
+- 8 new tests in `pkg/graph/remove_label_test.go`: ExtraLabel, PrimaryPromotesExtra, LastLabelError, LabelNotFoundError, NodeNotFoundError, HashUpdated, NodesByLabelUpdated, PublishesEvent.
+- Internal-package tests in `vector_badger_test.go` covering BadgerStore and TieredStore `RemoveNodeLabelToken` directly.
+
+## [3.0.40] - 2026-03-02
+
+### Added (Time Granularity + In-Place Update + Graph Stats — Phases 4.8, 4.11, 4.12)
+
+**Time Granularity (4.8)**
+- **`TimeGranularity uint8`** — 8 levels: `GranMillisecond` (1) through `GranYear` (8).
+- **`TruncateInstant(t, g)`** — floors `t` to the nearest `g` boundary (UTC). Week truncation floors to Monday midnight.
+- **`RoundInstant(t, g)`** — rounds to nearest boundary (ties ceil).
+- **`CeilInstant(t, g)`** — smallest boundary ≥ `t`.
+- Table-driven tests in `pkg/types/granularity_test.go` covering all 3 functions × 8 granularities, plus on-boundary and week-day edge cases.
+
+**In-Place Update (4.11)**
+- **`Graph.UpdateNodeInPlace(id, updates)`** / **`UpdateNodeInPlaceWithContext`** — updates node properties without bumping the version or writing a history entry. Uses `store.ReplaceNode` (not `ReplaceNodeWithHistory`). Preserves existing `PrevHash`. Publishes `EventNodeUpdate`. Increments `opNodeUpdates`.
+- **`Graph.UpdateRelInPlace(id, updates)`** / **`UpdateRelInPlaceWithContext`** — rel mirror.
+- 12 new tests in `pkg/graph/inplace_test.go`: NoHistoryEntry, VersionUnchanged, PropertiesUpdated, NoOp, PublishesEvent (× Node/Rel), WithContext_Cancelled, CountedAsUpdate.
+
+**Graph Stats (4.12)**
+- **`GraphStats`** — struct with 8 operation counters (`NodesAdded`, `NodesRead`, `NodesUpdated`, `NodesDeleted`, `RelsAdded`, `RelsRead`, `RelsUpdated`, `RelsDeleted`) and 4 cache metrics (`NodeCacheHits`, `NodeCacheMisses`, `RelCacheHits`, `RelCacheMisses`).
+- **`StoreStats`** (unexported interface) — optional interface type-asserted in `Graph.Stats()`. Avoids polluting the `Store` interface. `BadgerStore` implements it.
+- **8 `atomic.Int64` fields** on `Graph` struct: `opNode{Adds,Reads,Updates,Deletes}` + rel mirrors. Incremented after every successful store write in `context.go`.
+- **LRU hit/miss tracking** — `entityLRU` gains `hits` and `misses atomic.Int64`. `Get()` increments on cacheMiss (miss) and on cacheHit/cacheDeleted (hit). `Hits()`/`Misses()` accessors.
+- **`BadgerStore` implements `StoreStats`** via `nodeCache.Hits()`/`Misses()` + rel mirrors.
+- 8 new tests in `pkg/graph/stats_test.go`: InitialState, NodeCounters, RelCounters, EmptyUpdate_NoUpdateIncrement, CacheMetrics_MemoryStore_Zero, CacheMetrics_BadgerStore, UpdateNodeInPlace_CountsAsUpdate, UpdateRelInPlace_CountsAsUpdate.
+
 ## [3.0.39] - 2026-03-02
 
 ### Added (CRUD Diff Exporter — Phase 4.6)
@@ -39,6 +104,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`GetPreviousRelVersion`** / **`GetNextRelVersion`** / **`CloseRelVersion`** — exact mirrors of the node methods for relationships.
 - **`ErrAlreadyClosed`** — new sentinel error in `graph` package.
 - 18 new tests in `pkg/graph/version_chain_test.go`: genesis/tip boundaries, normal prev/next traversal, through-history path, deleted node/rel edge cases, version gap after truncation, CloseNodeVersion sets ValidTo, ErrAlreadyClosed on second close, ErrNodeNotFound on missing entity, rel mirrors.
+
+## [3.0.36] - 2026-03-02
+
+### Added (Temporal Constraints + Advanced Temporal Indexes — Phases 4.2 + 4.3)
+
+**Temporal Constraints (4.2)**
+
+- **`TemporalConstraintKind`** — enum type for constraint kinds. Initial kind: `ConstraintRelWithinEndpoints`.
+- **`TemporalConstraint`** — struct binding a `TemporalConstraintKind` to optional parameters.
+- **`ConstraintSet`** — value type (zero value = no constraints). Holds a slice of `TemporalConstraint`. Passed via `Graph.Config`; zero overhead when unused.
+- **`ConstraintRelWithinEndpoints`** — enforces that a relationship's validity interval (`[ValidFrom, ValidTo)`) is a subset of the intersection of both endpoint nodes' validity intervals. Evaluated in `AddRelationshipWithContext` and `ImportRelationshipWithID` before the store write.
+- **`ErrTemporalConstraint`** — base sentinel error; 6 specific leaf errors wrap it so callers can use `errors.Is` on either the outer or the specific leaf: `ErrConstraintStartNodeOpen`, `ErrConstraintEndNodeOpen`, `ErrConstraintRelBeforeStart`, `ErrConstraintRelAfterEnd`, `ErrConstraintRelStartTooEarly`, `ErrConstraintRelEndTooLate`.
+- 13 new tests in `pkg/graph/temporal_constraint_test.go`: no-op on zero ConstraintSet, valid rel within both endpoints, rel starts before node, rel ends after node, open-ended node (no ValidTo), import path enforcement, errors.Is wrapping for each leaf error, interaction with existing temporal filters.
+
+**Advanced Temporal Indexes (4.3)**
+
+- **`temporalIndex`** (unexported) — sorted-slice interval index on `[ValidFrom, ValidTo)`. Binary search insertion (O(log n)); point-in-time and interval queries are O(n) scan with early exit. Thread-safe via `sync.RWMutex`. Stored per label token on the Store.
+- **`Store.CreateTemporalIndex(labelToken)`** — installs a temporal index for the given label; scans existing nodes to populate. Returns `ErrTemporalIndexExists` on duplicate. Implemented in MemoryStore, BadgerStore, and TieredStore.
+- **`Store.DropTemporalIndex(labelToken)`** — removes the temporal index. Returns `ErrTemporalIndexNotFound` if not present.
+- **`Graph.CreateTemporalIndex(label)`** / **`Graph.DropTemporalIndex(label)`** — Graph-layer API resolving label string to token before delegation.
+- **`NodesByLabel` temporal fast path** — when a temporal index is active for the queried label and `QueryOpts` carries a `ValidAt` or `ValidStart`/`ValidEnd` filter, `NodesByLabel` uses the index to narrow candidate IDs before fetching entities, avoiding a full label scan.
+- **BadgerStore persistence** — temporal index label tokens are persisted to Badger under a meta key (same 3-phase creation pattern as property indexes). On startup `loadIndexes()` reads persisted token set and rebuilds index data by scanning matching nodes; indexes survive restart.
+- **TieredStore delegation** — `CreateTemporalIndex`/`DropTemporalIndex` delegate to all currently open shards. `tempIndexLabels` set on `TieredStore` ensures each new hot shard created during rotation inherits all active temporal indexes immediately.
+- **MemoryStore** — full integration: index created/dropped/maintained across all node mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`).
+- **`ErrTemporalIndexExists`** / **`ErrTemporalIndexNotFound`** — new sentinel errors in `graph` package.
+- 11 new unit tests in `pkg/graph/temporal_index_test.go` + helper tests: create/duplicate/drop/not-found, NodesByLabel fast path (point-in-time, interval), BadgerStore persistence round-trip, TieredStore delegation, new hot shard inherits index on rotation, MemoryStore mutation maintenance.
+
+### Fixed
+
+- **B22: Badger `WriteBatch.Flush` blocks on closed DB** — `flush()` in `badgerstore.go` now checks `bs.closed` (atomic flag) before calling `WriteBatch.Flush()`. Previously, a flush triggered after `Close()` would block indefinitely because Badger's `WriteBatch.Flush` waits on an internal channel that is never drained once the DB is closed. Fix: early-return with `ErrDBClosed` when the closed flag is set; re-queue is skipped. `flushLoop` goroutine exit path updated accordingly.
 
 ## [3.0.35] - 2026-03-02
 
