@@ -134,7 +134,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 
 // TestEndpointHashSelfLoop verifies endpoint hashes for a self-loop relationship.
 func TestEndpointHashSelfLoop(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{AllowSelfLoops: true}})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"Node"}, nil)

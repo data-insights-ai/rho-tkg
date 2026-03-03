@@ -4545,3 +4545,47 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	// Consume closeOnce so the t.Cleanup no-ops on the already-managed lifecycle.
 	bs.closeOnce.Do(func() {})
 }
+
+// TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency verifies that
+// NodeCount() returns the correct value after concurrent PutNode calls in
+// SyncWrites mode. Before the flushMu fix, concurrent flush() executions could
+// submit out-of-order WriteBatches whose counter values landed on disk out of
+// sequence, causing NodeCount() to return a stale value after reopening.
+func TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency(t *testing.T) {
+	t.Parallel()
+
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	defer bs.Close() //nolint:errcheck
+
+	const goroutines = 20
+	const nodesPerGoroutine = 10
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		g := g
+		go func() {
+			defer wg.Done()
+			for i := 0; i < nodesPerGoroutine; i++ {
+				id := snowflake.ID(int64(g*nodesPerGoroutine+i) + 1)
+				n := types.NewNode(id, 1, nil)
+				if err := bs.PutNode(n); err != nil {
+					t.Errorf("PutNode: %v", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	got, err := bs.NodeCount()
+	if err != nil {
+		t.Fatalf("NodeCount: %v", err)
+	}
+	want := goroutines * nodesPerGoroutine
+	if got != want {
+		t.Errorf("NodeCount = %d, want %d", got, want)
+	}
+}

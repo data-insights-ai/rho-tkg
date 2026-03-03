@@ -241,7 +241,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 
 	// Destination already has the "Foo" label registered (from a prior node add).
 	dst, _ := graph.New(graph.Config{})
-	defer dst.Close() //nolint:errcheck
+	defer dst.Close()                 //nolint:errcheck
 	dst.AddNode([]string{"Foo"}, nil) //nolint:errcheck
 
 	// Importing with a pre-populated registry must not fail.
@@ -253,7 +253,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 // TestExport_Writer_Error verifies that ExportGraph propagates a write error.
 func TestExport_Writer_Error(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
-	defer g.Close() //nolint:errcheck
+	defer g.Close()               //nolint:errcheck
 	g.AddNode([]string{"X"}, nil) //nolint:errcheck
 
 	// errWriter fails after 0 bytes written.
@@ -601,7 +601,54 @@ func makeBadVersionStream(t *testing.T) io.Reader {
 	header[2] = 0
 	header[3] = 0
 	header[4] = byte(len(body))
-	buf.Write(header[:])  //nolint:errcheck
-	buf.Write(body)       //nolint:errcheck
+	buf.Write(header[:]) //nolint:errcheck
+	buf.Write(body)      //nolint:errcheck
 	return &buf
+}
+
+// TestExportGraph_PaginatedNodesRoundTrip verifies that ExportGraph correctly
+// exports more than exportBatchSize (1024) nodes — i.e. pagination is working.
+// Before the OOM fix, all IDs were collected into a single slice; this test
+// proves the paginated path emits all entities without loss.
+func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	g, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close() //nolint:errcheck
+
+	// Create 1100 nodes — more than exportBatchSize (1024) to exercise pagination.
+	const total = 1100
+	for i := 0; i < total; i++ {
+		if _, err := g.AddNode([]string{"Batch"}, map[string]any{"i": i}); err != nil {
+			t.Fatalf("AddNode %d: %v", i, err)
+		}
+	}
+
+	// Export.
+	var buf bytes.Buffer
+	if err := g.ExportGraph(&buf); err != nil {
+		t.Fatalf("ExportGraph: %v", err)
+	}
+
+	// Import into a fresh graph and verify all nodes are present.
+	g2, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New g2: %v", err)
+	}
+	defer g2.Close() //nolint:errcheck
+
+	if err := g2.ImportGraph(&buf); err != nil {
+		t.Fatalf("ImportGraph: %v", err)
+	}
+
+	nc, err := g2.NodeCount()
+	if err != nil {
+		t.Fatalf("NodeCount: %v", err)
+	}
+	if nc != total {
+		t.Errorf("NodeCount = %d, want %d", nc, total)
+	}
 }

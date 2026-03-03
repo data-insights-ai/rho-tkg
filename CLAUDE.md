@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.52 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.21 (complete)
+Status: v3.0.55 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete)
 
 ## Build & Test Commands
 
@@ -78,7 +78,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | File | Purpose |
 |---|---|
 | `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
-| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors |
+| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, soft capacity, `Peek()` for zero-alloc lookups |
@@ -90,7 +90,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
 | `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
-| `context.go` | `WithContext` methods, `ValidationLimits` enforcement, two-phase delete with TOCTOU retry |
+| `context.go` | `WithContext` methods, `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `DeleteRelationshipWithContext` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
 | `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
 | `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
@@ -120,7 +120,7 @@ These rules exist because every single one was violated at least once. Do not sk
 ### Configuration
 
 - **`Graph.Config`**: `SnowflakeNodeID` (0-511), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
-- **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). Zero = default.
+- **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
 - **`BadgerStoreConfig`**: `Dir`, `InMemory`, `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
 - **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
 - **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).

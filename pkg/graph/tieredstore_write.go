@@ -383,6 +383,115 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 	return shard.DeleteNode(id)
 }
 
+// DeleteRelWithHistory atomically writes a relationship tombstone history entry
+// and deletes the live relationship in one per-shard batch flush.
+//
+// Same shard: delegates to the entity shard (fully atomic within the shard).
+// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on the entity shard;
+// the in/ cleanup on the end-node shard is a separate operation (B7 limitation).
+func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
+	entityShard, err := ts.shardForRelID(id)
+	if err != nil {
+		return err
+	}
+
+	r, err := entityShard.GetRelationship(id)
+	if err != nil {
+		return err
+	}
+
+	startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	if err != nil {
+		return err
+	}
+	endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+	if err != nil {
+		return err
+	}
+
+	if startShard == endShard {
+		// Same shard: fully atomic.
+		return entityShard.DeleteRelWithHistory(id, prevVersion, tombstone)
+	}
+
+	// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on entity shard.
+	// deleteRelByInfo in DeleteRelWithHistory attempts in/ cleanup on the entity shard
+	// as a no-op (endNode lives on a different shard). Clean up actual in/ separately.
+	if err := entityShard.DeleteRelWithHistory(id, prevVersion, tombstone); err != nil {
+		return err
+	}
+	info := relDeleteInfo{
+		id:      id,
+		relType: r.TypeToken().Value(),
+		startID: r.StartNodeID().SnowflakeID(),
+		endID:   r.EndNodeID().SnowflakeID(),
+	}
+	return endShard.deleteRelIncoming(info)
+}
+
+// DeleteNodeWithHistory atomically writes tombstone history for the node and all
+// connected relationships, then cascade-deletes.
+//
+// Builds a tombMap for fast lookup, then iterates rels: uses DeleteRelWithHistory
+// for rels in tombMap, falls back to DeleteRelationship for unexpected rels.
+// Passes nil relTombstones to the shard-level DeleteNodeWithHistory (rels already
+// handled above individually).
+//
+// Cross-shard atomicity is per-shard only (B7 limitation — same as DeleteNodeCascade).
+func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	shard, err := ts.shardForNodeID(id)
+	if err != nil {
+		return err
+	}
+
+	// Build lookup map: relID → RelTombstone.
+	tombMap := make(map[snowflake.ID]RelTombstone, len(relTombstones))
+	for _, rt := range relTombstones {
+		tombMap[rt.ID] = rt
+	}
+
+	// Collect all connected relIDs and delete each with history.
+	outRels := shard.outgoingRelIDs(id)
+	inRels := shard.incomingRelIDs(id, 0)
+
+	seen := make(map[snowflake.ID]struct{}, len(outRels)+len(inRels))
+	for _, relID := range outRels {
+		if _, ok := seen[relID]; ok {
+			continue
+		}
+		seen[relID] = struct{}{}
+		if rt, ok := tombMap[relID]; ok {
+			if err := ts.DeleteRelWithHistory(relID, rt.PrevVersion, rt.Tombstone); err != nil {
+				return err
+			}
+		} else {
+			// Unexpected rel (not in tombstones) — fall back to plain delete.
+			if err := ts.DeleteRelationship(relID); err != nil {
+				return err
+			}
+		}
+	}
+	for _, relID := range inRels {
+		if _, ok := seen[relID]; ok {
+			continue
+		}
+		seen[relID] = struct{}{}
+		if rt, ok := tombMap[relID]; ok {
+			if err := ts.DeleteRelWithHistory(relID, rt.PrevVersion, rt.Tombstone); err != nil {
+				return err
+			}
+		} else {
+			if err := ts.DeleteRelationship(relID); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Delete the node itself with its tombstone. relTombstones=nil because
+	// all rels were handled individually above.
+	return shard.DeleteNodeWithHistory(id, prevNodeVersion, nodeTombstone, nil)
+}
+
 // --- Property indexes ---
 
 // ErrEventPropertyIndex is returned when attempting to create a property index

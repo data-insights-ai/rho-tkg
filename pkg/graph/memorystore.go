@@ -358,6 +358,86 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 	return nil
 }
 
+// DeleteRelWithHistory atomically writes a relationship tombstone history entry
+// and deletes the live relationship in a single locked operation.
+// All under one lock: atomic with respect to concurrent readers.
+func (ms *MemoryStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, ok := ms.rels[id]; !ok {
+		return ErrRelNotFound
+	}
+	// Write tombstone to history before deleting live entity.
+	inner, ok := ms.relHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Relationship)
+		ms.relHistory[id] = inner
+	}
+	inner[prevVersion] = tombstone.DeepCopy()
+
+	return ms.deleteRelLocked(id)
+}
+
+// DeleteNodeWithHistory atomically writes tombstone history entries for the node
+// and all connected relationships, then performs the cascade delete.
+// All under one lock: atomic with respect to concurrent readers.
+func (ms *MemoryStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	n, ok := ms.nodes[id]
+	if !ok {
+		return ErrNodeNotFound
+	}
+
+	// Write node tombstone to history.
+	nodeInner, ok := ms.nodeHistory[id]
+	if !ok {
+		nodeInner = make(map[uint32]*types.Node)
+		ms.nodeHistory[id] = nodeInner
+	}
+	nodeInner[prevNodeVersion] = nodeTombstone.DeepCopy()
+
+	// Write rel tombstones to history.
+	for _, rt := range relTombstones {
+		relInner, ok := ms.relHistory[rt.ID]
+		if !ok {
+			relInner = make(map[uint32]*types.Relationship)
+			ms.relHistory[rt.ID] = relInner
+		}
+		relInner[rt.PrevVersion] = rt.Tombstone.DeepCopy()
+	}
+
+	// Inline cascade: delete all connected relationships then the node.
+	relIDs := make(map[snowflake.ID]struct{})
+	for relID := range ms.outIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
+	for relID := range ms.inIdx[id] {
+		relIDs[relID] = struct{}{}
+	}
+	for relID := range relIDs {
+		_ = ms.deleteRelLocked(relID) // Ignore ErrRelNotFound — defensive only.
+	}
+
+	// Remove label index entries.
+	for _, tok := range n.AllLabelTokens() {
+		tv := tok.Value()
+		if set, exists := ms.labelIdx[tv]; exists {
+			delete(set, id)
+			if len(set) == 0 {
+				delete(ms.labelIdx, tv)
+			}
+		}
+	}
+
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, id)
+	delete(ms.nodes, id)
+	return nil
+}
+
 // NodesByLabel returns nodes with the given label token, with optional pagination
 // and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
 // Uses the temporal index for fast filtering when one exists and a temporal filter is set.

@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.55] - 2026-03-03
+
+### Added (Atomic Delete with Tombstone History — Phase 4.23)
+
+- **`RelTombstone`** — new struct in `pkg/graph/store.go` packaging a relationship's tombstone data for atomic delete operations: `ID snowflake.ID`, `PrevVersion uint32`, `Tombstone *types.Relationship` (pre-built deep copy with `DeletedAt`/`ValidTo`/`TxFrom`/`TxTo` set by the caller).
+- **`Store.DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error`** — new interface method. Atomically combines `PutRelVersion×N` + `PutNodeVersion` + `DeleteNodeCascade` into a single storage transaction. Eliminates orphaned tombstone history entries that could result from a crash between the previous N+2 separate store calls. `relTombstones` may be nil when the node has no connected relationships.
+- **`Store.DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error`** — new interface method. Atomically combines `PutRelVersion` + `DeleteRelationship` into a single storage transaction. Eliminates the crash window between the previous two separate calls.
+- **`MemoryStore.DeleteNodeWithHistory` / `DeleteRelWithHistory`** — implemented under a single `ms.mu.Lock()`, ensuring history write and entity deletion are atomic with respect to concurrent readers.
+- **`BadgerStore.DeleteRelWithHistory`** — serializes tombstone outside `idxMu`, acquires `idxMu.Lock()` once, calls `deleteRelByInfo` (queues cascade delete ops into `pending`), appends tombstone history op to the same `pending` map, releases lock, then flushes. All ops land in the same Badger `WriteBatch.Flush()` call — atomic.
+- **`BadgerStore.DeleteNodeWithHistory`** — serializes all tombstones outside `idxMu`, acquires `idxMu.Lock()` once, calls `cascadeDeleteInner` (queues all cascade delete ops into `pending`), appends node + rel tombstone history ops to the same `pending` map before releasing the lock. Single `WriteBatch.Flush()` commits cascade + tombstone history atomically.
+- **`cascadeDeleteInner`** — unexported helper extracted from `cascadeDeleteLocked`. Same body, but without `idxMu.Lock()/Unlock()` — caller must hold the lock. Enables `DeleteNodeWithHistory` to extend the lock scope across cascade + tombstone append without a second lock acquisition.
+- **`marshalNodeToBytes` / `marshalRelToBytes`** — unexported helpers in `badgerstore.go` wrapping `msgpack.Marshal(nodeToWire(n))` / `msgpack.Marshal(relToWire(r))`. Used by both existing `PutNodeVersion`/`PutRelVersion` paths and the new tombstone serialization in `DeleteNodeWithHistory`/`DeleteRelWithHistory`.
+- **`TieredStore.DeleteRelWithHistory`** — delegates to the relationship's entity shard for tombstone + entity/typeIdx/outIdx ops. Cross-shard inIdx cleanup follows the same split-write pattern as `DeleteRelationship`. Per-shard atomic only (B7 limitation, same as `DeleteNodeCascade`).
+- **`TieredStore.DeleteNodeWithHistory`** — delegates rel tombstones via `DeleteRelWithHistory`, then delegates node tombstone via `shard.DeleteNodeWithHistory(id, prevNodeVersion, nodeTombstone, nil)`. Per-shard atomic only.
+- **`context.go:deleteNodeLocked`** rewritten — builds `[]RelTombstone` in one pass (dedup via `seen` map), builds node tombstone, calls single `g.store.DeleteNodeWithHistory`. Replaces the previous loop of `PutRelVersion` calls + `PutNodeVersion` + `DeleteNodeCascade` (N+2 separate store calls).
+- **`context.go:DeleteRelationshipWithContext`** rewritten — calls single `g.store.DeleteRelWithHistory`. Replaces the previous `PutRelVersion` + `DeleteRelationship` (2 separate store calls).
+- 6 tests in `pkg/graph/atomic_delete_test.go`: `TestDeleteRelWithHistory_HistoryAndLiveConsistent`, `TestDeleteRelWithHistory_NotFound`, `TestDeleteNodeWithHistory_HistoryAndLiveConsistent`, `TestDeleteNodeWithHistory_EmptyRelTombstones`, `TestDeleteNodeWithHistory_BadgerStore`, `TestDeleteNodeWithHistory_TieredStore`.
+
+### Design Notes
+
+- Atomicity guarantee (BadgerStore): holding `idxMu.Lock()` across both `cascadeDeleteInner` and tombstone `appendOps` prevents the background flush goroutine (which acquires `idxMu.RLock()`) from draining `pending` between the two phases. All ops land in one `WriteBatch.Flush()`.
+- TieredStore cross-shard atomicity is per-shard only — the same documented B7 limitation as `DeleteNodeCascade`. Cross-shard rels are handled shard-by-shard.
+- `DeleteNodeCascade`, `PutNodeVersion`, `PutRelVersion` are unchanged — they are still used by repair/migration tools (`tieredstore_repair.go`, `tieredstore_migrate.go`) which do not write tombstones.
+- After deletion, `TieredStore.GetNodeVersion`/`GetRelVersion` cannot resolve the shard via the high-level routing (relies on live in-memory presence). Access the underlying shard directly (`ts.refShard.GetNodeVersion(...)`) for post-delete history verification — as demonstrated in `TestDeleteNodeWithHistory_TieredStore`.
+
+## [3.0.54] - 2026-03-03
+
+### Added (AllowSelfLoops Validation — Phase 4.22)
+
+- **`ValidationLimits.AllowSelfLoops bool`** — new field on `ValidationLimits`. Default zero value (`false`) rejects self-loop relationships (where `startNode == endNode`). Set to `true` to permit them. This aligns rho/tkg-v3 with the tkg-2025-v2 and tkg-2026-v3 reference implementations.
+- **`ErrSelfLoop`** — new graph-layer sentinel error: `"graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit"`. Returned by `AddRelationshipWithContext` and `ImportRelationshipWithID` when `startID == endID && !g.validation.AllowSelfLoops`.
+- **`context.go:AddRelationshipWithContext`** — self-loop guard added after `endID` extraction, before `LockTwo`: rejects when `startID == endID && !g.validation.AllowSelfLoops`.
+- **`context.go:ImportRelationshipWithID`** — same self-loop guard added at the equivalent position.
+- 5 tests in `pkg/graph/self_loop_test.go`: `TestSelfLoop_ZeroValueRejects`, `TestSelfLoop_ExplicitFalseRejects`, `TestSelfLoop_AllowedByConfig`, `TestSelfLoop_ImportRejected`, `TestSelfLoop_DifferentNodesStillWork`.
+
+### Fixed
+
+- **`TestGraphDeleteNodeSelfLoopCascade`** (`pkg/graph/graph_test.go`) — updated to use `Config{Validation: ValidationLimits{AllowSelfLoops: true}}` since the default now rejects self-loops.
+- **`TestEndpointHashSelfLoop`** (`pkg/graph/rel_endpoint_hash_test.go`) — same fix.
+
 ## [3.0.53] - 2026-03-03
 
 ### Fixed (Code Review Bugs — Phases 4.13–4.16)

@@ -25,8 +25,8 @@ import (
 // Thread-safe via internal sync.RWMutex.
 type highFrequencyIndex struct {
 	mu         sync.RWMutex
-	bucketSize types.Instant             // bucket width in milliseconds
-	origin     types.Instant             // epoch offset for bucket 0
+	bucketSize types.Instant // bucket width in milliseconds
+	origin     types.Instant // epoch offset for bucket 0
 	buckets    map[int64][]snowflake.ID
 }
 
@@ -97,6 +97,9 @@ func (hfi *highFrequencyIndex) pointQuery(t types.Instant) []snowflake.ID {
 
 // rangeQuery returns all IDs in buckets that overlap [start, end).
 // Returns candidates — callers must re-filter if exact interval matching is needed.
+//
+// Iterates the actual bucket map rather than a numeric range to avoid a CPU hang
+// when end is very large (e.g. math.MaxInt64): only non-empty buckets are visited.
 func (hfi *highFrequencyIndex) rangeQuery(start, end types.Instant) []snowflake.ID {
 	startBucket := hfi.bucketFor(start)
 	endBucket := hfi.bucketFor(end)
@@ -105,8 +108,10 @@ func (hfi *highFrequencyIndex) rangeQuery(start, end types.Instant) []snowflake.
 	defer hfi.mu.RUnlock()
 
 	var out []snowflake.ID
-	for b := startBucket; b <= endBucket; b++ {
-		out = append(out, hfi.buckets[b]...)
+	for b, ids := range hfi.buckets {
+		if b >= startBucket && b <= endBucket {
+			out = append(out, ids...)
+		}
 	}
 	return out
 }

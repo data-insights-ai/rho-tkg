@@ -14,7 +14,7 @@ func TestAuthorIDSetOnAdd_Node(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	n, err := g.AddNode([]string{"Person"}, map[string]any{
-		"name":         "Alice",
+		"name":          "Alice",
 		"tkg_author_id": "alice@example.com",
 	})
 	if err != nil {
@@ -270,7 +270,7 @@ func TestProvenanceDoesNotAffectHash(t *testing.T) {
 	// Two nodes with identical user properties but different AuthorID.
 	n1, _ := g.AddNode([]string{"Item"}, map[string]any{"val": 1})
 	n2, _ := g.AddNode([]string{"Item"}, map[string]any{
-		"val":          1,
+		"val":           1,
 		"tkg_author_id": "signer",
 	})
 

@@ -95,6 +95,17 @@ type Store interface {
 	// Cascade operations
 	DeleteNodeCascade(id snowflake.ID) error
 
+	// DeleteNodeWithHistory atomically combines PutRelVersion×N + PutNodeVersion + DeleteNodeCascade
+	// into a single storage transaction. Eliminates orphaned tombstone history entries on crash.
+	// nodeTombstone must be a pre-built deep copy with DeletedAt/ValidTo/TxFrom/TxTo set.
+	// relTombstones is the pre-built list of all connected relationship tombstones.
+	DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error
+
+	// DeleteRelWithHistory atomically combines PutRelVersion + DeleteRelationship
+	// into a single storage transaction.
+	// tombstone must be a pre-built deep copy with DeletedAt/ValidTo/TxFrom/TxTo set.
+	DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error
+
 	// Counts
 	NodeCount() (int, error)
 	RelationshipCount() (int, error)
@@ -193,6 +204,15 @@ type Store interface {
 	// Close releases any resources held by the store.
 	// Safe to call multiple times. No-op for stores without resources.
 	Close() error
+}
+
+// RelTombstone packages a relationship's tombstone data for use in atomic delete-with-history.
+// PrevVersion is the history slot to write the tombstone to (matches r.Version() before deletion).
+// Tombstone is a pre-built deep copy with DeletedAt, ValidTo, TxFrom, TxTo populated by the caller.
+type RelTombstone struct {
+	ID          snowflake.ID
+	PrevVersion uint32
+	Tombstone   *types.Relationship
 }
 
 // Sentinel errors for store operations.

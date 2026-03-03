@@ -9,22 +9,22 @@ import (
 // All token values are stored as int (maps to msgpack integer).
 // Temporal instants are stored as int64 (Unix milliseconds).
 type nodeWire struct {
-	ID           int64          `msgpack:"id"`
-	PrimaryLabel int            `msgpack:"pl"`
-	ExtraLabels  []int          `msgpack:"el,omitempty"`
-	Properties   []propertyWire `msgpack:"p,omitempty"`
-	Version      int            `msgpack:"v"`
-	HasTemporal  bool           `msgpack:"ht,omitempty"`
-	ValidFrom    int64          `msgpack:"vf,omitempty"`
-	ValidTo      int64          `msgpack:"vt,omitempty"`
-	TxFrom       int64          `msgpack:"tf,omitempty"`
-	TxTo         int64          `msgpack:"tt,omitempty"`
-	CreatedAt    int64          `msgpack:"ca,omitempty"`
-	UpdatedAt    int64          `msgpack:"ua,omitempty"`
-	DeletedAt    int64          `msgpack:"da,omitempty"`
-	CreatedBy    string         `msgpack:"cb,omitempty"`
-	UpdatedBy    string         `msgpack:"ub,omitempty"`
-	BaseEntityID int64          `msgpack:"be,omitempty"`
+	ID                 int64          `msgpack:"id"`
+	PrimaryLabel       int            `msgpack:"pl"`
+	ExtraLabels        []int          `msgpack:"el,omitempty"`
+	Properties         []propertyWire `msgpack:"p,omitempty"`
+	Version            int            `msgpack:"v"`
+	HasTemporal        bool           `msgpack:"ht,omitempty"`
+	ValidFrom          int64          `msgpack:"vf,omitempty"`
+	ValidTo            int64          `msgpack:"vt,omitempty"`
+	TxFrom             int64          `msgpack:"tf,omitempty"`
+	TxTo               int64          `msgpack:"tt,omitempty"`
+	CreatedAt          int64          `msgpack:"ca,omitempty"`
+	UpdatedAt          int64          `msgpack:"ua,omitempty"`
+	DeletedAt          int64          `msgpack:"da,omitempty"`
+	CreatedBy          string         `msgpack:"cb,omitempty"`
+	UpdatedBy          string         `msgpack:"ub,omitempty"`
+	BaseEntityID       int64          `msgpack:"be,omitempty"`
 	Hash               string         `msgpack:"h,omitempty"`
 	PrevHash           string         `msgpack:"ph,omitempty"`
 	AuthorID           string         `msgpack:"aid,omitempty"`
@@ -35,23 +35,23 @@ type nodeWire struct {
 
 // relWire is the msgpack wire format for Relationship entities.
 type relWire struct {
-	ID           int64          `msgpack:"id"`
-	RelType      int            `msgpack:"rt"`
-	StartID      int64          `msgpack:"s"`
-	EndID        int64          `msgpack:"e"`
-	Properties   []propertyWire `msgpack:"p,omitempty"`
-	Version      int            `msgpack:"v"`
-	HasTemporal  bool           `msgpack:"ht,omitempty"`
-	ValidFrom    int64          `msgpack:"vf,omitempty"`
-	ValidTo      int64          `msgpack:"vt,omitempty"`
-	TxFrom       int64          `msgpack:"tf,omitempty"`
-	TxTo         int64          `msgpack:"tt,omitempty"`
-	CreatedAt    int64          `msgpack:"ca,omitempty"`
-	UpdatedAt    int64          `msgpack:"ua,omitempty"`
-	DeletedAt    int64          `msgpack:"da,omitempty"`
-	CreatedBy    string         `msgpack:"cb,omitempty"`
-	UpdatedBy    string         `msgpack:"ub,omitempty"`
-	BaseEntityID int64          `msgpack:"be,omitempty"`
+	ID                 int64          `msgpack:"id"`
+	RelType            int            `msgpack:"rt"`
+	StartID            int64          `msgpack:"s"`
+	EndID              int64          `msgpack:"e"`
+	Properties         []propertyWire `msgpack:"p,omitempty"`
+	Version            int            `msgpack:"v"`
+	HasTemporal        bool           `msgpack:"ht,omitempty"`
+	ValidFrom          int64          `msgpack:"vf,omitempty"`
+	ValidTo            int64          `msgpack:"vt,omitempty"`
+	TxFrom             int64          `msgpack:"tf,omitempty"`
+	TxTo               int64          `msgpack:"tt,omitempty"`
+	CreatedAt          int64          `msgpack:"ca,omitempty"`
+	UpdatedAt          int64          `msgpack:"ua,omitempty"`
+	DeletedAt          int64          `msgpack:"da,omitempty"`
+	CreatedBy          string         `msgpack:"cb,omitempty"`
+	UpdatedBy          string         `msgpack:"ub,omitempty"`
+	BaseEntityID       int64          `msgpack:"be,omitempty"`
 	Hash               string         `msgpack:"h,omitempty"`
 	PrevHash           string         `msgpack:"ph,omitempty"`
 	FromNodeHash       string         `msgpack:"fnh,omitempty"`

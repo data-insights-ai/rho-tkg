@@ -760,7 +760,7 @@ func TestGraphDeleteNodeCascadeToleratesPreDeletedOutgoingRel(t *testing.T) {
 func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 
 	// Self-loop: A → A. Appears in both outgoing and incoming lists.

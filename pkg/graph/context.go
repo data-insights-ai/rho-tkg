@@ -247,6 +247,10 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	startID := startNode.InternalID().SnowflakeID()
 	endID := endNode.InternalID().SnowflakeID()
 
+	if startID == endID && !g.validation.AllowSelfLoops {
+		return nil, ErrSelfLoop
+	}
+
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -422,15 +426,18 @@ func sameIDSet(a, b []snowflake.ID) bool {
 }
 
 // deleteNodeLocked performs the actual deletion under full entity lock.
-// Creates tombstones for all connected rels and the node, then cascade deletes.
+// Builds tombstones for all connected rels and the node, then issues a single
+// atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
+// DeleteNodeCascade with one compound store operation).
 func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *types.Node, outRels, inRels []*types.Relationship) error {
 	now := types.Instant(time.Now().UnixMilli())
 
-	// Save tombstone for all connected relationships first.
+	// Build relationship tombstones (dedup self-loops).
 	seen := make(map[snowflake.ID]struct{})
 	allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
 	allRels = append(allRels, outRels...)
 	allRels = append(allRels, inRels...)
+	relTombstones := make([]RelTombstone, 0, len(allRels))
 	for _, r := range allRels {
 		rid := r.InternalID().SnowflakeID()
 		if _, ok := seen[rid]; ok {
@@ -448,12 +455,14 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		// Transaction time: this tombstone version was committed at now.
 		tmR.TxFrom = now
 		tmR.TxTo = now
-		if err := g.store.PutRelVersion(rid, r.Version(), tombR); err != nil {
-			return err
-		}
+		relTombstones = append(relTombstones, RelTombstone{
+			ID:          rid,
+			PrevVersion: r.Version(),
+			Tombstone:   tombR,
+		})
 	}
 
-	// Save tombstone for the node itself.
+	// Build node tombstone.
 	tombN := current.DeepCopy()
 	tmN := tombN.Temporal()
 	if tmN == nil {
@@ -465,11 +474,9 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 	// Transaction time: this tombstone version was committed at now.
 	tmN.TxFrom = now
 	tmN.TxTo = now
-	if err := g.store.PutNodeVersion(id, current.Version(), tombN); err != nil {
-		return err
-	}
 
-	if err := g.store.DeleteNodeCascade(id); err != nil {
+	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
+	if err := g.store.DeleteNodeWithHistory(id, current.Version(), tombN, relTombstones); err != nil {
 		return err
 	}
 	g.opNodeDeletes.Add(1)
@@ -478,7 +485,7 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 }
 
 // DeleteRelationshipWithContext removes a relationship from the store.
-// Saves a tombstone version (with DeletedAt/ValidTo) before deletion,
+// Saves a tombstone version (with DeletedAt/ValidTo) atomically with the deletion,
 // preserving temporal history for past-time queries.
 func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
@@ -506,11 +513,9 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 	// Transaction time: this tombstone version was committed at now.
 	tmR.TxFrom = now
 	tmR.TxTo = now
-	if err := g.store.PutRelVersion(id, current.Version(), tombR); err != nil {
-		return err
-	}
 
-	if err := g.store.DeleteRelationship(id); err != nil {
+	// Single atomic call: PutRelVersion + DeleteRelationship.
+	if err := g.store.DeleteRelWithHistory(id, current.Version(), tombR); err != nil {
 		return err
 	}
 	g.opRelDeletes.Add(1)
@@ -915,6 +920,10 @@ func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, t
 
 	startID := startNode.InternalID().SnowflakeID()
 	endID := endNode.InternalID().SnowflakeID()
+
+	if startID == endID && !g.validation.AllowSelfLoops {
+		return nil, ErrSelfLoop
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

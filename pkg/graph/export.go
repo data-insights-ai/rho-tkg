@@ -8,13 +8,18 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/vmihailenco/msgpack/v5"
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Export format version. Increment when the record layout changes in a
 // backward-incompatible way.
 const exportFormatVersion byte = 1
+
+// exportBatchSize is the page size for paginated entity queries during export.
+// Caps per-page allocations to ~80-100 KB for nodes, preventing the OOM
+// that would result from collecting all IDs into a single monolithic slice.
+const exportBatchSize = 1024
 
 // Record type tags for the export stream. Values ≥ 0x80 are reserved for future use.
 const (
@@ -90,37 +95,35 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 		return fmt.Errorf("export: registry: %w", err)
 	}
 
-	// --- Current nodes ---
-	// Two-phase (C4): collect IDs in callback (store lock held), fetch entities after.
-	// The callback MUST NOT call other store methods (B15 — deadlock via store lock).
-	var nodeIDs []snowflake.ID
-	if err := g.store.ForEachNodeID(func(id snowflake.ID) bool {
-		nodeIDs = append(nodeIDs, id)
-		return true
-	}); err != nil {
-		return fmt.Errorf("export: iterate node IDs: %w", err)
-	}
-	for _, id := range nodeIDs {
-		n, err := g.store.GetNode(id)
-		if errors.Is(err, ErrNodeNotFound) {
-			continue // concurrently deleted between ForEachNodeID and GetNode
-		}
+	// --- Current nodes (paginated) ---
+	// AllNodes with cursor-based pagination caps memory to exportBatchSize entities
+	// per iteration. Avoids the OOM that results from collecting all IDs into a
+	// single monolithic slice before fetching (8+ GB for 1B nodes).
+	var nodeCursor snowflake.ID
+	for {
+		nodes, err := g.store.AllNodes(QueryOpts{Limit: exportBatchSize, After: nodeCursor})
 		if err != nil {
-			return fmt.Errorf("export: get node %d: %w", id, err)
+			return fmt.Errorf("export: fetch nodes: %w", err)
 		}
-		w2 := nodeToWire(n)
-		if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
-			return fmt.Errorf("export: write node %d: %w", id, err)
+		for _, n := range nodes {
+			w2 := nodeToWire(n)
+			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
+				return fmt.Errorf("export: write node %d: %w", n.InternalID().SnowflakeID(), err)
+			}
+			nodeCursor = n.InternalID().SnowflakeID()
+		}
+		if len(nodes) < exportBatchSize {
+			break
 		}
 	}
 
 	// --- Node history ---
-	var nodeHistIDs []snowflake.ID
-	if err := g.store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		nodeHistIDs = append(nodeHistIDs, id)
-		return true
-	}); err != nil {
-		return fmt.Errorf("export: iterate node history IDs: %w", err)
+	// AllNodeHistoryIDs does not support cursor pagination (no QueryOpts); the full
+	// ID slice is loaded once. The history population is typically much smaller than
+	// the live entity population, so the memory impact is acceptable.
+	nodeHistIDs, err := g.store.AllNodeHistoryIDs()
+	if err != nil {
+		return fmt.Errorf("export: node history IDs: %w", err)
 	}
 	for _, id := range nodeHistIDs {
 		history, err := g.store.GetNodeHistory(id)
@@ -135,35 +138,29 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 		}
 	}
 
-	// --- Current relationships ---
-	var relIDs []snowflake.ID
-	if err := g.store.ForEachRelID(func(id snowflake.ID) bool {
-		relIDs = append(relIDs, id)
-		return true
-	}); err != nil {
-		return fmt.Errorf("export: iterate rel IDs: %w", err)
-	}
-	for _, id := range relIDs {
-		r, err := g.store.GetRelationship(id)
-		if errors.Is(err, ErrRelNotFound) {
-			continue // concurrently deleted
-		}
+	// --- Current relationships (paginated) ---
+	var relCursor snowflake.ID
+	for {
+		rels, err := g.store.AllRelationships(QueryOpts{Limit: exportBatchSize, After: relCursor})
 		if err != nil {
-			return fmt.Errorf("export: get rel %d: %w", id, err)
+			return fmt.Errorf("export: fetch rels: %w", err)
 		}
-		w2 := relToWire(r)
-		if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
-			return fmt.Errorf("export: write rel %d: %w", id, err)
+		for _, r := range rels {
+			w2 := relToWire(r)
+			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
+				return fmt.Errorf("export: write rel %d: %w", r.InternalID().SnowflakeID(), err)
+			}
+			relCursor = r.InternalID().SnowflakeID()
+		}
+		if len(rels) < exportBatchSize {
+			break
 		}
 	}
 
 	// --- Relationship history ---
-	var relHistIDs []snowflake.ID
-	if err := g.store.ForEachRelHistoryID(func(id snowflake.ID) bool {
-		relHistIDs = append(relHistIDs, id)
-		return true
-	}); err != nil {
-		return fmt.Errorf("export: iterate rel history IDs: %w", err)
+	relHistIDs, err := g.store.AllRelHistoryIDs()
+	if err != nil {
+		return fmt.Errorf("export: rel history IDs: %w", err)
 	}
 	for _, id := range relHistIDs {
 		history, err := g.store.GetRelHistory(id)

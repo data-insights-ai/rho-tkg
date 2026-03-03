@@ -1,4 +1,4 @@
-# Architecture — tkg-v3 (v3.0.31)
+# Architecture — tkg-v3 (v3.0.55)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -36,7 +36,7 @@ License: Apache-2.0
 
 **Graph** is the sole external API. It owns the registries, dual snowflake generators, the Store, and an entity lock manager. All string resolution, referential integrity, and temporal query logic live here.
 
-**Store** is a pure persistence interface (47 methods). Three implementations: MemoryStore (testing), BadgerStore (single-instance persistent), TieredStore (multi-shard persistent).
+**Store** is a pure persistence interface (49 methods). Three implementations: MemoryStore (testing), BadgerStore (single-instance persistent), TieredStore (multi-shard persistent).
 
 ---
 
@@ -85,8 +85,9 @@ License: Apache-2.0
 | `AddRelationship(type, start, end, props)` | `LockTwo(start, end)` | Validate endpoints exist, generate ID, hash, store |
 | `UpdateNode(id, updates)` | `LockEntity(id)` | Deep-copy pre-mutation, apply updates, bump version, `ReplaceNodeWithHistory` |
 | `UpdateRelationship(id, updates)` | `LockEntity(id)` | Same pattern as UpdateNode |
-| `DeleteNode(id)` | `LockMany(node + all rels)` | Two-phase TOCTOU: read adjacency, lock all, re-verify, save tombstones, cascade |
-| `DeleteRelationship(id)` | `LockEntity(id)` | Save tombstone version, then delete |
+| `AddRelationship(type, start, end, props)` | `LockTwo(start, end)` | Validate endpoints exist; reject self-loops when `AllowSelfLoops=false` (`ErrSelfLoop`); generate ID, hash, store |
+| `DeleteNode(id)` | `LockMany(node + all rels)` | Two-phase TOCTOU: read adjacency, lock all, re-verify, build `[]RelTombstone`, single atomic `DeleteNodeWithHistory` call |
+| `DeleteRelationship(id)` | `LockEntity(id)` | Build tombstone, single atomic `DeleteRelWithHistory` call |
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Context-aware variants (`*WithContext`) add cancellation checks at critical points. Non-context methods delegate with `context.Background()`.
 
@@ -130,7 +131,7 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 ## Store Interface (`pkg/graph/store.go`)
 
-47 methods. Pure persistence contract -- no string resolution, no referential integrity, no shadow properties.
+49 methods. Pure persistence contract -- no string resolution, no referential integrity, no shadow properties.
 
 ### Query Control
 
@@ -165,6 +166,7 @@ const (
 | Atomic replace | `ReplaceNodeWithHistory`, `ReplaceRelWithHistory` | Entity + history in one call |
 | Version history | `PutNodeVersion`, `GetNodeVersion`, `GetNodeHistory`, `TruncateNodeHistory` + rel mirrors | 8 methods total |
 | Cascade | `DeleteNodeCascade` | Node + all connected rels |
+| Atomic delete | `DeleteNodeWithHistory`, `DeleteRelWithHistory` | Tombstone history + entity delete in one batch (crash-safe) |
 | Counts | `NodeCount`, `RelationshipCount`, `NodeCountByLabel`, `RelCountByType` | O(1) |
 | Property indexes | `CreatePropertyIndex`, `DropPropertyIndex`, `NodesByLabelAndProperty` | In-memory, auto-maintained |
 | ID-only queries | `AllNodeIDs`, `AllRelIDs` | No deserialization |
@@ -175,6 +177,8 @@ const (
 ### Sentinel Errors
 
 `ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`, `ErrNoVersionValidAt`, `ErrIndexExists`, `ErrIndexNotFound`, `ErrTxDone`
+
+**Graph-layer sentinel errors** (not in Store interface): `ErrSelfLoop` — returned by `AddRelationshipWithContext` / `ImportRelationshipWithID` when `startID == endID && !g.validation.AllowSelfLoops`.
 
 ---
 
@@ -485,6 +489,8 @@ Entities deep-copied on both Put and Get. Cache and caller never share pointers.
 
 History is never physically deleted. Delete paths save tombstone versions (with `DeletedAt`/`ValidTo`) before deletion. Past-time queries reconstruct deleted entities from history.
 
+The tombstone write and the entity deletion are combined in a single atomic Store call (`DeleteNodeWithHistory` / `DeleteRelWithHistory`). All ops land in one Badger `WriteBatch.Flush()` under the same `idxMu.Lock()`, eliminating the crash window that previously existed between N+2 separate store calls.
+
 ### ForEach for OOM-Safe Iteration
 
 Callback-based iteration (`fn(snowflake.ID) bool` -- return true to continue, false to stop) replaces slice materialization. Two constraints: (1) callbacks must NOT call store methods (RWMutex non-reentrancy); (2) TieredStore iterates shards sequentially, one at a time via checkout/checkin.
@@ -535,6 +541,8 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | v3.0.29 | Phase 3e: Admin API, repair tool, verification caching, ID decomposition, migration |
 | v3.0.30 | 5 bug fixes: checkout/checkin race, cold shard skip, archive rollback, dirty-map tracking, canonical hash |
 | v3.0.31 | OOM fix: ForEach iterators for temporal pipeline (~83% memory reduction) |
+| v3.0.54 | Phase 4.22: `AllowSelfLoops bool` in `ValidationLimits`, `ErrSelfLoop` sentinel, guard in `AddRelationshipWithContext`/`ImportRelationshipWithID` |
+| v3.0.55 | Phase 4.23: `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound store methods; `deleteNodeLocked`/`DeleteRelationshipWithContext` rewritten to single store call |
 
 ---
 
@@ -542,8 +550,8 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | Graph struct, Config, entity management, registries, entity locks, validation, lifecycle |
-| `store.go` | Store interface (47 methods), QueryOpts, ShardDepth, sentinel errors |
+| `graph.go` | Graph struct, Config, entity management, registries, entity locks, `ValidationLimits` (incl. `AllowSelfLoops`), `ErrSelfLoop`, lifecycle |
+| `store.go` | Store interface (49 methods), QueryOpts, ShardDepth, sentinel errors, `RelTombstone`, `DeleteNodeWithHistory`/`DeleteRelWithHistory` |
 | `memorystore.go` | In-memory Store with hash-set indexes, O(1) counts, ForEach iterators |
 | `badgerstore.go` | Persistent Store: Badger v4, LRU caches, async flush, in-memory indexes, ForEach iterators |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, Peek |
@@ -555,7 +563,7 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe reltype string <-> uint16 token registry |
 | `batch.go` | BatchBuilder fluent API |
-| `context.go` | Context-aware operations (8 WithContext methods) |
+| `context.go` | Context-aware operations (8 WithContext methods); self-loop validation (`ErrSelfLoop`); atomic delete via `DeleteNodeWithHistory`/`DeleteRelWithHistory` |
 | `events.go` | EventBus for graph lifecycle notifications (Copy-Then-Invoke) |
 | `temporal.go` | Temporal queries, GraphSnapshot, forEachKnownNodeID/forEachKnownRelID |
 | `temporal_constraint.go` | Write-time temporal boundary enforcement (e.g., endpoints must outlive relationships) |

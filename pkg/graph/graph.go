@@ -32,6 +32,7 @@ var (
 	ErrKeyTooLong        = errors.New("graph: property key too long")
 	ErrValueTooLarge     = errors.New("graph: property value too large")
 	ErrNameTooLong       = errors.New("graph: name too long")
+	ErrSelfLoop          = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
 )
 
 // Default validation limits — generous enough for normal use, restrictive enough
@@ -47,11 +48,12 @@ const (
 // ValidationLimits configures limits on entity structure.
 // Zero values are resolved to defaults in New().
 type ValidationLimits struct {
-	MaxLabelsPerNode       int // Default: 50
-	MaxPropertiesPerEntity int // Default: 1000
-	MaxPropertyKeyLength   int // Default: 256
-	MaxPropertyValueSize   int // Default: 65536 (string values only)
-	MaxNameLength          int // Default: 256 (label and reltype names)
+	MaxLabelsPerNode       int  // Default: 50
+	MaxPropertiesPerEntity int  // Default: 1000
+	MaxPropertyKeyLength   int  // Default: 256
+	MaxPropertyValueSize   int  // Default: 65536 (string values only)
+	MaxNameLength          int  // Default: 256 (label and reltype names)
+	AllowSelfLoops         bool // Default: false — reject relationships where startNode == endNode
 }
 
 // snowflakeEpoch is the custom epoch for all snowflake ID generation (2026-01-01 UTC).
@@ -105,7 +107,7 @@ type Graph struct {
 	validation  ValidationLimits
 	constraints ConstraintSet  // temporal constraints checked at relationship write time
 	events      eventPublisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
-	mu          sync.RWMutex  // serializes batch writes vs whole-graph temporal reads (Snapshot)
+	mu          sync.RWMutex   // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
 
 	// Operation counters — incremented atomically on every successful operation.

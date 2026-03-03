@@ -44,7 +44,7 @@ func TestHFIndex_RangeQuery(t *testing.T) {
 	id2 := snowflake.ID(2)
 	id3 := snowflake.ID(3)
 
-	hfi.add(id1, types.Instant(0))        // bucket 0: hour 0
+	hfi.add(id1, types.Instant(0))         // bucket 0: hour 0
 	hfi.add(id2, types.Instant(3600*1000)) // bucket 1: hour 1
 	hfi.add(id3, types.Instant(7200*1000)) // bucket 2: hour 2
 
@@ -304,5 +304,37 @@ func TestHFIndex_RangeQuery_EmptyResult(t *testing.T) {
 	results := hfi.rangeQuery(types.Instant(0), types.Instant(3600*1000))
 	if len(results) != 0 {
 		t.Errorf("expected empty result, got %d entries", len(results))
+	}
+}
+
+// TestHFIndex_RangeQuery_OpenEndedDoesNotHang verifies that a rangeQuery with
+// end=math.MaxInt64 returns immediately. The previous implementation iterated
+// from startBucket to endBucket numerically (~2.5 trillion iterations with a
+// 1-hour bucket on MaxInt64 end), causing a CPU hang / DoS.
+func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
+	t.Parallel()
+
+	origin := types.Instant(0)
+	hfi := newHighFrequencyIndex(time.Hour, origin)
+
+	// Add a single entry so the index is non-empty.
+	hfi.add(snowflake.ID(1), types.Instant(0))
+
+	// End at math.MaxInt64 — must not loop for 2.5 trillion iterations.
+	// If the implementation regresses, this test will time out via -timeout.
+	done := make(chan struct{})
+	go func() {
+		results := hfi.rangeQuery(types.Instant(0), types.Instant(1<<62))
+		if len(results) != 1 {
+			t.Errorf("rangeQuery(0, MaxInt62): expected 1 result, got %d", len(results))
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// success — returned quickly
+	case <-time.After(5 * time.Second):
+		t.Fatal("rangeQuery with large end hung (regression: numeric range iteration)")
 	}
 }

@@ -105,6 +105,15 @@ type BadgerStore struct {
 	wbMu    sync.Mutex
 	pending map[string]writeOp
 
+	// flushMu serializes concurrent flush() executions end-to-end.
+	// Without this, two concurrent flush() calls can both snapshot atomic
+	// counters under idxMu.RLock() and then submit out-of-order WriteBatches,
+	// causing the later-completing batch to overwrite newer counter values with
+	// stale ones — corrupting node/rel counts on restart.
+	// The background flushLoop goroutine is single-threaded, so flushMu adds no
+	// contention there. It serializes callers in SyncWrites mode only.
+	flushMu sync.Mutex
+
 	// Per-label and per-type counters — O(1) reads via atomic.Int64.
 	// Keys are uint16 tokens. Values are *atomic.Int64.
 	// Rebuilt from index sizes in loadIndexes; maintained incrementally at runtime.
@@ -128,12 +137,12 @@ type BadgerStore struct {
 	readOnly   bool
 	syncWrites bool
 	flushInt   time.Duration
-	gcInt     time.Duration
-	gcRatio   float64
-	stopCh    chan struct{}
-	flushDone chan struct{}
-	gcDone    chan struct{}
-	closeOnce sync.Once
+	gcInt      time.Duration
+	gcRatio    float64
+	stopCh     chan struct{}
+	flushDone  chan struct{}
+	gcDone     chan struct{}
+	closeOnce  sync.Once
 	// dbClosed is set to true immediately before bs.db.Close() in Close().
 	// flush() checks this before calling WriteBatch.Flush() to avoid
 	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
@@ -1309,14 +1318,14 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	return corruptErr
 }
 
-// cascadeDeleteLocked performs Phases 1+2 of DeleteNodeCascade under idxMu write lock.
-// Returns the list of deleted relationships and an optional corruption error.
-// The corruption error is non-nil when the node's data was unreadable but indexes
-// were still cleaned up. Callers should still run Phase 3 for the returned toDelete list.
-func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, error, error) {
-	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
-
+// cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade.
+// Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock
+// so that the caller can append additional ops (e.g. tombstone history) before releasing.
+// Returns (toDelete, corruptErr, fatalErr):
+//   - fatalErr != nil: aborted with no mutations applied.
+//   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
+//   - Otherwise: clean success.
+func (bs *BadgerStore) cascadeDeleteInner(id snowflake.ID) ([]relDeleteInfo, error, error) {
 	if _, exists := bs.nodeIDs[id]; !exists {
 		return nil, nil, ErrNodeNotFound
 	}
@@ -1411,6 +1420,104 @@ func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, er
 	bs.nodeCount.Add(-1)
 
 	return toDelete, nil, nil
+}
+
+// cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
+// Used by DeleteNodeCascade — same contract as before the refactor.
+func (bs *BadgerStore) cascadeDeleteLocked(id snowflake.ID) ([]relDeleteInfo, error, error) {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	return bs.cascadeDeleteInner(id)
+}
+
+// DeleteRelWithHistory atomically writes a relationship tombstone history entry
+// and deletes the live relationship in one batch flush.
+//
+// Serializes tombstone data outside the lock (B3), then holds idxMu.Lock() across
+// both the live delete and the tombstone history append so both ops land in the
+// same pending map before the next flush. Atomic within this shard.
+func (bs *BadgerStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
+	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
+	w := relToWire(tombstone)
+	tombData, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
+	}
+	histKey := histRelKey(int64(id), uint64(prevVersion))
+
+	bs.idxMu.Lock()
+	r, err := bs.getRelLocked(id)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	info := relDeleteInfo{
+		id:      id,
+		relType: r.TypeToken().Value(),
+		startID: r.StartNodeID().SnowflakeID(),
+		endID:   r.EndNodeID().SnowflakeID(),
+	}
+	bs.deleteRelByInfo(info) // appends delete ops to pending under lock
+	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// DeleteNodeWithHistory atomically combines PutRelVersion×N + PutNodeVersion +
+// DeleteNodeCascade into a single batch flush.
+//
+// Serializes all tombstone data outside the lock (B3), then holds idxMu.Lock()
+// across cascadeDeleteInner AND the tombstone history appends so all ops land in
+// the same pending map. The background flush goroutine acquires idxMu.RLock() for
+// its snapshot phase, so it is blocked until we release — guaranteeing all ops
+// commit atomically.
+//
+// Cross-shard atomicity: per-shard only (same B7 limitation as DeleteNodeCascade).
+func (bs *BadgerStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	// Serialize all tombstones OUTSIDE lock (B3).
+	nodeData, err := marshalNodeToBytes(nodeTombstone)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node tombstone: %w", err)
+	}
+	nodeHistKey := histNodeKey(int64(id), uint64(prevNodeVersion))
+
+	type histEntry struct{ key, data []byte }
+	relEntries := make([]histEntry, 0, len(relTombstones))
+	for _, rt := range relTombstones {
+		data, err := marshalRelToBytes(rt.Tombstone)
+		if err != nil {
+			return fmt.Errorf("graph: marshal rel tombstone: %w", err)
+		}
+		relEntries = append(relEntries, histEntry{
+			key:  histRelKey(int64(rt.ID), uint64(rt.PrevVersion)),
+			data: data,
+		})
+	}
+
+	// Acquire lock ONCE — hold it across cascade + tombstone appends (B3 + lock ordering rule).
+	bs.idxMu.Lock()
+	_, corruptErr, fatalErr := bs.cascadeDeleteInner(id)
+	if fatalErr != nil {
+		bs.idxMu.Unlock()
+		return fatalErr
+	}
+	// Append tombstone history ops to SAME pending map before releasing lock.
+	ops := make([]writeOp, 0, 1+len(relEntries))
+	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
+	for _, e := range relEntries {
+		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
+	}
+	bs.appendOps(ops...)
+	bs.idxMu.Unlock()
+
+	if corruptErr == nil && bs.syncWrites {
+		return bs.flush()
+	}
+	return corruptErr
 }
 
 // --- Batch operations ---
@@ -1688,6 +1795,18 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 		return bs.flush()
 	}
 	return nil
+}
+
+// --- Marshal helpers (shared by PutNodeVersion, PutRelVersion, DeleteNodeWithHistory, DeleteRelWithHistory) ---
+
+// marshalNodeToBytes serializes a Node to msgpack bytes via the wire format.
+func marshalNodeToBytes(n *types.Node) ([]byte, error) {
+	return msgpack.Marshal(nodeToWire(n))
+}
+
+// marshalRelToBytes serializes a Relationship to msgpack bytes via the wire format.
+func marshalRelToBytes(r *types.Relationship) ([]byte, error) {
+	return msgpack.Marshal(relToWire(r))
 }
 
 // --- Version history ---
@@ -2130,6 +2249,13 @@ func (bs *BadgerStore) Flush() error {
 
 // flush drains the write buffer to Badger via WriteBatch.
 //
+// flushMu is held for the entire duration to serialize concurrent flush() calls.
+// Without this, two concurrent callers (e.g. two SyncWrites mutations running in
+// parallel goroutines) can both snapshot counter values under idxMu.RLock, then
+// submit their WriteBatches to Badger concurrently. If the older batch completes
+// last, it overwrites the on-disk counter with a stale value, corrupting counts
+// on the next restart.
+//
 // The flush holds idxMu.RLock during the snapshot+swap phase to prevent any
 // writer from being between cache.Put and appendOps (all writers hold
 // idxMu.Lock for their entire mutation). This guarantees that the dirty
@@ -2138,6 +2264,9 @@ func (bs *BadgerStore) Flush() error {
 // Counters are included in the same WriteBatch as entity ops — no TOCTOU
 // window between data and counter persistence.
 func (bs *BadgerStore) flush() error {
+	bs.flushMu.Lock()
+	defer bs.flushMu.Unlock()
+
 	// Step 1: Atomically snapshot dirty cache versions, pending ops, and counters.
 	// idxMu.RLock blocks writers (who hold idxMu.Lock) during this phase,
 	// ensuring no writer is between cache.Put and appendOps.
