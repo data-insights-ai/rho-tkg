@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -463,6 +464,53 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 	}
 	ts.tempIdxMu.Unlock()
 
+	if !found {
+		return ErrTemporalIndexNotFound
+	}
+	return nil
+}
+
+// --- High-frequency indexes ---
+
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
+// with the given label token across all shards (reference + all event shards).
+// New hot shards created via rotation will NOT automatically inherit HFI — callers
+// must re-call CreateHighFrequencyIndex after rotation if needed.
+// Returns ErrTemporalIndexExists if any temporal index already exists for this label.
+func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	ts.mu.RLock()
+	shards := ts.allActiveShards()
+	ts.mu.RUnlock()
+
+	for _, shard := range shards {
+		if err := shard.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
+			return err
+		}
+	}
+	return nil
+}
+
+// DropHighFrequencyIndex removes the high-frequency index for the given label token
+// from all shards. Returns ErrTemporalIndexNotFound if no index exists on any shard.
+func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
+	ts.mu.RLock()
+	shards := ts.allActiveShards()
+	ts.mu.RUnlock()
+
+	var lastErr error
+	found := false
+	for _, shard := range shards {
+		if err := shard.DropHighFrequencyIndex(labelToken); err != nil {
+			if !errors.Is(err, ErrTemporalIndexNotFound) {
+				lastErr = err
+			}
+		} else {
+			found = true
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
 	if !found {
 		return ErrTemporalIndexNotFound
 	}

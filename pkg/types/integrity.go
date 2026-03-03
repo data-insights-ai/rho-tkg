@@ -15,6 +15,12 @@ type NodeIntegrity struct {
 	// this version's content. Set via tkg_signature in Add/Update props;
 	// stored as a shadow property (not in the PropertySlice).
 	Signature []byte
+	// AuthorizedBy is an optional caller-supplied identifier for the entity that
+	// authorized this version. Set via tkg_authorized_by in Add/Update props.
+	AuthorizedBy string
+	// AuthorizationLevel is an optional caller-supplied authorization tier
+	// (0=none). Set via tkg_auth_level in Add/Update props.
+	AuthorizationLevel uint8
 }
 
 // RelIntegrity holds integrity/hash-chain fields for relationships.
@@ -39,4 +45,10 @@ type RelIntegrity struct {
 	// this version's content. Set via tkg_signature in Add/Update props;
 	// stored as a shadow property (not in the PropertySlice).
 	Signature []byte
+	// AuthorizedBy is an optional caller-supplied identifier for the entity that
+	// authorized this version. Set via tkg_authorized_by in Add/Update props.
+	AuthorizedBy string
+	// AuthorizationLevel is an optional caller-supplied authorization tier
+	// (0=none). Set via tkg_auth_level in Add/Update props.
+	AuthorizationLevel uint8
 }

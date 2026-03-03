@@ -4,6 +4,114 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.52] - 2026-03-03
+
+### Added (HighFrequencyIndex — Phase 4.21)
+
+- **`highFrequencyIndex`** — new time-bucketed index providing O(1) amortized insertion versus the sorted-slice `temporalIndex`'s O(log n). Designed for high-write-rate scenarios (thousands of event writes/sec into TieredStore event shards).
+- **`newHighFrequencyIndex(bucketSize time.Duration, origin types.Instant) *highFrequencyIndex`** — constructor. `bucketSize` controls the time width of each bucket (e.g., `time.Hour`). `origin` sets the baseline for bucket 0.
+- **`(*highFrequencyIndex).add(id snowflake.ID, validFrom types.Instant)`** — O(1) amortized insertion; bucket index = `(validFrom - origin) / bucketSize`. Thread-safe via internal `sync.RWMutex`.
+- **`(*highFrequencyIndex).remove(id snowflake.ID, validFrom types.Instant)`** — O(n/num_buckets) amortized removal from a single bucket.
+- **`(*highFrequencyIndex).pointQuery(t types.Instant) []snowflake.ID`** — returns all IDs in the bucket containing `t`. Returns candidates — callers must re-filter by `ValidTo` if exact interval matching is needed.
+- **`(*highFrequencyIndex).rangeQuery(start, end types.Instant) []snowflake.ID`** — returns all IDs in buckets overlapping `[start, end)`. Candidates — same re-filter note as `pointQuery`.
+- **`(*highFrequencyIndex).bucketFor(validFrom types.Instant) int64`** — unexported helper; instants before `origin` map to negative bucket indices using correct floor division.
+- **`Store.CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error`** — new method on the `Store` interface. Returns `ErrTemporalIndexExists` if any temporal index (sorted-slice or bucket) already exists for this label — only one type per label at a time.
+- **`Store.DropHighFrequencyIndex(labelToken uint16) error`** — new method on the `Store` interface. Returns `ErrTemporalIndexNotFound` if no high-frequency index exists.
+- **`MemoryStore.CreateHighFrequencyIndex` / `DropHighFrequencyIndex`** — implemented; stored in a new `hfIndexes map[uint16]*highFrequencyIndex` field (separate from `temporalIndexes`).
+- **`BadgerStore.CreateHighFrequencyIndex` / `DropHighFrequencyIndex`** — implemented; stored in a new `hfIndexes map[uint16]*highFrequencyIndex` field under `idxMu`. Not persisted — must be rebuilt via `CreateHighFrequencyIndex` after restart.
+- **`TieredStore.CreateHighFrequencyIndex` / `DropHighFrequencyIndex`** — delegates across all active shards (ref + event) following the same pattern as `CreateTemporalIndex`. New hot shards created via rotation do NOT inherit HFI automatically.
+- **`Graph.CreateHighFrequencyIndex(label string, bucketSize time.Duration) error`** — public Graph API. Returns nil if the label has never been registered. Returns `ErrTemporalIndexExists` on conflict.
+- **`Graph.DropHighFrequencyIndex(label string) error`** — public Graph API. Returns nil if the label has never been registered. Returns `ErrTemporalIndexNotFound` if no HFI exists.
+- 12 tests in `pkg/graph/hf_index_test.go`: `TestHFIndex_Add_PointQuery`, `TestHFIndex_RangeQuery`, `TestHFIndex_Remove`, `TestHFIndex_HighWriteRate` (10k concurrent adds, race-clean), `TestCreateHighFrequencyIndex_Graph`, `TestHFIndex_ReplacesTemporalIndex`, `TestHFIndex_DuplicateCreate`, `TestHFIndex_DropNotFound`, `TestHFIndex_ConflictsWithTemporalIndex`, `TestHFIndex_UnknownLabel`, `TestHFIndex_BucketFor_BeforeOrigin`, `TestHFIndex_RangeQuery_EmptyResult`.
+
+### Design Notes
+
+- HFI does NOT store `ValidTo` — it indexes `validFrom` only. Callers needing precise interval filtering must re-filter results.
+- HFI is NOT persisted (like vector indexes). Must be rebuilt on restart via `CreateHighFrequencyIndex`. Document this in your service bootstrap code.
+- Only one temporal index type can exist per label at a time: a `temporalIndex` and a `highFrequencyIndex` cannot coexist. Drop one before creating the other.
+- `time.Duration` added to `store.go` imports (used by new interface methods).
+
+## [3.0.51] - 2026-03-03
+
+### Added (Event Priority Levels — Phase 4.20)
+
+- **`EventPriority uint8`** — new type controlling delivery queue routing in `AsyncEventBus`. Five named constants (zero value = `PriorityNormal` for backward compatibility):
+  - `PriorityNormal` (0) — default; all existing `Event{}` literals remain valid without change.
+  - `PriorityHigh` (1) — create events (`EventNodeCreate`, `EventRelCreate`).
+  - `PriorityCritical` (2) — delete/cascade events (`EventNodeDelete`, `EventRelDelete`).
+  - `PriorityLow` (3) — available for caller-side lower-priority events.
+  - `PriorityDeferred` (4) — available for caller-side background/analytics events.
+- **`numPriorityLevels = 5`** — unexported constant sizing the per-priority queue array.
+- **`Event.Priority EventPriority`** — new field on `Event`. Zero value is `PriorityNormal`; all existing `Event{}` struct literals compile unchanged (backward-compatible).
+- **`AsyncEventBus.queues [numPriorityLevels]chan Event`** — replaces the single `queue chan Event` with one buffered channel per priority level. `QueueSize` is applied uniformly to each channel.
+- **`priorityOrder [numPriorityLevels]EventPriority`** — package-level drain order array: `[Critical, High, Normal, Low, Deferred]`. Used by workers to implement best-effort priority ordering.
+- **Per-priority `publish` routing** — `AsyncEventBus.publish` routes each event to `queues[e.Priority]`. Out-of-range priority values fall back to `PriorityNormal`. Backpressure strategies (`BackpressureBlock`, `BackpressureDropOldest`, `BackpressureDropLatest`) apply per-queue.
+- **Priority-ordered worker drain** — workers perform a non-blocking check through `priorityOrder` before blocking on a multi-channel select. When multiple queues have events, higher-priority events are served first (best-effort; Go scheduler is non-deterministic).
+- **`drainAll()`** — helper draining all per-priority queues in priority order on stop signal. Called from worker on `stopCh` closure (replaces the previous inline drain loop).
+- **`Graph.publishEvent` signature updated** — fourth parameter `priority EventPriority` added. All 11 internal call sites updated with appropriate priorities:
+  - `EventNodeCreate` / `EventRelCreate` → `PriorityHigh`
+  - `EventNodeDelete` / `EventRelDelete` → `PriorityCritical`
+  - `EventNodeUpdate` / `EventRelUpdate` (all paths including in-place, RemoveLabel, CloseVersion) → `PriorityNormal`
+- 4 new tests in `pkg/graph/async_eventbus_test.go`: `TestPriority_ZeroValueIsNormal`, `TestPriority_GraphDeleteIsCritical`, `TestPriority_GraphCreateIsHigh`, `TestPriority_CriticalBeforeNormal`.
+
+## [3.0.50] - 2026-03-03
+
+### Added (Async EventBus with Worker Pool + Backpressure — Phase 4.19)
+
+- **`eventPublisher` interface** — unexported interface with a single `publish(Event)` method. Both `*EventBus` (sync) and `*AsyncEventBus` (async) implement it. `Graph.events` field changed from `*EventBus` to `eventPublisher`, enabling transparent substitution.
+- **`AsyncEventBus`** — asynchronous event bus that decouples handler latency from graph write latency. Handlers are invoked in a bounded worker pool, not on the caller's goroutine. A slow handler no longer stalls mutations.
+- **`NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus`** — creates and starts the bus. Workers begin consuming immediately. Defaults: `Workers=1`, `QueueSize=256`.
+- **`AsyncEventBusConfig`** — configuration struct: `Workers int` (goroutine count), `QueueSize int` (channel buffer), `Backpressure BackpressureStrategy` (full-queue behavior).
+- **`BackpressureStrategy`** — enum with three values:
+  - `BackpressureBlock` — blocks the caller until queue space is available (zero event loss, max back-pressure to writers).
+  - `BackpressureDropOldest` — evicts the oldest queued event and enqueues the new one (preserves newest events under load).
+  - `BackpressureDropLatest` — discards the incoming event when the queue is full (zero blocking, may lose events).
+- **`AsyncEventBus.Subscribe(h EventHandler) func()`** — registers a handler; returns an idempotent unsubscribe closure (B11, `sync.Once`). Safe for concurrent use.
+- **`AsyncEventBus.Close()`** — signals workers to stop, drains all pending queue entries before returning, then waits for all workers to exit. Safe to call multiple times (B11, `sync.Once`). Guarantees at-most-once delivery of all events enqueued before `Close()`.
+- **`Graph.SetAsyncEventBus(bus *AsyncEventBus)`** — attaches an `AsyncEventBus`. Nil-safe (typed-nil guard prevents interface-wrapping a nil pointer from defeating the `g.events == nil` check in `publishEvent`).
+- **`Graph.SetEventBus(bus *EventBus)`** — updated with explicit nil-guard (same typed-nil safety fix).
+- **`Graph.GetEventBus() *EventBus`** — updated to type-assert against `eventPublisher` interface; returns `nil` when an `AsyncEventBus` is attached.
+- **`dispatch` (internal)** — copies handler slice under `RLock` before invoking (B15 copy-outside-lock pattern). Uses `safeInvoke` — panics inside handlers are recovered and logged, never crashing the worker goroutine.
+- 8 new tests in `pkg/graph/async_eventbus_test.go`: `TestAsyncEventBus_HandlerReceivesEvent`, `TestAsyncEventBus_SlowHandlerDoesNotBlockPublish`, `TestAsyncEventBus_BackpressureBlock`, `TestAsyncEventBus_BackpressureDropOldest`, `TestAsyncEventBus_BackpressureDropLatest`, `TestAsyncEventBus_Close_DrainsQueue`, `TestAsyncEventBus_MultipleWorkers`, `TestSetAsyncEventBus_GraphIntegration`.
+
+## [3.0.49] - 2026-03-03
+
+### Added (Transaction Time / Bitemporality — Phase 4.18)
+
+- **`TemporalMetadata.TxFrom Instant`** is now populated on every write path. `AddNodeWithContext` and `AddRelationshipWithContext` set `TxFrom = nowInstant()` after hash computation (TxFrom/TxTo are NOT fed into `ComputeNodeHash`/`ComputeRelHash`). `UpdateNodeWithContext` and `UpdateRelationshipWithContext` set `TxFrom = now` on the new version (the same `now` used for `UpdatedAt`) and `TxTo = now` on the prevState deep-copy before it is written to history.
+- **`TemporalMetadata.TxTo Instant`** is set to `now` on the tombstone created by `deleteNodeLocked` (node + connected rels) and `DeleteRelationshipWithContext`. Tombstones have both `TxFrom = now` and `TxTo = now` (committed and immediately superseded at the same instant, matching the deleted-entity contract).
+- **`Graph.GetNodeAsOf(id, txTime)`** — returns the node version whose transaction time window covered `txTime`. Checks the current tip first (`TxFrom <= txTime && TxTo == 0`), then scans history for the highest-`TxFrom` version satisfying `TxFrom <= txTime && (TxTo == 0 || TxTo > txTime)`. Returns `ErrNoVersionAsOf` if no version was recorded at that time.
+- **`Graph.GetRelAsOf(id, txTime)`** — mirrors `GetNodeAsOf` for relationships.
+- **`Graph.GetNodesAsOf(txTime)`** — returns all nodes that existed in the graph at the given transaction time. Uses the two-phase ForEach pattern (B15-compliant): Phase 1 collects all current + history node IDs under store locks; Phase 2 calls `GetNodeAsOf` per ID with locks released. Skips `ErrNoVersionAsOf`.
+- **`Graph.GetRelsAsOf(txTime)`** — mirrors `GetNodesAsOf` for relationships.
+- **`ErrNoVersionAsOf`** — new sentinel: `"graph: no entity version recorded at the given transaction time"`.
+- **`Config.SyncWrites bool`** — also now wired through to `BadgerStoreConfig.SyncWrites` in `New()` (pre-existing gap fixed alongside Phase 4.18).
+- **Shadow resolver tests updated** — `TestResolveNodePropertyNilTemporal` and `TestResolveRelPropertyNilTemporal` now construct entities directly (bypassing `Add*`) to test the nil-temporal code path. `AddNode`/`AddRelationship` always set `TxFrom` after Phase 4.18, so the test must use manually constructed entities to exercise the nil branch.
+- 8 new tests in `pkg/graph/txtime_test.go`: `TestTxFromSetOnAdd`, `TestTxToSetOnUpdate`, `TestTxToSetOnDelete`, `TestGetNodeAsOf_BeforeCreate`, `TestGetNodeAsOf_CurrentVersion`, `TestGetNodeAsOf_HistoricalVersion`, `TestGetNodesAsOf_FiltersCorrectly`, `TestGetRelAsOf`.
+
+## [3.0.48] - 2026-03-03
+
+### Added (Sync-Write Config Flag — Phase 4.17)
+
+- **`BadgerStoreConfig.SyncWrites bool`** — when true, opens Badger with `WithSyncWrites(true)` (fsync-on-every-write at the disk level) and forces `FlushInterval=0` so the background flush goroutine is never started. Every mutating method calls `bs.flush()` immediately after releasing `idxMu`, persisting writes to stable storage before returning. Eliminates the 100ms async flush window at the cost of higher write latency. Ignored in ReadOnly mode.
+- **`Config.SyncWrites bool`** — propagated to `BadgerStoreConfig.SyncWrites` when `New()` creates a `BadgerStore`. No-op when using `MemoryStore` or an explicitly injected `Store`.
+- **`BadgerStore.syncWrites bool`** — unexported field on BadgerStore; checked after every `appendOps` call in all 16 mutating methods: `PutNode`, `DeleteNode`, `ReplaceNode`, `RemoveNodeLabelToken`, `PutRelationship`, `ReplaceRelationship`, `DeleteRelationship`, `ReplaceNodeWithHistory`, `ReplaceRelWithHistory`, `PutNodeVersion`, `PutRelVersion`, `DeleteNodeCascade`, `PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`.
+- **Lock ordering preserved** — all `defer bs.idxMu.Unlock()` patterns in mutating methods were converted to explicit unlock before the sync flush call, maintaining the invariant: `idxMu` is released before `flush()` acquires `wbMu` then `idxMu.RLock()` internally (B15, lock-ordering rule).
+- **B22 compliance** — flush path already guards with `bs.dbClosed.Load()`, so sync writes cannot hang on closed DB.
+- 5 new tests in `pkg/graph/sync_write_test.go`: `TestSyncWrite_ConfigPassthrough`, `TestSyncWrite_DataSurvivesWithoutClose`, `TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites`, `TestSyncWrite_ReadOnly_SyncWritesIgnored`, `TestSyncWrite_Graph_ConfigPassthrough`.
+
+## [3.0.47] - 2026-03-03
+
+### Added (AuthorizedBy + AuthorizationLevel — Phase 4.16)
+
+- **`NodeIntegrity.AuthorizedBy string`** / **`NodeIntegrity.AuthorizationLevel uint8`** — optional caller-supplied authorization fields. Set by passing `"tkg_authorized_by"` (string) and `"tkg_auth_level"` (uint8 or int for JSON round-trip safety) in the `props`/`updates` map of any Add or Update call. Stripped before `PropertySlice.Set` (never stored in PropertySlice).
+- **`RelIntegrity.AuthorizedBy string`** / **`RelIntegrity.AuthorizationLevel uint8`** — same pattern on relationship integrity.
+- **`ShadowAuthorizedBy = "tkg_authorized_by"`** / **`ShadowAuthLevel = "tkg_auth_level"`** — new shadow constants in `pkg/types/shadow.go`. Both accessible via `ResolveNodeProperty` and `ResolveRelProperty`.
+- **`extractProvenance(props)`** extended — now also extracts `tkg_authorized_by` and `tkg_auth_level` from any props/updates map. Zero-allocation fast path preserved (B23 compliant): no allocation when none of the 4 reserved keys are present. Accepts `int`, `int32`, `int64`, `float64` for `tkg_auth_level` for JSON round-trip compat.
+- **Wire persistence** — `AuthorizedBy` (`msgpack:"aby"`) and `AuthorizationLevel` (`msgpack:"al"`) added to both `nodeWire` and `relWire`. Backward-compatible (`omitempty`).
+- **Layout test updated** — `NodeIntegrity` size: 72 → 96 bytes; `RelIntegrity` size: 104 → 128 bytes.
+- 10 new tests in `pkg/graph/integrity_authz_test.go`: `TestAuthorizedBySetOnAdd_Node`, `TestAuthorizedBySetOnAdd_Rel`, `TestAuthLevelSetOnAdd_Node`, `TestAuthLevelSetOnAdd_Rel`, `TestAuthLevelAcceptsInt_Node`, `TestAuthzPreservedOnUpdate`, `TestAuthzViaShadow_Node`, `TestAuthzViaShadow_Rel`, `TestAuthLevelViaShadow_Node`, `TestNoAuthz_DefaultsZero`.
+
 ## [3.0.46] - 2026-03-03
 
 ### Added (Portable Export/Import — Phase 4.15)

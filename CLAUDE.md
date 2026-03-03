@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.46 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.15 (complete)
+Status: v3.0.52 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.21 (complete)
 
 ## Build & Test Commands
 
@@ -86,7 +86,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs |
 | `integrity.go` | SHA-256 content hashing, hash chain verification |
 | `wire.go` | Msgpack wire format types for serialization boundary |
-| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 15 `tkg_*` shadow keys |
+| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 21 `tkg_*` shadow keys |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
 | `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
@@ -99,7 +99,9 @@ These rules exist because every single one was violated at least once. Do not sk
 | `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback |
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
-| `events.go` | `EventType` (6 constants), `Event`, `EventBus` — subscribe/publish with copy-outside-lock pattern |
+| `events.go` | `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `eventPublisher` interface |
+| `txtime.go` | Bitemporality — `GetNodeAsOf`, `GetRelAsOf`, `GetNodesAsOf`, `GetRelsAsOf`, `ErrNoVersionAsOf`; TxFrom/TxTo populated on all mutation paths |
+| `hf_index.go` | High-frequency temporal index — time-bucketed `highFrequencyIndex`, O(1) amortized insertion, `CreateHighFrequencyIndex`/`DropHighFrequencyIndex` |
 | `stats.go` | `GraphStats` (8 operation counters + 4 cache metrics), `StoreStats` optional interface |
 | `vector_index.go` | In-memory brute-force k-NN `vectorIndex` — `DistanceMetric` (Cosine/Euclidean), `CreateVectorIndex`/`DropVectorIndex`/`SearchNearestNodes` |
 | `ontology.go` | `EntityClass` — classifies labels as reference or event for shard routing |
@@ -119,7 +121,8 @@ These rules exist because every single one was violated at least once. Do not sk
 
 - **`Graph.Config`**: `SnowflakeNodeID` (0-511), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). Zero = default.
-- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `ReadOnly` (for warm/cold shards).
+- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
+- **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
 - **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).
 
 ## Design Rules
@@ -205,6 +208,8 @@ These rules exist because every single one was violated at least once. Do not sk
 ### Events & Stats
 
 - **EventBus is opt-in**: `Graph.SetEventBus(bus)` — nil by default (zero overhead). Handlers are copied under RLock, invoked outside the lock (prevents deadlocks from re-entrant Graph calls in handlers).
+- **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). `Close()` drains all pending events before stopping workers. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
+- **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` worker uses non-blocking drain per level (Critical first) before blocking select.
 - **StoreStats opt-in**: Type-asserted in `Graph.Stats()` — avoids polluting the `Store` interface.
 - **Atomic operation counters**: 8 `atomic.Int64` fields on Graph — incremented after every successful store write.
 
@@ -237,7 +242,7 @@ Run these after any change to the relevant subsystem.
 
 Two independent registries with independent token namespaces. Methods: `GetOrCreate`, `Resolve`, `ResolveAll`, `Lookup`. `GetOrCreate` rejects empty strings (`ErrEmptyName`), warns at 60K tokens, errors at 65535. Persisted in Badger as `meta/label_tokens`/`meta/reltype_tokens`, or in TieredStore as `data/meta/registry.msgpack` (atomic write).
 
-## Shadow Properties (15)
+## Shadow Properties (21)
 
 | Key | Type | Applies To | Category |
 |---|---|---|---|
@@ -251,6 +256,12 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 | `tkg_version` | `uint32` | Both | Provenance |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both | Integrity |
 | `tkg_base_entity` | `entityID` | Both | Version chain |
+| `tkg_from_hash` | `string` | Relationship | Integrity — start-node hash at write time |
+| `tkg_to_hash` | `string` | Relationship | Integrity — end-node hash at write time |
+| `tkg_author_id` | `string` | Both | Provenance — caller-supplied author identifier |
+| `tkg_signature` | `[]byte` | Both | Integrity — caller-supplied cryptographic signature |
+| `tkg_authorized_by` | `string` | Both | Authorization — caller-supplied authorizing entity |
+| `tkg_auth_level` | `uint8` | Both | Authorization — caller-supplied authorization tier |
 
 ## Badger Key Layout
 

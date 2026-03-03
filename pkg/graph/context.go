@@ -26,25 +26,42 @@ func checkCtx(ctx context.Context) error {
 	}
 }
 
-// extractProvenance removes the reserved tkg_author_id and tkg_signature keys
-// from the props map and returns their values plus a props map without those keys.
-// If neither key is present, the original map is returned unchanged (no allocation).
-// The caller's original map is never mutated.
-func extractProvenance(props map[string]any) (authorID string, sig []byte, filtered map[string]any) {
+// extractProvenance removes the reserved provenance keys (tkg_author_id,
+// tkg_signature, tkg_authorized_by, tkg_auth_level) from the props map and
+// returns their values plus a filtered props map without those keys.
+// If none of the reserved keys are present, the original map is returned
+// unchanged (no allocation). The caller's original map is never mutated (B23).
+func extractProvenance(props map[string]any) (authorID string, sig []byte, authorizedBy string, authLevel uint8, filtered map[string]any) {
 	_, hasA := props["tkg_author_id"]
 	_, hasS := props["tkg_signature"]
-	if !hasA && !hasS {
-		return "", nil, props
+	_, hasABy := props["tkg_authorized_by"]
+	_, hasAL := props["tkg_auth_level"]
+	if !hasA && !hasS && !hasABy && !hasAL {
+		return "", nil, "", 0, props
 	}
 	authorID, _ = props["tkg_author_id"].(string)
 	sig, _ = props["tkg_signature"].([]byte)
+	authorizedBy, _ = props["tkg_authorized_by"].(string)
+	// Accept uint8 and all integer types for JSON round-trip safety.
+	switch v := props["tkg_auth_level"].(type) {
+	case uint8:
+		authLevel = v
+	case int:
+		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
+	case int64:
+		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
+	case int32:
+		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
+	case float64:
+		authLevel = uint8(v) // #nosec G115 — JSON numbers decode as float64
+	}
 	filtered = make(map[string]any, len(props))
 	for k, v := range props {
-		if k != "tkg_author_id" && k != "tkg_signature" {
+		if k != "tkg_author_id" && k != "tkg_signature" && k != "tkg_authorized_by" && k != "tkg_auth_level" {
 			filtered[k] = v
 		}
 	}
-	return authorID, sig, filtered
+	return authorID, sig, authorizedBy, authLevel, filtered
 }
 
 // GetNodeWithContext retrieves a node by snowflake ID with context support.
@@ -84,7 +101,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 
 	// Extract reserved provenance fields before validation so they are never
 	// seen by PropertySlice.Set (which rejects the tkg_ prefix).
-	authorID, sig, props := extractProvenance(props)
+	authorID, sig, authorizedBy, authLevel, props := extractProvenance(props)
 
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
@@ -132,7 +149,26 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
 	canonicalLabels := g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: "", AuthorID: authorID, Signature: sig})
+	n.SetIntegrity(&types.NodeIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	})
+
+	// Set transaction time: TxFrom = current wall clock ms.
+	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
+	{
+		txNow := nowInstant()
+		ntm := n.Temporal()
+		if ntm == nil {
+			ntm = &types.TemporalMetadata{}
+			n.SetTemporal(ntm)
+		}
+		ntm.TxFrom = txNow
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -143,7 +179,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 	}
 
 	g.opNodeAdds.Add(1)
-	g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant())
+	g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 	return n, nil
 }
 
@@ -163,7 +199,7 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	}
 
 	// Extract reserved provenance fields before validation.
-	authorID, sig, props := extractProvenance(props)
+	authorID, sig, authorizedBy, authLevel, props := extractProvenance(props)
 
 	// Validation limits.
 	if err := g.validateName(typeName); err != nil {
@@ -205,7 +241,14 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	// Capture endpoint hashes at creation time for cross-validation.
 	// FromNodeHash/ToNodeHash are NOT part of ComputeRelHash to avoid cascading
 	// hash invalidation whenever endpoint nodes are updated.
-	ig := &types.RelIntegrity{Hash: hash, PrevHash: "", AuthorID: authorID, Signature: sig}
+	ig := &types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
 	if startIg := startNode.Integrity(); startIg != nil {
 		ig.FromNodeHash = startIg.Hash
 	}
@@ -213,6 +256,18 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 		ig.ToNodeHash = endIg.Hash
 	}
 	r.SetIntegrity(ig)
+
+	// Set transaction time: TxFrom = current wall clock ms.
+	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
+	{
+		txNow := nowInstant()
+		rtm := r.Temporal()
+		if rtm == nil {
+			rtm = &types.TemporalMetadata{}
+			r.SetTemporal(rtm)
+		}
+		rtm.TxFrom = txNow
+	}
 
 	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
 		return nil, err
@@ -227,7 +282,7 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	}
 
 	g.opRelAdds.Add(1)
-	g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant())
+	g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 	return r, nil
 }
 
@@ -366,6 +421,9 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		}
 		tmR.DeletedAt = now
 		tmR.ValidTo = now
+		// Transaction time: this tombstone version was committed at now.
+		tmR.TxFrom = now
+		tmR.TxTo = now
 		if err := g.store.PutRelVersion(rid, r.Version(), tombR); err != nil {
 			return err
 		}
@@ -380,6 +438,9 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 	}
 	tmN.DeletedAt = now
 	tmN.ValidTo = now
+	// Transaction time: this tombstone version was committed at now.
+	tmN.TxFrom = now
+	tmN.TxTo = now
 	if err := g.store.PutNodeVersion(id, current.Version(), tombN); err != nil {
 		return err
 	}
@@ -388,7 +449,7 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		return err
 	}
 	g.opNodeDeletes.Add(1)
-	g.publishEvent(EventNodeDelete, id, now)
+	g.publishEvent(EventNodeDelete, id, now, PriorityCritical)
 	return nil
 }
 
@@ -418,6 +479,9 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 	}
 	tmR.DeletedAt = now
 	tmR.ValidTo = now
+	// Transaction time: this tombstone version was committed at now.
+	tmR.TxFrom = now
+	tmR.TxTo = now
 	if err := g.store.PutRelVersion(id, current.Version(), tombR); err != nil {
 		return err
 	}
@@ -426,7 +490,7 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 		return err
 	}
 	g.opRelDeletes.Add(1)
-	g.publishEvent(EventRelDelete, id, now)
+	g.publishEvent(EventRelDelete, id, now, PriorityCritical)
 	return nil
 }
 
@@ -449,7 +513,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	// Extract reserved provenance fields before validation.
 	// The no-op check above uses the original map length; after extraction
 	// the remaining updates may be empty (metadata-only update).
-	authorID, sig, updates := extractProvenance(updates)
+	authorID, sig, authorizedBy, authLevel, updates := extractProvenance(updates)
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {
@@ -529,9 +593,29 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	}
 	tm.UpdatedAt = now
 
+	// Set TxTo on the previous version (being superseded) using the same now.
+	// TxFrom/TxTo are NOT hashed — safe to set before or after hash computation.
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm2 := &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm2)
+		ptm2.TxTo = now
+	} else {
+		ptm.TxTo = now
+	}
+
+	// Set TxFrom on the new version (this is the commit time of the new version).
+	tm.TxFrom = now
+
 	nodeLabels := g.NodeLabels(current)
 	hash := ComputeNodeHash(current, nodeLabels)
-	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash, AuthorID: authorID, Signature: sig})
+	current.SetIntegrity(&types.NodeIntegrity{
+		Hash:               hash,
+		PrevHash:           prevHash,
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	})
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -543,7 +627,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	}
 
 	g.opNodeUpdates.Add(1)
-	g.publishEvent(EventNodeUpdate, id, now)
+	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -564,7 +648,7 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	}
 
 	// Extract reserved provenance fields before validation.
-	authorID, sig, updates := extractProvenance(updates)
+	authorID, sig, authorizedBy, authLevel, updates := extractProvenance(updates)
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {
@@ -644,12 +728,32 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	}
 	tm.UpdatedAt = now
 
+	// Set TxTo on the previous version (being superseded) using the same now.
+	// TxFrom/TxTo are NOT hashed — safe to set before or after hash computation.
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm2 := &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm2)
+		ptm2.TxTo = now
+	} else {
+		ptm.TxTo = now
+	}
+
+	// Set TxFrom on the new version (this is the commit time of the new version).
+	tm.TxFrom = now
+
 	relTypeName := g.RelationshipType(current)
 	hash := ComputeRelHash(current, relTypeName)
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
 	// These are NOT fed into ComputeRelHash to avoid cascading hash invalidation.
-	relIG := &types.RelIntegrity{Hash: hash, PrevHash: prevHash, AuthorID: authorID, Signature: sig}
+	relIG := &types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           prevHash,
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
 	if sn, sErr := g.store.GetNode(current.StartNodeID().SnowflakeID()); sErr == nil {
 		if sIg := sn.Integrity(); sIg != nil {
 			relIG.FromNodeHash = sIg.Hash
@@ -672,7 +776,7 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	}
 
 	g.opRelUpdates.Add(1)
-	g.publishEvent(EventRelUpdate, id, now)
+	g.publishEvent(EventRelUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -932,7 +1036,7 @@ func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.I
 	}
 
 	g.opNodeUpdates.Add(1)
-	g.publishEvent(EventNodeUpdate, id, now)
+	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -1037,6 +1141,6 @@ func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID
 	}
 
 	g.opRelUpdates.Add(1)
-	g.publishEvent(EventRelUpdate, id, now)
+	g.publishEvent(EventRelUpdate, id, now, PriorityNormal)
 	return current, nil
 }

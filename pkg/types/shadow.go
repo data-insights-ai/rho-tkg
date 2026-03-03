@@ -38,6 +38,10 @@ const (
 	ShadowAuthorID  = "tkg_author_id" // Both: string  — caller-supplied author identifier
 	ShadowSignature = "tkg_signature" // Both: []byte  — caller-supplied cryptographic signature
 
+	// Authorization
+	ShadowAuthorizedBy = "tkg_authorized_by" // Both: string — caller-supplied authorization entity
+	ShadowAuthLevel    = "tkg_auth_level"    // Both: uint8  — caller-supplied authorization level
+
 	// Version chain
 	ShadowBaseEntity = "tkg_base_entity" // Both: entityID
 )

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"errors"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -116,6 +117,18 @@ type Store interface {
 	CreateTemporalIndex(labelToken uint16) error
 	// DropTemporalIndex removes a temporal index. Returns ErrTemporalIndexNotFound if not found.
 	DropTemporalIndex(labelToken uint16) error
+
+	// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
+	// with the given label token. Provides O(1) amortized insertion versus the
+	// sorted-slice temporal index's O(log n). Designed for thousands of event
+	// writes per second into event shards.
+	// Only one temporal index type can exist per label at a time — returns
+	// ErrTemporalIndexExists if any temporal index already exists for this label.
+	// Not persisted; must be rebuilt via CreateHighFrequencyIndex after restart.
+	CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error
+	// DropHighFrequencyIndex removes the high-frequency index for the given label.
+	// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+	DropHighFrequencyIndex(labelToken uint16) error
 
 	// RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
 	// No version bump; no history entry. The graph layer has already applied the label

@@ -45,6 +45,11 @@ type BadgerStoreConfig struct {
 	// ReadOnly opens Badger in read-only mode. No flushLoop, no gcLoop,
 	// no write operations. Used for warm/cold shards in TieredStore.
 	ReadOnly bool
+	// SyncWrites enables synchronous disk writes for every mutation.
+	// When true, each write is flushed to Badger immediately (no async buffer).
+	// Eliminates the async flush window at the cost of higher write latency.
+	// Ignored in ReadOnly mode.
+	SyncWrites bool
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -112,13 +117,17 @@ type BadgerStore struct {
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*temporalIndex
 
+	// High-frequency indexes — in-memory only. Not persisted; rebuilt via CreateHighFrequencyIndex after restart.
+	hfIndexes map[uint16]*highFrequencyIndex
+
 	// Vector indexes — in-memory only. Not persisted; rebuilt via CreateVectorIndex after restart.
 	vectorIndexes map[vectorIndexKey]*vectorIndex
 
 	// Lifecycle.
-	inMemory  bool
-	readOnly  bool
-	flushInt  time.Duration
+	inMemory   bool
+	readOnly   bool
+	syncWrites bool
+	flushInt   time.Duration
 	gcInt     time.Duration
 	gcRatio   float64
 	stopCh    chan struct{}
@@ -152,6 +161,9 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	} else {
 		opts = opts.WithLogger(nil) // suppress default Badger logs
 	}
+	if cfg.SyncWrites && !cfg.ReadOnly {
+		opts = opts.WithSyncWrites(true)
+	}
 
 	db, err := badger.Open(opts)
 	if err != nil {
@@ -165,6 +177,9 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	flushInt := cfg.FlushInterval
 	if flushInt == 0 {
 		flushInt = defaultFlushInterval
+	}
+	if cfg.SyncWrites && !cfg.ReadOnly {
+		flushInt = 0 // disable periodic flush; each write flushes synchronously
 	}
 	gcInt := cfg.GCInterval
 	if gcInt == 0 && !cfg.InMemory {
@@ -188,9 +203,11 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 		temporalIndexes: make(map[uint16]*temporalIndex),
+		hfIndexes:       make(map[uint16]*highFrequencyIndex),
 		vectorIndexes:   make(map[vectorIndexKey]*vectorIndex),
 		inMemory:        cfg.InMemory,
 		readOnly:        cfg.ReadOnly,
+		syncWrites:      cfg.SyncWrites && !cfg.ReadOnly,
 		flushInt:        flushInt,
 		gcInt:           gcInt,
 		gcRatio:         gcRatio,
@@ -443,10 +460,10 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Check for duplicate.
 	if _, exists := bs.nodeIDs[id]; exists {
+		bs.idxMu.Unlock()
 		return ErrNodeExists
 	}
 
@@ -471,6 +488,11 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -531,15 +553,16 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	intID := int64(id)
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
 	// Get node data for label token cleanup.
 	n, err := bs.getNodeLocked(id)
 	if err != nil {
+		bs.idxMu.Unlock()
 		return err
 	}
 
@@ -568,6 +591,11 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	delete(bs.nodeIDs, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -585,9 +613,9 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
@@ -607,6 +635,11 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -623,9 +656,9 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
@@ -660,6 +693,11 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
 		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
 	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -682,18 +720,20 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Verify endpoints exist.
 	if _, exists := bs.nodeIDs[startID]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 	if _, exists := bs.nodeIDs[endID]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
 	// Check for duplicate via O(1) relIDs.
 	if _, exists := bs.relIDs[id]; exists {
+		bs.idxMu.Unlock()
 		return ErrRelExists
 	}
 
@@ -728,6 +768,11 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -802,9 +847,9 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
@@ -821,6 +866,11 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 		writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -844,9 +894,9 @@ func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.relIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
 
@@ -858,6 +908,11 @@ func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 		writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -874,14 +929,19 @@ func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	if _, exists := bs.relIDs[id]; !exists {
+		bs.idxMu.Unlock()
 		return ErrRelNotFound
 	}
 
 	bs.relCache.Put(id, r.DeepCopy())
 	bs.appendOps(writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data})
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -889,9 +949,16 @@ func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *BadgerStore) DeleteRelationship(id snowflake.ID) error {
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
+	err := bs.deleteRelLocked(id)
+	bs.idxMu.Unlock()
 
-	return bs.deleteRelLocked(id)
+	if err != nil {
+		return err
+	}
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
 }
 
 // relDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.
@@ -1236,6 +1303,9 @@ func (bs *BadgerStore) DeleteNodeCascade(id snowflake.ID) error {
 	if err != nil {
 		return err
 	}
+	if corruptErr == nil && bs.syncWrites {
+		return bs.flush()
+	}
 	return corruptErr
 }
 
@@ -1370,15 +1440,16 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Phase 1: validate — no duplicates in store or within batch.
 	seen := make(map[snowflake.ID]struct{}, len(nodes))
 	for _, nd := range serialized {
 		if _, exists := bs.nodeIDs[nd.id]; exists {
+			bs.idxMu.Unlock()
 			return ErrNodeExists
 		}
 		if _, exists := seen[nd.id]; exists {
+			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: duplicate node ID %d in batch", nd.id)
 		}
 		seen[nd.id] = struct{}{}
@@ -1409,6 +1480,11 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(int64(len(nodes)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -1446,21 +1522,24 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Phase 1: validate — endpoints exist, no duplicates.
 	seen := make(map[snowflake.ID]struct{}, len(rels))
 	for _, rd := range serialized {
 		if _, exists := bs.nodeIDs[rd.startID]; !exists {
+			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
 		if _, exists := bs.nodeIDs[rd.endID]; !exists {
+			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
 		if _, exists := bs.relIDs[rd.id]; exists {
+			bs.idxMu.Unlock()
 			return ErrRelExists
 		}
 		if _, exists := seen[rd.id]; exists {
+			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: duplicate relationship ID %d in batch", rd.id)
 		}
 		seen[rd.id] = struct{}{}
@@ -1499,6 +1578,11 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(int64(len(rels)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -1512,16 +1596,17 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Phase 1: validate — all must exist + pre-read for label cleanup.
 	nodeData := make([]*types.Node, len(ids))
 	for i, id := range ids {
 		if _, exists := bs.nodeIDs[id]; !exists {
+			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
 		n, err := bs.getNodeLocked(id)
 		if err != nil {
+			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: batch read node %d: %w", id, err)
 		}
 		nodeData[i] = n
@@ -1553,6 +1638,11 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 	}
 
 	bs.nodeCount.Add(-int64(len(ids)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -1566,16 +1656,17 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 	}
 
 	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
 
 	// Phase 1: validate — all must exist + pre-read metadata.
 	infos := make([]relDeleteInfo, len(ids))
 	for i, id := range ids {
 		if _, exists := bs.relIDs[id]; !exists {
+			bs.idxMu.Unlock()
 			return ErrRelNotFound
 		}
 		r, err := bs.getRelLocked(id)
 		if err != nil {
+			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: batch read relationship %d: %w", id, err)
 		}
 		infos[i] = relDeleteInfo{
@@ -1591,6 +1682,11 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 		bs.deleteRelByInfo(info)
 	}
 
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -1606,6 +1702,9 @@ func (bs *BadgerStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.
 	}
 	key := histNodeKey(int64(id), uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -1751,6 +1850,9 @@ func (bs *BadgerStore) PutRelVersion(id snowflake.ID, version uint32, r *types.R
 	}
 	key := histRelKey(int64(id), uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	if bs.syncWrites {
+		return bs.flush()
+	}
 	return nil
 }
 
@@ -2341,6 +2443,40 @@ func (bs *BadgerStore) DropTemporalIndex(labelToken uint16) error {
 
 	delete(bs.temporalIndexes, labelToken)
 	bs.persistTemporalIndexDefs()
+	return nil
+}
+
+// --- High-frequency indexes ---
+
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
+// with the given label token. Only one temporal index type can exist per label —
+// returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
+// exists for this label.
+func (bs *BadgerStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.temporalIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+	if _, exists := bs.hfIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	bs.hfIndexes[labelToken] = newHighFrequencyIndex(bucketSize, 0)
+	return nil
+}
+
+// DropHighFrequencyIndex removes the high-frequency index for the given label token.
+// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+func (bs *BadgerStore) DropHighFrequencyIndex(labelToken uint16) error {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+
+	if _, exists := bs.hfIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(bs.hfIndexes, labelToken)
 	return nil
 }
 

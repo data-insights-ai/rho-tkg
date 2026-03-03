@@ -80,6 +80,12 @@ type Config struct {
 	// Validation configures limits on entity structure.
 	// Zero fields use defaults.
 	Validation ValidationLimits
+
+	// SyncWrites enables synchronous disk writes for every mutation.
+	// When true, each write is flushed to stable storage before returning.
+	// Ignored for MemoryStore or when Store is explicitly provided.
+	// Default false (async background flush via FlushInterval).
+	SyncWrites bool
 }
 
 // Graph is the central graph layer. It owns the label and relationship type
@@ -97,8 +103,8 @@ type Graph struct {
 	store       Store
 	entityLocks *entityLockManager
 	validation  ValidationLimits
-	constraints ConstraintSet // temporal constraints checked at relationship write time
-	events      *EventBus     // nil = no event publishing; set via SetEventBus
+	constraints ConstraintSet  // temporal constraints checked at relationship write time
+	events      eventPublisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
 	mu          sync.RWMutex  // serializes batch writes vs whole-graph temporal reads (Snapshot)
 	closeOnce   sync.Once
 
@@ -185,8 +191,9 @@ func New(config Config) (*Graph, error) {
 	if store == nil {
 		if config.BadgerDir != "" || config.BadgerInMemory {
 			bs, err := NewBadgerStore(BadgerStoreConfig{
-				Dir:      config.BadgerDir,
-				InMemory: config.BadgerInMemory,
+				Dir:        config.BadgerDir,
+				InMemory:   config.BadgerInMemory,
+				SyncWrites: config.SyncWrites,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)
@@ -667,6 +674,35 @@ func (g *Graph) DropTemporalIndex(label string) error {
 	return g.store.DropTemporalIndex(tok)
 }
 
+// --- High-frequency indexes ---
+
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency temporal index
+// on nodes with the given label. The bucketSize parameter controls the time
+// width of each bucket (e.g., time.Hour).
+// Designed for high-write-rate scenarios (thousands of event writes/sec).
+// Only one temporal index type (temporal or high-frequency) can exist per label.
+// Returns nil if the label has never been registered.
+// Returns ErrTemporalIndexExists if any temporal index already exists for this label.
+// Not persisted: the index must be rebuilt via CreateHighFrequencyIndex after restart.
+func (g *Graph) CreateHighFrequencyIndex(label string, bucketSize time.Duration) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.CreateHighFrequencyIndex(tok, bucketSize)
+}
+
+// DropHighFrequencyIndex removes the high-frequency temporal index for the given label.
+// Returns nil if the label has never been registered.
+// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+func (g *Graph) DropHighFrequencyIndex(label string) error {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil
+	}
+	return g.store.DropHighFrequencyIndex(tok)
+}
+
 // --- Vector indexes ---
 
 // CreateVectorIndex creates a vector similarity index on the given label and property key.
@@ -797,25 +833,44 @@ func (g *Graph) Reset() error {
 
 // --- Event bus ---
 
-// SetEventBus attaches an EventBus to the graph.
+// SetEventBus attaches a synchronous EventBus to the graph.
 // All subsequent mutations publish lifecycle events to the bus.
-// Pass nil to detach the bus and disable event publishing.
+// Pass nil to detach and disable event publishing.
 func (g *Graph) SetEventBus(bus *EventBus) {
-	g.events = bus
+	if bus == nil {
+		g.events = nil
+	} else {
+		g.events = bus
+	}
 }
 
-// GetEventBus returns the attached EventBus, or nil if none is set.
+// GetEventBus returns the attached synchronous EventBus, or nil if none is set
+// (including when an AsyncEventBus is attached instead).
 func (g *Graph) GetEventBus() *EventBus {
-	return g.events
+	if eb, ok := g.events.(*EventBus); ok {
+		return eb
+	}
+	return nil
+}
+
+// SetAsyncEventBus attaches an AsyncEventBus to the graph for async event delivery.
+// All subsequent mutations publish lifecycle events to the bus.
+// Pass nil to detach and disable event publishing.
+func (g *Graph) SetAsyncEventBus(bus *AsyncEventBus) {
+	if bus == nil {
+		g.events = nil
+	} else {
+		g.events = bus
+	}
 }
 
 // publishEvent delivers a lifecycle event to the attached EventBus.
 // No-op if no EventBus is attached (nil-safe).
-func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant) {
+func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant, priority EventPriority) {
 	if g.events == nil {
 		return
 	}
-	g.events.publish(Event{Type: typ, EntityID: id, Timestamp: t})
+	g.events.publish(Event{Type: typ, EntityID: id, Timestamp: t, Priority: priority})
 }
 
 // Stats returns a snapshot of graph operation counters and optional cache metrics.
@@ -893,7 +948,7 @@ func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
 	if err := g.store.RemoveNodeLabelToken(id, tok, copy); err != nil {
 		return err
 	}
-	g.publishEvent(EventNodeUpdate, id, now)
+	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	g.opNodeUpdates.Add(1)
 	return nil
 }
@@ -978,7 +1033,7 @@ func (g *Graph) CloseNodeVersion(id snowflake.ID, t types.Instant) error {
 	if err := g.store.ReplaceNode(current); err != nil {
 		return err
 	}
-	g.publishEvent(EventNodeUpdate, id, types.Instant(time.Now().UnixMilli()))
+	g.publishEvent(EventNodeUpdate, id, types.Instant(time.Now().UnixMilli()), PriorityNormal)
 	return nil
 }
 
@@ -1060,6 +1115,6 @@ func (g *Graph) CloseRelVersion(id snowflake.ID, t types.Instant) error {
 	if err := g.store.ReplaceRelationship(current); err != nil {
 		return err
 	}
-	g.publishEvent(EventRelUpdate, id, types.Instant(time.Now().UnixMilli()))
+	g.publishEvent(EventRelUpdate, id, types.Instant(time.Now().UnixMilli()), PriorityNormal)
 	return nil
 }

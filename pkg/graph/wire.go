@@ -25,10 +25,12 @@ type nodeWire struct {
 	CreatedBy    string         `msgpack:"cb,omitempty"`
 	UpdatedBy    string         `msgpack:"ub,omitempty"`
 	BaseEntityID int64          `msgpack:"be,omitempty"`
-	Hash         string         `msgpack:"h,omitempty"`
-	PrevHash     string         `msgpack:"ph,omitempty"`
-	AuthorID     string         `msgpack:"aid,omitempty"`
-	Signature    []byte         `msgpack:"sig,omitempty"`
+	Hash               string         `msgpack:"h,omitempty"`
+	PrevHash           string         `msgpack:"ph,omitempty"`
+	AuthorID           string         `msgpack:"aid,omitempty"`
+	Signature          []byte         `msgpack:"sig,omitempty"`
+	AuthorizedBy       string         `msgpack:"aby,omitempty"`
+	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
 }
 
 // relWire is the msgpack wire format for Relationship entities.
@@ -50,12 +52,14 @@ type relWire struct {
 	CreatedBy    string         `msgpack:"cb,omitempty"`
 	UpdatedBy    string         `msgpack:"ub,omitempty"`
 	BaseEntityID int64          `msgpack:"be,omitempty"`
-	Hash         string         `msgpack:"h,omitempty"`
-	PrevHash     string         `msgpack:"ph,omitempty"`
-	FromNodeHash string         `msgpack:"fnh,omitempty"`
-	ToNodeHash   string         `msgpack:"tnh,omitempty"`
-	AuthorID     string         `msgpack:"aid,omitempty"`
-	Signature    []byte         `msgpack:"sig,omitempty"`
+	Hash               string         `msgpack:"h,omitempty"`
+	PrevHash           string         `msgpack:"ph,omitempty"`
+	FromNodeHash       string         `msgpack:"fnh,omitempty"`
+	ToNodeHash         string         `msgpack:"tnh,omitempty"`
+	AuthorID           string         `msgpack:"aid,omitempty"`
+	Signature          []byte         `msgpack:"sig,omitempty"`
+	AuthorizedBy       string         `msgpack:"aby,omitempty"`
+	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
 }
 
 // propertyWire is the msgpack wire format for a single property key-value pair.
@@ -105,6 +109,8 @@ func nodeToWire(n *types.Node) nodeWire {
 		w.PrevHash = ig.PrevHash
 		w.AuthorID = ig.AuthorID
 		w.Signature = ig.Signature
+		w.AuthorizedBy = ig.AuthorizedBy
+		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
 
 	return w
@@ -139,12 +145,14 @@ func wireToNode(w nodeWire) *types.Node {
 		n.SetTemporal(tm)
 	}
 
-	if w.Hash != "" || w.PrevHash != "" || w.AuthorID != "" || len(w.Signature) > 0 {
+	if w.Hash != "" || w.PrevHash != "" || w.AuthorID != "" || len(w.Signature) > 0 || w.AuthorizedBy != "" || w.AuthorizationLevel != 0 {
 		n.SetIntegrity(&types.NodeIntegrity{
-			Hash:      w.Hash,
-			PrevHash:  w.PrevHash,
-			AuthorID:  w.AuthorID,
-			Signature: w.Signature,
+			Hash:               w.Hash,
+			PrevHash:           w.PrevHash,
+			AuthorID:           w.AuthorID,
+			Signature:          w.Signature,
+			AuthorizedBy:       w.AuthorizedBy,
+			AuthorizationLevel: w.AuthorizationLevel,
 		})
 	}
 
@@ -186,6 +194,8 @@ func relToWire(r *types.Relationship) relWire {
 		w.ToNodeHash = ig.ToNodeHash
 		w.AuthorID = ig.AuthorID
 		w.Signature = ig.Signature
+		w.AuthorizedBy = ig.AuthorizedBy
+		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
 
 	return w
@@ -220,14 +230,16 @@ func wireToRel(w relWire) *types.Relationship {
 		r.SetTemporal(tm)
 	}
 
-	if w.Hash != "" || w.PrevHash != "" || w.FromNodeHash != "" || w.ToNodeHash != "" || w.AuthorID != "" || len(w.Signature) > 0 {
+	if w.Hash != "" || w.PrevHash != "" || w.FromNodeHash != "" || w.ToNodeHash != "" || w.AuthorID != "" || len(w.Signature) > 0 || w.AuthorizedBy != "" || w.AuthorizationLevel != 0 {
 		r.SetIntegrity(&types.RelIntegrity{
-			Hash:         w.Hash,
-			PrevHash:     w.PrevHash,
-			FromNodeHash: w.FromNodeHash,
-			ToNodeHash:   w.ToNodeHash,
-			AuthorID:     w.AuthorID,
-			Signature:    w.Signature,
+			Hash:               w.Hash,
+			PrevHash:           w.PrevHash,
+			FromNodeHash:       w.FromNodeHash,
+			ToNodeHash:         w.ToNodeHash,
+			AuthorID:           w.AuthorID,
+			Signature:          w.Signature,
+			AuthorizedBy:       w.AuthorizedBy,
+			AuthorizationLevel: w.AuthorizationLevel,
 		})
 	}
 

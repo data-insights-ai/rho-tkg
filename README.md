@@ -59,7 +59,7 @@ Convenience methods: `SetNodeProperty(id, key, value)`, `DeleteNodeProperty(id, 
 
 Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
 
-Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 19 `tkg_*` keys with nil-guards.
+Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 21 `tkg_*` keys with nil-guards.
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
@@ -73,7 +73,9 @@ Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesB
 
 Version chain navigation: `GetPreviousNodeVersion(id, version)` / `GetNextNodeVersion(id, version)` — navigate the version chain by stepping one version backward or forward. Return nil, nil when the requested version does not exist (genesis has no predecessor; the current tip has no successor). `GetNextNodeVersion` checks the history store first, then falls back to the current entity (which may itself be the next version). `CloseNodeVersion(id, t)` / `CloseRelVersion(id, t)` — set `ValidTo` on the current entity in-place without incrementing its version or creating a history entry. Returns `ErrAlreadyClosed` if `ValidTo` is already set. Rel mirrors: `GetPreviousRelVersion`, `GetNextRelVersion`, `CloseRelVersion`.
 
-Event system: `NewEventBus()` creates a dispatcher. `bus.Subscribe(handler)` registers an `EventHandler` (type `func(Event)`) and returns an idempotent unsubscribe function. `Event` carries `Type EventType`, `EntityID snowflake.ID`, and `Timestamp types.Instant`. Six event types: `EventNodeCreate`, `EventNodeUpdate`, `EventNodeDelete`, `EventRelCreate`, `EventRelUpdate`, `EventRelDelete`. Handlers are invoked synchronously after each successful store write, outside the EventBus lock (prevents deadlocks when handlers re-enter the Graph). Attach to a graph with `g.SetEventBus(bus)`. No-op when no bus is set. Hook points: `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `CloseNodeVersion`, `CloseRelVersion`.
+Event system: `NewEventBus()` creates a synchronous dispatcher. `bus.Subscribe(handler)` registers an `EventHandler` (type `func(Event)`) and returns an idempotent unsubscribe function. `Event` carries `Type EventType`, `EntityID snowflake.ID`, `Timestamp types.Instant`, and `Priority EventPriority`. Six event types: `EventNodeCreate`, `EventNodeUpdate`, `EventNodeDelete`, `EventRelCreate`, `EventRelUpdate`, `EventRelDelete`. Internal priorities: creates → `PriorityHigh`, deletes → `PriorityCritical`, updates → `PriorityNormal`. Handlers are invoked synchronously after each successful store write, outside the EventBus lock (prevents deadlocks when handlers re-enter the Graph). Attach to a graph with `g.SetEventBus(bus)`. No-op when no bus is set. Hook points: `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `CloseNodeVersion`, `CloseRelVersion`.
+
+For async delivery, use `NewAsyncEventBus(AsyncEventBusConfig{Workers, QueueSize, Backpressure})` instead. Workers drain a per-priority queue pool (one channel per `EventPriority` level), decoupling slow handler latency from write latency. Three backpressure strategies: `BackpressureBlock` (caller blocks until queue drains), `BackpressureDropOldest` (evict oldest event), `BackpressureDropLatest` (discard new event). Attach with `g.SetAsyncEventBus(bus)`. Call `bus.Close()` to drain all remaining events and stop workers. Five `EventPriority` levels: `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Workers drain in Critical→High→Normal→Low→Deferred order.
 
 Snapshot diff: `DiffSnapshots(t1, t2)` compares two temporal snapshots and returns a `*SnapshotDiff` with `NodesCreated`, `NodesUpdated` (as `[]NodeUpdate{Before, After}`), `NodesDeleted`, `RelsCreated`, `RelsUpdated` (as `[]RelUpdate{Before, After}`), `RelsDeleted`. Classification: entity present only at t2 → Created; present only at t1 → Deleted; present at both with a different integrity hash → Updated; same hash → Unchanged (omitted). Holds `g.mu.RLock` across both snapshot reads to prevent torn diffs. Returns `ErrInvalidTimeRange` if t1 ≥ t2 or either is zero.
 
@@ -92,6 +94,10 @@ Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCoun
 Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts. In TieredStore, property indexes are restricted to reference entities (`ErrEventPropertyIndex` for event labels).
 
 Temporal indexes: `CreateTemporalIndex(label)`, `DropTemporalIndex(label)` — create/drop in-memory interval indexes accelerating `NodesByLabel` when a temporal filter (`ValidAt` or `ValidStart`/`ValidEnd`) is set. Uses a sorted-slice interval index (binary search insertion, O(log n) range filtering). When a temporal index exists and a filter is active, `NodesByLabel` uses the index fast path instead of scanning all label entries. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts (label tokens stored, index data rebuilt from nodes on startup). TieredStore creates the index on all active shards and propagates it to new hot shards on rotation.
+
+High-frequency temporal indexes: `CreateHighFrequencyIndex(label, bucketSize)`, `DropHighFrequencyIndex(label)` — an alternative to the sorted-slice temporal index for labels under high write rates (thousands of events/sec). Uses time-bucketed storage: bucket index = `(validFrom - origin) / bucketSize`. Insertion is O(1) amortized; range queries visit O(buckets_in_range) buckets. Only one temporal index type can exist per label at a time — drop the existing index before switching. Not persisted; must be re-created after restart. TieredStore fans out to all active shards.
+
+Transaction-time queries (bitemporality): `GetNodeAsOf(id, txTime)`, `GetRelAsOf(id, txTime)` — return the entity version that was committed at or before `txTime` (based on `TxFrom`/`TxTo`, which are populated automatically on all mutations). `GetNodesAsOf(txTime)`, `GetRelsAsOf(txTime)` — scan all known entity IDs (current + history) and return those with a version active at `txTime`. Returns `ErrNoVersionAsOf` when no version was recorded at the given transaction time.
 
 Vector indexes: `CreateVectorIndex(label, propertyKey, dims, metric)`, `DropVectorIndex(label, propertyKey)` — create/drop in-memory brute-force k-NN indexes on nodes with the given label and a `[]float32` property. `metric` is `DistanceCosine` or `DistanceEuclidean`. `SearchNearestNodes(label, propertyKey, query []float32, k int, opts)` returns the `k` closest nodes in ranked order. Returns `ErrVectorIndexExists` / `ErrVectorIndexNotFound` / `ErrDimensionMismatch` on error. Indexes are maintained automatically across all node mutation paths; not persisted across restarts (rebuilt from properties on startup is not automatic — recreate the index after reopening).
 
@@ -123,6 +129,8 @@ g.Close() // saves registries + closes DB
 ```
 
 Data is serialized using msgpack. Keys use fixed-width binary encoding with single-byte prefix tags for correct sort order. Registries are persisted on `Close()` and restored on startup.
+
+Sync writes: set `Config.SyncWrites: true` to eliminate the 100ms async flush window — each write is flushed to disk synchronously (Badger `WithSyncWrites(true)` + immediate `flush()` after every store call). This removes the in-memory buffer vulnerability at the cost of higher write latency. `FlushInterval` is forced to 0 and the background flush goroutine is not started when `SyncWrites` is true.
 
 ### Tiered Persistence (TieredStore)
 
@@ -179,7 +187,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types allow cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
 - **Shadow resolution nil-guards**: `ResolveNodeProperty` / `ResolveRelProperty` check `Temporal() != nil` and `Integrity() != nil` before accessing fields. New entities without metadata return `(nil, false)` instead of panicking.
 
-### Shadow Properties (19)
+### Shadow Properties (21)
 
 Read-only virtual properties managed by the graph layer:
 
@@ -197,8 +205,10 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_from_hash`, `tkg_to_hash` | `string` | Relationship only |
 | `tkg_author_id` | `string` | Both |
 | `tkg_signature` | `[]byte` | Both |
+| `tkg_authorized_by` | `string` | Both |
+| `tkg_auth_level` | `uint8` | Both |
 
-`tkg_author_id` and `tkg_signature` are write-path shadow keys: pass them in the `props`/`updates` map of any Add or Update call to store provenance on the integrity struct. They are stripped before `PropertySlice` construction (never stored as real properties) and readable back via `ResolveNodeProperty` / `ResolveRelProperty`.
+`tkg_author_id`, `tkg_signature`, `tkg_authorized_by`, and `tkg_auth_level` are write-path shadow keys: pass them in the `props`/`updates` map of any Add or Update call to store provenance/authorization on the integrity struct. They are stripped before `PropertySlice` construction (never stored as real properties) and readable back via `ResolveNodeProperty` / `ResolveRelProperty`.
 
 ## Build & Test
 

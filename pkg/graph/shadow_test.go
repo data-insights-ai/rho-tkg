@@ -198,8 +198,12 @@ func TestResolveNodePropertyNilTemporal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _ := g.AddNode([]string{"X"}, nil)
-	// No Temporal set — most temporal shadow keys should return (nil, false).
+	// Construct node directly (bypassing AddNode) to simulate a legacy entity
+	// loaded from disk without temporal metadata. AddNode now always sets TxFrom,
+	// so the nil-temporal code path must be tested via direct construction.
+	tok, _ := g.GetOrCreateLabel("X")
+	n := types.NewNode(g.NextNodeID(), tok, nil)
+	// Temporal is nil — most temporal shadow keys should return (nil, false).
 	// Exception: tkg_created_at derives from snowflake ID.
 
 	nilKeys := []string{
@@ -371,9 +375,12 @@ func TestResolveRelPropertyNilTemporal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.AddNode([]string{"X"}, nil)
-	nB, _ := g.AddNode([]string{"X"}, nil)
-	r, _ := g.AddRelationship("R", nA, nB, nil)
+	// Construct relationship directly (bypassing AddRelationship) to simulate
+	// a legacy entity loaded from disk without temporal metadata. AddRelationship
+	// now always sets TxFrom, so the nil-temporal code path must be tested via
+	// direct construction.
+	tok, _ := g.GetOrCreateRelType("R")
+	r := types.NewRelationship(g.NextRelID(), tok, g.NextNodeID(), g.NextNodeID())
 
 	// Most temporal keys return (nil, false) without temporal metadata.
 	// Exception: tkg_created_at derives from snowflake ID.

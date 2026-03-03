@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -36,6 +37,10 @@ type MemoryStore struct {
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*temporalIndex
 
+	// High-frequency indexes — labelToken → time-bucketed index for O(1) insertion.
+	// Separate map from temporalIndexes; only one type can exist per label at a time.
+	hfIndexes map[uint16]*highFrequencyIndex
+
 	// Vector indexes — in-memory brute-force k-NN index on node properties.
 	vectorIndexes map[vectorIndexKey]*vectorIndex
 }
@@ -53,6 +58,7 @@ func NewMemoryStore() *MemoryStore {
 		relHistory:      make(map[snowflake.ID]map[uint32]*types.Relationship),
 		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
 		temporalIndexes: make(map[uint16]*temporalIndex),
+		hfIndexes:       make(map[uint16]*highFrequencyIndex),
 		vectorIndexes:   make(map[vectorIndexKey]*vectorIndex),
 	}
 }
@@ -852,6 +858,40 @@ func (ms *MemoryStore) DropTemporalIndex(labelToken uint16) error {
 		return ErrTemporalIndexNotFound
 	}
 	delete(ms.temporalIndexes, labelToken)
+	return nil
+}
+
+// --- High-frequency indexes ---
+
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
+// with the given label token. Only one temporal index type can exist per label —
+// returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
+// exists for this label.
+func (ms *MemoryStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+	if _, exists := ms.hfIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	ms.hfIndexes[labelToken] = newHighFrequencyIndex(bucketSize, 0)
+	return nil
+}
+
+// DropHighFrequencyIndex removes the high-frequency index for the given label token.
+// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+func (ms *MemoryStore) DropHighFrequencyIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.hfIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(ms.hfIndexes, labelToken)
 	return nil
 }
 

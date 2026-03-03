@@ -38,9 +38,14 @@ func TestTemporalMetadataStructSize(t *testing.T) {
 func TestNodeIntegrityStructSize(t *testing.T) {
 	t.Parallel()
 
-	// NodeIntegrity: Hash (16) + PrevHash (16) + AuthorID (16) + Signature (24) = 72 bytes.
-	// Updated in v3.0.44-v3.0.45 to include AuthorID and Signature fields.
-	const want = 72
+	// NodeIntegrity layout (v3.0.47):
+	//   Hash string         = 16B @ offset 0
+	//   PrevHash string     = 16B @ offset 16
+	//   AuthorID string     = 16B @ offset 32
+	//   Signature []byte    = 24B @ offset 48
+	//   AuthorizedBy string = 16B @ offset 72
+	//   AuthorizationLevel uint8 = 1B @ offset 88 → padded to 96B (8-byte alignment)
+	const want = 96
 	got := unsafe.Sizeof(NodeIntegrity{})
 	if got != want {
 		t.Fatalf("NodeIntegrity struct size = %d bytes, want %d bytes", got, want)
@@ -50,10 +55,16 @@ func TestNodeIntegrityStructSize(t *testing.T) {
 func TestRelIntegrityStructSize(t *testing.T) {
 	t.Parallel()
 
-	// RelIntegrity: Hash (16) + PrevHash (16) + FromNodeHash (16) + ToNodeHash (16)
-	//              + AuthorID (16) + Signature (24) = 104 bytes.
-	// Updated in v3.0.44-v3.0.45 to include endpoint hashes, AuthorID, and Signature.
-	const want = 104
+	// RelIntegrity layout (v3.0.47):
+	//   Hash string              = 16B @ offset 0
+	//   PrevHash string          = 16B @ offset 16
+	//   FromNodeHash string      = 16B @ offset 32
+	//   ToNodeHash string        = 16B @ offset 48
+	//   AuthorID string          = 16B @ offset 64
+	//   Signature []byte         = 24B @ offset 80
+	//   AuthorizedBy string      = 16B @ offset 104
+	//   AuthorizationLevel uint8 = 1B  @ offset 120 → padded to 128B (8-byte alignment)
+	const want = 128
 	got := unsafe.Sizeof(RelIntegrity{})
 	if got != want {
 		t.Fatalf("RelIntegrity struct size = %d bytes, want %d bytes", got, want)
