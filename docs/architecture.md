@@ -505,6 +505,14 @@ Class tells you where *new* entities go. Shard tells you where *existing* entiti
 
 Hash inputs must come from the internal canonical representation (deduplicated, registry-resolved), never from raw user input. Audit: `grep -rn 'ComputeNodeHash\|ComputeRelHash' pkg/` -- every call site must pass canonical labels/type.
 
+### Event Bus (Copy-Then-Invoke + Safe Recovery)
+
+The `EventBus` publishes lifecycle events (`EventNodeCreate`, `EventNodeUpdate`, etc.) synchronously. To prevent deadlocks when an event handler re-enters the Graph (e.g., to query the mutated entity), the bus copies the handler slice under `RLock` and invokes handlers *outside* the lock. Handlers are executed via `safeInvoke(h, e)` which defers `recover()` to isolate panics and logs them via `slog` without crashing the mutation caller.
+
+### Type-Tagged MsgPack Serialization
+
+To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`, `[]string` to `[]any`), `wire.go` stores a 1-byte type tag alongside every property value. This ensures absolute Go type fidelity across the persistence boundary, which is critical for deterministic hashing and schema validation.
+
 ---
 
 ## Version History
@@ -542,16 +550,20 @@ Hash inputs must come from the internal canonical representation (deduplicated, 
 | `entity_locks.go` | 256-shard mutex array, LockTwo, LockMany |
 | `keys.go` | Binary key encoding (9 prefix tags, big-endian IDs) |
 | `integrity.go` | SHA-256 hash chain computation and verification |
-| `wire.go` | Msgpack serialization (nodeWire, relWire, propertyWire) |
+| `wire.go` | Type-tagged Msgpack serialization preserving Go type fidelity |
 | `shadow.go` | 15 `tkg_*` virtual property resolvers |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe reltype string <-> uint16 token registry |
 | `batch.go` | BatchBuilder fluent API |
 | `context.go` | Context-aware operations (8 WithContext methods) |
+| `events.go` | EventBus for graph lifecycle notifications (Copy-Then-Invoke) |
 | `temporal.go` | Temporal queries, GraphSnapshot, forEachKnownNodeID/forEachKnownRelID |
+| `temporal_constraint.go` | Write-time temporal boundary enforcement (e.g., endpoints must outlive relationships) |
 | `temporal_filter.go` | Store-level temporal push-down helpers (entityValidFrom, matchesTemporalFilter) |
+| `temporal_index.go` | Sorted-slice interval indices for high-throughput temporal overlap queries |
 | `tx.go` | GraphTx (create-only transactions) |
 | `property_index.go` | In-memory property indexes with auto-maintenance |
+| `vector_index.go` | In-memory brute-force k-NN vector indexing via Cosine/Euclidean distance |
 | `pagination.go` | Cursor-based pagination helper (binary search on sorted ID slices) |
 | `ontology.go` | EntityClass, OntologyMapping (label -> ref/event classification) |
 | `shard_catalog.go` | ShardCatalog, ShardEntry (JSON persistence, atomic write) |

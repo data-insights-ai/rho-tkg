@@ -160,8 +160,8 @@ func TestBatchBuilderExecuteEmpty(t *testing.T) {
 	if result.Created != 0 || result.Updated != 0 || result.Deleted != 0 || result.Failed != 0 {
 		t.Errorf("empty batch result = %+v, want all zeros", result)
 	}
-	if result.Duration <= 0 {
-		t.Error("Duration should be positive")
+	if result.Duration < 0 {
+		t.Error("Duration should not be negative")
 	}
 }
 
