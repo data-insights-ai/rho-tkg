@@ -402,6 +402,13 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 // via lazy ForEach iteration, then calls fn for each unique ID.
 // Two-phase: collect (under store locks), then process (locks released).
 // This avoids materializing all IDs from all shards into giant slices.
+//
+// Memory note: the seen-map materialises O(N) IDs where N = total node count
+// (current + historical). This is intentional: Phase 1 must hold store locks
+// for consistency, but fn (Phase 2) may re-enter the store, which would
+// deadlock. The map is the unavoidable bridge between the two phases.
+// For history-unaware queries over only current entities, prefer the
+// streaming ForEach iterators in the Store interface directly.
 func (g *Graph) forEachKnownNodeID(fn func(snowflake.ID) error) error {
 	seen := make(map[snowflake.ID]struct{})
 
@@ -431,6 +438,9 @@ func (g *Graph) forEachKnownNodeID(fn func(snowflake.ID) error) error {
 // forEachKnownRelID collects the union of current + history relationship IDs
 // via lazy ForEach iteration, then calls fn for each unique ID.
 // Two-phase: collect (under store locks), then process (locks released).
+//
+// Memory note: same O(N) materialisation trade-off as forEachKnownNodeID.
+// See that function's doc comment for the rationale.
 func (g *Graph) forEachKnownRelID(fn func(snowflake.ID) error) error {
 	seen := make(map[snowflake.ID]struct{})
 

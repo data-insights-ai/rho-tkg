@@ -279,7 +279,12 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 }
 
 func (ts *TieredStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
-	// Cross-shard aware: per-ID delete.
+	// Cross-shard aware: per-ID delete. Each relationship may be cross-shard
+	// (entity+out/ in one shard, in/ in another), so DeleteRelationship handles
+	// the split-delete logic correctly at the cost of one shard-resolution lookup
+	// per ID. A future optimisation could partition same-shard rels and batch them;
+	// for v3 workloads the per-ID path is acceptable.
+	// TODO: partition by shard for same-shard rels to allow store-level batching.
 	for _, id := range ids {
 		if err := ts.DeleteRelationship(id); err != nil {
 			return err
@@ -576,6 +581,13 @@ var ErrNotReferenceEntity = errors.New("graph: entity is not a reference entity"
 // ArchiveNode moves a reference node and all its relationships from refShard
 // to refArchive. Only reference entities can be archived.
 // The node must exist in refShard. Event nodes cannot be archived.
+//
+// Atomicity: this operation is NOT transactional across the two BadgerStores.
+// On failure the rollback is best-effort (DeleteNodeCascade on the target).
+// If both the primary write AND the rollback fail, data may exist in both
+// stores simultaneously. The repair subsystem (tieredstore_repair.go) can
+// detect and resolve this: a node present in both refShard and refArchive
+// is flagged as a split-brain condition and corrected using the refShard copy.
 func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	// 1. Verify node is in refShard.
 	if !ts.refShard.hasNodeID(id) {
@@ -658,6 +670,10 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 
 // RestoreNode moves a reference node and all its relationships from refArchive
 // back to refShard. Reverse of ArchiveNode.
+//
+// Atomicity: same best-effort rollback guarantee as ArchiveNode — NOT
+// transactional across two BadgerStores. If both the primary write and the
+// rollback fail, the repair subsystem resolves the split-brain state.
 func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	// 1. Ensure archive is open.
 	if err := ts.ensureRefArchive(); err != nil {

@@ -942,10 +942,14 @@ func (g *Graph) GetNextNodeVersion(id snowflake.ID, version uint32) (*types.Node
 // expired without deleting it or incrementing its version number.
 // Returns ErrAlreadyClosed if ValidTo is already non-zero.
 // Returns ErrNodeNotFound if the node does not exist.
+//
+// Store contract: GetNode always returns a deep copy — mutation of `current`
+// below is safe and cannot alias shared state in the store.
 func (g *Graph) CloseNodeVersion(id snowflake.ID, t types.Instant) error {
 	g.entityLocks.LockEntity(id)
 	defer g.entityLocks.UnlockEntity(id)
 
+	// GetNode returns a deep copy (Store contract). Mutations below are safe.
 	current, err := g.store.GetNode(id)
 	if err != nil {
 		return err
@@ -1020,10 +1024,14 @@ func (g *Graph) GetNextRelVersion(id snowflake.ID, version uint32) (*types.Relat
 // temporally expired without deleting it or incrementing its version number.
 // Returns ErrAlreadyClosed if ValidTo is already non-zero.
 // Returns ErrRelNotFound if the relationship does not exist.
+//
+// Store contract: GetRelationship always returns a deep copy — mutation of
+// `current` below is safe and cannot alias shared state in the store.
 func (g *Graph) CloseRelVersion(id snowflake.ID, t types.Instant) error {
 	g.entityLocks.LockEntity(id)
 	defer g.entityLocks.UnlockEntity(id)
 
+	// GetRelationship returns a deep copy (Store contract). Mutations below are safe.
 	current, err := g.store.GetRelationship(id)
 	if err != nil {
 		return err

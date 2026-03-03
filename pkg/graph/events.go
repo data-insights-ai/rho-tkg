@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"log/slog"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -72,6 +73,10 @@ func (eb *EventBus) Subscribe(h EventHandler) func() {
 // publish delivers e to all registered handlers.
 // Copies the handler slice under RLock, then invokes each handler outside
 // the lock to prevent deadlocks when handlers re-enter the Graph.
+//
+// Each handler is invoked via safeInvoke so that a panic inside a handler
+// cannot crash the graph mutation that triggered the event. Panics are
+// logged at Error level and do not prevent subsequent handlers from running.
 func (eb *EventBus) publish(e Event) {
 	eb.mu.RLock()
 	if len(eb.handlers) == 0 {
@@ -85,6 +90,18 @@ func (eb *EventBus) publish(e Event) {
 	eb.mu.RUnlock()
 
 	for _, h := range local {
-		h(e)
+		safeInvoke(h, e)
 	}
+}
+
+// safeInvoke calls h(e) and recovers from any panic, logging it via slog.
+// This isolates a misbehaving subscriber from crashing the mutation caller.
+func safeInvoke(h EventHandler, e Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("graph: event handler panicked", "panic", r,
+				"eventType", e.Type, "entityID", e.EntityID)
+		}
+	}()
+	h(e)
 }

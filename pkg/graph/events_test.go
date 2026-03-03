@@ -318,3 +318,23 @@ func drain(events *[]Event) []Event {
 	// Events are synchronous — no wait needed.
 	return *events
 }
+
+// TestEventBus_PanicHandler verifies that a panicking handler does not crash
+// the publish call and does not prevent other handlers from receiving the event.
+func TestEventBus_PanicHandler(t *testing.T) {
+	bus := NewEventBus()
+
+	// First handler panics.
+	bus.Subscribe(func(Event) { panic("intentional panic in handler") })
+
+	// Second handler records received events.
+	var got []EventType
+	bus.Subscribe(func(e Event) { got = append(got, e.Type) })
+
+	// publish must not panic.
+	bus.publish(Event{Type: EventNodeCreate})
+
+	if len(got) != 1 || got[0] != EventNodeCreate {
+		t.Fatalf("expected surviving handler to receive EventNodeCreate, got %v", got)
+	}
+}
