@@ -2,6 +2,7 @@ package graph
 
 import (
 	"log/slog"
+	"runtime"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -238,6 +239,10 @@ func (ab *AsyncEventBus) publish(e Event) {
 				select {
 				case <-q:
 				default:
+					// Queue is full and drain attempt also contended; yield to the
+					// scheduler so workers draining the queue get CPU time.
+					// Without this, a tight spin under high contention can livelock.
+					runtime.Gosched()
 				}
 			}
 		}

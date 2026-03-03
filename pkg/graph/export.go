@@ -121,6 +121,9 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	// AllNodeHistoryIDs does not support cursor pagination (no QueryOpts); the full
 	// ID slice is loaded once. The history population is typically much smaller than
 	// the live entity population, so the memory impact is acceptable.
+	// TODO(v3.0.57): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
+	// and all three implementations (MemoryStore, BadgerStore, TieredStore) to eliminate
+	// the OOM risk at large history depths (e.g., 10K nodes × 1K versions = 10M IDs).
 	nodeHistIDs, err := g.store.AllNodeHistoryIDs()
 	if err != nil {
 		return fmt.Errorf("export: node history IDs: %w", err)
@@ -178,22 +181,34 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	return nil
 }
 
+// importRecord holds one decoded record from the export stream.
+type importRecord struct {
+	tag  byte
+	data []byte
+}
+
 // ImportGraph reads a portable graph snapshot from r and restores it into g.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
 // and the import continues without error (idempotent registry behaviour).
 //
-// ImportGraph acquires g.mu.Lock — all concurrent Snapshot/Reset operations are
-// blocked for the duration. Individual Add/Update callers also block on the graph
-// write lock, making import a serialised restore operation.
+// Two-phase implementation:
+//   - Phase 1 (no lock): all records are read from r into a []importRecord buffer.
+//     io.Reader I/O can be slow (file, network); holding g.mu.Lock for its duration
+//     would block all Add/Update/Query callers for potentially minutes.
+//   - Phase 2 (under g.mu.Lock): the buffer is processed — msgpack deserialization
+//     + store writes. No I/O under the lock; only CPU + in-memory store ops.
+//
+// Memory: the entire export is buffered in RAM before the write lock is acquired.
+// For large exports (> 1 GB) this may be significant. Users restoring multi-GB
+// graphs should use an in-memory=false BadgerStore to reduce working-set pressure.
 //
 // The caller must ensure that entity IDs in the export do not conflict with
 // existing IDs in the graph (typical use: import into a freshly created graph).
 func (g *Graph) ImportGraph(r io.Reader) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
+	// --- Phase 1: stream all records without any lock ---
+	var records []importRecord
 	for {
 		tag, data, err := readExportRecord(r)
 		if err != nil {
@@ -202,11 +217,20 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			}
 			return fmt.Errorf("import: read record: %w", err)
 		}
+		records = append(records, importRecord{tag: tag, data: data})
+	}
 
-		switch tag {
+	// --- Phase 2: process buffered records under write lock ---
+	// Only CPU deserialization + in-memory store writes happen here.
+	// No io.Reader reads, no network or file I/O under the lock.
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for _, rec := range records {
+		switch rec.tag {
 		case exportTagHeader:
 			var hdr exportHeader
-			if err := msgpack.Unmarshal(data, &hdr); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &hdr); err != nil {
 				return fmt.Errorf("import: unmarshal header: %w", err)
 			}
 			if hdr.Version != exportFormatVersion {
@@ -215,7 +239,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 
 		case exportTagRegistry:
 			var reg registryFileData
-			if err := msgpack.Unmarshal(data, &reg); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
 			}
 			if err := g.labels.ImportNames(reg.Labels); err != nil {
@@ -239,7 +263,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 
 		case exportTagNode:
 			var wn nodeWire
-			if err := msgpack.Unmarshal(data, &wn); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node: %w", err)
 			}
 			n := wireToNode(wn)
@@ -249,7 +273,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 
 		case exportTagNodeHist:
 			var wn nodeWire
-			if err := msgpack.Unmarshal(data, &wn); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
 			}
 			n := wireToNode(wn)
@@ -260,7 +284,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 
 		case exportTagRel:
 			var wr relWire
-			if err := msgpack.Unmarshal(data, &wr); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel: %w", err)
 			}
 			rel := wireToRel(wr)
@@ -270,7 +294,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 
 		case exportTagRelHist:
 			var wr relWire
-			if err := msgpack.Unmarshal(data, &wr); err != nil {
+			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
 			}
 			rel := wireToRel(wr)

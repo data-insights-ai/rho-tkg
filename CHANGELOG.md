@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.56] - 2026-03-03
+
+### Fixed (7 Production Defects — v3.0.56)
+
+- **Fix #1 — Cold shard use-after-close** (`pkg/graph/tieredstore.go`): `shardForNodeID` returned a `*BadgerStore` pointer without incrementing `activeReqs`, creating a race with `closeIdleShards` that could panic on cold-shard Badger access. Fixed by adding `shardForNodeIDChecked(id snowflake.ID) (*BadgerStore, func(), error)` which wraps the shard resolution with `checkoutStore`/`checkinStore`. The returned `checkin` function is deferred at every callsite. All six read/write callsites updated: `GetNode`, `GetNodeHistory` (`tieredstore_read.go`), `DeleteNode`, `ReplaceNode`, `RemoveNodeLabelToken` (`tieredstore_write.go`). The refShard and refArchive return a no-op checkin (they are never closed by `closeIdleShards`).
+
+- **Fix #2 — stripDepth drops pagination** (`pkg/graph/tieredstore_read.go`): `stripDepth` was returning `QueryOpts{Depth: stripped}` — a fresh struct that dropped `Limit`, `After`, and all temporal fields. Every per-shard call from `NodesByLabel`, `AllNodes`, and `AllRelationships` received `Limit=0` (unbounded), causing full-shard scans and potential OOM materialisation. Fixed by modifying `opts` in-place (`opts.Depth = 0; return opts`) so all other fields are preserved.
+
+- **Fix #3 — PutNodesBatch / PutRelationshipsBatch no rollback** (`pkg/graph/tieredstore_write.go`): When the second-shard write in a batch failed, first-shard writes were committed, leaving orphaned entities in the store. Fixed by adding best-effort rollback: on hot-shard `PutNodesBatch` failure, each successfully written refShard node is removed via `DeleteNode`; on `PutRelationshipsBatch` failure, each completed shard batch is rolled back. Best-effort (second-shard rollback failure is logged as the same documented B7 limitation).
+
+- **Fix #4 — idxMu held over disk I/O** (`pkg/graph/badgerstore.go`): `DeleteNode`, `ReplaceNode`, and `RemoveNodeLabelToken` called `idxMu.Lock()` then immediately `getNodeLocked(id)`, which on cache miss issued a synchronous Badger `db.View()` read under the global write lock — blocking all concurrent readers (including `NodesByLabel`, `ForEach`) for up to 5ms per operation under `SyncWrites=true`. Fixed by adding `prefetchNode(id snowflake.ID) (*types.Node, error)` helper that checks the cache under `RLock`, then reads from Badger without any lock, then re-verifies under `RLock`. All three methods call `prefetchNode` before acquiring `idxMu.Lock()`; the TOCTOU window is guarded by re-checking `nodeIDs[id]` under the write lock.
+
+- **Fix #5 — ImportGraph holds lock during streaming I/O** (`pkg/graph/export.go`): `ImportGraph` previously acquired `g.mu.Lock()` at function entry and held it for the entire `io.Reader` streaming loop, freezing all graph operations (reads, writes, queries) for potentially minutes during large or networked imports. Fixed with a two-phase implementation: Phase 1 (no lock) buffers all records from the `io.Reader` into a `[]importRecord` slice; Phase 2 (under `g.mu.Lock()`) deserialises the buffer and applies store writes. I/O latency no longer extends the lock scope.
+
+- **Fix #6 — AllNodeHistoryIDs / AllRelHistoryIDs OOM** (`pkg/graph/export.go`, `badgerstore.go`): Deferred to v3.0.57 — fixing requires a cursor-based `AllNodeHistoryIDs(QueryOpts)` on the `Store` interface, which breaks all three implementations. TODO comments added to `export.go` and `badgerstore.go`'s `AllNodeHistoryIDs` implementation.
+
+- **Fix #7 — BackpressureDropOldest CPU livelock** (`pkg/graph/events.go`): The `BackpressureDropOldest` inner `for {}` loop had an empty `default:` branch — tight spinning under contention saturated a CPU core and starved the worker goroutine (livelock). Fixed by adding `runtime.Gosched()` in the default case. No cost on the uncontended path; yields the scheduler slot on contention.
+
+### Tests Added
+
+- `TestTieredStore_NodesByLabel_PaginationBounded` — verifies Limit/After are honoured across a multi-shard TieredStore query (fix #2).
+- `TestAsyncEventBus_DropOldest_TerminatesQuickly` — 50×20 concurrent publishes on a full channel complete within 2s (fix #7).
+- `TestTieredStore_PutNodesBatch_RollbackOnHotShardError` — verifies ref shard has no orphan node after hot-shard failure (fix #3).
+- `TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock` — DeleteNode on a cache-miss node does not hold idxMu during db.View (fix #4).
+- `TestImportGraph_DoesNotBlockReadsWhileStreaming` — concurrent GetNode succeeds during ImportGraph Phase 1 (fix #5).
+
+All in `pkg/graph/v3056_fixes_test.go`.
+
 ## [3.0.55] - 2026-03-03
 
 ### Added (Atomic Delete with Tombstone History — Phase 4.23)

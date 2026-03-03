@@ -561,21 +561,24 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	intID := int64(id)
 
+	// Pre-fetch node state before acquiring the write lock to avoid holding
+	// idxMu.Lock() during Badger disk I/O on cache misses (B3: lock scope rule).
+	// prefetchNode checks the cache and falls through to db.View without any lock.
+	n, err := bs.prefetchNode(id)
+	if err != nil {
+		return err
+	}
+
 	bs.idxMu.Lock()
 
+	// TOCTOU guard: re-verify existence after acquiring write lock.
+	// A concurrent delete may have removed the node between prefetchNode and here.
 	if _, exists := bs.nodeIDs[id]; !exists {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
 
-	// Get node data for label token cleanup.
-	n, err := bs.getNodeLocked(id)
-	if err != nil {
-		bs.idxMu.Unlock()
-		return err
-	}
-
-	// Build delete ops.
+	// Build delete ops using pre-fetched node (labels needed for index cleanup).
 	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
 
 	// Remove label index entries.
@@ -621,6 +624,10 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
+	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
+	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
+	old, _ := bs.prefetchNode(id)
+
 	bs.idxMu.Lock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
@@ -629,12 +636,13 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	}
 
 	// Update property, temporal, and vector indexes: remove old entries, add new.
-	if old, err := bs.getNodeLocked(id); err == nil {
+	if old != nil {
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	} else {
-		// Cache miss or Badger error — brute-force purge to avoid orphaned entries.
+		// Pre-fetch failed (concurrent delete between prefetch and write lock, or
+		// cache miss on a just-opened store) — brute-force purge to avoid orphans.
 		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
@@ -664,6 +672,10 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
+	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
+	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
+	old, _ := bs.prefetchNode(id)
+
 	bs.idxMu.Lock()
 
 	if _, exists := bs.nodeIDs[id]; !exists {
@@ -671,8 +683,8 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 		return ErrNodeNotFound
 	}
 
-	// Update property, temporal, and vector indexes using the cached old node.
-	if old, err := bs.getNodeLocked(id); err == nil {
+	// Update property, temporal, and vector indexes using pre-fetched old node state.
+	if old != nil {
 		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -3027,6 +3039,9 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 // Scans both the pending buffer and Badger for 0x07 prefix keys.
+// The full ID slice is loaded into memory — acceptable for typical history populations.
+// TODO(v3.0.57): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
+// to eliminate OOM risk at large history depths (10K nodes × 1K versions = 10M IDs).
 func (bs *BadgerStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	seen := make(map[snowflake.ID]struct{})
 
@@ -3281,6 +3296,63 @@ func (bs *BadgerStore) LoadRelTypeRegistry(reg *relTypeRegistry) (bool, error) {
 }
 
 // --- Internal helpers ---
+
+// prefetchNode retrieves a node from cache or Badger WITHOUT holding idxMu.
+// Used as a pre-fetch step before acquiring idxMu.Lock() in write operations
+// (DeleteNode, ReplaceNode, RemoveNodeLabelToken) to avoid holding the global
+// write lock during slow disk I/O on cache misses.
+//
+// Callers MUST re-verify node existence under idxMu.Lock() after calling this
+// (TOCTOU guard). The returned node may be stale if a concurrent delete occurred
+// between the pre-fetch and the write lock acquisition — the re-verify catches this.
+//
+// Safety: nodeCache has its own internal mutex; db.View opens a read-only Badger
+// transaction — neither requires idxMu. Dirty (unflushed) nodes are always retained
+// in the LRU (soft capacity never evicts dirty entries), so a newly Put node that
+// has not yet been flushed to Badger will always be found in the cache.
+func (bs *BadgerStore) prefetchNode(id snowflake.ID) (*types.Node, error) {
+	v, status := bs.nodeCache.Get(id)
+	switch status {
+	case cacheHit:
+		return v, nil
+	case cacheDeleted:
+		return nil, ErrNodeNotFound
+	}
+
+	// Cache miss — check existence before incurring Badger I/O.
+	bs.idxMu.RLock()
+	_, exists := bs.nodeIDs[id]
+	bs.idxMu.RUnlock()
+	if !exists {
+		return nil, ErrNodeNotFound
+	}
+
+	// Node exists in-memory but not in cache (flushed + evicted from LRU).
+	// Read from Badger without holding any lock.
+	var n *types.Node
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(nodeKey(int64(id)))
+		if err == badger.ErrKeyNotFound {
+			return ErrNodeNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w nodeWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal node: %w", err)
+			}
+			n = wireToNode(w)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	bs.nodeCache.LoadClean(id, n)
+	return n, nil
+}
 
 // getNodeLocked retrieves a node from cache or Badger.
 // Caller must hold bs.idxMu (read or write).

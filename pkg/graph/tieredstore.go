@@ -514,6 +514,65 @@ func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, err
 	return ts.hotShard.store, nil // fallback: newest shard (always open)
 }
 
+// timestampToEventShardEntry extracts the creation timestamp from a snowflake ID
+// and returns the *eventShard responsible for that timestamp. Unlike
+// timestampToEventShard, it returns the shard struct so callers can use
+// checkoutStore/checkinStore for safe concurrent access.
+// Falls back to hotShard if no window matches.
+func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *eventShard {
+	epochMs := snowflakeEpoch.UnixMilli()
+	timeMs := int64(uint64(id) >> 22)
+	created := time.UnixMilli(epochMs + timeMs)
+
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+
+	for _, es := range ts.eventShards {
+		if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
+			return es
+		}
+	}
+	return ts.hotShard // fallback: newest shard (always open)
+}
+
+// shardForNodeIDChecked resolves the storage shard for a node ID and increments
+// its activeReqs counter so closeIdleShards cannot close the DB while the caller
+// is using the returned store pointer.
+//
+// The caller MUST invoke the returned checkin function exactly once when done
+// (typically via defer checkin()). Failing to call checkin() leaks activeReqs,
+// which prevents idle cold shards from ever being closed.
+//
+// refShard and refArchive are never subject to idle-close, so their checkin is
+// a no-op. Only event shards (especially cold tier) need the checkout/checkin
+// protocol.
+func (ts *TieredStore) shardForNodeIDChecked(id snowflake.ID) (store *BadgerStore, checkin func(), err error) {
+	if ts.refShard.hasNodeID(id) {
+		return ts.refShard, func() {}, nil // refShard: never closed, no-op checkin
+	}
+
+	// Archive probe.
+	if ts.refArchive != nil && ts.refArchive.hasNodeID(id) {
+		return ts.refArchive, func() {}, nil // refArchive: never subject to idle-close
+	}
+	if ts.refArchive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return nil, nil, err
+		}
+		if ts.refArchive.hasNodeID(id) {
+			return ts.refArchive, func() {}, nil
+		}
+	}
+
+	// Event shard: resolve via timestamp, then checkout to prevent idle-close race.
+	es := ts.timestampToEventShardEntry(id)
+	store, err = es.checkoutStore(ts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return store, func() { es.checkinStore() }, nil
+}
+
 // --- Rotation and depth helpers ---
 
 // RotateHotShard demotes the current hot shard to warm and creates a new hot shard.

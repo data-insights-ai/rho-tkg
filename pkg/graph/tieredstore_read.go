@@ -9,25 +9,25 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
 
-// stripDepth returns a copy of opts without the Depth field.
+// stripDepth returns opts with the Depth field cleared.
 // Used when forwarding to single-shard queries (Depth is TieredStore-level).
+// All other fields — Limit, After, ValidAt, ValidStart, ValidEnd — are preserved
+// so per-shard calls respect pagination and temporal filters.
 func stripDepth(opts QueryOpts) QueryOpts {
-	return QueryOpts{
-		ValidAt:    opts.ValidAt,
-		ValidStart: opts.ValidStart,
-		ValidEnd:   opts.ValidEnd,
-	}
+	opts.Depth = 0
+	return opts
 }
 
 // --- Entity reads ---
 // O(1) shard resolution: ref probe + timestamp extraction.
 
 func (ts *TieredStore) GetNode(id snowflake.ID) (*types.Node, error) {
-	shard, err := ts.shardForNodeID(id)
+	store, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetNode(id)
+	defer checkin()
+	return store.GetNode(id)
 }
 
 func (ts *TieredStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
@@ -569,11 +569,12 @@ func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.N
 }
 
 func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
-	shard, err := ts.shardForNodeID(id)
+	store, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetNodeHistory(id)
+	defer checkin()
+	return store.GetNodeHistory(id)
 }
 
 func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {

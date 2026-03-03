@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.55 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete)
+Status: v3.0.56 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.56: 7 production defect fixes — cold shard use-after-close (#1), stripDepth drops pagination (#2), batch no rollback (#3), idxMu held over disk I/O (#4), ImportGraph lock during streaming (#5), BackpressureDropOldest livelock (#7). Fix #6 (AllNodeHistoryIDs OOM) deferred to v3.0.57.
 
 ## Build & Test Commands
 

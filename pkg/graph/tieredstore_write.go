@@ -29,13 +29,14 @@ func (ts *TieredStore) PutNode(n *types.Node) error {
 
 func (ts *TieredStore) ReplaceNode(n *types.Node) error {
 	id := n.InternalID().SnowflakeID()
-	shard, err := ts.shardForNodeID(id)
+	store, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := shard.GetNode(id)
-	if err := shard.ReplaceNode(n); err != nil {
+	old, _ := store.GetNode(id)
+	if err := store.ReplaceNode(n); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -50,13 +51,14 @@ func (ts *TieredStore) ReplaceNode(n *types.Node) error {
 }
 
 func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
-	shard, err := ts.shardForNodeID(id)
+	store, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	// Read node before deletion for vector index maintenance.
-	old, _ := shard.GetNode(id)
-	if err := shard.DeleteNode(id); err != nil {
+	old, _ := store.GetNode(id)
+	if err := store.DeleteNode(id); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -70,13 +72,14 @@ func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
 }
 
 func (ts *TieredStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
-	shard, err := ts.shardForNodeID(id)
+	store, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := shard.GetNode(id)
-	if err := shard.RemoveNodeLabelToken(id, tok, updatedNode); err != nil {
+	old, _ := store.GetNode(id)
+	if err := store.RemoveNodeLabelToken(id, tok, updatedNode); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -115,7 +118,13 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 		hot := ts.hotShard.store
 		ts.mu.RUnlock()
 		if err := hot.PutNodesBatch(evtNodes); err != nil {
-			return err
+			// Best-effort rollback: remove ref shard writes to prevent silent partial state.
+			// If rollback itself fails, the store is already in a broken state — log and return
+			// the original error so the caller knows to expect inconsistency.
+			for _, n := range refNodes {
+				_ = ts.refShard.DeleteNode(n.InternalID().SnowflakeID())
+			}
+			return fmt.Errorf("tiered: put hot nodes (ref writes rolled back best-effort): %w", err)
 		}
 	}
 	return nil
@@ -271,10 +280,26 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 		shardBuckets[startShard] = append(shardBuckets[startShard], r)
 	}
 
+	// Write per-shard buckets, tracking committed batches for best-effort rollback.
+	// If a later shard fails, previously committed shards are rolled back to prevent
+	// silent partial state (e.g., rels in refShard with no corresponding hot-shard rels).
+	type committedBatch struct {
+		shard *BadgerStore
+		rels  []*types.Relationship
+	}
+	var committed []committedBatch
+
 	for shard, bucket := range shardBuckets {
 		if err := shard.PutRelationshipsBatch(bucket); err != nil {
-			return err
+			// Best-effort rollback: delete rels written to previously committed shards.
+			for _, cb := range committed {
+				for _, r := range cb.rels {
+					_ = cb.shard.DeleteRelationship(r.InternalID().SnowflakeID())
+				}
+			}
+			return fmt.Errorf("tiered: put rels batch (prior shard writes rolled back best-effort): %w", err)
 		}
+		committed = append(committed, committedBatch{shard: shard, rels: bucket})
 	}
 	return nil
 }
