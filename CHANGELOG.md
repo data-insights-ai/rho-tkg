@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.46] - 2026-03-03
+
+### Added (Portable Export/Import — Phase 4.15)
+
+- **`Graph.ExportGraph(w io.Writer) error`** — writes a portable format-independent snapshot of the entire graph to `w`. Snapshot includes: header, label/reltype registries, all current nodes and rels, and their full version history. Holds `g.mu.RLock` for the duration (consistent snapshot).
+- **`Graph.ImportGraph(r io.Reader) error`** — reads an export stream and restores it into the graph. Registries are imported if empty; if already populated, the existing registry is kept (idempotent). Holds `g.mu.Lock` for the duration (serialised restore).
+- **Wire format** — length-prefixed msgpack record stream with 1-byte type tags: `0x01` header, `0x02` registry, `0x03` node, `0x04` node history, `0x05` rel, `0x06` rel history. Each record is `[tag(1)] [len(4BE)] [msgpack body]`. Forward-compatible: unknown tags are skipped on import.
+- **`ErrIncompatibleExport`** — returned when the export stream version is not supported by this binary.
+- **Two-phase ForEach pattern (C4)** — collect IDs in ForEachNodeID/ForEachRelID/ForEachNodeHistoryID/ForEachRelHistoryID callbacks (store lock held); fetch entities after callback returns (lock released). OOM-safe on large graphs.
+- 12 new tests in `pkg/graph/export_test.go`: `TestExportImport_RoundTrip_MemoryStore`, `TestExportImport_RoundTrip_BadgerStore`, `TestExport_Empty_Graph`, `TestExport_WithNodeHistory`, `TestExport_RelHistory`, `TestImport_IdempotentRegistry`, `TestExport_Writer_Error`, `TestImport_InvalidHeader`, `TestExportImport_IntegrityPreserved`, `TestExportImport_EndpointHashesPreserved`, `TestExportImport_AuthorIDPreserved`, `TestExport_ShadowProperty_Survives`.
+
+## [3.0.45] - 2026-03-03
+
+### Added (AuthorID + Signature on Integrity — Phase 4.14)
+
+- **`NodeIntegrity.AuthorID string`** / **`NodeIntegrity.Signature []byte`** — caller-supplied provenance fields. Set by passing `"tkg_author_id"` (string) and `"tkg_signature"` ([]byte) in the `props`/`updates` map of any Add or Update call. Stripped before `PropertySlice.Set` (never stored in PropertySlice).
+- **`RelIntegrity.AuthorID string`** / **`RelIntegrity.Signature []byte`** — same pattern on relationship integrity.
+- **`ShadowAuthorID = "tkg_author_id"`** / **`ShadowSignature = "tkg_signature"`** — new shadow constants in `pkg/types/shadow.go`. Both accessible via `ResolveNodeProperty` and `ResolveRelProperty`.
+- **`extractProvenance(props)`** (unexported) — helper in `context.go` that extracts `tkg_author_id` and `tkg_signature` from any props/updates map without mutating the caller's map. Zero-allocation fast path when neither key is present.
+- **Wire persistence** — `AuthorID` (`msgpack:"aid"`) and `Signature` (`msgpack:"sig"`) added to both `nodeWire` and `relWire`. Backward-compatible (`omitempty`); old data reads as zero values.
+- **Layout test updated** — `NodeIntegrity` size: 32 → 72 bytes; `RelIntegrity` size: 32 → 104 bytes.
+- 11 new tests in `pkg/graph/integrity_author_test.go`: SetOnAdd (node + rel), SignatureSetOnAdd (node + rel), PreservedOnUpdate, ViaShadow (node + rel, both fields), DefaultsEmpty, DoesNotAffectHash.
+
+## [3.0.44] - 2026-03-03
+
+### Added (RelIntegrity Endpoint Hashes — Phase 4.13)
+
+- **`RelIntegrity.FromNodeHash string`** — hash of the start node at the time this relationship version was written. NOT fed into `ComputeRelHash` (prevents cascading hash invalidation on node updates). Used for cross-validation.
+- **`RelIntegrity.ToNodeHash string`** — hash of the end node at write time.
+- **`ShadowFromHash = "tkg_from_hash"`** / **`ShadowToHash = "tkg_to_hash"`** — new shadow constants. Accessible via `ResolveRelProperty`; return `(nil, false)` on nodes (rel-only).
+- **`AddRelationshipWithContext`** — captures `startNode.Integrity().Hash` → `ig.FromNodeHash` and `endNode.Integrity().Hash` → `ig.ToNodeHash` under the endpoint lock. Empty string if endpoint has no integrity.
+- **`UpdateRelationshipWithContext`** — refreshes `FromNodeHash`/`ToNodeHash` from the store on each update, capturing the current endpoint hashes at write time.
+- **Wire persistence** — `FromNodeHash` (`msgpack:"fnh"`) and `ToNodeHash` (`msgpack:"tnh"`) added to `relWire`. Backward-compatible (`omitempty`).
+- 5 new tests in `pkg/graph/rel_endpoint_hash_test.go`: `TestFromNodeHashStoredOnAdd`, `TestEndpointHashFromShadow`, `TestEndpointHashPreservedOnUpdate`, `TestEndpointHashSelfLoop`, `TestEndpointHashNotOnNode`.
+
 ## [3.0.43] - 2026-03-02
 
 ### Added (VectorField Index — Phase 4.9)

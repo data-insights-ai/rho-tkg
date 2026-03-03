@@ -30,6 +30,14 @@ const (
 	ShadowHash     = "tkg_hash"      // Both: string
 	ShadowPrevHash = "tkg_prev_hash" // Both: string
 
+	// Integrity — endpoint cross-references (relationship only)
+	ShadowFromHash = "tkg_from_hash" // Relationship: string — start-node hash at write time
+	ShadowToHash   = "tkg_to_hash"   // Relationship: string — end-node hash at write time
+
+	// Integrity — provenance
+	ShadowAuthorID  = "tkg_author_id" // Both: string  — caller-supplied author identifier
+	ShadowSignature = "tkg_signature" // Both: []byte  — caller-supplied cryptographic signature
+
 	// Version chain
 	ShadowBaseEntity = "tkg_base_entity" // Both: entityID
 )

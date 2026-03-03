@@ -274,6 +274,34 @@ GOOD: // Single SaveRegistries(labels, relTypes) call writes both atomically
 
 **History:** Found in v3.0.33 review. Read-modify-write race between two independent save calls.
 
+## B23. Never Mutate the Caller's Input Props Map
+
+When extracting reserved keys (e.g. `tkg_*` shadow props) from a caller-supplied `map[string]any`, always produce a filtered copy — never `delete()` from the original map. The caller may reuse or introspect the map after the call.
+
+```
+BAD:  func addNode(props map[string]any) {
+          authorID := props["tkg_author_id"].(string)
+          delete(props, "tkg_author_id")  // mutates caller's map — surprising
+          buildPropertySlice(props)
+      }
+
+GOOD: func extractProvenance(props map[string]any) (authorID string, filtered map[string]any) {
+          if _, has := props["tkg_author_id"]; !has {
+              return "", props  // fast path: no allocation, original map is clean
+          }
+          authorID, _ = props["tkg_author_id"].(string)
+          filtered = make(map[string]any, len(props))
+          for k, v := range props {
+              if k != "tkg_author_id" { filtered[k] = v }
+          }
+          return authorID, filtered
+      }
+```
+
+Use the fast path (return original map) when no reserved key is present — zero allocation. Only allocate the filtered copy when a reserved key actually exists.
+
+**History:** Applied in v3.0.45 (`extractProvenance` in context.go) for `tkg_author_id` / `tkg_signature` extraction before PropertySlice construction.
+
 ## B22. Badger WriteBatch.Flush() Blocks Forever on Closed DB
 
 ```

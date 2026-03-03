@@ -32,7 +32,10 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `PropertySlice` | Sorted key-value store with binary search; recursive validation rejects `tkg_` prefix keys and non-allowlisted types (pointers, structs, arrays, channels, functions, unsafe pointers) at any nesting depth; depth-limited to 32 levels |
 | `Instant` | Semantic wrapper for Unix-millisecond timestamps used by all temporal fields |
 | `TemporalMetadata` | Temporal lifecycle metadata: `ValidFrom`, `ValidTo`, `TxFrom`, `TxTo`, `CreatedAt`, `UpdatedAt`, `DeletedAt` (all `Instant`), `CreatedBy`, `UpdatedBy` (`string`), `BaseEntityID` (`snowflake.ID`) |
-| `NodeIntegrity` / `RelIntegrity` | Hash-chain integrity: `Hash`, `PrevHash` (`string`) |
+| `NodeIntegrity` / `RelIntegrity` | Hash-chain integrity: `Hash`, `PrevHash` (`string`); `AuthorID` (`string`), `Signature` (`[]byte`) for caller-supplied provenance. `RelIntegrity` also carries `FromNodeHash` / `ToNodeHash` — hashes of the endpoint nodes at write time (not fed into `ComputeRelHash`) |
+| `TimeGranularity` | 8-level granularity enum: `GranMillisecond`, `GranSecond`, `GranMinute`, `GranHour`, `GranDay`, `GranWeek`, `GranMonth`, `GranYear`. Functions: `TruncateInstant(t, gran)`, `RoundInstant(t, gran)`, `CeilInstant(t, gran)` |
+| `AllenRelation` | Full 13-relation Allen's interval algebra: `Relate(a, b Interval) AllenRelation`, `ComposeSets(rs1, rs2 AllenSet) AllenSet`. Constants: `Before`, `Meets`, `Overlaps`, `Starts`, `During`, `Finishes`, `Equal` and their converses |
+| `RecurrencePattern` | Recurring time pattern: `Frequency` (`Daily`/`Weekly`/`Monthly`/`Yearly`), `Days` (`WeekdayMask`), `DayOfMonth` (1–28; 0 = last), `Month`, `DayStart`/`DayEnd` (duration from UTC midnight). `Validate()` checks invariants; `Expand(from, to Instant) []Interval` emits concrete intervals within the window. Returns `ErrInvalidTimeRange` if `from >= to` |
 
 ### Graph Layer (`pkg/graph`)
 
@@ -50,13 +53,13 @@ gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
 | `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
 | `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
 
-Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`.
+Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `UpdateNodeInPlace(id, updates)`, `UpdateRelInPlace(id, updates)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`, `RemoveNodeLabel(id, label)`. `UpdateNodeInPlace` / `UpdateRelInPlace` mutate the current entity in-place (no version bump, no history entry) — for correcting metadata without creating a new version. `RemoveNodeLabel` removes a label from a node's label set; returns `ErrLastLabel` if it is the only label, `ErrLabelNotFound` if not present.
 
 Convenience methods: `SetNodeProperty(id, key, value)`, `DeleteNodeProperty(id, key)`, `SetRelationshipProperty(id, key, value)`, `DeleteRelationshipProperty(id, key)`.
 
 Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
 
-Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 15 `tkg_*` keys with nil-guards.
+Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 19 `tkg_*` keys with nil-guards.
 
 Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
 
@@ -82,11 +85,15 @@ Transactions: `BeginTx()` starts a mutation transaction holding the graph write 
 
 Reset: `Reset()` atomically clears all entities, indexes, history, and counters while preserving label and relationship type registries.
 
+Export/Import: `ExportGraph(w io.Writer)` writes a portable format-independent snapshot to `w` — header, label/reltype registries, all current nodes and relationships, and their full version history. Wire format: length-prefixed msgpack record stream with 1-byte type tags; forward-compatible (unknown tags are skipped on import). Holds `g.mu.RLock` for a consistent snapshot. `ImportGraph(r io.Reader)` reads the stream and restores into the graph, holding `g.mu.Lock`. Registry import is idempotent (existing registries are kept). Use for backup, migration across store versions, or seeding test fixtures. Returns `ErrIncompatibleExport` on version mismatch.
+
 Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 
 Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts. In TieredStore, property indexes are restricted to reference entities (`ErrEventPropertyIndex` for event labels).
 
 Temporal indexes: `CreateTemporalIndex(label)`, `DropTemporalIndex(label)` — create/drop in-memory interval indexes accelerating `NodesByLabel` when a temporal filter (`ValidAt` or `ValidStart`/`ValidEnd`) is set. Uses a sorted-slice interval index (binary search insertion, O(log n) range filtering). When a temporal index exists and a filter is active, `NodesByLabel` uses the index fast path instead of scanning all label entries. Indexes are automatically maintained across all node mutation paths and persist across BadgerStore restarts (label tokens stored, index data rebuilt from nodes on startup). TieredStore creates the index on all active shards and propagates it to new hot shards on rotation.
+
+Vector indexes: `CreateVectorIndex(label, propertyKey, dims, metric)`, `DropVectorIndex(label, propertyKey)` — create/drop in-memory brute-force k-NN indexes on nodes with the given label and a `[]float32` property. `metric` is `DistanceCosine` or `DistanceEuclidean`. `SearchNearestNodes(label, propertyKey, query []float32, k int, opts)` returns the `k` closest nodes in ranked order. Returns `ErrVectorIndexExists` / `ErrVectorIndexNotFound` / `ErrDimensionMismatch` on error. Indexes are maintained automatically across all node mutation paths; not persisted across restarts (rebuilt from properties on startup is not automatic — recreate the index after reopening).
 
 Temporal constraints: `AddTemporalConstraint(c)`, `SetTemporalConstraints(cs)`, `TemporalConstraints()` — configure write-time enforcement rules. `TemporalConstraint{Kind: ConstraintRelWithinEndpoints}` enforces that a relationship's validity interval is contained within the intersection of both endpoint nodes' validity. Checked during `AddRelationship` and `ImportRelationshipWithID`. Violations return errors wrapping `ErrTemporalConstraint`; the specific cause (e.g., `ErrRelBeforeStartNode`, `ErrRelAfterEndNode`, `ErrRelExceedsStartNodeValidity`) is accessible via `errors.Is`. Zero value `ConstraintSet` means no constraints.
 
@@ -172,7 +179,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **SnowflakeID bridges**: `nodeID.SnowflakeID()`, `relID.SnowflakeID()`, `entityID.SnowflakeID()` — exported methods on unexported wrapper types allow cross-package persistence key extraction without leaking the `snowflake.ID` dependency into entity method signatures.
 - **Shadow resolution nil-guards**: `ResolveNodeProperty` / `ResolveRelProperty` check `Temporal() != nil` and `Integrity() != nil` before accessing fields. New entities without metadata return `(nil, false)` instead of panicking.
 
-### Shadow Properties (15)
+### Shadow Properties (19)
 
 Read-only virtual properties managed by the graph layer:
 
@@ -187,6 +194,11 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_version` | `uint32` | Both |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both |
 | `tkg_base_entity` | `snowflake.ID` | Both |
+| `tkg_from_hash`, `tkg_to_hash` | `string` | Relationship only |
+| `tkg_author_id` | `string` | Both |
+| `tkg_signature` | `[]byte` | Both |
+
+`tkg_author_id` and `tkg_signature` are write-path shadow keys: pass them in the `props`/`updates` map of any Add or Update call to store provenance on the integrity struct. They are stripped before `PropertySlice` construction (never stored as real properties) and readable back via `ResolveNodeProperty` / `ResolveRelProperty`.
 
 ## Build & Test
 

@@ -26,6 +26,27 @@ func checkCtx(ctx context.Context) error {
 	}
 }
 
+// extractProvenance removes the reserved tkg_author_id and tkg_signature keys
+// from the props map and returns their values plus a props map without those keys.
+// If neither key is present, the original map is returned unchanged (no allocation).
+// The caller's original map is never mutated.
+func extractProvenance(props map[string]any) (authorID string, sig []byte, filtered map[string]any) {
+	_, hasA := props["tkg_author_id"]
+	_, hasS := props["tkg_signature"]
+	if !hasA && !hasS {
+		return "", nil, props
+	}
+	authorID, _ = props["tkg_author_id"].(string)
+	sig, _ = props["tkg_signature"].([]byte)
+	filtered = make(map[string]any, len(props))
+	for k, v := range props {
+		if k != "tkg_author_id" && k != "tkg_signature" {
+			filtered[k] = v
+		}
+	}
+	return authorID, sig, filtered
+}
+
 // GetNodeWithContext retrieves a node by snowflake ID with context support.
 func (g *Graph) GetNodeWithContext(ctx context.Context, id snowflake.ID) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -52,10 +73,18 @@ func (g *Graph) GetRelationshipWithContext(ctx context.Context, id snowflake.ID)
 
 // AddNodeWithContext creates a new node with the given labels and properties.
 // Checks context at entry and before the store write.
+//
+// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
+// included in props to set provenance fields on the integrity struct. They are
+// extracted before validation and never stored in the PropertySlice.
 func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
+
+	// Extract reserved provenance fields before validation so they are never
+	// seen by PropertySlice.Set (which rejects the tkg_ prefix).
+	authorID, sig, props := extractProvenance(props)
 
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
@@ -103,7 +132,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
 	canonicalLabels := g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: "", AuthorID: authorID, Signature: sig})
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -120,6 +149,10 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 
 // AddRelationshipWithContext creates a new directed relationship between two nodes.
 // Checks context at entry, before acquiring endpoint locks, and before the store write.
+//
+// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
+// included in props to set provenance fields on the integrity struct. They are
+// extracted before validation and never stored in the PropertySlice.
 func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -128,6 +161,9 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
 	}
+
+	// Extract reserved provenance fields before validation.
+	authorID, sig, props := extractProvenance(props)
 
 	// Validation limits.
 	if err := g.validateName(typeName); err != nil {
@@ -165,7 +201,18 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+
+	// Capture endpoint hashes at creation time for cross-validation.
+	// FromNodeHash/ToNodeHash are NOT part of ComputeRelHash to avoid cascading
+	// hash invalidation whenever endpoint nodes are updated.
+	ig := &types.RelIntegrity{Hash: hash, PrevHash: "", AuthorID: authorID, Signature: sig}
+	if startIg := startNode.Integrity(); startIg != nil {
+		ig.FromNodeHash = startIg.Hash
+	}
+	if endIg := endNode.Integrity(); endIg != nil {
+		ig.ToNodeHash = endIg.Hash
+	}
+	r.SetIntegrity(ig)
 
 	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
 		return nil, err
@@ -386,6 +433,10 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 // UpdateNodeWithContext applies property updates to an existing node with context support.
 // Checks context at entry, before acquiring the entity lock, before the store read,
 // before saving version history, and before the final store write.
+//
+// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
+// included in updates to set provenance fields on the new integrity struct.
+// They are extracted before validation and never stored in the PropertySlice.
 func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -394,6 +445,11 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	if len(updates) == 0 {
 		return g.GetNodeWithContext(ctx, id)
 	}
+
+	// Extract reserved provenance fields before validation.
+	// The no-op check above uses the original map length; after extraction
+	// the remaining updates may be empty (metadata-only update).
+	authorID, sig, updates := extractProvenance(updates)
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {
@@ -475,7 +531,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 
 	nodeLabels := g.NodeLabels(current)
 	hash := ComputeNodeHash(current, nodeLabels)
-	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash, AuthorID: authorID, Signature: sig})
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -494,6 +550,10 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 // UpdateRelationshipWithContext applies property updates to an existing relationship with context support.
 // Checks context at entry, before acquiring the entity lock, before the store read,
 // before saving version history, and before the final store write.
+//
+// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
+// included in updates to set provenance fields on the new integrity struct.
+// They are extracted before validation and never stored in the PropertySlice.
 func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -502,6 +562,9 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	if len(updates) == 0 {
 		return g.GetRelationshipWithContext(ctx, id)
 	}
+
+	// Extract reserved provenance fields before validation.
+	authorID, sig, updates := extractProvenance(updates)
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {
@@ -583,7 +646,21 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 
 	relTypeName := g.RelationshipType(current)
 	hash := ComputeRelHash(current, relTypeName)
-	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
+
+	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
+	// These are NOT fed into ComputeRelHash to avoid cascading hash invalidation.
+	relIG := &types.RelIntegrity{Hash: hash, PrevHash: prevHash, AuthorID: authorID, Signature: sig}
+	if sn, sErr := g.store.GetNode(current.StartNodeID().SnowflakeID()); sErr == nil {
+		if sIg := sn.Integrity(); sIg != nil {
+			relIG.FromNodeHash = sIg.Hash
+		}
+	}
+	if en, eErr := g.store.GetNode(current.EndNodeID().SnowflakeID()); eErr == nil {
+		if eIg := en.Integrity(); eIg != nil {
+			relIG.ToNodeHash = eIg.Hash
+		}
+	}
+	current.SetIntegrity(relIG)
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

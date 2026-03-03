@@ -38,7 +38,9 @@ func TestTemporalMetadataStructSize(t *testing.T) {
 func TestNodeIntegrityStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 32
+	// NodeIntegrity: Hash (16) + PrevHash (16) + AuthorID (16) + Signature (24) = 72 bytes.
+	// Updated in v3.0.44-v3.0.45 to include AuthorID and Signature fields.
+	const want = 72
 	got := unsafe.Sizeof(NodeIntegrity{})
 	if got != want {
 		t.Fatalf("NodeIntegrity struct size = %d bytes, want %d bytes", got, want)
@@ -48,7 +50,10 @@ func TestNodeIntegrityStructSize(t *testing.T) {
 func TestRelIntegrityStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 32
+	// RelIntegrity: Hash (16) + PrevHash (16) + FromNodeHash (16) + ToNodeHash (16)
+	//              + AuthorID (16) + Signature (24) = 104 bytes.
+	// Updated in v3.0.44-v3.0.45 to include endpoint hashes, AuthorID, and Signature.
+	const want = 104
 	got := unsafe.Sizeof(RelIntegrity{})
 	if got != want {
 		t.Fatalf("RelIntegrity struct size = %d bytes, want %d bytes", got, want)

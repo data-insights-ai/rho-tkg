@@ -84,6 +84,18 @@ func (g *Graph) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
 			return ig.PrevHash, true
 		}
 		return nil, false
+	case types.ShadowFromHash, types.ShadowToHash:
+		return nil, false // rel-only
+	case types.ShadowAuthorID:
+		if ig := n.Integrity(); ig != nil {
+			return ig.AuthorID, true
+		}
+		return nil, false
+	case types.ShadowSignature:
+		if ig := n.Integrity(); ig != nil {
+			return ig.Signature, true
+		}
+		return nil, false
 
 	// Version chain
 	case types.ShadowBaseEntity:
@@ -175,6 +187,26 @@ func (g *Graph) ResolveRelProperty(r *types.Relationship, key string) (any, bool
 	case types.ShadowPrevHash:
 		if ig := r.Integrity(); ig != nil {
 			return ig.PrevHash, true
+		}
+		return nil, false
+	case types.ShadowFromHash:
+		if ig := r.Integrity(); ig != nil {
+			return ig.FromNodeHash, true
+		}
+		return nil, false
+	case types.ShadowToHash:
+		if ig := r.Integrity(); ig != nil {
+			return ig.ToNodeHash, true
+		}
+		return nil, false
+	case types.ShadowAuthorID:
+		if ig := r.Integrity(); ig != nil {
+			return ig.AuthorID, true
+		}
+		return nil, false
+	case types.ShadowSignature:
+		if ig := r.Integrity(); ig != nil {
+			return ig.Signature, true
 		}
 		return nil, false
 

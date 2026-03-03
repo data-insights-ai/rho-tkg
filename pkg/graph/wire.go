@@ -27,6 +27,8 @@ type nodeWire struct {
 	BaseEntityID int64          `msgpack:"be,omitempty"`
 	Hash         string         `msgpack:"h,omitempty"`
 	PrevHash     string         `msgpack:"ph,omitempty"`
+	AuthorID     string         `msgpack:"aid,omitempty"`
+	Signature    []byte         `msgpack:"sig,omitempty"`
 }
 
 // relWire is the msgpack wire format for Relationship entities.
@@ -50,6 +52,10 @@ type relWire struct {
 	BaseEntityID int64          `msgpack:"be,omitempty"`
 	Hash         string         `msgpack:"h,omitempty"`
 	PrevHash     string         `msgpack:"ph,omitempty"`
+	FromNodeHash string         `msgpack:"fnh,omitempty"`
+	ToNodeHash   string         `msgpack:"tnh,omitempty"`
+	AuthorID     string         `msgpack:"aid,omitempty"`
+	Signature    []byte         `msgpack:"sig,omitempty"`
 }
 
 // propertyWire is the msgpack wire format for a single property key-value pair.
@@ -97,6 +103,8 @@ func nodeToWire(n *types.Node) nodeWire {
 	if ig := n.Integrity(); ig != nil {
 		w.Hash = ig.Hash
 		w.PrevHash = ig.PrevHash
+		w.AuthorID = ig.AuthorID
+		w.Signature = ig.Signature
 	}
 
 	return w
@@ -131,10 +139,12 @@ func wireToNode(w nodeWire) *types.Node {
 		n.SetTemporal(tm)
 	}
 
-	if w.Hash != "" || w.PrevHash != "" {
+	if w.Hash != "" || w.PrevHash != "" || w.AuthorID != "" || len(w.Signature) > 0 {
 		n.SetIntegrity(&types.NodeIntegrity{
-			Hash:     w.Hash,
-			PrevHash: w.PrevHash,
+			Hash:      w.Hash,
+			PrevHash:  w.PrevHash,
+			AuthorID:  w.AuthorID,
+			Signature: w.Signature,
 		})
 	}
 
@@ -172,6 +182,10 @@ func relToWire(r *types.Relationship) relWire {
 	if ig := r.Integrity(); ig != nil {
 		w.Hash = ig.Hash
 		w.PrevHash = ig.PrevHash
+		w.FromNodeHash = ig.FromNodeHash
+		w.ToNodeHash = ig.ToNodeHash
+		w.AuthorID = ig.AuthorID
+		w.Signature = ig.Signature
 	}
 
 	return w
@@ -206,10 +220,14 @@ func wireToRel(w relWire) *types.Relationship {
 		r.SetTemporal(tm)
 	}
 
-	if w.Hash != "" || w.PrevHash != "" {
+	if w.Hash != "" || w.PrevHash != "" || w.FromNodeHash != "" || w.ToNodeHash != "" || w.AuthorID != "" || len(w.Signature) > 0 {
 		r.SetIntegrity(&types.RelIntegrity{
-			Hash:     w.Hash,
-			PrevHash: w.PrevHash,
+			Hash:         w.Hash,
+			PrevHash:     w.PrevHash,
+			FromNodeHash: w.FromNodeHash,
+			ToNodeHash:   w.ToNodeHash,
+			AuthorID:     w.AuthorID,
+			Signature:    w.Signature,
 		})
 	}
 
