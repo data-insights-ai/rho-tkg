@@ -348,7 +348,7 @@ func (tx *GraphTx) Commit() error {
 		return ErrTxDone
 	}
 	tx.done = true
-	tx.g.mu.Unlock()
+	defer tx.g.mu.Unlock() // deferred so any future code additions cannot skip the unlock
 	return nil
 }
 
@@ -375,6 +375,7 @@ func (tx *GraphTx) Rollback() error {
 		return ErrTxDone
 	}
 	tx.done = true
+	defer tx.g.mu.Unlock() // deferred so a store panic cannot permanently hold the write lock
 
 	var firstErr error
 	capture := func(err error) {
@@ -417,7 +418,6 @@ func (tx *GraphTx) Rollback() error {
 		capture(tx.g.store.DeleteNodeCascade(tx.createdNodes[i]))
 	}
 
-	tx.g.mu.Unlock()
 	return firstErr
 }
 

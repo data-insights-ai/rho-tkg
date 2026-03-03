@@ -68,6 +68,17 @@ func (cs ConstraintSet) Items() []TemporalConstraint {
 	return out
 }
 
+// forEach calls fn for each constraint without allocating a copy of the slice.
+// Returns the first non-nil error returned by fn, stopping iteration.
+func (cs ConstraintSet) forEach(fn func(TemporalConstraint) error) error {
+	for _, c := range cs.items {
+		if err := fn(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Sentinel errors for temporal constraint violations.
 // All are wrapped with ErrTemporalConstraint so callers can use errors.Is on either.
 var (
@@ -87,15 +98,13 @@ func (g *Graph) checkTemporalConstraints(r *types.Relationship, startNode, endNo
 	if g.constraints.Len() == 0 {
 		return nil // fast path: no constraints configured
 	}
-	for _, c := range g.constraints.Items() {
+	return g.constraints.forEach(func(c TemporalConstraint) error {
 		switch c.Kind {
 		case ConstraintRelWithinEndpoints:
-			if err := g.checkRelWithinEndpoints(r, startNode, endNode); err != nil {
-				return err
-			}
+			return g.checkRelWithinEndpoints(r, startNode, endNode)
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // checkRelWithinEndpoints enforces ConstraintRelWithinEndpoints.

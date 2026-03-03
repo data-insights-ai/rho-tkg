@@ -1,14 +1,36 @@
 package graph
 
 import (
+	"container/heap"
 	"errors"
 	"math"
-	"sort"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
 )
+
+// knnEntry is a candidate result for k-nearest-neighbor search.
+type knnEntry struct {
+	id   snowflake.ID
+	dist float64
+}
+
+// knnHeap is a max-heap by dist: the root is the farthest of the k-best candidates.
+// Keeping a max-heap of size k lets us evict the worst candidate in O(log k) time.
+type knnHeap []knnEntry
+
+func (h knnHeap) Len() int           { return len(h) }
+func (h knnHeap) Less(i, j int) bool { return h[i].dist > h[j].dist } // max-heap
+func (h knnHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *knnHeap) Push(x any)        { *h = append(*h, x.(knnEntry)) }
+func (h *knnHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[:n-1]
+	return x
+}
 
 // DistanceMetric determines how similarity is measured between two vectors.
 type DistanceMetric uint8
@@ -94,12 +116,10 @@ func (vi *vectorIndex) searchNearest(query []float32, k int) ([]snowflake.ID, er
 		return nil, nil
 	}
 
-	type scored struct {
-		id   snowflake.ID
-		dist float64
-	}
-
-	results := make([]scored, 0, len(vi.entries))
+	// Use a max-heap of size k to find the k nearest entries in O(N log k) time,
+	// reducing the duration we hold vi.mu.RLock compared to O(N log N) sort.
+	h := make(knnHeap, 0, k)
+	heap.Init(&h)
 	for _, e := range vi.entries {
 		var d float64
 		switch vi.metric {
@@ -108,19 +128,19 @@ func (vi *vectorIndex) searchNearest(query []float32, k int) ([]snowflake.ID, er
 		default:
 			d = euclideanDist(query, e.vec)
 		}
-		results = append(results, scored{id: e.id, dist: d})
+		if h.Len() < k {
+			heap.Push(&h, knnEntry{id: e.id, dist: d})
+		} else if d < h[0].dist {
+			// Replace the current farthest candidate.
+			h[0] = knnEntry{id: e.id, dist: d}
+			heap.Fix(&h, 0)
+		}
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].dist < results[j].dist
-	})
-
-	if k > len(results) {
-		k = len(results)
-	}
-	ids := make([]snowflake.ID, k)
-	for i := range k {
-		ids[i] = results[i].id
+	// Drain heap in ascending distance order (closest first).
+	ids := make([]snowflake.ID, h.Len())
+	for i := len(ids) - 1; i >= 0; i-- {
+		ids[i] = heap.Pop(&h).(knnEntry).id
 	}
 	return ids, nil
 }

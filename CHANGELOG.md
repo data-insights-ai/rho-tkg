@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.57] - 2026-03-03
+
+### Fixed (6 Production Defects — v3.0.57)
+
+- **Fix A — Rollback/Commit panic leaks graph write lock** (`pkg/graph/tx.go`, CRITICAL): `tx.g.mu.Unlock()` was the last explicit statement in `Rollback()`. Any panic in one of the six rollback phases (store `PutRelationship`, `PutNode`, `ReplaceRelationship`, `ReplaceNode`, `DeleteRelationship`, `DeleteNodeCascade`) left the graph write lock permanently held, deadlocking all subsequent `BeginTx`/`Batch`/`Reset` callers. Fixed by replacing the explicit unlock with `defer tx.g.mu.Unlock()` placed immediately after `tx.done = true`, ensuring the lock is released on both normal and panic paths. Same fix applied to `Commit()` for forward safety.
+
+- **Fix B — RemoveNodeLabel violates temporal guarantees** (`pkg/graph/graph.go`, BLOCKER): `RemoveNodeLabel` overwrote the node in-place via `RemoveNodeLabelToken` with no version bump and no history entry (explicit "No version bump; no history entry" comment). Past-time queries (`GetNodeAt`, `GetNodesValidAt`, `DiffSnapshots`) could not observe that the node ever had the removed label. Fixed following the `UpdateNodeWithContext` version-bump pattern: capture `prevVersion`/`prevState` before mutation, call `PutNodeVersion(id, prevVersion, prevState)` to save the old state, bump `copy.SetVersion(prevVersion + 1)`, then call `RemoveNodeLabelToken`. Also corrected the hash chain to use `current.Integrity().Hash` (not `PrevHash`) as the new `PrevHash`, matching the chain in all other update paths. Stale comment removed from `badgerstore.go:RemoveNodeLabelToken`. Crash window: phantom history entry possible if crash between `PutNodeVersion` and `RemoveNodeLabelToken` — same documented limitation as `Rollback`; entity state remains correct. TODO(v3.0.58): atomic `RemoveNodeLabelTokenWithHistory`.
+
+- **Fix C — DiffSnapshots holds g.mu.RLock during O(N) materialization** (`pkg/graph/temporal.go`, BLOCKER): `DiffSnapshots` held `g.mu.RLock()` across two calls to `snapshotLocked`, each materialising ALL valid nodes/rels into RAM. All `g.mu.Lock()` callers (`BeginTx`, `Batch`, `Reset`) were blocked for the full O(N) duration. `GetNodesValidAt` uses `forEachKnownNodeID` which does its own store-level locking — `g.mu` is not required for correctness of individual snapshot reads. Fixed by removing `g.mu.RLock()` from `DiffSnapshots`. Renamed `snapshotLocked` → `snapshotAt` (no longer requires the caller to hold `g.mu`). `Snapshot()` continues to hold `g.mu.RLock()` for strong consistency. Trade-off documented: a concurrent backdated write that commits between the two reads may appear as a spurious Created/Deleted entry. TODO(v3.0.58): streaming `DiffSnapshots` to avoid O(N) RAM.
+
+- **Fix D — searchNearest O(N log N) sort under RLock** (`pkg/graph/vector_index.go`, MAJOR): `searchNearest` allocated a `[]scored` of all N entries, sorted it in O(N log N) while holding `vi.mu.RLock()`, blocking concurrent vector insertions. Replaced with a max-heap of size k (`knnHeap` via `container/heap`) that runs in O(N log k) time. For k ≪ N the lock is held significantly shorter; for k=N behaviour is equivalent. The heap drains in ascending distance order (closest first) matching the previous sort contract. Removed `"sort"` import; added `"container/heap"`.
+
+- **Fix E — checkTemporalConstraints allocates on every relationship write** (`pkg/graph/temporal_constraint.go`, MINOR): `g.constraints.Items()` copies the constraint slice on every relationship write (even with a single constraint). Added unexported `forEach(fn func(TemporalConstraint) error) error` method on `ConstraintSet` that iterates `cs.items` directly with zero allocation. `checkTemporalConstraints` updated to use `forEach`. Exported `Items()` retained for external callers.
+
+- **Fix F — TOCTOU retry loop has no backoff** (`pkg/graph/context.go`, MINOR): The TOCTOU retry in `DeleteNodeWithContext` called `continue` immediately after `UnlockMany` on a failed attempt. Under sustained concurrent rel-add/remove to the same node, all 10 retries could exhaust without the competing goroutine making progress. Fixed by adding `runtime.Gosched()` after `UnlockMany`, yielding the processor to let the competing rel-writer commit. Added `"runtime"` to import block.
+
+### Tests Added
+
+- `TestRemoveNodeLabel_PreservesHistory` — verifies `GetNodeHistory` returns 1 entry after `RemoveNodeLabel`, version 0 retains the removed label (Fix B).
+- `TestGraphTx_RollbackPanicSafe` — injects a store panic during rollback via `deleteRelPanicStore`; verifies `BeginTx` completes within 2s after recovery, confirming the graph write lock was released by the deferred unlock (Fix A).
+- `TestDiffSnapshots_DoesNotBlockWrites` — runs 8 concurrent `DiffSnapshots` goroutines alongside 8 `BeginTx` goroutines; verifies all complete within 10s without deadlock (Fix C).
+- `TestSearchNearest_HeapCorrectness` — verifies top-k results from the heap implementation match brute-force distances for k=1 (exact nearest), k=3 (set equality + non-decreasing order), and k=N (set equality + non-decreasing order, allowing ties within equal-distance groups) (Fix D).
+
 ## [3.0.56] - 2026-03-03
 
 ### Fixed (7 Production Defects — v3.0.56)

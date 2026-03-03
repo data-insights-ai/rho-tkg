@@ -926,17 +926,22 @@ func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
 		return ErrLastLabel
 	}
 
+	// Capture pre-mutation state for version history (before any modification).
+	prevVersion := current.Version()
+	prevState := current.DeepCopy()
+
 	copy := current.DeepCopy()
 	copy.RemoveLabelTokenRaw(tok)
 
-	// Recompute hash after label change.
+	// Advance hash chain: PrevHash = current Hash (link new version back to current).
 	prevHash := ""
-	if ig := copy.Integrity(); ig != nil {
-		prevHash = ig.PrevHash
+	if ig := current.Integrity(); ig != nil {
+		prevHash = ig.Hash
 	}
 	nodeLabels := g.NodeLabels(copy)
 	hash := ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+	copy.SetVersion(prevVersion + 1)
 
 	// Set UpdatedAt.
 	now := types.Instant(time.Now().UnixMilli())
@@ -946,6 +951,14 @@ func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
 		copy.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+
+	// Persist old state as history entry before updating the current node.
+	// TODO(v3.0.58): atomic RemoveNodeLabelTokenWithHistory (crash window: phantom history
+	// entry if crash after PutNodeVersion but before RemoveNodeLabelToken; entity state
+	// remains correct — same documented limitation as Rollback).
+	if err := g.store.PutNodeVersion(id, prevVersion, prevState); err != nil {
+		return err
+	}
 
 	if err := g.store.RemoveNodeLabelToken(id, tok, copy); err != nil {
 		return err

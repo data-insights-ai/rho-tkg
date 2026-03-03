@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -376,8 +377,10 @@ func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) erro
 
 		allIDs2 := collectDeleteIDs(id, outRels2, inRels2)
 		if !sameIDSet(allIDs, allIDs2) {
-			// Adjacency changed — retry.
+			// Adjacency changed — retry. Yield the goroutine so the competing
+			// rel-writer can commit before we re-read adjacency.
 			g.entityLocks.UnlockMany(allIDs)
+			runtime.Gosched()
 			continue
 		}
 

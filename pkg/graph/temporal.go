@@ -591,12 +591,12 @@ func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*ty
 func (g *Graph) Snapshot(t types.Instant) (*GraphSnapshot, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.snapshotLocked(t)
+	return g.snapshotAt(t)
 }
 
-// snapshotLocked computes the graph snapshot at t without acquiring g.mu.
-// Callers must hold at least g.mu.RLock before calling this method.
-func (g *Graph) snapshotLocked(t types.Instant) (*GraphSnapshot, error) {
+// snapshotAt computes the graph snapshot at t. It does not acquire g.mu;
+// callers that require strong snapshot consistency should hold g.mu.RLock.
+func (g *Graph) snapshotAt(t types.Instant) (*GraphSnapshot, error) {
 	nodes, err := g.GetNodesValidAt(t)
 	if err != nil {
 		return nil, err
@@ -637,20 +637,24 @@ func (g *Graph) snapshotLocked(t types.Instant) (*GraphSnapshot, error) {
 // Entities valid at both but with different integrity hash → Updated.
 // Entities valid at T1 but not T2 → Deleted.
 // Returns ErrInvalidTimeRange if t1 >= t2 or either is zero.
+//
+// Note: the two snapshots are read independently without holding g.mu. A
+// concurrent backdated write that commits between the two reads may appear as
+// a spurious Created/Deleted entry. This is an acceptable trade-off against
+// blocking all writes for the full O(N) snapshot duration.
+//
+// TODO(v3.0.58): streaming DiffSnapshots to avoid O(N) RAM materialization.
 func (g *Graph) DiffSnapshots(t1, t2 types.Instant) (*SnapshotDiff, error) {
 	if t1 == 0 || t2 == 0 || t1 >= t2 {
 		return nil, ErrInvalidTimeRange
 	}
 
-	// Hold RLock across both snapshot reads to prevent torn reads.
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	snap1, err := g.snapshotLocked(t1)
+	// No g.mu.RLock — see doc comment above.
+	snap1, err := g.snapshotAt(t1)
 	if err != nil {
 		return nil, err
 	}
-	snap2, err := g.snapshotLocked(t2)
+	snap2, err := g.snapshotAt(t2)
 	if err != nil {
 		return nil, err
 	}

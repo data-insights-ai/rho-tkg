@@ -661,8 +661,9 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 }
 
 // RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
-// updatedNode must already have the label removed (via RemoveLabelTokenRaw).
-// No version bump; no history entry. Returns ErrNodeNotFound if the node does not exist.
+// updatedNode must already have the label removed (via RemoveLabelTokenRaw) and have its
+// version bumped. Version history must be written by the caller before this call.
+// Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
 	intID := int64(id)
 
