@@ -87,7 +87,7 @@ Transactions: `BeginTx()` starts a mutation transaction holding the graph write 
 
 Reset: `Reset()` atomically clears all entities, indexes, history, and counters while preserving label and relationship type registries.
 
-Export/Import: `ExportGraph(w io.Writer)` writes a portable format-independent snapshot to `w` — header, label/reltype registries, all current nodes and relationships, and their full version history. Wire format: length-prefixed msgpack record stream with 1-byte type tags; forward-compatible (unknown tags are skipped on import). Holds `g.mu.RLock` for a consistent snapshot. `ImportGraph(r io.Reader)` reads the stream and restores into the graph, holding `g.mu.Lock`. Registry import is idempotent (existing registries are kept). Use for backup, migration across store versions, or seeding test fixtures. Returns `ErrIncompatibleExport` on version mismatch.
+Export/Import: `ExportGraph(w io.Writer)` writes a portable format-independent snapshot to `w` — header, label/reltype registries, all current nodes and relationships, and their full version history. Wire format: length-prefixed msgpack record stream with 1-byte type tags; forward-compatible (unknown tags are skipped on import). Holds `g.mu.RLock` for a consistent snapshot. `ImportGraph(r io.Reader)` reads the stream and restores into the graph, holding `g.mu.Lock`. Registry import is idempotent when the existing token mappings are identical to the export (safe re-import). Returns `ErrIncompatibleExport` on format version mismatch; returns `ErrIncompatibleRegistry` when the existing registry maps tokens differently from the export (importing would corrupt all entity labels or relationship types). Per-record allocations are capped at 128 MiB. Use for backup, migration across store versions, or seeding test fixtures.
 
 Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. MemoryStore uses existing index sizes; BadgerStore maintains `sync.Map` + `atomic.Int64` counters.
 
@@ -208,7 +208,7 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_authorized_by` | `string` | Both |
 | `tkg_auth_level` | `uint8` | Both |
 
-`tkg_author_id`, `tkg_signature`, `tkg_authorized_by`, and `tkg_auth_level` are write-path shadow keys: pass them in the `props`/`updates` map of any Add or Update call to store provenance/authorization on the integrity struct. They are stripped before `PropertySlice` construction (never stored as real properties) and readable back via `ResolveNodeProperty` / `ResolveRelProperty`.
+`tkg_author_id`, `tkg_signature`, `tkg_authorized_by`, and `tkg_auth_level` are write-path shadow keys: pass them in the `props`/`updates` map of any Add or Update call to store provenance/authorization on the integrity struct. They are stripped before `PropertySlice` construction (never stored as real properties) and readable back via `ResolveNodeProperty` / `ResolveRelProperty`. `tkg_auth_level` accepts `uint8`, `int`, `int32`, `int64`, or `float64`; values outside `[0, 255]` or non-numeric types return an error.
 
 ## Build & Test
 

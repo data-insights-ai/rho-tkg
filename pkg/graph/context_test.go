@@ -656,6 +656,61 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	}
 }
 
+// --- Group F: extractProvenance bounds checks (v3.0.53) ---
+
+func TestExtractProvenance_OutOfBoundsInt(t *testing.T) {
+	t.Parallel()
+	_, _, _, _, _, err := extractProvenance(map[string]any{"tkg_auth_level": int(256)})
+	if err == nil {
+		t.Fatal("expected error for tkg_auth_level=256, got nil")
+	}
+}
+
+func TestExtractProvenance_NegativeInt(t *testing.T) {
+	t.Parallel()
+	_, _, _, _, _, err := extractProvenance(map[string]any{"tkg_auth_level": int(-1)})
+	if err == nil {
+		t.Fatal("expected error for tkg_auth_level=-1, got nil")
+	}
+}
+
+func TestExtractProvenance_OutOfBoundsFloat(t *testing.T) {
+	t.Parallel()
+	_, _, _, _, _, err := extractProvenance(map[string]any{"tkg_auth_level": float64(300)})
+	if err == nil {
+		t.Fatal("expected error for tkg_auth_level=300.0, got nil")
+	}
+}
+
+func TestExtractProvenance_InvalidType(t *testing.T) {
+	t.Parallel()
+	_, _, _, _, _, err := extractProvenance(map[string]any{"tkg_auth_level": "5"})
+	if err == nil {
+		t.Fatal("expected error for tkg_auth_level=string(\"5\"), got nil")
+	}
+}
+
+func TestExtractProvenance_ValidBoundary(t *testing.T) {
+	t.Parallel()
+	// int(0) — minimum valid value
+	_, _, _, level0, _, err := extractProvenance(map[string]any{"tkg_auth_level": int(0)})
+	if err != nil {
+		t.Fatalf("int(0): unexpected error: %v", err)
+	}
+	if level0 != 0 {
+		t.Errorf("int(0): got authLevel=%d, want 0", level0)
+	}
+
+	// int(255) — maximum valid value
+	_, _, _, level255, _, err := extractProvenance(map[string]any{"tkg_auth_level": int(255)})
+	if err != nil {
+		t.Fatalf("int(255): unexpected error: %v", err)
+	}
+	if level255 != 255 {
+		t.Errorf("int(255): got authLevel=%d, want 255", level255)
+	}
+}
+
 // --- Helpers ---
 
 // deadlineInPast returns a time in the past to create an already-expired deadline.

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.53] - 2026-03-03
+
+### Fixed (Code Review Bugs — Phases 4.13–4.16)
+
+- **`extractProvenance` silent truncation** (`pkg/graph/context.go`): Integer values of `tkg_auth_level` outside `[0, 255]` previously silently wrapped via modulo cast to `uint8`, corrupting the stored `AuthorizationLevel`. Unrecognised non-nil types (e.g. `string("5")`) silently stored 0. Fixed by adding bounds checks for all integer/float64 cases (`int`, `int32`, `int64`, `float64`) and a `default` case that returns an explicit error. The function signature gains a 6th `error` return; all 4 callers in `context.go` now propagate the error. All `#nosec G115` comments on the cast sites removed — bounds are now checked explicitly. 5 new tests: `TestExtractProvenance_OutOfBoundsInt`, `TestExtractProvenance_NegativeInt`, `TestExtractProvenance_OutOfBoundsFloat`, `TestExtractProvenance_InvalidType`, `TestExtractProvenance_ValidBoundary`.
+
+- **`ImportGraph` registry mismatch** (`pkg/graph/export.go`): When importing into a graph whose label/reltype registry was already populated with different token mappings, `ErrRegistryNotEmpty` was swallowed and the import continued, silently assigning wrong labels and relationship types to all imported entities. Fixed by comparing the existing registry with the incoming one via `reflect.DeepEqual` when `ErrRegistryNotEmpty` is returned from `ImportNames`. Identical registries (idempotent re-import) continue without error; conflicting registries return the new sentinel `ErrIncompatibleRegistry`. 2 new tests: `TestImportGraph_IncompatibleLabelRegistry`, `TestImportGraph_CompatibleRegistryIdempotent`. Existing `TestImport_IdempotentRegistry` continues to pass.
+
+- **`readExportRecord` DoS / OOM** (`pkg/graph/export.go`): The 4-byte length header in the export stream was trusted unconditionally. A crafted export file with `length = 4 GiB` caused an immediate OOM allocation before any data was read. Fixed by adding `maxExportRecordSize = 128 MiB` constant and a guard that returns an error before the `make([]byte, length)` call. 1 new test: `TestReadExportRecord_OversizeRecord`.
+
 ## [3.0.52] - 2026-03-03
 
 ### Added (HighFrequencyIndex — Phase 4.21)

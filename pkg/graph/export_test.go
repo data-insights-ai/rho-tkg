@@ -2,6 +2,7 @@ package graph_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"testing"
@@ -447,6 +448,118 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 	dstHash, _ := dst.ResolveNodeProperty(imported, types.ShadowHash)
 	if dstHash != srcHash {
 		t.Errorf("tkg_hash: dst=%v, src=%v", dstHash, srcHash)
+	}
+}
+
+// --- v3.0.53 bug-fix tests ---
+
+// TestImportGraph_IncompatibleLabelRegistry verifies that importing into a graph
+// whose label registry was populated with different token mappings returns
+// ErrIncompatibleRegistry instead of silently corrupting all entity labels.
+func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
+	// Build source graph with labels "Person" and "City".
+	src, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New src: %v", err)
+	}
+	defer src.Close() //nolint:errcheck
+
+	start, _ := src.AddNode([]string{"Person"}, nil)
+	end, _ := src.AddNode([]string{"City"}, nil)
+	_, _ = src.AddRelationship("LIVES_IN", start, end, nil)
+
+	var buf bytes.Buffer
+	if err := src.ExportGraph(&buf); err != nil {
+		t.Fatalf("ExportGraph: %v", err)
+	}
+
+	// Destination has a DIFFERENT label at token 1 — "Company" instead of "Person".
+	dst, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New dst: %v", err)
+	}
+	defer dst.Close() //nolint:errcheck
+	_, _ = dst.AddNode([]string{"Company"}, nil)
+
+	err = dst.ImportGraph(&buf)
+	if !errors.Is(err, graph.ErrIncompatibleRegistry) {
+		t.Errorf("ImportGraph: got %v, want ErrIncompatibleRegistry", err)
+	}
+}
+
+// TestImportGraph_CompatibleRegistryIdempotent verifies that importing the same
+// export twice into the same graph succeeds — the second import detects a
+// non-empty but identical registry and continues without error.
+func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
+	src, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New src: %v", err)
+	}
+	defer src.Close() //nolint:errcheck
+
+	a, _ := src.AddNode([]string{"Alpha"}, map[string]any{"x": int64(1)})
+	b, _ := src.AddNode([]string{"Beta"}, nil)
+	_, _ = src.AddRelationship("LINK", a, b, nil)
+
+	var buf bytes.Buffer
+	if err := src.ExportGraph(&buf); err != nil {
+		t.Fatalf("ExportGraph: %v", err)
+	}
+	exportedBytes := buf.Bytes()
+
+	dst, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New dst: %v", err)
+	}
+	defer dst.Close() //nolint:errcheck
+
+	// First import — fresh graph, registries empty.
+	if err := dst.ImportGraph(bytes.NewReader(exportedBytes)); err != nil {
+		t.Fatalf("first ImportGraph: %v", err)
+	}
+
+	// Second import — same export bytes, registry now populated with identical mapping.
+	if err := dst.ImportGraph(bytes.NewReader(exportedBytes)); err != nil {
+		t.Fatalf("second ImportGraph (idempotent): %v", err)
+	}
+
+	// Node count should be unchanged (re-import skips existing nodes).
+	nc, _ := dst.NodeCount()
+	srcNC, _ := src.NodeCount()
+	if nc != srcNC {
+		t.Errorf("NodeCount after idempotent import: dst=%d, src=%d", nc, srcNC)
+	}
+}
+
+// TestReadExportRecord_OversizeRecord verifies that a crafted export record
+// whose length header claims more than maxExportRecordSize bytes causes
+// ImportGraph to return an error without allocating the huge buffer.
+func TestReadExportRecord_OversizeRecord(t *testing.T) {
+	// Craft a 5-byte "record": tag=exportTagHeader(0x01), length=128MiB+1.
+	// No body follows — the size guard must fire before make([]byte, length).
+	const oversizeLen = 128*1024*1024 + 1
+
+	var buf bytes.Buffer
+	buf.WriteByte(0x01) // exportTagHeader tag
+	var lenBytes [4]byte
+	binary.BigEndian.PutUint32(lenBytes[:], uint32(oversizeLen))
+	buf.Write(lenBytes[:])
+	// Deliberately omit the body — guard fires first, no io.ReadFull attempted.
+
+	g, err := graph.New(graph.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close() //nolint:errcheck
+
+	err = g.ImportGraph(&buf)
+	if err == nil {
+		t.Fatal("ImportGraph: expected error for oversize record, got nil")
+	}
+	// Must NOT be io.ErrUnexpectedEOF — that would mean the guard was absent
+	// and the body read was attempted (which would have caused OOM first).
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("ImportGraph returned ErrUnexpectedEOF — size guard was not applied before body read")
 	}
 }
 

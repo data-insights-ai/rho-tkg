@@ -31,29 +31,47 @@ func checkCtx(ctx context.Context) error {
 // returns their values plus a filtered props map without those keys.
 // If none of the reserved keys are present, the original map is returned
 // unchanged (no allocation). The caller's original map is never mutated (B23).
-func extractProvenance(props map[string]any) (authorID string, sig []byte, authorizedBy string, authLevel uint8, filtered map[string]any) {
+// Returns an error if tkg_auth_level is out of [0, 255] or has an unsupported type.
+func extractProvenance(props map[string]any) (authorID string, sig []byte, authorizedBy string, authLevel uint8, filtered map[string]any, err error) {
 	_, hasA := props["tkg_author_id"]
 	_, hasS := props["tkg_signature"]
 	_, hasABy := props["tkg_authorized_by"]
 	_, hasAL := props["tkg_auth_level"]
 	if !hasA && !hasS && !hasABy && !hasAL {
-		return "", nil, "", 0, props
+		return "", nil, "", 0, props, nil
 	}
 	authorID, _ = props["tkg_author_id"].(string)
 	sig, _ = props["tkg_signature"].([]byte)
 	authorizedBy, _ = props["tkg_authorized_by"].(string)
 	// Accept uint8 and all integer types for JSON round-trip safety.
+	// Bounds are checked explicitly to prevent silent truncation via modulo.
 	switch v := props["tkg_auth_level"].(type) {
 	case uint8:
 		authLevel = v
 	case int:
-		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
-	case int64:
-		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
+		if v < 0 || v > 255 {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+		}
+		authLevel = uint8(v)
 	case int32:
-		authLevel = uint8(v) // #nosec G115 — caller-supplied authorization tier, clamped to uint8
+		if v < 0 || v > 255 {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+		}
+		authLevel = uint8(v)
+	case int64:
+		if v < 0 || v > 255 {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+		}
+		authLevel = uint8(v)
 	case float64:
-		authLevel = uint8(v) // #nosec G115 — JSON numbers decode as float64
+		if v < 0 || v > 255 {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %g out of range [0, 255]", v)
+		}
+		authLevel = uint8(v) // truncates fractional part — acceptable for JSON round-trip (e.g. 5.0)
+	default:
+		if props["tkg_auth_level"] != nil {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level must be a number, got %T", props["tkg_auth_level"])
+		}
 	}
 	filtered = make(map[string]any, len(props))
 	for k, v := range props {
@@ -61,7 +79,7 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 			filtered[k] = v
 		}
 	}
-	return authorID, sig, authorizedBy, authLevel, filtered
+	return authorID, sig, authorizedBy, authLevel, filtered, nil
 }
 
 // GetNodeWithContext retrieves a node by snowflake ID with context support.
@@ -101,7 +119,10 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 
 	// Extract reserved provenance fields before validation so they are never
 	// seen by PropertySlice.Set (which rejects the tkg_ prefix).
-	authorID, sig, authorizedBy, authLevel, props := extractProvenance(props)
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
@@ -199,7 +220,10 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	}
 
 	// Extract reserved provenance fields before validation.
-	authorID, sig, authorizedBy, authLevel, props := extractProvenance(props)
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
 
 	// Validation limits.
 	if err := g.validateName(typeName); err != nil {
@@ -513,7 +537,10 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	// Extract reserved provenance fields before validation.
 	// The no-op check above uses the original map length; after extraction
 	// the remaining updates may be empty (metadata-only update).
-	authorID, sig, authorizedBy, authLevel, updates := extractProvenance(updates)
+	authorID, sig, authorizedBy, authLevel, updates, err := extractProvenance(updates)
+	if err != nil {
+		return nil, err
+	}
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {
@@ -648,7 +675,10 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	}
 
 	// Extract reserved provenance fields before validation.
-	authorID, sig, authorizedBy, authLevel, updates := extractProvenance(updates)
+	authorID, sig, authorizedBy, authLevel, updates, err := extractProvenance(updates)
+	if err != nil {
+		return nil, err
+	}
 
 	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
 	for key, val := range updates {

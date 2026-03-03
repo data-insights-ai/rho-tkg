@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -36,6 +37,16 @@ type exportHeader struct {
 // ErrIncompatibleExport is returned when the export stream carries an
 // unsupported format version.
 var ErrIncompatibleExport = errors.New("graph: incompatible export format version")
+
+// ErrIncompatibleRegistry is returned by ImportGraph when the export stream
+// carries a label or reltype registry that conflicts with an existing non-empty
+// registry whose token mappings differ. Importing with a mismatched registry
+// would assign wrong labels/types to all entities without any visible error.
+var ErrIncompatibleRegistry = errors.New("graph: imported registry conflicts with existing registry")
+
+// maxExportRecordSize caps the per-record allocation in readExportRecord.
+// A node with 1000 max-size properties is ~66 MiB; 128 MiB gives safe headroom.
+const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 
 // ExportGraph writes a portable snapshot of the graph to w.
 //
@@ -210,11 +221,23 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			if err := msgpack.Unmarshal(data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
 			}
-			if err := g.labels.ImportNames(reg.Labels); err != nil && !errors.Is(err, ErrRegistryNotEmpty) {
-				return fmt.Errorf("import: label registry: %w", err)
+			if err := g.labels.ImportNames(reg.Labels); err != nil {
+				if !errors.Is(err, ErrRegistryNotEmpty) {
+					return fmt.Errorf("import: label registry: %w", err)
+				}
+				// Existing registry: identical token mapping is safe (idempotent re-import).
+				// Different mapping would silently corrupt all imported entity labels.
+				if existing := g.labels.ExportNames(); !reflect.DeepEqual(existing, reg.Labels) {
+					return fmt.Errorf("import: label registry: %w", ErrIncompatibleRegistry)
+				}
 			}
-			if err := g.relTypes.ImportNames(reg.RelTypes); err != nil && !errors.Is(err, ErrRegistryNotEmpty) {
-				return fmt.Errorf("import: reltype registry: %w", err)
+			if err := g.relTypes.ImportNames(reg.RelTypes); err != nil {
+				if !errors.Is(err, ErrRegistryNotEmpty) {
+					return fmt.Errorf("import: reltype registry: %w", err)
+				}
+				if existing := g.relTypes.ExportNames(); !reflect.DeepEqual(existing, reg.RelTypes) {
+					return fmt.Errorf("import: reltype registry: %w", ErrIncompatibleRegistry)
+				}
 			}
 
 		case exportTagNode:
@@ -299,6 +322,9 @@ func readExportRecord(r io.Reader) (tag byte, data []byte, err error) {
 		return 0, nil, err
 	}
 	length := binary.BigEndian.Uint32(header[1:5])
+	if length > maxExportRecordSize {
+		return 0, nil, fmt.Errorf("import: record too large (tag=0x%02x, len=%d, max=%d)", header[0], length, maxExportRecordSize)
+	}
 	data = make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
 		return 0, nil, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, err)
