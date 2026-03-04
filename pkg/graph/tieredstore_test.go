@@ -470,7 +470,7 @@ func TestTieredStore_CrossShardRel_EndpointNotFound(t *testing.T) {
 	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), fakeEndID)
 
 	// Creating with token that maps to ref, but endpoint doesn't exist.
-	// Since fakeEndID is not in refShard, classifyNodeID returns ClassEvent.
+	// Since fakeEndID is not in refShard, it falls to event shard routing.
 	// Both nodes in event shard => same-shard PutRelationship, endpoint check fails.
 	err := ts.PutRelationship(r)
 	if !errors.Is(err, ErrNodeNotFound) {

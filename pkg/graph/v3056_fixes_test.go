@@ -306,4 +306,3 @@ func (s *slowReader) Read(p []byte) (int, error) {
 	time.Sleep(s.delay)
 	return s.r.Read(p)
 }
-

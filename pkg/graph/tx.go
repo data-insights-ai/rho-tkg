@@ -28,29 +28,37 @@ type deletedNodeSnapshot struct {
 
 // GraphTx is a mutation transaction with snapshot-based rollback.
 // It holds the graph write lock for the entire duration of the transaction,
-// blocking concurrent Batch/Snapshot operations. All mutations (create, update,
-// delete) are tracked so Rollback can restore pre-transaction state.
+// blocking concurrent standalone mutations, Batch, and Snapshot operations.
+// All mutations (create, update, delete) are tracked so Rollback can restore
+// pre-transaction state.
+//
+// Events are buffered during the transaction and published on Commit (after
+// g.mu.Unlock). On Rollback, buffered events are discarded.
 //
 // All methods check the done flag and return ErrTxDone after Commit/Rollback.
 type GraphTx struct {
-	g            *Graph
-	createdNodes []snowflake.ID
-	createdRels  []snowflake.ID
-	updatedNodes []nodeSnapshot
-	updatedRels  []relSnapshot
-	deletedNodes []deletedNodeSnapshot
-	deletedRels  []*types.Relationship
-	snapshotSet  map[snowflake.ID]bool // tracks already-snapshotted entities (first mutation only)
-	mu           sync.Mutex            // protects done flag and snapshot tracking
-	done         bool
+	g             *Graph
+	createdNodes  []snowflake.ID
+	createdRels   []snowflake.ID
+	updatedNodes  []nodeSnapshot
+	updatedRels   []relSnapshot
+	deletedNodes  []deletedNodeSnapshot
+	deletedRels   []*types.Relationship
+	pendingEvents []Event               // buffered events — published on Commit, discarded on Rollback
+	snapshotSet   map[snowflake.ID]bool // tracks already-snapshotted entities (first mutation only)
+	mu            sync.Mutex            // protects done flag and snapshot tracking
+	done          bool
 }
 
 // BeginTx starts a new mutation transaction.
-// Acquires the graph write lock, blocking concurrent Batch/Snapshot operations.
-// The lock is released on Commit() or Rollback().
+// Acquires the graph write lock, blocking concurrent standalone mutations,
+// Batch, and Snapshot operations. The lock is released on Commit() or Rollback().
+// Events are buffered and published after Commit (or discarded on Rollback).
 func (g *Graph) BeginTx() *GraphTx {
 	g.mu.Lock()
-	return &GraphTx{g: g, snapshotSet: make(map[snowflake.ID]bool)}
+	tx := &GraphTx{g: g, snapshotSet: make(map[snowflake.ID]bool)}
+	g.txEventBuffer = &tx.pendingEvents
+	return tx
 }
 
 // AddNode creates a new node within the transaction.
@@ -63,7 +71,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 	}
 	tx.mu.Unlock()
 
-	n, err := tx.g.AddNode(labels, props)
+	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +93,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	}
 	tx.mu.Unlock()
 
-	r, err := tx.g.AddRelationship(typeName, startNode, endNode, props)
+	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +115,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels
 	}
 	tx.mu.Unlock()
 
-	n, err := tx.g.ImportNodeWithID(ctx, id, labels, props)
+	n, err := tx.g.importNodeWithIDInternal(ctx, id, labels, props)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +137,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID
 	}
 	tx.mu.Unlock()
 
-	r, err := tx.g.ImportRelationshipWithID(ctx, id, typeName, startNode, endNode, props)
+	r, err := tx.g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +164,7 @@ func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.N
 		return nil, err
 	}
 
-	return tx.g.UpdateNode(id, updates)
+	return tx.g.updateNodeInternal(context.Background(), id, updates)
 }
 
 // UpdateRelationship applies property updates to a relationship within the transaction.
@@ -174,7 +182,7 @@ func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (
 		return nil, err
 	}
 
-	return tx.g.UpdateRelationship(id, updates)
+	return tx.g.updateRelationshipInternal(context.Background(), id, updates)
 }
 
 // SetNodeProperty sets a single property on a node within the transaction.
@@ -244,8 +252,8 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 		relCopies = append(relCopies, r.DeepCopy())
 	}
 
-	// Perform the actual deletion.
-	if err := tx.g.DeleteNode(id); err != nil {
+	// Perform the actual deletion (internal — tx already holds g.mu.Lock).
+	if err := tx.g.deleteNodeInternal(context.Background(), id); err != nil {
 		return err
 	}
 
@@ -276,8 +284,8 @@ func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
 	}
 	relCopy := rel.DeepCopy()
 
-	// Perform the actual deletion.
-	if err := tx.g.DeleteRelationship(id); err != nil {
+	// Perform the actual deletion (internal — tx already holds g.mu.Lock).
+	if err := tx.g.deleteRelationshipInternal(context.Background(), id); err != nil {
 		return err
 	}
 
@@ -339,7 +347,9 @@ func (tx *GraphTx) snapshotRel(id snowflake.ID) error {
 }
 
 // Commit finalizes the transaction, making all mutations permanent.
-// Releases the graph write lock. After Commit, all tx methods return ErrTxDone.
+// Releases the graph write lock, then publishes buffered events outside the lock
+// so that event handlers can safely call Graph read methods.
+// After Commit, all tx methods return ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -348,11 +358,26 @@ func (tx *GraphTx) Commit() error {
 		return ErrTxDone
 	}
 	tx.done = true
-	defer tx.g.mu.Unlock() // deferred so any future code additions cannot skip the unlock
+
+	// Capture and clear event buffer before unlocking.
+	events := tx.pendingEvents
+	tx.g.txEventBuffer = nil
+	tx.pendingEvents = nil
+
+	// Release the write lock before publishing — handlers can call Graph methods.
+	tx.g.mu.Unlock()
+
+	// Publish buffered events outside all locks.
+	if tx.g.events != nil {
+		for _, e := range events {
+			tx.g.events.publish(e)
+		}
+	}
 	return nil
 }
 
 // Rollback undoes all mutations in reverse order, then releases the graph write lock.
+// Buffered events are discarded — subscribers never see rolled-back mutations.
 //
 // Rollback order (reverse of application):
 //  1. Restore deleted relationships (standalone deletes)
@@ -376,6 +401,10 @@ func (tx *GraphTx) Rollback() error {
 	}
 	tx.done = true
 	defer tx.g.mu.Unlock() // deferred so a store panic cannot permanently hold the write lock
+
+	// Discard buffered events — rolled-back mutations should never reach subscribers.
+	tx.g.txEventBuffer = nil
+	tx.pendingEvents = nil
 
 	var firstErr error
 	capture := func(err error) {

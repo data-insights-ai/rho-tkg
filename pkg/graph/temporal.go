@@ -90,31 +90,6 @@ func (g *Graph) isRelValidAt(r *types.Relationship, t types.Instant) bool {
 	return true
 }
 
-// isNodeValidDuring checks if a node's validity overlaps [start, end).
-// Overlap: effectiveValidFrom < end AND (ValidTo == 0 OR ValidTo > start).
-func (g *Graph) isNodeValidDuring(n *types.Node, start, end types.Instant) bool {
-	from := g.nodeValidFrom(n)
-	if from >= end {
-		return false
-	}
-	if tm := n.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return tm.ValidTo > start
-	}
-	return true
-}
-
-// isRelValidDuring checks if a relationship's validity overlaps [start, end).
-func (g *Graph) isRelValidDuring(r *types.Relationship, start, end types.Instant) bool {
-	from := g.relValidFrom(r)
-	if from >= end {
-		return false
-	}
-	if tm := r.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return tm.ValidTo > start
-	}
-	return true
-}
-
 // --- Public temporal query methods ---
 
 // GetNodesValidAt returns all nodes valid at the given instant.

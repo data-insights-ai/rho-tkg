@@ -57,6 +57,16 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("%s: rename: %w", prefix, err)
 	}
+	// Fsync the directory to ensure the rename is durable on crash.
+	d, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("%s: open dir for sync: %w", prefix, err)
+	}
+	if err := d.Sync(); err != nil {
+		_ = d.Close()
+		return fmt.Errorf("%s: sync dir: %w", prefix, err)
+	}
+	_ = d.Close()
 	return nil
 }
 

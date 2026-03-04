@@ -108,12 +108,16 @@ func (g *Graph) GetRelationshipWithContext(ctx context.Context, id snowflake.ID)
 }
 
 // AddNodeWithContext creates a new node with the given labels and properties.
-// Checks context at entry and before the store write.
-//
-// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
-// included in props to set provenance fields on the integrity struct. They are
-// extracted before validation and never stored in the PropertySlice.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.addNodeInternal(ctx, labels, props)
+}
+
+// addNodeInternal is the lock-free implementation of AddNodeWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -206,12 +210,16 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 }
 
 // AddRelationshipWithContext creates a new directed relationship between two nodes.
-// Checks context at entry, before acquiring endpoint locks, and before the store write.
-//
-// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
-// included in props to set provenance fields on the integrity struct. They are
-// extracted before validation and never stored in the PropertySlice.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
+}
+
+// addRelationshipInternal is the lock-free implementation of AddRelationshipWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -316,15 +324,22 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 }
 
 // DeleteNodeWithContext atomically removes a node and all connected relationships.
-// Saves tombstone versions (with DeletedAt/ValidTo) for the node and all connected
-// relationships before deletion, preserving temporal history for past-time queries.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
+func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.deleteNodeInternal(ctx, id)
+}
+
+// deleteNodeInternal is the lock-free implementation of DeleteNodeWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
 //
 // Two-phase locking with TOCTOU retry:
 //
 //	Phase A (node lock only): read node + adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read adjacency, verify unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
+func (g *Graph) deleteNodeInternal(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
@@ -488,9 +503,16 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 }
 
 // DeleteRelationshipWithContext removes a relationship from the store.
-// Saves a tombstone version (with DeletedAt/ValidTo) atomically with the deletion,
-// preserving temporal history for past-time queries.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.ID) error {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.deleteRelationshipInternal(ctx, id)
+}
+
+// deleteRelationshipInternal is the lock-free implementation of DeleteRelationshipWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) deleteRelationshipInternal(ctx context.Context, id snowflake.ID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
@@ -527,13 +549,16 @@ func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.
 }
 
 // UpdateNodeWithContext applies property updates to an existing node with context support.
-// Checks context at entry, before acquiring the entity lock, before the store read,
-// before saving version history, and before the final store write.
-//
-// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
-// included in updates to set provenance fields on the new integrity struct.
-// They are extracted before validation and never stored in the PropertySlice.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.updateNodeInternal(ctx, id, updates)
+}
+
+// updateNodeInternal is the lock-free implementation of UpdateNodeWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -667,13 +692,16 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 }
 
 // UpdateRelationshipWithContext applies property updates to an existing relationship with context support.
-// Checks context at entry, before acquiring the entity lock, before the store read,
-// before saving version history, and before the final store write.
-//
-// Reserved keys tkg_author_id (string) and tkg_signature ([]byte) may be
-// included in updates to set provenance fields on the new integrity struct.
-// They are extracted before validation and never stored in the PropertySlice.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.updateRelationshipInternal(ctx, id, updates)
+}
+
+// updateRelationshipInternal is the lock-free implementation of UpdateRelationshipWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -819,9 +847,16 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 }
 
 // ImportNodeWithID creates a node with a caller-specified snowflake ID.
-// Used for backup restore where ID preservation is required.
-// Returns ErrNodeExists if the ID is already in use, ErrZeroID if id == 0.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.importNodeWithIDInternal(ctx, id, labels, props)
+}
+
+// importNodeWithIDInternal is the lock-free implementation of ImportNodeWithID.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -889,9 +924,16 @@ func (g *Graph) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []
 }
 
 // ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID.
-// Used for backup restore where ID preservation is required.
-// Returns ErrRelExists if the ID is already in use, ErrZeroID if id == 0.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+}
+
+// importRelWithIDInternal is the lock-free implementation of ImportRelationshipWithID.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -978,11 +1020,16 @@ func (g *Graph) UpdateRelInPlace(id snowflake.ID, updates map[string]any) (*type
 }
 
 // UpdateNodeInPlaceWithContext applies property updates to a node without history.
-// Identical to UpdateNodeWithContext except:
-//  1. Version number is NOT incremented.
-//  2. store.ReplaceNode is used instead of store.ReplaceNodeWithHistory.
-//  3. PrevHash is preserved (not advanced) in the integrity chain.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.updateNodeInPlaceInternal(ctx, id, updates)
+}
+
+// updateNodeInPlaceInternal is the lock-free implementation of UpdateNodeInPlaceWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1083,11 +1130,16 @@ func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.I
 }
 
 // UpdateRelInPlaceWithContext applies property updates to a relationship without history.
-// Identical to UpdateRelationshipWithContext except:
-//  1. Version number is NOT incremented.
-//  2. store.ReplaceRelationship is used instead of store.ReplaceRelWithHistory.
-//  3. PrevHash is preserved (not advanced) in the integrity chain.
+// Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.updateRelInPlaceInternal(ctx, id, updates)
+}
+
+// updateRelInPlaceInternal is the lock-free implementation of UpdateRelInPlaceWithContext.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}

@@ -258,9 +258,9 @@ GOOD: tmp.Write(data); tmp.Sync(); tmp.Close(); os.Rename(tmp, final)
       // Sync forces data to stable storage before rename
 ```
 
-Audit: `grep -rn 'os.Rename' pkg/` — every write-tmp+rename must have Sync() between Write and Close.
+Audit: `grep -rn 'os.Rename' pkg/` — every write-tmp+rename must have file Sync() before Close AND directory Sync() after Rename.
 
-**History:** Found in v3.0.33 review. `shard_catalog.go` and `registry_file.go` both lacked fsync.
+**History:** Found in v3.0.33 review. `shard_catalog.go` and `registry_file.go` both lacked fsync. v3.0.59 added directory fsync after rename for crash durability.
 
 ## B21. Registry Save Must Be Atomic Across Both Halves
 
@@ -322,6 +322,39 @@ blocks forever once DB goroutines stop. Fix: add `dbClosed atomic.Bool` to
 Tests that close `bs.db` directly MUST set `bs.dbClosed.Store(true)` first.
 
 **History:** Found in v3.0.36 as B22 fix.
+
+## B24. Transaction Isolation: Internal/External Method Split
+
+```
+BAD:  func (g *Graph) AddNodeWithContext(...) { /* no g.mu */ ... }
+      // BeginTx holds g.mu.Lock, but standalone AddNode races with tx
+
+GOOD: func (g *Graph) AddNodeWithContext(...) {
+          g.mu.RLock(); defer g.mu.RUnlock()
+          return g.addNodeInternal(ctx, labels, props)
+      }
+      // Tx calls g.addNodeInternal directly (already holds g.mu.Lock)
+```
+
+All exported mutation methods must acquire `g.mu.RLock()`. Tx/batch call unexported `*Internal` variants under `g.mu.Lock()`. Lock ordering: `g.mu` → entity locks.
+
+Audit: `grep -rn 'func (g \*Graph).*Internal' pkg/graph/` — every internal must have a corresponding exported wrapper with `g.mu.RLock`.
+
+**History:** Found in v3.0.59 external audit. Standalone mutations could bypass tx isolation.
+
+## B25. Tx Event Buffering: Publish After Unlock
+
+```
+BAD:  // Events published during tx mutations — on Rollback, subscribers have stale state
+
+GOOD: // publishEvent buffers to txEventBuffer during tx
+      // Commit: clear buffer, unlock g.mu, THEN publish events
+      // Rollback: discard buffer (subscribers never see rolled-back mutations)
+```
+
+Event handlers may call Graph read methods — publishing must happen after `g.mu.Unlock()`.
+
+**History:** Found in v3.0.59 external audit. Rollback left EventBus subscribers inconsistent.
 
 ---
 

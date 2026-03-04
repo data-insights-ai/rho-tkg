@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.57 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.57: 6 production defect fixes — Rollback/Commit panic leaks write lock (Fix A), RemoveNodeLabel violates temporal guarantees (Fix B), DiffSnapshots holds g.mu.RLock during O(N) materialization (Fix C), searchNearest O(N log N) sort under RLock (Fix D), checkTemporalConstraints allocs on every write (Fix E), TOCTOU retry no backoff (Fix F). AllNodeHistoryIDs OOM deferred to v3.0.58.
+Status: v3.0.59 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.59: transaction isolation (internal/external method split), event buffering in tx, directory fsync, dead code removal.
 
 ## Build & Test Commands
 
@@ -77,7 +77,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
+| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
 | `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
@@ -90,7 +90,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
 | `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
-| `context.go` | `WithContext` methods, `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `DeleteRelationshipWithContext` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
+| `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `deleteRelationshipInternal` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
 | `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
 | `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
@@ -156,7 +156,7 @@ These rules exist because every single one was violated at least once. Do not sk
 - **Lock ordering**: entity locks -> idxMu. Always.
 - **Two-phase delete with TOCTOU retry**: Phase A reads adjacency under node lock. Phase B locks all entities via `LockMany`, re-verifies adjacency, retries if changed (max 10).
 - **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
-- **Snapshot vs Batch isolation**: `Graph.mu` serializes batches against snapshots. Individual temporal methods do NOT acquire `mu` (avoids reentrancy deadlock).
+- **Transaction isolation via g.mu**: `Graph.mu` serializes tx/batch (Lock) vs standalone mutations and reads (RLock). All exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()`. Tx/batch call unexported `*Internal` variants directly under `g.mu.Lock()`. Individual temporal query methods do NOT acquire `mu` (avoids reentrancy deadlock).
 - **sync.RWMutex is NOT reentrant**: If A holds RLock and calls B which RLocks, and a writer waits between them, deadlock. Inner methods must be lock-free.
 - **sync.Once for idempotent Close()**: Never nil-guard a function pointer across goroutines.
 
@@ -208,6 +208,7 @@ These rules exist because every single one was violated at least once. Do not sk
 ### Events & Stats
 
 - **EventBus is opt-in**: `Graph.SetEventBus(bus)` — nil by default (zero overhead). Handlers are copied under RLock, invoked outside the lock (prevents deadlocks from re-entrant Graph calls in handlers).
+- **Tx event buffering**: During a transaction (`txEventBuffer != nil`), `publishEvent` appends to a buffer instead of dispatching. On `Commit`, events are published after `g.mu.Unlock()` so handlers can safely call Graph read methods. On `Rollback`, buffered events are discarded — subscribers never see rolled-back mutations.
 - **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). `Close()` drains all pending events before stopping workers. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
 - **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` worker uses non-blocking drain per level (Critical first) before blocking select.
 - **StoreStats opt-in**: Type-asserted in `Graph.Stats()` — avoids polluting the `Store` interface.

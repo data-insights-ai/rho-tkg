@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -275,9 +276,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 
-	// 3. Update nodes.
+	// 3. Update nodes (internal — batch already holds g.mu.Lock).
 	for _, pu := range b.nodeUpdates {
-		_, err := b.g.UpdateNode(pu.id, pu.updates)
+		_, err := b.g.updateNodeInternal(context.Background(), pu.id, pu.updates)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
@@ -290,9 +291,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 
-	// 4. Update relationships.
+	// 4. Update relationships (internal — batch already holds g.mu.Lock).
 	for _, pu := range b.relUpdates {
-		_, err := b.g.UpdateRelationship(pu.id, pu.updates)
+		_, err := b.g.updateRelationshipInternal(context.Background(), pu.id, pu.updates)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
@@ -305,9 +306,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 
-	// 5. Delete relationships (before nodes — avoid cascade confusion).
+	// 5. Delete relationships (internal — batch already holds g.mu.Lock).
 	for _, id := range b.relDeletes {
-		if err := b.g.DeleteRelationship(id); err != nil {
+		if err := b.g.deleteRelationshipInternal(context.Background(), id); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteRelationship",
@@ -319,9 +320,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 
-	// 6. Delete nodes (cascade via Graph.DeleteNode).
+	// 6. Delete nodes (internal — batch already holds g.mu.Lock).
 	for _, id := range b.nodeDeletes {
-		if err := b.g.DeleteNode(id); err != nil {
+		if err := b.g.deleteNodeInternal(context.Background(), id); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteNode",

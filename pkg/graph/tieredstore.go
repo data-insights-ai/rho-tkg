@@ -486,14 +486,6 @@ func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 	return candidate, nil // fallback to timestamp-based (will likely return ErrRelNotFound)
 }
 
-// classifyNodeID determines the EntityClass of a node by probing shards.
-func (ts *TieredStore) classifyNodeID(id snowflake.ID) EntityClass {
-	if ts.refShard.hasNodeID(id) {
-		return ClassReference
-	}
-	return ClassEvent
-}
-
 // timestampToEventShard extracts the creation timestamp from a snowflake ID
 // and maps it to the correct event shard. Falls back to the hot shard if no
 // shard window matches (entity from before the oldest shard).

@@ -61,8 +61,8 @@ const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 // 4-byte big-endian body length. This layout allows forward-compatible streaming
 // without loading the whole file into memory.
 //
-// ExportGraph holds g.mu.RLock for the duration — concurrent Snapshot and Reset
-// are blocked, but individual Add/Update mutations are NOT.
+// ExportGraph holds g.mu.RLock for the duration — concurrent Snapshot, Reset,
+// and individual Add/Update/Delete mutations are all blocked by g.mu.
 func (g *Graph) ExportGraph(w io.Writer) error {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -198,7 +198,7 @@ type importRecord struct {
 //     io.Reader I/O can be slow (file, network); holding g.mu.Lock for its duration
 //     would block all Add/Update/Query callers for potentially minutes.
 //   - Phase 2 (under g.mu.Lock): the buffer is processed — msgpack deserialization
-//     + store writes. No I/O under the lock; only CPU + in-memory store ops.
+//   - store writes. No I/O under the lock; only CPU + in-memory store ops.
 //
 // Memory: the entire export is buffered in RAM before the write lock is acquired.
 // For large exports (> 1 GB) this may be significant. Users restoring multi-GB

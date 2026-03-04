@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.59] - 2026-03-04
+
+### Fixed (4 Defects — external audit)
+
+- **Fix I — Transaction isolation gap** (`pkg/graph/context.go`, `pkg/graph/graph.go`, BLOCKER): `BeginTx()` holds `g.mu.Lock()` but individual mutations (`AddNode`, `UpdateNode`, etc.) did not acquire `g.mu`, so concurrent standalone mutations bypassed tx isolation — torn reads were possible during snapshot operations. Fixed via internal/external method split: all 13 exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) now acquire `g.mu.RLock()` at entry. New unexported `*Internal` variants (lock-free) are called directly by `GraphTx` and `BatchBuilder` (which already hold `g.mu.Lock()`). Lock ordering: `g.mu` → entity locks (safe: entity locks never acquire `g.mu`).
+
+- **Fix J — Rollback event desync** (`pkg/graph/graph.go`, `pkg/graph/tx.go`, MAJOR): Events were emitted immediately during tx mutations via `publishEvent`. On rollback, state was restored but no compensating events were published, leaving EventBus subscribers inconsistent. Fixed by adding `txEventBuffer *[]Event` field to `Graph`. During a transaction, `publishEvent` appends to the buffer instead of dispatching. On `Commit`, events are published after `g.mu.Unlock()` (so handlers can safely call Graph read methods). On `Rollback`, the buffer is discarded.
+
+- **Fix K — Missing directory fsync** (`pkg/graph/registry_file.go`, MINOR): `atomicWriteFile` did `tmp.Sync()` + `os.Rename()` but omitted the directory `fsync`. On crash, the rename could be lost on some filesystems (ext4 with delayed allocation). Fixed by opening the parent directory and calling `Sync()` after rename.
+
+- **Fix L — Dead code removal** (`pkg/graph/temporal.go`, `pkg/graph/tieredstore.go`, TRIVIAL): Removed 3 unused functions: `isNodeValidDuring`, `isRelValidDuring` (temporal.go), `classifyNodeID` (tieredstore.go). Zero callers confirmed via grep.
+
+### Changed
+
+- `pkg/graph/batch.go`: `Execute` now calls `*Internal` variants directly (was calling exported methods that would deadlock under `g.mu.Lock`). Added `"context"` import.
+- `pkg/graph/export.go`: Updated `ExportGraph` doc comment to reflect that individual mutations are now also blocked by `g.mu`.
+
+### Tests Added
+
+- `TestMutationBlockedDuringTx` — verifies standalone `AddNode` blocks while a tx holds `g.mu.Lock`.
+- `TestSnapshotConsistencyDuringMutation` — concurrent reads and writes under race detector.
+- `TestTxCommitPublishesBufferedEvents` — 3 events buffered during tx, all published on Commit in order.
+- `TestTxRollbackNoEvents` — zero events published after Rollback.
+- `TestTxCommitHandlerCanReadGraph` — event handler successfully calls `GetNode` on Commit (proves events fire after `g.mu.Unlock`).
+- `TestBatchEventsNotBuffered` — standalone mutations still emit events immediately.
+
 ## [3.0.58] - 2026-03-04
 
 ### Fixed (2 Defects — post-v3.0.57 code review triage)
