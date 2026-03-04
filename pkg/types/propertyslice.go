@@ -41,6 +41,9 @@ type PropertySlice []Property
 // functions, etc.) are rejected at any nesting depth.
 // Returns ErrMaxDepthExceeded if nesting exceeds maxPropertyDepth (32).
 // Maintains the sorted-by-key invariant.
+//
+// For bulk construction, prefer NewPropertySlice (O(N log N)) over repeated
+// Set calls (O(N) per call due to binary-search insertion into a sorted slice).
 func (ps *PropertySlice) Set(key string, value any) error {
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)

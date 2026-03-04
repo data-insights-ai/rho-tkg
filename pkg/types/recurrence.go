@@ -39,6 +39,8 @@ type Interval struct {
 }
 
 // RecurrencePattern expresses recurring temporal validity.
+// All expansion is UTC-based. DST transitions are invisible to this type;
+// callers in DST-aware locales must convert expanded instants to local time.
 // All calculations are UTC. Callers must convert timezone-aware datetimes
 // before passing from/to to Expand().
 type RecurrencePattern struct {

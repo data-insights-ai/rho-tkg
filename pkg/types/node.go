@@ -227,6 +227,9 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 		for i, t := range n.extraLabels {
 			if uint16(t) == tok {
 				n.extraLabels = append(n.extraLabels[:i], n.extraLabels[i+1:]...)
+				if len(n.extraLabels) == 0 {
+					n.extraLabels = nil
+				}
 				return true
 			}
 		}
@@ -237,7 +240,11 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 		return false // would leave node without a label; caller should prevent this
 	}
 	n.primaryLabel = n.extraLabels[0]
-	n.extraLabels = n.extraLabels[1:]
+	if len(n.extraLabels) == 1 {
+		n.extraLabels = nil
+	} else {
+		n.extraLabels = n.extraLabels[1:]
+	}
 	return true
 }
 

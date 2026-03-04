@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.58] - 2026-03-04
+
+### Fixed (2 Defects — post-v3.0.57 code review triage)
+
+- **Fix G — temporalIndex O(N²) memmove under store write lock** (`pkg/graph/temporal_index.go`, MAJOR): `add()` used binary search + `copy()` shift to maintain sorted order on every insert. For N batch inserts (e.g. bulk node import, N temporal index adds per label) this was O(N²) total memmove, all performed while holding the store's write lock. Fixed via lazy sort: `add()` now appends unsorted and sets `dirty=true`; new `sortIfDirty()` runs `sort.Slice` once at the start of `queryAt()` and `queryOverlap()`. Complexity: N inserts → O(N) appends + O(N log N) sort at first query (vs. O(N²) sorted insertions). The `dirty bool` field adds 1 byte to `temporalIndex`; no external API change.
+
+- **Fix H — RemoveLabelTokenRaw leaves non-nil empty extraLabels** (`pkg/types/node.go`, MINOR): Two removal paths in `RemoveLabelTokenRaw` left `n.extraLabels` as an empty slice with non-zero capacity, violating the convention that an absent label set is `nil`. Case 1 (removing the only extra label via `append([:i], [i+1:]...)`) and Case 2 (promoting the only extra to primary via `extraLabels[1:]`) both produced `[]labelToken{}` with cap > 0. Since `DeepCopy` only copies when `len(n.extraLabels) > 0`, and `ExtraLabelTokens()` already guards with the same check, a non-nil empty slice was functionally harmless but inconsistent and retained the backing array unnecessarily. Fixed by adding an explicit `n.extraLabels = nil` after each removal path that empties the slice.
+
+### Documentation
+
+- `pkg/types/propertyslice.go` (`Set`): added note that `NewPropertySlice` (O(N log N)) is preferred over repeated `Set` calls for bulk construction.
+- `pkg/types/recurrence.go` (`RecurrencePattern`): strengthened UTC-only note — DST transitions are invisible to this type; callers must convert expanded instants to local time.
+- `pkg/graph/vector_index.go` (`toFloat32Slice`): added slow-path note on the `[]any` branch; callers should prefer `[]float32` property values for high-frequency vector nodes.
+
+### Tests Added
+
+- `TestTemporalIndex_LazySort_BatchInsert` — 100 out-of-order inserts followed by a single `queryAt`; verifies all IDs returned and `dirty` transitions correctly (Fix G).
+- `TestTemporalIndex_LazySort_InterleavedReadsWrites` — interleaved `add`/`queryAt`/`queryOverlap` calls; verifies correct results at each step and `dirty` flag transitions (Fix G).
+- `TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval` — three sub-tests: remove only extra, promote only extra to primary, remove one of two extras (last case verifies non-nil is preserved) (Fix H).
+
 ## [3.0.57] - 2026-03-03
 
 ### Fixed (6 Production Defects — v3.0.57)

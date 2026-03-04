@@ -209,6 +209,8 @@ func purgeNodeFromAllVectorIndexes(idxs map[vectorIndexKey]*vectorIndex, id snow
 }
 
 // toFloat32Slice converts any to []float32, supporting []float32 and []any (of float32 or float64).
+// Slow path: the []any branch requires a type-switch per element.
+// Prefer []float32 property values for high-frequency vector nodes.
 func toFloat32Slice(val any) ([]float32, bool) {
 	switch v := val.(type) {
 	case []float32:

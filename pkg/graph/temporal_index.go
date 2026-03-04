@@ -19,15 +19,16 @@ type intervalEntry struct {
 // NOT thread-safe — callers must hold the store's write or read lock.
 //
 // Complexity:
-//   - add:          O(n) amortized (binary search insertion + slice shift)
+//   - add:          O(1) amortized append; sort deferred to first query after write
 //   - remove:       O(n) linear scan
-//   - queryAt:      O(n) — scans all entries with from <= t, filters by to
-//   - queryOverlap: O(n) — same scan approach
+//   - queryAt:      O(n log n) sort (once per dirty batch) + O(log n) binary search + O(k)
+//   - queryOverlap: same as queryAt
 //
 // The O(n) query bound is acceptable for v3 (small-to-medium label sets).
 // A future version may augment with maxTo for O(log n + k) stabbing queries.
 type temporalIndex struct {
-	entries []intervalEntry // sorted by (from ASC, id ASC)
+	entries []intervalEntry // sorted by (from ASC, id ASC) when not dirty
+	dirty   bool            // true when entries have been appended but not yet sorted
 }
 
 // newTemporalIndex allocates an empty temporal index.
@@ -37,23 +38,29 @@ func newTemporalIndex() *temporalIndex {
 
 // add inserts or updates an entry for id with [from, to).
 // If id already has an entry, it is removed first (replace semantics).
-// Uses binary search to find the insertion point — preserves sorted order.
+// Appends unsorted and marks dirty; sorting is deferred to the first query.
 func (ti *temporalIndex) add(id snowflake.ID, from, to types.Instant) {
 	// Remove any existing entry for id first.
 	ti.remove(id)
 
-	// Find the insertion position (sorted by from ASC, then id ASC).
-	pos := sort.Search(len(ti.entries), func(i int) bool {
-		if ti.entries[i].from != from {
-			return ti.entries[i].from > from
-		}
-		return ti.entries[i].id >= id
-	})
+	// Append unsorted — sort is deferred to queryAt/queryOverlap.
+	ti.entries = append(ti.entries, intervalEntry{from: from, to: to, id: id})
+	ti.dirty = true
+}
 
-	// Insert at pos by growing the slice.
-	ti.entries = append(ti.entries, intervalEntry{})
-	copy(ti.entries[pos+1:], ti.entries[pos:])
-	ti.entries[pos] = intervalEntry{from: from, to: to, id: id}
+// sortIfDirty sorts entries by (from ASC, id ASC) if the index has been
+// modified since the last sort. Called at the start of every query.
+func (ti *temporalIndex) sortIfDirty() {
+	if !ti.dirty {
+		return
+	}
+	sort.Slice(ti.entries, func(i, j int) bool {
+		if ti.entries[i].from != ti.entries[j].from {
+			return ti.entries[i].from < ti.entries[j].from
+		}
+		return ti.entries[i].id < ti.entries[j].id
+	})
+	ti.dirty = false
 }
 
 // remove deletes the entry for id. Linear scan — O(n).
@@ -77,6 +84,7 @@ func (ti *temporalIndex) queryAt(t types.Instant) []snowflake.ID {
 	if len(ti.entries) == 0 {
 		return nil
 	}
+	ti.sortIfDirty()
 
 	// Find the first index where from > t.
 	// All entries at index < pos have from <= t.
@@ -106,6 +114,7 @@ func (ti *temporalIndex) queryOverlap(start, end types.Instant) []snowflake.ID {
 	if len(ti.entries) == 0 {
 		return nil
 	}
+	ti.sortIfDirty()
 
 	// Find the first index where from >= end.
 	// All entries at index < pos have from < end.
