@@ -452,14 +452,20 @@ func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	}
 
 	// Temporal index fast path: use interval index if one exists for this label.
+	// When a temporal query is requested (ValidAt or interval), the index result
+	// is always authoritative — nil means 0 matches, not "index not consulted."
+	// We must not fall through to the full label scan in that case.
 	if ti, ok := ms.temporalIndexes[token]; ok {
 		var ids []snowflake.ID
+		temporalQuery := false
 		if opts.ValidAt != 0 {
 			ids = ti.queryAt(opts.ValidAt)
+			temporalQuery = true
 		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
 			ids = ti.queryOverlap(opts.ValidStart, opts.ValidEnd)
+			temporalQuery = true
 		}
-		if ids != nil {
+		if temporalQuery {
 			ids = paginateIDs(ids, opts.After, opts.Limit)
 			if len(ids) == 0 {
 				return nil, nil

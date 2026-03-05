@@ -1065,14 +1065,20 @@ func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 
 	// Temporal index fast path: avoids iterating the full label set when a
 	// temporal index exists and a temporal filter is active.
+	// When a temporal query is requested, the index result is always authoritative
+	// — nil means 0 matches, not "index not consulted." Do not fall through to
+	// the full label scan in that case.
 	if ti, ok := bs.temporalIndexes[token]; ok {
 		var ids []snowflake.ID
+		temporalQuery := false
 		if opts.ValidAt != 0 {
 			ids = ti.queryAt(opts.ValidAt)
+			temporalQuery = true
 		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
 			ids = ti.queryOverlap(opts.ValidStart, opts.ValidEnd)
+			temporalQuery = true
 		}
-		if ids != nil {
+		if temporalQuery {
 			bs.idxMu.RUnlock()
 			ids = paginateIDs(ids, opts.After, opts.Limit)
 			if len(ids) == 0 {

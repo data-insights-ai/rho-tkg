@@ -2,6 +2,7 @@ package graph
 
 import (
 	"sort"
+	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -16,7 +17,10 @@ type intervalEntry struct {
 
 // temporalIndex is a sorted-slice interval index keyed by (from ASC, id ASC).
 //
-// NOT thread-safe — callers must hold the store's write or read lock.
+// add/remove are called under the store's write lock (ms.mu.Lock / bs.idxMu.Lock).
+// queryAt/queryOverlap are called under the store's read lock (RLock), which allows
+// multiple goroutines to query concurrently. sortIfDirty is protected by sortMu so
+// that concurrent readers do not race on the sort transition.
 //
 // Complexity:
 //   - add:          O(1) amortized append; sort deferred to first query after write
@@ -27,6 +31,7 @@ type intervalEntry struct {
 // The O(n) query bound is acceptable for v3 (small-to-medium label sets).
 // A future version may augment with maxTo for O(log n + k) stabbing queries.
 type temporalIndex struct {
+	sortMu  sync.Mutex      // serialises concurrent sort transitions under RLock
 	entries []intervalEntry // sorted by (from ASC, id ASC) when not dirty
 	dirty   bool            // true when entries have been appended but not yet sorted
 }
@@ -39,6 +44,7 @@ func newTemporalIndex() *temporalIndex {
 // add inserts or updates an entry for id with [from, to).
 // If id already has an entry, it is removed first (replace semantics).
 // Appends unsorted and marks dirty; sorting is deferred to the first query.
+// Must be called under the store's write lock.
 func (ti *temporalIndex) add(id snowflake.ID, from, to types.Instant) {
 	// Remove any existing entry for id first.
 	ti.remove(id)
@@ -50,7 +56,10 @@ func (ti *temporalIndex) add(id snowflake.ID, from, to types.Instant) {
 
 // sortIfDirty sorts entries by (from ASC, id ASC) if the index has been
 // modified since the last sort. Called at the start of every query.
+// sortMu serialises concurrent callers holding only the store's read lock.
 func (ti *temporalIndex) sortIfDirty() {
+	ti.sortMu.Lock()
+	defer ti.sortMu.Unlock()
 	if !ti.dirty {
 		return
 	}

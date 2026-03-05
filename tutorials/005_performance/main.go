@@ -1,8 +1,12 @@
 // Tutorial 005: Performance & Storage
 //
-// Benchmarks tkg-v3 across three backends: MemoryStore (default),
-// BadgerStore in-memory, and BadgerStore on-disk. Measures write throughput,
-// query performance, memory usage, and on-disk storage footprint.
+// Benchmarks tkg-v3 write throughput, query performance, and index acceleration
+// across three backends (MemoryStore, BadgerStore in-memory, BadgerStore on-disk)
+// and four index types:
+//   - Property index:  NodesByLabelAndProperty  — O(1) hash lookup vs O(N) label scan
+//   - Temporal index:  GetNodesByLabelValidAt   — binary search vs O(N) temporal filter
+//   - Vector index:    SearchNearestNodes        — k-NN brute-force in-memory
+//   - BatchBuilder:    bulk inserts              — single g.mu.Lock vs N individual locks
 //
 // Run: go run ./tutorials/005_performance/
 package main
@@ -10,6 +14,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -42,6 +47,15 @@ func commas(n int64) string {
 		buf = append(buf, s[i:i+3]...)
 	}
 	return string(buf)
+}
+
+// randomVec returns a random unit-ish float32 vector of the given dimension.
+func randomVec(dims int, rng *rand.Rand) []float32 {
+	v := make([]float32, dims)
+	for i := range v {
+		v[i] = rng.Float32()
+	}
+	return v
 }
 
 func main() {
@@ -151,7 +165,7 @@ func main() {
 	}
 	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 6, Store: bsQuery})
 	if err != nil {
-		_ = bsQuery.Close() // prevent resource leak on graph creation failure
+		_ = bsQuery.Close()
 		log.Fatal(err)
 	}
 	defer func() {
@@ -160,7 +174,6 @@ func main() {
 		}
 	}()
 
-	// Populate query graph.
 	qNodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
@@ -184,7 +197,6 @@ func main() {
 		qRels[i] = r
 	}
 
-	// Benchmark GetNode — single-entity retrieval.
 	const lookupCount = 10_000
 	start := time.Now()
 	for i := range lookupCount {
@@ -197,7 +209,6 @@ func main() {
 	getNodeOps := int64(float64(lookupCount) / getNodeElapsed.Seconds())
 	getNodeNs := getNodeElapsed.Nanoseconds() / lookupCount
 
-	// Benchmark GetRelationship — single-entity retrieval.
 	start = time.Now()
 	for i := range lookupCount {
 		id := qRels[i%relCount].InternalID().SnowflakeID()
@@ -213,10 +224,10 @@ func main() {
 	fmt.Printf("  GetRelationship:   %s ops/sec  (%d ns/op)\n", commas(getRelOps), getRelNs)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 7. Query Performance ===")
+	fmt.Println("\n=== 7. Index-Free Query Performance ===")
 	// ----------------------------------------------------------------
 
-	// Benchmark OutgoingRelationships — adjacency query, small result sets.
+	// OutgoingRelationships — adjacency scan, no temporal filter.
 	const outQueryCount = 10_000
 	var outTotalEntities int64
 	start = time.Now()
@@ -233,7 +244,7 @@ func main() {
 	outAvgSize := float64(outTotalEntities) / outQueryCount
 	outEntPerSec := int64(float64(outTotalEntities) / outElapsed.Seconds())
 
-	// Benchmark NodesByLabel — index scan, large result sets.
+	// NodesByLabel — full label scan, no temporal filter.
 	const labelQueryCount = 1000
 	var labelTotalEntities int64
 	start = time.Now()
@@ -250,37 +261,287 @@ func main() {
 	labelAvgSize := float64(labelTotalEntities) / labelQueryCount
 	labelEntPerSec := int64(float64(labelTotalEntities) / labelElapsed.Seconds())
 
-	fmt.Printf("  OutgoingRelationships: %s queries/sec  (~%.0f rels/query, ~%s entities/sec)\n",
+	fmt.Printf("  OutgoingRelationships: %s queries/sec  (~%.0f rels/query,  ~%s entities/sec)\n",
 		commas(outOps), outAvgSize, commas(outEntPerSec))
 	fmt.Printf("  NodesByLabel:          %s queries/sec  (~%.0f nodes/query, ~%s entities/sec)\n",
 		commas(labelOps), labelAvgSize, commas(labelEntPerSec))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 8. Summary ===")
+	fmt.Println("\n=== 8. BatchBuilder vs Single Writes ===")
+	// ----------------------------------------------------------------
+	// BatchBuilder queues N nodes with eager validation, then persists them
+	// under a single g.mu.Lock using PutNodesBatch (one store lock for all).
+	// Standalone AddNode acquires g.mu.RLock + entity lock per node.
+
+	const batchBenchN = 5_000
+
+	gSingle, err := graph.New(graph.Config{SnowflakeNodeID: 7})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Baseline: N standalone AddNode calls.
+	singleStart := time.Now()
+	for i := range batchBenchN {
+		if _, err := gSingle.AddNode([]string{"Single"}, map[string]any{"idx": i}); err != nil {
+			log.Fatalf("AddNode: %v", err)
+		}
+	}
+	singleDur := time.Since(singleStart)
+	singleNodeOps := int64(float64(batchBenchN) / singleDur.Seconds())
+
+	// BatchBuilder: queue all nodes (validation + ID gen), then Execute.
+	b := graph.NewBatchBuilder(gSingle)
+	for i := range batchBenchN {
+		if _, err := b.AddNode([]string{"Batch"}, map[string]any{"idx": i}); err != nil {
+			log.Fatalf("batch AddNode: %v", err)
+		}
+	}
+	batchAllStart := time.Now()
+	bResult, err := b.Execute()
+	if err != nil {
+		log.Fatal(err)
+	}
+	batchDur := time.Since(batchAllStart)
+	batchNodeOps := int64(float64(bResult.Created) / batchDur.Seconds())
+
+	if err := gSingle.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	batchSpeedup := float64(batchNodeOps) / float64(singleNodeOps)
+	fmt.Printf("  Single AddNode:  %s ops/sec\n", commas(singleNodeOps))
+	fmt.Printf("  BatchBuilder:    %s ops/sec  (×%.1fx vs single)\n", commas(batchNodeOps), batchSpeedup)
+	fmt.Printf("  Batch created:   %d nodes, %d failed\n", bResult.Created, bResult.Failed)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 9. Property Index ===")
+	// ----------------------------------------------------------------
+	// NodesByLabelAndProperty without a property index falls back to a
+	// full label scan (O(N)). With CreatePropertyIndex, it uses a hash
+	// map — O(1) lookup returning only matching IDs.
+	//
+	// Setup: 10K "Product" nodes, score in [0, 100). 100 nodes per score value.
+	// Query: score == 42  →  expected ~100 matches (1% selectivity).
+
+	const (
+		propN      = 10_000
+		propValues = 100
+		propQ      = 500
+		queryScore = 42
+	)
+
+	gProp, err := graph.New(graph.Config{SnowflakeNodeID: 8})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for i := range propN {
+		if _, err := gProp.AddNode([]string{"Product"}, map[string]any{"score": i % propValues}); err != nil {
+			log.Fatalf("AddNode: %v", err)
+		}
+	}
+
+	// Without property index: falls back to label scan + property filter.
+	start = time.Now()
+	for range propQ {
+		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{}); err != nil {
+			log.Fatalf("NodesByLabelAndProperty: %v", err)
+		}
+	}
+	propNoIdxDur := time.Since(start)
+	propNoIdxOps := int64(float64(propQ) / propNoIdxDur.Seconds())
+
+	// Create property index — backfills from all existing 10K nodes.
+	if err := gProp.CreatePropertyIndex("Product", "score"); err != nil {
+		log.Fatalf("CreatePropertyIndex: %v", err)
+	}
+
+	// With property index: O(1) hash lookup.
+	start = time.Now()
+	for range propQ {
+		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{}); err != nil {
+			log.Fatalf("NodesByLabelAndProperty: %v", err)
+		}
+	}
+	propWithIdxDur := time.Since(start)
+	propWithIdxOps := int64(float64(propQ) / propWithIdxDur.Seconds())
+
+	if err := gProp.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	propSpeedup := float64(propWithIdxOps) / float64(propNoIdxOps)
+	fmt.Printf("  NodesByLabelAndProperty without index: %s ops/sec\n", commas(propNoIdxOps))
+	fmt.Printf("  NodesByLabelAndProperty with index:    %s ops/sec  (×%.1fx)\n", commas(propWithIdxOps), propSpeedup)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 10. Temporal Index ===")
+	// ----------------------------------------------------------------
+	// GetNodesByLabelValidAt without a temporal index performs a full label
+	// scan + per-node validity check (O(N)). With CreateTemporalIndex, the
+	// interval index uses binary search to find the valid-at boundary, then
+	// filters by ValidTo — skipping ineligible nodes without loading them.
+	//
+	// Scenario: 50K "Event" nodes. 90% are closed (ValidTo = 1 hour ago),
+	// simulating expired events. Query at now → ~5K active events (10%).
+	// Without index: sort + scan + deep-copy all 50K, filter down to 5K.
+	// With index: scan 50K index entries (sequential), deep-copy only 5K.
+
+	const (
+		tempN      = 50_000
+		tempClosed = tempN * 9 / 10 // 90% closed
+		tempQ      = 100
+	)
+
+	gTemp, err := graph.New(graph.Config{SnowflakeNodeID: 9})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create all Event nodes, then close 90% with a past timestamp.
+	closeTime := types.Instant(time.Now().Add(-time.Hour).UnixMilli())
+	tempNodes := make([]*types.Node, tempN)
+	for i := range tempN {
+		n, err := gTemp.AddNode([]string{"Event"}, nil)
+		if err != nil {
+			log.Fatalf("AddNode: %v", err)
+		}
+		tempNodes[i] = n
+	}
+	for i := range tempClosed {
+		id := tempNodes[i].InternalID().SnowflakeID()
+		if err := gTemp.CloseNodeVersion(id, closeTime); err != nil {
+			log.Fatalf("CloseNodeVersion: %v", err)
+		}
+	}
+
+	// Query 1 second in the future to ensure all nodes have ValidFrom <= t.
+	nowQuery := types.Instant(time.Now().Add(time.Second).UnixMilli())
+
+	// Without temporal index: full label scan + per-node ValidTo check.
+	start = time.Now()
+	for range tempQ {
+		if _, err := gTemp.GetNodesByLabelValidAt("Event", nowQuery); err != nil {
+			log.Fatalf("GetNodesByLabelValidAt: %v", err)
+		}
+	}
+	tempNoIdxDur := time.Since(start)
+	tempNoIdxOps := int64(float64(tempQ) / tempNoIdxDur.Seconds())
+
+	// Create temporal index — backfills from all 50K existing nodes.
+	if err := gTemp.CreateTemporalIndex("Event"); err != nil {
+		log.Fatalf("CreateTemporalIndex: %v", err)
+	}
+
+	// With temporal index: sequential scan of index entries, deep-copy only matching.
+	start = time.Now()
+	for range tempQ {
+		if _, err := gTemp.GetNodesByLabelValidAt("Event", nowQuery); err != nil {
+			log.Fatalf("GetNodesByLabelValidAt: %v", err)
+		}
+	}
+	tempWithIdxDur := time.Since(start)
+	tempWithIdxOps := int64(float64(tempQ) / tempWithIdxDur.Seconds())
+
+	if err := gTemp.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	tempSpeedup := float64(tempWithIdxOps) / float64(tempNoIdxOps)
+	fmt.Printf("  GetNodesByLabelValidAt without index: %s ops/sec  (%s nodes, 10%% selectivity)\n",
+		commas(tempNoIdxOps), commas(tempN))
+	fmt.Printf("  GetNodesByLabelValidAt with index:    %s ops/sec  (×%.1fx)\n",
+		commas(tempWithIdxOps), tempSpeedup)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 11. Vector Index (k-NN) ===")
+	// ----------------------------------------------------------------
+	// CreateVectorIndex builds a brute-force k-nearest-neighbor index on a
+	// float32 property. SearchNearestNodes scans all N vectors in memory —
+	// O(N × dims). Suitable for datasets up to ~100K nodes.
+	//
+	// Setup: 2K "Doc" nodes with 64-dim embeddings. k=10 nearest neighbors.
+
+	const (
+		vecN    = 2_000
+		vecDims = 64
+		vecK    = 10
+		vecQ    = 500
+	)
+
+	rng := rand.New(rand.NewSource(42))
+
+	gVec, err := graph.New(graph.Config{SnowflakeNodeID: 10})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for range vecN {
+		emb := randomVec(vecDims, rng)
+		if _, err := gVec.AddNode([]string{"Doc"}, map[string]any{"embedding": emb}); err != nil {
+			log.Fatalf("AddNode: %v", err)
+		}
+	}
+
+	if err := gVec.CreateVectorIndex("Doc", "embedding", vecDims, graph.DistanceCosine); err != nil {
+		log.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	query := randomVec(vecDims, rng)
+	start = time.Now()
+	for range vecQ {
+		results, err := gVec.SearchNearestNodes("Doc", "embedding", query, vecK, graph.QueryOpts{})
+		if err != nil {
+			log.Fatalf("SearchNearestNodes: %v", err)
+		}
+		_ = results
+	}
+	vecDur := time.Since(start)
+	vecOps := int64(float64(vecQ) / vecDur.Seconds())
+	vecNs := vecDur.Nanoseconds() / vecQ
+
+	if err := gVec.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("  SearchNearestNodes: %s ops/sec  (%d ns/op)  [N=%d, dims=%d, k=%d, cosine]\n",
+		commas(vecOps), vecNs, vecN, vecDims, vecK)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 12. Summary ===")
 	// ----------------------------------------------------------------
 
 	fmt.Println()
-	fmt.Printf("  %-22s %12s %12s %12s\n", "Backend", "Node ops/s", "Rel ops/s", "Elapsed")
-	fmt.Printf("  %-22s %12s %12s %12s\n", "------", "----------", "---------", "-------")
-	fmt.Printf("  %-22s %12s %12s %12v\n", "MemoryStore", commas(int64(memNodeOps)), commas(int64(memRelOps)), memElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-22s %12s %12s %12v\n", "BadgerStore (memory)", commas(int64(bmNodeOps)), commas(int64(bmRelOps)), bmElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-22s %12s %12s %12v\n", "BadgerStore (disk)", commas(int64(diskNodeOps)), commas(int64(diskRelOps)), diskElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12s\n", "Backend", "Node ops/s", "Rel ops/s", "Elapsed")
+	fmt.Printf("  %-24s %12s %12s %12s\n", "------", "----------", "---------", "-------")
+	fmt.Printf("  %-24s %12s %12s %12v\n", "MemoryStore", commas(int64(memNodeOps)), commas(int64(memRelOps)), memElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12v\n", "BadgerStore (memory)", commas(int64(bmNodeOps)), commas(int64(bmRelOps)), bmElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12v\n", "BadgerStore (disk)", commas(int64(diskNodeOps)), commas(int64(diskRelOps)), diskElapsed.Round(time.Millisecond))
 	fmt.Println()
-	fmt.Printf("  %-22s %12s\n", "Memory (heap)", "KB")
-	fmt.Printf("  %-22s %12s\n", "------", "--")
-	fmt.Printf("  %-22s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))
-	fmt.Printf("  %-22s %12s\n", "BadgerStore (memory)", commas(int64(memUsageBadger/1024)))
+	fmt.Printf("  %-24s %12s\n", "Memory (heap)", "KB")
+	fmt.Printf("  %-24s %12s\n", "------", "--")
+	fmt.Printf("  %-24s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))
+	fmt.Printf("  %-24s %12s\n", "BadgerStore (memory)", commas(int64(memUsageBadger/1024)))
 	fmt.Println()
-	fmt.Printf("  %-22s %12s\n", "Storage", "Size")
-	fmt.Printf("  %-22s %12s\n", "------", "----")
-	fmt.Printf("  %-22s %10.2f MB\n", "BadgerStore (disk)", float64(diskSize)/(1024*1024))
+	fmt.Printf("  %-24s %12s\n", "Storage", "Size")
+	fmt.Printf("  %-24s %12s\n", "------", "----")
+	fmt.Printf("  %-24s %10.2f MB\n", "BadgerStore (disk)", float64(diskSize)/(1024*1024))
 	fmt.Println()
-	fmt.Printf("  %-22s %12s %14s\n", "Query", "ops/sec", "entities/sec")
-	fmt.Printf("  %-22s %12s %14s\n", "------", "-------", "------------")
-	fmt.Printf("  %-22s %12s %14s\n", "GetNode", commas(getNodeOps), "-")
-	fmt.Printf("  %-22s %12s %14s\n", "GetRelationship", commas(getRelOps), "-")
-	fmt.Printf("  %-22s %12s %14s\n", "OutgoingRels", commas(outOps), commas(outEntPerSec))
-	fmt.Printf("  %-22s %12s %14s\n", "NodesByLabel", commas(labelOps), commas(labelEntPerSec))
+	fmt.Printf("  %-24s %12s %14s\n", "Query (no index)", "ops/sec", "entities/sec")
+	fmt.Printf("  %-24s %12s %14s\n", "------", "-------", "------------")
+	fmt.Printf("  %-24s %12s %14s\n", "GetNode", commas(getNodeOps), "-")
+	fmt.Printf("  %-24s %12s %14s\n", "GetRelationship", commas(getRelOps), "-")
+	fmt.Printf("  %-24s %12s %14s\n", "OutgoingRels", commas(outOps), commas(outEntPerSec))
+	fmt.Printf("  %-24s %12s %14s\n", "NodesByLabel", commas(labelOps), commas(labelEntPerSec))
+	fmt.Println()
+	fmt.Printf("  %-24s %12s %12s %10s\n", "Index Acceleration", "Without", "With", "Speedup")
+	fmt.Printf("  %-24s %12s %12s %10s\n", "------", "-------", "----", "-------")
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "BatchBuilder", commas(singleNodeOps), commas(batchNodeOps), batchSpeedup)
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "PropertyIndex", commas(propNoIdxOps), commas(propWithIdxOps), propSpeedup)
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "TemporalIndex (10%)", commas(tempNoIdxOps), commas(tempWithIdxOps), tempSpeedup)
+	fmt.Println()
+	fmt.Printf("  %-24s %12s %10s\n", "Vector Index", "ops/sec", "ns/op")
+	fmt.Printf("  %-24s %12s %10s\n", "------", "-------", "----")
+	fmt.Printf("  %-24s %12s %10d\n", "SearchNearestNodes", commas(vecOps), vecNs)
 
 	fmt.Println("\n=== Done ===")
 }
@@ -290,7 +551,6 @@ func main() {
 func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (time.Duration, int, int) {
 	start := time.Now()
 
-	// Create nodes with labels Type0-Type9.
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
@@ -302,7 +562,6 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 	}
 	nodeElapsed := time.Since(start)
 
-	// Create relationships with deterministic distribution.
 	relStart := time.Now()
 	for i := range relCount {
 		sIdx := i % nodeCount
@@ -316,8 +575,6 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 	}
 	relElapsed := time.Since(relStart)
 
-	// Include Close() in timing — captures async flush for BadgerStore.
-	// MemoryStore.Close() is a no-op, so this is safe for all backends.
 	if err := g.Close(); err != nil {
 		log.Fatalf("[%s] Close: %v", name, err)
 	}
@@ -329,12 +586,9 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 	return total, nodeOps, relOps
 }
 
-// measureMemoryUsage creates nodeCount nodes and relCount relationships in a
-// fresh graph and returns the approximate heap increase in bytes.
+// measureMemoryUsage returns the approximate heap increase in bytes after
+// creating nodeCount nodes and relCount relationships.
 func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) uint64 {
-	// Aggressively clean up prior allocations (Badger goroutine stacks, etc.)
-	// before measuring baseline. A single GC pass is insufficient because
-	// finalizers require a second pass to collect their referents.
 	runtime.GC()
 	debug.FreeOSMemory()
 	runtime.GC()
