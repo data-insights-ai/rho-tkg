@@ -1,4 +1,4 @@
-# Architecture — tkg-v3 (v3.0.55)
+# Architecture — tkg-v3 (v3.0.60)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -81,11 +81,10 @@ License: Apache-2.0
 
 | Method | Locks | Description |
 |--------|-------|-------------|
-| `AddNode(labels, props)` | none | Validate, generate ID, compute hash (genesis), store |
-| `AddRelationship(type, start, end, props)` | `LockTwo(start, end)` | Validate endpoints exist, generate ID, hash, store |
-| `UpdateNode(id, updates)` | `LockEntity(id)` | Deep-copy pre-mutation, apply updates, bump version, `ReplaceNodeWithHistory` |
-| `UpdateRelationship(id, updates)` | `LockEntity(id)` | Same pattern as UpdateNode |
-| `AddRelationship(type, start, end, props)` | `LockTwo(start, end)` | Validate endpoints exist; reject self-loops when `AllowSelfLoops=false` (`ErrSelfLoop`); generate ID, hash, store |
+| `AddNode(labels, props)` | `g.mu.RLock()` | Validate, generate ID, compute hash (genesis), store |
+| `AddRelationship(type, start, end, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Validate endpoints exist; reject self-loops when `AllowSelfLoops=false` (`ErrSelfLoop`); generate ID, hash, store |
+| `UpdateNode(id, updates)` | `g.mu.RLock()` + `LockEntity(id)` | Deep-copy pre-mutation, apply updates, bump version, `ReplaceNodeWithHistory` |
+| `UpdateRelationship(id, updates)` | `g.mu.RLock()` + `LockEntity(id)` | Same pattern as UpdateNode |
 | `DeleteNode(id)` | `LockMany(node + all rels)` | Two-phase TOCTOU: read adjacency, lock all, re-verify, build `[]RelTombstone`, single atomic `DeleteNodeWithHistory` call |
 | `DeleteRelationship(id)` | `LockEntity(id)` | Build tombstone, single atomic `DeleteRelWithHistory` call |
 
@@ -117,11 +116,11 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 ### Transactions
 
-`GraphTx` -- create-only transaction holding the graph write lock (`mu.Lock`). `Commit()` releases. `Rollback()` deletes entities in reverse creation order (no tombstones -- rolled-back entities vanish). Not suitable for long-running operations.
+`GraphTx` -- full CRUD transaction holding the graph write lock (`mu.Lock`). Supports `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode` (cascade), `DeleteRelationship`, and convenience property methods. `Commit()` releases the lock and publishes buffered events. `Rollback()` restores all mutations in reverse order via snapshot-based rollback: deleted entities are re-created, updates are reverted to pre-mutation snapshots, created entities are deleted. Not suitable for long-running operations.
 
-### Snapshot vs Batch Isolation
+### Transaction and Mutation Isolation
 
-`Graph.mu` (`sync.RWMutex`) serializes batch writes against whole-graph temporal reads. `BatchBuilder.Execute` acquires `mu.Lock`; `Snapshot` acquires `mu.RLock`. Individual temporal methods do NOT acquire `mu` (avoids reentrancy deadlock when Snapshot calls them).
+`Graph.mu` (`sync.RWMutex`) serializes tx/batch (Lock) vs standalone mutations and reads (RLock). All 13 exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()` at entry. `BeginTx` and `BatchBuilder.Execute` acquire `g.mu.Lock()`, blocking all standalone mutations. `GraphTx` and `BatchBuilder` call unexported `*Internal` variants (lock-free) directly under `g.mu.Lock()`. Individual temporal query methods do NOT acquire `mu` (avoids reentrancy deadlock when Snapshot calls them).
 
 ### Hash Chain Integrity
 
@@ -515,6 +514,12 @@ Hash inputs must come from the internal canonical representation (deduplicated, 
 
 The `EventBus` publishes lifecycle events (`EventNodeCreate`, `EventNodeUpdate`, etc.) synchronously. To prevent deadlocks when an event handler re-enters the Graph (e.g., to query the mutated entity), the bus copies the handler slice under `RLock` and invokes handlers *outside* the lock. Handlers are executed via `safeInvoke(h, e)` which defers `recover()` to isolate panics and logs them via `slog` without crashing the mutation caller.
 
+**Tx event buffering:** During a transaction (`txEventBuffer != nil`), `publishEvent` appends to a buffer instead of dispatching. On `Commit`, events are published after `g.mu.Unlock()` so handlers can safely call Graph read methods. On `Rollback`, the buffer is discarded.
+
+**AsyncEventBus:** `NewAsyncEventBus(config)` provides async delivery via a worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). Workers drain in Critical->High->Normal->Low->Deferred order.
+
+**EventPriority:** 5 levels -- `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates->High, deletes->Critical, updates->Normal.
+
 ### Type-Tagged MsgPack Serialization
 
 To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`, `[]string` to `[]any`), `wire.go` stores a 1-byte type tag alongside every property value. This ensures absolute Go type fidelity across the persistence boundary, which is critical for deterministic hashing and schema validation.
@@ -543,6 +548,11 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | v3.0.31 | OOM fix: ForEach iterators for temporal pipeline (~83% memory reduction) |
 | v3.0.54 | Phase 4.22: `AllowSelfLoops bool` in `ValidationLimits`, `ErrSelfLoop` sentinel, guard in `AddRelationshipWithContext`/`ImportRelationshipWithID` |
 | v3.0.55 | Phase 4.23: `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound store methods; `deleteNodeLocked`/`DeleteRelationshipWithContext` rewritten to single store call |
+| v3.0.56 | 7 production defects: cold shard race, pagination, batch rollback, disk I/O under lock, ImportGraph lock, DropOldest livelock |
+| v3.0.57 | 6 production defects (A-F): rollback panic leak, RemoveNodeLabel history, DiffSnapshots lock removal, searchNearest heap, constraint alloc, TOCTOU backoff |
+| v3.0.58 | Temporal index lazy sort (Fix G), extraLabels nil invariant (Fix H) |
+| v3.0.59 | Tx isolation (internal/external method split), event buffering in tx, directory fsync, dead code removal |
+| v3.0.60 | Temporal index concurrent sort race fix (sortMu), NodesByLabel temporal fast path nil fallthrough fix, tutorial 005 upgrade |
 
 ---
 
@@ -559,18 +569,23 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | `keys.go` | Binary key encoding (9 prefix tags, big-endian IDs) |
 | `integrity.go` | SHA-256 hash chain computation and verification |
 | `wire.go` | Type-tagged Msgpack serialization preserving Go type fidelity |
-| `shadow.go` | 15 `tkg_*` virtual property resolvers |
+| `shadow.go` | 21 `tkg_*` virtual property resolvers |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |
 | `reltype_registry.go` | Thread-safe reltype string <-> uint16 token registry |
 | `batch.go` | BatchBuilder fluent API |
-| `context.go` | Context-aware operations (8 WithContext methods); self-loop validation (`ErrSelfLoop`); atomic delete via `DeleteNodeWithHistory`/`DeleteRelWithHistory` |
-| `events.go` | EventBus for graph lifecycle notifications (Copy-Then-Invoke) |
+| `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop`), two-phase delete with TOCTOU retry |
+| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible |
+| `events.go` | `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `eventPublisher` interface, tx event buffering |
 | `temporal.go` | Temporal queries, GraphSnapshot, forEachKnownNodeID/forEachKnownRelID |
+| `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
 | `temporal_constraint.go` | Write-time temporal boundary enforcement (e.g., endpoints must outlive relationships) |
 | `temporal_filter.go` | Store-level temporal push-down helpers (entityValidFrom, matchesTemporalFilter) |
-| `temporal_index.go` | Sorted-slice interval indices for high-throughput temporal overlap queries |
-| `tx.go` | GraphTx (create-only transactions) |
+| `temporal_index.go` | In-memory interval index — sorted-slice with lazy sort (`sortIfDirty` + `sortMu`), temporal overlap queries |
+| `tx.go` | GraphTx — full CRUD transaction holding graph write lock, snapshot-based rollback |
 | `property_index.go` | In-memory property indexes with auto-maintenance |
+| `txtime.go` | Bitemporality — `GetNodeAsOf`, `GetRelAsOf`, `GetNodesAsOf`, `GetRelsAsOf`, `ErrNoVersionAsOf` |
+| `hf_index.go` | High-frequency temporal index — time-bucketed `highFrequencyIndex`, O(1) amortized insertion |
+| `stats.go` | `GraphStats` (8 operation counters + 4 cache metrics), `StoreStats` optional interface |
 | `vector_index.go` | In-memory brute-force k-NN vector indexing via Cosine/Euclidean distance |
 | `pagination.go` | Cursor-based pagination helper (binary search on sorted ID slices) |
 | `ontology.go` | EntityClass, OntologyMapping (label -> ref/event classification) |
@@ -584,3 +599,4 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | `tieredstore_repair.go` | RunRepair: cross-shard split-write consistency repair |
 | `tieredstore_migrate.go` | MigrateFromBadger: single-store to tiered migration |
 | `id_decompose.go` | DecomposeID: extract creation time, node ID, sequence from snowflake bits |
+| `doc.go` | Package documentation |

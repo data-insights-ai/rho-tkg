@@ -37,8 +37,8 @@ A core architectural decision: **Node and Relationship are pure data structs wit
 Four unexported types in `pkg/types`:
 
 ```go
-type nodeID       int64   // snowflake-generated, globally unique, time-ordered
-type relID        int64   // snowflake-generated, globally unique, time-ordered
+type nodeID       snowflake.ID  // snowflake-generated, globally unique, time-ordered
+type relID        snowflake.ID  // snowflake-generated, globally unique, time-ordered
 type labelToken   uint16  // interned label string, max 65,535 distinct labels
 type relTypeToken uint16  // interned type string, max 65,535 distinct types
 ```

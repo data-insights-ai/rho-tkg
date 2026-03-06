@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.60] - 2026-03-06
+
+### Fixed (2 Defects — post-v3.0.59 audit)
+
+- **Fix M — Temporal index concurrent sort race** (`pkg/graph/temporal_index.go`, MAJOR): `sortIfDirty` was called under `idxMu.RLock` (shared) but `sort.Slice` mutates the slice in place. Two concurrent readers calling `queryAt`/`queryOverlap` could race on the sort. Fixed by adding `sortMu sync.Mutex` which serializes `sortIfDirty` — callers still enter under `RLock` but the sort itself is single-threaded.
+
+- **Fix N — NodesByLabel temporal fast path nil fallthrough** (`pkg/graph/memorystore.go`, `pkg/graph/badgerstore.go`, MINOR): When a temporal index existed but `queryAt`/`queryOverlap` returned a nil result (no matches), the nil fell through the `if ids != nil` guard and proceeded to the O(N) label scan — defeating the index. Fixed by tracking `temporalQuery bool` separately from the result slice, so an empty-but-valid temporal result correctly short-circuits the label scan.
+
+### Tests Added
+
+- `pkg/graph/temporal_index_stress_test.go` — 11 stress tests covering concurrent sort races, interleaved reads/writes, and high-contention temporal index operations (Fix M).
+
+### Changed
+
+- Tutorial `005_performance`: added sections 8-11 (temporal index benchmarks, high-frequency index comparison, vector index throughput, TieredStore shard rotation overhead).
+
+### Documentation
+
+- Updated `CLAUDE.md`, `README.md`, `docs/architecture.md`, `docs/SPEC.md`, `pkg/types/shadow.go` to reflect v3.0.60 changes.
+
 ## [3.0.59] - 2026-03-04
 
 ### Fixed (4 Defects — external audit)

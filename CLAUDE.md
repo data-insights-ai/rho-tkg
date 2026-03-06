@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Session start**: Read `tasks/lessons.md` and `CHANGELOG.md` (source of truth for version history) before doing any work
 - **Before planning**: Read the full API of ALL files involved in the change — not snippets around suspected bug locations. Understanding the complete API prevents plans based on wrong assumptions
 - **Challenge the plan**: Before implementing any method, ask: "Does this algorithm deliver what the method name promises?" and "Does this interact with an existing feature that could break it?"
+- **After each implementation step**: Update all affected documentation (CLAUDE.md, README.md, CHANGELOG.md, docs/architecture.md, docs/SPEC.md). If not specified whether changes belong to the current version or a new version in CHANGELOG.md, ask the user before writing
 - **After corrections**: Update `tasks/lessons.md` with the pattern and a rule to prevent recurrence
 - **Session end**: Update `tasks/lessons.md` with new lessons
 
@@ -17,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.59 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.59: transaction isolation (internal/external method split), event buffering in tx, directory fsync, dead code removal.
+Status: v3.0.60 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.60: temporal index race fix (sortMu), nil-result short-circuit for temporal fast path, tutorial 005 upgrade.
 
 ## Build & Test Commands
 
@@ -91,11 +92,12 @@ These rules exist because every single one was violated at least once. Do not sk
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
 | `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
 | `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `deleteRelationshipInternal` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
+| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible; `ErrIncompatibleExport`, `ErrIncompatibleRegistry` |
 | `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
 | `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
 | `temporal_constraint.go` | Temporal constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, 6 sentinel errors, `checkTemporalConstraints` enforcement |
-| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, binary search), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
+| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, lazy sort via `sortIfDirty` + `sortMu sync.Mutex`), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
 | `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback |
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
@@ -121,7 +123,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 - **`Graph.Config`**: `SnowflakeNodeID` (0-511), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
-- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
+- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
 - **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
 - **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).
 
