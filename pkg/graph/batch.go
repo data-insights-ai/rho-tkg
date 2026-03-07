@@ -237,6 +237,14 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	var batchEvents []Event
 	b.g.txEventBuffer = &batchEvents
 
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			b.g.txEventBuffer = nil
+			b.g.mu.Unlock()
+		}
+	}()
+
 	start := time.Now()
 	result := &BatchResult{}
 
@@ -352,6 +360,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	ep := b.g.events
 	b.g.txEventBuffer = nil
 	b.g.mu.Unlock()
+	unlocked = true
 
 	// Dispatch buffered events outside all locks.
 	if ep != nil {

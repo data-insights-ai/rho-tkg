@@ -1,15 +1,18 @@
-# v3.0.61 Pre-Release Hardening
+# v3.0.62 Production Readiness
 
-## Tasks
+## Issues (Execution Order)
 
-- [x] Task 1: `CloneBytes` helper + deep-copy `Signature` in integrity structs
-- [x] Task 2: Clone `sig` at input boundary in `extractProvenance`
-- [x] Task 3: Clone `Signature` in wire encode/decode
-- [x] Task 4: Fix `SetEventBus`/`SetAsyncEventBus`/`GetEventBus` data race
-- [x] Task 5: Fix `SetTemporalConstraints`/`AddTemporalConstraint` data race
-- [x] Task 6: Move event dispatch outside mutation locks
-- [x] Task 7: Config/contract fixes (docs + ShardWindow validation)
-- [x] Task 8: Test coverage for uncovered critical paths
-- [x] Task 9: TODO tags + CHANGELOG
-- [x] Verification: `go vet` + `go test -race` all green
-- [x] Documentation updated (CHANGELOG.md, AGENTS.md)
+### Parallel Batch 1 (Small Fixes)
+- [x] Issue 3: Graph validation — reject negative ValidationLimits
+- [x] Issue 4: BadgerStore config — reject invalid values
+- [x] Issue 5: Auth level — reject fractional float64
+
+### Sequential
+- [x] Issue 6: RemoveNodeLabelTokenWithHistory — atomic Store method
+- [x] Issue 2: Batch panic lock-leak — deferred cleanup
+- [x] Issue 1: Test coverage — all untested public APIs
+- [x] Issue 7: CHANGELOG Known Limitations
+
+## Verification
+- [x] `go vet ./pkg/graph/... ./pkg/types/...`
+- [x] `go test -race -count=1 ./pkg/graph/... ./pkg/types/...`

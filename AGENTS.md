@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.61 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.61: signature aliasing fixes (DeepCopy, extractProvenance, wire), event bus/constraint race fixes, event dispatch moved outside locks, ShardWindow validation, test coverage gaps closed.
+Status: v3.0.62 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.62: batch lock-leak fix, negative config validation, fractional auth level rejection, atomic RemoveNodeLabelTokenWithHistory, store API test coverage.
 
 ## Build & Test Commands
 

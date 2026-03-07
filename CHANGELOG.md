@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.62] - 2026-03-07
+
+### Fixed (5 Defects — production readiness)
+
+- **Fix U — Batch lock-leak on panic** (`pkg/graph/batch.go`, MAJOR): `BatchBuilder.Execute()` acquired `g.mu.Lock()` without defer. A panic between lock acquisition and unlock (e.g., in a Store implementation) would leak the lock and leave `txEventBuffer` non-nil, permanently deadlocking the Graph. Fixed by adding deferred cleanup with an `unlocked` flag.
+
+- **Fix V — Graph validation accepts negative limits** (`pkg/graph/graph.go`, MAJOR): `New()` resolved zero `ValidationLimits` fields to defaults but accepted negative values (e.g., `MaxLabelsPerNode: -1`), which passed through silently and broke downstream comparisons. Fixed by rejecting negative values after zero-to-default resolution.
+
+- **Fix W — BadgerStore accepts invalid config** (`pkg/graph/badgerstore.go`, MAJOR): `NewBadgerStore()` accepted negative `FlushInterval`/`GCInterval`, out-of-range `GCDiscardRatio`, and empty `Dir` when `InMemory` is false. Fixed by adding upfront validation before opening Badger.
+
+- **Fix X — Auth level silently truncates fractional float64** (`pkg/graph/context.go`, MAJOR): `extractProvenance` accepted `tkg_auth_level: 5.9` and silently truncated to `uint8(5)`. Fixed by adding `math.Trunc` check before range check — fractional values now return an error.
+
+- **Fix Y — RemoveNodeLabel crash-consistency gap** (`pkg/graph/graph.go`, `pkg/graph/store.go`, all 3 Store implementations, MAJOR): `removeNodeLabelInternal` performed two separate writes: `PutNodeVersion` then `RemoveNodeLabelToken`. A crash between them would leave a phantom history entry. Fixed by adding `RemoveNodeLabelTokenWithHistory` to the Store interface, implemented atomically in MemoryStore (single lock), BadgerStore (single `appendOps` call), and TieredStore (delegate to shard).
+
+### Tests Added
+
+- `pkg/graph/v3062_fixes_test.go` — 19 tests:
+  - `TestNew_NegativeValidationLimits` — each field at -1 rejected; zero/positive accepted.
+  - `TestNewBadgerStore_InvalidConfig` — table-driven: negative flush, negative gc, bad ratio, empty dir.
+  - `TestExtractProvenance_FractionalAuthLevel` — 5.9 rejected, 5.0 accepted, 0.1 rejected.
+  - `TestBatchExecute_PanicRecovery` — inject panicking store, verify lock released.
+  - `TestBatchExecute_ConcurrentAccess` — verify lock released after normal batch.
+  - `TestBadgerStore_CreateTemporalIndex` — create, duplicate error.
+  - `TestBadgerStore_DropTemporalIndex` — drop, double-drop error.
+  - `TestBadgerStore_CreateHighFrequencyIndex` — success, duplicate, temporal conflict.
+  - `TestBadgerStore_DropHighFrequencyIndex` — drop, double-drop, re-create after drop.
+  - `TestBadgerStore_RemoveNodeLabelTokenWithHistory` — atomic label removal + history entry.
+  - `TestTieredStore_CreateTemporalIndex_Store` — create across shards, verify query.
+  - `TestTieredStore_DropTemporalIndex_Store` — drop, double-drop.
+  - `TestTieredStore_CreateHighFrequencyIndex_Store` — create across shards.
+  - `TestTieredStore_DropHighFrequencyIndex_Store` — drop, double-drop.
+  - `TestTieredStore_SaveLabelRegistry_Deprecated` — in-memory no-op path.
+  - `TestTieredStore_SaveRelTypeRegistry_Deprecated` — in-memory no-op path.
+  - `TestTieredStore_RemoveNodeLabelTokenWithHistory` — atomic path on TieredStore.
+  - `TestRemoveNodeLabel_AtomicHistory` — verifies history + version via Graph API.
+
+### Known Limitations (deferred to v3.1.0)
+
+- **Cursor-based history ID queries** (`export.go:124`, `badgerstore.go:3050`): `AllNodeHistoryIDs` and `AllRelHistoryIDs` return all IDs at once. Large graphs may exceed available memory. A cursor-based `QueryOpts` variant is planned.
+- **Streaming DiffSnapshots** (`temporal.go:618`): `DiffSnapshots` materializes all nodes into RAM before computing the diff. Streaming would reduce peak memory to O(1).
+- **Cross-shard relationship batching** (`tieredstore_write.go:313`): `PutRelationshipsBatch` iterates relationships one-by-one across shards. Partitioning by shard would enable store-level batching for same-shard relationships.
+
 ## [3.0.61] - 2026-03-07
 
 ### Fixed (6 Defects — pre-release hardening)

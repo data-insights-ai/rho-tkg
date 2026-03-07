@@ -192,6 +192,12 @@ func New(config Config) (*Graph, error) {
 		v.MaxNameLength = defaultMaxNameLength
 	}
 
+	if v.MaxLabelsPerNode < 0 || v.MaxPropertiesPerEntity < 0 ||
+		v.MaxPropertyKeyLength < 0 || v.MaxPropertyValueSize < 0 ||
+		v.MaxNameLength < 0 {
+		return nil, fmt.Errorf("graph: validation limits must not be negative")
+	}
+
 	g := &Graph{
 		labels:      newLabelRegistry(),
 		relTypes:    newRelTypeRegistry(),
@@ -1015,15 +1021,8 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 	}
 	tm.UpdatedAt = now
 
-	// Persist old state as history entry before updating the current node.
-	// TODO(v3.1.0): atomic RemoveNodeLabelTokenWithHistory (crash window: phantom history
-	// entry if crash after PutNodeVersion but before RemoveNodeLabelToken; entity state
-	// remains correct — same documented limitation as Rollback).
-	if err := g.store.PutNodeVersion(id, prevVersion, prevState); err != nil {
-		return err
-	}
-
-	if err := g.store.RemoveNodeLabelToken(id, tok, copy); err != nil {
+	// Atomic: write history entry + remove label index + persist updated node in one call.
+	if err := g.store.RemoveNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
 		return err
 	}
 	g.opNodeUpdates.Add(1)

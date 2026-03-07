@@ -166,6 +166,45 @@ func (ms *MemoryStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 	return nil
 }
 
+// RemoveNodeLabelTokenWithHistory atomically removes tok from the label index,
+// writes a version history entry, and persists updatedNode under a single lock.
+func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	old, exists := ms.nodes[id]
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	// Write history entry.
+	inner, ok := ms.nodeHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Node)
+		ms.nodeHistory[id] = inner
+	}
+	inner[prevVersion] = prevState.DeepCopy()
+
+	// Remove only the specified token from the label index.
+	if set, ok := ms.labelIdx[tok]; ok {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.labelIdx, tok)
+		}
+	}
+
+	// Update property, temporal, and vector indexes.
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, old, id)
+	ms.nodes[id] = updatedNode.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, id)
+	return nil
+}
+
 // ReplaceNode overwrites an existing node's data in-place.
 // Returns ErrNodeNotFound if the node does not exist.
 // No label index changes — labels are immutable after creation.

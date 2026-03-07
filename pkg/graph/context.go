@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"math"
 	"runtime"
 	"time"
 
@@ -66,10 +67,13 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 		}
 		authLevel = uint8(v)
 	case float64:
+		if v != math.Trunc(v) {
+			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %g is not an integer", v)
+		}
 		if v < 0 || v > 255 {
 			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %g out of range [0, 255]", v)
 		}
-		authLevel = uint8(v) // truncates fractional part — acceptable for JSON round-trip (e.g. 5.0)
+		authLevel = uint8(v)
 	default:
 		if props["tkg_auth_level"] != nil {
 			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level must be a number, got %T", props["tkg_auth_level"])

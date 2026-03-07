@@ -158,6 +158,19 @@ var (
 // NewBadgerStore opens a Badger database with the given configuration and
 // rebuilds in-memory indexes from persisted data.
 func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
+	if cfg.FlushInterval < 0 {
+		return nil, fmt.Errorf("graph: FlushInterval must not be negative")
+	}
+	if cfg.GCInterval < 0 {
+		return nil, fmt.Errorf("graph: GCInterval must not be negative")
+	}
+	if cfg.GCDiscardRatio != 0 && (cfg.GCDiscardRatio <= 0 || cfg.GCDiscardRatio >= 1) {
+		return nil, fmt.Errorf("graph: GCDiscardRatio must be in (0, 1), got %g", cfg.GCDiscardRatio)
+	}
+	if !cfg.InMemory && cfg.Dir == "" {
+		return nil, fmt.Errorf("graph: Dir required when InMemory is false")
+	}
+
 	opts := badger.DefaultOptions(cfg.Dir)
 	if cfg.InMemory {
 		opts = opts.WithInMemory(true)
@@ -713,6 +726,74 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 	// Queue: set node data + delete label index entry.
 	bs.appendOps(
 		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
+		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
+	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// RemoveNodeLabelTokenWithHistory atomically removes tok from the label index,
+// writes a version history entry, and persists updatedNode via a single appendOps call.
+func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node) error {
+	intID := int64(id)
+
+	w := nodeToWire(updatedNode)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	hw := nodeToWire(prevState)
+	histData, err := msgpack.Marshal(hw)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+
+	old, _ := bs.prefetchNode(id)
+
+	bs.idxMu.Lock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
+		return ErrNodeNotFound
+	}
+
+	// Update property, temporal, and vector indexes using pre-fetched old node state.
+	if old != nil {
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	}
+
+	// Remove tok from the in-memory label index.
+	if set, ok := bs.labelIdx[tok]; ok {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(bs.labelIdx, tok)
+		}
+	}
+	bs.getOrCreateLabelCounter(tok).Add(-1)
+
+	// Update cache and property/temporal/vector indexes for the new node state.
+	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+
+	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
+	histKey := histNodeKey(intID, uint64(prevVersion))
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
+		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
 	)
 	bs.idxMu.Unlock()

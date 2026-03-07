@@ -342,6 +342,57 @@ Audit: `grep -rn 'func (g \*Graph).*Internal' pkg/graph/` — every internal mus
 
 **History:** Found in v3.0.59 external audit. Standalone mutations could bypass tx isolation.
 
+## B26. Lock Acquisition Without Defer Leaks on Panic
+
+```
+BAD:  b.g.mu.Lock()
+      // ... 100 lines of operations ...
+      b.g.mu.Unlock()
+      // if anything panics between Lock and Unlock, the lock is leaked forever
+
+GOOD: b.g.mu.Lock()
+      unlocked := false
+      defer func() {
+          if !unlocked {
+              b.g.txEventBuffer = nil
+              b.g.mu.Unlock()
+          }
+      }()
+      // ... operations ...
+      b.g.mu.Unlock()
+      unlocked = true
+```
+
+Pattern: when `defer mu.Unlock()` can't be used (because you need to do work after unlock), use an `unlocked` flag with deferred cleanup. This protects against panics in Store implementations or other injected code.
+
+**History:** Found in v3.0.62 review. `BatchBuilder.Execute()` had 110+ lines between Lock and Unlock with no panic protection.
+
+## B27. Input Validation at Startup: Reject Nonsensical Configs
+
+```
+BAD:  v.MaxLabelsPerNode == 0 → default
+      v.MaxLabelsPerNode == -1 → accepted (breaks comparisons)
+
+GOOD: if v.MaxLabelsPerNode < 0 { return error }
+```
+
+After resolving zero-to-default, check for negatives. A negative validation limit passes through and silently disables the guard (since `len(labels) > -1` is always true).
+
+**History:** Found in v3.0.62 review. `Graph.New()` and `NewBadgerStore()` both accepted negative config values.
+
+## B28. Fractional Float-to-Integer Truncation Is Silent Data Loss
+
+```
+BAD:  authLevel = uint8(v)  // v=5.9 → 5 (truncated silently)
+
+GOOD: if v != math.Trunc(v) { return error }
+      authLevel = uint8(v)
+```
+
+JSON `number` values arrive as `float64` in Go. `5.0` → `uint8(5)` is safe. `5.9` → `uint8(5)` is silent data loss. Always check `math.Trunc` before integer conversion.
+
+**History:** Found in v3.0.62 review. `extractProvenance` silently truncated fractional auth levels.
+
 ## B25. Tx Event Buffering: Publish After Unlock
 
 ```

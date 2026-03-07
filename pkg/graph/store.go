@@ -147,6 +147,13 @@ type Store interface {
 	// Returns ErrNodeNotFound if the node does not exist.
 	RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error
 
+	// RemoveNodeLabelTokenWithHistory atomically removes tok from the label index,
+	// writes a version history entry for prevState, and persists updatedNode.
+	// Eliminates the crash window between PutNodeVersion and RemoveNodeLabelToken.
+	// Returns ErrNodeNotFound if the node does not exist.
+	RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+		prevVersion uint32, prevState *types.Node) error
+
 	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
 	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)
