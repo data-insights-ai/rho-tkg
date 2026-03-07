@@ -121,11 +121,31 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### Configuration
 
-- **`Graph.Config`**: `SnowflakeNodeID` (0-511), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
+- **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
 - **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
 - **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
 - **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).
+
+### Snowflake Configuration
+
+Both generator sets (nodes and relationships) are initialized with explicit parameters matching the v1.3.0 microsecond precision layout:
+
+```text
++---------------------------------------------------------------+
+|  1 bit  |       48 bits        |   5 bits   |     10 bits     |
+|  zero   |     time (usec)      |   node ID  |    sequence     |
++---------------------------------------------------------------+
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Epoch | `2026-01-01 00:00:00 UTC` |
+| Precision | Microseconds (`snowflake.WithMicroseconds()`) |
+| Node bits | 5 (max `SnowflakeNodeID` is 15 since it maps to `id*2` and `id*2+1`) |
+| Step bits | 10 (1024 unique IDs per microsecond) |
+
+Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-15).
 
 ## Design Rules
 
@@ -133,7 +153,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 - **Pure-data structs**: Node/Relationship never hold references to Graph, registries, or resolvers. String resolution is always the Graph layer's responsibility.
 - **snowflake.ID everywhere**: All IDs are `snowflake.ID` wrapped in opaque types (`nodeID`, `relID`, `entityID`). Never use `int64` or `string` for entity IDs.
-- **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-511 (512 instances). Epoch: `2026-01-01`.
+- **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-15 (16 instances). Epoch: `2026-01-01`.
 - **Strict encapsulation**: All fields unexported. Access through methods only.
 - **Struct alignment**: Node (80B), Relationship (72B) packed by descending alignment. Verify with `unsafe.Sizeof`.
 - **Token 0 reserved**: `HasLabelToken(0)` and `HasTypeToken(0)` always return false.
@@ -286,7 +306,7 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 | Module | Role |
 |---|---|
 | `rho/tkg-v3` | Internal library — graph types, persistence, registries (this repo) |
-| `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP/gRPC server |
+| `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP server |
 | `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
 
 tkg-v3 does **not** depend on kit. tkgd-v3 depends on both.

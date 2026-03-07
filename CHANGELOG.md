@@ -46,6 +46,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Streaming DiffSnapshots** (`temporal.go:618`): `DiffSnapshots` materializes all nodes into RAM before computing the diff. Streaming would reduce peak memory to O(1).
 - **Cross-shard relationship batching** (`tieredstore_write.go:313`): `PutRelationshipsBatch` iterates relationships one-by-one across shards. Partitioning by shard would enable store-level batching for same-shard relationships.
 
+### Documentation
+
+- Refactored `README.md` by moving detailed technical documentation into the `docs/` directory (`api.md`, `persistence.md`, `design.md`), producing a cleaner high-level overview.
+- Added updated Snowflake configuration details (microsecond precision, 5-bit node IDs, max ID 15) to both `README.md` and `CLAUDE.md`.
+
 ## [3.0.61] - 2026-03-07
 
 ### Fixed (6 Defects — pre-release hardening)
