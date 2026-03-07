@@ -491,9 +491,7 @@ func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 // shard window matches (entity from before the oldest shard).
 // Returns error if cold shard lazy-open fails.
 func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, error) {
-	epochMs := snowflakeEpoch.UnixMilli()
-	timeMs := int64(uint64(id) >> 22)
-	created := time.UnixMilli(epochMs + timeMs)
+	created := snowflakeLayout.CreatedAt(id)
 
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
@@ -512,9 +510,7 @@ func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, err
 // checkoutStore/checkinStore for safe concurrent access.
 // Falls back to hotShard if no window matches.
 func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *eventShard {
-	epochMs := snowflakeEpoch.UnixMilli()
-	timeMs := int64(uint64(id) >> 22)
-	created := time.UnixMilli(epochMs + timeMs)
+	created := snowflakeLayout.CreatedAt(id)
 
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()

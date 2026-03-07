@@ -206,16 +206,16 @@ func TestGraphSnowflakeNodeIDRange(t *testing.T) {
 		t.Errorf("SnowflakeNodeID=0 should be valid, got: %v", err)
 	}
 
-	// Valid: 511 (maximum — maps to even/odd pair 1022/1023)
-	_, err = New(Config{SnowflakeNodeID: 511})
+	// Valid: 15 (maximum — maps to even/odd pair 30/31 in 5-bit node field)
+	_, err = New(Config{SnowflakeNodeID: 15})
 	if err != nil {
-		t.Errorf("SnowflakeNodeID=511 should be valid, got: %v", err)
+		t.Errorf("SnowflakeNodeID=15 should be valid, got: %v", err)
 	}
 
-	// Invalid: 512 (would map to 1024/1025 — exceeds 10-bit range)
-	_, err = New(Config{SnowflakeNodeID: 512})
+	// Invalid: 16 (would map to 32/33 — exceeds 5-bit range)
+	_, err = New(Config{SnowflakeNodeID: 16})
 	if err == nil {
-		t.Fatal("SnowflakeNodeID=512 should return error")
+		t.Fatal("SnowflakeNodeID=16 should return error")
 	}
 
 	// Invalid: negative

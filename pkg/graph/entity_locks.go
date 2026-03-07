@@ -22,12 +22,10 @@ func newEntityLockManager() *entityLockManager {
 }
 
 // shardIndex returns the shard index for the given entity ID.
-// Uses the low 8 bits of the 41-bit millisecond timestamp (bits 22-29 of the
-// snowflake layout [41 ts | 10 node | 12 step]). Entities created >256ms apart
-// land in different shards. This avoids the step-counter reset problem where
-// all entities created in separate milliseconds would map to shard 0.
+// Uses the low 8 bits of the snowflake timestamp field. Entities created
+// >256 time ticks apart land in different shards.
 func shardIndex(id snowflake.ID) uint8 {
-	return uint8((uint64(id) >> 22) & (entityLockShards - 1))
+	return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1)
 }
 
 // LockEntity acquires the lock for a single entity.

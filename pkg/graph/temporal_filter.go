@@ -7,17 +7,12 @@ import (
 
 // entityValidFrom derives the effective valid-from time for an entity.
 // Uses explicit ValidFrom if set on TemporalMetadata, otherwise derives
-// from the snowflake ID timestamp bits.
-//
-// No *Graph dependency — uses bit extraction instead of Decompose().
-// Snowflake layout: time(42b) | node(10b) | step(12b) → id >> 22 = time ms.
+// from the snowflake ID via the package-level snowflakeLayout.
 func entityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	epochMs := snowflakeEpoch.UnixMilli()
-	timeMs := int64(uint64(id) >> 22) // extract 42-bit time field
-	return types.Instant(epochMs + timeMs)
+	return types.Instant(snowflakeLayout.CreatedAt(id).UnixMilli())
 }
 
 // matchesTemporalFilter evaluates whether an entity passes the temporal

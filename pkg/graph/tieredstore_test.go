@@ -3592,15 +3592,15 @@ func TestShardCatalog_ColdEventShards(t *testing.T) {
 // --- Step 1: ID Decomposition ---
 
 func TestDecomposeID_KnownValues(t *testing.T) {
-	gen := newTestGen(t, 42)
+	gen := newTestGen(t, 7)
 	id := gen.Generate()
 	c := DecomposeID(id)
 
-	if c.NodeID != 42 {
-		t.Errorf("NodeID = %d, want 42", c.NodeID)
+	if c.NodeID != 7 {
+		t.Errorf("NodeID = %d, want 7", c.NodeID)
 	}
-	if c.Sequence < 0 || c.Sequence > 4095 {
-		t.Errorf("Sequence = %d, out of range", c.Sequence)
+	if c.Sequence < 0 || c.Sequence > 1023 {
+		t.Errorf("Sequence = %d, out of range [0,1023]", c.Sequence)
 	}
 	if c.CreatedAt.IsZero() {
 		t.Error("CreatedAt is zero")
@@ -3625,8 +3625,8 @@ func TestDecomposeID_TimePrecision(t *testing.T) {
 }
 
 func TestDecomposeID_NodeField(t *testing.T) {
-	// Test with different node IDs to verify the 10-bit node field.
-	for _, nodeID := range []int64{0, 1, 511, 1023} {
+	// Test with different node IDs to verify the 5-bit node field (max 31).
+	for _, nodeID := range []int64{0, 1, 15, 31} {
 		gen := newTestGen(t, nodeID)
 		id := gen.Generate()
 		c := DecomposeID(id)

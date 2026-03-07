@@ -7,6 +7,20 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
+// differentShardIDs returns two IDs guaranteed to map to different shards.
+func differentShardIDs(t *testing.T) (snowflake.ID, snowflake.ID) {
+	t.Helper()
+	gen := newTestGen(t, 0)
+	a := gen.Generate()
+	sa := shardIndex(a)
+	for {
+		b := gen.Generate()
+		if shardIndex(b) != sa {
+			return a, b
+		}
+	}
+}
+
 // ─── Basic lock/unlock ──────────────────────────────────────────────────────
 
 func TestEntityLockManagerSingleLock(t *testing.T) {
@@ -21,12 +35,7 @@ func TestEntityLockManagerSingleLock(t *testing.T) {
 func TestEntityLockManagerLockTwoDifferentShards(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
-
-	// Choose IDs that map to different shards. shardIndex uses bits 22-29
-	// (low 8 bits of the timestamp field), so shift values above bit 22.
-	a := snowflake.ID(0 << 22) // shard 0
-	b := snowflake.ID(1 << 22) // shard 1
-
+	a, b := differentShardIDs(t)
 	lm.LockTwo(a, b)
 	lm.UnlockTwo(a, b)
 }
@@ -44,11 +53,7 @@ func TestEntityLockManagerLockTwoSameShard(t *testing.T) {
 func TestEntityLockManagerLockTwoReverseOrder(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
-
-	// LockTwo should normalize order, so (b, a) == (a, b).
-	a := snowflake.ID(0 << 22)
-	b := snowflake.ID(1 << 22)
-
+	a, b := differentShardIDs(t)
 	lm.LockTwo(b, a)
 	lm.UnlockTwo(b, a)
 }
@@ -57,10 +62,16 @@ func TestEntityLockManagerLockTwoReverseOrder(t *testing.T) {
 
 func TestShardIndexRange(t *testing.T) {
 	t.Parallel()
-
+	gen := newTestGen(t, 0)
 	// Verify shard indices are always 0-255.
-	// Values must place bits in the timestamp region (bits 22+) for meaningful shard diversity.
-	for _, id := range []snowflake.ID{0, 1 << 22, 255 << 22, 256 << 22, 1000 << 22, ^snowflake.ID(0)} {
+	for range 100 {
+		si := shardIndex(gen.Generate())
+		if int(si) >= entityLockShards {
+			t.Fatalf("shardIndex out of range: %d", si)
+		}
+	}
+	// Edge case: zero and max IDs.
+	for _, id := range []snowflake.ID{0, ^snowflake.ID(0)} {
 		si := shardIndex(id)
 		if int(si) >= entityLockShards {
 			t.Fatalf("shardIndex(%d) = %d, out of range", id, si)
@@ -70,17 +81,15 @@ func TestShardIndexRange(t *testing.T) {
 
 func TestShardIndexDistribution(t *testing.T) {
 	t.Parallel()
-
-	// Entities created at different millisecond timestamps should distribute
-	// across shards. With the old step-based sharding, all of these would
-	// map to shard 0 (step=0 for each).
+	gen := newTestGen(t, 0)
+	// Generate enough IDs to span 256+ microsecond ticks (1024 IDs per tick).
+	// 256 consecutive time values cover all 256 shard indices.
 	seen := make(map[uint8]struct{})
-	for ms := int64(0); ms < 256; ms++ {
-		id := snowflake.ID(ms << 22) // ms in timestamp field, step=0, node=0
-		seen[shardIndex(id)] = struct{}{}
+	for range 262_144 {
+		seen[shardIndex(gen.Generate())] = struct{}{}
 	}
 	if len(seen) != 256 {
-		t.Errorf("256 consecutive ms timestamps used %d/256 shards, want 256", len(seen))
+		t.Errorf("%d/256 shards used, want 256", len(seen))
 	}
 }
 
@@ -89,10 +98,7 @@ func TestShardIndexDistribution(t *testing.T) {
 func TestEntityLockManagerNoDeadlock(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
-
-	// Two IDs in different shards (timestamp bits determine shard).
-	a := snowflake.ID(0 << 22) // shard 0
-	b := snowflake.ID(1 << 22) // shard 1
+	a, b := differentShardIDs(t)
 
 	const iterations = 1000
 	var wg sync.WaitGroup
@@ -125,18 +131,25 @@ func TestEntityLockManagerNoDeadlock(t *testing.T) {
 func TestEntityLockManagerConcurrentStress(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
+	gen := newTestGen(t, 0)
 
+	// Pre-generate IDs for all goroutines.
 	const goroutines = 50
 	const opsPerGoroutine = 500
+	allIDs := make([]snowflake.ID, goroutines*opsPerGoroutine*2)
+	for i := range allIDs {
+		allIDs[i] = gen.Generate()
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 	for g := range goroutines {
 		go func(gid int) {
 			defer wg.Done()
+			base := gid * opsPerGoroutine * 2
 			for i := range opsPerGoroutine {
-				a := snowflake.ID(int64(gid*100+i) << 22)
-				b := snowflake.ID(int64(gid*100+i+1) << 22)
+				a := allIDs[base+i*2]
+				b := allIDs[base+i*2+1]
 
 				if i%2 == 0 {
 					lm.LockEntity(a)
@@ -156,13 +169,9 @@ func TestEntityLockManagerConcurrentStress(t *testing.T) {
 func TestLockMany_Basic(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
+	gen := newTestGen(t, 0)
 
-	// 3 IDs across different shards — no deadlock.
-	ids := []snowflake.ID{
-		snowflake.ID(0 << 22),
-		snowflake.ID(1 << 22),
-		snowflake.ID(2 << 22),
-	}
+	ids := []snowflake.ID{gen.Generate(), gen.Generate(), gen.Generate()}
 	lm.LockMany(ids)
 	lm.UnlockMany(ids)
 }
@@ -171,11 +180,9 @@ func TestLockMany_SameShard(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
 
-	// Multiple IDs mapping to same shard — dedup means single lock.
-	ids := []snowflake.ID{
-		snowflake.ID(0 << 22),
-		snowflake.ID(256 << 22), // wraps back to shard 0
-	}
+	// Two IDs in the same shard — dedup means single lock.
+	id := snowflake.ID(99)
+	ids := []snowflake.ID{id, id}
 	lm.LockMany(ids)
 	lm.UnlockMany(ids)
 }
@@ -183,10 +190,15 @@ func TestLockMany_SameShard(t *testing.T) {
 func TestLockMany_DeadlockFree(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
+	gen := newTestGen(t, 0)
 
-	// Two goroutines with overlapping ID sets — ascending shard order prevents deadlock.
-	setA := []snowflake.ID{snowflake.ID(0 << 22), snowflake.ID(1 << 22), snowflake.ID(2 << 22)}
-	setB := []snowflake.ID{snowflake.ID(2 << 22), snowflake.ID(1 << 22), snowflake.ID(3 << 22)}
+	// Generate distinct IDs for two overlapping sets.
+	ids := make([]snowflake.ID, 4)
+	for i := range ids {
+		ids[i] = gen.Generate()
+	}
+	setA := []snowflake.ID{ids[0], ids[1], ids[2]}
+	setB := []snowflake.ID{ids[2], ids[1], ids[3]}
 
 	const iterations = 1000
 	var wg sync.WaitGroup
@@ -214,9 +226,9 @@ func TestLockMany_DeadlockFree(t *testing.T) {
 func TestLockMany_MutualExclusion(t *testing.T) {
 	t.Parallel()
 	lm := newEntityLockManager()
+	a, b := differentShardIDs(t)
+	ids := []snowflake.ID{a, b}
 
-	// Shared counter protected by LockMany — must be correct.
-	ids := []snowflake.ID{snowflake.ID(0 << 22), snowflake.ID(1 << 22)}
 	counter := 0
 	const total = 10000
 

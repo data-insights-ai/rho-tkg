@@ -59,6 +59,22 @@ type ValidationLimits struct {
 // snowflakeEpoch is the custom epoch for all snowflake ID generation (2026-01-01 UTC).
 var snowflakeEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// snowflakeLayout is the package-level Layout matching the graph's snowflake
+// generators. Used by standalone functions (entityValidFrom, shardIndex,
+// DecomposeID) that don't have access to a *Node.
+var snowflakeLayout = func() snowflake.Layout {
+	l, err := snowflake.NewLayout(
+		snowflake.WithEpoch(snowflakeEpoch),
+		snowflake.WithMicroseconds(),
+		snowflake.WithNodeBits(5),
+		snowflake.WithStepBits(10),
+	)
+	if err != nil {
+		panic("graph: snowflakeLayout: " + err.Error())
+	}
+	return l
+}()
+
 // Config holds configuration for the Graph.
 type Config struct {
 	// SnowflakeNodeID identifies this graph instance (0-511).
@@ -135,22 +151,24 @@ type Graph struct {
 // When a BadgerStore is created, registries are loaded from persisted data.
 // Call Close() when done to save registries and close the store.
 func New(config Config) (*Graph, error) {
-	if config.SnowflakeNodeID < 0 || config.SnowflakeNodeID > 511 {
-		return nil, fmt.Errorf("graph: SnowflakeNodeID must be 0-511, got %d", config.SnowflakeNodeID)
+	if config.SnowflakeNodeID < 0 || config.SnowflakeNodeID > 15 {
+		return nil, fmt.Errorf("graph: SnowflakeNodeID must be 0-15, got %d", config.SnowflakeNodeID)
 	}
 
 	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
 		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithNodeBits(10),
-		snowflake.WithStepBits(12),
+		snowflake.WithMicroseconds(),
+		snowflake.WithNodeBits(5),
+		snowflake.WithStepBits(10),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("graph: node ID generator: %w", err)
 	}
 	relGen, err := snowflake.NewNode(config.SnowflakeNodeID*2+1,
 		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithNodeBits(10),
-		snowflake.WithStepBits(12),
+		snowflake.WithMicroseconds(),
+		snowflake.WithNodeBits(5),
+		snowflake.WithStepBits(10),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)

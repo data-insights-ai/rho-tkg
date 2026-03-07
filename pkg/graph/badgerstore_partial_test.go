@@ -317,8 +317,9 @@ func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {
 	t.Helper()
 	gen, err := snowflake.NewNode(nodeID,
 		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithNodeBits(10),
-		snowflake.WithStepBits(12),
+		snowflake.WithMicroseconds(),
+		snowflake.WithNodeBits(5),
+		snowflake.WithStepBits(10),
 	)
 	if err != nil {
 		t.Fatalf("NewNode: %v", err)

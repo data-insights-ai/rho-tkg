@@ -19,9 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Tutorial `005_performance`: added sections 8-11 (temporal index benchmarks, high-frequency index comparison, vector index throughput, TieredStore shard rotation overhead).
+- **Snowflake Layout Upgrade**: Upgraded `github.com/bds421/rho-snowflake-2026` to `v1.3.0`. Switched to microsecond precision (`snowflake.WithMicroseconds()`) and adjusted bit layout: node bits reduced from 10 to 5 (max `SnowflakeNodeID` is now 15), step bits reduced from 12 to 10.
+- **Removed hardcoded bit-shifting**: Replaced manual bitwise operations via native `snowflakeLayout.CreatedAt(id)` and `snowflakeLayout.Decompose(id)` APIs across `id_decompose.go`, `shadow.go`, `temporal.go`, `temporal_filter.go`, `entity_locks.go`, and `tieredstore.go`.
+
+### Added
+
+- `AGENTS.md` — comprehensive guidelines, project overview, testing rules, and architecture map for AI agents assisting with the codebase.
 
 ### Documentation
 
+- Updated `CLAUDE.md` to include a new lesson on using library APIs instead of reimplementing internals.
 - Updated `CLAUDE.md`, `README.md`, `docs/architecture.md`, `docs/SPEC.md`, `pkg/types/shadow.go` to reflect v3.0.60 changes.
 
 ## [3.0.59] - 2026-03-04

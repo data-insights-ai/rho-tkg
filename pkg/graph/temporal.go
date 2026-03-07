@@ -50,9 +50,7 @@ func (g *Graph) nodeValidFrom(n *types.Node) types.Instant {
 	if tm := n.Temporal(); tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	// Derive from snowflake ID — always available, millisecond precision.
-	parts := g.nodeIDGen.Decompose(n.InternalID().SnowflakeID())
-	return types.Instant(snowflakeEpoch.UnixMilli() + parts.Time)
+	return types.Instant(g.nodeIDGen.CreatedAt(n.InternalID().SnowflakeID()).UnixMilli())
 }
 
 // relValidFrom returns the effective valid-from time for a relationship.
@@ -61,8 +59,7 @@ func (g *Graph) relValidFrom(r *types.Relationship) types.Instant {
 	if tm := r.Temporal(); tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	parts := g.relIDGen.Decompose(r.InternalID().SnowflakeID())
-	return types.Instant(snowflakeEpoch.UnixMilli() + parts.Time)
+	return types.Instant(g.relIDGen.CreatedAt(r.InternalID().SnowflakeID()).UnixMilli())
 }
 
 // isNodeValidAt checks if a node is valid at the given instant.
