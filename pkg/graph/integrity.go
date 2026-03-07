@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"hash"
-	"io"
+	"math"
 	"sort"
+	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
@@ -156,31 +156,25 @@ func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
 	return true, nil
 }
 
-// mustWrite writes binary data to a hash.Hash, panicking on error.
-// hash.Hash.Write is documented to never return an error, but
-// binary.Write wraps it in an interface that technically can.
-// Panicking surfaces any future stdlib behavioral change immediately.
-func mustWrite(h hash.Hash, data any) {
-	if err := binary.Write(h, binary.BigEndian, data); err != nil {
-		panic("graph: hash write: " + err.Error())
-	}
-}
-
-// mustWriteString writes a string to a hash.Hash, panicking on error.
-func mustWriteString(h hash.Hash, s string) {
-	if _, err := io.WriteString(h, s); err != nil {
-		panic("graph: hash write string: " + err.Error())
-	}
+// hashBufPool provides reusable byte buffers for hash input construction.
+// Buffers are grown as needed and returned to the pool after use, amortizing
+// allocation cost to near zero in steady state.
+var hashBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, 256)
+		return &buf
+	},
 }
 
 // ComputeNodeHash computes a SHA-256 hash of the node's content.
 // The hash covers: id, version, sorted labels, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeNodeHash(n *types.Node, labels []string) string {
-	h := sha256.New()
+	bp := hashBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
 
-	mustWrite(h, int64(n.InternalID().SnowflakeID()))
-	mustWrite(h, n.Version())
+	buf = binary.BigEndian.AppendUint64(buf, uint64(n.InternalID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint32(buf, n.Version())
 
 	// Defensive sort — caller may pass unsorted labels.
 	sorted := make([]string, len(labels))
@@ -188,155 +182,170 @@ func ComputeNodeHash(n *types.Node, labels []string) string {
 	sort.Strings(sorted)
 
 	for _, label := range sorted {
-		mustWrite(h, uint32(len(label)))
-		mustWriteString(h, label)
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(label)))
+		buf = append(buf, label...)
 	}
 
-	writeProperties(h, n.Properties())
-	return hex.EncodeToString(h.Sum(nil))
+	buf = appendProperties(buf, n.Properties())
+
+	sum := sha256.Sum256(buf)
+	var hexBuf [64]byte
+	hex.Encode(hexBuf[:], sum[:])
+
+	*bp = buf
+	hashBufPool.Put(bp)
+
+	return string(hexBuf[:])
 }
 
 // ComputeRelHash computes a SHA-256 hash of the relationship's content.
 // The hash covers: id, version, type name, start ID, end ID, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeRelHash(r *types.Relationship, typeName string) string {
-	h := sha256.New()
+	bp := hashBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
 
-	mustWrite(h, int64(r.InternalID().SnowflakeID()))
-	mustWrite(h, r.Version())
-	mustWrite(h, uint32(len(typeName)))
-	mustWriteString(h, typeName)
-	mustWrite(h, int64(r.StartNodeID().SnowflakeID()))
-	mustWrite(h, int64(r.EndNodeID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint32(buf, r.Version())
+	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName)))
+	buf = append(buf, typeName...)
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.StartNodeID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.EndNodeID().SnowflakeID()))
 
-	writeProperties(h, r.Properties())
-	return hex.EncodeToString(h.Sum(nil))
+	buf = appendProperties(buf, r.Properties())
+
+	sum := sha256.Sum256(buf)
+	var hexBuf [64]byte
+	hex.Encode(hexBuf[:], sum[:])
+
+	*bp = buf
+	hashBufPool.Put(bp)
+
+	return string(hexBuf[:])
 }
 
-// writeProperties writes sorted properties to the hasher in a deterministic format.
+// appendProperties appends sorted properties to buf in a deterministic format.
 // PropertySlice is already sorted by key — no re-sort needed.
-func writeProperties(h hash.Hash, props types.PropertySlice) {
+func appendProperties(buf []byte, props types.PropertySlice) []byte {
 	for _, p := range props {
-		mustWrite(h, uint32(len(p.Key)))
-		mustWriteString(h, p.Key)
-		writePropertyValue(h, p.Value)
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(p.Key)))
+		buf = append(buf, p.Key...)
+		buf = appendPropertyValue(buf, p.Value)
 	}
+	return buf
 }
 
-// writePropertyValue writes a typed binary representation of a property value to
-// the hasher. Each value is prefixed with a type tag byte from wire.go, ensuring
+// appendPropertyValue appends a typed binary representation of a property value
+// to buf. Each value is prefixed with a type tag byte from wire.go, ensuring
 // type-distinct hashing (int(1) vs string("1") produce different hashes).
 // Maps sort keys before hashing for deterministic output. []any recurses.
-func writePropertyValue(h hash.Hash, v any) {
-	tag := propertyTypeTag(v)
-	mustWrite(h, tag)
+func appendPropertyValue(buf []byte, v any) []byte {
+	buf = append(buf, propertyTypeTag(v))
 
 	switch val := v.(type) {
 	case bool:
 		if val {
-			mustWrite(h, byte(1))
+			buf = append(buf, 1)
 		} else {
-			mustWrite(h, byte(0))
+			buf = append(buf, 0)
 		}
 	case int:
-		mustWrite(h, int64(val))
+		buf = binary.BigEndian.AppendUint64(buf, uint64(int64(val)))
 	case int8:
-		mustWrite(h, val)
+		buf = append(buf, byte(val))
 	case int16:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint16(buf, uint16(val))
 	case int32:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint32(buf, uint32(val))
 	case int64:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint64(buf, uint64(val))
 	case uint:
-		mustWrite(h, uint64(val))
+		buf = binary.BigEndian.AppendUint64(buf, uint64(val))
 	case uint8:
-		mustWrite(h, val)
+		buf = append(buf, val)
 	case uint16:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint16(buf, val)
 	case uint32:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint32(buf, val)
 	case uint64:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint64(buf, val)
 	case float32:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(val))
 	case float64:
-		mustWrite(h, val)
+		buf = binary.BigEndian.AppendUint64(buf, math.Float64bits(val))
 	case string:
-		mustWrite(h, uint32(len(val)))
-		mustWriteString(h, val)
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = append(buf, val...)
 	case []string:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, s := range val {
-			mustWrite(h, uint32(len(s)))
-			mustWriteString(h, s)
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(s)))
+			buf = append(buf, s...)
 		}
 	case []int:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, n := range val {
-			mustWrite(h, int64(n))
+			buf = binary.BigEndian.AppendUint64(buf, uint64(int64(n)))
 		}
 	case []int64:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, n := range val {
-			mustWrite(h, n)
+			buf = binary.BigEndian.AppendUint64(buf, uint64(n))
 		}
 	case []float32:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, f := range val {
-			mustWrite(h, f)
+			buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(f))
 		}
 	case []float64:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, f := range val {
-			mustWrite(h, f)
+			buf = binary.BigEndian.AppendUint64(buf, math.Float64bits(f))
 		}
 	case []byte:
-		mustWrite(h, uint32(len(val)))
-		mustWriteString(h, string(val))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = append(buf, val...)
 	case []bool:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, b := range val {
 			if b {
-				mustWrite(h, byte(1))
+				buf = append(buf, 1)
 			} else {
-				mustWrite(h, byte(0))
+				buf = append(buf, 0)
 			}
 		}
 	case []any:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		for _, elem := range val {
-			writePropertyValue(h, elem)
+			buf = appendPropertyValue(buf, elem)
 		}
 	case map[string]any:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		keys := make([]string, 0, len(val))
 		for k := range val {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			mustWrite(h, uint32(len(k)))
-			mustWriteString(h, k)
-			writePropertyValue(h, val[k])
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k)))
+			buf = append(buf, k...)
+			buf = appendPropertyValue(buf, val[k])
 		}
 	case map[string]string:
-		mustWrite(h, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
 		keys := make([]string, 0, len(val))
 		for k := range val {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			mustWrite(h, uint32(len(k)))
-			mustWriteString(h, k)
-			mustWrite(h, uint32(len(val[k])))
-			mustWriteString(h, val[k])
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k)))
+			buf = append(buf, k...)
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(val[k])))
+			buf = append(buf, val[k]...)
 		}
 	default:
-		// PropertySlice.Set() validates types at insertion via the allowlist,
-		// so this case should never be reached. Panic to surface any future
-		// allowlist changes that add a type without a matching hash branch.
-		panic("graph: writePropertyValue: unreachable type in hash computation")
+		panic("graph: appendPropertyValue: unreachable type in hash computation")
 	}
+	return buf
 }
