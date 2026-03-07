@@ -2856,7 +2856,7 @@ func TestTieredStore_ColdShard_DemotionWarmToCold(t *testing.T) {
 	ts, err := NewTieredStore(TieredStoreConfig{
 		InMemory:      true,
 		RefLabels:     []string{"Case"},
-		ShardWindow:   time.Millisecond,
+		ShardWindow:   time.Minute,
 		FlushInterval: 1<<63 - 1,
 		ColdAfter:     time.Millisecond, // demote immediately
 	})
@@ -2901,7 +2901,7 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 	ts, err := NewTieredStore(TieredStoreConfig{
 		InMemory:      true,
 		RefLabels:     []string{"Case"},
-		ShardWindow:   time.Millisecond,
+		ShardWindow:   time.Minute,
 		FlushInterval: 1<<63 - 1,
 		ColdAfter:     time.Millisecond,
 	})

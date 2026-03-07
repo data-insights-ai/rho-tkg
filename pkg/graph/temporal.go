@@ -615,7 +615,7 @@ func (g *Graph) snapshotAt(t types.Instant) (*GraphSnapshot, error) {
 // a spurious Created/Deleted entry. This is an acceptable trade-off against
 // blocking all writes for the full O(N) snapshot duration.
 //
-// TODO(v3.0.58): streaming DiffSnapshots to avoid O(N) RAM materialization.
+// TODO(v3.1.0): streaming DiffSnapshots to avoid O(N) RAM materialization.
 func (g *Graph) DiffSnapshots(t1, t2 types.Instant) (*SnapshotDiff, error) {
 	if t1 == 0 || t2 == 0 || t1 >= t2 {
 		return nil, ErrInvalidTimeRange

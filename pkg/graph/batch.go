@@ -232,7 +232,10 @@ func (b *BatchBuilder) DeleteRelationship(id snowflake.ID) {
 // for catastrophic failures that prevent the batch from starting.
 func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.g.mu.Lock()
-	defer b.g.mu.Unlock()
+
+	// Buffer events during batch execution; dispatch after g.mu.Unlock.
+	var batchEvents []Event
+	b.g.txEventBuffer = &batchEvents
 
 	start := time.Now()
 	result := &BatchResult{}
@@ -255,6 +258,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			}
 		} else {
 			result.Created += len(b.nodes)
+			now := nowInstant()
+			for _, pn := range b.nodes {
+				b.g.publishEvent(EventNodeCreate, pn.node.InternalID().SnowflakeID(), now, PriorityHigh)
+			}
 		}
 	}
 
@@ -273,6 +280,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Created++
+			b.g.publishEvent(EventRelCreate, pr.rel.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 		}
 	}
 
@@ -288,6 +296,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
+			b.g.publishEvent(EventNodeUpdate, pu.id, nowInstant(), PriorityNormal)
 		}
 	}
 
@@ -303,6 +312,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
+			b.g.publishEvent(EventRelUpdate, pu.id, nowInstant(), PriorityNormal)
 		}
 	}
 
@@ -317,6 +327,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
+			b.g.publishEvent(EventRelDelete, id, nowInstant(), PriorityCritical)
 		}
 	}
 
@@ -331,9 +342,23 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
+			b.g.publishEvent(EventNodeDelete, id, nowInstant(), PriorityCritical)
 		}
 	}
 
 	result.Duration = time.Since(start)
+
+	// Capture event publisher and clear buffer before releasing lock.
+	ep := b.g.events
+	b.g.txEventBuffer = nil
+	b.g.mu.Unlock()
+
+	// Dispatch buffered events outside all locks.
+	if ep != nil {
+		for _, e := range batchEvents {
+			ep.publish(e)
+		}
+	}
+
 	return result, nil
 }

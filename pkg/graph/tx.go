@@ -76,6 +76,8 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 		return nil, err
 	}
 
+	tx.g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+
 	tx.mu.Lock()
 	tx.createdNodes = append(tx.createdNodes, n.InternalID().SnowflakeID())
 	tx.mu.Unlock()
@@ -97,6 +99,8 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	if err != nil {
 		return nil, err
 	}
+
+	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
@@ -164,7 +168,11 @@ func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.N
 		return nil, err
 	}
 
-	return tx.g.updateNodeInternal(context.Background(), id, updates)
+	n, err := tx.g.updateNodeInternal(context.Background(), id, updates)
+	if err == nil {
+		tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+	}
+	return n, err
 }
 
 // UpdateRelationship applies property updates to a relationship within the transaction.
@@ -182,7 +190,11 @@ func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (
 		return nil, err
 	}
 
-	return tx.g.updateRelationshipInternal(context.Background(), id, updates)
+	r, err := tx.g.updateRelationshipInternal(context.Background(), id, updates)
+	if err == nil {
+		tx.g.publishEvent(EventRelUpdate, id, nowInstant(), PriorityNormal)
+	}
+	return r, err
 }
 
 // SetNodeProperty sets a single property on a node within the transaction.
@@ -257,6 +269,8 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 		return err
 	}
 
+	tx.g.publishEvent(EventNodeDelete, id, nowInstant(), PriorityCritical)
+
 	tx.mu.Lock()
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
 		node: nodeCopy,
@@ -288,6 +302,8 @@ func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
 	if err := tx.g.deleteRelationshipInternal(context.Background(), id); err != nil {
 		return err
 	}
+
+	tx.g.publishEvent(EventRelDelete, id, nowInstant(), PriorityCritical)
 
 	tx.mu.Lock()
 	tx.deletedRels = append(tx.deletedRels, relCopy)
@@ -359,7 +375,8 @@ func (tx *GraphTx) Commit() error {
 	}
 	tx.done = true
 
-	// Capture and clear event buffer before unlocking.
+	// Capture event publisher and buffer before unlocking.
+	ep := tx.g.events
 	events := tx.pendingEvents
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
@@ -368,9 +385,9 @@ func (tx *GraphTx) Commit() error {
 	tx.g.mu.Unlock()
 
 	// Publish buffered events outside all locks.
-	if tx.g.events != nil {
+	if ep != nil {
 		for _, e := range events {
-			tx.g.events.publish(e)
+			ep.publish(e)
 		}
 	}
 	return nil

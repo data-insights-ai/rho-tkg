@@ -121,7 +121,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	// AllNodeHistoryIDs does not support cursor pagination (no QueryOpts); the full
 	// ID slice is loaded once. The history population is typically much smaller than
 	// the live entity population, so the memory impact is acceptable.
-	// TODO(v3.0.57): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
+	// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
 	// and all three implementations (MemoryStore, BadgerStore, TieredStore) to eliminate
 	// the OOM risk at large history depths (e.g., 10K nodes × 1K versions = 10M IDs).
 	nodeHistIDs, err := g.store.AllNodeHistoryIDs()

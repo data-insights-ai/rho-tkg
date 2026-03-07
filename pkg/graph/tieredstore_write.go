@@ -310,7 +310,7 @@ func (ts *TieredStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 	// the split-delete logic correctly at the cost of one shard-resolution lookup
 	// per ID. A future optimisation could partition same-shard rels and batch them;
 	// for v3 workloads the per-ID path is acceptable.
-	// TODO: partition by shard for same-shard rels to allow store-level batching.
+	// TODO(v3.1.0): partition by shard for same-shard rels to allow store-level batching.
 	for _, id := range ids {
 		if err := ts.DeleteRelationship(id); err != nil {
 			return err

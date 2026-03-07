@@ -267,8 +267,7 @@ func (n *Node) DeepCopy() *Node {
 		cp.temporal = &tm
 	}
 	if n.integrity != nil {
-		ig := *n.integrity
-		cp.integrity = &ig
+		cp.integrity = n.integrity.DeepCopy()
 	}
 	return cp
 }

@@ -43,6 +43,7 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 	}
 	authorID, _ = props["tkg_author_id"].(string)
 	sig, _ = props["tkg_signature"].([]byte)
+	sig = types.CloneBytes(sig)
 	authorizedBy, _ = props["tkg_authorized_by"].(string)
 	// Accept uint8 and all integer types for JSON round-trip safety.
 	// Bounds are checked explicitly to prevent silent truncation via modulo.
@@ -111,8 +112,13 @@ func (g *Graph) GetRelationshipWithContext(ctx context.Context, id snowflake.ID)
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.addNodeInternal(ctx, labels, props)
+	n, err := g.addNodeInternal(ctx, labels, props)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: n.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+	}
+	return n, err
 }
 
 // addNodeInternal is the lock-free implementation of AddNodeWithContext.
@@ -205,7 +211,6 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 	}
 
 	g.opNodeAdds.Add(1)
-	g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 	return n, nil
 }
 
@@ -213,8 +218,13 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
+	r, err := g.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: r.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+	}
+	return r, err
 }
 
 // addRelationshipInternal is the lock-free implementation of AddRelationshipWithContext.
@@ -319,7 +329,6 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 	}
 
 	g.opRelAdds.Add(1)
-	g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
 	return r, nil
 }
 
@@ -327,8 +336,13 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.deleteNodeInternal(ctx, id)
+	err := g.deleteNodeInternal(ctx, id)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeDelete, EntityID: id, Timestamp: nowInstant(), Priority: PriorityCritical})
+	}
+	return err
 }
 
 // deleteNodeInternal is the lock-free implementation of DeleteNodeWithContext.
@@ -498,7 +512,6 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		return err
 	}
 	g.opNodeDeletes.Add(1)
-	g.publishEvent(EventNodeDelete, id, now, PriorityCritical)
 	return nil
 }
 
@@ -506,8 +519,13 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.ID) error {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.deleteRelationshipInternal(ctx, id)
+	err := g.deleteRelationshipInternal(ctx, id)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelDelete, EntityID: id, Timestamp: nowInstant(), Priority: PriorityCritical})
+	}
+	return err
 }
 
 // deleteRelationshipInternal is the lock-free implementation of DeleteRelationshipWithContext.
@@ -544,7 +562,6 @@ func (g *Graph) deleteRelationshipInternal(ctx context.Context, id snowflake.ID)
 		return err
 	}
 	g.opRelDeletes.Add(1)
-	g.publishEvent(EventRelDelete, id, now, PriorityCritical)
 	return nil
 }
 
@@ -552,8 +569,13 @@ func (g *Graph) deleteRelationshipInternal(ctx context.Context, id snowflake.ID)
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.updateNodeInternal(ctx, id, updates)
+	n, err := g.updateNodeInternal(ctx, id, updates)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return n, err
 }
 
 // updateNodeInternal is the lock-free implementation of UpdateNodeWithContext.
@@ -687,7 +709,6 @@ func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates
 	}
 
 	g.opNodeUpdates.Add(1)
-	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -695,8 +716,13 @@ func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.updateRelationshipInternal(ctx, id, updates)
+	r, err := g.updateRelationshipInternal(ctx, id, updates)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return r, err
 }
 
 // updateRelationshipInternal is the lock-free implementation of UpdateRelationshipWithContext.
@@ -842,7 +868,6 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID,
 	}
 
 	g.opRelUpdates.Add(1)
-	g.publishEvent(EventRelUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -1023,8 +1048,13 @@ func (g *Graph) UpdateRelInPlace(id snowflake.ID, updates map[string]any) (*type
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.updateNodeInPlaceInternal(ctx, id, updates)
+	n, err := g.updateNodeInPlaceInternal(ctx, id, updates)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return n, err
 }
 
 // updateNodeInPlaceInternal is the lock-free implementation of UpdateNodeInPlaceWithContext.
@@ -1125,7 +1155,6 @@ func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, 
 	}
 
 	g.opNodeUpdates.Add(1)
-	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	return current, nil
 }
 
@@ -1133,8 +1162,13 @@ func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, 
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.updateRelInPlaceInternal(ctx, id, updates)
+	r, err := g.updateRelInPlaceInternal(ctx, id, updates)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return r, err
 }
 
 // updateRelInPlaceInternal is the lock-free implementation of UpdateRelInPlaceWithContext.
@@ -1235,6 +1269,5 @@ func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id snowflake.ID, u
 	}
 
 	g.opRelUpdates.Add(1)
-	g.publishEvent(EventRelUpdate, id, now, PriorityNormal)
 	return current, nil
 }

@@ -1,5 +1,16 @@
 package types
 
+// CloneBytes returns an independent copy of b.
+// Returns nil if b is nil.
+func CloneBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	return cp
+}
+
 // NodeIntegrity holds integrity/hash-chain fields for nodes.
 // Populated by the graph layer.
 type NodeIntegrity struct {
@@ -21,6 +32,14 @@ type NodeIntegrity struct {
 	// AuthorizationLevel is an optional caller-supplied authorization tier
 	// (0=none). Set via tkg_auth_level in Add/Update props.
 	AuthorizationLevel uint8
+}
+
+// DeepCopy returns an independent clone of the NodeIntegrity.
+// Signature is deep-copied so mutations to the copy never affect the original.
+func (ig *NodeIntegrity) DeepCopy() *NodeIntegrity {
+	cp := *ig
+	cp.Signature = CloneBytes(ig.Signature)
+	return &cp
 }
 
 // RelIntegrity holds integrity/hash-chain fields for relationships.
@@ -51,4 +70,12 @@ type RelIntegrity struct {
 	// AuthorizationLevel is an optional caller-supplied authorization tier
 	// (0=none). Set via tkg_auth_level in Add/Update props.
 	AuthorizationLevel uint8
+}
+
+// DeepCopy returns an independent clone of the RelIntegrity.
+// Signature is deep-copied so mutations to the copy never affect the original.
+func (ig *RelIntegrity) DeepCopy() *RelIntegrity {
+	cp := *ig
+	cp.Signature = CloneBytes(ig.Signature)
+	return &cp
 }

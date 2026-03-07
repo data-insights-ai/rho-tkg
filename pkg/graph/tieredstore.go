@@ -161,6 +161,9 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 	if window == 0 {
 		window = defaultShardWindow
 	}
+	if window < time.Minute {
+		return nil, fmt.Errorf("graph: TieredStoreConfig.ShardWindow must be >= 1 minute, got %v", window)
+	}
 	cacheCap := cfg.CacheCapacity
 	if cacheCap <= 0 {
 		cacheCap = defaultCacheCapacity

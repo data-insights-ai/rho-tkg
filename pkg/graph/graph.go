@@ -77,7 +77,7 @@ var snowflakeLayout = func() snowflake.Layout {
 
 // Config holds configuration for the Graph.
 type Config struct {
-	// SnowflakeNodeID identifies this graph instance (0-511).
+	// SnowflakeNodeID identifies this graph instance (0-15).
 	// Internally mapped to even/odd generator pair (nodeGen=ID*2, relGen=ID*2+1)
 	// to guarantee value-level uniqueness across node and relationship IDs.
 	// Each concurrent instance must use a different value.
@@ -139,7 +139,7 @@ type Graph struct {
 }
 
 // New creates a new Graph with the given configuration.
-// Returns an error if SnowflakeNodeID is out of range (0-511).
+// Returns an error if SnowflakeNodeID is out of range (0-15).
 // The ID is mapped to an even/odd pair (ID*2 for nodes, ID*2+1 for rels)
 // to guarantee value-level uniqueness across entity types.
 //
@@ -291,18 +291,25 @@ func (g *Graph) ValidationDefaults() ValidationLimits {
 // Constraints are checked at relationship write time (AddRelationship, ImportRelationshipWithID).
 // Typically called once at startup before any writes.
 func (g *Graph) AddTemporalConstraint(c TemporalConstraint) {
+	g.mu.Lock()
 	g.constraints = g.constraints.Add(c)
+	g.mu.Unlock()
 }
 
 // SetTemporalConstraints replaces the entire constraint set.
 // Pass an empty ConstraintSet to remove all constraints.
 func (g *Graph) SetTemporalConstraints(cs ConstraintSet) {
+	g.mu.Lock()
 	g.constraints = cs
+	g.mu.Unlock()
 }
 
 // TemporalConstraints returns the current constraint set (defensive copy).
 func (g *Graph) TemporalConstraints() ConstraintSet {
-	return g.constraints
+	g.mu.RLock()
+	cs := g.constraints
+	g.mu.RUnlock()
+	return cs
 }
 
 // validateName checks a label or relationship type name against MaxNameLength.
@@ -858,17 +865,22 @@ func (g *Graph) Reset() error {
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
 func (g *Graph) SetEventBus(bus *EventBus) {
+	g.mu.Lock()
 	if bus == nil {
 		g.events = nil
 	} else {
 		g.events = bus
 	}
+	g.mu.Unlock()
 }
 
 // GetEventBus returns the attached synchronous EventBus, or nil if none is set
 // (including when an AsyncEventBus is attached instead).
 func (g *Graph) GetEventBus() *EventBus {
-	if eb, ok := g.events.(*EventBus); ok {
+	g.mu.RLock()
+	ep := g.events
+	g.mu.RUnlock()
+	if eb, ok := ep.(*EventBus); ok {
 		return eb
 	}
 	return nil
@@ -878,17 +890,24 @@ func (g *Graph) GetEventBus() *EventBus {
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
 func (g *Graph) SetAsyncEventBus(bus *AsyncEventBus) {
+	g.mu.Lock()
 	if bus == nil {
 		g.events = nil
 	} else {
 		g.events = bus
 	}
+	g.mu.Unlock()
 }
 
 // publishEvent delivers a lifecycle event to the attached EventBus.
 // During a transaction (txEventBuffer != nil), events are buffered instead of
 // dispatched — published on Commit, discarded on Rollback.
 // No-op if no EventBus is attached (nil-safe).
+//
+// IMPORTANT: callers must hold g.mu.RLock or g.mu.Lock when calling this method,
+// because it reads g.events and g.txEventBuffer without additional synchronization.
+// For dispatch AFTER releasing g.mu, capture ep := g.events under lock and call
+// dispatchEvent(ep, ...) instead.
 func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant, priority EventPriority) {
 	if g.events == nil {
 		return
@@ -899,6 +918,16 @@ func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant, pr
 		return
 	}
 	g.events.publish(e)
+}
+
+// dispatchEvent delivers an event to the given publisher. No-op if ep is nil.
+// Use this for event dispatch after releasing g.mu — the caller captures g.events
+// while the lock is held, then calls dispatchEvent with the captured reference.
+func dispatchEvent(ep eventPublisher, e Event) {
+	if ep == nil {
+		return
+	}
+	ep.publish(e)
 }
 
 // Stats returns a snapshot of graph operation counters and optional cache metrics.
@@ -928,8 +957,13 @@ func (g *Graph) Stats() GraphStats {
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.removeNodeLabelInternal(id, label)
+	err := g.removeNodeLabelInternal(id, label)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return err
 }
 
 // removeNodeLabelInternal is the lock-free implementation of RemoveNodeLabel.
@@ -982,7 +1016,7 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 	tm.UpdatedAt = now
 
 	// Persist old state as history entry before updating the current node.
-	// TODO(v3.0.58): atomic RemoveNodeLabelTokenWithHistory (crash window: phantom history
+	// TODO(v3.1.0): atomic RemoveNodeLabelTokenWithHistory (crash window: phantom history
 	// entry if crash after PutNodeVersion but before RemoveNodeLabelToken; entity state
 	// remains correct — same documented limitation as Rollback).
 	if err := g.store.PutNodeVersion(id, prevVersion, prevState); err != nil {
@@ -992,7 +1026,6 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 	if err := g.store.RemoveNodeLabelToken(id, tok, copy); err != nil {
 		return err
 	}
-	g.publishEvent(EventNodeUpdate, id, now, PriorityNormal)
 	g.opNodeUpdates.Add(1)
 	return nil
 }
@@ -1042,8 +1075,13 @@ func (g *Graph) GetNextNodeVersion(id snowflake.ID, version uint32) (*types.Node
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) CloseNodeVersion(id snowflake.ID, t types.Instant) error {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.closeNodeVersionInternal(id, t)
+	err := g.closeNodeVersionInternal(id, t)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return err
 }
 
 // closeNodeVersionInternal is the lock-free implementation of CloseNodeVersion.
@@ -1081,7 +1119,6 @@ func (g *Graph) closeNodeVersionInternal(id snowflake.ID, t types.Instant) error
 	if err := g.store.ReplaceNode(current); err != nil {
 		return err
 	}
-	g.publishEvent(EventNodeUpdate, id, types.Instant(time.Now().UnixMilli()), PriorityNormal)
 	return nil
 }
 
@@ -1128,8 +1165,13 @@ func (g *Graph) GetNextRelVersion(id snowflake.ID, version uint32) (*types.Relat
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) CloseRelVersion(id snowflake.ID, t types.Instant) error {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.closeRelVersionInternal(id, t)
+	err := g.closeRelVersionInternal(id, t)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+	}
+	return err
 }
 
 // closeRelVersionInternal is the lock-free implementation of CloseRelVersion.
@@ -1167,6 +1209,5 @@ func (g *Graph) closeRelVersionInternal(id snowflake.ID, t types.Instant) error 
 	if err := g.store.ReplaceRelationship(current); err != nil {
 		return err
 	}
-	g.publishEvent(EventRelUpdate, id, types.Instant(time.Now().UnixMilli()), PriorityNormal)
 	return nil
 }

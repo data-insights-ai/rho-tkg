@@ -108,7 +108,7 @@ func nodeToWire(n *types.Node) nodeWire {
 		w.Hash = ig.Hash
 		w.PrevHash = ig.PrevHash
 		w.AuthorID = ig.AuthorID
-		w.Signature = ig.Signature
+		w.Signature = types.CloneBytes(ig.Signature)
 		w.AuthorizedBy = ig.AuthorizedBy
 		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
@@ -150,7 +150,7 @@ func wireToNode(w nodeWire) *types.Node {
 			Hash:               w.Hash,
 			PrevHash:           w.PrevHash,
 			AuthorID:           w.AuthorID,
-			Signature:          w.Signature,
+			Signature:          types.CloneBytes(w.Signature),
 			AuthorizedBy:       w.AuthorizedBy,
 			AuthorizationLevel: w.AuthorizationLevel,
 		})
@@ -193,7 +193,7 @@ func relToWire(r *types.Relationship) relWire {
 		w.FromNodeHash = ig.FromNodeHash
 		w.ToNodeHash = ig.ToNodeHash
 		w.AuthorID = ig.AuthorID
-		w.Signature = ig.Signature
+		w.Signature = types.CloneBytes(ig.Signature)
 		w.AuthorizedBy = ig.AuthorizedBy
 		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
@@ -237,7 +237,7 @@ func wireToRel(w relWire) *types.Relationship {
 			FromNodeHash:       w.FromNodeHash,
 			ToNodeHash:         w.ToNodeHash,
 			AuthorID:           w.AuthorID,
-			Signature:          w.Signature,
+			Signature:          types.CloneBytes(w.Signature),
 			AuthorizedBy:       w.AuthorizedBy,
 			AuthorizationLevel: w.AuthorizationLevel,
 		})

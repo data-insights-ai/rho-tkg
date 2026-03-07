@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.61] - 2026-03-07
+
+### Fixed (6 Defects — pre-release hardening)
+
+- **Fix O — Signature aliasing in DeepCopy** (`pkg/types/node.go`, `pkg/types/relationship.go`, MAJOR): `Node.DeepCopy()` and `Relationship.DeepCopy()` shallow-copied integrity structs — `Signature []byte` shared the same backing array between original and copy. Caller mutation of the copy corrupted the original. Fixed by adding `CloneBytes`, `NodeIntegrity.DeepCopy()`, and `RelIntegrity.DeepCopy()` in `pkg/types/integrity.go`.
+
+- **Fix P — Signature aliasing at input boundary** (`pkg/graph/context.go`, MAJOR): `extractProvenance` assigned `tkg_signature` from the props map without copying. Caller mutation after `AddNode`/`AddRelationship` corrupted stored integrity. Fixed by cloning with `types.CloneBytes`.
+
+- **Fix Q — Signature aliasing in wire encode/decode** (`pkg/graph/wire.go`, MAJOR): `nodeToWire`, `wireToNode`, `relToWire`, `wireToRel` all assigned Signature directly. After msgpack deserialization, Signature could alias Badger's internal value buffer. Fixed by wrapping all 4 assignments with `types.CloneBytes`.
+
+- **Fix R — Data race in SetEventBus/SetAsyncEventBus** (`pkg/graph/graph.go`, MAJOR): `SetEventBus`, `SetAsyncEventBus`, and `GetEventBus` read/wrote `g.events` without synchronization. Fixed by wrapping writes in `g.mu.Lock()` and reads in `g.mu.RLock()`. Post-lock dispatch uses captured `eventPublisher` reference (`dispatchEvent` helper) to avoid reading `g.events` outside the lock.
+
+- **Fix S — Data race in SetTemporalConstraints/AddTemporalConstraint** (`pkg/graph/graph.go`, MAJOR): `SetTemporalConstraints` and `AddTemporalConstraint` wrote `g.constraints` without synchronization. `checkTemporalConstraints` read it under `g.mu.RLock`. Fixed by wrapping writes in `g.mu.Lock()` and the `TemporalConstraints()` getter in `g.mu.RLock()`.
+
+- **Fix T — Synchronous event handler deadlock** (`pkg/graph/context.go`, `pkg/graph/graph.go`, MAJOR): All `publishEvent` calls executed under `g.mu.RLock` (via defer). A synchronous event handler calling graph write methods would deadlock (RLock held, write needs Lock). Fixed by moving event dispatch outside mutation locks: `*WithContext` wrappers capture `g.events` under lock, release lock, then dispatch via `dispatchEvent`. Same pattern applied to `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`, `BatchBuilder.Execute`, and `GraphTx.Commit`.
+
+### Changed
+
+- **Config validation**: `TieredStoreConfig.ShardWindow` now rejects values below `time.Minute` (previously accepted any positive duration including sub-millisecond).
+- **Doc fix**: `Config.SnowflakeNodeID` comment corrected from "0-511" to "0-15" to match actual validation (5-bit node ID).
+- Retagged stale TODOs: `TODO(v3.0.57)` and `TODO(v3.0.58)` → `TODO(v3.1.0)` across `export.go`, `badgerstore.go`, `temporal.go`, `graph.go`, `tieredstore_write.go`.
+
+### Tests Added
+
+- `pkg/types/integrity_test.go` — `CloneBytes` (nil, empty, isolation), `NodeIntegrity.DeepCopy`, `RelIntegrity.DeepCopy`, `Node.DeepCopy` and `Relationship.DeepCopy` signature isolation.
+- `pkg/graph/v3061_fixes_test.go` — 13 tests:
+  - `TestExtractProvenance_SignatureIsolation` — caller mutation after AddNode cannot corrupt stored signature.
+  - `TestWireRoundTrip_NodeSignatureIsolation`, `TestWireRoundTrip_RelSignatureIsolation` — wire encode/decode signature isolation.
+  - `TestSetEventBus_NoRace`, `TestSetTemporalConstraints_NoRace` — concurrent config toggles with mutations under `-race`.
+  - `TestSyncEventHandler_GraphRead_NoDeadlock` — sync handler calling `GetNode` during AddNode callback.
+  - `TestNew_SnowflakeNodeID_Bounds` — boundary validation for 5-bit node ID (15 accepted, 16 rejected, -1 rejected).
+  - `TestNewTieredStore_ShardWindow_Invalid` — negative and sub-minute windows rejected.
+  - `TestTx_ImportRelationshipWithID` — tx import, commit, duplicate error, rollback.
+  - `TestGetRelsAsOf` — temporal query returns correct version at each transaction time.
+  - `TestCreateDropTemporalIndex`, `TestDropHighFrequencyIndex` — create/drop lifecycle, idempotency error.
+  - `TestToFloat32SliceWire` — wire helper coverage for `[]any`, `[]float32`, nil, unsupported.
+
 ## [3.0.60] - 2026-03-06
 
 ### Fixed (2 Defects — post-v3.0.59 audit)

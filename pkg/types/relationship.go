@@ -176,8 +176,7 @@ func (r *Relationship) DeepCopy() *Relationship {
 		cp.temporal = &tm
 	}
 	if r.integrity != nil {
-		ig := *r.integrity
-		cp.integrity = &ig
+		cp.integrity = r.integrity.DeepCopy()
 	}
 	return cp
 }

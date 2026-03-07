@@ -3047,7 +3047,7 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 // Scans both the pending buffer and Badger for 0x07 prefix keys.
 // The full ID slice is loaded into memory — acceptable for typical history populations.
-// TODO(v3.0.57): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
+// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
 // to eliminate OOM risk at large history depths (10K nodes × 1K versions = 10M IDs).
 func (bs *BadgerStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	seen := make(map[snowflake.ID]struct{})
