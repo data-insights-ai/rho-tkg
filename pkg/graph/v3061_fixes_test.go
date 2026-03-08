@@ -16,7 +16,7 @@ import (
 func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 func TestSetEventBus_NoRace(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 func TestTx_ImportRelationshipWithID(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 func TestGetRelsAsOf(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestGetRelsAsOf(t *testing.T) {
 func TestCreateDropTemporalIndex(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestCreateDropTemporalIndex(t *testing.T) {
 func TestDropHighFrequencyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}

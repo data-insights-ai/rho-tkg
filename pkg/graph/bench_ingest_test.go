@@ -15,7 +15,7 @@ import (
 // benchGraph creates an in-memory graph for benchmarking.
 func benchGraph(b *testing.B) *Graph {
 	b.Helper()
-	g, err := New(Config{SnowflakeNodeID: 1, BadgerInMemory: true})
+	g, err := New(Config{SnowflakeNodeID: 1, Store: NewMemoryStore()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func BenchmarkAddNode(b *testing.B) {
 }
 
 func BenchmarkAddNodeMemStore(b *testing.B) {
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func BenchmarkAddRelationship(b *testing.B) {
 }
 
 func BenchmarkAddRelationshipMemStore(b *testing.B) {
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
 		b.Fatal(err)
 	}

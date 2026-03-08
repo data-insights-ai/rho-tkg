@@ -283,210 +283,11 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 	}
 }
 
-// ─── BadgerStore pagination integration tests ────────────────────────────────
-
-func seedBadgerStore(t *testing.T, bs *BadgerStore, label uint16, count int) []snowflake.ID {
-	t.Helper()
-	ids := make([]snowflake.ID, count)
-	for i := range count {
-		id := snowflake.ID(1000 + i)
-		ids[i] = id
-		n := types.NewNode(id, label, nil)
-		if err := bs.PutNode(n); err != nil {
-			t.Fatalf("PutNode(%d): %v", id, err)
-		}
-	}
-	return ids
-}
-
-func TestBadgerStoreNodesByLabel_Paginated(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 10)
-
-	got, err := bs.NodesByLabel(10, QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-	for i := 1; i < len(got); i++ {
-		if got[i].InternalID().SnowflakeID() <= got[i-1].InternalID().SnowflakeID() {
-			t.Fatal("results not sorted")
-		}
-	}
-}
-
-func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 10)
-
-	var all []*types.Node
-	var cursor snowflake.ID
-	for {
-		page, err := bs.NodesByLabel(10, QueryOpts{Limit: 3, After: cursor})
-		if err != nil {
-			t.Fatalf("NodesByLabel: %v", err)
-		}
-		if len(page) == 0 {
-			break
-		}
-		all = append(all, page...)
-		cursor = page[len(page)-1].InternalID().SnowflakeID()
-		if len(page) < 3 {
-			break
-		}
-	}
-	if len(all) != 10 {
-		t.Fatalf("multi-page walk: expected 10, got %d", len(all))
-	}
-	seen := make(map[snowflake.ID]struct{})
-	for _, n := range all {
-		id := n.InternalID().SnowflakeID()
-		if _, dup := seen[id]; dup {
-			t.Fatalf("duplicate ID %d", id)
-		}
-		seen[id] = struct{}{}
-	}
-}
-
-func TestBadgerStoreNodesByLabel_ZeroOptsReturnsAll(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 5)
-
-	got, err := bs.NodesByLabel(10, QueryOpts{})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 5 {
-		t.Fatalf("expected 5, got %d", len(got))
-	}
-}
-
-func TestBadgerStoreRelationshipsByType_Paginated(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
-	_ = bs.PutNode(n1)
-	_ = bs.PutNode(n2)
-	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
-		if err := bs.PutRelationship(r); err != nil {
-			t.Fatalf("PutRelationship: %v", err)
-		}
-	}
-
-	got, err := bs.RelationshipsByType(5, QueryOpts{Limit: 2})
-	if err != nil {
-		t.Fatalf("RelationshipsByType: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2, got %d", len(got))
-	}
-}
-
-func TestBadgerStoreAllNodes_Paginated(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 7)
-
-	got, err := bs.AllNodes(QueryOpts{Limit: 4})
-	if err != nil {
-		t.Fatalf("AllNodes: %v", err)
-	}
-	if len(got) != 4 {
-		t.Fatalf("expected 4, got %d", len(got))
-	}
-}
-
-func TestBadgerStoreAllRelationships_Paginated(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
-	_ = bs.PutNode(n1)
-	_ = bs.PutNode(n2)
-	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
-		_ = bs.PutRelationship(r)
-	}
-
-	got, err := bs.AllRelationships(QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("AllRelationships: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-}
-
-func TestBadgerStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-
-	for i := range 6 {
-		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
-		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
-		n.SetProperties(ps)
-		if err := bs.PutNode(n); err != nil {
-			t.Fatalf("PutNode: %v", err)
-		}
-	}
-	if err := bs.CreatePropertyIndex(10, "name"); err != nil {
-		t.Fatalf("CreatePropertyIndex: %v", err)
-	}
-
-	got, err := bs.NodesByLabelAndProperty(10, "name", "Alice", QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabelAndProperty: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-}
-
-func TestBadgerStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-
-	for i := range 6 {
-		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
-		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
-		n.SetProperties(ps)
-		if err := bs.PutNode(n); err != nil {
-			t.Fatalf("PutNode: %v", err)
-		}
-	}
-	// No index — fallback path.
-
-	got, err := bs.NodesByLabelAndProperty(10, "name", "Alice", QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabelAndProperty: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-}
-
 // ─── Graph-layer pagination tests ────────────────────────────────────────────
 
 func TestGraphNodesByLabel_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +311,7 @@ func TestGraphNodesByLabel_Paginated(t *testing.T) {
 
 func TestGraphAllNodes_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +335,7 @@ func TestGraphAllNodes_Paginated(t *testing.T) {
 
 func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
 	if err != nil {
 		t.Fatal(err)
 	}

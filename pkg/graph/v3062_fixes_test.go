@@ -46,14 +46,14 @@ func TestNew_NegativeValidationLimits(t *testing.T) {
 
 	// Zero and positive values should succeed.
 	t.Run("zero_ok", func(t *testing.T) {
-		g, err := New(Config{})
+		g, err := New(Config{Store: NewMemoryStore()})
 		if err != nil {
 			t.Fatalf("New(zero defaults) error: %v", err)
 		}
 		g.Close()
 	})
 	t.Run("positive_ok", func(t *testing.T) {
-		g, err := New(Config{Validation: ValidationLimits{
+		g, err := New(Config{Store: NewMemoryStore(), Validation: ValidationLimits{
 			MaxLabelsPerNode:       10,
 			MaxPropertiesPerEntity: 100,
 			MaxPropertyKeyLength:   64,

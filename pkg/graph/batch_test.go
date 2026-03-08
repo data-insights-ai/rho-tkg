@@ -13,9 +13,9 @@ import (
 
 func newTestGraph(t *testing.T) *Graph {
 	t.Helper()
-	g, err := New(Config{})
+	g, err := New(Config{Store: NewMemoryStore()})
 	if err != nil {
-		t.Fatalf("New(Config{}) returned error: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { g.Close() })
 	return g

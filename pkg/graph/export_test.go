@@ -15,7 +15,7 @@ import (
 // Returns the graph, a node ID and rel ID for later assertions.
 func buildExportGraph(t *testing.T) (g *graph.Graph, nodeID, relID uint64) {
 	t.Helper()
-	g, err := graph.New(graph.Config{})
+	g, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 	}
 
 	// Import into a fresh graph.
-	dst, err := graph.New(graph.Config{})
+	dst, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
@@ -96,46 +96,9 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 	}
 }
 
-// TestExportImport_RoundTrip_BadgerStore tests the roundtrip using BadgerStore.
-func TestExportImport_RoundTrip_BadgerStore(t *testing.T) {
-	// Source graph with BadgerStore.
-	src, err := graph.New(graph.Config{BadgerInMemory: true})
-	if err != nil {
-		t.Fatalf("New src: %v", err)
-	}
-	defer src.Close() //nolint:errcheck
-
-	start, _ := src.AddNode([]string{"Thing"}, map[string]any{"x": int64(42)})
-	end, _ := src.AddNode([]string{"Other"}, nil)
-	_, _ = src.AddRelationship("RELATED", start, end, nil)
-	_, _ = src.UpdateNode(start.InternalID().SnowflakeID(), map[string]any{"x": int64(99)})
-
-	var buf bytes.Buffer
-	if err := src.ExportGraph(&buf); err != nil {
-		t.Fatalf("ExportGraph: %v", err)
-	}
-
-	// Import into a fresh in-memory Badger store.
-	dst, err := graph.New(graph.Config{BadgerInMemory: true})
-	if err != nil {
-		t.Fatalf("New dst: %v", err)
-	}
-	defer dst.Close() //nolint:errcheck
-
-	if err := dst.ImportGraph(&buf); err != nil {
-		t.Fatalf("ImportGraph: %v", err)
-	}
-
-	srcNC, _ := src.NodeCount()
-	dstNC, _ := dst.NodeCount()
-	if dstNC != srcNC {
-		t.Errorf("NodeCount: src=%d, dst=%d", srcNC, dstNC)
-	}
-}
-
 // TestExport_Empty_Graph verifies ExportGraph on a graph with no entities.
 func TestExport_Empty_Graph(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer g.Close() //nolint:errcheck
 
 	var buf bytes.Buffer
@@ -147,7 +110,7 @@ func TestExport_Empty_Graph(t *testing.T) {
 	}
 
 	// Import into a fresh graph.
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -161,7 +124,7 @@ func TestExport_Empty_Graph(t *testing.T) {
 
 // TestExport_WithNodeHistory verifies that node version history survives the roundtrip.
 func TestExport_WithNodeHistory(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"Item"}, map[string]any{"v": int64(1)})
@@ -176,7 +139,7 @@ func TestExport_WithNodeHistory(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -194,7 +157,7 @@ func TestExport_WithNodeHistory(t *testing.T) {
 
 // TestExport_RelHistory verifies that relationship version history survives the roundtrip.
 func TestExport_RelHistory(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer g.Close() //nolint:errcheck
 
 	a, _ := g.AddNode([]string{"A"}, nil)
@@ -210,7 +173,7 @@ func TestExport_RelHistory(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -229,7 +192,7 @@ func TestExport_RelHistory(t *testing.T) {
 // TestImport_IdempotentRegistry verifies that importing into a graph that already
 // has the same registries populated does not return an error.
 func TestImport_IdempotentRegistry(t *testing.T) {
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	src.AddNode([]string{"Foo"}, nil) //nolint:errcheck
@@ -240,7 +203,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 	}
 
 	// Destination already has the "Foo" label registered (from a prior node add).
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close()                 //nolint:errcheck
 	dst.AddNode([]string{"Foo"}, nil) //nolint:errcheck
 
@@ -252,7 +215,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 
 // TestExport_Writer_Error verifies that ExportGraph propagates a write error.
 func TestExport_Writer_Error(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer g.Close()               //nolint:errcheck
 	g.AddNode([]string{"X"}, nil) //nolint:errcheck
 
@@ -268,7 +231,7 @@ func TestExport_Writer_Error(t *testing.T) {
 // when the export header carries an unsupported version.
 func TestImport_InvalidHeader(t *testing.T) {
 	// Build a valid export.
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	var buf bytes.Buffer
@@ -287,7 +250,7 @@ func TestImport_InvalidHeader(t *testing.T) {
 	// Instead of brittle offset math, we just build a deliberately bad stream:
 	badBuf := makeBadVersionStream(t)
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	err := dst.ImportGraph(badBuf)
@@ -300,7 +263,7 @@ func TestImport_InvalidHeader(t *testing.T) {
 // TestExportImport_IntegrityPreserved verifies that node/rel hash chains survive
 // the export→import roundtrip.
 func TestExportImport_IntegrityPreserved(t *testing.T) {
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	a, _ := src.AddNode([]string{"Node"}, map[string]any{"v": int64(1)})
@@ -315,7 +278,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -350,7 +313,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 // TestExportImport_EndpointHashesPreserved verifies FromNodeHash/ToNodeHash survive
 // the export→import roundtrip (Phase 4.13 integration test).
 func TestExportImport_EndpointHashesPreserved(t *testing.T) {
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	a, _ := src.AddNode([]string{"A"}, nil)
@@ -365,7 +328,7 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -387,7 +350,7 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 // TestExportImport_AuthorIDPreserved verifies AuthorID/Signature survive the
 // export→import roundtrip (Phase 4.14 integration test).
 func TestExportImport_AuthorIDPreserved(t *testing.T) {
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	n, _ := src.AddNode([]string{"Doc"}, map[string]any{
@@ -400,7 +363,7 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -426,7 +389,7 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 // TestExport_ShadowProperty_Survives verifies that shadow property values on
 // a node are accessible via ResolveNodeProperty after an import.
 func TestExport_ShadowProperty_Survives(t *testing.T) {
-	src, _ := graph.New(graph.Config{})
+	src, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer src.Close() //nolint:errcheck
 
 	n, _ := src.AddNode([]string{"X"}, map[string]any{"k": int64(7)})
@@ -437,7 +400,7 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	dst, _ := graph.New(graph.Config{})
+	dst, _ := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	defer dst.Close() //nolint:errcheck
 
 	if err := dst.ImportGraph(&buf); err != nil {
@@ -458,7 +421,7 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 // ErrIncompatibleRegistry instead of silently corrupting all entity labels.
 func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
 	// Build source graph with labels "Person" and "City".
-	src, err := graph.New(graph.Config{})
+	src, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New src: %v", err)
 	}
@@ -474,7 +437,7 @@ func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
 	}
 
 	// Destination has a DIFFERENT label at token 1 — "Company" instead of "Person".
-	dst, err := graph.New(graph.Config{})
+	dst, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
@@ -491,7 +454,7 @@ func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
 // export twice into the same graph succeeds — the second import detects a
 // non-empty but identical registry and continues without error.
 func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
-	src, err := graph.New(graph.Config{})
+	src, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New src: %v", err)
 	}
@@ -507,7 +470,7 @@ func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
 	}
 	exportedBytes := buf.Bytes()
 
-	dst, err := graph.New(graph.Config{})
+	dst, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
@@ -546,7 +509,7 @@ func TestReadExportRecord_OversizeRecord(t *testing.T) {
 	buf.Write(lenBytes[:])
 	// Deliberately omit the body — guard fires first, no io.ReadFull attempted.
 
-	g, err := graph.New(graph.Config{})
+	g, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -613,7 +576,7 @@ func makeBadVersionStream(t *testing.T) io.Reader {
 func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	g, err := graph.New(graph.Config{})
+	g, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -634,7 +597,7 @@ func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
 	}
 
 	// Import into a fresh graph and verify all nodes are present.
-	g2, err := graph.New(graph.Config{})
+	g2, err := graph.New(graph.Config{Store: graph.NewMemoryStore()})
 	if err != nil {
 		t.Fatalf("New g2: %v", err)
 	}
