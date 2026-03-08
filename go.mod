@@ -1,4 +1,4 @@
-module gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3
+module gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3
 
 go 1.26.0
 

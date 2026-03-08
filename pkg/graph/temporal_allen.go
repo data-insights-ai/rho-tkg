@@ -1,6 +1,6 @@
 package graph
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 
 // NodeInterval returns the effective [start, end) for a node.
 // start is derived from the snowflake ID timestamp if not explicitly set

@@ -3,8 +3,8 @@ package graph_test
 import (
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TestAuthorIDSetOnAdd_Node verifies that tkg_author_id in AddNode props is

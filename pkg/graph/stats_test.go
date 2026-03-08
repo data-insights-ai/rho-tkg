@@ -3,7 +3,7 @@ package graph_test
 import (
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 )
 
 func TestGraphStats_InitialState(t *testing.T) {

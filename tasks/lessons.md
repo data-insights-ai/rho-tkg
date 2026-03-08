@@ -1,4 +1,4 @@
-# Lessons — tkg-v3
+# Lessons — tkg/v3
 
 Patterns that caused real bugs. Code examples are the actionable part.
 Design rules are in CLAUDE.md — this file has the BAD/GOOD diffs.

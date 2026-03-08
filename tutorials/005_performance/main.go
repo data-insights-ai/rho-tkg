@@ -1,6 +1,6 @@
 // Tutorial 005: Performance & Storage
 //
-// Benchmarks tkg-v3 write throughput, query performance, and index acceleration
+// Benchmarks tkg/v3 write throughput, query performance, and index acceleration
 // across three backends (MemoryStore, BadgerStore in-memory, BadgerStore on-disk)
 // and four index types:
 //   - Property index:  NodesByLabelAndProperty  — O(1) hash lookup vs O(N) label scan
@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // commas formats an integer with thousand separators: 1234567 -> "1,234,567".

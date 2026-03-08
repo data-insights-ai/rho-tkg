@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Temporal Knowledge Graph v3** — an internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
 
-Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3`
+Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
 Status: v3.0.60 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.60: temporal index race fix (sortMu), nil-result short-circuit for temporal fast path, tutorial 005 upgrade.
@@ -305,8 +305,8 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 
 | Module | Role |
 |---|---|
-| `rho/tkg-v3` | Internal library — graph types, persistence, registries (this repo) |
+| `rho/tkg/v3` | Internal library — graph types, persistence, registries (this repo) |
 | `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP server |
 | `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
 
-tkg-v3 does **not** depend on kit. tkgd-v3 depends on both.
+tkg/v3 does **not** depend on kit. tkgd-v3 depends on both.

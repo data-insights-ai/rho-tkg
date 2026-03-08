@@ -241,7 +241,7 @@ All in `pkg/graph/v3056_fixes_test.go`.
 
 ### Added (AllowSelfLoops Validation — Phase 4.22)
 
-- **`ValidationLimits.AllowSelfLoops bool`** — new field on `ValidationLimits`. Default zero value (`false`) rejects self-loop relationships (where `startNode == endNode`). Set to `true` to permit them. This aligns rho/tkg-v3 with the tkg-2025-v2 and tkg-2026-v3 reference implementations.
+- **`ValidationLimits.AllowSelfLoops bool`** — new field on `ValidationLimits`. Default zero value (`false`) rejects self-loop relationships (where `startNode == endNode`). Set to `true` to permit them. This aligns rho/tkg/v3 with the tkg-2025-v2 and tkg-2026-v3 reference implementations.
 - **`ErrSelfLoop`** — new graph-layer sentinel error: `"graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit"`. Returned by `AddRelationshipWithContext` and `ImportRelationshipWithID` when `startID == endID && !g.validation.AllowSelfLoops`.
 - **`context.go:AddRelationshipWithContext`** — self-loop guard added after `endID` extraction, before `LockTwo`: rejects when `startID == endID && !g.validation.AllowSelfLoops`.
 - **`context.go:ImportRelationshipWithID`** — same self-loop guard added at the equivalent position.

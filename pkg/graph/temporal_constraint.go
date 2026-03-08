@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TemporalConstraintKind identifies the type of temporal constraint enforced at write time.

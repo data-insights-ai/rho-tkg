@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg-v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- Temporal index: zero-result short-circuit ---
@@ -299,8 +299,8 @@ func TestBadgerStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 	const (
-		nodes      = 500
-		goroutines = 20
+		nodes       = 500
+		goroutines  = 20
 		queriesEach = 50
 	)
 
@@ -566,9 +566,9 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 func TestMemoryStore_PropertyIndex_LargeScale(t *testing.T) {
 	t.Parallel()
 	const (
-		total      = 2000
-		numValues  = 10
-		perValue   = total / numValues
+		total     = 2000
+		numValues = 10
+		perValue  = total / numValues
 	)
 
 	ms := NewMemoryStore()
