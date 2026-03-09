@@ -80,6 +80,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, ErrNoLabels
 	}
 
+	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validation limits.
 	if len(labels) > b.g.validation.MaxLabelsPerNode {
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), b.g.validation.MaxLabelsPerNode)
@@ -120,6 +126,16 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	hash := ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
 
+	// Set caller-provided temporal metadata (NOT hashed — set after hash).
+	if validFrom != 0 || validTo != 0 || createdAt != 0 {
+		ntm := &types.TemporalMetadata{
+			ValidFrom: validFrom,
+			ValidTo:   validTo,
+			CreatedAt: createdAt,
+		}
+		n.SetTemporal(ntm)
+	}
+
 	b.nodes = append(b.nodes, pendingNode{node: n, labels: canonicalLabels})
 	return n, nil
 }
@@ -130,6 +146,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
+	}
+
+	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
 	}
 
 	// Validation limits.
@@ -159,6 +181,16 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	hash := ComputeRelHash(r, typeName)
 	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+
+	// Set caller-provided temporal metadata (NOT hashed — set after hash).
+	if validFrom != 0 || validTo != 0 || createdAt != 0 {
+		rtm := &types.TemporalMetadata{
+			ValidFrom: validFrom,
+			ValidTo:   validTo,
+			CreatedAt: createdAt,
+		}
+		r.SetTemporal(rtm)
+	}
 
 	b.rels = append(b.rels, pendingRel{rel: r, startID: startID, endID: endID})
 	return r, nil

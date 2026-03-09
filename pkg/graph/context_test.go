@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // newTestGraph is declared in batch_test.go (same package).
@@ -708,6 +710,225 @@ func TestExtractProvenance_ValidBoundary(t *testing.T) {
 	}
 	if level255 != 255 {
 		t.Errorf("int(255): got authLevel=%d, want 255", level255)
+	}
+}
+
+// --- Group: Temporal metadata via tkg_ props ---
+
+func TestAddNodeWithTemporal(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	eventTime := types.Instant(time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC).UnixMilli())
+	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
+
+	n, err := g.AddNodeWithContext(context.Background(), []string{"Signal"}, map[string]any{
+		"name":            "brute-force",
+		"tkg_valid_from":  int64(eventTime),
+		"tkg_valid_to":    int64(farFuture),
+		"tkg_created_at":  int64(eventTime),
+	})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	tm := n.Temporal()
+	if tm == nil {
+		t.Fatal("Temporal() is nil")
+	}
+	if tm.ValidFrom != eventTime {
+		t.Errorf("ValidFrom = %d, want %d", tm.ValidFrom, eventTime)
+	}
+	if tm.ValidTo != farFuture {
+		t.Errorf("ValidTo = %d, want %d", tm.ValidTo, farFuture)
+	}
+	if tm.CreatedAt != eventTime {
+		t.Errorf("CreatedAt = %d, want %d", tm.CreatedAt, eventTime)
+	}
+	if tm.TxFrom == 0 {
+		t.Error("TxFrom should be auto-set, got 0")
+	}
+
+	// Verify tkg_ keys are NOT stored as regular properties.
+	if v, _ := n.GetProperty("tkg_valid_from"); v != nil {
+		t.Error("tkg_valid_from should not be a regular property")
+	}
+}
+
+func TestAddNodeWithoutTemporal(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "alice"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	tm := n.Temporal()
+	if tm == nil {
+		t.Fatal("Temporal() is nil (TxFrom should always be set)")
+	}
+	if tm.TxFrom == 0 {
+		t.Error("TxFrom should be auto-set")
+	}
+	if tm.ValidFrom != 0 {
+		t.Errorf("ValidFrom = %d, want 0 (not set)", tm.ValidFrom)
+	}
+	if tm.ValidTo != 0 {
+		t.Errorf("ValidTo = %d, want 0 (not set)", tm.ValidTo)
+	}
+}
+
+func TestAddRelationshipWithTemporal(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	eventTime := types.Instant(time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC).UnixMilli())
+
+	src, _ := g.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.1"})
+	dst, _ := g.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.2"})
+
+	r, err := g.AddRelationshipWithContext(context.Background(), "CONNECTED_TO", src, dst, map[string]any{
+		"port":           int64(22),
+		"tkg_valid_from": int64(eventTime),
+		"tkg_created_at": int64(eventTime),
+	})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	tm := r.Temporal()
+	if tm == nil {
+		t.Fatal("Temporal() is nil")
+	}
+	if tm.ValidFrom != eventTime {
+		t.Errorf("ValidFrom = %d, want %d", tm.ValidFrom, eventTime)
+	}
+	if tm.CreatedAt != eventTime {
+		t.Errorf("CreatedAt = %d, want %d", tm.CreatedAt, eventTime)
+	}
+	if tm.TxFrom == 0 {
+		t.Error("TxFrom should be auto-set")
+	}
+}
+
+func TestTemporalFloat64Accepted(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	eventTime := types.Instant(1741521600000) // 2025-03-09T12:00:00Z
+
+	// float64 — common from JSON round-trip.
+	n, err := g.AddNode([]string{"Event"}, map[string]any{
+		"tkg_valid_from": float64(eventTime),
+	})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if tm := n.Temporal(); tm.ValidFrom != eventTime {
+		t.Errorf("ValidFrom = %d, want %d", tm.ValidFrom, eventTime)
+	}
+}
+
+func TestTemporalInvalidTypeRejected(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	_, err := g.AddNode([]string{"Event"}, map[string]any{
+		"tkg_valid_from": "not-a-number",
+	})
+	if err == nil {
+		t.Fatal("expected error for string tkg_valid_from")
+	}
+}
+
+func TestTemporalNonIntegerFloat64Rejected(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	_, err := g.AddNode([]string{"Event"}, map[string]any{
+		"tkg_valid_from": 123.456,
+	})
+	if err == nil {
+		t.Fatal("expected error for non-integer float64 tkg_valid_from")
+	}
+}
+
+func TestBatchAddNodeWithTemporal(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	eventTime := types.Instant(1741521600000)
+	batch := NewBatchBuilder(g)
+
+	n, err := batch.AddNode([]string{"Alert"}, map[string]any{
+		"name":            "suspicious",
+		"tkg_valid_from":  int64(eventTime),
+		"tkg_created_at":  int64(eventTime),
+	})
+	if err != nil {
+		t.Fatalf("batch AddNode: %v", err)
+	}
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Failed > 0 {
+		t.Fatalf("batch failed: %v", result.Errors)
+	}
+
+	// Re-read from store to verify temporal survived PutNodesBatch + DeepCopy.
+	stored, err := g.GetNodeWithContext(context.Background(), n.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	tm := stored.Temporal()
+	if tm == nil {
+		t.Fatal("stored Temporal() is nil")
+	}
+	if tm.ValidFrom != eventTime {
+		t.Errorf("stored ValidFrom = %d, want %d", tm.ValidFrom, eventTime)
+	}
+	if tm.CreatedAt != eventTime {
+		t.Errorf("stored CreatedAt = %d, want %d", tm.CreatedAt, eventTime)
+	}
+}
+
+func TestBatchAddRelationshipWithTemporal(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	eventTime := types.Instant(1741521600000)
+	batch := NewBatchBuilder(g)
+
+	src, _ := batch.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.1"})
+	dst, _ := batch.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.2"})
+	r, err := batch.AddRelationship("ATTACKS", src, dst, map[string]any{
+		"tkg_valid_from": int64(eventTime),
+	})
+	if err != nil {
+		t.Fatalf("batch AddRelationship: %v", err)
+	}
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Failed > 0 {
+		t.Fatalf("batch failed: %v", result.Errors)
+	}
+
+	stored, err := g.GetRelationshipWithContext(context.Background(), r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	tm := stored.Temporal()
+	if tm == nil {
+		t.Fatal("stored Temporal() is nil")
+	}
+	if tm.ValidFrom != eventTime {
+		t.Errorf("stored ValidFrom = %d, want %d", tm.ValidFrom, eventTime)
 	}
 }
 

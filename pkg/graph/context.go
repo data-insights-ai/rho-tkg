@@ -28,6 +28,64 @@ func checkCtx(ctx context.Context) error {
 	}
 }
 
+// extractTemporal removes the reserved temporal keys (tkg_valid_from,
+// tkg_valid_to, tkg_created_at) from the props map and returns their values
+// plus a filtered props map without those keys.
+// If none of the reserved keys are present, the original map is returned
+// unchanged (no allocation). The caller's original map is never mutated.
+func extractTemporal(props map[string]any) (validFrom, validTo, createdAt types.Instant, filtered map[string]any, err error) {
+	_, hasVF := props["tkg_valid_from"]
+	_, hasVT := props["tkg_valid_to"]
+	_, hasCA := props["tkg_created_at"]
+	if !hasVF && !hasVT && !hasCA {
+		return 0, 0, 0, props, nil
+	}
+
+	validFrom, err = parseInstant(props["tkg_valid_from"], "tkg_valid_from")
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+	validTo, err = parseInstant(props["tkg_valid_to"], "tkg_valid_to")
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+	createdAt, err = parseInstant(props["tkg_created_at"], "tkg_created_at")
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+
+	filtered = make(map[string]any, len(props))
+	for k, v := range props {
+		if k != "tkg_valid_from" && k != "tkg_valid_to" && k != "tkg_created_at" {
+			filtered[k] = v
+		}
+	}
+	return validFrom, validTo, createdAt, filtered, nil
+}
+
+// parseInstant converts a property value to types.Instant (Unix milliseconds).
+// Accepts nil (returns 0), int64, float64, int, and types.Instant.
+func parseInstant(v any, key string) (types.Instant, error) {
+	if v == nil {
+		return 0, nil
+	}
+	switch val := v.(type) {
+	case types.Instant:
+		return val, nil
+	case int64:
+		return types.Instant(val), nil
+	case int:
+		return types.Instant(val), nil
+	case float64:
+		if val != math.Trunc(val) {
+			return 0, fmt.Errorf("graph: %s %g is not an integer", key, val)
+		}
+		return types.Instant(val), nil
+	default:
+		return 0, fmt.Errorf("graph: %s must be a number (Unix ms), got %T", key, v)
+	}
+}
+
 // extractProvenance removes the reserved provenance keys (tkg_author_id,
 // tkg_signature, tkg_authorized_by, tkg_auth_level) from the props map and
 // returns their values plus a filtered props map without those keys.
@@ -139,6 +197,12 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 		return nil, err
 	}
 
+	// Extract reserved temporal fields (tkg_valid_from, tkg_valid_to, tkg_created_at).
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
 	}
@@ -194,7 +258,7 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 		AuthorizationLevel: authLevel,
 	})
 
-	// Set transaction time: TxFrom = current wall clock ms.
+	// Set transaction time + merge caller-provided temporal metadata.
 	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
 	{
 		txNow := nowInstant()
@@ -204,6 +268,15 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 			n.SetTemporal(ntm)
 		}
 		ntm.TxFrom = txNow
+		if validFrom != 0 {
+			ntm.ValidFrom = validFrom
+		}
+		if validTo != 0 {
+			ntm.ValidTo = validTo
+		}
+		if createdAt != 0 {
+			ntm.CreatedAt = createdAt
+		}
 	}
 
 	if err := checkCtx(ctx); err != nil {
@@ -244,6 +317,12 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 
 	// Extract reserved provenance fields before validation.
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract reserved temporal fields (tkg_valid_from, tkg_valid_to, tkg_created_at).
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +387,7 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 	}
 	r.SetIntegrity(ig)
 
-	// Set transaction time: TxFrom = current wall clock ms.
+	// Set transaction time + merge caller-provided temporal metadata.
 	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
 	{
 		txNow := nowInstant()
@@ -318,6 +397,15 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 			r.SetTemporal(rtm)
 		}
 		rtm.TxFrom = txNow
+		if validFrom != 0 {
+			rtm.ValidFrom = validFrom
+		}
+		if validTo != 0 {
+			rtm.ValidTo = validTo
+		}
+		if createdAt != 0 {
+			rtm.CreatedAt = createdAt
+		}
 	}
 
 	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
