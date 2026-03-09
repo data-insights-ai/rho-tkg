@@ -3,6 +3,12 @@
 // Demonstrates temporal metadata, shadow properties, integrity chains,
 // version tracking, and the reserved tkg_ prefix protection.
 //
+// Two ways to set temporal metadata on creation:
+//   - Props-based (recommended): pass tkg_valid_from, tkg_valid_to, tkg_created_at
+//     in the properties map — extracted before validation, merged with auto-set TxFrom.
+//   - Direct: call node.SetTemporal() after creation (mutates in-place, not persisted
+//     unless followed by an update).
+//
 // Run: go run ./tutorials/002_temporal/
 package main
 
@@ -100,7 +106,58 @@ func main() {
 	fmt.Printf("ValidTo:   %s\n",
 		time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339))
 
-	fmt.Println("\n=== 3. Relationship with Temporal Data ===")
+	fmt.Println("\n=== 3. Temporal via Props (Recommended for Creation) ===")
+
+	// Pass tkg_valid_from / tkg_valid_to / tkg_created_at in the props map.
+	// They are extracted before property validation (tkg_ prefix is reserved),
+	// merged into TemporalMetadata alongside the auto-set TxFrom, and never
+	// stored as regular properties. This is the recommended approach for
+	// setting temporal at creation time — it works through AddNode,
+	// AddNodeWithContext, BatchBuilder.AddNode, and GraphTx.AddNode.
+	eventTime := types.Instant(time.Date(2026, 3, 9, 14, 30, 0, 0, time.UTC).UnixMilli())
+	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
+
+	sensor, err := g.AddNode([]string{"Sensor"}, map[string]any{
+		"name":           "temperature-east-wing",
+		"location":       "building-A",
+		"tkg_valid_from": int64(eventTime),  // when this fact becomes valid
+		"tkg_valid_to":   int64(farFuture),  // open-ended (far future sentinel)
+		"tkg_created_at": int64(eventTime),  // domain creation time
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stm := sensor.Temporal()
+	fmt.Printf("Sensor ValidFrom:  %s\n",
+		time.UnixMilli(int64(stm.ValidFrom)).UTC().Format(time.RFC3339))
+	fmt.Printf("Sensor ValidTo:    %s\n",
+		time.UnixMilli(int64(stm.ValidTo)).UTC().Format(time.RFC3339))
+	fmt.Printf("Sensor CreatedAt:  %s\n",
+		time.UnixMilli(int64(stm.CreatedAt)).UTC().Format(time.RFC3339))
+	fmt.Printf("Sensor TxFrom:     %s (auto-set by tkg)\n",
+		time.UnixMilli(int64(stm.TxFrom)).UTC().Format(time.RFC3339))
+
+	// Verify tkg_ keys are NOT stored as regular properties.
+	if v, _ := sensor.GetProperty("tkg_valid_from"); v != nil {
+		log.Fatal("tkg_valid_from should not be a regular property")
+	}
+	fmt.Println("tkg_valid_from NOT in regular properties (correctly extracted)")
+
+	// Works with relationships too:
+	reading, err := g.AddRelationship("HAS_READING", sensor, emp, map[string]any{
+		"value":          float64(22.5),
+		"tkg_valid_from": int64(eventTime),
+		"tkg_created_at": int64(eventTime),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	rtmReading := reading.Temporal()
+	fmt.Printf("Reading rel ValidFrom: %s\n",
+		time.UnixMilli(int64(rtmReading.ValidFrom)).UTC().Format(time.RFC3339))
+
+	fmt.Println("\n=== 4. Relationship with Temporal Data (Direct SetTemporal) ===")
 
 	mgr, err := g.AddNode([]string{"Employee", "Manager"}, map[string]any{
 		"name": "Bob",
@@ -124,7 +181,7 @@ func main() {
 	})
 	reports.SetVersion(1)
 
-	fmt.Println("\n=== 4. All 15 Shadow Properties (Node) ===")
+	fmt.Println("\n=== 5. All 15 Shadow Properties (Node) ===")
 
 	shadowKeys := []string{
 		types.ShadowLabels,
@@ -154,7 +211,7 @@ func main() {
 		}
 	}
 
-	fmt.Println("\n=== 5. Shadow Properties (Relationship) ===")
+	fmt.Println("\n=== 6. Shadow Properties (Relationship) ===")
 
 	fmt.Println("Relationship shadow properties:")
 	for _, key := range shadowKeys {
@@ -166,7 +223,7 @@ func main() {
 		}
 	}
 
-	fmt.Println("\n=== 6. Integrity Chain ===")
+	fmt.Println("\n=== 7. Integrity Chain ===")
 
 	emp.SetIntegrity(&types.NodeIntegrity{
 		Hash:     "sha256:abc123def456",
@@ -188,7 +245,7 @@ func main() {
 	fmt.Printf("Rel hash:       %s\n", rHash)
 	fmt.Printf("Rel prev_hash:  %s\n", rPrevHash)
 
-	fmt.Println("\n=== 7. Version Tracking ===")
+	fmt.Println("\n=== 8. Version Tracking ===")
 
 	fmt.Printf("Employee version: %d\n", emp.Version())
 	ver, _ := g.ResolveNodeProperty(emp, types.ShadowVersion)
@@ -198,7 +255,7 @@ func main() {
 	ver2, _ := g.ResolveNodeProperty(emp, types.ShadowVersion)
 	fmt.Printf("After update: tkg_version = %v\n", ver2)
 
-	fmt.Println("\n=== 8. Base Entity ID (Version Chain) ===")
+	fmt.Println("\n=== 9. Base Entity ID (Version Chain) ===")
 
 	// Create a new version linked back to the original.
 	empV2, err := g.AddNode([]string{"Employee"}, map[string]any{
@@ -222,7 +279,7 @@ func main() {
 			commasFmt(baseID), commas(int64(emp.InternalID().SnowflakeID())))
 	}
 
-	fmt.Println("\n=== 9. Reserved Prefix Protection ===")
+	fmt.Println("\n=== 10. Reserved Prefix Protection ===")
 
 	err = emp.SetProperty("tkg_custom", "should fail")
 	if errors.Is(err, types.ErrReservedPrefix) {
