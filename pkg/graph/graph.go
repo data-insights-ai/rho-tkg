@@ -443,6 +443,12 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 	return g.AddRelationshipWithContext(context.Background(), typeName, startNode, endNode, props)
 }
 
+// AddRelationshipByID creates a relationship using endpoint snowflake IDs
+// without fetching the endpoint nodes. See AddRelationshipByIDWithContext for details.
+func (g *Graph) AddRelationshipByID(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+	return g.AddRelationshipByIDWithContext(context.Background(), typeName, startID, endID, props)
+}
+
 // DeleteNode atomically removes a node and all connected relationships.
 // Acquires the entity lock for the node to prevent write-skew with concurrent
 // AddRelationship targeting the same node.

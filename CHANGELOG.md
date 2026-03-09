@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.64] - 2026-03-09
+
+### Added
+
+- **AddRelationshipByID / AddRelationshipByIDWithContext** (`pkg/graph/context.go`, `pkg/graph/graph.go`): High-throughput relationship creation using endpoint `snowflake.ID` values directly, without fetching endpoint nodes. Eliminates two `GetNode` + `DeepCopy` calls per relationship vs `AddRelationship`. Trade-offs: `FromNodeHash`/`ToNodeHash` are left empty in `RelIntegrity`, and temporal constraints against endpoint nodes are not checked. Ideal for applications that maintain their own node ID indexes and prioritize write throughput over endpoint integrity capture.
+
+### Tests Added
+
+- `TestGraphAddRelationshipByID` — happy path: type, endpoints, properties, store retrieval, integrity metadata (empty endpoint hashes), adjacency query.
+- `TestGraphAddRelationshipByID_SelfLoop` — self-loop rejected with `ErrSelfLoop`.
+- `TestGraphAddRelationshipByID_TemporalProps` — `tkg_valid_from` and `tkg_created_at` propagated correctly.
+
+### Documentation
+
+- Updated `docs/api.md` with `AddRelationshipByID` / `AddRelationshipByIDWithContext` documentation.
+
 ## [3.0.62] - 2026-03-07
 
 ### Fixed (5 Defects — production readiness)

@@ -477,6 +477,115 @@ func TestGraphAddRelEmptyType(t *testing.T) {
 	}
 }
 
+// ---- AddRelationshipByID ----
+
+func TestGraphAddRelationshipByID(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	nA, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+
+	aID := nA.InternalID().SnowflakeID()
+	bID := nB.InternalID().SnowflakeID()
+
+	r, err := g.AddRelationshipByID("KNOWS", aID, bID, map[string]any{"since": 2020})
+	if err != nil {
+		t.Fatalf("AddRelationshipByID() returned error: %v", err)
+	}
+
+	// Verify type.
+	if g.RelationshipType(r) != "KNOWS" {
+		t.Errorf("RelationshipType = %q, want \"KNOWS\"", g.RelationshipType(r))
+	}
+
+	// Verify endpoints.
+	if r.StartNodeID().SnowflakeID() != aID {
+		t.Error("StartNodeID does not match nA")
+	}
+	if r.EndNodeID().SnowflakeID() != bID {
+		t.Error("EndNodeID does not match nB")
+	}
+
+	// Verify property.
+	since, ok := r.GetProperty("since")
+	if !ok || since != 2020 {
+		t.Errorf("GetProperty(\"since\") = (%v, %v), want (2020, true)", since, ok)
+	}
+
+	// Verify relationship is retrievable from the store.
+	fetched, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetRelationship() returned error: %v", err)
+	}
+	if g.RelationshipType(fetched) != "KNOWS" {
+		t.Errorf("fetched type = %q, want \"KNOWS\"", g.RelationshipType(fetched))
+	}
+
+	// Verify integrity: hash is set, endpoint hashes are empty (ByID trade-off).
+	ig := r.Integrity()
+	if ig == nil {
+		t.Fatal("Integrity() is nil")
+	}
+	if ig.Hash == "" {
+		t.Error("integrity hash should be non-empty")
+	}
+	if ig.FromNodeHash != "" {
+		t.Errorf("FromNodeHash should be empty for ByID path, got %q", ig.FromNodeHash)
+	}
+	if ig.ToNodeHash != "" {
+		t.Errorf("ToNodeHash should be empty for ByID path, got %q", ig.ToNodeHash)
+	}
+
+	// Verify adjacency: nA should have an outgoing KNOWS relationship.
+	rels, err := g.OutgoingRelationships(aID, "KNOWS")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships() returned error: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("OutgoingRelationships: got %d, want 1", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipByID_SelfLoop(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"X"}, nil)
+	nID := n.InternalID().SnowflakeID()
+
+	_, err := g.AddRelationshipByID("SELF", nID, nID, nil)
+	if !errors.Is(err, ErrSelfLoop) {
+		t.Errorf("AddRelationshipByID(self): got %v, want ErrSelfLoop", err)
+	}
+}
+
+func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	nA, _ := g.AddNode([]string{"X"}, nil)
+	nB, _ := g.AddNode([]string{"X"}, nil)
+
+	r, err := g.AddRelationshipByID("REL", nA.InternalID().SnowflakeID(), nB.InternalID().SnowflakeID(), map[string]any{
+		"tkg_valid_from": int64(1000),
+		"tkg_created_at": int64(2000),
+	})
+	if err != nil {
+		t.Fatalf("AddRelationshipByID() returned error: %v", err)
+	}
+	tm := r.Temporal()
+	if tm == nil {
+		t.Fatal("Temporal() is nil")
+	}
+	if int64(tm.ValidFrom) != 1000 {
+		t.Errorf("ValidFrom = %d, want 1000", tm.ValidFrom)
+	}
+	if int64(tm.CreatedAt) != 2000 {
+		t.Errorf("CreatedAt = %d, want 2000", tm.CreatedAt)
+	}
+}
+
 func TestGraphDeleteNode(t *testing.T) {
 	t.Parallel()
 
