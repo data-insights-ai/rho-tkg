@@ -552,6 +552,141 @@ func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string
 	return r, nil
 }
 
+// AddRelationshipByIDIfAbsentWithContext atomically creates a relationship using
+// endpoint snowflake IDs only if no relationship of the same type between the same
+// endpoints already exists. Returns (rel, created, err) where created is true if a
+// new relationship was created, false if an existing one was returned.
+//
+// The existence check and creation are serialized under entity locks, preventing
+// the TOCTOU race inherent in separate check-then-create calls.
+//
+// Trade-offs vs AddRelationshipByIDWithContext: same (no endpoint hashing, no
+// temporal constraint checks against endpoint nodes).
+func (g *Graph) AddRelationshipByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+	g.mu.RLock()
+	r, created, err := g.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil && created {
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: r.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+	}
+	return r, created, err
+}
+
+// addRelationshipByIDIfAbsentInternal is the lock-free implementation of
+// AddRelationshipByIDIfAbsentWithContext. Under entity locks it checks for an
+// existing relationship before creating, making the operation atomic.
+// Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
+func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+
+	// Extract reserved provenance fields before validation.
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Extract reserved temporal fields.
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Validation limits.
+	if err := g.validateName(typeName); err != nil {
+		return nil, false, err
+	}
+	if err := g.validateProperties(props); err != nil {
+		return nil, false, err
+	}
+
+	// Bulk-build properties first — fail fast before entity locking.
+	ps, err := types.NewPropertySlice(props)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: relationship properties: %w", err)
+	}
+
+	typeToken, err := g.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: relationship type: %w", err)
+	}
+
+	if startID == endID && !g.validation.AllowSelfLoops {
+		return nil, false, ErrSelfLoop
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+
+	// Lock both endpoints — serializes with concurrent Add/Delete on same endpoints.
+	g.entityLocks.LockTwo(startID, endID)
+	defer g.entityLocks.UnlockTwo(startID, endID)
+
+	// Check for existing relationship under entity locks (atomic with creation).
+	existing, err := g.store.OutgoingRelationships(startID, typeToken)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: check existing relationships: %w", err)
+	}
+	for _, r := range existing {
+		if r.EndNodeID().SnowflakeID() == endID {
+			return r, false, nil
+		}
+	}
+
+	// Not found — create.
+	id := g.NextRelID()
+	r := types.NewRelationship(id, typeToken, startID, endID)
+	r.SetProperties(ps)
+
+	hash := ComputeRelHash(r, typeName)
+
+	// Integrity metadata — endpoint hashes left empty (ByID trade-off).
+	ig := &types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
+	r.SetIntegrity(ig)
+
+	// Set transaction time + merge caller-provided temporal metadata.
+	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
+	{
+		txNow := nowInstant()
+		rtm := r.Temporal()
+		if rtm == nil {
+			rtm = &types.TemporalMetadata{}
+			r.SetTemporal(rtm)
+		}
+		rtm.TxFrom = txNow
+		if validFrom != 0 {
+			rtm.ValidFrom = validFrom
+		}
+		if validTo != 0 {
+			rtm.ValidTo = validTo
+		}
+		if createdAt != 0 {
+			rtm.CreatedAt = createdAt
+		}
+	}
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+
+	if err := g.store.PutRelationship(r); err != nil {
+		return nil, false, err
+	}
+
+	g.opRelAdds.Add(1)
+	return r, true, nil
+}
+
 // DeleteNodeWithContext atomically removes a node and all connected relationships.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {

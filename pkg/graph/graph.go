@@ -449,6 +449,13 @@ func (g *Graph) AddRelationshipByID(typeName string, startID, endID snowflake.ID
 	return g.AddRelationshipByIDWithContext(context.Background(), typeName, startID, endID, props)
 }
 
+// AddRelationshipByIDIfAbsent atomically creates a relationship using endpoint
+// snowflake IDs only if no relationship of the same type between the same endpoints
+// already exists. See AddRelationshipByIDIfAbsentWithContext for details.
+func (g *Graph) AddRelationshipByIDIfAbsent(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+	return g.AddRelationshipByIDIfAbsentWithContext(context.Background(), typeName, startID, endID, props)
+}
+
 // DeleteNode atomically removes a node and all connected relationships.
 // Acquires the entity lock for the node to prevent write-skew with concurrent
 // AddRelationship targeting the same node.

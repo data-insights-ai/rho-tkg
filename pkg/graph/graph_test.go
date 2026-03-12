@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -583,6 +584,134 @@ func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
 	}
 	if int64(tm.CreatedAt) != 2000 {
 		t.Errorf("CreatedAt = %d, want 2000", tm.CreatedAt)
+	}
+}
+
+// ---- AddRelationshipByIDIfAbsent ----
+
+func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	aID := nA.InternalID().SnowflakeID()
+	bID := nB.InternalID().SnowflakeID()
+
+	// First call: should create.
+	r1, created1, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if !created1 {
+		t.Error("first call: created should be true")
+	}
+
+	// Second call: should return existing.
+	r2, created2, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if created2 {
+		t.Error("second call: created should be false")
+	}
+	if r2.InternalID().SnowflakeID() != r1.InternalID().SnowflakeID() {
+		t.Error("second call should return same relationship")
+	}
+
+	// Verify only one relationship exists.
+	rels, err := g.OutgoingRelationships(aID, "KNOWS")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("OutgoingRelationships: got %d, want 1", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	aID := nA.InternalID().SnowflakeID()
+	bID := nB.InternalID().SnowflakeID()
+
+	// Same endpoints, different types — both should create.
+	_, created1, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
+	if err != nil {
+		t.Fatalf("KNOWS: %v", err)
+	}
+	if !created1 {
+		t.Error("KNOWS: created should be true")
+	}
+
+	_, created2, err := g.AddRelationshipByIDIfAbsent("LIKES", aID, bID, nil)
+	if err != nil {
+		t.Fatalf("LIKES: %v", err)
+	}
+	if !created2 {
+		t.Error("LIKES: created should be true")
+	}
+
+	// Both should exist.
+	all, err := g.OutgoingRelationships(aID, "")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships(all): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("OutgoingRelationships(all): got %d, want 2", len(all))
+	}
+}
+
+func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	nA, _ := g.AddNode([]string{"Person"}, nil)
+	nB, _ := g.AddNode([]string{"Person"}, nil)
+	aID := nA.InternalID().SnowflakeID()
+	bID := nB.InternalID().SnowflakeID()
+
+	const goroutines = 10
+	const iterations = 50
+
+	var createdCount atomic.Int64
+	var errCount atomic.Int64
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				_, created, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
+				if err != nil {
+					errCount.Add(1)
+					continue
+				}
+				if created {
+					createdCount.Add(1)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if errCount.Load() != 0 {
+		t.Errorf("errors: %d", errCount.Load())
+	}
+	if createdCount.Load() != 1 {
+		t.Errorf("created count: got %d, want 1", createdCount.Load())
+	}
+
+	rels, err := g.OutgoingRelationships(aID, "KNOWS")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("OutgoingRelationships: got %d, want 1", len(rels))
 	}
 }
 
