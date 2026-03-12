@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.66] - 2026-03-12
+
+### Added
+
+- **GraphTx.GetNode(id)** (`pkg/graph/tx.go`): Read a node by snowflake ID within a transaction. Safe because the tx holds the write lock — no concurrent modifications possible. Used by callers that need to inspect node state mid-transaction.
+
+- **GraphTx.AddRelationshipByID(typeName, startID, endID, props)** (`pkg/graph/tx.go`): Create a relationship using endpoint snowflake IDs within a transaction. Mirrors the standalone `Graph.AddRelationshipByID` but participates in tx rollback tracking. The relationship ID is tracked for rollback on `tx.Rollback()`.
+
+- **GraphTx.AddRelationshipByIDIfAbsent(typeName, startID, endID, props)** (`pkg/graph/tx.go`): Atomic check-then-create for relationships within a transaction. Returns `(rel, created, err)` where `created=true` if a new relationship was created, `false` if one already existed. Only tracks for rollback when `created=true`. Enables idempotent relationship creation patterns (e.g., TECHNIQUE_OBSERVED) inside atomic transactions.
+
+### Tests Added
+
+- `TestTxGetNode` — read node within tx, verify properties visible.
+- `TestTxGetNode_AfterDone` — GetNode returns `ErrTxDone` after commit.
+- `TestTxAddRelationshipByID` — create by ID in tx, commit, verify persisted with properties.
+- `TestTxAddRelationshipByID_Rollback` — create by ID, rollback, verify absent.
+- `TestTxAddRelationshipByIDIfAbsent` — first call creates, second returns `created=false`, count stays 1.
+- `TestTxAddRelationshipByIDIfAbsent_Rollback` — create, rollback, verify absent.
+
+### Documentation
+
+- Updated `docs/api.md` Transactions section with `tx.GetNode`, `tx.AddRelationshipByID`, and `tx.AddRelationshipByIDIfAbsent`.
+
 ## [3.0.64] - 2026-03-09
 
 ### Added

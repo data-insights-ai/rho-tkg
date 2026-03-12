@@ -467,6 +467,71 @@ func (tx *GraphTx) Rollback() error {
 	return firstErr
 }
 
+// GetNode reads a node by ID within the transaction.
+// Safe because the tx holds the write lock — no concurrent modifications possible.
+func (tx *GraphTx) GetNode(id snowflake.ID) (*types.Node, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	return tx.g.store.GetNode(id)
+}
+
+// AddRelationshipByID creates a relationship using endpoint snowflake IDs within the transaction.
+// The relationship ID is tracked for rollback. Delegates to Graph.addRelationshipByIDInternal.
+func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+
+	tx.mu.Lock()
+	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+	tx.mu.Unlock()
+
+	return r, nil
+}
+
+// AddRelationshipByIDIfAbsent atomically checks for an existing relationship of the same
+// type between the same endpoints and creates one only if absent. Returns (rel, created, err)
+// where created=true if a new relationship was created.
+// The relationship ID is tracked for rollback only if created.
+func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return nil, false, ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if created {
+		tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+
+		tx.mu.Lock()
+		tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+		tx.mu.Unlock()
+	}
+
+	return r, created, nil
+}
+
 // CreatedNodeIDs returns the snowflake IDs of all nodes created in this transaction.
 // Useful for inspecting transaction state in tests.
 func (tx *GraphTx) CreatedNodeIDs() []snowflake.ID {

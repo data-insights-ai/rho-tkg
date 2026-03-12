@@ -666,6 +666,209 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	}
 }
 
+// --- GraphTx ByID relationship tests ---
+
+func TestTxGetNode(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeID := n.InternalID().SnowflakeID()
+
+	tx := g.BeginTx()
+	got, err := tx.GetNode(nodeID)
+	if err != nil {
+		t.Fatalf("GetNode in tx: %v", err)
+	}
+	name, ok := got.GetProperty("name")
+	if !ok || name != "Alice" {
+		t.Errorf("name = %v, want Alice", name)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTxGetNode_AfterDone(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx := g.BeginTx()
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.GetNode(n.InternalID().SnowflakeID())
+	if !errors.Is(err, ErrTxDone) {
+		t.Errorf("GetNode after commit: got %v, want ErrTxDone", err)
+	}
+}
+
+func TestTxAddRelationshipByID(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n1, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx := g.BeginTx()
+	r, err := tx.AddRelationshipByID("KNOWS", n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID(), map[string]any{"since": int64(2024)})
+	if err != nil {
+		t.Fatalf("AddRelationshipByID: %v", err)
+	}
+	if r == nil {
+		t.Fatal("relationship is nil")
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify relationship persisted.
+	rc, _ := g.RelationshipCount()
+	if rc != 1 {
+		t.Errorf("rel count after commit: got %d, want 1", rc)
+	}
+	got, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	since, ok := got.GetProperty("since")
+	if !ok || since != int64(2024) {
+		t.Errorf("since = %v, want 2024", since)
+	}
+}
+
+func TestTxAddRelationshipByID_Rollback(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n1, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx := g.BeginTx()
+	_, err = tx.AddRelationshipByID("KNOWS", n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID(), nil)
+	if err != nil {
+		t.Fatalf("AddRelationshipByID: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Relationship should be gone after rollback.
+	rc, _ := g.RelationshipCount()
+	if rc != 0 {
+		t.Errorf("rel count after rollback: got %d, want 0", rc)
+	}
+}
+
+func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n1, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id1 := n1.InternalID().SnowflakeID()
+	id2 := n2.InternalID().SnowflakeID()
+
+	// First: create in tx and commit.
+	tx := g.BeginTx()
+	r, created, err := tx.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
+	if err != nil {
+		t.Fatalf("AddRelationshipByIDIfAbsent: %v", err)
+	}
+	if !created {
+		t.Error("first call: want created=true")
+	}
+	if r == nil {
+		t.Fatal("relationship is nil")
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second: same call should find existing and return created=false.
+	tx2 := g.BeginTx()
+	r2, created2, err := tx2.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
+	if err != nil {
+		t.Fatalf("second AddRelationshipByIDIfAbsent: %v", err)
+	}
+	if created2 {
+		t.Error("second call: want created=false")
+	}
+	if r2 == nil {
+		t.Fatal("second call: relationship is nil")
+	}
+	if err := tx2.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should still have exactly 1 relationship.
+	rc, _ := g.RelationshipCount()
+	if rc != 1 {
+		t.Errorf("rel count: got %d, want 1", rc)
+	}
+}
+
+func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	n1, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, err := g.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id1 := n1.InternalID().SnowflakeID()
+	id2 := n2.InternalID().SnowflakeID()
+
+	// Create in tx then rollback.
+	tx := g.BeginTx()
+	_, created, err := tx.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Error("want created=true")
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be absent after rollback.
+	rc, _ := g.RelationshipCount()
+	if rc != 0 {
+		t.Errorf("rel count after rollback: got %d, want 0", rc)
+	}
+}
+
 // --- Graph.Reset tests ---
 
 func TestGraphReset_Empty(t *testing.T) {
