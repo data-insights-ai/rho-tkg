@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.67] - 2026-03-13
+
+### Fixed
+
+- **Cross-shard incoming relationship type filter** (`pkg/graph/badgerstore.go`, `pkg/graph/badgerstore_partial.go`): `IncomingRelationships(nodeID, typeToken)` returned empty results for cross-shard relationships in TieredStore. The in-memory `inIdx` stored relationship IDs as a bare set (`struct{}`). When filtering by type, `incomingRelIDs` called `GetRelationship(relID)` on its own shard to read the type token — but for cross-shard relationships (e.g., Signal in event shard → Case in reference shard), the entity lives in the event shard while the incoming index is on the reference shard. `GetRelationship` returned `ErrRelNotFound`, silently skipping the relationship. Changed `inIdx` from `map[snowflake.ID]struct{}` to `map[snowflake.ID]uint16` (relID → typeToken). The type token is already available at index write time — filtering now happens directly on the index without fetching the entity.
+
 ## [3.0.66] - 2026-03-12
 
 ### Added

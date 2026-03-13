@@ -1530,9 +1530,9 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	}
 	bs.outIdx[snowflake.ID(10)][corruptRelID] = struct{}{}
 	if bs.inIdx[snowflake.ID(20)] == nil {
-		bs.inIdx[snowflake.ID(20)] = make(map[snowflake.ID]struct{})
+		bs.inIdx[snowflake.ID(20)] = make(map[snowflake.ID]uint16)
 	}
-	bs.inIdx[snowflake.ID(20)][corruptRelID] = struct{}{}
+	bs.inIdx[snowflake.ID(20)][corruptRelID] = 0
 	bs.relCount.Add(1)
 	bs.idxMu.Unlock()
 

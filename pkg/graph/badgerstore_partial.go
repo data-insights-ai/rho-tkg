@@ -88,9 +88,9 @@ func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint1
 	defer bs.idxMu.Unlock()
 
 	if bs.inIdx[endID] == nil {
-		bs.inIdx[endID] = make(map[snowflake.ID]struct{})
+		bs.inIdx[endID] = make(map[snowflake.ID]uint16)
 	}
-	bs.inIdx[endID][relID] = struct{}{}
+	bs.inIdx[endID][relID] = relType
 
 	op := writeOp{
 		opType: writeOpSet,
@@ -287,35 +287,13 @@ func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []s
 		return nil
 	}
 
-	var ids []snowflake.ID
-	if typeToken == 0 {
-		ids = make([]snowflake.ID, 0, len(set))
-		for relID := range set {
-			ids = append(ids, relID)
-		}
-	} else {
-		// Filter by type: need to check each rel's type token.
-		// Collect all relIDs first, then filter outside lock.
-		ids = make([]snowflake.ID, 0, len(set))
-		for relID := range set {
+	ids := make([]snowflake.ID, 0, len(set))
+	for relID, tok := range set {
+		if typeToken == 0 || tok == typeToken {
 			ids = append(ids, relID)
 		}
 	}
 	bs.idxMu.RUnlock()
-
-	if typeToken != 0 {
-		filtered := make([]snowflake.ID, 0, len(ids))
-		for _, relID := range ids {
-			r, err := bs.GetRelationship(relID)
-			if err != nil {
-				continue // orphan or cross-shard entity — skip
-			}
-			if r.TypeToken().Value() == typeToken {
-				filtered = append(filtered, relID)
-			}
-		}
-		ids = filtered
-	}
 
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids

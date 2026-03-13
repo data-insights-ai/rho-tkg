@@ -90,7 +90,7 @@ type BadgerStore struct {
 	labelIdx map[uint16]map[snowflake.ID]struct{}       // labelToken → set(nodeID)
 	typeIdx  map[uint16]map[snowflake.ID]struct{}       // relTypeToken → set(relID)
 	outIdx   map[snowflake.ID]map[snowflake.ID]struct{} // startNodeID → set(relID)
-	inIdx    map[snowflake.ID]map[snowflake.ID]struct{} // endNodeID → set(relID)
+	inIdx    map[snowflake.ID]map[snowflake.ID]uint16 // endNodeID → relID → typeToken
 
 	// Entity caches (internal sync via entityLRU mutex).
 	nodeCache *entityLRU[*types.Node]
@@ -219,7 +219,7 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 		labelIdx:        make(map[uint16]map[snowflake.ID]struct{}),
 		typeIdx:         make(map[uint16]map[snowflake.ID]struct{}),
 		outIdx:          make(map[snowflake.ID]map[snowflake.ID]struct{}),
-		inIdx:           make(map[snowflake.ID]map[snowflake.ID]struct{}),
+		inIdx:           make(map[snowflake.ID]map[snowflake.ID]uint16),
 		nodeCache:       newEntityLRU[*types.Node](capacity),
 		relCache:        newEntityLRU[*types.Relationship](capacity),
 		pending:         make(map[string]writeOp),
@@ -341,11 +341,12 @@ func (bs *BadgerStore) loadIndexes() error {
 				continue
 			}
 			endID := snowflake.ID(parseIDFromKey(key, 1))
+			relType := binary.BigEndian.Uint16(key[9:])
 			relID := snowflake.ID(parseRelIDFromAdjKey(key))
 			if bs.inIdx[endID] == nil {
-				bs.inIdx[endID] = make(map[snowflake.ID]struct{})
+				bs.inIdx[endID] = make(map[snowflake.ID]uint16)
 			}
-			bs.inIdx[endID][relID] = struct{}{}
+			bs.inIdx[endID][relID] = relType
 		}
 		it.Close()
 
@@ -856,9 +857,9 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	}
 	bs.outIdx[startID][id] = struct{}{}
 	if bs.inIdx[endID] == nil {
-		bs.inIdx[endID] = make(map[snowflake.ID]struct{})
+		bs.inIdx[endID] = make(map[snowflake.ID]uint16)
 	}
-	bs.inIdx[endID][id] = struct{}{}
+	bs.inIdx[endID][id] = relType
 
 	// Build write ops.
 	ops := []writeOp{
@@ -1264,8 +1265,10 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	bs.idxMu.RLock()
 	set := bs.inIdx[nodeID]
 	ids := make([]snowflake.ID, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
+	for id, tok := range set {
+		if typeToken == 0 || tok == typeToken {
+			ids = append(ids, id)
+		}
 	}
 	bs.idxMu.RUnlock()
 
@@ -1282,9 +1285,7 @@ func (bs *BadgerStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 			}
 			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
-		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
-			rels = append(rels, r)
-		}
+		rels = append(rels, r)
 	}
 
 	sortRelsByID(rels)
@@ -1772,9 +1773,9 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.outIdx[rd.startID][rd.id] = struct{}{}
 
 		if bs.inIdx[rd.endID] == nil {
-			bs.inIdx[rd.endID] = make(map[snowflake.ID]struct{})
+			bs.inIdx[rd.endID] = make(map[snowflake.ID]uint16)
 		}
-		bs.inIdx[rd.endID][rd.id] = struct{}{}
+		bs.inIdx[rd.endID][rd.id] = rd.relType
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: relKey(intID), value: rd.data})
 		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, intID)})
@@ -3235,7 +3236,7 @@ func (bs *BadgerStore) Clear() error {
 	bs.labelIdx = make(map[uint16]map[snowflake.ID]struct{})
 	bs.typeIdx = make(map[uint16]map[snowflake.ID]struct{})
 	bs.outIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
-	bs.inIdx = make(map[snowflake.ID]map[snowflake.ID]struct{})
+	bs.inIdx = make(map[snowflake.ID]map[snowflake.ID]uint16)
 
 	// Reset atomic counters.
 	bs.nodeCount.Store(0)
