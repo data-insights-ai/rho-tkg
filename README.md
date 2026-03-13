@@ -60,6 +60,7 @@ make build          # verify compilation
 make test           # unit tests (short mode, no cache)
 make test-v         # verbose tests
 make test-race      # race detector enabled
+make test-integration  # integration tests (long-running)
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
 make ci             # full pipeline: fmt-check + vet + build + test-race + security + vulncheck

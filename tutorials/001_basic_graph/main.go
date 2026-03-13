@@ -41,7 +41,7 @@ func commas(n int64) string {
 func main() {
 	// Create graph with explicit configuration.
 	g, err := graph.New(graph.Config{
-		// SnowflakeNodeID identifies this graph instance (0-511).
+		// SnowflakeNodeID identifies this graph instance (0-15).
 		// It's used to guarantee uniqueness in a distributed environment.
 		SnowflakeNodeID: 0,
 

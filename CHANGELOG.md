@@ -33,6 +33,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Updated `docs/api.md` Transactions section with `tx.GetNode`, `tx.AddRelationshipByID`, and `tx.AddRelationshipByIDIfAbsent`.
 
+## [3.0.65] - 2026-03-12
+
+### Added
+
+- **AddRelationshipByIDIfAbsent / AddRelationshipByIDIfAbsentWithContext** (`pkg/graph/context.go`, `pkg/graph/graph.go`): Atomic check-then-create for relationships. Prevents TOCTOU race where concurrent callers both see "absent" and create duplicate relationships. The existence check and creation are serialized under entity locks, guaranteeing exactly one relationship per (type, from, to). Returns `(rel, created, err)` where `created=true` if a new relationship was created, `false` if one already existed.
+
+### Tests Added
+
+- `TestGraphAddRelationshipByIDIfAbsent` — first call creates, second returns `created=false`.
+- `TestGraphAddRelationshipByIDIfAbsent_Concurrent` — concurrent callers produce exactly one relationship.
+
 ## [3.0.64] - 2026-03-09
 
 ### Added
@@ -48,6 +59,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Documentation
 
 - Updated `docs/api.md` with `AddRelationshipByID` / `AddRelationshipByIDWithContext` documentation.
+
+## [3.0.63] - 2026-03-09
+
+### Added
+
+- **Caller-provided temporal metadata via `tkg_` props** (`pkg/graph/context.go`, `pkg/graph/batch.go`): `AddNode`/`AddRelationship` (and `BatchBuilder` equivalents) now accept `tkg_valid_from`, `tkg_valid_to`, `tkg_created_at` in the props map. Values are extracted before validation (same pattern as provenance), then merged into `TemporalMetadata` alongside auto-set `TxFrom`. Zero API signature changes — fully backward compatible.
+
+### Tests Added
+
+- `TestAddNodeWithTemporal` — `tkg_valid_from`, `tkg_valid_to`, `tkg_created_at` propagated to `TemporalMetadata`; keys not stored as regular properties.
+- `TestAddNodeWithoutTemporal` — default behavior unchanged when no temporal props provided.
+- `TestAddRelWithTemporal` — temporal props propagated on relationship creation.
+- `TestTemporalProps_InvalidType` — non-`int64` values rejected with error.
+
+### Documentation
+
+- Updated tutorial 002 with props-based temporal metadata section demonstrating `tkg_valid_from`, `tkg_valid_to`, `tkg_created_at` usage.
 
 ## [3.0.62] - 2026-03-07
 
@@ -700,7 +728,7 @@ All in `pkg/graph/v3056_fixes_test.go`.
 
 ### Added (Phase 3e — Repair + Tooling)
 
-- **`DecomposeID(snowflake.ID)`** — extracts `IDComponents{CreatedAt, NodeID, Sequence}` from snowflake ID bits. `time = id >> 22`, `node = (id >> 12) & 0x3FF`, `seq = id & 0xFFF`. Package-level function, also accessible via `Graph.DecomposeID`.
+- **`DecomposeID(snowflake.ID)`** — extracts `IDComponents{CreatedAt, NodeID, Sequence}` from snowflake ID using `snowflakeLayout.Decompose()`. Package-level function, also accessible via `Graph.DecomposeID`.
 - **`TieredStore.ForceRotate()`** — safe hot-shard rotation with internal locking (unlike `RotateHotShard()` which expects the caller to hold `ts.mu.Lock`). Accessible via `Graph.ForceRotate()`.
 - **`TieredStore.ListShards()`** — returns `[]ShardInfo` for all shards (reference, archive, event), enriched with live node/rel counts from open stores. Accessible via `Graph.ListShards()`.
 - **`TieredStore.RebuildCatalog()`** — reconstructs the shard catalog from live in-memory state, updating node/rel counts and tier info for all open shards. Accessible via `Graph.RebuildCatalog()`.

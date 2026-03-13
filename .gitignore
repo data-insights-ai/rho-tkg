@@ -27,3 +27,10 @@ Thumbs.db
 data/
 
 ## new 2026
+
+# Tutorial binaries
+tutorials/001_basic_graph/001_basic_graph
+tutorials/002_temporal/002_temporal
+tutorials/003_badger_persistence/003_badger_persistence
+tutorials/004_full_features/004_full_features
+tutorials/005_performance/005_performance

@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.0.60)
+# Architecture — tkg/v3 (v3.0.67)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -36,7 +36,9 @@ License: Apache-2.0
 
 **Graph** is the sole external API. It owns the registries, dual snowflake generators, the Store, and an entity lock manager. All string resolution, referential integrity, and temporal query logic live here.
 
-**Store** is a pure persistence interface (49 methods). Three implementations: MemoryStore (testing), BadgerStore (single-instance persistent), TieredStore (multi-shard persistent).
+**Store** is a pure persistence interface (59 methods). Three implementations: MemoryStore (testing), BadgerStore (single-instance persistent), TieredStore (multi-shard persistent).
+
+**Vector indexes** live at the Store level (per-Store in MemoryStore/BadgerStore, per-TieredStore -- not per-shard). In-memory brute-force k-NN with Cosine and Euclidean distance metrics. Protected by a dedicated `vectorIdxMu sync.RWMutex`. Not persisted -- rebuilt from node properties on restart. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`).
 
 ---
 
@@ -49,7 +51,7 @@ License: Apache-2.0
 | `PropertySlice` | var | Sorted key-value store with binary search. Recursive allowlist validation, depth-limited to 32 levels. `tkg_` prefix reserved |
 | `Instant` | 8B | Unix-millisecond timestamp. All temporal fields use this type |
 | `TemporalMetadata` | var | ValidFrom, ValidTo, TxFrom, TxTo, CreatedAt, UpdatedAt, DeletedAt, CreatedBy, UpdatedBy, BaseEntityID |
-| `NodeIntegrity` / `RelIntegrity` | var | SHA-256 hash chain: `Hash`, `PrevHash` |
+| `NodeIntegrity` / `RelIntegrity` | var | SHA-256 hash chain + provenance/authorization: `Hash`, `PrevHash`, `AuthorID string`, `Signature []byte`, `AuthorizedBy string`, `AuthorizationLevel uint8`. `RelIntegrity` additionally holds `FromNodeHash`, `ToNodeHash` (endpoint cross-references at write time) |
 
 **Key invariants:**
 - All struct fields unexported. Access through methods only.
@@ -58,20 +60,52 @@ License: Apache-2.0
 - `Temporal()` and `Integrity()` return internal pointers (no copy).
 - Token 0 is reserved/invalid. `HasLabelToken(0)` always returns false.
 
+### Shadow Properties (21)
+
+Read-only virtual properties dispatched by the graph layer from internal metadata. Never stored in `PropertySlice`; `PropertySlice.Set()` rejects any key with the `tkg_` prefix.
+
+| Key | Type | Applies To | Category |
+|-----|------|------------|----------|
+| `tkg_labels` | `[]string` | Node | Structural |
+| `tkg_type` | `string` | Relationship | Structural |
+| `tkg_valid_from` | `Instant` | Both | Temporal |
+| `tkg_valid_to` | `Instant` | Both | Temporal |
+| `tkg_tx_from` | `Instant` | Both | Temporal |
+| `tkg_tx_to` | `Instant` | Both | Temporal |
+| `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset) |
+| `tkg_updated_at` | `Instant` | Both | Temporal |
+| `tkg_deleted_at` | `Instant` | Both | Temporal |
+| `tkg_created_by` | `string` | Both | Provenance |
+| `tkg_updated_by` | `string` | Both | Provenance |
+| `tkg_version` | `uint32` | Both | Provenance |
+| `tkg_hash` | `string` | Both | Integrity |
+| `tkg_prev_hash` | `string` | Both | Integrity |
+| `tkg_from_hash` | `string` | Relationship | Integrity -- start-node hash at write time |
+| `tkg_to_hash` | `string` | Relationship | Integrity -- end-node hash at write time |
+| `tkg_author_id` | `string` | Both | Provenance -- caller-supplied author identifier |
+| `tkg_signature` | `[]byte` | Both | Integrity -- caller-supplied cryptographic signature |
+| `tkg_authorized_by` | `string` | Both | Authorization -- caller-supplied authorizing entity |
+| `tkg_auth_level` | `uint8` | Both | Authorization -- caller-supplied authorization tier |
+| `tkg_base_entity` | `entityID` | Both | Version chain |
+
 ---
 
 ## Snowflake IDs
 
 ```
-[41 bits timestamp | 10 bits node | 12 bits sequence]
-         ms             0-1023          0-4095
++---------------------------------------------------------------+
+|  1 bit  |       48 bits        |   5 bits   |     10 bits     |
+|  zero   |     time (µsec)      |   node ID  |    sequence     |
++---------------------------------------------------------------+
 ```
 
+- Precision: **microseconds** (`snowflake.WithMicroseconds()`)
 - Epoch: `2026-01-01 00:00:00 UTC`
-- Two generators per Graph: nodes (even node field), relationships (odd node field)
-- Valid `SnowflakeNodeID` range: 0-511 (512 concurrent graph instances)
+- Two generators per Graph: nodes (`SnowflakeNodeID*2`), relationships (`SnowflakeNodeID*2+1`)
+- Valid `SnowflakeNodeID` range: 0-15 (16 concurrent graph instances)
+- 1024 unique IDs per microsecond per generator
 - Stateless — no counter persistence, no crash recovery
-- Creation timestamp extractable: `uint64(id) >> 22` gives ms since epoch
+- Creation timestamp extractable via `snowflakeLayout.Decompose(id).Time` or `DecomposeID(id).CreatedAt`
 
 ---
 
@@ -87,6 +121,9 @@ License: Apache-2.0
 | `UpdateRelationship(id, updates)` | `g.mu.RLock()` + `LockEntity(id)` | Same pattern as UpdateNode |
 | `DeleteNode(id)` | `LockMany(node + all rels)` | Two-phase TOCTOU: read adjacency, lock all, re-verify, build `[]RelTombstone`, single atomic `DeleteNodeWithHistory` call |
 | `DeleteRelationship(id)` | `LockEntity(id)` | Build tombstone, single atomic `DeleteRelWithHistory` call |
+| `AddRelationshipByID(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Create relationship using endpoint snowflake IDs directly. Skips endpoint fetch, endpoint hash capture, and temporal constraint checks against endpoints. High-throughput path |
+| `AddRelationshipByIDIfAbsent(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Atomic check-then-create: returns existing relationship if same type+endpoints already connected, otherwise creates. Same trade-offs as `AddRelationshipByID`. Returns `(rel, created, err)` |
+| `GetNode(id)` | none (read-only via store) | Retrieve a single node by snowflake ID |
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Context-aware variants (`*WithContext`) add cancellation checks at critical points. Non-context methods delegate with `context.Background()`.
 
@@ -98,6 +135,7 @@ Version-specific: `GetNodeAt(id, t)`, `GetRelAt(id, t)`
 Traversal: `GetNeighborsValidAt(nodeID, t)`
 Snapshot: `Snapshot(t)` -- full graph state at time t (endpoint-filtered)
 Combined: `NodesByLabelPropertyAndTime(label, key, value, t)`, `NodesByLabelPropertyDuring(label, key, value, start, end)`
+Bitemporal (transaction time): `GetNodeAsOf(id, txTime)`, `GetRelAsOf(id, txTime)`, `GetNodesAsOf(txTime)`, `GetRelsAsOf(txTime)`
 
 **History-aware queries** include deleted entities. They use two-phase ForEach iteration:
 1. **Collect** -- `ForEachNodeID` + `ForEachNodeHistoryID` insert unique IDs into a `seen` map (callback must NOT call store methods -- RWMutex non-reentrancy)
@@ -130,7 +168,7 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 ## Store Interface (`pkg/graph/store.go`)
 
-49 methods. Pure persistence contract -- no string resolution, no referential integrity, no shadow properties.
+59 methods. Pure persistence contract -- no string resolution, no referential integrity, no shadow properties.
 
 ### Query Control
 
@@ -168,6 +206,10 @@ const (
 | Atomic delete | `DeleteNodeWithHistory`, `DeleteRelWithHistory` | Tombstone history + entity delete in one batch (crash-safe) |
 | Counts | `NodeCount`, `RelationshipCount`, `NodeCountByLabel`, `RelCountByType` | O(1) |
 | Property indexes | `CreatePropertyIndex`, `DropPropertyIndex`, `NodesByLabelAndProperty` | In-memory, auto-maintained |
+| Temporal indexes | `CreateTemporalIndex`, `DropTemporalIndex` | Sorted-slice interval index, O(log n + k) overlap queries |
+| HF indexes | `CreateHighFrequencyIndex`, `DropHighFrequencyIndex` | Time-bucketed, O(1) amortized insert. One temporal index type per label |
+| Vector indexes | `CreateVectorIndex`, `DropVectorIndex`, `SearchNearestNodes` | In-memory brute-force k-NN. Not persisted |
+| Label management | `RemoveNodeLabelToken`, `RemoveNodeLabelTokenWithHistory` | Atomic label removal with optional history |
 | ID-only queries | `AllNodeIDs`, `AllRelIDs` | No deserialization |
 | History IDs | `AllNodeHistoryIDs`, `AllRelHistoryIDs` | Includes deleted entities |
 | ForEach iterators | `ForEachNodeID`, `ForEachRelID`, `ForEachNodeHistoryID`, `ForEachRelHistoryID` | Callback-based, no slice materialization |
@@ -218,7 +260,7 @@ Persistent Store using Badger v4 with async batch persistence.
 |  labelIdx  map[token]map[ID]struct{}     |     +-------------------+
 |  typeIdx   map[token]map[ID]struct{}     |
 |  outIdx    map[ID]map[ID]struct{}        |     +-- Write buffer --+
-|  inIdx     map[ID]map[ID]struct{}        |     |  pending map     |
+|  inIdx     map[ID]map[ID]uint16         |     |  pending map     |
 |  (all under idxMu RWMutex)              |     |  (under wbMu)    |
 +------------------------------------------+     +------------------+
                     |                                     |
@@ -334,7 +376,7 @@ Reference entities go to `refShard`. Event entities go to the hot event shard.
 **Nodes (`shardForNodeID`):**
 1. Check `refShard.hasNodeID(id)` -- O(1)
 2. If miss, check `refArchive` (if open) -- O(1)
-3. Extract timestamp from snowflake ID: `uint64(id) >> 22` -- O(1) shard window lookup
+3. Extract timestamp from snowflake ID via `snowflakeLayout.Decompose(id).Time` -- O(1) shard window lookup
 
 **Relationships (`shardForRelID`):**
 1. Check `refShard.hasRelID(id)` -- O(1)
@@ -353,6 +395,8 @@ Reference entities go to `refShard`. Event entities go to the hot event shard.
 | R->E | ref shard | event shard | Yes | entity first |
 
 Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndOut` (entity + typeIdx + outIdx) and `putRelIncoming` (inIdx only). Both endpoints verified to exist before any writes begin.
+
+**Incoming index structure:** BadgerStore's `inIdx` uses `map[snowflake.ID]map[snowflake.ID]uint16` (endNodeID -> relID -> relTypeToken), not `map[snowflake.ID]struct{}`. The typeToken value enables efficient cross-shard type filtering in `IncomingRelationships` without fetching the relationship entity from a remote shard. MemoryStore retains the simpler `map[snowflake.ID]struct{}` since all entities are local.
 
 ### Shard Lifecycle
 
@@ -434,11 +478,11 @@ type entityLockManager struct {
 }
 
 func shardIndex(id snowflake.ID) uint8 {
-    return uint8((uint64(id) >> 22) & 0xFF)
+    return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1)
 }
 ```
 
-Extracts low 8 bits of the snowflake timestamp field (bits 22-29). Entities created >256ms apart distribute across shards.
+Extracts low 8 bits of the snowflake timestamp via `snowflakeLayout.Decompose()`. Entities created >256µs apart distribute across shards.
 
 | Method | Use case | Deadlock prevention |
 |--------|----------|---------------------|
@@ -553,6 +597,13 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | v3.0.58 | Temporal index lazy sort (Fix G), extraLabels nil invariant (Fix H) |
 | v3.0.59 | Tx isolation (internal/external method split), event buffering in tx, directory fsync, dead code removal |
 | v3.0.60 | Temporal index concurrent sort race fix (sortMu), NodesByLabel temporal fast path nil fallthrough fix, tutorial 005 upgrade |
+| v3.0.61 | 6 defects: batch lock-leak on panic, negative config validation, BadgerStore invalid config, auth level float truncation, RemoveNodeLabel crash-consistency, store API test coverage |
+| v3.0.62 | 5 production defects (U-Y), module rename tkg-v3 → tkg/v3, documentation refactor to docs/ |
+| v3.0.63 | Caller-provided temporal metadata via `tkg_` props (`tkg_valid_from`, `tkg_valid_to`, `tkg_created_at` in AddNode/AddRelationship props map), tutorial 002 update |
+| v3.0.64 | `AddRelationshipByID` / `AddRelationshipByIDWithContext` — high-throughput relationship creation by endpoint snowflake IDs |
+| v3.0.65 | `AddRelationshipByIDIfAbsent` / `AddRelationshipByIDIfAbsentWithContext` — atomic check-then-create for relationships |
+| v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
+| v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken) |
 
 ---
 
@@ -561,7 +612,7 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | File | Purpose |
 |------|---------|
 | `graph.go` | Graph struct, Config, entity management, registries, entity locks, `ValidationLimits` (incl. `AllowSelfLoops`), `ErrSelfLoop`, lifecycle |
-| `store.go` | Store interface (49 methods), QueryOpts, ShardDepth, sentinel errors, `RelTombstone`, `DeleteNodeWithHistory`/`DeleteRelWithHistory` |
+| `store.go` | Store interface (59 methods), QueryOpts, ShardDepth, sentinel errors, `RelTombstone`, `DeleteNodeWithHistory`/`DeleteRelWithHistory` |
 | `memorystore.go` | In-memory Store with hash-set indexes, O(1) counts, ForEach iterators |
 | `badgerstore.go` | Persistent Store: Badger v4, LRU caches, async flush, in-memory indexes, ForEach iterators |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, Peek |

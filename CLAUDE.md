@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.60 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.60: temporal index race fix (sortMu), nil-result short-circuit for temporal fast path, tutorial 005 upgrade.
+Status: v3.0.67 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -56,7 +56,7 @@ These rules exist because every single one was violated at least once. Do not sk
 11. **No empty stubs when the spec defines the fields.**
 12. **Public method return types must not leak dependencies.** Use `type nodeID snowflake.ID`, NOT `type nodeID int64`.
 13. **Config fields must be used or removed.**
-14. **DO NOT use sub-millisecond or millisecond `ShardWindow` in tests.** Snowflake IDs encode time at ms resolution. Use 1-week window (`newTestTieredStore`) and test cold/warm via manual rotation + `demoteToCold` helper.
+14. **DO NOT use sub-millisecond or millisecond `ShardWindow` in tests.** ShardWindow boundaries are truncated to millisecond precision for alignment with snowflake timestamp extraction, so sub-second windows create boundary gaps. Use 1-week window (`newTestTieredStore`) and test cold/warm via manual rotation + `demoteToCold` helper.
 
 ## Architecture
 
@@ -174,7 +174,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Concurrency
 
-- **Entity locks**: 256-shard `entityLockManager` for write-skew prevention. `shardIndex` uses low 8 bits of snowflake timestamp (`>> 22 & 0xFF`).
+- **Entity locks**: 256-shard `entityLockManager` for write-skew prevention. `shardIndex` uses low 8 bits of snowflake timestamp via `snowflakeLayout.Decompose(id).Time`.
 - **Lock ordering**: entity locks -> idxMu. Always.
 - **Two-phase delete with TOCTOU retry**: Phase A reads adjacency under node lock. Phase B locks all entities via `LockMany`, re-verifies adjacency, retries if changed (max 10).
 - **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
@@ -244,7 +244,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Code Review Lessons
 
-- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts (`>> 22`, `& 0x3FF`) in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
+- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
 - **Every fix needs a grep audit**: When fixing a pattern in one call site, grep for the same pattern across all files. The canonical hash bug (A1) was fixed in `context.go` but missed in `batch.go`, requiring a second review round.
 - **Fix descriptions must include exact signatures**: Telling a developer to "use lazy iterators" without specifying the callback shape led to 5 rounds of partial fixes for the OOM issue (C4). Specify the exact interface.
 - **Review by feature, not by file**: Single-file reviews missed cross-file interactions. The `batch.go` hash bug was only caught when reviewing `batch.go`, not when reviewing `integrity.go` where the hash function lives.
@@ -306,7 +306,7 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 | Module | Role |
 |---|---|
 | `rho/tkg/v3` | Internal library — graph types, persistence, registries (this repo) |
-| `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP server |
+| `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP/gRPC server |
 | `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
 
 tkg/v3 does **not** depend on kit. tkgd-v3 depends on both.

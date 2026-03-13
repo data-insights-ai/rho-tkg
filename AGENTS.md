@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.0 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.62 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). v3.0.62: batch lock-leak fix, negative config validation, fractional auth level rejection, atomic RemoveNodeLabelTokenWithHistory, store API test coverage.
+Status: v3.0.67 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -56,7 +56,7 @@ These rules exist because every single one was violated at least once. Do not sk
 11. **No empty stubs when the spec defines the fields.**
 12. **Public method return types must not leak dependencies.** Use `type nodeID snowflake.ID`, NOT `type nodeID int64`.
 13. **Config fields must be used or removed.**
-14. **DO NOT use sub-millisecond or millisecond `ShardWindow` in tests.** Snowflake IDs encode time at ms resolution. Use 1-week window (`newTestTieredStore`) and test cold/warm via manual rotation + `demoteToCold` helper.
+14. **DO NOT use sub-millisecond or millisecond `ShardWindow` in tests.** ShardWindow boundaries are truncated to millisecond precision for alignment with snowflake timestamp extraction, so sub-second windows create boundary gaps. Use 1-week window (`newTestTieredStore`) and test cold/warm via manual rotation + `demoteToCold` helper.
 
 ## Architecture
 
@@ -121,11 +121,31 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### Configuration
 
-- **`Graph.Config`**: `SnowflakeNodeID` (0-511), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
+- **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
 - **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
 - **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
 - **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).
+
+### Snowflake Configuration
+
+Both generator sets (nodes and relationships) are initialized with explicit parameters matching the v1.3.0 microsecond precision layout:
+
+```text
++---------------------------------------------------------------+
+|  1 bit  |       48 bits        |   5 bits   |     10 bits     |
+|  zero   |     time (usec)      |   node ID  |    sequence     |
++---------------------------------------------------------------+
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Epoch | `2026-01-01 00:00:00 UTC` |
+| Precision | Microseconds (`snowflake.WithMicroseconds()`) |
+| Node bits | 5 (max `SnowflakeNodeID` is 15 since it maps to `id*2` and `id*2+1`) |
+| Step bits | 10 (1024 unique IDs per microsecond) |
+
+Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-15).
 
 ## Design Rules
 
@@ -133,7 +153,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 - **Pure-data structs**: Node/Relationship never hold references to Graph, registries, or resolvers. String resolution is always the Graph layer's responsibility.
 - **snowflake.ID everywhere**: All IDs are `snowflake.ID` wrapped in opaque types (`nodeID`, `relID`, `entityID`). Never use `int64` or `string` for entity IDs.
-- **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-511 (512 instances). Epoch: `2026-01-01`.
+- **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-15 (16 instances). Epoch: `2026-01-01`.
 - **Strict encapsulation**: All fields unexported. Access through methods only.
 - **Struct alignment**: Node (80B), Relationship (72B) packed by descending alignment. Verify with `unsafe.Sizeof`.
 - **Token 0 reserved**: `HasLabelToken(0)` and `HasTypeToken(0)` always return false.
@@ -154,7 +174,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### Concurrency
 
-- **Entity locks**: 256-shard `entityLockManager` for write-skew prevention. `shardIndex` uses low 8 bits of snowflake timestamp (`>> 22 & 0xFF`).
+- **Entity locks**: 256-shard `entityLockManager` for write-skew prevention. `shardIndex` uses low 8 bits of snowflake timestamp via `snowflakeLayout.Decompose(id).Time`.
 - **Lock ordering**: entity locks -> idxMu. Always.
 - **Two-phase delete with TOCTOU retry**: Phase A reads adjacency under node lock. Phase B locks all entities via `LockMany`, re-verifies adjacency, retries if changed (max 10).
 - **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
@@ -224,7 +244,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### Code Review Lessons
 
-- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts (`>> 22`, `& 0x3FF`) in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
+- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
 - **Every fix needs a grep audit**: When fixing a pattern in one call site, grep for the same pattern across all files. The canonical hash bug (A1) was fixed in `context.go` but missed in `batch.go`, requiring a second review round.
 - **Fix descriptions must include exact signatures**: Telling a developer to "use lazy iterators" without specifying the callback shape led to 5 rounds of partial fixes for the OOM issue (C4). Specify the exact interface.
 - **Review by feature, not by file**: Single-file reviews missed cross-file interactions. The `batch.go` hash bug was only caught when reviewing `batch.go`, not when reviewing `integrity.go` where the hash function lives.

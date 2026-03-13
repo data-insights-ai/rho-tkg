@@ -38,7 +38,7 @@ Read-only virtual properties managed by the graph layer:
 | `tkg_created_by`, `tkg_updated_by` | `string` | Both |
 | `tkg_version` | `uint32` | Both |
 | `tkg_hash`, `tkg_prev_hash` | `string` | Both |
-| `tkg_base_entity` | `snowflake.ID` | Both |
+| `tkg_base_entity` | `entityID` | Both |
 | `tkg_from_hash`, `tkg_to_hash` | `string` | Relationship only |
 | `tkg_author_id` | `string` | Both |
 | `tkg_signature` | `[]byte` | Both |

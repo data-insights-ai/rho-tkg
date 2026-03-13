@@ -79,17 +79,21 @@ type Graph struct {
 }
 
 func NewGraph(config Config) (*Graph, error) {
-    nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+    nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
         snowflake.WithEpoch(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
-        snowflake.WithNodeBits(10),  // 1024 nodes (default)
-        snowflake.WithStepBits(12),  // 4096 IDs/ms/node (default)
+        snowflake.WithMicroseconds(),
+        snowflake.WithNodeBits(5),   // 32 values (0-31); *2/*2+1 mapping → 16 instances
+        snowflake.WithStepBits(10),  // 1024 IDs/µs/generator
     )
     if err != nil {
         return nil, fmt.Errorf("node ID generator: %w", err)
     }
 
-    relGen, err := snowflake.NewNode(config.SnowflakeNodeID,
+    relGen, err := snowflake.NewNode(config.SnowflakeNodeID*2+1,
         snowflake.WithEpoch(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
+        snowflake.WithMicroseconds(),
+        snowflake.WithNodeBits(5),
+        snowflake.WithStepBits(10),
     )
     if err != nil {
         return nil, fmt.Errorf("rel ID generator: %w", err)
@@ -116,8 +120,8 @@ func (g *Graph) nextRelID() relID {
 ```
 
 - Thread-safe: snowflake.Node handles internal synchronization
-- 4096 IDs per millisecond per generator (default)
-- ~69 years of range from epoch (2026-01-01 -> ~2095)
+- 1024 IDs per microsecond per generator
+- ~8919 years of range from epoch (48-bit µs timestamp)
 - No persistence of counters needed — each generated ID is unique by construction
 
 ### 3.4 What Gets Eliminated
@@ -145,7 +149,7 @@ This is a free performance benefit from the ID structure — no additional work 
 
 ```go
 type Config struct {
-    // SnowflakeNodeID identifies this graph instance (0-511).
+    // SnowflakeNodeID identifies this graph instance (0-15).
     // Mapped to even/odd generator pair (ID*2 for nodes, ID*2+1 for rels).
     // Each concurrent graph instance MUST use a different SnowflakeNodeID to
     // guarantee globally unique IDs. For single-instance embedded use, 0 is fine.
@@ -385,7 +389,7 @@ The following are **removed** — internal IDs are not user-meaningful:
 | `tkg_version` | `Version` | `int` | Both | Provenance |
 | `tkg_hash` | `Integrity.Hash` | `string` | Both | Integrity |
 | `tkg_prev_hash` | `Integrity.PrevHash` | `string` | Both | Integrity |
-| `tkg_base_entity` | `Temporal.BaseEntityID` | `int64` | Both | Version chain |
+| `tkg_base_entity` | `Temporal.BaseEntityID` | `entityID` | Both | Version chain |
 
 All resolve to user-meaningful data. No internal implementation details exposed. Resolution happens in the Graph layer, not on the entity.
 
