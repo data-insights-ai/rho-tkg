@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.68] - 2026-03-14
+
+### Added
+
+- **CompareAndSetProperty / CompareAndSetPropertyWithContext** (`pkg/graph/graph.go`): Atomic compare-and-swap on a single node property for optimistic locking patterns. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "property must not exist"; `newVal == nil` means "delete the property". Value comparison uses `reflect.DeepEqual` — type must match exactly (`int(42) != int64(42)`). Follows the `UpdateNode` pattern: entity lock serialization, pre-mutation snapshot, version bump, temporal metadata, hash chain, `ReplaceNodeWithHistory`.
+
+### Tests Added
+
+- `TestCAS_Match` — match → update → verify persisted
+- `TestCAS_Mismatch` — wrong expected → `(false, nil)`, unchanged
+- `TestCAS_NilExpected_Absent` — absent prop + nil expected → sets value
+- `TestCAS_NilExpected_Present` — existing prop + nil expected → `(false, nil)`
+- `TestCAS_DeleteOnMatch` — `newVal=nil` → deletes property
+- `TestCAS_NilBoth_Absent` — both nil, absent → `(true, nil)` no-op
+- `TestCAS_ShadowKey` — `tkg_` key → error
+- `TestCAS_NodeNotFound` — non-existent ID → `ErrNodeNotFound`
+- `TestCAS_VersionBump` — successful CAS increments version
+- `TestCAS_NoVersionBumpOnMismatch` — mismatch doesn't bump
+- `TestCAS_History` — successful CAS adds history entry
+- `TestCAS_TypeMismatch` — `int` vs `int64` → no swap
+- `TestCAS_DeleteMismatch` — delete with wrong expected → no swap
+
+### Changed
+
+- Bump Go version to 1.26.1
+- Bump rho-snowflake-2026 dependency from v1.3.0 to v1.3.2
+- Bump rho-mclock dependency from v0.2.0 to v0.2.1
+- Tighten TieredStore data directory permissions from 0755 to 0750
+
+### Fixed
+
+- Resolve all 46 gosec findings: annotate G115 integer conversions (integrity hashing, snowflake IDs, registry imports), G703 path traversal false positives, G304 file inclusion false positives, G404 weak RNG in tutorial, G301 directory permissions
+
 ## [3.0.67] - 2026-03-13
 
 ### Fixed

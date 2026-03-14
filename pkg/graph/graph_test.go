@@ -4554,3 +4554,253 @@ func TestGraphAddNode_DuplicateLabelsOnlyOneStored(t *testing.T) {
 		t.Fatalf("expected 'Person', got %q", labels[0])
 	}
 }
+
+// ─── CompareAndSetProperty ───────────────────────────────────────────────────
+
+func TestCAS_Match(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", "draft", "published")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("CAS should return true on match")
+	}
+
+	got, _ := g.GetNode(id)
+	v, _ := got.GetProperty("status")
+	if v != "published" {
+		t.Fatalf("status = %v, want published", v)
+	}
+}
+
+func TestCAS_Mismatch(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", "archived", "published")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("CAS should return false on mismatch")
+	}
+
+	got, _ := g.GetNode(id)
+	v, _ := got.GetProperty("status")
+	if v != "draft" {
+		t.Fatalf("status = %v, want draft (unchanged)", v)
+	}
+}
+
+func TestCAS_NilExpected_Absent(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", nil, "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("CAS should return true when expected=nil and property absent")
+	}
+
+	got, _ := g.GetNode(id)
+	v, found := got.GetProperty("status")
+	if !found || v != "active" {
+		t.Fatalf("status = (%v, %v), want (active, true)", v, found)
+	}
+}
+
+func TestCAS_NilExpected_Present(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", nil, "active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("CAS should return false when expected=nil but property exists")
+	}
+}
+
+func TestCAS_DeleteOnMatch(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", "draft", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("CAS should return true on match+delete")
+	}
+
+	got, _ := g.GetNode(id)
+	if _, found := got.GetProperty("status"); found {
+		t.Fatal("property should be deleted")
+	}
+}
+
+func TestCAS_NilBoth_Absent(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	ok, err := g.CompareAndSetProperty(id, "status", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("CAS should return true for no-op (nil/nil, absent)")
+	}
+}
+
+func TestCAS_ShadowKey(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, nil)
+	id := n.InternalID().SnowflakeID()
+
+	_, err := g.CompareAndSetProperty(id, "tkg_labels", nil, "hack")
+	if err == nil {
+		t.Fatal("CAS should reject tkg_ prefix")
+	}
+	if !errors.Is(err, types.ErrReservedPrefix) {
+		t.Errorf("errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
+	}
+}
+
+func TestCAS_NodeNotFound(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+
+	_, err := g.CompareAndSetProperty(snowflake.ID(999999), "status", nil, "x")
+	if err == nil {
+		t.Fatal("CAS should return error for non-existent node")
+	}
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Errorf("errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	}
+}
+
+func TestCAS_VersionBump(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
+	id := n.InternalID().SnowflakeID()
+	before, _ := g.GetNode(id)
+	vBefore := before.Version()
+
+	ok, _ := g.CompareAndSetProperty(id, "v", 1, 2)
+	if !ok {
+		t.Fatal("CAS should succeed")
+	}
+
+	after, _ := g.GetNode(id)
+	if after.Version() != vBefore+1 {
+		t.Fatalf("version = %d, want %d", after.Version(), vBefore+1)
+	}
+}
+
+func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
+	id := n.InternalID().SnowflakeID()
+	before, _ := g.GetNode(id)
+	vBefore := before.Version()
+
+	ok, _ := g.CompareAndSetProperty(id, "v", 999, 2)
+	if ok {
+		t.Fatal("CAS should fail on mismatch")
+	}
+
+	after, _ := g.GetNode(id)
+	if after.Version() != vBefore {
+		t.Fatalf("version = %d, want %d (unchanged)", after.Version(), vBefore)
+	}
+}
+
+func TestCAS_History(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
+	id := n.InternalID().SnowflakeID()
+
+	ok, _ := g.CompareAndSetProperty(id, "v", 1, 2)
+	if !ok {
+		t.Fatal("CAS should succeed")
+	}
+
+	hist, err := g.GetNodeHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hist) != 1 {
+		t.Fatalf("history len = %d, want 1", len(hist))
+	}
+	// History entry should have old value.
+	hv, _ := hist[0].GetProperty("v")
+	if hv != 1 {
+		t.Fatalf("history v = %v, want 1", hv)
+	}
+}
+
+func TestCAS_TypeMismatch(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": int(42)})
+	id := n.InternalID().SnowflakeID()
+
+	// int64(42) != int(42) — type must match exactly.
+	ok, err := g.CompareAndSetProperty(id, "v", int64(42), int(99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("CAS should fail: int64(42) != int(42)")
+	}
+
+	got, _ := g.GetNode(id)
+	v, _ := got.GetProperty("v")
+	if v != int(42) {
+		t.Fatalf("v = %v, want 42 (unchanged)", v)
+	}
+}
+
+func TestCAS_DeleteMismatch(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: NewMemoryStore()})
+	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	id := n.InternalID().SnowflakeID()
+
+	// Try to delete with wrong expected value.
+	ok, err := g.CompareAndSetProperty(id, "status", "archived", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("CAS delete should fail on mismatch")
+	}
+
+	got, _ := g.GetNode(id)
+	v, found := got.GetProperty("status")
+	if !found || v != "draft" {
+		t.Fatalf("status = (%v, %v), want (draft, true) — unchanged", v, found)
+	}
+}

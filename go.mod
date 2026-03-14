@@ -1,15 +1,15 @@
 module gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3
 
-go 1.26.0
+go 1.26.1
 
 require (
-	github.com/bds421/rho-snowflake-2026 v1.3.0
+	github.com/bds421/rho-snowflake-2026 v1.3.2
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
 require (
-	github.com/bds421/rho-mclock v0.2.0 // indirect
+	github.com/bds421/rho-mclock v0.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

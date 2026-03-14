@@ -326,7 +326,7 @@ func marshalAndWrite(w io.Writer, tag byte, v any) error {
 func writeExportRecord(w io.Writer, tag byte, data []byte) error {
 	var header [5]byte
 	header[0] = tag
-	binary.BigEndian.PutUint32(header[1:5], uint32(len(data))) //nolint:gosec — len fits in uint32 for any reasonable record
+	binary.BigEndian.PutUint32(header[1:5], uint32(len(data))) // #nosec G115 — len fits in uint32 for any reasonable record
 	if _, err := w.Write(header[:]); err != nil {
 		return err
 	}

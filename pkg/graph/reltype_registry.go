@@ -170,6 +170,6 @@ func (r *relTypeRegistry) ImportNames(names []string) error {
 		r.toToken[names[i]] = uint16(i)
 	}
 
-	r.nextToken = uint16(len(names))
+	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against tokenCapacityMax
 	return nil
 }

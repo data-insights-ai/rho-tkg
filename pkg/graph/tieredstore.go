@@ -201,7 +201,7 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 			filepath.Join(cfg.DataDir, "archive"),
 		}
 		for _, d := range dirs {
-			if err := os.MkdirAll(d, 0o755); err != nil {
+			if err := os.MkdirAll(d, 0o750); err != nil {
 				return nil, fmt.Errorf("graph: create dir %s: %w", d, err)
 			}
 		}

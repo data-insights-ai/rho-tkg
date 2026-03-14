@@ -173,7 +173,7 @@ func ComputeNodeHash(n *types.Node, labels []string) string {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 
-	buf = binary.BigEndian.AppendUint64(buf, uint64(n.InternalID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint64(buf, uint64(n.InternalID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, n.Version())
 
 	// Defensive sort — caller may pass unsorted labels.
@@ -182,7 +182,7 @@ func ComputeNodeHash(n *types.Node, labels []string) string {
 	sort.Strings(sorted)
 
 	for _, label := range sorted {
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(label)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(label))) // #nosec G115 — label length bounded by MaxNameLength (256)
 		buf = append(buf, label...)
 	}
 
@@ -205,12 +205,12 @@ func ComputeRelHash(r *types.Relationship, typeName string) string {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 
-	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID()))    // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, r.Version())
-	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName)))
+	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName))) // #nosec G115 — type name bounded by MaxNameLength (256)
 	buf = append(buf, typeName...)
-	buf = binary.BigEndian.AppendUint64(buf, uint64(r.StartNodeID().SnowflakeID()))
-	buf = binary.BigEndian.AppendUint64(buf, uint64(r.EndNodeID().SnowflakeID()))
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.StartNodeID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.EndNodeID().SnowflakeID()))   // #nosec G115 — snowflake IDs use 63 bits
 
 	buf = appendProperties(buf, r.Properties())
 
@@ -228,7 +228,7 @@ func ComputeRelHash(r *types.Relationship, typeName string) string {
 // PropertySlice is already sorted by key — no re-sort needed.
 func appendProperties(buf []byte, props types.PropertySlice) []byte {
 	for _, p := range props {
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(p.Key)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(p.Key))) // #nosec G115 — key length bounded by MaxPropertyKeyLength (256)
 		buf = append(buf, p.Key...)
 		buf = appendPropertyValue(buf, p.Value)
 	}
@@ -249,16 +249,18 @@ func appendPropertyValue(buf []byte, v any) []byte {
 		} else {
 			buf = append(buf, 0)
 		}
+	// Signed→unsigned casts below are bit reinterpretations for deterministic hashing;
+	// the numeric value is irrelevant, only the bit pattern matters.
 	case int:
-		buf = binary.BigEndian.AppendUint64(buf, uint64(int64(val)))
+		buf = binary.BigEndian.AppendUint64(buf, uint64(int64(val))) // #nosec G115
 	case int8:
-		buf = append(buf, byte(val))
+		buf = append(buf, byte(val)) // #nosec G115
 	case int16:
-		buf = binary.BigEndian.AppendUint16(buf, uint16(val))
+		buf = binary.BigEndian.AppendUint16(buf, uint16(val)) // #nosec G115
 	case int32:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(val))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(val)) // #nosec G115
 	case int64:
-		buf = binary.BigEndian.AppendUint64(buf, uint64(val))
+		buf = binary.BigEndian.AppendUint64(buf, uint64(val)) // #nosec G115
 	case uint:
 		buf = binary.BigEndian.AppendUint64(buf, uint64(val))
 	case uint8:
@@ -273,40 +275,42 @@ func appendPropertyValue(buf []byte, v any) []byte {
 		buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(val))
 	case float64:
 		buf = binary.BigEndian.AppendUint64(buf, math.Float64bits(val))
+	// All uint32(len(...)) casts below are safe: property values are bounded
+	// by MaxPropertyValueSize (64K) and MaxPropertiesPerEntity (1000).
 	case string:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		buf = append(buf, val...)
 	case []string:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, s := range val {
-			buf = binary.BigEndian.AppendUint32(buf, uint32(len(s)))
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(s))) // #nosec G115
 			buf = append(buf, s...)
 		}
 	case []int:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, n := range val {
-			buf = binary.BigEndian.AppendUint64(buf, uint64(int64(n)))
+			buf = binary.BigEndian.AppendUint64(buf, uint64(int64(n))) // #nosec G115
 		}
 	case []int64:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, n := range val {
-			buf = binary.BigEndian.AppendUint64(buf, uint64(n))
+			buf = binary.BigEndian.AppendUint64(buf, uint64(n)) // #nosec G115
 		}
 	case []float32:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, f := range val {
 			buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(f))
 		}
 	case []float64:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, f := range val {
 			buf = binary.BigEndian.AppendUint64(buf, math.Float64bits(f))
 		}
 	case []byte:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		buf = append(buf, val...)
 	case []bool:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, b := range val {
 			if b {
 				buf = append(buf, 1)
@@ -315,33 +319,33 @@ func appendPropertyValue(buf []byte, v any) []byte {
 			}
 		}
 	case []any:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		for _, elem := range val {
 			buf = appendPropertyValue(buf, elem)
 		}
 	case map[string]any:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		keys := make([]string, 0, len(val))
 		for k := range val {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k)))
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k))) // #nosec G115
 			buf = append(buf, k...)
 			buf = appendPropertyValue(buf, val[k])
 		}
 	case map[string]string:
-		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val)))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		keys := make([]string, 0, len(val))
 		for k := range val {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k)))
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(k))) // #nosec G115
 			buf = append(buf, k...)
-			buf = binary.BigEndian.AppendUint32(buf, uint32(len(val[k])))
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(val[k]))) // #nosec G115
 			buf = append(buf, val[k]...)
 		}
 	default:

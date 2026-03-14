@@ -25,7 +25,7 @@ func newEntityLockManager() *entityLockManager {
 // Uses the low 8 bits of the snowflake timestamp field. Entities created
 // >256 time ticks apart land in different shards.
 func shardIndex(id snowflake.ID) uint8 {
-	return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1)
+	return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1) // #nosec G115 — masked to 8 bits
 }
 
 // LockEntity acquires the lock for a single entity.

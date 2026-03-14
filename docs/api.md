@@ -36,6 +36,8 @@ High-throughput relationship creation: `AddRelationshipByID(typeName, startID, e
 
 Convenience methods: `SetNodeProperty(id, key, value)`, `DeleteNodeProperty(id, key)`, `SetRelationshipProperty(id, key, value)`, `DeleteRelationshipProperty(id, key)`.
 
+Atomic compare-and-swap: `CompareAndSetProperty(id, key, expected, newVal)` / `CompareAndSetPropertyWithContext(ctx, id, key, expected, newVal)` atomically compares a node property's current value against `expected` and swaps it to `newVal` if they match. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "property must not exist"; `newVal == nil` means "delete the property". Value comparison uses `reflect.DeepEqual` — type must match exactly (`int(42) != int64(42)`). Successful CAS bumps version, writes history, and updates temporal metadata, following the same pattern as `UpdateNode`.
+
 Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
 
 Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 21 `tkg_*` keys with nil-guards.

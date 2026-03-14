@@ -41,24 +41,24 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: write temp: %w", prefix, err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: sync temp: %w", prefix, err)
 	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
+		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: close temp: %w", prefix, err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
+	if err := os.Rename(tmpName, path); err != nil { // #nosec G703 — tmpName from os.CreateTemp, path from trusted config
+		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: rename: %w", prefix, err)
 	}
 	// Fsync the directory to ensure the rename is durable on crash.
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) // #nosec G304 — dir derived from caller-provided TieredStoreConfig.DataDir (trusted config, not end-user input)
 	if err != nil {
 		return fmt.Errorf("%s: open dir for sync: %w", prefix, err)
 	}
@@ -73,7 +73,7 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 // loadRegistryFile reads a flat msgpack registry file. Returns nil slices
 // (not error) when the file does not exist.
 func loadRegistryFile(path string) (labels, relTypes []string, err error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 — path derived from caller-provided TieredStoreConfig.DataDir (trusted config, not end-user input)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil, nil

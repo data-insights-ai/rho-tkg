@@ -1,7 +1,7 @@
-github.com/bds421/rho-mclock v0.2.0 h1:zvnAMhHuLRFV3jbaExeYKl2bP7rU8ZmAaVZ4AgAhQzs=
-github.com/bds421/rho-mclock v0.2.0/go.mod h1:1ejjA9ivDM9XYeyDXhj7pI17SJN159IzuHrSUCEls0E=
-github.com/bds421/rho-snowflake-2026 v1.3.0 h1:+jNOA0F/+Jj9KVERjd/FejiQ99P0DfsrqVmG7TG7xy4=
-github.com/bds421/rho-snowflake-2026 v1.3.0/go.mod h1:iDmaKZOxTGEVXdKcSE+P20WsCi8cWj6xfMdptHmWITs=
+github.com/bds421/rho-mclock v0.2.1 h1:wX+iw1hdrwXqqTrgwK/Vgp5xJRjFVrC3m08ngkj2kbs=
+github.com/bds421/rho-mclock v0.2.1/go.mod h1:3fqGktCVyUwDfvatRY2+KPB6k5sVSpHQZrJOrZgSZrU=
+github.com/bds421/rho-snowflake-2026 v1.3.2 h1:YK2TKK1WDnmi+YLlKZdgYSbn35t5zrMreC2st/Npcr8=
+github.com/bds421/rho-snowflake-2026 v1.3.2/go.mod h1:zqW6kOzPlVSWtOwvFnsniJyUQBS88YBM6Ew3HsHGhd4=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

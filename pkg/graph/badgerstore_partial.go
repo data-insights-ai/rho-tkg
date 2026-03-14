@@ -215,7 +215,7 @@ func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowf
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if len(k) == sizeAdjacency && k[0] == keyIn && op.opType == writeOpSet {
-			keyRelID := int64(binary.BigEndian.Uint64([]byte(k[19:])))
+			keyRelID := int64(binary.BigEndian.Uint64([]byte(k[19:]))) // #nosec G115 — snowflake IDs use 63 bits (sign bit always 0)
 			if snowflake.ID(keyRelID) == relID {
 				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
 				bs.wbMu.Unlock()
@@ -246,7 +246,7 @@ func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) erro
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
 			if len(key) == sizeAdjacency {
-				keyRelID := int64(binary.BigEndian.Uint64(key[19:]))
+				keyRelID := int64(binary.BigEndian.Uint64(key[19:])) // #nosec G115 — snowflake IDs use 63 bits (sign bit always 0)
 				if snowflake.ID(keyRelID) == relID {
 					delKey := make([]byte, len(key))
 					copy(delKey, key)
