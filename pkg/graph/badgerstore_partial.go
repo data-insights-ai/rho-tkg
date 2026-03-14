@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sort"
 
@@ -30,7 +29,6 @@ import (
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
 	id := r.InternalID().SnowflakeID()
-	intID := int64(id)
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
@@ -67,9 +65,9 @@ func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
 	// NO inIdx update — the in/ key lives in the endpoint's shard.
 
 	ops := []writeOp{
-		{opType: writeOpSet, key: relKey(intID), value: data},
-		{opType: writeOpSet, key: relTypeIndexKey(relType, intID)},
-		{opType: writeOpSet, key: outKey(int64(startID), relType, int64(endID), intID)},
+		{opType: writeOpSet, key: relKey(id), value: data},
+		{opType: writeOpSet, key: relTypeIndexKey(relType, id)},
+		{opType: writeOpSet, key: outKey(startID, relType, endID, id)},
 	}
 
 	bs.appendOps(ops...)
@@ -94,7 +92,7 @@ func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint1
 
 	op := writeOp{
 		opType: writeOpSet,
-		key:    inKey(int64(endID), relType, int64(startID), int64(relID)),
+		key:    inKey(endID, relType, startID, relID),
 	}
 	bs.appendOps(op)
 	return nil
@@ -121,8 +119,6 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 		endID:   r.EndNodeID().SnowflakeID(),
 	}
 
-	intID := int64(id)
-
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, id)
@@ -146,9 +142,9 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 	// NO inIdx cleanup — the in/ key lives in the endpoint's shard.
 
 	ops := []writeOp{
-		{opType: writeOpDelete, key: relKey(intID)},
-		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, intID)},
-		{opType: writeOpDelete, key: outKey(int64(info.startID), info.relType, int64(info.endID), intID)},
+		{opType: writeOpDelete, key: relKey(id)},
+		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, id)},
+		{opType: writeOpDelete, key: outKey(info.startID, info.relType, info.endID, id)},
 	}
 
 	bs.appendOps(ops...)
@@ -174,7 +170,7 @@ func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
 
 	op := writeOp{
 		opType: writeOpDelete,
-		key:    inKey(int64(info.endID), info.relType, int64(info.startID), int64(info.id)),
+		key:    inKey(info.endID, info.relType, info.startID, info.id),
 	}
 	bs.appendOps(op)
 	return nil
@@ -215,8 +211,7 @@ func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowf
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if len(k) == sizeAdjacency && k[0] == keyIn && op.opType == writeOpSet {
-			keyRelID := int64(binary.BigEndian.Uint64([]byte(k[19:]))) // #nosec G115 — snowflake IDs use 63 bits (sign bit always 0)
-			if snowflake.ID(keyRelID) == relID {
+			if parseRelIDFromAdjKey([]byte(k)) == relID {
 				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
 				bs.wbMu.Unlock()
 				return nil
@@ -246,8 +241,7 @@ func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) erro
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
 			if len(key) == sizeAdjacency {
-				keyRelID := int64(binary.BigEndian.Uint64(key[19:])) // #nosec G115 — snowflake IDs use 63 bits (sign bit always 0)
-				if snowflake.ID(keyRelID) == relID {
+				if parseRelIDFromAdjKey(key) == relID {
 					delKey := make([]byte, len(key))
 					copy(delKey, key)
 					bs.appendOps(writeOp{opType: writeOpDelete, key: delKey})

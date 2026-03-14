@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"math"
 	"testing"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
 func TestNodeKeyLength(t *testing.T) {
@@ -109,7 +111,7 @@ func TestMetaKeyLength(t *testing.T) {
 
 func TestNodeKeyRoundTrip(t *testing.T) {
 	t.Parallel()
-	ids := []int64{0, 1, 42, math.MaxInt64}
+	ids := []snowflake.ID{0, 1, 42, snowflake.ID(math.MaxInt64)}
 	for _, id := range ids {
 		key := nodeKey(id)
 		got := parseIDFromKey(key, 1)
@@ -121,7 +123,7 @@ func TestNodeKeyRoundTrip(t *testing.T) {
 
 func TestRelKeyRoundTrip(t *testing.T) {
 	t.Parallel()
-	ids := []int64{0, 1, 999, math.MaxInt64}
+	ids := []snowflake.ID{0, 1, 999, snowflake.ID(math.MaxInt64)}
 	for _, id := range ids {
 		key := relKey(id)
 		got := parseIDFromKey(key, 1)
@@ -133,9 +135,9 @@ func TestRelKeyRoundTrip(t *testing.T) {
 
 func TestAdjacencyKeyRoundTrip(t *testing.T) {
 	t.Parallel()
-	start := int64(100)
-	end := int64(200)
-	rel := int64(300)
+	start := snowflake.ID(100)
+	end := snowflake.ID(200)
+	rel := snowflake.ID(300)
 	rType := uint16(5)
 
 	ok := outKey(start, rType, end, rel)
@@ -157,7 +159,7 @@ func TestAdjacencyKeyRoundTrip(t *testing.T) {
 
 func TestLabelIdxRoundTrip(t *testing.T) {
 	t.Parallel()
-	nid := int64(42)
+	nid := snowflake.ID(42)
 	tok := uint16(7)
 	key := labelIndexKey(tok, nid)
 	got := parseNodeIDFromLabelIdx(key)
@@ -168,7 +170,7 @@ func TestLabelIdxRoundTrip(t *testing.T) {
 
 func TestRelTypeIdxRoundTrip(t *testing.T) {
 	t.Parallel()
-	rid := int64(99)
+	rid := snowflake.ID(99)
 	tok := uint16(3)
 	key := relTypeIndexKey(tok, rid)
 	got := parseRelIDFromTypeIdx(key)
@@ -215,7 +217,7 @@ func TestRelTypePrefixContainment(t *testing.T) {
 
 func TestOutPrefixContainment(t *testing.T) {
 	t.Parallel()
-	start := int64(100)
+	start := snowflake.ID(100)
 	rType := uint16(5)
 
 	full := outKey(start, rType, 200, 300)
@@ -235,7 +237,7 @@ func TestOutPrefixContainment(t *testing.T) {
 
 func TestInPrefixContainment(t *testing.T) {
 	t.Parallel()
-	end := int64(200)
+	end := snowflake.ID(200)
 	rType := uint16(5)
 
 	full := inKey(end, rType, 100, 300)
@@ -254,7 +256,7 @@ func TestInPrefixContainment(t *testing.T) {
 func TestNegativeIDEncoding(t *testing.T) {
 	t.Parallel()
 	// Negative IDs are valid snowflake values (int64 cast to uint64).
-	id := int64(-1)
+	id := snowflake.ID(-1)
 	key := nodeKey(id)
 	got := parseIDFromKey(key, 1)
 	if got != id {

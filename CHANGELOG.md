@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0] - 2026-03-14
+
+### Changed
+
+- **Key function signatures** (`pkg/graph/keys.go`): Refactored 10 key functions (`nodeKey`, `relKey`, `labelIndexKey`, `relTypeIndexKey`, `outKey`, `inKey`, `histNodeKey`, `histRelKey`, `histNodePrefix`, `histRelPrefix`) from `int64` to `snowflake.ID` for entity ID parameters. Parser functions (`parseIDFromKey`, `parseRelIDFromAdjKey`) now return `snowflake.ID`. Eliminates ~35 `int64(id)` conversions in `badgerstore.go`/`badgerstore_partial.go` and ~14 `snowflake.ID(parseIDFromKey(...))` wrappings. `putUint64` remains `int64` (generic binary helper). Wire format unchanged — same bytes on disk.
+- **Test-only key helpers** (`pkg/graph/keys_helpers_test.go`): Same `int64` → `snowflake.ID` refactoring for 4 prefix functions, 2 temporal key functions, and 2 parser functions.
+
 ## [3.0.68] - 2026-03-14
 
 ### Added

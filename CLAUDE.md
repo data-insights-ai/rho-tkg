@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.0.68 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
+Status: v3.1.0 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -84,7 +84,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, soft capacity, `Peek()` for zero-alloc lookups |
 | `entity_locks.go` | 256-shard mutex array for write-skew prevention; `LockTwo`/`LockMany` in ascending order |
-| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs |
+| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs, `snowflake.ID`-typed entity parameters |
 | `integrity.go` | SHA-256 content hashing, hash chain verification |
 | `wire.go` | Msgpack wire format types for serialization boundary |
 | `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 21 `tkg_*` shadow keys |

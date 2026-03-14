@@ -274,7 +274,7 @@ func (bs *BadgerStore) loadIndexes() error {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
-			nid := snowflake.ID(parseIDFromKey(key, 3))
+			nid := parseIDFromKey(key, 3)
 			bs.nodeIDs[nid] = struct{}{}
 			if bs.labelIdx[token] == nil {
 				bs.labelIdx[token] = make(map[snowflake.ID]struct{})
@@ -292,7 +292,7 @@ func (bs *BadgerStore) loadIndexes() error {
 			if len(key) < sizeNodeKey {
 				continue
 			}
-			nid := snowflake.ID(parseIDFromKey(key, 1))
+			nid := parseIDFromKey(key, 1)
 			bs.nodeIDs[nid] = struct{}{}
 		}
 		it.Close()
@@ -306,7 +306,7 @@ func (bs *BadgerStore) loadIndexes() error {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
-			rid := snowflake.ID(parseIDFromKey(key, 3))
+			rid := parseIDFromKey(key, 3)
 			bs.relIDs[rid] = struct{}{}
 			if bs.typeIdx[token] == nil {
 				bs.typeIdx[token] = make(map[snowflake.ID]struct{})
@@ -323,8 +323,8 @@ func (bs *BadgerStore) loadIndexes() error {
 			if len(key) < sizeAdjacency {
 				continue
 			}
-			startID := snowflake.ID(parseIDFromKey(key, 1))
-			relID := snowflake.ID(parseRelIDFromAdjKey(key))
+			startID := parseIDFromKey(key, 1)
+			relID := parseRelIDFromAdjKey(key)
 			if bs.outIdx[startID] == nil {
 				bs.outIdx[startID] = make(map[snowflake.ID]struct{})
 			}
@@ -340,9 +340,9 @@ func (bs *BadgerStore) loadIndexes() error {
 			if len(key) < sizeAdjacency {
 				continue
 			}
-			endID := snowflake.ID(parseIDFromKey(key, 1))
+			endID := parseIDFromKey(key, 1)
 			relType := binary.BigEndian.Uint16(key[9:])
-			relID := snowflake.ID(parseRelIDFromAdjKey(key))
+			relID := parseRelIDFromAdjKey(key)
 			if bs.inIdx[endID] == nil {
 				bs.inIdx[endID] = make(map[snowflake.ID]uint16)
 			}
@@ -474,7 +474,6 @@ func (bs *BadgerStore) appendOps(ops ...writeOp) {
 // Returns ErrNodeExists if a node with the same ID already exists.
 func (bs *BadgerStore) PutNode(n *types.Node) error {
 	id := n.InternalID().SnowflakeID()
-	intID := int64(id)
 
 	w := nodeToWire(n)
 	data, err := msgpack.Marshal(w)
@@ -495,14 +494,14 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	bs.nodeIDs[id] = struct{}{}
 
 	// Build write ops.
-	ops := []writeOp{{opType: writeOpSet, key: nodeKey(intID), value: data}}
+	ops := []writeOp{{opType: writeOpSet, key: nodeKey(id), value: data}}
 	for _, tok := range n.AllLabelTokens() {
 		tv := tok.Value()
 		if bs.labelIdx[tv] == nil {
 			bs.labelIdx[tv] = make(map[snowflake.ID]struct{})
 		}
 		bs.labelIdx[tv][id] = struct{}{}
-		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, id)})
 		bs.getOrCreateLabelCounter(tv).Add(1)
 	}
 
@@ -545,7 +544,7 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 	// Cache miss, node exists — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(int64(id)))
+		item, err := txn.Get(nodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -573,7 +572,6 @@ func (bs *BadgerStore) GetNode(id snowflake.ID) (*types.Node, error) {
 // DeleteNode removes a node and its label index entries.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
-	intID := int64(id)
 
 	// Pre-fetch node state before acquiring the write lock to avoid holding
 	// idxMu.Lock() during Badger disk I/O on cache misses (B3: lock scope rule).
@@ -593,12 +591,12 @@ func (bs *BadgerStore) DeleteNode(id snowflake.ID) error {
 	}
 
 	// Build delete ops using pre-fetched node (labels needed for index cleanup).
-	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
 
 	// Remove label index entries.
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
-		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
 		if set, exists := bs.labelIdx[tok]; exists {
 			delete(set, id)
 			if len(set) == 0 {
@@ -665,7 +663,7 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
-	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(id), value: data})
 	bs.idxMu.Unlock()
 
 	if bs.syncWrites {
@@ -679,8 +677,6 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 // version bumped. Version history must be written by the caller before this call.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
-	intID := int64(id)
-
 	w := nodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
@@ -726,8 +722,8 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 
 	// Queue: set node data + delete label index entry.
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
-		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
+		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -741,8 +737,6 @@ func (bs *BadgerStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 // writes a version history entry, and persists updatedNode via a single appendOps call.
 func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
-	intID := int64(id)
-
 	w := nodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
@@ -791,11 +785,11 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
 
 	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
-	histKey := histNodeKey(intID, uint64(prevVersion))
+	histKey := histNodeKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(intID), value: data},
+		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
-		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)},
+		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -812,7 +806,6 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	id := r.InternalID().SnowflakeID()
-	intID := int64(id)
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
@@ -863,10 +856,10 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 
 	// Build write ops.
 	ops := []writeOp{
-		{opType: writeOpSet, key: relKey(intID), value: data},
-		{opType: writeOpSet, key: relTypeIndexKey(relType, intID)},
-		{opType: writeOpSet, key: outKey(int64(startID), relType, int64(endID), intID)},
-		{opType: writeOpSet, key: inKey(int64(endID), relType, int64(startID), intID)},
+		{opType: writeOpSet, key: relKey(id), value: data},
+		{opType: writeOpSet, key: relTypeIndexKey(relType, id)},
+		{opType: writeOpSet, key: outKey(startID, relType, endID, id)},
+		{opType: writeOpSet, key: inKey(endID, relType, startID, id)},
 	}
 
 	bs.appendOps(ops...)
@@ -905,7 +898,7 @@ func (bs *BadgerStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 	// Cache miss, rel exists — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(relKey(int64(id)))
+		item, err := txn.Get(relKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrRelNotFound
 		}
@@ -965,9 +958,9 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	addNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer.
-	histKey := histNodeKey(int64(id), uint64(prevVersion))
+	histKey := histNodeKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(int64(id)), value: data},
+		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
 	bs.idxMu.Unlock()
@@ -1007,9 +1000,9 @@ func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 	bs.relCache.Put(id, current.DeepCopy())
 
 	// Single appendOps call — atomic in the pending buffer.
-	histKey := histRelKey(int64(id), uint64(prevVersion))
+	histKey := histRelKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data},
+		writeOp{opType: writeOpSet, key: relKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
 	bs.idxMu.Unlock()
@@ -1040,7 +1033,7 @@ func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
 	}
 
 	bs.relCache.Put(id, r.DeepCopy())
-	bs.appendOps(writeOp{opType: writeOpSet, key: relKey(int64(id)), value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: relKey(id), value: data})
 	bs.idxMu.Unlock()
 
 	if bs.syncWrites {
@@ -1096,8 +1089,6 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 // deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
 // Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
 func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
-	intID := int64(info.id)
-
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.id)
 	delete(bs.relIDs, info.id)
@@ -1126,10 +1117,10 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 	// Build delete ops.
 	ops := []writeOp{
-		{opType: writeOpDelete, key: relKey(intID)},
-		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, intID)},
-		{opType: writeOpDelete, key: outKey(int64(info.startID), info.relType, int64(info.endID), intID)},
-		{opType: writeOpDelete, key: inKey(int64(info.endID), info.relType, int64(info.startID), intID)},
+		{opType: writeOpDelete, key: relKey(info.id)},
+		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, info.id)},
+		{opType: writeOpDelete, key: outKey(info.startID, info.relType, info.endID, info.id)},
+		{opType: writeOpDelete, key: inKey(info.endID, info.relType, info.startID, info.id)},
 	}
 
 	bs.appendOps(ops...)
@@ -1471,15 +1462,14 @@ func (bs *BadgerStore) cascadeDeleteInner(id snowflake.ID) ([]relDeleteInfo, err
 		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
 		// ALL label sets to prevent orphaned index entries (perma-leak).
 		// O(L) where L is total distinct labels — bounded, corruption-only path.
-		intID := int64(id)
-		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
 		for tok, set := range bs.labelIdx {
 			if _, exists := set[id]; exists {
 				delete(set, id)
 				if len(set) == 0 {
 					delete(bs.labelIdx, tok)
 				}
-				ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+				ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
 				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
@@ -1495,13 +1485,12 @@ func (bs *BadgerStore) cascadeDeleteInner(id snowflake.ID) ([]relDeleteInfo, err
 	}
 
 	// Build delete ops for node.
-	intID := int64(id)
-	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
 
 	// Remove label index entries.
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
-		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
 		if set, exists := bs.labelIdx[tok]; exists {
 			delete(set, id)
 			if len(set) == 0 {
@@ -1544,7 +1533,7 @@ func (bs *BadgerStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32,
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 	}
-	histKey := histRelKey(int64(id), uint64(prevVersion))
+	histKey := histRelKey(id, uint64(prevVersion))
 
 	bs.idxMu.Lock()
 	r, err := bs.getRelLocked(id)
@@ -1584,7 +1573,7 @@ func (bs *BadgerStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 	if err != nil {
 		return fmt.Errorf("graph: marshal node tombstone: %w", err)
 	}
-	nodeHistKey := histNodeKey(int64(id), uint64(prevNodeVersion))
+	nodeHistKey := histNodeKey(id, uint64(prevNodeVersion))
 
 	type histEntry struct{ key, data []byte }
 	relEntries := make([]histEntry, 0, len(relTombstones))
@@ -1594,7 +1583,7 @@ func (bs *BadgerStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 			return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 		}
 		relEntries = append(relEntries, histEntry{
-			key:  histRelKey(int64(rt.ID), uint64(rt.PrevVersion)),
+			key:  histRelKey(rt.ID, uint64(rt.PrevVersion)),
 			data: data,
 		})
 	}
@@ -1667,19 +1656,18 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
 	for i, n := range nodes {
 		nd := serialized[i]
-		intID := int64(nd.id)
 
 		bs.nodeCache.Put(nd.id, n.DeepCopy())
 		bs.nodeIDs[nd.id] = struct{}{}
 
-		ops = append(ops, writeOp{opType: writeOpSet, key: nodeKey(intID), value: nd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: nodeKey(nd.id), value: nd.data})
 		for _, tok := range n.AllLabelTokens() {
 			tv := tok.Value()
 			if bs.labelIdx[tv] == nil {
 				bs.labelIdx[tv] = make(map[snowflake.ID]struct{})
 			}
 			bs.labelIdx[tv][nd.id] = struct{}{}
-			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, intID)})
+			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, nd.id)})
 			bs.getOrCreateLabelCounter(tv).Add(1)
 		}
 		addNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
@@ -1757,7 +1745,6 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	ops := make([]writeOp, 0, len(rels)*4) // entity + type + out + in
 	for i, r := range rels {
 		rd := serialized[i]
-		intID := int64(rd.id)
 
 		bs.relCache.Put(rd.id, r.DeepCopy())
 		bs.relIDs[rd.id] = struct{}{}
@@ -1777,10 +1764,10 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		bs.inIdx[rd.endID][rd.id] = rd.relType
 
-		ops = append(ops, writeOp{opType: writeOpSet, key: relKey(intID), value: rd.data})
-		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, intID)})
-		ops = append(ops, writeOp{opType: writeOpSet, key: outKey(int64(rd.startID), rd.relType, int64(rd.endID), intID)})
-		ops = append(ops, writeOp{opType: writeOpSet, key: inKey(int64(rd.endID), rd.relType, int64(rd.startID), intID)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: relKey(rd.id), value: rd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: outKey(rd.startID, rd.relType, rd.endID, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: inKey(rd.endID, rd.relType, rd.startID, rd.id)})
 		bs.getOrCreateTypeCounter(rd.relType).Add(1)
 	}
 
@@ -1822,14 +1809,13 @@ func (bs *BadgerStore) DeleteNodesBatch(ids []snowflake.ID) error {
 
 	// Phase 2: apply — all validated, safe to mutate.
 	for i, id := range ids {
-		intID := int64(id)
 		n := nodeData[i]
 
-		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(intID)}}
+		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
 
 		allTokens := collectNodeLabelTokens(n)
 		for _, tok := range allTokens {
-			ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, intID)})
+			ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
 			if set, exists := bs.labelIdx[tok]; exists {
 				delete(set, id)
 				if len(set) == 0 {
@@ -1920,7 +1906,7 @@ func (bs *BadgerStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
-	key := histNodeKey(int64(id), uint64(version))
+	key := histNodeKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
 	if bs.syncWrites {
 		return bs.flush()
@@ -1932,7 +1918,7 @@ func (bs *BadgerStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.
 // Checks the pending buffer first (unflushed writes), then Badger.
 // Returns ErrVersionNotFound if the version does not exist.
 func (bs *BadgerStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
-	key := histNodeKey(int64(id), uint64(version))
+	key := histNodeKey(id, uint64(version))
 	keyStr := string(key)
 
 	// Check pending buffer for unflushed writes.
@@ -1980,7 +1966,7 @@ func (bs *BadgerStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.N
 // GetNodeHistory returns all node version snapshots in ascending version order.
 // Merges persisted Badger entries with unflushed pending buffer entries.
 func (bs *BadgerStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
-	prefix := histNodePrefix(int64(id))
+	prefix := histNodePrefix(id)
 	return bs.getNodeHistoryByPrefix(prefix)
 }
 
@@ -2056,7 +2042,7 @@ func (bs *BadgerStore) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, err
 // TruncateNodeHistory removes all but the N most recent node versions.
 // If keepVersions <= 0, all history is cleared.
 func (bs *BadgerStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
-	prefix := histNodePrefix(int64(id))
+	prefix := histNodePrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
 }
 
@@ -2068,7 +2054,7 @@ func (bs *BadgerStore) PutRelVersion(id snowflake.ID, version uint32, r *types.R
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
-	key := histRelKey(int64(id), uint64(version))
+	key := histRelKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
 	if bs.syncWrites {
 		return bs.flush()
@@ -2080,7 +2066,7 @@ func (bs *BadgerStore) PutRelVersion(id snowflake.ID, version uint32, r *types.R
 // Checks the pending buffer first, then Badger.
 // Returns ErrVersionNotFound if the version does not exist.
 func (bs *BadgerStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
-	key := histRelKey(int64(id), uint64(version))
+	key := histRelKey(id, uint64(version))
 	keyStr := string(key)
 
 	// Check pending buffer.
@@ -2128,7 +2114,7 @@ func (bs *BadgerStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 // GetRelHistory returns all relationship version snapshots in ascending version order.
 // Merges persisted Badger entries with unflushed pending buffer entries.
 func (bs *BadgerStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
-	prefix := histRelPrefix(int64(id))
+	prefix := histRelPrefix(id)
 	return bs.getRelHistoryByPrefix(prefix)
 }
 
@@ -2201,7 +2187,7 @@ func (bs *BadgerStore) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationsh
 // TruncateRelHistory removes all but the N most recent relationship versions.
 // If keepVersions <= 0, all history is cleared.
 func (bs *BadgerStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
-	prefix := histRelPrefix(int64(id))
+	prefix := histRelPrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
 }
 
@@ -2849,7 +2835,7 @@ func (bs *BadgerStore) persistPropertyIndexDefs() {
 // Does not interact with the LRU cache. Used during loadIndexes where the cache is
 // not yet populated and concurrent access has not started.
 func (bs *BadgerStore) loadNodeFromBadger(txn *badger.Txn, id snowflake.ID) (*types.Node, error) {
-	item, err := txn.Get(nodeKey(int64(id)))
+	item, err := txn.Get(nodeKey(id))
 	if err == badger.ErrKeyNotFound {
 		return nil, ErrNodeNotFound
 	}
@@ -3040,7 +3026,7 @@ func (bs *BadgerStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
-			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			id := parseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3063,7 +3049,7 @@ func (bs *BadgerStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
 			if len(key) >= sizeHistKey {
-				id := snowflake.ID(parseIDFromKey(key, 1))
+				id := parseIDFromKey(key, 1)
 				if _, ok := seen[id]; ok {
 					continue // already emitted
 				}
@@ -3087,7 +3073,7 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
-			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			id := parseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3110,7 +3096,7 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
 			if len(key) >= sizeHistKey {
-				id := snowflake.ID(parseIDFromKey(key, 1))
+				id := parseIDFromKey(key, 1)
 				if _, ok := seen[id]; ok {
 					continue // already emitted
 				}
@@ -3138,7 +3124,7 @@ func (bs *BadgerStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
-			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			id := parseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3154,7 +3140,7 @@ func (bs *BadgerStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
 			if len(key) >= sizeHistKey {
-				id := snowflake.ID(parseIDFromKey(key, 1))
+				id := parseIDFromKey(key, 1)
 				seen[id] = struct{}{}
 			}
 		}
@@ -3184,7 +3170,7 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
-			id := snowflake.ID(parseIDFromKey([]byte(k), 1))
+			id := parseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3200,7 +3186,7 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
 			if len(key) >= sizeHistKey {
-				id := snowflake.ID(parseIDFromKey(key, 1))
+				id := parseIDFromKey(key, 1)
 				seen[id] = struct{}{}
 			}
 		}
@@ -3420,7 +3406,7 @@ func (bs *BadgerStore) prefetchNode(id snowflake.ID) (*types.Node, error) {
 	// Read from Badger without holding any lock.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(int64(id)))
+		item, err := txn.Get(nodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -3457,7 +3443,7 @@ func (bs *BadgerStore) getNodeLocked(id snowflake.ID) (*types.Node, error) {
 	// Cache miss — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(int64(id)))
+		item, err := txn.Get(nodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -3494,7 +3480,7 @@ func (bs *BadgerStore) getRelLocked(id snowflake.ID) (*types.Relationship, error
 	// Cache miss — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(relKey(int64(id)))
+		item, err := txn.Get(relKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrRelNotFound
 		}
