@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.1] - 2026-03-15
+
+### Added
+
+- **Compression configuration** (`pkg/graph/badgerstore.go`, `pkg/graph/graph.go`, `pkg/graph/tieredstore.go`): `BadgerStoreConfig.Compression` (`options.None`/`options.Snappy`/`options.ZSTD`) and `BadgerStoreConfig.ZSTDCompressionLevel` (1-15) control Badger SSTable compression. Zero values keep Badger defaults (Snappy, level 1). Threaded through `Graph.Config` (convenience BadgerStore path) and `TieredStoreConfig` (applied to all shards via `openBadgerStore`).
+
+### Tests Added
+
+- `TestCompression_BadgerStore_None` — store with compression disabled
+- `TestCompression_BadgerStore_Snappy` — store with explicit Snappy
+- `TestCompression_BadgerStore_ZSTD` — store with ZSTD level 3
+- `TestCompression_BadgerStore_ZeroKeepsDefault` — zero value keeps Badger default
+- `TestCompression_BadgerStore_InMemory` — compression with InMemory mode
+- `TestCompression_Graph_ConfigPassthrough` — Config.Compression flows to BadgerStore
+- `TestCompression_TieredStore_Passthrough` — TieredStoreConfig fields stored and passed through
+- `TestCompression_ZSTD_DataSurvivesReopen` — ZSTD-compressed data persists across reopen
+
 ## [3.1.0] - 2026-03-14
 
 ### Changed

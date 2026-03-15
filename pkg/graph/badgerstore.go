@@ -12,6 +12,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
 	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -50,6 +51,14 @@ type BadgerStoreConfig struct {
 	// Eliminates the async flush window at the cost of higher write latency.
 	// Ignored in ReadOnly mode.
 	SyncWrites bool
+	// Compression sets the SSTable compression algorithm.
+	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
+	// Zero keeps the Badger default (Snappy).
+	Compression options.CompressionType
+	// ZSTDCompressionLevel sets the ZSTD compression level (1-15).
+	// Only effective when Compression is options.ZSTD.
+	// Zero keeps the Badger default (1).
+	ZSTDCompressionLevel int
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -185,6 +194,12 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	}
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		opts = opts.WithSyncWrites(true)
+	}
+	if cfg.Compression != 0 {
+		opts = opts.WithCompression(cfg.Compression)
+	}
+	if cfg.ZSTDCompressionLevel > 0 {
+		opts = opts.WithZSTDCompressionLevel(cfg.ZSTDCompressionLevel)
 	}
 
 	db, err := badger.Open(opts)

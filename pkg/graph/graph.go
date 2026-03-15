@@ -11,6 +11,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/dgraph-io/badger/v4/options"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -105,6 +106,17 @@ type Config struct {
 	// Ignored for MemoryStore or when Store is explicitly provided.
 	// Default false (async background flush via FlushInterval).
 	SyncWrites bool
+
+	// Compression sets the SSTable compression algorithm for the convenience
+	// BadgerStore path (BadgerDir / BadgerInMemory). Ignored when Store is set.
+	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
+	// Zero keeps the Badger default (Snappy).
+	Compression options.CompressionType
+	// ZSTDCompressionLevel sets the ZSTD compression level (1-15) for the
+	// convenience BadgerStore path. Ignored when Store is set.
+	// Only effective when Compression is options.ZSTD.
+	// Zero keeps the Badger default (1).
+	ZSTDCompressionLevel int
 }
 
 // Graph is the central graph layer. It owns the label and relationship type
@@ -219,9 +231,11 @@ func New(config Config) (*Graph, error) {
 	if store == nil {
 		if config.BadgerDir != "" || config.BadgerInMemory {
 			bs, err := NewBadgerStore(BadgerStoreConfig{
-				Dir:        config.BadgerDir,
-				InMemory:   config.BadgerInMemory,
-				SyncWrites: config.SyncWrites,
+				Dir:                  config.BadgerDir,
+				InMemory:             config.BadgerInMemory,
+				SyncWrites:           config.SyncWrites,
+				Compression:          config.Compression,
+				ZSTDCompressionLevel: config.ZSTDCompressionLevel,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)

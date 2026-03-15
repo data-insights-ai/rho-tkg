@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.0 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
+Status: v3.1.1 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -123,9 +123,9 @@ These rules exist because every single one was violated at least once. Do not sk
 
 - **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
-- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0).
-- **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
-- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled).
+- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0), `Compression` (`options.None`/`Snappy`/`ZSTD`, zero = Badger default Snappy), `ZSTDCompressionLevel` (1-15, zero = Badger default 1).
+- **`Graph.Config`**: also accepts `SyncWrites bool`, `Compression`, `ZSTDCompressionLevel` which pass through to `BadgerStoreConfig`.
+- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled), `Compression` (applied to all shards, zero = Badger default Snappy), `ZSTDCompressionLevel` (1-15, zero = Badger default 1).
 
 ### Snowflake Configuration
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/dgraph-io/badger/v4/options"
 )
 
 // Default configuration values for TieredStore.
@@ -38,6 +39,14 @@ type TieredStoreConfig struct {
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
 	// Default: 5 minutes when ColdAfter > 0.
 	IdleTimeout time.Duration
+	// Compression sets the SSTable compression algorithm for all shards.
+	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
+	// Zero keeps the Badger default (Snappy).
+	Compression options.CompressionType
+	// ZSTDCompressionLevel sets the ZSTD compression level (1-15) for all shards.
+	// Only effective when Compression is options.ZSTD.
+	// Zero keeps the Badger default (1).
+	ZSTDCompressionLevel int
 }
 
 // eventShard wraps a BadgerStore with metadata for an event shard.
@@ -138,6 +147,8 @@ type TieredStore struct {
 	flushInt    time.Duration
 	coldAfter   time.Duration
 	idleTimeout time.Duration
+	compression options.CompressionType
+	zstdLevel   int
 	closeCh     chan struct{} // signals idle-close goroutine to stop
 	closeOnce   sync.Once
 
@@ -188,6 +199,8 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		flushInt:      flushInt,
 		coldAfter:     cfg.ColdAfter,
 		idleTimeout:   idleTimeout,
+		compression:   cfg.Compression,
+		zstdLevel:     cfg.ZSTDCompressionLevel,
 		closeCh:       make(chan struct{}),
 		vectorIndexes: make(map[vectorIndexKey]*vectorIndex),
 	}
@@ -886,10 +899,12 @@ func (ts *TieredStore) hasArchiveShard() bool {
 // readOnly opens Badger in read-only mode (no flushLoop, no gcLoop).
 func (ts *TieredStore) openBadgerStore(name string, readOnly bool) (*BadgerStore, error) {
 	cfg := BadgerStoreConfig{
-		InMemory:      ts.inMemory,
-		CacheCapacity: ts.cacheCap,
-		FlushInterval: ts.flushInt,
-		ReadOnly:      readOnly,
+		InMemory:             ts.inMemory,
+		CacheCapacity:        ts.cacheCap,
+		FlushInterval:        ts.flushInt,
+		ReadOnly:             readOnly,
+		Compression:          ts.compression,
+		ZSTDCompressionLevel: ts.zstdLevel,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
