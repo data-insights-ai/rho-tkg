@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badger "github.com/dgraph-io/badger/v4"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -4858,4 +4860,468 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Error("n2 should be in refShard after restore")
 	}
 	_ = relID // acknowledged
+}
+
+// --- WAL corruption recovery tests ---
+
+// injectCorruptMemFile creates a .mem WAL file in a Badger directory that
+// simulates a partially written WAL from an unclean shutdown (e.g., SIGKILL
+// during flush). The file has a valid 20-byte vlog header followed by non-zero
+// garbage, which causes Badger's iterate() to stop early (endOff < file size),
+// returning ErrTruncateNeeded when opened in read-only mode.
+//
+// This must be called AFTER the store is closed — during clean close, Badger
+// flushes memtables to SSTables and deletes .mem files. An unclean shutdown
+// leaves the .mem file on disk.
+func injectCorruptMemFile(t *testing.T, badgerDir string) string {
+	t.Helper()
+
+	// Use fid 0 — matches Badger's naming convention (00000.mem).
+	path := filepath.Join(badgerDir, "00000.mem")
+
+	// vlog header: 8 bytes key ID (0 = plaintext) + 12 bytes base IV.
+	const vlogHeaderSize = 20
+	const fileSize = 4096 // small but larger than header → triggers truncation check
+
+	// Badger WAL entry format after the 20-byte vlog header:
+	//   Meta (1B) | UserMeta (1B) | klen (uvarint) | vlen (uvarint) | expiresAt (uvarint) | ...
+	//
+	// safeRead.Entry() returns errTruncate when klen > 1<<16 (65536).
+	// iterate() catches errTruncate and breaks cleanly with
+	// validEndOffset = vlogHeaderSize (20). Since 20 < fileSize,
+	// UpdateSkipList returns ErrTruncateNeeded in read-only mode.
+	data := make([]byte, fileSize)
+	// Header: key ID = 0 (8 bytes), base IV = 0 (12 bytes) — valid plaintext.
+
+	// After header: craft an entry whose klen > 1<<16 → triggers errTruncate.
+	data[vlogHeaderSize] = 0x00   // meta
+	data[vlogHeaderSize+1] = 0x00 // userMeta
+	// klen = 65537 as uvarint: 0x81 0x80 0x04
+	// 65537 = 1 + (0 << 7) + (4 << 14) = 1 + 65536
+	data[vlogHeaderSize+2] = 0x81 // klen byte 0: value=1, continuation=1
+	data[vlogHeaderSize+3] = 0x80 // klen byte 1: value=0, continuation=1
+	data[vlogHeaderSize+4] = 0x04 // klen byte 2: value=4, continuation=0 → 1 + 0*128 + 4*16384 = 65537
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write corrupt .mem file: %v", err)
+	}
+	return path
+}
+
+// warmShardDir returns the on-disk directory for a warm shard.
+func warmShardDir(ts *TieredStore, baseDir string) (string, string) {
+	for name, es := range ts.eventShards {
+		if es.tier == TierWarm {
+			return filepath.Join(baseDir, es.path), name
+		}
+	}
+	return "", ""
+}
+
+// TestTieredStore_WarmShard_WALCorruptionRecovery verifies that a warm shard with
+// a corrupt WAL (simulating Ctrl-C / SIGKILL during flush) recovers transparently
+// on restart instead of returning ErrTruncateNeeded.
+func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
+	dir := t.TempDir()
+
+	// Phase 1: create store, write data, rotate hot→warm, close cleanly.
+	ts1, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gen := tieredNodeGen(t)
+	n1 := types.NewNode(gen.Generate(), 3, nil) // token 3 = event label
+	if err := ts1.hotShard.store.PutNode(n1); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	_ = ts1.hotShard.store.Flush()
+
+	// Force rotation: hot→warm.
+	ts1.mu.Lock()
+	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
+	ts1.mu.Unlock()
+	if err := ts1.checkRotation(); err != nil {
+		t.Fatalf("checkRotation: %v", err)
+	}
+	_ = ts1.hotShard.store.Flush()
+
+	// Find the warm shard directory before closing.
+	shardDir, shardName := warmShardDir(ts1, dir)
+	if shardDir == "" {
+		t.Fatal("no warm shard found after rotation")
+	}
+	t.Logf("warm shard: %s at %s", shardName, shardDir)
+
+	if err := ts1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Phase 2: corrupt the warm shard's WAL.
+	injectCorruptMemFile(t, shardDir)
+
+	// Verify that raw Badger open in read-only mode fails with ErrTruncateNeeded.
+	opts := badger.DefaultOptions(shardDir).WithReadOnly(true).WithLogger(nil)
+	_, rawErr := badger.Open(opts)
+	if rawErr == nil {
+		t.Fatal("expected ErrTruncateNeeded from raw Badger open, got nil")
+	}
+	// Badger v4's y.Wrap uses %+v (not %w) so errors.Is doesn't work.
+	if !strings.Contains(rawErr.Error(), badger.ErrTruncateNeeded.Error()) {
+		t.Fatalf("expected ErrTruncateNeeded, got: %v", rawErr)
+	}
+
+	// Phase 3: reopen TieredStore — should recover automatically.
+	ts2, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("NewTieredStore after corruption should recover, got: %v", err)
+	}
+	defer ts2.Close()
+
+	// Verify the recovered warm shard is read-only and data survived.
+	var found bool
+	for _, es := range ts2.eventShards {
+		if es.tier == TierWarm {
+			found = true
+			if !es.readOnly {
+				t.Error("recovered warm shard should be readOnly")
+			}
+			if !es.store.readOnly {
+				t.Error("recovered warm shard BadgerStore should be readOnly")
+			}
+		}
+	}
+	if !found {
+		t.Error("warm shard not found after recovery")
+	}
+
+	// Verify the node written before crash is still accessible.
+	got, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode from recovered warm shard: %v", err)
+	}
+	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+		t.Error("node ID mismatch after WAL recovery")
+	}
+}
+
+// TestTieredStore_ColdShard_WALCorruptionRecovery verifies that a cold shard
+// with a corrupt WAL recovers on lazy-open (L1 pattern — same fix as warm).
+func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
+	dir := t.TempDir()
+
+	// Phase 1: write data, rotate, demote to cold, close.
+	ts1, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := newLabelRegistry()
+	ts1.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	if err := ts1.PutNode(n1); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	ts1.mu.RLock()
+	hotName := ts1.hotShard.name
+	_ = ts1.hotShard.store.Flush()
+	ts1.mu.RUnlock()
+
+	// Rotate hot→warm, then demote to cold.
+	time.Sleep(2 * time.Millisecond)
+	ts1.mu.Lock()
+	_ = ts1.RotateHotShard()
+	ts1.mu.Unlock()
+
+	demoteToCold(ts1, hotName)
+	_ = ts1.catalog.Save()
+
+	// Find the cold shard directory.
+	var coldDir string
+	ts1.mu.RLock()
+	if es, ok := ts1.eventShards[hotName]; ok {
+		coldDir = filepath.Join(dir, es.path)
+	}
+	ts1.mu.RUnlock()
+	if coldDir == "" {
+		t.Fatal("could not find cold shard directory")
+	}
+
+	if err := ts1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Phase 2: corrupt the cold shard's WAL.
+	injectCorruptMemFile(t, coldDir)
+
+	// Phase 3: reopen — cold shard store should be nil (lazy-open).
+	ts2, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("NewTieredStore: %v", err)
+	}
+	defer ts2.Close()
+
+	ts2.SetLabelRegistry(reg)
+
+	// Verify cold shard is nil (not opened yet).
+	ts2.mu.RLock()
+	coldES := ts2.eventShards[hotName]
+	ts2.mu.RUnlock()
+	if coldES == nil {
+		t.Fatal("cold shard not in eventShards after reopen")
+	}
+	if coldES.store != nil {
+		t.Error("cold shard store should be nil before first access")
+	}
+
+	// Phase 4: trigger lazy-open by reading the node — should recover.
+	got, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode from corrupt cold shard (lazy-open recovery): %v", err)
+	}
+	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+		t.Error("node ID mismatch after cold shard WAL recovery")
+	}
+}
+
+// TestTieredStore_WALCorruption_NonTruncateError verifies that non-truncation
+// errors (e.g., permission denied) are NOT masked by the recovery path.
+func TestTieredStore_WALCorruption_NonTruncateError(t *testing.T) {
+	dir := t.TempDir()
+
+	// Phase 1: create store, rotate to get a warm shard, close.
+	ts1, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts1.mu.Lock()
+	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
+	ts1.mu.Unlock()
+	_ = ts1.checkRotation()
+
+	shardDir, _ := warmShardDir(ts1, dir)
+	if shardDir == "" {
+		t.Fatal("no warm shard")
+	}
+
+	if err := ts1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Phase 2: make the shard directory unreadable (not a truncation error).
+	if err := os.Chmod(shardDir, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(shardDir, 0o755) })
+
+	// Phase 3: reopen should fail with a real error, NOT silently recover.
+	_, err = NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err == nil {
+		t.Fatal("expected error from unreadable shard directory, got nil")
+	}
+	if strings.Contains(err.Error(), badger.ErrTruncateNeeded.Error()) {
+		t.Fatal("permission error should NOT be reported as ErrTruncateNeeded")
+	}
+	t.Logf("correctly propagated non-truncation error: %v", err)
+}
+
+// TestTieredStore_WALCorruption_DataIntegrity verifies that data written BEFORE
+// the corrupt WAL entry survives recovery. The corruption only affects the
+// incomplete tail — earlier committed entries must be intact.
+func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
+	dir := t.TempDir()
+
+	ts1, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gen := tieredNodeGen(t)
+
+	// Write multiple nodes and flush between each to ensure they're committed.
+	const nodeCount = 10
+	nodeIDs := make([]snowflake.ID, nodeCount)
+	for i := range nodeCount {
+		n := types.NewNode(gen.Generate(), 3, nil)
+		if err := ts1.hotShard.store.PutNode(n); err != nil {
+			t.Fatalf("PutNode[%d]: %v", i, err)
+		}
+		_ = ts1.hotShard.store.Flush()
+		nodeIDs[i] = n.InternalID().SnowflakeID()
+	}
+
+	// Rotate hot→warm.
+	ts1.mu.Lock()
+	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
+	ts1.mu.Unlock()
+	if err := ts1.checkRotation(); err != nil {
+		t.Fatal(err)
+	}
+	_ = ts1.hotShard.store.Flush()
+
+	shardDir, _ := warmShardDir(ts1, dir)
+	if err := ts1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the WAL.
+	injectCorruptMemFile(t, shardDir)
+
+	// Reopen with recovery.
+	ts2, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	defer ts2.Close()
+
+	// ALL nodes written before the crash must survive.
+	for i, id := range nodeIDs {
+		got, err := ts2.GetNode(id)
+		if err != nil {
+			t.Errorf("node[%d] id=%d lost after recovery: %v", i, id, err)
+			continue
+		}
+		if got.InternalID().SnowflakeID() != id {
+			t.Errorf("node[%d] id mismatch: got %d, want %d", i, got.InternalID().SnowflakeID(), id)
+		}
+	}
+}
+
+// TestTieredStore_WALCorruption_ConcurrentColdAccess verifies that concurrent
+// cold shard access with a corrupt WAL doesn't panic or deadlock.
+func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
+	dir := t.TempDir()
+
+	ts1, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := newLabelRegistry()
+	ts1.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	_ = ts1.PutNode(n1)
+
+	ts1.mu.RLock()
+	hotName := ts1.hotShard.name
+	_ = ts1.hotShard.store.Flush()
+	ts1.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts1.mu.Lock()
+	_ = ts1.RotateHotShard()
+	ts1.mu.Unlock()
+
+	demoteToCold(ts1, hotName)
+	_ = ts1.catalog.Save()
+
+	var coldDir string
+	ts1.mu.RLock()
+	if es, ok := ts1.eventShards[hotName]; ok {
+		coldDir = filepath.Join(dir, es.path)
+	}
+	ts1.mu.RUnlock()
+
+	if err := ts1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the WAL.
+	injectCorruptMemFile(t, coldDir)
+
+	// Reopen.
+	ts2, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts2.Close()
+	ts2.SetLabelRegistry(reg)
+
+	nodeID := n1.InternalID().SnowflakeID()
+
+	// Hammer with 50 concurrent goroutines — all trigger lazy-open recovery.
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			got, err := ts2.GetNode(nodeID)
+			if err != nil {
+				errs[idx] = fmt.Errorf("goroutine %d: GetNode: %w", idx, err)
+				return
+			}
+			if got.InternalID().SnowflakeID() != nodeID {
+				errs[idx] = fmt.Errorf("goroutine %d: id mismatch", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	for _, e := range errs {
+		if e != nil {
+			t.Error(e)
+		}
+	}
 }

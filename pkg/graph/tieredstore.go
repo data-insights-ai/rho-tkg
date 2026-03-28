@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badger "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
 )
 
@@ -76,7 +78,7 @@ func (es *eventShard) getStore(ts *TieredStore) (*BadgerStore, error) {
 		es.lastAccess.Store(time.Now().UnixMilli())
 		return es.store, nil
 	}
-	store, err := ts.openBadgerStore(es.path, true) // ReadOnly
+	store, err := ts.openBadgerStoreWithRecovery(es.path)
 	if err != nil {
 		return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 	}
@@ -104,7 +106,7 @@ func (es *eventShard) checkoutStore(ts *TieredStore) (*BadgerStore, error) {
 	// the activeReqs increment (the v3.0.30 TOCTOU bug).
 	es.shardMu.Lock()
 	if es.store == nil {
-		store, err := ts.openBadgerStore(es.path, true) // ReadOnly
+		store, err := ts.openBadgerStoreWithRecovery(es.path)
 		if err != nil {
 			es.shardMu.Unlock()
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
@@ -301,8 +303,13 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 		switch entry.Tier {
 		case TierWarm:
 			// Read-only on disk; in-memory shards stay read-write (Badger limitation).
-			warmReadOnly := !cfg.InMemory
-			warmStore, err := ts.openBadgerStore(entry.Path, warmReadOnly)
+			var warmStore *BadgerStore
+			var err error
+			if cfg.InMemory {
+				warmStore, err = ts.openBadgerStore(entry.Path, false)
+			} else {
+				warmStore, err = ts.openBadgerStoreWithRecovery(entry.Path)
+			}
 			if err != nil {
 				// Clean up already-opened warm shards to prevent file handle leaks.
 				for _, es := range ts.eventShards {
@@ -910,6 +917,41 @@ func (ts *TieredStore) openBadgerStore(name string, readOnly bool) (*BadgerStore
 		cfg.Dir = filepath.Join(ts.dataDir, name)
 	}
 	return NewBadgerStore(cfg)
+}
+
+// openBadgerStoreWithRecovery opens a BadgerStore in read-only mode. If the WAL
+// is corrupt (ErrTruncateNeeded from an unclean shutdown), it recovers by
+// opening read-write (which auto-truncates the corrupt tail), closing, and
+// reopening read-only. The truncation discards at most one flush window (~100ms)
+// of buffered writes that were not fsynced before the crash.
+func (ts *TieredStore) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
+	store, err := ts.openBadgerStore(name, true)
+	if err == nil {
+		return store, nil
+	}
+	if !isTruncateNeeded(err) {
+		return nil, err
+	}
+	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
+	rwStore, err := ts.openBadgerStore(name, false)
+	if err != nil {
+		return nil, fmt.Errorf("graph: recovery open (read-write) %s: %w", name, err)
+	}
+	if err := rwStore.Close(); err != nil {
+		return nil, fmt.Errorf("graph: recovery close %s: %w", name, err)
+	}
+	return ts.openBadgerStore(name, true)
+}
+
+// isTruncateNeeded checks whether the error indicates a Badger WAL truncation
+// is required. Badger v4's y.Wrap uses %+v (not %w) when debugMode is off,
+// which breaks errors.Is(). We fall back to string matching on the sentinel
+// error message as a secondary check.
+func isTruncateNeeded(err error) bool {
+	if errors.Is(err, badger.ErrTruncateNeeded) {
+		return true
+	}
+	return strings.Contains(err.Error(), badger.ErrTruncateNeeded.Error())
 }
 
 // shardWindowName computes the canonical name for a time window.

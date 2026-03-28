@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.2] - 2026-03-28
+
+### Fixed
+
+- **WAL corruption recovery for warm/cold shards** (`pkg/graph/tieredstore.go`): Shards opened in read-only mode (warm at startup, cold on lazy-open) now auto-recover from corrupt WAL files left by unclean shutdowns (SIGKILL, Ctrl-C, OOM kill). Previously, a partially written `.mem` file caused `ErrTruncateNeeded` — a fatal startup error requiring manual intervention. The new `openBadgerStoreWithRecovery` detects the truncation error, opens the shard read-write (Badger auto-truncates the corrupt WAL tail), closes it, and reopens read-only. At most one flush window (~100ms) of buffered writes is lost. Applied at all three read-only open sites (L1 pattern): warm shard startup, cold shard `getStore`, cold shard `checkoutStore`. Includes `isTruncateNeeded` fallback for Badger v4's broken `errors.Is` chain (`y.Wrap` uses `%+v` not `%w`).
+
+### Tests Added
+
+- `TestTieredStore_WarmShard_WALCorruptionRecovery` — warm shard with corrupt WAL recovers on startup, data survives, shard remains read-only
+- `TestTieredStore_ColdShard_WALCorruptionRecovery` — cold shard with corrupt WAL recovers on lazy-open (L1 pattern)
+- `TestTieredStore_WALCorruption_NonTruncateError` — real errors (permission denied) are not masked by recovery path
+- `TestTieredStore_WALCorruption_DataIntegrity` — 10 nodes written before crash all survive truncation recovery
+- `TestTieredStore_WALCorruption_ConcurrentColdAccess` — 50 concurrent goroutines on corrupt cold shard, no panics or deadlocks
+
 ## [3.1.1] - 2026-03-15
 
 ### Added
