@@ -2906,6 +2906,8 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.
+	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
+		"labelToken", labelToken, "propertyKey", propKey)
 	labelIDs := bs.labelIdx[labelToken]
 	if len(labelIDs) == 0 {
 		bs.idxMu.RUnlock()

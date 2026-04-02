@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.1 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
+Status: v3.1.3 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.3] - 2026-04-02
+
+### Improved
+
+- **Property index fallback observability** (`pkg/graph/memorystore.go`, `pkg/graph/badgerstore.go`): `NodesByLabelAndProperty` now emits a `slog.Debug` log when using the full label-scan fallback path instead of a property index. Helps operators identify missing property indexes that degrade query performance from O(1) to O(N). The hint includes `labelToken` and `propertyKey` for targeted `CreatePropertyIndex` calls.
+
 ## [3.1.2] - 2026-03-28
 
 ### Fixed

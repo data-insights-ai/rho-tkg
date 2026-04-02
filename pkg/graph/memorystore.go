@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -1142,6 +1143,8 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	}
 
 	// Fallback: label scan + property filter.
+	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
+		"labelToken", labelToken, "propertyKey", propKey)
 	labelIDs := ms.labelIdx[labelToken]
 	if len(labelIDs) == 0 {
 		return nil, nil
