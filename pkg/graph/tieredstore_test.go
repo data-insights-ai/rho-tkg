@@ -5403,3 +5403,57 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 		t.Fatalf("nil input: got %v, want nil", got)
 	}
 }
+
+// ─── IncomingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestTieredStore_IncomingRelationshipsForNodes(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	signal1 := types.NewNode(gen.Generate(), signalTok, nil) // event shard
+	signal2 := types.NewNode(gen.Generate(), signalTok, nil) // event shard
+	caseNode := types.NewNode(gen.Generate(), caseTok, nil)  // ref shard
+	_ = ts.PutNode(signal1)
+	_ = ts.PutNode(signal2)
+	_ = ts.PutNode(caseNode)
+
+	rGen := tieredRelGen(t)
+	// signal1 -> caseNode (cross-shard: incoming to caseNode)
+	r1 := types.NewRelationship(rGen.Generate(), 1,
+		signal1.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	// signal2 -> caseNode (cross-shard: incoming to caseNode)
+	r2 := types.NewRelationship(rGen.Generate(), 1,
+		signal2.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	_ = ts.PutRelationship(r1)
+	_ = ts.PutRelationship(r2)
+
+	s1ID := signal1.InternalID().SnowflakeID()
+	cID := caseNode.InternalID().SnowflakeID()
+
+	// Batch query: caseNode has 2 incoming, signal1 has 0 incoming.
+	got, err := ts.IncomingRelationshipsForNodes([]snowflake.ID{cID, s1ID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[cID]) != 2 {
+		t.Fatalf("caseNode: got %d rels, want 2", len(got[cID]))
+	}
+	if _, ok := got[s1ID]; ok {
+		t.Fatal("signal1 should not be in result (no incoming)")
+	}
+
+	// Empty input.
+	got, err = ts.IncomingRelationshipsForNodes(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+}

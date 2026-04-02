@@ -741,6 +741,26 @@ func (g *Graph) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName s
 	return g.store.OutgoingRelationshipsForNodes(nodeIDs, tok)
 }
 
+// IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
+// in a single batched operation. Returns a map from nodeID to its incoming rels
+// (sorted by ID). Nodes with zero incoming rels are absent from the map.
+// If typeName is non-empty, only relationships of that type are returned.
+// Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
+func (g *Graph) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName string) (map[snowflake.ID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	var tok uint16
+	if typeName != "" {
+		t, ok := g.relTypes.Lookup(typeName)
+		if !ok {
+			return nil, nil
+		}
+		tok = t
+	}
+	return g.store.IncomingRelationshipsForNodes(nodeIDs, tok)
+}
+
 // IncomingRelationships returns all incoming relationships to the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).

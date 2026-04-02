@@ -341,6 +341,70 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	return result, nil
 }
 
+// IncomingRelationshipsForNodes batches incoming relationship queries for multiple
+// nodes. For each node, relIDs come from the node's shard inIdx; relationship
+// entities are fetched via cross-shard resolution (relID timestamp -> shard).
+func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	// Phase 1: collect relIDs per node from each node's shard inIdx.
+	type relRef struct {
+		nodeID snowflake.ID
+		relID  snowflake.ID
+	}
+	var refs []relRef
+	seen := make(map[snowflake.ID]struct{}, len(nodeIDs))
+
+	for _, nid := range nodeIDs {
+		if _, dup := seen[nid]; dup {
+			continue
+		}
+		seen[nid] = struct{}{}
+
+		shard, err := ts.shardForNodeID(nid)
+		if err != nil {
+			return nil, err
+		}
+		relIDs := shard.incomingRelIDs(nid, typeToken)
+		for _, rid := range relIDs {
+			refs = append(refs, relRef{nodeID: nid, relID: rid})
+		}
+	}
+
+	if len(refs) == 0 {
+		return nil, nil
+	}
+
+	// Phase 2: fetch each rel entity via shard resolution.
+	result := make(map[snowflake.ID][]*types.Relationship, len(seen))
+	for _, ref := range refs {
+		relShard, err := ts.shardForRelID(ref.relID)
+		if err != nil {
+			return nil, err
+		}
+		r, err := relShard.GetRelationship(ref.relID)
+		if errors.Is(err, ErrRelNotFound) {
+			continue // orphan from partial failure
+		}
+		if err != nil {
+			return nil, err
+		}
+		result[ref.nodeID] = append(result[ref.nodeID], r)
+	}
+
+	// Sort per-node slices for deterministic output.
+	for nid := range result {
+		sortRelsByID(result[nid])
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 // --- Counts ---
 
 func (ts *TieredStore) NodeCount() (int, error) {

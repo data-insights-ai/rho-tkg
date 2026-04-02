@@ -2444,3 +2444,127 @@ func TestMemoryStoreOutgoingForNodesSorted(t *testing.T) {
 		}
 	}
 }
+
+// ─── IncomingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestMemoryStoreIncomingRelationshipsForNodes(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	nC := types.NewNode(snowflake.ID(30), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+	ms.PutNode(nC)
+
+	r1 := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20)) // -> 20
+	r2 := types.NewRelationship(snowflake.ID(101), 7, snowflake.ID(10), snowflake.ID(30)) // -> 30
+	r3 := types.NewRelationship(snowflake.ID(102), 5, snowflake.ID(20), snowflake.ID(30)) // -> 30
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+	ms.PutRelationship(r3)
+
+	// All incoming to nodes 20 and 30.
+	got, err := ms.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(20)]) != 1 {
+		t.Fatalf("node 20: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	}
+	if len(got[snowflake.ID(30)]) != 2 {
+		t.Fatalf("node 30: got %d rels, want 2", len(got[snowflake.ID(30)]))
+	}
+
+	// Type-filtered: only type 5.
+	got, err = ms.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(20)]) != 1 {
+		t.Fatalf("node 20 type=5: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	}
+	if len(got[snowflake.ID(30)]) != 1 {
+		t.Fatalf("node 30 type=5: got %d rels, want 1", len(got[snowflake.ID(30)]))
+	}
+
+	// Empty input.
+	got, err = ms.IncomingRelationshipsForNodes(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+
+	// Node with no incoming absent from map.
+	got, err = ms.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(10)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("node 10 (no incoming): got %d entries, want 0", len(got))
+	}
+}
+
+func TestMemoryStoreIncomingForNodesDuplicateInput(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+
+	r1 := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	ms.PutRelationship(r1)
+
+	got, err := ms.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(20), snowflake.ID(20)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(20)]) != 1 {
+		t.Fatalf("duplicate input: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	}
+}
+
+func TestMemoryStoreIncomingForNodesSorted(t *testing.T) {
+	t.Parallel()
+
+	ms := NewMemoryStore()
+	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nB := types.NewNode(snowflake.ID(20), 1, nil)
+	nC := types.NewNode(snowflake.ID(30), 1, nil)
+	ms.PutNode(nA)
+	ms.PutNode(nB)
+	ms.PutNode(nC)
+
+	// Three rels all incoming to node 30, inserted in reverse order.
+	r3 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(20), snowflake.ID(30))
+	r1 := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(30))
+	r2 := types.NewRelationship(snowflake.ID(200), 7, snowflake.ID(10), snowflake.ID(30))
+	ms.PutRelationship(r3)
+	ms.PutRelationship(r1)
+	ms.PutRelationship(r2)
+
+	got, err := ms.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(30)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels := got[snowflake.ID(30)]
+	if len(rels) != 3 {
+		t.Fatalf("got %d rels, want 3", len(rels))
+	}
+	for i := 1; i < len(rels); i++ {
+		if rels[i].InternalID().SnowflakeID() <= rels[i-1].InternalID().SnowflakeID() {
+			t.Fatalf("rels not sorted: [%d]=%d >= [%d]=%d",
+				i-1, rels[i-1].InternalID().SnowflakeID(),
+				i, rels[i].InternalID().SnowflakeID())
+		}
+	}
+}

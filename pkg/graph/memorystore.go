@@ -672,6 +672,47 @@ func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	return result, nil
 }
 
+// IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
+// in a single batched operation under one read lock.
+func (ms *MemoryStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
+	for _, nid := range nodeIDs {
+		if _, done := result[nid]; done {
+			continue // deduplicate input
+		}
+		set := ms.inIdx[nid]
+		if len(set) == 0 {
+			continue
+		}
+		rels := make([]*types.Relationship, 0, len(set))
+		for relID := range set {
+			r, ok := ms.rels[relID]
+			if !ok {
+				continue
+			}
+			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+				rels = append(rels, r.DeepCopy())
+			}
+		}
+		if len(rels) > 0 {
+			sortRelsByID(rels)
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 // NodeCount returns the number of stored nodes.
 // MemoryStore never returns an error.
 func (ms *MemoryStore) NodeCount() (int, error) {

@@ -5095,3 +5095,265 @@ func TestBadgerStoreOutgoingForNodesSorted(t *testing.T) {
 		}
 	}
 }
+
+// ─── IncomingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestBadgerStoreIncomingForNodesAll(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20) // -> 20
+	putTestRel(t, bs, 101, 7, 10, 30) // -> 30
+	putTestRel(t, bs, 102, 5, 20, 30) // -> 30
+
+	got, err := bs.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(20)]) != 1 {
+		t.Fatalf("node 20: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	}
+	if len(got[snowflake.ID(30)]) != 2 {
+		t.Fatalf("node 30: got %d rels, want 2", len(got[snowflake.ID(30)]))
+	}
+}
+
+func TestBadgerStoreIncomingForNodesFiltered(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20) // type 5 -> 20
+	putTestRel(t, bs, 101, 7, 10, 30) // type 7 -> 30
+	putTestRel(t, bs, 102, 5, 20, 30) // type 5 -> 30
+
+	// Filter type 7 — only node 30 has one.
+	got, err := bs.IncomingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got[snowflake.ID(20)]; ok {
+		t.Fatal("node 20 should not be in result (no type 7 incoming)")
+	}
+	if len(got[snowflake.ID(30)]) != 1 {
+		t.Fatalf("node 30 type=7: got %d, want 1", len(got[snowflake.ID(30)]))
+	}
+}
+
+func TestBadgerStoreIncomingForNodesEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.IncomingRelationshipsForNodes(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+
+	got, err = bs.IncomingRelationshipsForNodes([]snowflake.ID{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("empty input: got %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreIncomingForNodesSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	// Three rels incoming to node 30, inserted in reverse order.
+	putTestRel(t, bs, 300, 5, 20, 30)
+	putTestRel(t, bs, 100, 5, 10, 30)
+	putTestRel(t, bs, 200, 7, 10, 30)
+
+	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(30)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels := got[snowflake.ID(30)]
+	if len(rels) != 3 {
+		t.Fatalf("got %d rels, want 3", len(rels))
+	}
+	for i := 1; i < len(rels); i++ {
+		if rels[i].InternalID().SnowflakeID() <= rels[i-1].InternalID().SnowflakeID() {
+			t.Fatalf("rels not sorted: [%d]=%d >= [%d]=%d",
+				i-1, rels[i-1].InternalID().SnowflakeID(),
+				i, rels[i].InternalID().SnowflakeID())
+		}
+	}
+}
+
+// ─── Batch adjacency — non-happy-path ────────────────────────────────────────
+
+func TestBadgerStoreOutgoingForNodesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Evict from cache and corrupt on-disk data.
+	bs.relCache.mu.Lock()
+	bs.relCache.items = make(map[snowflake.ID]*list.Element)
+	bs.relCache.order.Init()
+	bs.relCache.mu.Unlock()
+
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	_, err = bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	if err == nil {
+		t.Fatal("expected error for corrupted rel data")
+	}
+}
+
+func TestBadgerStoreIncomingForNodesCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Evict from cache and corrupt on-disk data.
+	bs.relCache.mu.Lock()
+	bs.relCache.items = make(map[snowflake.ID]*list.Element)
+	bs.relCache.order.Init()
+	bs.relCache.mu.Unlock()
+
+	err := bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(relKey(500), []byte("corrupt"))
+	})
+	if err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+
+	_, err = bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(20)}, 0)
+	if err == nil {
+		t.Fatal("expected error for corrupted rel data")
+	}
+}
+
+func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+	putTestRel(t, bs, 100, 5, 10, 20)
+	putTestRel(t, bs, 101, 7, 10, 30)
+
+	// Delete rel 100 to create an index orphan in outIdx.
+	if err := bs.DeleteRelationship(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// Manually re-inject the orphan into outIdx to simulate stale index.
+	bs.idxMu.Lock()
+	if bs.outIdx[snowflake.ID(10)] == nil {
+		bs.outIdx[snowflake.ID(10)] = make(map[snowflake.ID]struct{})
+	}
+	bs.outIdx[snowflake.ID(10)][snowflake.ID(100)] = struct{}{}
+	bs.idxMu.Unlock()
+
+	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only rel 101 should survive; rel 100 is an orphan.
+	if len(got[snowflake.ID(10)]) != 1 {
+		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[snowflake.ID(10)]))
+	}
+}
+
+func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+	putTestRel(t, bs, 100, 5, 10, 30)
+	putTestRel(t, bs, 101, 7, 20, 30)
+
+	// Delete rel 100 to create an index orphan in inIdx.
+	if err := bs.DeleteRelationship(snowflake.ID(100)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// Manually re-inject the orphan into inIdx.
+	bs.idxMu.Lock()
+	if bs.inIdx[snowflake.ID(30)] == nil {
+		bs.inIdx[snowflake.ID(30)] = make(map[snowflake.ID]uint16)
+	}
+	bs.inIdx[snowflake.ID(30)][snowflake.ID(100)] = 5
+	bs.idxMu.Unlock()
+
+	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(30)}, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only rel 101 should survive; rel 100 is an orphan.
+	if len(got[snowflake.ID(30)]) != 1 {
+		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[snowflake.ID(30)]))
+	}
+}
+
+func TestBadgerStoreOutgoingForNodesNonexistentNode(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Query a node that was never added.
+	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(999)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nonexistent node: got %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreIncomingForNodesNonexistentNode(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Query a node that was never added.
+	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(999)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nonexistent node: got %v, want nil", got)
+	}
+}
