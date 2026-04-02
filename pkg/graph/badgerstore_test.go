@@ -4991,3 +4991,107 @@ func TestBadgerStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(got))
 	}
 }
+
+// ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestBadgerStoreOutgoingForNodesAll(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20) // 10 -> 20
+	putTestRel(t, bs, 101, 7, 10, 30) // 10 -> 30
+	putTestRel(t, bs, 102, 5, 20, 30) // 20 -> 30
+
+	got, err := bs.OutgoingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(10), snowflake.ID(20)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(10)]) != 2 {
+		t.Fatalf("node 10: got %d rels, want 2", len(got[snowflake.ID(10)]))
+	}
+	if len(got[snowflake.ID(20)]) != 1 {
+		t.Fatalf("node 20: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	}
+}
+
+func TestBadgerStoreOutgoingForNodesFiltered(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 10, 20) // type 5
+	putTestRel(t, bs, 101, 7, 10, 30) // type 7
+	putTestRel(t, bs, 102, 5, 20, 30) // type 5
+
+	// Filter type 7 — only node 10 has one.
+	got, err := bs.OutgoingRelationshipsForNodes(
+		[]snowflake.ID{snowflake.ID(10), snowflake.ID(20)}, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[snowflake.ID(10)]) != 1 {
+		t.Fatalf("node 10 type=7: got %d, want 1", len(got[snowflake.ID(10)]))
+	}
+	if _, ok := got[snowflake.ID(20)]; ok {
+		t.Fatal("node 20 should not be in result (no type 7 rels)")
+	}
+}
+
+func TestBadgerStoreOutgoingForNodesEmpty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	got, err := bs.OutgoingRelationshipsForNodes(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+
+	got, err = bs.OutgoingRelationshipsForNodes([]snowflake.ID{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("empty input: got %v, want nil", got)
+	}
+}
+
+func TestBadgerStoreOutgoingForNodesSorted(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	// Insert in reverse order.
+	putTestRel(t, bs, 300, 5, 10, 30)
+	putTestRel(t, bs, 100, 5, 10, 20)
+	putTestRel(t, bs, 200, 7, 10, 30)
+
+	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels := got[snowflake.ID(10)]
+	if len(rels) != 3 {
+		t.Fatalf("got %d rels, want 3", len(rels))
+	}
+	for i := 1; i < len(rels); i++ {
+		if rels[i].InternalID().SnowflakeID() <= rels[i-1].InternalID().SnowflakeID() {
+			t.Fatalf("rels not sorted: [%d]=%d >= [%d]=%d",
+				i-1, rels[i-1].InternalID().SnowflakeID(),
+				i, rels[i].InternalID().SnowflakeID())
+		}
+	}
+}

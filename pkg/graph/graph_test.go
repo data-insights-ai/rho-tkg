@@ -4804,3 +4804,82 @@ func TestCAS_DeleteMismatch(t *testing.T) {
 		t.Fatalf("status = (%v, %v), want (draft, true) — unchanged", v, found)
 	}
 }
+
+// ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	c, _ := g.AddNode([]string{"Person"}, nil)
+
+	g.AddRelationship("KNOWS", a, b, nil)
+	g.AddRelationship("WORKS_WITH", a, c, nil)
+	g.AddRelationship("KNOWS", b, c, nil)
+
+	aID := a.InternalID().SnowflakeID()
+	bID := b.InternalID().SnowflakeID()
+	cID := c.InternalID().SnowflakeID()
+
+	// All outgoing for A and B.
+	got, err := g.OutgoingRelationshipsForNodes([]snowflake.ID{aID, bID}, "")
+	if err != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes: %v", err)
+	}
+	if len(got[aID]) != 2 {
+		t.Fatalf("node A: got %d rels, want 2", len(got[aID]))
+	}
+	if len(got[bID]) != 1 {
+		t.Fatalf("node B: got %d rels, want 1", len(got[bID]))
+	}
+
+	// Type-filtered.
+	got, err = g.OutgoingRelationshipsForNodes([]snowflake.ID{aID, bID}, "KNOWS")
+	if err != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes(KNOWS): %v", err)
+	}
+	if len(got[aID]) != 1 {
+		t.Fatalf("node A KNOWS: got %d, want 1", len(got[aID]))
+	}
+	if len(got[bID]) != 1 {
+		t.Fatalf("node B KNOWS: got %d, want 1", len(got[bID]))
+	}
+
+	// Node with no outgoing absent from result.
+	got, err = g.OutgoingRelationshipsForNodes([]snowflake.ID{cID}, "")
+	if err != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes(c): %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("node C (no outgoing): got %d entries, want 0", len(got))
+	}
+
+	// Empty input.
+	got, err = g.OutgoingRelationshipsForNodes(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+}
+
+func TestGraphOutgoingForNodesUnregisteredType(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: NewMemoryStore()})
+	a, _ := g.AddNode([]string{"Person"}, nil)
+	b, _ := g.AddNode([]string{"Person"}, nil)
+	g.AddRelationship("KNOWS", a, b, nil)
+
+	got, err := g.OutgoingRelationshipsForNodes(
+		[]snowflake.ID{a.InternalID().SnowflakeID()}, "NONEXISTENT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("unregistered type: got %v, want nil", got)
+	}
+}

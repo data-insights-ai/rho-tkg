@@ -59,6 +59,12 @@ type Store interface {
 	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
 
+	// OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
+	// in a single batched operation. Returns a map from nodeID to its outgoing
+	// relationships (sorted by ID). Nodes with zero outgoing rels are absent from
+	// the map. nil/empty nodeIDs returns nil, nil.
+	OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error)
+
 	// Bulk queries
 	AllNodes(opts QueryOpts) ([]*types.Node, error)
 	AllRelationships(opts QueryOpts) ([]*types.Relationship, error)

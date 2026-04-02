@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.3 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
+Status: v3.1.4 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -78,8 +78,8 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
-| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods |
+| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes` (batch adjacency), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
+| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods, `OutgoingRelationshipsForNodes` batch adjacency query |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, soft capacity, `Peek()` for zero-alloc lookups |

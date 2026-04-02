@@ -1264,6 +1264,65 @@ func (bs *BadgerStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 	return rels, nil
 }
 
+// OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
+// in a single batched operation. Phase 1 snapshots all relIDs under one idxMu.RLock;
+// phase 2 fetches entities outside the lock via the LRU cache.
+func (bs *BadgerStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	// Phase 1: snapshot relIDs per node under single read lock.
+	bs.idxMu.RLock()
+	perNode := make(map[snowflake.ID][]snowflake.ID, len(nodeIDs))
+	for _, nid := range nodeIDs {
+		if _, done := perNode[nid]; done {
+			continue // deduplicate input
+		}
+		set := bs.outIdx[nid]
+		if len(set) == 0 {
+			continue
+		}
+		ids := make([]snowflake.ID, 0, len(set))
+		for id := range set {
+			ids = append(ids, id)
+		}
+		perNode[nid] = ids
+	}
+	bs.idxMu.RUnlock()
+
+	if len(perNode) == 0 {
+		return nil, nil
+	}
+
+	// Phase 2: fetch entities, type-filter, group by source node.
+	result := make(map[snowflake.ID][]*types.Relationship, len(perNode))
+	for nid, relIDs := range perNode {
+		rels := make([]*types.Relationship, 0, len(relIDs))
+		for _, rid := range relIDs {
+			r, err := bs.GetRelationship(rid)
+			if err != nil {
+				if errors.Is(err, ErrRelNotFound) {
+					continue // index orphan
+				}
+				return nil, fmt.Errorf("graph: query relationship %d: %w", rid, err)
+			}
+			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+				rels = append(rels, r)
+			}
+		}
+		if len(rels) > 0 {
+			sortRelsByID(rels)
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.

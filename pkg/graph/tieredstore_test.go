@@ -5325,3 +5325,81 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 		}
 	}
 }
+
+// ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────
+
+func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	// signal1 and signal2 are event nodes (hot shard).
+	signal1 := types.NewNode(gen.Generate(), signalTok, nil)
+	signal2 := types.NewNode(gen.Generate(), signalTok, nil)
+	// caseNode is a reference node (ref shard).
+	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	_ = ts.PutNode(signal1)
+	_ = ts.PutNode(signal2)
+	_ = ts.PutNode(caseNode)
+
+	rGen := tieredRelGen(t)
+	// signal1 -> caseNode (cross-shard)
+	r1 := types.NewRelationship(rGen.Generate(), 1,
+		signal1.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	// signal2 -> caseNode (cross-shard)
+	r2 := types.NewRelationship(rGen.Generate(), 1,
+		signal2.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	_ = ts.PutRelationship(r1)
+	_ = ts.PutRelationship(r2)
+
+	s1ID := signal1.InternalID().SnowflakeID()
+	s2ID := signal2.InternalID().SnowflakeID()
+	cID := caseNode.InternalID().SnowflakeID()
+
+	// Batch query for both signal nodes.
+	got, err := ts.OutgoingRelationshipsForNodes([]snowflake.ID{s1ID, s2ID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[s1ID]) != 1 {
+		t.Fatalf("signal1: got %d rels, want 1", len(got[s1ID]))
+	}
+	if len(got[s2ID]) != 1 {
+		t.Fatalf("signal2: got %d rels, want 1", len(got[s2ID]))
+	}
+
+	// caseNode has no outgoing — absent from result.
+	got, err = ts.OutgoingRelationshipsForNodes([]snowflake.ID{cID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("caseNode: got %d entries, want 0", len(got))
+	}
+
+	// Mixed: event + ref nodes in one call.
+	got, err = ts.OutgoingRelationshipsForNodes([]snowflake.ID{s1ID, cID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got[s1ID]) != 1 {
+		t.Fatalf("mixed query signal1: got %d rels, want 1", len(got[s1ID]))
+	}
+	if _, ok := got[cID]; ok {
+		t.Fatal("caseNode should not be in result")
+	}
+
+	// Empty input.
+	got, err = ts.OutgoingRelationshipsForNodes(nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("nil input: got %v, want nil", got)
+	}
+}

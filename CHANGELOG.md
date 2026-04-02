@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.4] - 2026-04-02
+
+### Added
+
+- **Batch adjacency query** (`pkg/graph/store.go`, `pkg/graph/memorystore.go`, `pkg/graph/badgerstore.go`, `pkg/graph/tieredstore_read.go`, `pkg/graph/graph.go`): `OutgoingRelationshipsForNodes(nodeIDs, typeToken)` returns outgoing relationships for multiple nodes in a single batched operation. Amortizes lock acquisition (one `idxMu.RLock` instead of N) and shard resolution (groups nodeIDs by shard in TieredStore). Returns `map[snowflake.ID][]*types.Relationship` — per-node slices sorted by ID; nodes with zero outgoing rels absent from map. Graph layer accepts `typeName string` with single token resolution.
+
+### Tests Added
+
+- `TestMemoryStoreOutgoingRelationshipsForNodes` — basic, type filter, empty input, no-match
+- `TestMemoryStoreOutgoingForNodesPartialResults` — mixed nodes with/without rels
+- `TestMemoryStoreOutgoingForNodesDuplicateInput` — duplicate nodeIDs in input
+- `TestMemoryStoreOutgoingForNodesSorted` — per-node sort order
+- `TestBadgerStoreOutgoingForNodesAll` — all types, multiple nodes
+- `TestBadgerStoreOutgoingForNodesFiltered` — type filter
+- `TestBadgerStoreOutgoingForNodesEmpty` — nil and empty input
+- `TestBadgerStoreOutgoingForNodesSorted` — per-node sort order
+- `TestGraphOutgoingRelationshipsForNodes` — Graph layer integration
+- `TestGraphOutgoingForNodesUnregisteredType` — unregistered type returns nil
+- `TestTieredStore_OutgoingRelationshipsForNodes` — cross-shard grouping, mixed ref+event nodes
+
 ## [3.1.3] - 2026-04-02
 
 ### Improved

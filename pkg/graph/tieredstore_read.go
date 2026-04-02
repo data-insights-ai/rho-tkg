@@ -271,6 +271,41 @@ func (ts *TieredStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 	return shard.OutgoingRelationships(nodeID, typeToken)
 }
 
+// OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
+// Groups nodeIDs by shard, delegates per-shard, and merges results.
+func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	// Partition nodeIDs by shard.
+	shardBuckets := make(map[*BadgerStore][]snowflake.ID)
+	for _, id := range nodeIDs {
+		shard, err := ts.shardForNodeID(id)
+		if err != nil {
+			return nil, err
+		}
+		shardBuckets[shard] = append(shardBuckets[shard], id)
+	}
+
+	// Delegate per-shard and merge.
+	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
+	for shard, bucket := range shardBuckets {
+		m, err := shard.OutgoingRelationshipsForNodes(bucket, typeToken)
+		if err != nil {
+			return nil, err
+		}
+		for nid, rels := range m {
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
 	// Get relIDs from the node's shard inIdx.
 	shard, err := ts.shardForNodeID(nodeID)
