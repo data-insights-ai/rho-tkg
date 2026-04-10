@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.5 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
+Status: v3.1.6 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -78,8 +78,8 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` (batch adjacency), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
-| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods, `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` batch adjacency queries |
+| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` (batch adjacency), `AddNodeLabel`/`RemoveNodeLabel` (mutate label set post-creation with history + hash chain), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
+| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods, `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` batch adjacency queries, `AddNodeLabelToken`/`AddNodeLabelTokenWithHistory` label mutation writers |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, soft capacity, `Peek()` for zero-alloc lookups |
@@ -98,7 +98,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
 | `temporal_constraint.go` | Temporal constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, 6 sentinel errors, `checkTemporalConstraints` enforcement |
 | `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, lazy sort via `sortIfDirty` + `sortMu sync.Mutex`), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
-| `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback |
+| `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback, `AddNodeLabel`/`RemoveNodeLabel` with `labelDeltas` tracker for label index rollback consistency |
 | `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
 | `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
 | `events.go` | `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `eventPublisher` interface |

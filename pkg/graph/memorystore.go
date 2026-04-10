@@ -206,6 +206,74 @@ func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	return nil
 }
 
+// AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
+// No version bump; no history entry. Used by transaction rollback.
+// Returns ErrNodeNotFound if the node does not exist.
+func (ms *MemoryStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	old, exists := ms.nodes[id]
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	set, ok := ms.labelIdx[tok]
+	if !ok {
+		set = make(map[snowflake.ID]struct{})
+		ms.labelIdx[tok] = set
+	}
+	set[id] = struct{}{}
+
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, old, id)
+	ms.nodes[id] = updatedNode.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, id)
+	return nil
+}
+
+// AddNodeLabelTokenWithHistory atomically adds tok to the label index,
+// writes a version history entry, and persists updatedNode under a single lock.
+func (ms *MemoryStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	old, exists := ms.nodes[id]
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	// Write history entry.
+	inner, ok := ms.nodeHistory[id]
+	if !ok {
+		inner = make(map[uint32]*types.Node)
+		ms.nodeHistory[id] = inner
+	}
+	inner[prevVersion] = prevState.DeepCopy()
+
+	// Add tok to the label index.
+	set, ok := ms.labelIdx[tok]
+	if !ok {
+		set = make(map[snowflake.ID]struct{})
+		ms.labelIdx[tok] = set
+	}
+	set[id] = struct{}{}
+
+	// Update property, temporal, and vector indexes.
+	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, id)
+	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, id)
+	removeNodeFromVectorIndexes(ms.vectorIndexes, old, id)
+	ms.nodes[id] = updatedNode.DeepCopy()
+	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, id)
+	return nil
+}
+
 // ReplaceNode overwrites an existing node's data in-place.
 // Returns ErrNodeNotFound if the node does not exist.
 // No label index changes — labels are immutable after creation.

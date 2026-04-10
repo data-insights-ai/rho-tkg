@@ -814,6 +814,126 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	return nil
 }
 
+// AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
+// No version bump; no history entry. Used by transaction rollback.
+// Returns ErrNodeNotFound if the node does not exist.
+func (bs *BadgerStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	w := nodeToWire(updatedNode)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	old, _ := bs.prefetchNode(id)
+
+	bs.idxMu.Lock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
+		return ErrNodeNotFound
+	}
+
+	if old != nil {
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	}
+
+	set, ok := bs.labelIdx[tok]
+	if !ok {
+		set = make(map[snowflake.ID]struct{})
+		bs.labelIdx[tok] = set
+	}
+	set[id] = struct{}{}
+	bs.getOrCreateLabelCounter(tok).Add(1)
+
+	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: labelIndexKey(tok, id)},
+	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// AddNodeLabelTokenWithHistory atomically adds tok to the label index,
+// writes a version history entry, and persists updatedNode via a single appendOps call.
+func (bs *BadgerStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node) error {
+	w := nodeToWire(updatedNode)
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+
+	hw := nodeToWire(prevState)
+	histData, err := msgpack.Marshal(hw)
+	if err != nil {
+		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+
+	old, _ := bs.prefetchNode(id)
+
+	bs.idxMu.Lock()
+
+	if _, exists := bs.nodeIDs[id]; !exists {
+		bs.idxMu.Unlock()
+		return ErrNodeNotFound
+	}
+
+	// Update property, temporal, and vector indexes using pre-fetched old node state.
+	if old != nil {
+		removeNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+		removeNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+		removeNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		purgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		purgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	}
+
+	// Add tok to the in-memory label index.
+	set, ok := bs.labelIdx[tok]
+	if !ok {
+		set = make(map[snowflake.ID]struct{})
+		bs.labelIdx[tok] = set
+	}
+	set[id] = struct{}{}
+	bs.getOrCreateLabelCounter(tok).Add(1)
+
+	// Update cache and property/temporal/vector indexes for the new node state.
+	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	addNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	addNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+
+	// Single appendOps call — node data + history + label index set — atomic in the pending buffer.
+	histKey := histNodeKey(id, uint64(prevVersion))
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: histKey, value: histData},
+		writeOp{opType: writeOpSet, key: labelIndexKey(tok, id)},
+	)
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
 // --- Relationship operations ---
 
 // PutRelationship stores a relationship with type index and adjacency entries.

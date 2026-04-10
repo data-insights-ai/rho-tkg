@@ -342,6 +342,29 @@ Audit: `grep -rn 'func (g \*Graph).*Internal' pkg/graph/` — every internal mus
 
 **History:** Found in v3.0.59 external audit. Standalone mutations could bypass tx isolation.
 
+## B29. Transaction Rollback Must Reverse Every Side Effect, Including Indexes
+
+```
+BAD:  tx.RemoveNodeLabel(id, "B")
+      tx.Rollback()
+      // ReplaceNode(prev) restores the node's own label set, but the
+      // store-level label index still has the old entry → NodesByLabel
+      // returns a node that no longer has the label.
+
+GOOD: track label deltas per tx
+      tx.labelDeltas = append(tx.labelDeltas, labelDelta{id, tok, added})
+      // in Rollback, after ReplaceNode has restored node state:
+      if d.added {
+          store.RemoveNodeLabelToken(id, tok, restoredNode)
+      } else {
+          store.AddNodeLabelToken(id, tok, restoredNode)
+      }
+```
+
+When a tx path mutates BOTH entity state AND a separate index, the rollback path must reverse BOTH. `ReplaceNode` deliberately skips the label index (labels were "immutable"), so any label-mutating tx needs a dedicated tracker. Audit: any tx operation that touches an auxiliary index (label, type, adjacency, property, temporal) needs a delta tracker whose reverse runs during `Rollback`.
+
+**History:** Found in v3.1.6 while adding `GraphTx.AddNodeLabel`/`RemoveNodeLabel`. The naive path compiled and passed the obvious "is the label gone?" test because `NodeHasLabel` checks the node state, not the index. Only a second test querying `NodesByLabel` after rollback exposed the corruption. Two regression tests now cover both directions.
+
 ## B26. Lock Acquisition Without Defer Leaks on Panic
 
 ```

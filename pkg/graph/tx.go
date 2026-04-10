@@ -26,6 +26,17 @@ type deletedNodeSnapshot struct {
 	rels []*types.Relationship // cascade-deleted rels
 }
 
+// labelDelta records a single label index mutation so Rollback can reverse
+// the change to the store-level label index after ReplaceNode has already
+// restored the node's internal state. ReplaceNode leaves the label index
+// untouched (labels are immutable on that path), so label-adding or
+// label-removing transactions need this separate tracker.
+type labelDelta struct {
+	id    snowflake.ID
+	tok   uint16
+	added bool // true = label was added; false = label was removed
+}
+
 // GraphTx is a mutation transaction with snapshot-based rollback.
 // It holds the graph write lock for the entire duration of the transaction,
 // blocking concurrent standalone mutations, Batch, and Snapshot operations.
@@ -44,6 +55,7 @@ type GraphTx struct {
 	updatedRels   []relSnapshot
 	deletedNodes  []deletedNodeSnapshot
 	deletedRels   []*types.Relationship
+	labelDeltas   []labelDelta          // label index mutations — reversed on Rollback
 	pendingEvents []Event               // buffered events — published on Commit, discarded on Rollback
 	snapshotSet   map[snowflake.ID]bool // tracks already-snapshotted entities (first mutation only)
 	mu            sync.Mutex            // protects done flag and snapshot tracking
@@ -312,6 +324,82 @@ func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
 	return nil
 }
 
+// AddNodeLabel adds a label to a node within the transaction.
+// Snapshots the pre-mutation state on first mutation and records a label
+// delta so Rollback can reverse the label index change. Idempotent: if the
+// node already has the label, returns nil with no snapshot or delta recorded.
+func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	// Look up the token (or pre-compute whether the label is already present)
+	// to decide whether this call will actually mutate. We need the token for
+	// the delta regardless, so resolve it up front under g.mu (already held by tx).
+	tok, ok := tx.g.labels.Lookup(label)
+	if ok {
+		cur, err := tx.g.store.GetNode(id)
+		if err == nil && cur.HasLabelTokenRaw(tok) {
+			// Idempotent no-op: nothing to snapshot, no delta to record.
+			return nil
+		}
+	}
+
+	if err := tx.snapshotNode(id); err != nil {
+		return err
+	}
+
+	if err := tx.g.addNodeLabelInternal(id, label); err != nil {
+		return err
+	}
+
+	// Re-lookup the token after the call — GetOrCreate may have just registered it.
+	if tok == 0 {
+		tok, _ = tx.g.labels.Lookup(label)
+	}
+
+	tx.mu.Lock()
+	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id, tok: tok, added: true})
+	tx.mu.Unlock()
+
+	tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+	return nil
+}
+
+// RemoveNodeLabel removes a label from a node within the transaction.
+// Snapshots the pre-mutation state on first mutation and records a label
+// delta so Rollback can reverse the label index change. Returns ErrLastLabel
+// if the label is the only one on the node.
+func (tx *GraphTx) RemoveNodeLabel(id snowflake.ID, label string) error {
+	tx.mu.Lock()
+	if tx.done {
+		tx.mu.Unlock()
+		return ErrTxDone
+	}
+	tx.mu.Unlock()
+
+	// Resolve token before the mutation so we can record the delta.
+	tok, _ := tx.g.labels.Lookup(label)
+
+	if err := tx.snapshotNode(id); err != nil {
+		return err
+	}
+
+	if err := tx.g.removeNodeLabelInternal(id, label); err != nil {
+		return err
+	}
+
+	tx.mu.Lock()
+	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id, tok: tok, added: false})
+	tx.mu.Unlock()
+
+	tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+	return nil
+}
+
 // snapshotNode captures the pre-mutation state of a node on first mutation only.
 // If the node was already snapshotted in this transaction, this is a no-op.
 func (tx *GraphTx) snapshotNode(id snowflake.ID) error {
@@ -452,6 +540,27 @@ func (tx *GraphTx) Rollback() error {
 	// 4. Restore updated nodes to pre-mutation snapshot (reverse order).
 	for i := len(tx.updatedNodes) - 1; i >= 0; i-- {
 		capture(tx.g.store.ReplaceNode(tx.updatedNodes[i].prev))
+	}
+
+	// 4a. Reverse label index deltas (reverse order).
+	// ReplaceNode restores the node's own label set but does not touch the
+	// store-level label index; label-adding/removing transactions must fix it.
+	// After ReplaceNode has restored the node state, the restored node already
+	// reflects the pre-mutation labels, so we just need to patch the index.
+	for i := len(tx.labelDeltas) - 1; i >= 0; i-- {
+		d := tx.labelDeltas[i]
+		restored, err := tx.g.store.GetNode(d.id)
+		if err != nil {
+			capture(err)
+			continue
+		}
+		if d.added {
+			// Undo an added label: remove it from the label index.
+			capture(tx.g.store.RemoveNodeLabelToken(d.id, d.tok, restored))
+		} else {
+			// Undo a removed label: add it back to the label index.
+			capture(tx.g.store.AddNodeLabelToken(d.id, d.tok, restored))
+		}
 	}
 
 	// 5. Delete created relationships in reverse creation order.

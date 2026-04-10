@@ -116,6 +116,50 @@ func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	return nil
 }
 
+func (ts *TieredStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+	store, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		return err
+	}
+	defer checkin()
+	old, _ := store.GetNode(id)
+	if err := store.AddNodeLabelToken(id, tok, updatedNode); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
+}
+
+func (ts *TieredStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node) error {
+	store, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		return err
+	}
+	defer checkin()
+	// Read old state for accurate vector index removal.
+	old, _ := store.GetNode(id)
+	if err := store.AddNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
+}
+
 func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 	if err := ts.checkRotation(); err != nil {
 		return err

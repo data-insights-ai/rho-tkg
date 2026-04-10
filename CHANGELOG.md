@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.6] - 2026-04-10
+
+### Added
+
+- **Node label mutation after creation** (`pkg/types/node.go`, `pkg/graph/graph.go`, `pkg/graph/store.go`, `pkg/graph/memorystore.go`, `pkg/graph/badgerstore.go`, `pkg/graph/tieredstore_write.go`, `pkg/graph/tx.go`):
+  - `Graph.AddNodeLabel(id snowflake.ID, label string) error` — mirror of `RemoveNodeLabel`. Validates label name length, enforces `MaxLabelsPerNode`, advances the hash chain, writes a version history entry, updates the label index, and publishes `EventNodeUpdate`. Idempotent: a no-op (no version bump, no history) when the node already has the label. Returns `ErrNodeNotFound` if the node does not exist, `ErrTooManyLabels` if adding would exceed the configured maximum, and `ErrNameTooLong` if the label name exceeds `MaxNameLength`.
+  - `GraphTx.AddNodeLabel` / `GraphTx.RemoveNodeLabel` — transactional wrappers that snapshot the node for rollback, call the lock-free internal implementations under `g.mu.Lock`, and track label deltas so `Rollback()` can restore the store-level label index.
+  - `types.Node.AddLabelTokenRaw(tok uint16) bool` — counterpart to `RemoveLabelTokenRaw`. Appends `tok` as an extra label; returns `false` if `tok == 0` or already present.
+  - `Store.AddNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState)` — atomic label-add + history + persist, mirroring `RemoveNodeLabelTokenWithHistory`. Implemented in `MemoryStore`, `BadgerStore`, `TieredStore`.
+  - `Store.AddNodeLabelToken(id, tok, updatedNode)` — non-history variant used by `GraphTx.Rollback` to reverse label deltas without polluting version history.
+
+### Fixed
+
+- **Transaction rollback label index consistency** (`pkg/graph/tx.go`): `ReplaceNode` deliberately leaves the label index alone (labels were considered immutable on that path), so a rollback after `GraphTx.AddNodeLabel` / `RemoveNodeLabel` previously restored the node's own label set but left a phantom or missing entry in the store-level label index. `NodesByLabel` queries could still return a node that no longer had the label (or miss one that did). `GraphTx` now tracks label deltas separately and reverses them via `Store.AddNodeLabelToken` / `RemoveNodeLabelToken` after the node state has been restored. Exposed by two new regression tests before the fix.
+
+### Tests Added
+
+- `TestAddNodeLabel_AddsExtraLabel` — basic add path
+- `TestAddNodeLabel_IdempotentIfAlreadyPresent` — no version bump when label already present
+- `TestAddNodeLabel_EmptyNameRejected` — empty label rejected
+- `TestAddNodeLabel_NameTooLong` — `ErrNameTooLong` sentinel
+- `TestAddNodeLabel_TooManyLabelsRejected` — `ErrTooManyLabels` sentinel when crossing `MaxLabelsPerNode`
+- `TestAddNodeLabel_NodeNotFound` — `ErrNodeNotFound` for unknown ID
+- `TestAddNodeLabel_HashChainAdvances` — new hash linked via `PrevHash` to previous hash
+- `TestAddNodeLabel_WritesHistoryEntry` — pre-mutation snapshot written to history at version 0, current bumped to version 1
+- `TestAddNodeLabel_NodesByLabelUpdated` — new label index entry visible via `NodesByLabel`
+- `TestAddNodeLabel_PublishesEvent` — `EventNodeUpdate` published after commit
+- `TestGraphTx_AddNodeLabel_Commit` — transactional commit persists
+- `TestGraphTx_AddNodeLabel_Rollback` — rollback restores node state
+- `TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex` — rollback also restores the label index (regression)
+- `TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex` — remove-then-rollback restores the label index (regression)
+- `TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone` — `ErrTxDone` after commit
+- `TestGraphTx_RemoveNodeLabel_Commit` — transactional remove + commit
+- `TestGraphTx_RemoveNodeLabel_Rollback` — rollback restores the removed label
+- `TestGraphTx_RemoveNodeLabel_LastLabelError` — `ErrLastLabel` sentinel inside tx
+- `TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone` — `ErrTxDone` after rollback
+
+### Benchmarks Added
+
+- `BenchmarkAddNodeLabel` — ~1.2µs/op, 22 allocs/op (MemoryStore, Apple M4 Max) — parity with `BenchmarkRemoveNodeLabel`
+- `BenchmarkAddNodeLabelIdempotent` — ~112ns/op, 4 allocs/op — idempotent fast path
+- `BenchmarkRemoveNodeLabel` — ~1.2µs/op, 24 allocs/op
+
 ## [3.1.5] - 2026-04-02
 
 ### Added

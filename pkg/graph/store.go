@@ -166,6 +166,21 @@ type Store interface {
 	RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
 		prevVersion uint32, prevState *types.Node) error
 
+	// AddNodeLabelTokenWithHistory atomically adds tok to the label index,
+	// writes a version history entry for prevState, and persists updatedNode.
+	// The graph layer has already added the label to updatedNode (via AddLabelTokenRaw),
+	// bumped the version, and recomputed the hash.
+	// Returns ErrNodeNotFound if the node does not exist.
+	AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+		prevVersion uint32, prevState *types.Node) error
+
+	// AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
+	// No version bump; no history entry. The graph layer has already applied the label
+	// addition to updatedNode. Used by transaction rollback to reverse label deltas
+	// without polluting version history.
+	// Returns ErrNodeNotFound if the node does not exist.
+	AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error
+
 	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
 	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)

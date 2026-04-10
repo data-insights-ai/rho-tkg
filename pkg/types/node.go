@@ -213,6 +213,25 @@ func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 	n.integrity = ig
 }
 
+// AddLabelTokenRaw appends tok as an extra label on this node.
+// Returns false if tok == 0 or the token is already present (primary or extra);
+// returns true if the label was added.
+func (n *Node) AddLabelTokenRaw(tok uint16) bool {
+	if tok == 0 {
+		return false
+	}
+	if uint16(n.primaryLabel) == tok {
+		return false
+	}
+	for _, t := range n.extraLabels {
+		if uint16(t) == tok {
+			return false
+		}
+	}
+	n.extraLabels = append(n.extraLabels, labelToken(tok))
+	return true
+}
+
 // RemoveLabelTokenRaw removes the label with the given raw uint16 token from this node.
 // Returns false if tok == 0 or the token is not present on this node.
 // If the removed label is the primary label, the first extra label is promoted to primary.
