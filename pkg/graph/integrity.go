@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -349,7 +350,17 @@ func appendPropertyValue(buf []byte, v any) []byte {
 			buf = append(buf, val[k]...)
 		}
 	default:
-		panic("graph: appendPropertyValue: unreachable type in hash computation")
+		// Custom property types (e.g. pkg/spatial Point/Polygon/MultiPolygon)
+		// may participate in hashing by implementing types.HashableValue. The
+		// type must also be registered via types.RegisterPropertyStructType so
+		// PropertySlice.Set accepts it as a property value.
+		if h, ok := v.(types.HashableValue); ok {
+			hb := h.HashBytes()
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(hb))) // #nosec G115
+			buf = append(buf, hb...)
+			return buf
+		}
+		panic(fmt.Sprintf("graph: appendPropertyValue: unsupported type %T (value does not implement types.HashableValue)", v))
 	}
 	return buf
 }

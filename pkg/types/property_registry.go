@@ -6,6 +6,24 @@ import (
 	"sync"
 )
 
+// HashableValue is the contract a custom property-value type must satisfy to
+// participate in node/relationship integrity hashing. Registered via
+// RegisterPropertyStructType.
+//
+// The returned bytes feed directly into the node-hash computation — the
+// representation MUST be stable across Go versions, reboots, and encoding
+// changes. Changing HashBytes output across tkgd releases breaks the
+// append-only hash-chain invariant.
+//
+// For spatial types, HashBytes returns WKB (well-known binary): a fixed OGC
+// standard format, deterministic for a given geometry.
+type HashableValue interface {
+	// HashBytes returns a deterministic binary representation used in node
+	// and relationship hashing. Not called on the value's JSON/MsgPack/
+	// printable form — only from integrity hashing. Must never panic.
+	HashBytes() []byte
+}
+
 // propertyStructRegistry holds struct types that external packages have
 // registered as acceptable property values. By default, PropertySlice rejects
 // anything outside primitives, slices, and maps — spatial geometry, custom
