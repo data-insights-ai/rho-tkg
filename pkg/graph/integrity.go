@@ -243,6 +243,13 @@ func appendProperties(buf []byte, props types.PropertySlice) []byte {
 func appendPropertyValue(buf []byte, v any) []byte {
 	buf = append(buf, propertyTypeTag(v))
 
+	// Nil properties hash to their type tag alone. Common case from loaders
+	// that map SQL NULL to Go nil — without this branch, ComputeNodeHash
+	// panics in the default case below.
+	if v == nil {
+		return buf
+	}
+
 	switch val := v.(type) {
 	case bool:
 		if val {
