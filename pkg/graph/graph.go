@@ -140,6 +140,11 @@ type Graph struct {
 	mu            sync.RWMutex   // serializes batch/tx writes vs standalone mutations and reads
 	closeOnce     sync.Once
 
+	// Index providers registered via RegisterIndexProvider. Keyed by Name().
+	// Each entry holds an unsubscribe closure so UnregisterIndexProvider can
+	// detach cleanly. See index_provider.go for semantics.
+	indexProviders map[string]*indexProviderEntry
+
 	// Operation counters — incremented atomically on every successful operation.
 	opNodeAdds    atomic.Int64
 	opNodeReads   atomic.Int64
@@ -212,12 +217,13 @@ func New(config Config) (*Graph, error) {
 	}
 
 	g := &Graph{
-		labels:      newLabelRegistry(),
-		relTypes:    newRelTypeRegistry(),
-		nodeIDGen:   nodeGen,
-		relIDGen:    relGen,
-		entityLocks: newEntityLockManager(),
-		validation:  v,
+		labels:         newLabelRegistry(),
+		relTypes:       newRelTypeRegistry(),
+		nodeIDGen:      nodeGen,
+		relIDGen:       relGen,
+		entityLocks:    newEntityLockManager(),
+		validation:     v,
+		indexProviders: make(map[string]*indexProviderEntry),
 	}
 
 	// Validate BadgerDir: reject whitespace-only strings (silent fallback hazard).
@@ -283,6 +289,10 @@ func New(config Config) (*Graph, error) {
 func (g *Graph) Close() error {
 	var closeErr error
 	g.closeOnce.Do(func() {
+		// Close index providers before the store so they can flush their
+		// own state. Errors are collected; store close still runs.
+		closeErr = errors.Join(closeErr, g.closeIndexProviders())
+
 		// Save registries if the store supports it.
 		switch s := g.store.(type) {
 		case *BadgerStore:
