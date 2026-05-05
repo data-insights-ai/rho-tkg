@@ -1764,3 +1764,211 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 		}
 	})
 }
+
+// Indexed public queries (NodesByLabel / NodesByLabelAndProperty /
+// NodeCountByLabel / RelationshipsByType / RelCountByType) must include
+// refArchive entries. Pre-fix, archived reference nodes were
+// GetNode/AllNodes-visible but disappeared from indexed reads — the
+// label/property/type indexes on the archive store carry the same
+// metadata refShard does.
+func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, map[string]any{"status": "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := g.AddNode([]string{"Case"}, map[string]any{"status": "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("KNOWS", caseNode, other, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := caseNode.InternalID()
+	relID := r.InternalID()
+
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+	knowsTok, ok := g.LookupRelType("KNOWS")
+	if !ok {
+		t.Fatal("KNOWS reltype not registered")
+	}
+
+	t.Run("NodesByLabel surfaces archived", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabel: %v", err)
+		}
+		found := false
+		for _, n := range nodes {
+			if n.InternalID() == caseID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("NodesByLabel missed archived Case")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty surfaces archived", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty: %v", err)
+		}
+		found := false
+		for _, n := range nodes {
+			if n.InternalID() == caseID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("NodesByLabelAndProperty missed archived Case")
+		}
+	})
+
+	t.Run("NodeCountByLabel counts archived", func(t *testing.T) {
+		count, err := ts.NodeCountByLabel(caseTok)
+		if err != nil {
+			t.Fatalf("NodeCountByLabel: %v", err)
+		}
+		if count < 2 {
+			t.Fatalf("NodeCountByLabel(Case) = %d, want >= 2 (archived Case missed)", count)
+		}
+	})
+
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasRelID(relID.SnowflakeID()) {
+		t.Run("RelationshipsByType surfaces archived", func(t *testing.T) {
+			rels, err := ts.RelationshipsByType(knowsTok, QueryOpts{})
+			if err != nil {
+				t.Fatalf("RelationshipsByType: %v", err)
+			}
+			found := false
+			for _, rr := range rels {
+				if rr.InternalID() == relID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatal("RelationshipsByType missed archived rel")
+			}
+		})
+		t.Run("RelCountByType counts archived", func(t *testing.T) {
+			count, err := ts.RelCountByType(knowsTok)
+			if err != nil {
+				t.Fatalf("RelCountByType: %v", err)
+			}
+			if count < 1 {
+				t.Fatalf("RelCountByType(KNOWS) = %d, want >= 1", count)
+			}
+		})
+	}
+}
+
+// AllNodes / AllRelationships gate archive enumeration on Depth ==
+// DepthAll. Archive is the coldest tier of reference data; including
+// it in DepthHot or DepthWarm would surface entities the caller asked
+// to exclude. refShard is queried for all Depth values per existing
+// semantics — reference data is not Depth-tiered.
+func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	containsNodeID := func(nodes []*types.Node, want types.NodeID) bool {
+		for _, n := range nodes {
+			if n.InternalID() == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthHot): %v", err)
+		}
+		if containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthHot) returned archived node — Depth gate did not exclude archive")
+		}
+	})
+
+	t.Run("DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthWarm): %v", err)
+		}
+		if containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthWarm) returned archived node — Depth gate did not exclude archive")
+		}
+	})
+
+	t.Run("DepthAll includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthAll): %v", err)
+		}
+		if !containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthAll) missed archived node")
+		}
+	})
+
+	t.Run("default opts (Depth=0=DepthAll) includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodes(zero): %v", err)
+		}
+		if !containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(zero opts) missed archived node — DepthAll is the zero value")
+		}
+	})
+}
+
+// Public point lookups that resolve to refArchive must pin the archive
+// against a concurrent Close. Pre-fix shardForNodeIDChecked /
+// shardForRelIDChecked returned refArchive with a no-op checkin, so
+// archiveActiveReqs stayed at 0 and Close could close the archive
+// while a goroutine was still using the returned pointer.
+func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := caseNode.InternalID()
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	store, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		t.Fatalf("shardForNodeIDChecked: %v", err)
+	}
+	defer checkin()
+
+	if store != ts.refArchive.Load() {
+		t.Fatal("setup: expected resolver to return refArchive for archived node")
+	}
+	if got := ts.archiveActiveReqs.Load(); got != 1 {
+		t.Fatalf("archiveActiveReqs after archive resolve = %d, want 1 (archive not pinned)", got)
+	}
+}

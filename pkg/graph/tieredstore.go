@@ -720,21 +720,19 @@ func (ts *TieredStore) shardForRelIDChecked(id types.RelID) (store *BadgerStore,
 		return ts.refShard, func() {}, nil
 	}
 
-	// Probe refArchive: ArchiveNode migrates a reference node AND its rels
-	// to refArchive, so archived rels live there after archive. refArchive
-	// has no idle-close lifecycle, so checkin is a no-op.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.hasRelID(raw) {
-		return archive, func() {}, nil
+	// Probe refArchive: ArchiveNode migrates a reference node AND its
+	// rels to refArchive, so archived rels live there after archive.
+	// Pin via checkoutArchive (mirrors the node resolver) so a
+	// concurrent Close cannot tear it down mid-use.
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, nil, err
 	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, nil, err
+	if archive != nil {
+		if archive.hasRelID(raw) {
+			return archive, archiveCheckin, nil
 		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.hasRelID(raw) {
-			return archive, func() {}, nil
-		}
+		archiveCheckin()
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
@@ -794,19 +792,22 @@ func (ts *TieredStore) shardForNodeIDChecked(id types.NodeID) (store *BadgerStor
 		return ts.refShard, func() {}, nil // refShard: never closed, no-op checkin
 	}
 
-	// Archive probe.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.hasNodeID(raw) {
-		return archive, func() {}, nil // refArchive: never subject to idle-close
+	// Archive probe — pin via checkoutArchive so a concurrent Close
+	// cannot tear down the underlying DB while the caller is using
+	// the returned pointer for GetNode / Update / etc. The previous
+	// no-op checkin was incorrect: refArchive IS closed by Close, just
+	// not by closeIdleShards. checkoutArchive also handles cold-start
+	// lazy-open via ensureRefArchive when the catalog has the entry but
+	// the in-memory pointer is nil.
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, nil, err
 	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, nil, err
+	if archive != nil {
+		if archive.hasNodeID(raw) {
+			return archive, archiveCheckin, nil
 		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.hasNodeID(raw) {
-			return archive, func() {}, nil
-		}
+		archiveCheckin()
 	}
 
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close race.

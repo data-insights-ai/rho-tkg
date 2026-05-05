@@ -119,7 +119,29 @@ func (ts *TieredStore) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relati
 
 func (ts *TieredStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	if ts.ontology.ClassifyByToken(token) == ClassReference {
-		return ts.refShard.NodesByLabel(token, stripDepth(opts))
+		// Reference labels live on refShard + refArchive. Without merging
+		// archive results, archived reference entities silently disappear
+		// from NodesByLabel even though GetNode still finds them. Indexed
+		// reference reads are not Depth-gated — refShard is queried for
+		// all Depth values, archive matches that semantic.
+		refNodes, err := ts.refShard.NodesByLabel(token, stripDepth(opts))
+		if err != nil {
+			return nil, err
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive == nil {
+			return refNodes, nil
+		}
+		archiveNodes, err := archive.NodesByLabel(token, stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
+		return applyNodePagination(merged, opts), nil
 	}
 	// Event label: fan out across all event shards matching depth.
 	ts.mu.RLock()
@@ -171,6 +193,22 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 		return nil, err
 	}
 
+	// refArchive parity: archived rels (migrated together with their
+	// reference endpoints) carry the same type token. Always merge —
+	// indexed reference reads are not Depth-gated.
+	var archiveRels []*types.Relationship
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveRels, err = archive.RelationshipsByType(token, stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	type result struct {
 		rels []*types.Relationship
 		err  error
@@ -195,6 +233,9 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
 		slices = append(slices, refRels)
+	}
+	if len(archiveRels) > 0 {
+		slices = append(slices, archiveRels)
 	}
 	for _, r := range results {
 		if r.err != nil {
@@ -223,19 +264,27 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 
 	// refArchive parity: archived nodes are still GetNode-addressable, so
 	// public bulk scans must include them. Otherwise an archived entity
-	// silently disappears from AllNodes / NodeCount / similar APIs even
-	// though point lookups still find it. checkoutArchive lazy-opens on
-	// cold start (catalog-archive-shard-but-pointer-nil).
+	// silently disappears from AllNodes / similar APIs even though point
+	// lookups still find it. checkoutArchive lazy-opens on cold start
+	// (catalog-archive-shard-but-pointer-nil).
+	//
+	// Depth gating: archive is the coldest tier of reference data;
+	// including it in DepthHot/DepthWarm would surface entities the
+	// caller asked to exclude. Only DepthAll requests archive content.
+	// refShard is queried for all Depth values per existing semantics
+	// (reference data is not Depth-tiered, only event data is).
 	var archiveNodes []*types.Node
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return nil, archiveErr
-	}
-	if archive != nil {
-		archiveNodes, err = archive.AllNodes(stripDepth(opts))
-		archiveCheckin()
-		if err != nil {
-			return nil, err
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveNodes, err = archive.AllNodes(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -290,17 +339,21 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 		return nil, err
 	}
 
-	// refArchive parity: see AllNodes above.
+	// refArchive parity: see AllNodes above. Depth-gated to DepthAll —
+	// archive is the coldest tier of reference data and must not surface
+	// in DepthHot/DepthWarm queries.
 	var archiveRels []*types.Relationship
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return nil, archiveErr
-	}
-	if archive != nil {
-		archiveRels, err = archive.AllRelationships(stripDepth(opts))
-		archiveCheckin()
-		if err != nil {
-			return nil, err
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveRels, err = archive.AllRelationships(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -606,7 +659,23 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 
 func (ts *TieredStore) NodeCountByLabel(token uint16) (int, error) {
 	if ts.ontology.ClassifyByToken(token) == ClassReference {
-		return ts.refShard.NodeCountByLabel(token)
+		n, err := ts.refShard.NodeCountByLabel(token)
+		if err != nil {
+			return 0, err
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return 0, archiveErr
+		}
+		if archive == nil {
+			return n, nil
+		}
+		an, err := archive.NodeCountByLabel(token)
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		return n + an, nil
 	}
 	// Event label: sum across all event shards.
 	ts.mu.RLock()
@@ -641,6 +710,20 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 	}
 	total += n
 
+	// refArchive parity: archived rels of this type count toward total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.RelCountByType(token)
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
 	for _, es := range eventShards {
 		store, err := es.checkoutStore(ts)
 		if err != nil {
@@ -660,7 +743,25 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 
 func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
-		return ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		// Reference labels live on refShard + refArchive — see NodesByLabel.
+		refNodes, err := ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		if err != nil {
+			return nil, err
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive == nil {
+			return refNodes, nil
+		}
+		archiveNodes, err := archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
+		return applyNodePagination(merged, opts), nil
 	}
 	// Event label: fan out across all event shards matching depth.
 	ts.mu.RLock()
