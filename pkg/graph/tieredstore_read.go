@@ -121,12 +121,19 @@ func (ts *TieredStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	if ts.ontology.ClassifyByToken(token) == ClassReference {
 		// Reference labels live on refShard + refArchive. Without merging
 		// archive results, archived reference entities silently disappear
-		// from NodesByLabel even though GetNode still finds them. Indexed
-		// reference reads are not Depth-gated — refShard is queried for
-		// all Depth values, archive matches that semantic.
+		// from NodesByLabel even though GetNode still finds them.
+		//
+		// Depth gating: archive is the coldest tier of reference data and
+		// must NOT surface in DepthHot/DepthWarm — those callers explicitly
+		// asked to exclude colder tiers. Only DepthAll (zero value, default)
+		// includes archive content. Mirrors the AllNodes / AllRelationships
+		// gating policy.
 		refNodes, err := ts.refShard.NodesByLabel(token, stripDepth(opts))
 		if err != nil {
 			return nil, err
+		}
+		if opts.Depth != DepthAll {
+			return applyNodePagination(refNodes, opts), nil
 		}
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
@@ -194,18 +201,22 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	}
 
 	// refArchive parity: archived rels (migrated together with their
-	// reference endpoints) carry the same type token. Always merge —
-	// indexed reference reads are not Depth-gated.
+	// reference endpoints) carry the same type token. Depth-gated to
+	// DepthAll — archive is the coldest tier of reference data and must
+	// not surface in DepthHot/DepthWarm queries. Mirrors NodesByLabel /
+	// AllRelationships gating policy.
 	var archiveRels []*types.Relationship
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return nil, archiveErr
-	}
-	if archive != nil {
-		archiveRels, err = archive.RelationshipsByType(token, stripDepth(opts))
-		archiveCheckin()
-		if err != nil {
-			return nil, err
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveRels, err = archive.RelationshipsByType(token, stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -744,9 +755,13 @@ func (ts *TieredStore) RelCountByType(token uint16) (int, error) {
 func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
 		// Reference labels live on refShard + refArchive — see NodesByLabel.
+		// Depth-gated: archive is excluded from DepthHot/DepthWarm.
 		refNodes, err := ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
 		if err != nil {
 			return nil, err
+		}
+		if opts.Depth != DepthAll {
+			return applyNodePagination(refNodes, opts), nil
 		}
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
@@ -816,6 +831,26 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	}
 	refIDs := nodeIDsToRaw(refTyped)
 
+	// refArchive parity: AllNodeIDs must surface archived nodes whenever
+	// AllNodes / GetNode see them. Depth-gated to DepthAll — archive is
+	// the coldest tier of reference data; DepthHot/DepthWarm callers
+	// asked to exclude it. Same policy as AllNodes.
+	var archiveIDs []snowflake.ID
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			typed, err := archive.AllNodeIDs(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+			archiveIDs = nodeIDsToRaw(typed)
+		}
+	}
+
 	type result struct {
 		ids []snowflake.ID
 		err error
@@ -843,6 +878,9 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -867,6 +905,23 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, err
 	}
 	refIDs := relIDsToRaw(refTyped)
+
+	// refArchive parity: see AllNodeIDs above. Depth-gated to DepthAll.
+	var archiveIDs []snowflake.ID
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			typed, err := archive.AllRelIDs(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+			archiveIDs = relIDsToRaw(typed)
+		}
+	}
 
 	type result struct {
 		ids []snowflake.ID
@@ -894,6 +949,9 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
 	}
 	for _, r := range results {
 		if r.err != nil {
@@ -1231,18 +1289,23 @@ func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerSto
 		}
 	}
 
-	archive := ts.refArchive.Load()
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return err
-		}
-		archive = ts.refArchive.Load()
+	// Pin the archive via checkoutArchive (incrementing archiveActiveReqs)
+	// so the callback sees a stable handle even if Close / closeIdleShards
+	// races. checkoutArchive lazy-opens on cold start when the catalog
+	// records an archive but the pointer is nil. The checkin must wrap
+	// the callback invocation so the pin is released on every exit path.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
 	}
 	if archive != nil && archive != skip {
 		stop, err := fn(archive)
+		archiveCheckin()
 		if err != nil || stop {
 			return err
 		}
+	} else if archive != nil {
+		archiveCheckin()
 	}
 
 	ts.mu.RLock()
