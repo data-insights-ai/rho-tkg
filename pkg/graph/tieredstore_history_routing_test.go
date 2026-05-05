@@ -1656,3 +1656,111 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 		}
 	})
 }
+
+// Cold-start archive: after a process restart where the catalog records
+// an archive shard but the in-memory ts.refArchive pointer is nil, the
+// slice and ForEach history APIs must lazy-open the archive instead of
+// silently skipping it. This requires disk-backed persistence — the
+// in-memory mode loses archive state on instance teardown.
+//
+// We exercise a real restart: write archive data, Close the TieredStore,
+// reopen against the same DataDir, and assert the public APIs see the
+// archived entity without an explicit point lookup having triggered
+// ensureRefArchive first.
+func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
+	dir := t.TempDir()
+	mkStore := func() *TieredStore {
+		ts, err := NewTieredStore(TieredStoreConfig{
+			DataDir:       dir,
+			RefLabels:     []string{"Case", "User"},
+			ShardWindow:   7 * 24 * time.Hour,
+			FlushInterval: 1<<63 - 1,
+		})
+		if err != nil {
+			t.Fatalf("NewTieredStore: %v", err)
+		}
+		return ts
+	}
+
+	// Phase 1: write + archive + post-archive update, then Close.
+	ts := mkStore()
+	g, err := New(Config{Store: ts})
+	if err != nil {
+		t.Fatalf("New graph: %v", err)
+	}
+
+	n, err := g.AddNode([]string{"Case"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := n.InternalID().SnowflakeID()
+	if _, err := g.UpdateNode(id, map[string]any{"v": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	if _, err := g.UpdateNode(id, map[string]any{"v": 3}); err != nil {
+		t.Fatalf("post-archive UpdateNode: %v", err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+
+	// Phase 2: reopen against the same DataDir. ts.refArchive starts
+	// nil; the catalog has the archive entry. checkoutArchive must
+	// lazy-open via ensureRefArchive.
+	ts = mkStore()
+	t.Cleanup(func() { _ = ts.Close() })
+
+	if ts.refArchive.Load() != nil {
+		t.Fatal("setup: refArchive should be nil immediately after fresh open")
+	}
+	if !ts.hasArchiveShard() {
+		t.Fatal("setup: catalog should still have archive entry after restart")
+	}
+
+	t.Run("AllNodeHistoryIDs lazy-opens archive", func(t *testing.T) {
+		ids, err := ts.AllNodeHistoryIDs()
+		if err != nil {
+			t.Fatalf("AllNodeHistoryIDs: %v", err)
+		}
+		found := false
+		for _, x := range ids {
+			if x == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("AllNodeHistoryIDs missed archived node after restart (lazy-open did not run)")
+		}
+	})
+
+	t.Run("AllNodes lazy-opens archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodes: %v", err)
+		}
+		found := false
+		for _, nn := range nodes {
+			if nn.InternalID().SnowflakeID() == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("AllNodes missed archived node after restart")
+		}
+	})
+
+	t.Run("NodeCount counts archived after restart", func(t *testing.T) {
+		count, err := ts.NodeCount()
+		if err != nil {
+			t.Fatalf("NodeCount: %v", err)
+		}
+		if count < 1 {
+			t.Fatalf("NodeCount = %d post-restart, want >= 1", count)
+		}
+	})
+}
