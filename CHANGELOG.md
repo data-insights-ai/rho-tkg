@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [3.1.7] - 2026-05-05
 
 ### Fixed
 
@@ -12,16 +12,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `VerifyNodeHashChain` now recomputes each node version with that version's own labels instead of reusing the current tip's labels, so hash-chain verification remains valid after label add/remove mutations.
   - `AddNodeLabel` / `RemoveNodeLabel` now set `TxTo` on the previous version and `TxFrom` on the new version, and compute the new hash after the version bump.
   - `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`, and `GetNeighborsValidAt` now resolve historical versions instead of relying only on current label/property/adjacency indexes.
+  - `NodesByLabel`, `NodesByLabelAndProperty`, and `RelationshipsByType` are now history-aware when called with a temporal `QueryOpts` (`ValidAt` or `ValidStart`/`ValidEnd`). Previously these generic entry points routed temporal queries through store-side pushdown that consults only current indexes, so a label/type membership that held at `t` but no longer holds was invisible. Non-temporal calls keep the existing fast pushdown path.
   - No-op mutations no longer publish update events for idempotent label adds, empty property updates, empty in-place updates, or successful no-op compare-and-delete operations.
   - `ImportNodeWithID` and `ImportRelationshipWithID` now extract temporal/provenance shadow properties, populate transaction time, increment stats, and publish create events consistently with generated-ID creation paths.
 
 ### Changed
 
 - **Documentation metadata alignment** (`README.md`, `AGENTS.md`, `docs/architecture.md`, `docs/api.md`): updated documented Go/version metadata to match `go.mod` and the latest changelog entry, and corrected combined temporal query docs to describe history-aware behavior.
+- **Behavior change** (`pkg/graph/graph.go`): `NodesByLabel(label, opts)`, `NodesByLabelAndProperty(label, key, value, opts)`, and `RelationshipsByType(typeName, opts)` now scan history when called with a temporal `QueryOpts` (`ValidAt` and/or `ValidStart`/`ValidEnd`). Callers who relied on the previous (incorrect) current-only behavior will see different results: nodes/rels that matched the predicate at the requested time but no longer do are now included, and entities that match now but did not match at the requested time are excluded. Non-temporal calls retain the existing fast pushdown path. The during-interval semantic is "predicate held on any version overlapping [start, end)" — implementations that need only the most-recent version overlapping should call `getNodeVersionDuring`/`getRelVersionDuring` directly.
 
 ### Tests Added
 
-- `TestVerifyNodeHashChain_LabelMutations` — regression coverage for hash-chain verification after label add/remove.
+- `TestVerifyNodeHashChain_LabelMutations` — regression coverage for hash-chain verification after label add/remove. Three sub-tests: a 3-distinct-label-set chain (every version is a witness), a discriminating history tamper that pre-fix code would have accepted but per-entry-label code rejects, and a deleted-entity path that exercises the `chain[len(chain)-1]` fallback.
+- `TestNodeHashChain_InspectsHashValues` — probes actual hash bytes (not just the boolean from `VerifyNodeHashChain`) and walks the persisted chain to verify per-version Hash/PrevHash linkage independently.
 - `TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion` — verifies label point-in-time queries use historical label sets.
 - `TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion` — verifies combined label/property temporal queries use historical property values.
 - `TestGetNeighborsValidAt_UsesHistoricalRelationships` — verifies temporal neighbor traversal sees deleted historical relationships.
@@ -29,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `TestNoOpMutations_DoNotPublishUpdateEvents` — verifies no-op mutation paths do not publish update events.
 - `TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats` / `TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats` — verifies import-by-ID public methods match creation semantics for metadata, stats, and events.
 - `TestGraphTx_PropertyConvenienceMethods`, store-level label-add tests, `TestDocsMetadataMatchesSourceOfTruth`, and `TestRecurrence_Monthly_LastDay` — close direct coverage gaps and prevent docs/version drift.
+- `TestNodesByLabel_TemporalOpts_Adversarial`, `TestNodesByLabelAndProperty_TemporalOpts_Adversarial`, `TestRelationshipsByType_TemporalOpts_Adversarial` — verify the generic `*By*(opts QueryOpts)` entry points are history-aware when temporal filters are set. Multi-entity scenarios with diverging lifecycles, exact-set assertions (`assertNodeSet`/`assertRelSet`) catching over-reporting and omission, the decisive "predicate-anywhere-in-interval" case (a node whose label held during part of the interval but not on the most-recent version), and pagination on the temporal path.
 
 ## [3.1.6] - 2026-04-10
 

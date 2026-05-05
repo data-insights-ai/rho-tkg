@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // paginateIDs applies cursor-based pagination to a sorted slice of snowflake IDs.
@@ -38,4 +39,48 @@ func paginateIDs(ids []snowflake.ID, after snowflake.ID, limit int) []snowflake.
 	}
 
 	return remaining
+}
+
+// paginateNodes applies cursor-based pagination to a slice of nodes sorted
+// ascending by snowflake ID. Same semantics as paginateIDs.
+func paginateNodes(nodes []*types.Node, after snowflake.ID, limit int) []*types.Node {
+	if len(nodes) == 0 {
+		return nil
+	}
+	start := 0
+	if after > 0 {
+		start = sort.Search(len(nodes), func(i int) bool {
+			return nodes[i].InternalID().SnowflakeID() > after
+		})
+	}
+	if start >= len(nodes) {
+		return nil
+	}
+	out := nodes[start:]
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
+}
+
+// paginateRels applies cursor-based pagination to a slice of relationships
+// sorted ascending by snowflake ID. Same semantics as paginateIDs.
+func paginateRels(rels []*types.Relationship, after snowflake.ID, limit int) []*types.Relationship {
+	if len(rels) == 0 {
+		return nil
+	}
+	start := 0
+	if after > 0 {
+		start = sort.Search(len(rels), func(i int) bool {
+			return rels[i].InternalID().SnowflakeID() > after
+		})
+	}
+	if start >= len(rels) {
+		return nil
+	}
+	out := rels[start:]
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
 }

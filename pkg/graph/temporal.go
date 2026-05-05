@@ -457,9 +457,61 @@ func (g *Graph) forEachKnownRelID(fn func(snowflake.ID) error) error {
 	return nil
 }
 
-// getNodeVersionDuring returns the most recent version of a node whose validity
-// overlaps [start, end). Returns ErrNoVersionValidAt if none overlap.
-func (g *Graph) getNodeVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Node, error) {
+// hasTemporalFilter reports whether opts carries a ValidAt or ValidStart/ValidEnd
+// filter that requires history-aware resolution.
+func (opts QueryOpts) hasTemporalFilter() bool {
+	return opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0
+}
+
+// findNodeVersionForOpts returns a node version that satisfies pred under the
+// temporal filter in opts. ValidAt takes precedence over ValidStart/ValidEnd.
+// For interval queries, all overlapping versions are scanned (most-recent
+// first) and the first match is returned — so a node whose label/property held
+// at any moment in the interval is found, even if a later version no longer
+// matches. Returns ErrNoVersionValidAt if no overlapping version satisfies
+// pred. pred==nil means "any overlapping version".
+func (g *Graph) findNodeVersionForOpts(id snowflake.ID, opts QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+	if opts.ValidAt != 0 {
+		n, err := g.GetNodeAt(id, opts.ValidAt)
+		if err != nil {
+			return nil, err
+		}
+		if pred != nil && !pred(n) {
+			return nil, ErrNoVersionValidAt
+		}
+		return n, nil
+	}
+	return g.findNodeVersionMatchingDuring(id, opts.ValidStart, opts.ValidEnd, pred)
+}
+
+// findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
+func (g *Graph) findRelVersionForOpts(id snowflake.ID, opts QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	if opts.ValidAt != 0 {
+		r, err := g.GetRelAt(id, opts.ValidAt)
+		if err != nil {
+			return nil, err
+		}
+		if pred != nil && !pred(r) {
+			return nil, ErrNoVersionValidAt
+		}
+		return r, nil
+	}
+	return g.findRelVersionMatchingDuring(id, opts.ValidStart, opts.ValidEnd, pred)
+}
+
+// findNodeVersionMatchingDuring iterates versions of node id whose validity
+// overlaps [start, end), most-recent first, and returns the first version for
+// which pred returns true. pred==nil returns the most-recent overlapping
+// version (the original "any overlap" semantic). Returns ErrNoVersionValidAt
+// if no overlapping version satisfies pred, ErrNodeNotFound if the node was
+// never seen.
+//
+// This is the predicate-aware variant of "during" resolution. The "predicate
+// on most-recent version" shortcut is wrong for combined queries: a label or
+// property can hold during part of the interval and not on the most-recent
+// version. Scanning all overlapping versions is the only correct semantic for
+// "did this node match the predicate at any point during [start, end)?".
+func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -480,21 +532,21 @@ func (g *Graph) getNodeVersionDuring(id snowflake.ID, start, end types.Instant) 
 		chain = append(chain, current)
 	}
 
-	// Find the most recent version overlapping [start, end).
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := g.nodeVersionBounds(chain, i)
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
 		if vStart < end && (vEnd == 0 || vEnd > start) {
-			return chain[i], nil
+			if pred == nil || pred(chain[i]) {
+				return chain[i], nil
+			}
 		}
 	}
 
 	return nil, ErrNoVersionValidAt
 }
 
-// getRelVersionDuring returns the most recent version of a relationship whose
-// validity overlaps [start, end). Returns ErrNoVersionValidAt if none overlap.
-func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Relationship, error) {
+// findRelVersionMatchingDuring is the relationship counterpart.
+func (g *Graph) findRelVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -518,11 +570,26 @@ func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := g.relVersionBounds(chain, i)
 		if vStart < end && (vEnd == 0 || vEnd > start) {
-			return chain[i], nil
+			if pred == nil || pred(chain[i]) {
+				return chain[i], nil
+			}
 		}
 	}
 
 	return nil, ErrNoVersionValidAt
+}
+
+// getNodeVersionDuring is a thin wrapper preserving the original "any overlap"
+// semantic. Use findNodeVersionMatchingDuring with a predicate when the query
+// has a label/property filter.
+func (g *Graph) getNodeVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Node, error) {
+	return g.findNodeVersionMatchingDuring(id, start, end, nil)
+}
+
+// getRelVersionDuring is a thin wrapper preserving the original "any overlap"
+// semantic for relationships.
+func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Relationship, error) {
+	return g.findRelVersionMatchingDuring(id, start, end, nil)
 }
 
 // GetNeighborsValidAt returns all neighbor nodes reachable from nodeID via
@@ -765,7 +832,9 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 }
 
 // NodesByLabelPropertyDuring returns nodes matching the label and property value
-// whose validity overlaps [start, end). History-aware.
+// whose validity overlaps [start, end). History-aware: returns the node if any
+// overlapping version had the label and property, even when a later version
+// no longer matches.
 // Returns nil if the label is not registered.
 func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
@@ -776,21 +845,23 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if targetKey == "" {
 		return nil, nil
 	}
+	pred := func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		v, found := n.GetProperty(key)
+		return found && propertyValueKey(v) == targetKey
+	}
 	var result []*types.Node
 	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
-		n, err := g.getNodeVersionDuring(id, start, end)
+		n, err := g.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
 				return nil
 			}
 			return err
 		}
-		if !n.HasLabelTokenRaw(tok) {
-			return nil
-		}
-		if v, found := n.GetProperty(key); found && propertyValueKey(v) == targetKey {
-			result = append(result, n)
-		}
+		result = append(result, n)
 		return nil
 	})
 	if err != nil {

@@ -688,22 +688,74 @@ func (g *Graph) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
 
 // NodesByLabel returns nodes with the given label (resolved from string),
 // with optional pagination. Returns nil if the label is not registered.
+//
+// When opts carries a temporal filter (ValidAt or ValidStart/ValidEnd) the
+// query is history-aware: every known node (current + history) is scanned and
+// any version whose label set contained the requested label at the requested
+// time matches. Without a temporal filter, the call falls through to the
+// store-level label index for O(matches) lookup.
 func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.NodesByLabel(tok, opts)
+	if !opts.hasTemporalFilter() {
+		return g.store.NodesByLabel(tok, opts)
+	}
+	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
+	var result []*types.Node
+	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+		n, err := g.findNodeVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortNodesByID(result)
+	return paginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // RelationshipsByType returns relationships with the given type (resolved from string),
 // with optional pagination. Returns nil if the type is not registered.
+//
+// When opts carries a temporal filter, every known relationship (current +
+// history) is scanned. The type token is structurally immutable, so the only
+// history-relevant information added by this scan is deleted/closed-out
+// relationships that the current type index no longer references. Without a
+// temporal filter, the call falls through to the store-level type index.
 func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.Relationship, error) {
 	tok, ok := g.relTypes.Lookup(typeName)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.RelationshipsByType(tok, opts)
+	if !opts.hasTemporalFilter() {
+		return g.store.RelationshipsByType(tok, opts)
+	}
+	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
+	var result []*types.Relationship
+	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+		r, err := g.findRelVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortRelsByID(result)
+	return paginateRels(result, opts.After, opts.Limit), nil
 }
 
 // OutgoingRelationships returns all outgoing relationships from the given node.
@@ -982,12 +1034,47 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 // NodesByLabelAndProperty returns nodes matching the label and property value,
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
+//
+// When opts carries a temporal filter, every known node is scanned: a node is
+// included if any version overlapping the requested time had the label and
+// property value, even if a later version no longer matches. Without a
+// temporal filter, the call falls through to the store-level property index.
 func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	return g.store.NodesByLabelAndProperty(tok, key, value, opts)
+	if !opts.hasTemporalFilter() {
+		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
+	}
+	targetKey := propertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	pred := func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		v, found := n.GetProperty(key)
+		return found && propertyValueKey(v) == targetKey
+	}
+	var result []*types.Node
+	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+		n, err := g.findNodeVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortNodesByID(result)
+	return paginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // ArchiveNode moves a reference node and its relationships from the reference

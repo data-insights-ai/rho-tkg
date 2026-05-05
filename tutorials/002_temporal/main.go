@@ -120,9 +120,9 @@ func main() {
 	sensor, err := g.AddNode([]string{"Sensor"}, map[string]any{
 		"name":           "temperature-east-wing",
 		"location":       "building-A",
-		"tkg_valid_from": int64(eventTime),  // when this fact becomes valid
-		"tkg_valid_to":   int64(farFuture),  // open-ended (far future sentinel)
-		"tkg_created_at": int64(eventTime),  // domain creation time
+		"tkg_valid_from": int64(eventTime), // when this fact becomes valid
+		"tkg_valid_to":   int64(farFuture), // open-ended (far future sentinel)
+		"tkg_created_at": int64(eventTime), // domain creation time
 	})
 	if err != nil {
 		log.Fatal(err)

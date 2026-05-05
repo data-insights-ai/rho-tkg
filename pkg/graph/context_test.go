@@ -723,10 +723,10 @@ func TestAddNodeWithTemporal(t *testing.T) {
 	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
 
 	n, err := g.AddNodeWithContext(context.Background(), []string{"Signal"}, map[string]any{
-		"name":            "brute-force",
-		"tkg_valid_from":  int64(eventTime),
-		"tkg_valid_to":    int64(farFuture),
-		"tkg_created_at":  int64(eventTime),
+		"name":           "brute-force",
+		"tkg_valid_from": int64(eventTime),
+		"tkg_valid_to":   int64(farFuture),
+		"tkg_created_at": int64(eventTime),
 	})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -862,9 +862,9 @@ func TestBatchAddNodeWithTemporal(t *testing.T) {
 	batch := NewBatchBuilder(g)
 
 	n, err := batch.AddNode([]string{"Alert"}, map[string]any{
-		"name":            "suspicious",
-		"tkg_valid_from":  int64(eventTime),
-		"tkg_created_at":  int64(eventTime),
+		"name":           "suspicious",
+		"tkg_valid_from": int64(eventTime),
+		"tkg_created_at": int64(eventTime),
 	})
 	if err != nil {
 		t.Fatalf("batch AddNode: %v", err)

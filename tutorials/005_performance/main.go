@@ -144,7 +144,7 @@ func main() {
 		return g
 	}, nodeCount, relCount)
 
-	fmt.Printf("  MemoryStore:     %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageMem/1024)), commas(nodeCount), commas(relCount))   // #nosec G115 — heap KB fits int64
+	fmt.Printf("  MemoryStore:     %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageMem/1024)), commas(nodeCount), commas(relCount))    // #nosec G115 — heap KB fits int64
 	fmt.Printf("  BadgerInMemory:  %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageBadger/1024)), commas(nodeCount), commas(relCount)) // #nosec G115 — heap KB fits int64
 
 	// ----------------------------------------------------------------
@@ -519,7 +519,7 @@ func main() {
 	fmt.Println()
 	fmt.Printf("  %-24s %12s\n", "Memory (heap)", "KB")
 	fmt.Printf("  %-24s %12s\n", "------", "--")
-	fmt.Printf("  %-24s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))           // #nosec G115 — heap KB fits int64
+	fmt.Printf("  %-24s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))             // #nosec G115 — heap KB fits int64
 	fmt.Printf("  %-24s %12s\n", "BadgerStore (memory)", commas(int64(memUsageBadger/1024))) // #nosec G115 — heap KB fits int64
 	fmt.Println()
 	fmt.Printf("  %-24s %12s\n", "Storage", "Size")

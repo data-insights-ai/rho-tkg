@@ -453,6 +453,59 @@ historical question.
 regression test that queries/verifies both the old version and the new current
 version.
 
+## B31. History-Aware Code Needs Two-Phase Tests
+
+```
+BAD:  // Single-mutation happy path — passes for the wrong reason
+      n, _ := g.AddNode([]string{"A"}, nil)
+      ok, _ := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+      assert.True(t, ok)  // there's only one version, no past to get wrong
+
+GOOD: // Two-phase: mutate, then ask about the past
+      t0 := nowInstant()
+      n, _ := g.AddNode([]string{"A"}, nil)
+      _ = g.AddNodeLabel(n.InternalID().SnowflakeID(), "B")
+      ok, _ := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+      assert.True(t, ok)  // exposes per-version hash bug
+      hits, _ := g.GetNodesByLabelValidAt("A", t0)
+      assert.Len(t, hits, 1)  // exposes "current-only label index" bug
+      hits, _ = g.GetNodesByLabelValidAt("B", t0)
+      assert.Len(t, hits, 0)  // same bug from the other side
+```
+
+Code that answers questions about a different point in time, a different
+version, or a comparative state ("verify chain", "valid at t", "as of",
+"snapshot", "during interval") cannot be validated by a single-mutation test.
+Single-mutation tests verify the API exists; only mutation-then-query tests
+verify it remembers.
+
+**Rule:** any method whose name contains `ValidAt`, `ValidDuring`, `AsOf`,
+`Verify*Chain`, `Snapshot`, `Diff`, `*At` — and any generic query method that
+accepts a `QueryOpts` carrying temporal filters — needs at least one test that
+(1) creates an entity in state X at t0, (2) mutates it to state Y after t0,
+(3) queries with t = t0 and asserts the result reflects state X, not Y.
+
+**Audit when adding a new mutation operation:** every existing history-aware
+method must be re-tested with the new mutation as the phase-1 step. When
+`AddNodeLabel` was added in v3.1.6, `VerifyNodeHashChain`,
+`GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`,
+`NodesByLabelPropertyDuring`, and `GetNeighborsValidAt` should all have been
+re-tested through it. None were, and all five were broken.
+
+**Audit for "two doors, same shape":** a fix that touches a named historical
+method (`Get*ValidAt`) must grep for the generic equivalent
+(`*(opts QueryOpts)`) and apply the same fix and the same two-phase test there.
+The first round of this fix landed `Get*ValidAt` corrections but left
+`NodesByLabel(opts)`, `NodesByLabelAndProperty(opts)`, and
+`RelationshipsByType(opts)` with the same bug; only a follow-up commit caught
+them.
+
+**History:** Found while reviewing MR !2 (2026-05-05). Five history-aware
+methods broke because every test in Phases 1c, 2, 2g, and v3.1.6 was
+single-mutation. The MR author (Markus Nissl) added the missing two-phase
+tests; the original buggy code shipped across multiple Claude-co-authored
+commits, all with high test counts but only single-mutation coverage.
+
 ---
 
 # Tier C — Reference

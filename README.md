@@ -31,6 +31,10 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### Behavior change in 3.1.7
+
+`NodesByLabel(label, opts)`, `NodesByLabelAndProperty(label, key, value, opts)`, and `RelationshipsByType(typeName, opts)` now scan history when called with a temporal `QueryOpts` (`ValidAt` and/or `ValidStart`/`ValidEnd`). Previously these generic entry points routed temporal queries through store-side pushdown that consults only current indexes, so a node that had a label at the requested time but no longer carries it (or a relationship that has since been deleted) was silently missed. Callers using temporal opts will now see different — and correct — results. Non-temporal calls retain the original fast pushdown. See `CHANGELOG.md` `[3.1.7]` for details.
+
 ## Snowflake Configuration
 
 Both generator sets (nodes and relationships) are initialized with explicit parameters:

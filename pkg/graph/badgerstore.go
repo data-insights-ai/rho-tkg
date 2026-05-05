@@ -99,7 +99,7 @@ type BadgerStore struct {
 	labelIdx map[uint16]map[snowflake.ID]struct{}       // labelToken → set(nodeID)
 	typeIdx  map[uint16]map[snowflake.ID]struct{}       // relTypeToken → set(relID)
 	outIdx   map[snowflake.ID]map[snowflake.ID]struct{} // startNodeID → set(relID)
-	inIdx    map[snowflake.ID]map[snowflake.ID]uint16 // endNodeID → relID → typeToken
+	inIdx    map[snowflake.ID]map[snowflake.ID]uint16   // endNodeID → relID → typeToken
 
 	// Entity caches (internal sync via entityLRU mutex).
 	nodeCache *entityLRU[*types.Node]
