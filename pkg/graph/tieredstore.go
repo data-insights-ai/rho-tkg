@@ -154,6 +154,9 @@ type TieredStore struct {
 	zstdLevel   int
 	closeCh     chan struct{} // signals idle-close goroutine to stop
 	closeOnce   sync.Once
+	closed      atomic.Bool // set under archiveMu inside Close before tearing the archive down;
+	// readers consult this from ensureRefArchive to refuse re-opening the archive after Close
+	// has already closed it (prevents an orphan re-open + leaked DB handle)
 
 	// Temporal indexes — tracked so new hot shards inherit them on rotation.
 	tempIdxMu     sync.Mutex
@@ -371,6 +374,19 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 func (ts *TieredStore) Close() error {
 	var closeErr error
 	ts.closeOnce.Do(func() {
+		// Mark the store as closed BEFORE tearing the archive down. The flag
+		// is consulted by ensureRefArchive (under archiveMu) so a concurrent
+		// reader that observed refArchive==nil cannot lazy-open a fresh
+		// archive after Close has already closed it (which would leak a DB
+		// handle). archiveMu is taken so the close-vs-open transition is a
+		// single critical section: either the open completes before close
+		// runs, or close runs first and the open returns ErrStoreClosed.
+		ts.archiveMu.Lock()
+		ts.closed.Store(true)
+		archive := ts.refArchive.Load()
+		ts.refArchive.Store(nil)
+		ts.archiveMu.Unlock()
+
 		// Stop the idle-close goroutine.
 		close(ts.closeCh)
 
@@ -390,8 +406,8 @@ func (ts *TieredStore) Close() error {
 			}
 		}
 
-		// Close reference archive if open.
-		if archive := ts.refArchive.Load(); archive != nil {
+		// Close reference archive if it was open at close time.
+		if archive != nil {
 			if err := archive.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w", err))
 			}
@@ -1004,9 +1020,16 @@ func (ts *TieredStore) openRefArchive() error {
 }
 
 // ensureRefArchive opens the archive if needed. Thread-safe via archiveMu.
+// Refuses to re-open after Close has run — `closed` is set under archiveMu,
+// so an open call that wins the lock against Close completes first; one that
+// loses sees `closed == true` and returns ErrStoreClosed instead of opening
+// a fresh archive that would never be closed.
 func (ts *TieredStore) ensureRefArchive() error {
 	ts.archiveMu.Lock()
 	defer ts.archiveMu.Unlock()
+	if ts.closed.Load() {
+		return ErrStoreClosed
+	}
 	return ts.openRefArchive()
 }
 

@@ -340,13 +340,22 @@ func (ts *TieredStore) DeleteRelationship(id snowflake.ID) error {
 	}
 
 	// Cross-shard: delete entity+out from entity shard, in/ from in shard.
+	// On failure of the second leg, restore the entity+out write so a re-read
+	// still observes the rel rather than leaving a phantom in/ entry on the
+	// end-node shard.
 	info, err := entityShard.deleteRelEntityAndOut(id)
 	if err != nil {
 		return err
 	}
 
 	inShard := endShard
-	return inShard.deleteRelIncoming(info)
+	if err := inShard.deleteRelIncoming(info); err != nil {
+		if rbErr := entityShard.putRelEntityAndOut(r); rbErr != nil {
+			return fmt.Errorf("tiered: delete cross-shard relationship in/ failed after entity/out delete: %w (rollback entity/out failed: %v)", err, rbErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
@@ -450,9 +459,13 @@ func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	// Rel entity lives on the start-node's shard. Pin the cold owner for the
-	// duration of the atomic replace+history write.
-	shard, checkin, err := ts.shardForNodeIDChecked(current.StartNodeID().SnowflakeID())
+	// Resolve by rel ID — the start node is not authoritative for the rel's
+	// home shard once the entity has been migrated (e.g., archived together
+	// with its endpoints), and the start-node-keyed lookup also skips the
+	// refArchive probe baked into shardForRelIDChecked. Pin the resolved
+	// owner for the duration of the atomic replace+history write so a cold
+	// owner cannot be closed out by closeIdleShards mid-write.
+	shard, checkin, err := ts.shardForRelIDChecked(current.InternalID().SnowflakeID())
 	if err != nil {
 		return err
 	}
