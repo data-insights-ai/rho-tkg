@@ -6,6 +6,14 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
+// Chokepoint invariant for raw snowflake.ID: this file (binary key encoding)
+// is one of a small set of files that legitimately consume raw snowflake.ID
+// values. The rest of pkg/graph flows typed (NodeID / RelID / EntityID); the
+// raw form is needed here only because keys are big-endian uint64 byte slices
+// and the snowflake bits are the canonical sort order on disk. Other Tier D
+// raw-ID files: wire.go (msgpack on-disk format), lru.go (type-agnostic
+// cache), entity_locks.go (type-agnostic lock pool).
+//
 // Key prefix tags — single-byte, non-overlapping, fixed-width keys.
 // All snowflake IDs are stored as big-endian uint64 (cast from int64) for correct
 // sort order. Tokens are stored as big-endian uint16.

@@ -531,7 +531,7 @@ for the same public interfaces so they expose algorithmic regressions that a
 against `main` with both a routine API baseline and small/large production-shaped
 benchmark suites using `benchstat`.
 
-## B30. Deleted Entity History Needs History-Aware Routing
+## B32. Deleted Entity History Needs History-Aware Routing
 
 ```
 BAD:  func GetRelHistory(id) {
@@ -565,7 +565,7 @@ history writes by snapshot ownership.
 
 ---
 
-## B31. Primary-Label Class Must Be Immutable Across Versions
+## B33. Primary-Label Class Must Be Immutable Across Versions
 
 ```
 BAD:  RemoveNodeLabel(id, primaryLabel) auto-promotes the next extra label
@@ -593,7 +593,7 @@ that can change, grep for all paths that mutate that value and add a
 guard at each one — not just at the read site that exposes the bug.
 
 **History:** Surfaced during review of the deleted-entity history routing
-fix (B30). The fix routed history writes by snapshot label class, which
+fix (B32). The fix routed history writes by snapshot label class, which
 made the first-match read fallback correct only as long as primary class
 never changes. v3.1.6's `AddNodeLabel`/`RemoveNodeLabel` plus
 `Node.RemoveLabelTokenRaw`'s auto-promotion made class change reachable.

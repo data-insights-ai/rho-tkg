@@ -7,6 +7,13 @@ import (
 // nodeWire is the msgpack wire format for Node entities.
 // All token values are stored as int (maps to msgpack integer).
 // Temporal instants are stored as int64 (Unix milliseconds).
+//
+// IDs use int64 (not types.NodeID / types.RelID / types.EntityID) by design:
+// this is the on-disk wire format. Existing Badger databases were written with
+// int64 IDs; changing the field type breaks msgpack unmarshalling of every
+// pre-existing file. The Graph layer wraps these int64 values into typed IDs
+// at the deserialization boundary (wireToNode / wireToRel). Tier D — see
+// keys.go for the chokepoint invariant.
 type nodeWire struct {
 	ID                 int64          `msgpack:"id"`
 	PrimaryLabel       int            `msgpack:"pl"`

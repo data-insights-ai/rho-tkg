@@ -31,6 +31,12 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.8
+
+**Typed entity IDs.** Public Graph API and all internal plumbing now use typed wrappers `types.NodeID` / `types.RelID` / `types.EntityID` instead of raw `snowflake.ID`. The compiler now catches NodeID/RelID/EntityID mixups that previously passed silently. Migration for downstream callers is mostly mechanical: `n.InternalID().SnowflakeID()` → `n.ID()` at typed Graph callsites. See `CHANGELOG.md` `[3.1.8]` → "Migration notes for downstream consumers" for the full upgrade guide. `InternalID()` retained as a deprecated alias for source compatibility.
+
+**TieredStore cross-shard hardening.** Seven distinct correctness fixes around cold-shard rel reachability, history fan-out, checkout pinning, refArchive race protection, and a primary-label-class invariant. Restores parity with `MemoryStore` and `BadgerStore` for tombstones after deleting reference nodes and cross-shard relationships. New shared store-contract test suite runs the same behavioural guarantees against all three Store implementations.
+
 ### Behavior change in 3.1.7
 
 `NodesByLabel(label, opts)`, `NodesByLabelAndProperty(label, key, value, opts)`, and `RelationshipsByType(typeName, opts)` now scan history when called with a temporal `QueryOpts` (`ValidAt` and/or `ValidStart`/`ValidEnd`). Previously these generic entry points routed temporal queries through store-side pushdown that consults only current indexes, so a node that had a label at the requested time but no longer carries it (or a relationship that has since been deleted) was silently missed. Callers using temporal opts will now see different — and correct — results. Non-temporal calls retain the original fast pushdown. See `CHANGELOG.md` `[3.1.7]` for details.

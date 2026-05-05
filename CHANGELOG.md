@@ -4,11 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [3.1.8] - 2026-05-05
 
-> **v3.2.0 in progress: typed entity IDs across the entire pkg/graph surface.** Hard-cut release. Public API and internal plumbing migrated from raw `snowflake.ID` to typed entity wrappers. Awaiting tag.
-
-### Changed (v3.2.0 — typed entity IDs)
+### Changed (typed entity IDs)
 
 This release pushes typed entity wrappers (`types.NodeID`, `types.RelID`, `types.EntityID`) through every public method signature, struct field, and internal storage map in `pkg/graph`. The wrappers were already public-shaped via the `SnowflakeID()` accessor; this release exports them and makes them the lingua franca of the package.
 
@@ -49,7 +47,7 @@ This release pushes typed entity wrappers (`types.NodeID`, `types.RelID`, `types
 - 17 references in chokepoint files (`keys.go` + `wire.go`) — all justified.
 - Public API surface is fully typed; no exported field, parameter, or return type uses raw `snowflake.ID` except `Graph.DecomposeID` / `DecomposeID` (deliberately type-agnostic — accepts either node or relationship IDs).
 
-#### Migration notes for downstream consumers (v3.2.0)
+#### Migration notes for downstream consumers
 
 `engram` is the only known consumer (currently pinned at `v3.1.1`). Migration steps when bumping:
 

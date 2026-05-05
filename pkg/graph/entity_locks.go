@@ -12,6 +12,12 @@ const entityLockShards = 256
 // entityLockManager provides fine-grained entity-level locking using sharded mutexes.
 // 256 shards (2KB total) balance lock contention against memory overhead.
 // Used by the Graph layer to serialize overlapping AddRelationship + DeleteNode operations.
+//
+// Type-agnostic by design: the same 256-shard pool serves both node and rel IDs
+// by hashing the snowflake bits. LockEntity / LockTwo / LockMany all take raw
+// snowflake.ID rather than a typed wrapper because the lock identity is a hash
+// of the ID's timestamp bits, not "this is a node" vs "this is a rel". A typed
+// wrapper would imply distinct lock domains; they're not. Documented Tier D.
 type entityLockManager struct {
 	shards [entityLockShards]sync.Mutex
 }
