@@ -83,6 +83,37 @@ func TestRecurrence_Monthly_NthDay(t *testing.T) {
 	}
 }
 
+func TestRecurrence_Monthly_LastDay(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency:  types.RecurrenceMonthly,
+		DayOfMonth: 0,
+		DayStart:   8 * time.Hour,
+		DayEnd:     9 * time.Hour,
+	}
+
+	from := inst(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(intervals) != 3 {
+		t.Fatalf("expected 3 month-end intervals, got %d", len(intervals))
+	}
+
+	wantStarts := []time.Time{
+		time.Date(2026, 1, 31, 8, 0, 0, 0, time.UTC),
+		time.Date(2026, 2, 28, 8, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 31, 8, 0, 0, 0, time.UTC),
+	}
+	for i, want := range wantStarts {
+		if intervals[i].Start != inst(want) {
+			t.Fatalf("interval %d start = %d, want %d", i, intervals[i].Start, inst(want))
+		}
+	}
+}
+
 // TestRecurrence_Yearly: March 4 each year.
 func TestRecurrence_Yearly(t *testing.T) {
 	p := types.RecurrencePattern{

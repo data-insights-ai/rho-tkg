@@ -136,6 +136,8 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels
 		return nil, err
 	}
 
+	tx.g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+
 	tx.mu.Lock()
 	tx.createdNodes = append(tx.createdNodes, n.InternalID().SnowflakeID())
 	tx.mu.Unlock()
@@ -158,6 +160,8 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID
 		return nil, err
 	}
 
+	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+
 	tx.mu.Lock()
 	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
 	tx.mu.Unlock()
@@ -175,6 +179,10 @@ func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.N
 		return nil, ErrTxDone
 	}
 	tx.mu.Unlock()
+
+	if len(updates) == 0 {
+		return tx.g.GetNodeWithContext(context.Background(), id)
+	}
 
 	if err := tx.snapshotNode(id); err != nil {
 		return nil, err
@@ -197,6 +205,10 @@ func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (
 		return nil, ErrTxDone
 	}
 	tx.mu.Unlock()
+
+	if len(updates) == 0 {
+		return tx.g.GetRelationshipWithContext(context.Background(), id)
+	}
 
 	if err := tx.snapshotRel(id); err != nil {
 		return nil, err
@@ -352,8 +364,12 @@ func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
 		return err
 	}
 
-	if err := tx.g.addNodeLabelInternal(id, label); err != nil {
+	mutated, err := tx.g.addNodeLabelInternal(id, label)
+	if err != nil {
 		return err
+	}
+	if !mutated {
+		return nil
 	}
 
 	// Re-lookup the token after the call — GetOrCreate may have just registered it.

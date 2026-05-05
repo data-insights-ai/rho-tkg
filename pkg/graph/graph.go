@@ -539,10 +539,10 @@ func (g *Graph) CompareAndSetProperty(id snowflake.ID, key string, expected, new
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) CompareAndSetPropertyWithContext(ctx context.Context, id snowflake.ID, key string, expected, newVal any) (bool, error) {
 	g.mu.RLock()
-	ok, err := g.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
+	ok, mutated, err := g.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
 	ep := g.events
 	g.mu.RUnlock()
-	if ok && err == nil {
+	if ok && mutated && err == nil {
 		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return ok, err
@@ -550,28 +550,28 @@ func (g *Graph) CompareAndSetPropertyWithContext(ctx context.Context, id snowfla
 
 // compareAndSetPropertyInternal is the lock-free implementation.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.ID, key string, expected, newVal any) (bool, error) {
+func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.ID, key string, expected, newVal any) (bool, bool, error) {
 	if err := checkCtx(ctx); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	// Reject reserved keys.
 	if types.IsShadowKey(key) {
-		return false, fmt.Errorf("graph: compare-and-set: %w: %q", types.ErrReservedPrefix, key)
+		return false, false, fmt.Errorf("graph: compare-and-set: %w: %q", types.ErrReservedPrefix, key)
 	}
 
 	// Pre-validate newVal if non-nil.
 	if newVal != nil {
 		if err := types.ValidatePropertyValue(newVal); err != nil {
-			return false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
+			return false, false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
 		}
 		if err := g.validatePropertyEntry(key, newVal); err != nil {
-			return false, err
+			return false, false, err
 		}
 	} else {
 		// Even for deletions, check key length.
 		if len(key) > g.validation.MaxPropertyKeyLength {
-			return false, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
+			return false, false, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), g.validation.MaxPropertyKeyLength)
 		}
 	}
 
@@ -580,12 +580,12 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 	defer g.entityLocks.UnlockEntity(id)
 
 	if err := checkCtx(ctx); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	current, err := g.store.GetNode(id)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	// --- Compare gate ---
@@ -593,18 +593,18 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 	if expected == nil {
 		// "property must not exist"
 		if found {
-			return false, nil
+			return false, false, nil
 		}
 	} else {
 		// "property must exist and match"
 		if !found || !reflect.DeepEqual(cur, expected) {
-			return false, nil
+			return false, false, nil
 		}
 	}
 
 	// --- No-op check: deleting an absent property ---
 	if newVal == nil && !found {
-		return true, nil
+		return true, false, nil
 	}
 
 	// --- Capture pre-mutation state ---
@@ -618,11 +618,11 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 	// --- Mutate ---
 	if newVal == nil {
 		if _, err := current.DeleteProperty(key); err != nil {
-			return false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
+			return false, false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
 		}
 	} else {
 		if err := current.SetProperty(key, newVal); err != nil {
-			return false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
+			return false, false, fmt.Errorf("graph: compare-and-set property %q: %w", key, err)
 		}
 	}
 
@@ -655,11 +655,11 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 
 	// Atomic replace + history.
 	if err := g.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	g.opNodeUpdates.Add(1)
-	return true, nil
+	return true, true, nil
 }
 
 // --- Version history passthrough ---
@@ -1169,10 +1169,10 @@ func (g *Graph) Stats() GraphStats {
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddNodeLabel(id snowflake.ID, label string) error {
 	g.mu.RLock()
-	err := g.addNodeLabelInternal(id, label)
+	mutated, err := g.addNodeLabelInternal(id, label)
 	ep := g.events
 	g.mu.RUnlock()
-	if err == nil {
+	if err == nil && mutated {
 		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return err
@@ -1180,10 +1180,10 @@ func (g *Graph) AddNodeLabel(id snowflake.ID, label string) error {
 
 // addNodeLabelInternal is the lock-free implementation of AddNodeLabel.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-// Returns nil (no-op) if the node already has the label.
-func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) error {
+// Returns mutated=false if the node already has the label.
+func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) (bool, error) {
 	if err := g.validateName(label); err != nil {
-		return err
+		return false, err
 	}
 
 	g.entityLocks.LockEntity(id)
@@ -1191,24 +1191,24 @@ func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) error {
 
 	current, err := g.store.GetNode(id)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Resolve or create the token only after confirming the node exists, so
 	// we don't pollute the registry for unknown IDs.
 	tok, err := g.labels.GetOrCreate(label)
 	if err != nil {
-		return fmt.Errorf("graph: add label: %w", err)
+		return false, fmt.Errorf("graph: add label: %w", err)
 	}
 
 	// Idempotent: node already carries the label — no mutation, no history.
 	if current.HasLabelTokenRaw(tok) {
-		return nil
+		return false, nil
 	}
 
 	// Enforce MaxLabelsPerNode against the post-addition count.
 	if current.LabelTokenCount()+1 > g.validation.MaxLabelsPerNode {
-		return fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, g.validation.MaxLabelsPerNode)
+		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, g.validation.MaxLabelsPerNode)
 	}
 
 	// Capture pre-mutation state for version history (before any modification).
@@ -1218,8 +1218,9 @@ func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) error {
 	copy := current.DeepCopy()
 	if !copy.AddLabelTokenRaw(tok) {
 		// Defensive: should never hit — idempotence check above already handled presence.
-		return nil
+		return false, nil
 	}
+	copy.SetVersion(prevVersion + 1)
 
 	// Advance hash chain: PrevHash = current Hash (link new version back to current).
 	prevHash := ""
@@ -1229,23 +1230,30 @@ func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) error {
 	nodeLabels := g.NodeLabels(copy)
 	hash := ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
-	copy.SetVersion(prevVersion + 1)
 
-	// Set UpdatedAt.
+	// Set transaction/update time on both sides of the version boundary.
 	now := types.Instant(time.Now().UnixMilli())
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm2 := &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm2)
+		ptm2.TxTo = now
+	} else {
+		ptm.TxTo = now
+	}
 	tm := copy.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+	tm.TxFrom = now
 
 	// Atomic: write history entry + add label index + persist updated node in one call.
 	if err := g.store.AddNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
-		return err
+		return false, err
 	}
 	g.opNodeUpdates.Add(1)
-	return nil
+	return true, nil
 }
 
 // RemoveNodeLabel removes the given label from an existing node.
@@ -1290,6 +1298,7 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 
 	copy := current.DeepCopy()
 	copy.RemoveLabelTokenRaw(tok)
+	copy.SetVersion(prevVersion + 1)
 
 	// Advance hash chain: PrevHash = current Hash (link new version back to current).
 	prevHash := ""
@@ -1299,16 +1308,23 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 	nodeLabels := g.NodeLabels(copy)
 	hash := ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
-	copy.SetVersion(prevVersion + 1)
 
-	// Set UpdatedAt.
+	// Set transaction/update time on both sides of the version boundary.
 	now := types.Instant(time.Now().UnixMilli())
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm2 := &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm2)
+		ptm2.TxTo = now
+	} else {
+		ptm.TxTo = now
+	}
 	tm := copy.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+	tm.TxFrom = now
 
 	// Atomic: write history entry + remove label index + persist updated node in one call.
 	if err := g.store.RemoveNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {

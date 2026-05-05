@@ -927,7 +927,7 @@ func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, upda
 	n, err := g.updateNodeInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
-	if err == nil {
+	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return n, err
@@ -1074,7 +1074,7 @@ func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.
 	r, err := g.updateRelationshipInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
-	if err == nil {
+	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return r, err
@@ -1230,14 +1230,28 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID,
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.importNodeWithIDInternal(ctx, id, labels, props)
+	n, err := g.importNodeWithIDInternal(ctx, id, labels, props)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityHigh})
+	}
+	return n, err
 }
 
 // importNodeWithIDInternal is the lock-free implementation of ImportNodeWithID.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
 func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1290,7 +1304,31 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, l
 
 	canonicalLabels := g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+	n.SetIntegrity(&types.NodeIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	})
+
+	txNow := nowInstant()
+	tm := n.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		n.SetTemporal(tm)
+	}
+	tm.TxFrom = txNow
+	if validFrom != 0 {
+		tm.ValidFrom = validFrom
+	}
+	if validTo != 0 {
+		tm.ValidTo = validTo
+	}
+	if createdAt != 0 {
+		tm.CreatedAt = createdAt
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -1300,6 +1338,7 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, l
 		return nil, err
 	}
 
+	g.opNodeAdds.Add(1)
 	return n, nil
 }
 
@@ -1307,14 +1346,28 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, l
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+	r, err := g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+	ep := g.events
+	g.mu.RUnlock()
+	if err == nil {
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityHigh})
+	}
+	return r, err
 }
 
 // importRelWithIDInternal is the lock-free implementation of ImportRelationshipWithID.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
 func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1367,7 +1420,38 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, ty
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+	ig := &types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
+	if startIg := startNode.Integrity(); startIg != nil {
+		ig.FromNodeHash = startIg.Hash
+	}
+	if endIg := endNode.Integrity(); endIg != nil {
+		ig.ToNodeHash = endIg.Hash
+	}
+	r.SetIntegrity(ig)
+
+	txNow := nowInstant()
+	tm := r.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		r.SetTemporal(tm)
+	}
+	tm.TxFrom = txNow
+	if validFrom != 0 {
+		tm.ValidFrom = validFrom
+	}
+	if validTo != 0 {
+		tm.ValidTo = validTo
+	}
+	if createdAt != 0 {
+		tm.CreatedAt = createdAt
+	}
 
 	if err := g.checkTemporalConstraints(r, startNode, endNode); err != nil {
 		return nil, err
@@ -1381,6 +1465,7 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, ty
 		return nil, err
 	}
 
+	g.opRelAdds.Add(1)
 	return r, nil
 }
 
@@ -1406,7 +1491,7 @@ func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.I
 	n, err := g.updateNodeInPlaceInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
-	if err == nil {
+	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return n, err
@@ -1520,7 +1605,7 @@ func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID
 	r, err := g.updateRelInPlaceInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
-	if err == nil {
+	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return r, err

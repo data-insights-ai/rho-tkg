@@ -60,7 +60,7 @@ For async delivery, use `NewAsyncEventBus(AsyncEventBusConfig{Workers, QueueSize
 
 Snapshot diff: `DiffSnapshots(t1, t2)` compares two temporal snapshots and returns a `*SnapshotDiff` with `NodesCreated`, `NodesUpdated` (as `[]NodeUpdate{Before, After}`), `NodesDeleted`, `RelsCreated`, `RelsUpdated` (as `[]RelUpdate{Before, After}`), `RelsDeleted`. Classification: entity present only at t2 → Created; present only at t1 → Deleted; present at both with a different integrity hash → Updated; same hash → Unchanged (omitted). Does not hold `g.mu.RLock` — trades strong isolation for non-blocking writes (a concurrent backdated write between the two snapshot reads may appear as a spurious Created/Deleted entry). Returns `ErrInvalidTimeRange` if t1 ≥ t2 or either is zero.
 
-Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — intersects property index with point-in-time filter. `NodesByLabelPropertyDuring(label, key, value, start, end)` — intersects property index with interval filter.
+Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — history-aware label/property point-in-time filter. `NodesByLabelPropertyDuring(label, key, value, start, end)` — history-aware label/property interval filter.
 
 Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Handles deleted entities (verifies history chain alone when current entity is gone). Returns `(true, nil)` if valid.
 

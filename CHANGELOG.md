@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **History-aware graph semantics** (`pkg/graph/integrity.go`, `pkg/graph/graph.go`, `pkg/graph/temporal.go`, `pkg/graph/context.go`, `pkg/graph/tx.go`):
+  - `VerifyNodeHashChain` now recomputes each node version with that version's own labels instead of reusing the current tip's labels, so hash-chain verification remains valid after label add/remove mutations.
+  - `AddNodeLabel` / `RemoveNodeLabel` now set `TxTo` on the previous version and `TxFrom` on the new version, and compute the new hash after the version bump.
+  - `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`, and `GetNeighborsValidAt` now resolve historical versions instead of relying only on current label/property/adjacency indexes.
+  - No-op mutations no longer publish update events for idempotent label adds, empty property updates, empty in-place updates, or successful no-op compare-and-delete operations.
+  - `ImportNodeWithID` and `ImportRelationshipWithID` now extract temporal/provenance shadow properties, populate transaction time, increment stats, and publish create events consistently with generated-ID creation paths.
+
+### Changed
+
+- **Documentation metadata alignment** (`README.md`, `AGENTS.md`, `docs/architecture.md`, `docs/api.md`): updated documented Go/version metadata to match `go.mod` and the latest changelog entry, and corrected combined temporal query docs to describe history-aware behavior.
+
+### Tests Added
+
+- `TestVerifyNodeHashChain_LabelMutations` — regression coverage for hash-chain verification after label add/remove.
+- `TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion` — verifies label point-in-time queries use historical label sets.
+- `TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion` — verifies combined label/property temporal queries use historical property values.
+- `TestGetNeighborsValidAt_UsesHistoricalRelationships` — verifies temporal neighbor traversal sees deleted historical relationships.
+- `TestLabelMutations_UpdateTransactionTimeBounds` — verifies label mutations update bitemporal transaction bounds.
+- `TestNoOpMutations_DoNotPublishUpdateEvents` — verifies no-op mutation paths do not publish update events.
+- `TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats` / `TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats` — verifies import-by-ID public methods match creation semantics for metadata, stats, and events.
+- `TestGraphTx_PropertyConvenienceMethods`, store-level label-add tests, `TestDocsMetadataMatchesSourceOfTruth`, and `TestRecurrence_Monthly_LastDay` — close direct coverage gaps and prevent docs/version drift.
+
 ## [3.1.6] - 2026-04-10
 
 ### Added

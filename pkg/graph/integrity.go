@@ -44,14 +44,6 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 		chain = append(chain, current)
 	}
 
-	// Extract labels from the best available source: current entity if alive,
-	// otherwise the last history entry (tombstone preserves labels).
-	labelsSource := current
-	if labelsSource == nil {
-		labelsSource = chain[len(chain)-1]
-	}
-	labels := g.NodeLabels(labelsSource)
-
 	for i, entry := range chain {
 		ig := entry.Integrity()
 		if ig == nil {
@@ -77,6 +69,7 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 		// Hash recomputation below still verifies content integrity.
 
 		// Recompute hash and compare with stored.
+		labels := g.NodeLabels(entry)
 		computed := ComputeNodeHash(entry, labels)
 		if ig.Hash != computed {
 			return false, nil
@@ -205,7 +198,7 @@ func ComputeRelHash(r *types.Relationship, typeName string) string {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 
-	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID()))    // #nosec G115 — snowflake IDs use 63 bits
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, r.Version())
 	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName))) // #nosec G115 — type name bounded by MaxNameLength (256)
 	buf = append(buf, typeName...)

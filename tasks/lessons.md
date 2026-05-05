@@ -430,6 +430,29 @@ Event handlers may call Graph read methods — publishing must happen after `g.m
 
 **History:** Found in v3.0.59 external audit. Rollback left EventBus subscribers inconsistent.
 
+## B30. Versioned Metadata Must Be Verified Per Version
+
+```
+BAD:  labels := g.NodeLabels(current)
+      for _, entry := range chain {
+          computed := ComputeNodeHash(entry, labels) // wrong after label mutation
+      }
+
+GOOD: for _, entry := range chain {
+          labels := g.NodeLabels(entry)
+          computed := ComputeNodeHash(entry, labels)
+      }
+```
+
+Hash verification, temporal filters, and transaction-time bounds must use the
+metadata that belonged to the specific version being evaluated. Never reuse the
+current tip's labels, properties, adjacency, or TxFrom/TxTo when answering a
+historical question.
+
+**Rule:** Any mutation that changes labels, properties, or adjacency needs a
+regression test that queries/verifies both the old version and the new current
+version.
+
 ---
 
 # Tier C — Reference

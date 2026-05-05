@@ -17,7 +17,7 @@ For the full product with Cypher queries, Vadalog reasoning, and an HTTP server,
 gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3
 ```
 
-**Go:** 1.26.0
+**Go:** 1.26.1
 **License:** Apache-2.0
 **Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence)
 
