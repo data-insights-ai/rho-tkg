@@ -1380,6 +1380,84 @@ func containsRelIDSlice(ids []snowflake.ID, want snowflake.ID) bool {
 	return false
 }
 
+func containsNodeIDValue(ids []types.NodeID, want types.NodeID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRelIDValue(ids []types.RelID, want types.RelID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNodeEntity(nodes []*types.Node, want types.NodeID) bool {
+	for _, n := range nodes {
+		if n.InternalID() == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRelEntity(rels []*types.Relationship, want types.RelID) bool {
+	for _, r := range rels {
+		if r.InternalID() == want {
+			return true
+		}
+	}
+	return false
+}
+
+func mustArchivedRelationshipFixture(t *testing.T) (*TieredStore, types.RelID, uint16) {
+	t.Helper()
+
+	ts := newTestTieredStore(t)
+	g, err := New(Config{
+		SnowflakeNodeID: 0,
+		Store:           ts,
+		Validation:      ValidationLimits{AllowSelfLoops: true},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	node, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	rel, err := g.AddRelationship("KNOWS", node, node, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	relID := rel.InternalID()
+
+	if err := ts.ArchiveNode(node.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	if !archive.hasRelID(relID.SnowflakeID()) {
+		t.Fatal("setup: ArchiveNode did not move self-loop relationship into refArchive")
+	}
+
+	knowsTok, ok := g.LookupRelType("KNOWS")
+	if !ok {
+		t.Fatal("KNOWS reltype not registered")
+	}
+	return ts, relID, knowsTok
+}
+
 // Close() must wait for in-flight checkouts to drain before closing event
 // shard stores. Badger v4 WriteBatch.Flush blocks forever on a closed DB;
 // closing while a long-running RunRepair / VerifyShard still holds a
@@ -1970,5 +2048,204 @@ func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 	}
 	if got := ts.archiveActiveReqs.Load(); got != 1 {
 		t.Fatalf("archiveActiveReqs after archive resolve = %d, want 1 (archive not pinned)", got)
+	}
+}
+
+func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	t.Run("AllNodeIDs default includes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(default): %v", err)
+		}
+		if !containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(default) missed archived node; GetNode/AllNodes see it")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthAll includes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthAll): %v", err)
+		}
+		if !containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthAll) missed archived node")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthHot excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthHot): %v", err)
+		}
+		if containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthHot) returned archived node")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthWarm excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthWarm): %v", err)
+		}
+		if containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthWarm) returned archived node")
+		}
+	})
+
+	relTS, relID, _ := mustArchivedRelationshipFixture(t)
+
+	t.Run("AllRelIDs default includes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllRelIDs(default): %v", err)
+		}
+		if !containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(default) missed archived relationship; GetRelationship can still resolve it")
+		}
+	})
+
+	t.Run("AllRelIDs DepthAll includes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllRelIDs(DepthAll): %v", err)
+		}
+		if !containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(DepthAll) missed archived relationship")
+		}
+	})
+
+	t.Run("AllRelIDs DepthHot excludes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllRelIDs(DepthHot): %v", err)
+		}
+		if containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(DepthHot) returned archived relationship")
+		}
+	})
+}
+
+func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, map[string]any{"status": "open"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	t.Run("NodesByLabel default includes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabel(default): %v", err)
+		}
+		if !containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabel(default) missed archived node")
+		}
+	})
+
+	t.Run("NodesByLabel DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("NodesByLabel(DepthHot): %v", err)
+		}
+		if containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabel(DepthHot) returned archived node")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty default includes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty(default): %v", err)
+		}
+		if !containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabelAndProperty(default) missed archived node")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty(DepthWarm): %v", err)
+		}
+		if containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabelAndProperty(DepthWarm) returned archived node")
+		}
+	})
+
+	relTS, relID, knowsTok := mustArchivedRelationshipFixture(t)
+
+	t.Run("RelationshipsByType default includes archive", func(t *testing.T) {
+		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("RelationshipsByType(default): %v", err)
+		}
+		if !containsRelEntity(rels, relID) {
+			t.Fatal("RelationshipsByType(default) missed archived relationship")
+		}
+	})
+
+	t.Run("RelationshipsByType DepthHot excludes archive", func(t *testing.T) {
+		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("RelationshipsByType(DepthHot): %v", err)
+		}
+		if containsRelEntity(rels, relID) {
+			t.Fatal("RelationshipsByType(DepthHot) returned archived relationship")
+		}
+	})
+}
+
+func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+
+	sawArchive := false
+	err = ts.forEachHistoryShard(ts.refShard, func(store *BadgerStore) (bool, error) {
+		if store != archive {
+			return false, nil
+		}
+		sawArchive = true
+		if got := ts.archiveActiveReqs.Load(); got == 0 {
+			t.Fatalf("archiveActiveReqs during history fallback = %d, want archive pinned", got)
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("forEachHistoryShard: %v", err)
+	}
+	if !sawArchive {
+		t.Fatal("forEachHistoryShard did not visit refArchive")
 	}
 }
