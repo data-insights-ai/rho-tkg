@@ -339,6 +339,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	result := &BatchResult{}
 
 	// 1. Create nodes via batch store method.
+	//
+	// Track failed node IDs so step 2 can short-circuit rels referencing
+	// them with a clear "endpoint create failed" error rather than letting
+	// the rel write surface a confusing "node not found" downstream.
+	var failedNodeIDs map[snowflake.ID]struct{}
 	if len(b.nodes) > 0 {
 		// Stamp TxFrom at execute time so the recorded transaction time
 		// reflects when the batch actually commits, not when AddNode was
@@ -355,12 +360,15 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			nodes[i] = pn.node
 		}
 		if err := b.g.store.PutNodesBatch(nodes); err != nil {
-			// All node creates failed.
+			// PutNodesBatch is all-or-nothing — every queued node failed.
+			failedNodeIDs = make(map[snowflake.ID]struct{}, len(b.nodes))
 			for _, pn := range b.nodes {
+				id := pn.node.InternalID().SnowflakeID()
+				failedNodeIDs[id] = struct{}{}
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
-					ID:  pn.node.InternalID().SnowflakeID(),
+					ID:  id,
 					Err: err,
 				})
 			}
@@ -380,6 +388,30 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// AddRelationship would let an intervening UpdateNode invalidate them
 	// before commit.
 	for _, pr := range b.rels {
+		// Short-circuit when a queued endpoint failed in step 1: surface a
+		// clear dependency error rather than letting PutRelationship report
+		// a generic "endpoint not found" that hides the real cause.
+		if failedNodeIDs != nil {
+			if _, badStart := failedNodeIDs[pr.startID]; badStart {
+				result.Failed++
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddRelationship",
+					ID:  pr.rel.InternalID().SnowflakeID(),
+					Err: fmt.Errorf("graph: batch rel skipped — start node %d failed to create in this batch", pr.startID),
+				})
+				continue
+			}
+			if _, badEnd := failedNodeIDs[pr.endID]; badEnd {
+				result.Failed++
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddRelationship",
+					ID:  pr.rel.InternalID().SnowflakeID(),
+					Err: fmt.Errorf("graph: batch rel skipped — end node %d failed to create in this batch", pr.endID),
+				})
+				continue
+			}
+		}
+
 		b.g.entityLocks.LockTwo(pr.startID, pr.endID)
 
 		// Self-loop fast path: a single GetNode covers both endpoints.

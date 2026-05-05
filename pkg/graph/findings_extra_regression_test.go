@@ -15,6 +15,7 @@ package graph
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -450,5 +451,75 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	}
 	if rIg.FromNodeHash != expectedFromHash {
 		t.Fatalf("batch rel FromNodeHash = %q, want post-update hash %q (queue-time capture would record the pre-update hash)", rIg.FromNodeHash, expectedFromHash)
+	}
+}
+
+// failPutNodesBatchStore wraps a Store and fails PutNodesBatch with a fixed
+// error so the batch can exercise its node-failure short-circuit on the rel
+// step. Other methods delegate verbatim.
+type failPutNodesBatchStore struct {
+	Store
+	err error
+}
+
+func (s *failPutNodesBatchStore) PutNodesBatch(nodes []*types.Node) error {
+	return s.err
+}
+
+// When PutNodesBatch fails, every queued node fails. Rels referencing those
+// nodes must report a clear "endpoint create failed" diagnostic instead of
+// letting PutRelationship surface a generic "node not found".
+func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
+	injected := errors.New("injected PutNodesBatch failure")
+	store := &failPutNodesBatchStore{Store: NewMemoryStore(), err: injected}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New graph: %v", err)
+	}
+
+	bb := NewBatchBuilder(g)
+	a, err := bb.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("batch AddNode A: %v", err)
+	}
+	b, err := bb.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("batch AddNode B: %v", err)
+	}
+	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {
+		t.Fatalf("batch AddRelationship: %v", err)
+	}
+
+	result, err := bb.Execute()
+	if err != nil {
+		t.Fatalf("batch Execute: %v", err)
+	}
+
+	// Two node failures + one rel failure; nothing created.
+	if result.Created != 0 {
+		t.Errorf("Created = %d, want 0", result.Created)
+	}
+	if result.Failed != 3 {
+		t.Errorf("Failed = %d, want 3 (2 nodes + 1 rel skip)", result.Failed)
+	}
+
+	var relErr error
+	for _, e := range result.Errors {
+		if e.Op == "AddRelationship" {
+			relErr = e.Err
+			break
+		}
+	}
+	if relErr == nil {
+		t.Fatal("expected AddRelationship error in result.Errors, got none")
+	}
+	// The rel should NOT report the raw injected error — that would mean we
+	// let it through to PutRelationship and lost the dependency context.
+	if errors.Is(relErr, injected) {
+		t.Fatalf("rel error = %v, want a 'skipped — endpoint failed' diagnostic, not the raw PutNodesBatch error", relErr)
+	}
+	msg := relErr.Error()
+	if !strings.Contains(msg, "skipped") || !strings.Contains(msg, "failed to create in this batch") {
+		t.Fatalf("rel error = %q, want a clear 'skipped — endpoint failed' message", msg)
 	}
 }
