@@ -132,13 +132,17 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
-	if err := g.CreatePropertyIndex("Person", "status"); err != nil {
-		t.Fatalf("CreatePropertyIndex: %v", err)
-	}
-
+	// Graph.CreatePropertyIndex is a no-op when the label isn't registered
+	// yet (graph.go: Lookup→nil). Add a node first so the "Person" token
+	// exists in the registry; otherwise the index is never installed and
+	// the test verifies dispatch routing only, not actual index use.
 	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
+	}
+
+	if err := g.CreatePropertyIndex("Person", "status"); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
 	}
 	id := n.InternalID().SnowflakeID()
 	queryTime := g.nodeValidFrom(n)
