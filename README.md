@@ -65,6 +65,9 @@ make test           # unit tests (short mode, no cache)
 make test-v         # verbose tests
 make test-race      # race detector enabled
 make test-integration  # integration tests (long-running)
+make bench-graph-baseline    # repeatable graph API benchmark baseline
+make bench-graph-production-small  # production-shaped graph benchmark suite
+make bench-graph-production-large  # large stress graph benchmark suite
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
 make ci             # full pipeline: fmt-check + vet + build + test-race + security + vulncheck
