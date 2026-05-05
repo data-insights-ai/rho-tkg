@@ -2249,3 +2249,182 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 		t.Fatal("forEachHistoryShard did not visit refArchive")
 	}
 }
+
+// TestTieredStore_TemporalIndexCreate_CoversArchive verifies
+// CreateTemporalIndex installs the index on refArchive too — otherwise an
+// archived reference node is silently absent from the temporal index even
+// though it remains GetNode-addressable. Also covers DropTemporalIndex
+// reaching the archive (orphan index files would otherwise persist).
+func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	if err := ts.CreateTemporalIndex(caseTok); err != nil {
+		t.Fatalf("CreateTemporalIndex: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.temporalIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if !ok {
+		t.Fatal("CreateTemporalIndex did not install index on refArchive; archived reference nodes will silently fall out of the temporal index")
+	}
+
+	if err := ts.DropTemporalIndex(caseTok); err != nil {
+		t.Fatalf("DropTemporalIndex: %v", err)
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.temporalIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if ok {
+		t.Fatal("DropTemporalIndex left orphan temporal index on refArchive")
+	}
+}
+
+// TestTieredStore_ResolveShardStore_PinsArchive verifies that
+// resolveShardStore("archive") increments archiveActiveReqs and returns
+// a real (non-noop) checkin. Without the pin, a long-running admin
+// operation like VerifyShard("archive") races a concurrent Close: Close
+// drains archiveActiveReqs (sees zero), proceeds to archive.Close(),
+// and the verifier hits Badger v4's Flush-on-closed-DB hang.
+func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	before := ts.archiveActiveReqs.Load()
+	store, release, err := ts.resolveShardStore("archive")
+	if err != nil {
+		t.Fatalf("resolveShardStore(archive): %v", err)
+	}
+	if store == nil {
+		t.Fatal("resolveShardStore(archive) returned nil store")
+	}
+	during := ts.archiveActiveReqs.Load()
+	if during != before+1 {
+		t.Fatalf("archiveActiveReqs = %d during resolve, want %d (archive not pinned — Close race window)", during, before+1)
+	}
+	release()
+	after := ts.archiveActiveReqs.Load()
+	if after != before {
+		t.Fatalf("archiveActiveReqs = %d after release, want %d (release didn't drop the pin)", after, before)
+	}
+}
+
+// TestTieredStore_FindRelInAnyShardStore_ProbesArchive verifies that
+// the helper used by RunRepair Phase 1 to determine "does this rel
+// exist anywhere?" probes refArchive. Pre-fix, an archived rel looked
+// "missing everywhere" so a real in/ entry on another shard pointing
+// to it was treated as orphaned and DELETED — silent data loss.
+func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
+	ts, relID, _ := mustArchivedRelationshipFixture(t)
+
+	owner := ts.findRelInAnyShardStore(relID.SnowflakeID())
+	if owner == nil {
+		t.Fatal("findRelInAnyShardStore returned nil for archived rel; Phase 1 of RunRepair will treat its in/ entries as orphaned and delete them (data loss)")
+	}
+	if owner != ts.refArchive.Load() {
+		t.Fatalf("findRelInAnyShardStore returned wrong store; want refArchive, got %p (refShard=%p)", owner, ts.refShard)
+	}
+}
+
+// TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive verifies
+// the admin-side store enumeration used by RunRepair / repair scans
+// includes refArchive. Otherwise the rel-IDs and in/ entries on the
+// archive are entirely invisible to the repair scanner.
+func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+
+	stores, release, err := ts.allShardStoresWithLazyOpen()
+	if err != nil {
+		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
+	}
+	defer release()
+
+	saw := false
+	for _, ns := range stores {
+		if ns.store == archive {
+			saw = true
+			break
+		}
+	}
+	if !saw {
+		t.Fatal("allShardStoresWithLazyOpen did not include refArchive; RunRepair / repair scanners cannot inspect archived entities")
+	}
+}
+
+// TestTieredStore_HighFrequencyIndexCreate_CoversArchive — same gap as
+// the temporal index test above, for high-frequency time-bucketed indexes.
+func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
+		t.Fatalf("CreateHighFrequencyIndex: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.hfIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if !ok {
+		t.Fatal("CreateHighFrequencyIndex did not install HFI on refArchive")
+	}
+
+	if err := ts.DropHighFrequencyIndex(caseTok); err != nil {
+		t.Fatalf("DropHighFrequencyIndex: %v", err)
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.hfIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if ok {
+		t.Fatal("DropHighFrequencyIndex left orphan HFI on refArchive")
+	}
+}

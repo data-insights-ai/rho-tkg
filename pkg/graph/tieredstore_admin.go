@@ -63,11 +63,15 @@ func (ts *TieredStore) ListShards() []ShardInfo {
 	}
 	infos = append(infos, refInfo)
 
-	// Archive shard (if open or in catalog).
-	if archive := ts.refArchive.Load(); archive != nil {
+	// Archive shard (if open or in catalog). Pin via checkoutArchive so a
+	// concurrent Close cannot free the handle between Load and the
+	// NodeCount/RelationshipCount calls — see resolveShardStore("archive").
+	archive, archiveCheckin, _ := ts.checkoutArchive()
+	if archive != nil {
 		archiveEntry, _ := ts.catalog.GetShard("archive")
 		archNodes, _ := archive.NodeCount()
 		archRels, _ := archive.RelationshipCount()
+		archiveCheckin()
 		archiveInfo := ShardInfo{
 			Name:     "archive",
 			Kind:     ShardArchive,
@@ -120,10 +124,12 @@ func (ts *TieredStore) RebuildCatalog() error {
 	refRels, _ := ts.refShard.RelationshipCount()
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
-	// Update archive if open.
-	if archive := ts.refArchive.Load(); archive != nil {
+	// Update archive if open. Pin via checkoutArchive — see ListShards.
+	archive, archiveCheckin, _ := ts.checkoutArchive()
+	if archive != nil {
 		archNodes, _ := archive.NodeCount()
 		archRels, _ := archive.RelationshipCount()
+		archiveCheckin()
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
@@ -225,24 +231,26 @@ func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, e
 
 // resolveShardStore returns the BadgerStore for a named shard along with a
 // release function that the caller MUST invoke (typically via defer) to
-// balance the activeReqs increment taken on event shards. For
-// reference/archive shards the release is a no-op since those stores are
-// never closed by closeIdleShards. Cold event shards are pinned via
-// checkoutStore so they cannot be race-closed while the admin caller is
-// still using the returned pointer.
+// balance the activeReqs/archiveActiveReqs increment. refShard is never
+// closed by closeIdleShards or Close so its release is a no-op. refArchive
+// IS closed by Close (after draining archiveActiveReqs), so it must be
+// pinned via checkoutArchive — otherwise a long-running admin op like
+// VerifyShard("archive") races Close and hits Badger v4's Flush-on-closed-DB
+// hang. Cold event shards are pinned via checkoutStore for the same reason.
 func (ts *TieredStore) resolveShardStore(name string) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if name == "reference" {
 		return ts.refShard, noop, nil
 	}
 	if name == "archive" {
-		if archive := ts.refArchive.Load(); archive != nil {
-			return archive, noop, nil
-		}
-		if err := ts.ensureRefArchive(); err != nil {
+		archive, archiveCheckin, err := ts.checkoutArchive()
+		if err != nil {
 			return nil, noop, err
 		}
-		return ts.refArchive.Load(), noop, nil
+		if archive == nil {
+			return nil, noop, fmt.Errorf("graph: shard %q not found (archive does not exist)", name)
+		}
+		return archive, archiveCheckin, nil
 	}
 
 	ts.mu.RLock()
@@ -275,6 +283,20 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 	var stores []namedStore
 	stores = append(stores, namedStore{name: "reference", store: ts.refShard})
 
+	// Pin refArchive (if open / lazy-openable) so a concurrent Close cannot
+	// free the handle mid-iteration. Missing the archive here makes
+	// RunRepair scanners blind to archive-resident entities — and Phase 1
+	// then deletes their cross-shard in/ entries as "orphans".
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, func() {}, archiveErr
+	}
+	if archive != nil {
+		stores = append(stores, namedStore{name: "archive", store: archive})
+	} else {
+		archiveCheckin = func() {}
+	}
+
 	ts.mu.RLock()
 	eventShards := make([]*eventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
@@ -284,6 +306,7 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 
 	checkedOut := make([]*eventShard, 0, len(eventShards))
 	releaseAll := func() {
+		archiveCheckin()
 		for _, es := range checkedOut {
 			es.checkinStore()
 		}
@@ -302,9 +325,15 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 }
 
 // findRelInAnyShardStore locates which BadgerStore owns a relationship entity.
+// Probes refShard, refArchive (if open), and all currently open event shards.
+// Missing the archive probe causes RunRepair Phase 1 to treat archived rels'
+// in/ entries on other shards as orphaned and delete them — silent data loss.
 func (ts *TieredStore) findRelInAnyShardStore(relID snowflake.ID) *BadgerStore {
 	if ts.refShard.hasRelID(relID) {
 		return ts.refShard
+	}
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasRelID(relID) {
+		return archive
 	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()

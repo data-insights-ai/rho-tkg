@@ -854,8 +854,12 @@ func (ts *TieredStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 // rotation will also inherit the index.
 func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	for _, shard := range shards {
 		if err := shard.CreateTemporalIndex(labelToken); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
@@ -883,8 +887,12 @@ func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
 // from all shards.
 func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	var lastErr error
 	found := false
@@ -925,8 +933,12 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 // Returns ErrTemporalIndexExists if any temporal index already exists for this label.
 func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	for _, shard := range shards {
 		if err := shard.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
@@ -940,8 +952,12 @@ func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize ti
 // from all shards. Returns ErrTemporalIndexNotFound if no index exists on any shard.
 func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	var lastErr error
 	found := false
@@ -1054,17 +1070,33 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	return result, nil
 }
 
-// allActiveShards returns all currently open BadgerStores (refShard + event shards).
-// Caller must hold ts.mu.RLock or ts.mu.Lock.
-func (ts *TieredStore) allActiveShards() []*BadgerStore {
-	shards := make([]*BadgerStore, 0, 1+len(ts.eventShards))
+// allActiveShards returns all currently open BadgerStores (refShard +
+// refArchive + open event shards), and a release function the caller MUST
+// invoke when done — it drops the refArchive pin obtained via
+// checkoutArchive. Caller must hold ts.mu.RLock or ts.mu.Lock for the
+// event-shard snapshot.
+//
+// refArchive is included whenever it is open (lazy-opens on first
+// archived entity). Excluding it would silently skip archived reference
+// entities from index/admin operations even though the archive holds
+// indexed reference data with the same shape as refShard.
+func (ts *TieredStore) allActiveShards() ([]*BadgerStore, func(), error) {
+	shards := make([]*BadgerStore, 0, 2+len(ts.eventShards))
 	shards = append(shards, ts.refShard)
 	for _, es := range ts.eventShards {
 		if es.store != nil {
 			shards = append(shards, es.store)
 		}
 	}
-	return shards
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, nil, archiveErr
+	}
+	if archive != nil {
+		shards = append(shards, archive)
+		return shards, archiveCheckin, nil
+	}
+	return shards, func() {}, nil
 }
 
 // --- Reference archive ---

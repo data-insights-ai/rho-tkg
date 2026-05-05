@@ -542,10 +542,20 @@ func (ts *TieredStore) Clear() error {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}
-	if archive := ts.refArchive.Load(); archive != nil {
+	// Pin via checkoutArchive — see resolveShardStore("archive") doc.
+	// A raw refArchive.Load() races Close, which drains archiveActiveReqs
+	// (sees 0) and proceeds to archive.Close() while Clear is still
+	// touching the DB → Badger v4 Flush-on-closed-DB hang.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
 		if err := archive.Clear(); err != nil {
+			archiveCheckin()
 			return fmt.Errorf("graph: clear ref archive: %w", err)
 		}
+		archiveCheckin()
 	}
 	return nil
 }
