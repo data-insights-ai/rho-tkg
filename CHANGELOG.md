@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.9] - 2026-05-05
+
+### Added (out-of-tree extension points — MR !1)
+
+- **`graph.IndexProvider` interface** (`pkg/graph/index_provider.go`): plugin contract for auxiliary indexes that live outside Store's built-in index types (property, temporal, high-frequency, vector). Providers register on the Graph, receive lifecycle events through the existing `EventBus`, and own their persistence and query routing. Designed for tkgd's spatial R-tree.
+  - `Graph.RegisterIndexProvider(p IndexProvider) error` — auto-creates a synchronous `EventBus` if none is attached; rejects `AsyncEventBus` (providers need the sync `Subscribe` API).
+  - `Graph.UnregisterIndexProvider(name string) error` — detaches and calls `Close`.
+  - `Graph.IndexProviders() []string` — lexicographic list for admin / snapshot tests.
+  - `Graph.Close()` closes all registered providers before the store; errors joined.
+  - 3 new sentinel errors: `ErrIndexProviderExists`, `ErrIndexProviderNotFound`, `ErrIndexProviderEmptyName`.
+- **`types.HashableValue` interface** (`pkg/types/property_registry.go`): contract that lets external packages register custom property struct types whose values participate in node/relationship integrity hashing. Values that implement `HashableValue` and whose type is registered via `RegisterPropertyStructType` are accepted by `PropertySlice.Set` (previously rejected as unsupported).
+  - `types.RegisterPropertyStructType(v any)` — declares that values of `v`'s type (and pointer-to-that-type) are valid property values. Idempotent. Both value and pointer forms accepted.
+  - `types.RegisteredPropertyStructTypes() []string` — admin / diagnostic listing.
+  - `pkg/graph/integrity.go appendPropertyValue` now dispatches custom types via `HashableValue.HashBytes()` instead of panicking.
+  - **HashableValue is treated as a wire format** — output bytes feed the hash chain; once written, you cannot change the encoding without breaking every existing chain that contains the value. Doc comment in `property_registry.go` spells out the determinism / stability requirements.
+
+### Fixed (MR !1)
+
+- **TOCTOU race in `Graph.RegisterIndexProvider`** (`pkg/graph/index_provider.go`): the original implementation unlocked `g.mu` between the duplicate-name check and the entry insertion, allowing concurrent goroutines registering the same `Name()` to all pass the dup check, all subscribe to the bus, and overwrite each other's map entries — leaving N-1 orphaned subscriptions whose unsubscribe closures were lost. Fixed by holding `g.mu` through the entire critical section (dup check → auto-bus creation → type assertion → `Subscribe` → entry insertion). `EventBus.Subscribe` is non-reentrant w.r.t. graph mutations, so holding the lock through it is deadlock-safe.
+- **Nil property values in hash computation** (`pkg/graph/integrity.go`): `appendPropertyValue` previously panicked in its default switch arm when called with `v == nil`. Common case from loaders that map SQL NULL to Go nil. Now nil hashes to its type tag alone (deterministic, stable).
+
+### Changed (MR !1)
+
+- **`PropertySlice.Set` accepts registered struct/pointer types** (`pkg/types/propertyslice.go`): `reflect.Ptr` and `reflect.Struct` previously rejected wholesale; now accepted when the type has been registered via `RegisterPropertyStructType`. Backwards-compatible: unregistered structs still rejected with `ErrUnsupportedValueType`.
+- **`graph.IndexProvider.OnEvent` doc comment** clarifies that the `Event.EntityID` is `types.EntityID` and lookups should go through `g.GetNode(types.NodeID(ev.EntityID))` or `g.GetRelationship(types.RelID(ev.EntityID))` (corrects a stale doc reference to non-existent `g.Node` / `g.Relationship` methods).
+
+### Tests Added (MR !1)
+
+- **IndexProvider regression suite** (`pkg/graph/index_provider_test.go`): 12 tests covering Register/Unregister, duplicate/empty/nil name rejection, event fan-out, auto-bus-creation, Close propagation from `Graph.Close`, error joining, async-bus incompatibility, and a concurrent-registration race-safety test that pre-fix code would have failed (50 goroutines register the same `Name()`; exactly 1 succeeds, exactly 1 receives events).
+- **Property-registry suite** (`pkg/types/property_registry_test.go`): 7 tests covering value/pointer registration, registering pointer also accepts value, unregistered rejection, nil-pointer rejection, idempotent re-registration, lexicographic listing.
+
 ## [3.1.8] - 2026-05-05
 
 ### Changed (typed entity IDs)

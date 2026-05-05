@@ -152,7 +152,16 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 		}
 		return nil
 
-	// Everything else (Ptr, Struct, Array, Chan, Func, UnsafePointer, etc.) is rejected.
+	// Pointer and Struct are accepted if the type has been registered via
+	// RegisterPropertyStructType (e.g. for spatial geometry types). This is
+	// the opt-in extension point; unregistered structs/pointers are rejected.
+	case reflect.Ptr, reflect.Struct:
+		if isRegisteredPropertyStructType(rv) {
+			return nil
+		}
+		return ErrUnsupportedValueType
+
+	// Everything else (Array, Chan, Func, UnsafePointer, etc.) is rejected.
 	default:
 		return ErrUnsupportedValueType
 	}

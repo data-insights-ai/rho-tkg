@@ -31,6 +31,12 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.9
+
+**`IndexProvider` extension point.** Out-of-tree indexes can now plug into the graph through a small interface (`Name()`, `OnEvent(ev, g)`, `Close()`). Providers register via `g.RegisterIndexProvider`, receive lifecycle events through the sync `EventBus`, and own their persistence + query routing. First consumer is tkgd's spatial R-tree.
+
+**`HashableValue` interface.** Custom property struct types can now participate in node/relationship integrity hashing. Register the type via `types.RegisterPropertyStructType`; implement `HashableValue.HashBytes() []byte` for a deterministic binary representation. Treat `HashBytes` like a wire format — once shipped, the encoding is locked because every existing hash chain depends on it.
+
 ### What's new in 3.1.8
 
 **Typed entity IDs.** Public Graph API and all internal plumbing now use typed wrappers `types.NodeID` / `types.RelID` / `types.EntityID` instead of raw `snowflake.ID`. The compiler now catches NodeID/RelID/EntityID mixups that previously passed silently. Migration for downstream callers is mostly mechanical: `n.InternalID().SnowflakeID()` → `n.ID()` at typed Graph callsites. See `CHANGELOG.md` `[3.1.8]` → "Migration notes for downstream consumers" for the full upgrade guide. `InternalID()` retained as a deprecated alias for source compatibility.

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -234,6 +235,13 @@ func appendProperties(buf []byte, props types.PropertySlice) []byte {
 func appendPropertyValue(buf []byte, v any) []byte {
 	buf = append(buf, propertyTypeTag(v))
 
+	// Nil properties hash to their type tag alone. Common case from loaders
+	// that map SQL NULL to Go nil — without this branch, ComputeNodeHash
+	// panics in the default case below.
+	if v == nil {
+		return buf
+	}
+
 	switch val := v.(type) {
 	case bool:
 		if val {
@@ -341,7 +349,17 @@ func appendPropertyValue(buf []byte, v any) []byte {
 			buf = append(buf, val[k]...)
 		}
 	default:
-		panic("graph: appendPropertyValue: unreachable type in hash computation")
+		// Custom property types (e.g. pkg/spatial Point/Polygon/MultiPolygon)
+		// may participate in hashing by implementing types.HashableValue. The
+		// type must also be registered via types.RegisterPropertyStructType so
+		// PropertySlice.Set accepts it as a property value.
+		if h, ok := v.(types.HashableValue); ok {
+			hb := h.HashBytes()
+			buf = binary.BigEndian.AppendUint32(buf, uint32(len(hb))) // #nosec G115
+			buf = append(buf, hb...)
+			return buf
+		}
+		panic(fmt.Sprintf("graph: appendPropertyValue: unsupported type %T (value does not implement types.HashableValue)", v))
 	}
 	return buf
 }
