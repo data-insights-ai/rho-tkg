@@ -511,10 +511,19 @@ func (g *Graph) forEachKnownRelID(fn func(snowflake.ID) error) error {
 	return nil
 }
 
-// hasTemporalFilter reports whether opts carries a ValidAt or ValidStart/ValidEnd
-// filter that requires history-aware resolution.
+// hasTemporalFilter reports whether opts carries a temporal filter that
+// requires history-aware resolution. Matches the Store-level QueryOpts
+// contract: ValidStart/ValidEnd form an interval filter ONLY when both are
+// set; a single one-sided bound is treated as "no filter" so the call falls
+// through to the non-temporal fast path. Without this guard the interval
+// predicate `vStart < end && (vEnd == 0 || vEnd > start)` collapses
+// (e.g. with end == 0) and rejects every entity, regressing
+// AllNodes(QueryOpts{ValidStart: t}) and similar one-sided callers.
 func (opts QueryOpts) hasTemporalFilter() bool {
-	return opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0
+	if opts.ValidAt != 0 {
+		return true
+	}
+	return opts.ValidStart != 0 && opts.ValidEnd != 0
 }
 
 // findNodeVersionForOpts returns a node version that satisfies pred under the
