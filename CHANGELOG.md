@@ -35,6 +35,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **IndexProvider regression suite** (`pkg/graph/index_provider_test.go`): 12 tests covering Register/Unregister, duplicate/empty/nil name rejection, event fan-out, auto-bus-creation, Close propagation from `Graph.Close`, error joining, async-bus incompatibility, and a concurrent-registration race-safety test that pre-fix code would have failed (50 goroutines register the same `Name()`; exactly 1 succeeds, exactly 1 receives events).
 - **Property-registry suite** (`pkg/types/property_registry_test.go`): 7 tests covering value/pointer registration, registering pointer also accepts value, unregistered rejection, nil-pointer rejection, idempotent re-registration, lexicographic listing.
 
+### Documentation (post-v3.1.8 polish)
+
+- **`pkg/types/temporal.go`**: explicit `EntityID` zero-value semantics — `0` is the universal sentinel for "unset" across `Event.EntityID`, `BatchError.ID`, `QueryOpts.After`, and `TemporalMetadata.baseEntityID`. Go's untyped-constant rule keeps `if id == 0` and `if opts.After != 0` working unchanged.
+- **`CLAUDE.md` TieredStore section**: added "Primary-label class is immutable" rule documenting that the `ErrPrimaryLabelClassMutation` guard is enforced at the `TieredStore` Store-impl boundary only — `MemoryStore` and `BadgerStore` are single-shard and don't care; if you add another sharded backend, replicate the guard there.
+- **`tasks/lessons.md`**: renumbered the duplicate `B26 Performance Tests Need Production Shape` to `B34` (collision with `B26 Lock Acquisition Without Defer Leaks on Panic`).
+- **`pkg/graph/store_contract_test.go`**: dropped the `nodeIDsToSnowflake` / `relIDsToSnowflake` adapter functions left over from MR !4's typed-ID merge. Replaced the assertion helpers with Go-generic versions (`assertIDSet[T orderedID]` / `assertIDSetPreserveOrder[T orderedID]`) so callers can pass `[]types.NodeID`, `[]types.RelID`, `[]types.EntityID`, or `[]snowflake.ID` directly.
+
 ## [3.1.8] - 2026-05-05
 
 ### Changed (typed entity IDs)
@@ -88,6 +95,12 @@ This release pushes typed entity wrappers (`types.NodeID`, `types.RelID`, `types
 4. `EntityID` is now public if you store base-entity references from `TemporalMetadata.BaseEntityID()`.
 5. `Event.EntityID`, `BatchError.ID`, `QueryOpts.After` are now `types.EntityID` — wrap raw IDs at the construction site or pass typed values directly.
 6. `TemporalMetadata.SetBaseEntityID` now takes `types.EntityID`; wrap with `types.EntityID(rawID)` at callsites.
+
+### Documentation (Tier D chokepoint invariant)
+
+- **`pkg/graph/keys.go`**: package-doc-style preamble stating the chokepoint invariant — only this file (binary key encoding), `wire.go` (msgpack on-disk format), `lru.go` (type-agnostic LRU infrastructure), `entity_locks.go` (type-agnostic lock pool), and direct `snowflake.Node` library calls legitimately consume raw `snowflake.ID`. Everything else flows typed.
+- **`pkg/graph/wire.go`**: explicit doc explaining why `nodeWire.ID int64` / `relWire.ID int64` cannot become typed — these are the on-disk msgpack format, and changing the field type would break unmarshalling of every existing Badger db file. Graph layer wraps these int64 values into typed IDs at the deserialization boundary (`wireToNode` / `wireToRel`).
+- **`pkg/graph/entity_locks.go`**: doc on `entityLockManager` explaining its type-agnostic design — the same 256-shard pool serves both node and rel IDs by hashing the snowflake bits. A typed wrapper would imply distinct lock domains; they aren't.
 
 ### Fixed (TieredStore cross-shard hardening — MR !4)
 
