@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
@@ -99,6 +100,23 @@ func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
 	id := n.InternalID().SnowflakeID()
 	if err := g.AddNodeLabel(id, "User"); err != nil {
 		t.Fatalf("AddNodeLabel(same class) failed: %v", err)
+	}
+}
+
+// Removing the primary label is allowed when the next-promoted label has the
+// same ontology class. Ensures the guard rejects only true class transitions,
+// not all primary-label rotations within the same class.
+func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+	// Both Case and User are reference labels in newTestTieredStore.
+	n, err := g.AddNode([]string{"Case", "User"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := n.InternalID().SnowflakeID()
+	// Removing primary "Case" promotes "User" — also reference class.
+	if err := g.RemoveNodeLabel(id, "Case"); err != nil {
+		t.Fatalf("RemoveNodeLabel(primary, same-class promotion) failed: %v", err)
 	}
 }
 
@@ -211,6 +229,52 @@ func TestTieredStore_TruncateNodeHistory_AfterRefDelete(t *testing.T) {
 	}
 }
 
+// After deleting a cross-shard relationship, TruncateRelHistory must locate
+// the tombstone history (on the start-node's shard) and truncate it.
+func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+	caseN, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signalN, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("OBSERVED", caseN, signalN, map[string]any{"w": int64(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID().SnowflakeID()
+	for i := 1; i <= 3; i++ {
+		if _, err := g.UpdateRelationship(relID, map[string]any{"w": int64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := g.DeleteRelationship(relID); err != nil {
+		t.Fatal(err)
+	}
+
+	preDelete, err := ts.GetRelHistory(relID)
+	if err != nil {
+		t.Fatalf("GetRelHistory before truncate: %v", err)
+	}
+	if len(preDelete) < 2 {
+		t.Fatalf("expected ≥2 history entries before truncate, got %d", len(preDelete))
+	}
+
+	if err := ts.TruncateRelHistory(relID, 2); err != nil {
+		t.Fatalf("TruncateRelHistory: %v", err)
+	}
+	after, err := ts.GetRelHistory(relID)
+	if err != nil {
+		t.Fatalf("GetRelHistory after truncate: %v", err)
+	}
+	if len(after) != 2 {
+		t.Errorf("history len after truncate = %d, want 2", len(after))
+	}
+}
+
 // TruncateNodeHistory on a totally unknown ID must be a silent no-op,
 // matching MemoryStore/BadgerStore semantics for empty history truncation.
 func TestTieredStore_TruncateNodeHistory_UnknownID_NoError(t *testing.T) {
@@ -224,5 +288,89 @@ func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 	if err := ts.TruncateRelHistory(snowflake.ID(0xDEADBEEF), 0); err != nil {
 		t.Errorf("TruncateRelHistory(unknown) err = %v, want nil", err)
+	}
+}
+
+// --- Cold-shard history retention ---
+
+// History on a shard that later transitions warm→cold must remain retrievable
+// when the rel's timestamp-routed candidate shard differs from the shard that
+// actually owns the history. This is the cross-shard rel case where:
+//
+//   1. start + end nodes live on shard A (current hot at time of node creation),
+//   2. a rotation makes shard B the new hot shard,
+//   3. a rel between start↔end is created AFTER rotation — its timestamp
+//      candidate is shard B, but the rel entity (and its history) live on
+//      shard A per the start-node-routing rule,
+//   4. the rel is deleted (tombstone written to shard A),
+//   5. shard A ages warm→cold.
+//
+// Reading the rel history must probe shard A. A naïve "skip cold shards"
+// optimisation in forEachHistoryShard regresses this path silently — the
+// regression doesn't surface until cold demotion is enabled in production.
+func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	// Step 1: nodes created in the original hot shard.
+	a, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Capture the original hot shard (where the nodes — and later, the rel
+	// entity — will live).
+	ts.mu.RLock()
+	originName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	// Step 2: rotate. Old hot → warm. New hot shard created with a different
+	// time window.
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+
+	// Step 3: create the rel AFTER rotation. Its snowflake timestamp lands in
+	// the new hot shard's window, but the rel entity routes to the start
+	// node's home shard (= origin / now-warm shard).
+	r, err := g.AddRelationship("OBSERVED", a, b, map[string]any{"w": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID().SnowflakeID()
+
+	// Step 4: update + delete the rel. Tombstone history is written to the
+	// origin (warm) shard via the start-node-routing rule.
+	if _, err := g.UpdateRelationship(relID, map[string]any{"w": int64(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.DeleteRelationship(relID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 5: age the origin shard warm → cold.
+	demoteToCold(ts, originName)
+
+	// GetRelHistory must still find the tombstone history on the cold shard.
+	// shardForRelIDChecked resolves to the new hot shard (timestamp candidate),
+	// the entity probe misses, and forEachHistoryShard must include the cold
+	// origin shard in its iteration.
+	history, err := ts.GetRelHistory(relID)
+	if err != nil {
+		t.Fatalf("GetRelHistory after post-rotation start-shard cold demotion: %v", err)
+	}
+	if len(history) == 0 {
+		t.Fatal("GetRelHistory returned no history — cold shard was skipped in forEachHistoryShard probe")
+	}
+	last := history[len(history)-1]
+	if last.Temporal() == nil || last.Temporal().DeletedAt == 0 {
+		t.Errorf("expected a tombstone with DeletedAt set, got %+v", last.Temporal())
 	}
 }

@@ -880,15 +880,13 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 // shard even when timestamp fallback selects an event shard; cross-shard
 // relationship history lives with the relationship entity shard.
 //
-// Shard set probed: refShard, refArchive (if present), and hot+warm event
-// shards. Cold shards are intentionally excluded: cold shards are read-only
-// archives, no new history is written there, and any history that does exist
-// on a cold shard belongs to an entity whose own home shard is that cold
-// shard — which the caller already passed as skip. With the primary-label-
-// class invariant (TieredStore.ensurePrimaryLabelClassUnchanged), a single
-// entity's history cannot fragment across event shards, so iterating warm
-// shards is sufficient as a defence-in-depth safety net for cross-shard
-// relationship snapshots routed by start-node shard.
+// Probes refShard, refArchive (if present), and ALL event shards (hot, warm,
+// and cold). Cold shards must be included: a cross-shard event→event
+// relationship's history is written to the start-node's home shard, which may
+// have transitioned warm→cold via `ColdAfter` demotion after the relationship
+// was deleted. Skipping cold shards here would silently lose deleted-rel
+// history once the start-node's shard ages out. The lazy-open cost is paid
+// once per cold shard per process; subsequent probes are cheap Badger Seeks.
 func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
 	if ts.refShard != skip {
 		stop, err := fn(ts.refShard)
@@ -912,7 +910,7 @@ func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerSto
 	}
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthWarm) // hot + warm only — cold excluded
+	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
