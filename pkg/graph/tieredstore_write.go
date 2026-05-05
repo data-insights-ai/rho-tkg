@@ -285,19 +285,22 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 }
 
 func (ts *TieredStore) ReplaceRelationship(r *types.Relationship) error {
-	shard, err := ts.shardForRelID(r.InternalID().SnowflakeID())
+	shard, checkin, err := ts.shardForRelIDChecked(r.InternalID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceRelationship(r)
 }
 
 func (ts *TieredStore) DeleteRelationship(id snowflake.ID) error {
-	// Find which shard owns the entity.
-	entityShard, err := ts.shardForRelID(id)
+	// Find which shard owns the entity. Use the checked variant so a cold
+	// owner stays pinned until the writes below complete.
+	entityShard, entityCheckin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer entityCheckin()
 
 	// Check if this is a cross-shard relationship by reading the rel metadata.
 	r, err := entityShard.GetRelationship(id)
@@ -305,14 +308,16 @@ func (ts *TieredStore) DeleteRelationship(id snowflake.ID) error {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
@@ -442,7 +447,9 @@ func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) er
 
 	// If the live entity is on this shard, the empty history is authoritative —
 	// the truncate is a no-op and there is no need to fan out across shards.
-	if shard.hasNodeID(id) {
+	// Exception: when the live entity is on refArchive, pre-archive history may
+	// still live on refShard, so fall through to the fan-out.
+	if shard.hasNodeID(id) && shard != ts.refArchive.Load() {
 		return shard.TruncateNodeHistory(id, keepVersions)
 	}
 
@@ -563,24 +570,27 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 // Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on the entity shard;
 // the in/ cleanup on the end-node shard is a separate operation (B7 limitation).
 func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
-	entityShard, err := ts.shardForRelID(id)
+	entityShard, entityCheckin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer entityCheckin()
 
 	r, err := entityShard.GetRelationship(id)
 	if err != nil {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: fully atomic.

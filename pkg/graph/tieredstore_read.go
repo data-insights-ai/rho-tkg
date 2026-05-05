@@ -264,30 +264,47 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 // --- Adjacency queries ---
 
 func (ts *TieredStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
-	// Entity + out/ are co-located in the node's shard.
-	shard, err := ts.shardForNodeID(nodeID)
+	// Entity + out/ are co-located in the node's shard. Use the checked
+	// resolver so a cold owner stays pinned for the duration of the read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nodeID)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	return shard.OutgoingRelationships(nodeID, typeToken)
 }
 
 // OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
 // Groups nodeIDs by shard, delegates per-shard, and merges results.
+//
+// Each owner shard is checked out via shardForNodeIDChecked so cold shards
+// remain pinned for the per-shard delegated read.
 func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
 
-	// Partition nodeIDs by shard.
+	// Partition nodeIDs by shard. Track checkin functions so each owner shard
+	// can be released once we are done with it.
 	shardBuckets := make(map[*BadgerStore][]snowflake.ID)
+	checkins := make(map[*BadgerStore][]func())
+	releaseAll := func() {
+		for _, fns := range checkins {
+			for _, fn := range fns {
+				fn()
+			}
+		}
+	}
 	for _, id := range nodeIDs {
-		shard, err := ts.shardForNodeID(id)
+		shard, checkin, err := ts.shardForNodeIDChecked(id)
 		if err != nil {
+			releaseAll()
 			return nil, err
 		}
 		shardBuckets[shard] = append(shardBuckets[shard], id)
+		checkins[shard] = append(checkins[shard], checkin)
 	}
+	defer releaseAll()
 
 	// Delegate per-shard and merge.
 	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
@@ -308,12 +325,14 @@ func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 }
 
 func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
-	// Get relIDs from the node's shard inIdx.
-	shard, err := ts.shardForNodeID(nodeID)
+	// Get relIDs from the node's shard inIdx. The owner is checked out so a
+	// cold node shard cannot be closed mid-read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nodeID)
 	if err != nil {
 		return nil, err
 	}
 	relIDs := shard.incomingRelIDs(nodeID, typeToken)
+	checkin()
 
 	if len(relIDs) == 0 {
 		return nil, nil
@@ -366,11 +385,15 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 		}
 		seen[nid] = struct{}{}
 
-		shard, err := ts.shardForNodeID(nid)
+		// Check out the node's owner shard so a cold owner stays pinned for
+		// the inIdx scan; release immediately afterwards because the rel
+		// fetch below uses its own checkout against the rel-owner shard.
+		shard, checkin, err := ts.shardForNodeIDChecked(nid)
 		if err != nil {
 			return nil, err
 		}
 		relIDs := shard.incomingRelIDs(nid, typeToken)
+		checkin()
 		for _, rid := range relIDs {
 			refs = append(refs, relRef{nodeID: nid, relID: rid})
 		}
@@ -677,7 +700,10 @@ func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.N
 
 	// If the live entity is on this shard, the local ErrVersionNotFound is
 	// authoritative — no need to wake other shards (incl. cold ones).
-	if shard.hasNodeID(id) {
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if shard.hasNodeID(id) && shard != ts.refArchive.Load() {
 		return nil, ErrVersionNotFound
 	}
 
@@ -716,7 +742,10 @@ func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
 	// If the live entity is on this shard, an empty history here is
 	// authoritative — the deleted-entity fan-out is unnecessary and would
 	// needlessly wake cold shards.
-	if store.hasNodeID(id) {
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if store.hasNodeID(id) && store != ts.refArchive.Load() {
 		return nil, nil
 	}
 

@@ -228,7 +228,7 @@ GOOD: func checkoutStore(ts) {
       }
 ```
 
-**History:** Found in code_review_phase3 as BLOCKER ("idleCloseLoop Hard-Panics Concurrent Readers"). First fix (v3.0.30) had a TOCTOU gap between `getStore` and `activeReqs.Add(1)`. Fully fixed in v3.0.33 by moving increment inside `shardMu`.
+**History:** Found in code_review_phase3 as BLOCKER ("idleCloseLoop Hard-Panics Concurrent Readers"). First fix (v3.0.30) had a TOCTOU gap between `getStore` and `activeReqs.Add(1)`. Fully fixed in v3.0.33 by moving increment inside `shardMu`. Later TieredStore relationship-routing fixes needed the same lifecycle assertion on fallback cold relationship-owner lookup: finding the cold owner is not enough; the returned store must stay pinned until checkin.
 
 ## B18. Shard Rotation: Boundary Alignment + Catalog Sync
 *See CLAUDE.md > TieredStore*

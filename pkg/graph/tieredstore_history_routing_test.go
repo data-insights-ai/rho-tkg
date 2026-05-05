@@ -442,6 +442,98 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	}
 }
 
+// The public checked relationship lookup paths depend on shardForRelIDChecked
+// returning a pinned store. When the true owner is a cold fallback shard,
+// closeIdleShards must not be able to close that shard until checkin runs.
+func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *testing.T) {
+	g, ts := newDiskTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	originName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+	time.Sleep(2 * time.Millisecond)
+
+	r, err := g.AddRelationship("OBSERVED", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID().SnowflakeID()
+
+	owner := eventShardByName(t, ts, originName)
+	if err := owner.store.Flush(); err != nil {
+		t.Fatalf("flush owner shard before cold close: %v", err)
+	}
+	demoteToCold(ts, originName)
+	closeEventShardStore(t, owner)
+
+	shard, checkin, err := ts.shardForRelIDChecked(relID)
+	if err != nil {
+		t.Fatalf("shardForRelIDChecked: %v", err)
+	}
+
+	owner.shardMu.Lock()
+	openedOwner := owner.store
+	owner.shardMu.Unlock()
+	if openedOwner == nil {
+		t.Fatal("shardForRelIDChecked did not lazy-open the cold owner shard")
+	}
+	if shard != openedOwner {
+		t.Fatalf("shardForRelIDChecked returned shard %p, want cold owner %p", shard, openedOwner)
+	}
+	if got := owner.activeReqs.Load(); got != 1 {
+		t.Fatalf("owner activeReqs = %d, want 1 while checked out", got)
+	}
+
+	ts.idleTimeout = time.Millisecond
+	owner.lastAccess.Store(0)
+	ts.closeIdleShards()
+	owner.shardMu.Lock()
+	stillOpen := owner.store != nil
+	owner.shardMu.Unlock()
+	if !stillOpen {
+		t.Fatal("closeIdleShards closed the cold owner while shardForRelIDChecked checkout was active")
+	}
+
+	got, err := shard.GetRelationship(relID)
+	if err != nil {
+		t.Fatalf("checked-out cold owner GetRelationship: %v", err)
+	}
+	if got.InternalID().SnowflakeID() != relID {
+		t.Fatalf("checked-out cold owner returned rel %d, want %d", got.InternalID().SnowflakeID(), relID)
+	}
+
+	checkin()
+	if got := owner.activeReqs.Load(); got != 0 {
+		t.Fatalf("owner activeReqs = %d after checkin, want 0", got)
+	}
+
+	owner.lastAccess.Store(0)
+	ts.closeIdleShards()
+	owner.shardMu.Lock()
+	closedAfterCheckin := owner.store == nil
+	owner.shardMu.Unlock()
+	if !closedAfterCheckin {
+		t.Fatal("closeIdleShards did not close the idle cold owner after checkin")
+	}
+}
+
 func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 	t.Run("Graph.GetNodeHistory current node", func(t *testing.T) {
 		g, _, cold := newTieredGraphWithClosedColdShard(t)
@@ -556,6 +648,28 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 	})
 }
 
+func newDiskTieredGraph(t *testing.T) (*Graph, *TieredStore) {
+	t.Helper()
+	ts, err := NewTieredStore(TieredStoreConfig{
+		DataDir:       t.TempDir(),
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("NewTieredStore: %v", err)
+	}
+	g, err := New(Config{
+		SnowflakeNodeID: 0,
+		Store:           ts,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g, ts
+}
+
 func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *eventShard) {
 	t.Helper()
 	g, ts := newTestTieredGraph(t)
@@ -609,5 +723,124 @@ func assertColdShardStillClosed(t *testing.T, es *eventShard, op string) {
 	es.shardMu.Unlock()
 	if open {
 		t.Fatalf("%s opened a cold shard that should not be probed", op)
+	}
+}
+
+// ArchiveNode migrates only the live entity to refArchive — pre-archive history
+// versions remain on refShard. The history-fan-out fast path therefore must
+// NOT short-circuit when the live entity is on refArchive: the empty-history
+// result there is not authoritative. This regression guards the
+// `shard != ts.refArchive.Load()` gate added to the empty-history skip in
+// GetNodeHistory / GetNodeVersion / TruncateNodeHistory.
+func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	n, err := g.AddNode([]string{"Case"}, map[string]any{"status": "draft"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := n.InternalID().SnowflakeID()
+
+	// Mutate twice to produce two history entries on refShard before archiving.
+	if _, err := g.UpdateNode(id, map[string]any{"status": "review"}); err != nil {
+		t.Fatalf("UpdateNode review: %v", err)
+	}
+	if _, err := g.UpdateNode(id, map[string]any{"status": "published"}); err != nil {
+		t.Fatalf("UpdateNode published: %v", err)
+	}
+
+	// Archive: live entity moves to refArchive; history stays on refShard.
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	// shardForNodeIDChecked now resolves the node to refArchive.
+	resolved, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		t.Fatalf("shardForNodeIDChecked: %v", err)
+	}
+	checkin()
+	archive := ts.refArchive.Load()
+	if archive == nil || resolved != archive {
+		t.Fatalf("expected resolved shard to be refArchive, got %p (archive=%p)", resolved, archive)
+	}
+
+	t.Run("GetNodeHistory surfaces pre-archive versions", func(t *testing.T) {
+		history, err := ts.GetNodeHistory(id)
+		if err != nil {
+			t.Fatalf("GetNodeHistory: %v", err)
+		}
+		if len(history) < 2 {
+			t.Fatalf("GetNodeHistory after archive returned %d versions, want >= 2 (pre-archive history dropped)", len(history))
+		}
+	})
+
+	t.Run("GetNodeVersion finds pre-archive version", func(t *testing.T) {
+		v, err := ts.GetNodeVersion(id, 0)
+		if err != nil {
+			t.Fatalf("GetNodeVersion(0) after archive: %v", err)
+		}
+		if v == nil {
+			t.Fatal("GetNodeVersion(0) returned nil node")
+		}
+	})
+
+	t.Run("TruncateNodeHistory does not silently no-op when history lives on refShard", func(t *testing.T) {
+		// keepVersions=1 should leave at least one history entry but truncate the rest.
+		if err := ts.TruncateNodeHistory(id, 1); err != nil {
+			t.Fatalf("TruncateNodeHistory: %v", err)
+		}
+		history, err := ts.GetNodeHistory(id)
+		if err != nil {
+			t.Fatalf("GetNodeHistory after truncate: %v", err)
+		}
+		if len(history) > 1 {
+			t.Fatalf("TruncateNodeHistory(1) left %d versions, want <= 1 (truncate skipped because shard mismatched)", len(history))
+		}
+	})
+}
+
+// Cross-shard rel write rollback: when the second leg of PutRelationship
+// fails, the first leg's writes must be reverted so partial state isn't
+// observable. (The rollback lives on the codex/history-aware-regression-tests
+// branch; this test guards the shape on this branch where the same write
+// paths now use shardForRelIDChecked.)
+func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode Case: %v", err)
+	}
+	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode Signal: %v", err)
+	}
+	r, err := g.AddRelationship("OBSERVES", caseNode, signalNode, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	relID := r.InternalID().SnowflakeID()
+
+	// Demote and close the event shard so DeleteRelationship would race
+	// closeIdleShards if the rel-owner checkout were not held.
+	ts.mu.RLock()
+	originName := ts.hotShard.name
+	ts.mu.RUnlock()
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+	demoteToCold(ts, originName)
+
+	if err := g.DeleteRelationship(relID); err != nil {
+		t.Fatalf("DeleteRelationship after cold demotion: %v", err)
+	}
+
+	if _, err := ts.GetRelationship(relID); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship after delete = %v, want ErrRelNotFound", err)
 	}
 }
