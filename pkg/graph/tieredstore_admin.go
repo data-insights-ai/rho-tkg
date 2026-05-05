@@ -41,8 +41,10 @@ func (ts *TieredStore) ForceRotate() error {
 }
 
 // ListShards returns information about all shards in the catalog, enriched
-// with live counts from open stores.
-func (ts *TieredStore) ListShards() []ShardInfo {
+// with live counts from open stores. Returns an error if the archive shard
+// is recorded in the catalog but cannot be opened — a silent skip would
+// hide a real disk/LSM failure.
+func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
@@ -66,7 +68,13 @@ func (ts *TieredStore) ListShards() []ShardInfo {
 	// Archive shard (if open or in catalog). Pin via checkoutArchive so a
 	// concurrent Close cannot free the handle between Load and the
 	// NodeCount/RelationshipCount calls — see resolveShardStore("archive").
-	archive, archiveCheckin, _ := ts.checkoutArchive()
+	// Propagate ensureRefArchive errors rather than silently swallowing —
+	// a corrupt LSM or disk error would otherwise surface as "archive not
+	// open" in the result set, hiding the real failure mode.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, fmt.Errorf("graph: list shards: open archive: %w", archiveErr)
+	}
 	if archive != nil {
 		archiveEntry, _ := ts.catalog.GetShard("archive")
 		archNodes, _ := archive.NodeCount()
@@ -110,7 +118,7 @@ func (ts *TieredStore) ListShards() []ShardInfo {
 		infos = append(infos, si)
 	}
 
-	return infos
+	return infos, nil
 }
 
 // RebuildCatalog reconstructs the shard catalog from the live in-memory state.
@@ -125,7 +133,12 @@ func (ts *TieredStore) RebuildCatalog() error {
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
 	// Update archive if open. Pin via checkoutArchive — see ListShards.
-	archive, archiveCheckin, _ := ts.checkoutArchive()
+	// Propagate the error so a corrupt LSM during catalog rebuild surfaces
+	// at the API boundary instead of silently leaving stats stale.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return fmt.Errorf("graph: rebuild catalog: open archive: %w", archiveErr)
+	}
 	if archive != nil {
 		archNodes, _ := archive.NodeCount()
 		archRels, _ := archive.RelationshipCount()
@@ -294,6 +307,11 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 	if archive != nil {
 		stores = append(stores, namedStore{name: "archive", store: archive})
 	} else {
+		// Defensive reassignment: checkoutArchive already returns a noop
+		// closure when archive == nil (see tieredstore.go:170-205), so this
+		// is structurally equivalent. Kept explicit so a future caller that
+		// reads only this function can see archiveCheckin is safe to invoke
+		// unconditionally without grepping checkoutArchive's contract.
 		archiveCheckin = func() {}
 	}
 

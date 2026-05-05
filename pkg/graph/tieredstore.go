@@ -202,6 +202,12 @@ func (ts *TieredStore) checkoutArchive() (*BadgerStore, func(), error) {
 		ts.archiveActiveReqs.Add(-1)
 		return nil, noop, nil
 	}
+	// Cumulative pin counter — used by tests to assert "this code path
+	// went through checkoutArchive". archiveActiveReqs alone cannot
+	// witness a transient pin from outside (it bounces back to 0 before
+	// the test thread can read it). Production code does not depend on
+	// this counter.
+	ts.archiveCheckouts.Add(1)
 	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
 }
 
@@ -217,6 +223,7 @@ type TieredStore struct {
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
 	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
+	archiveCheckouts  atomic.Int64                // monotonic counter of successful checkoutArchive() pins; test-only signal that a code path took the pin
 	eventShards       map[string]*eventShard      // name -> event shard
 	hotShard          *eventShard                 // convenience pointer to current hot shard
 	ontology          *OntologyMapping
@@ -542,6 +549,15 @@ func (ts *TieredStore) Clear() error {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}
+	// Skip the archive checkout entirely when neither the in-memory pointer
+	// nor the catalog has an archive. checkoutArchive would otherwise be a
+	// no-op too, but bailing early makes the intent explicit and avoids the
+	// theoretical lazy-open-then-clear churn if the archive is on disk but
+	// has not been opened this session.
+	if ts.refArchive.Load() == nil && !ts.hasArchiveShard() {
+		return nil
+	}
+
 	// Pin via checkoutArchive — see resolveShardStore("archive") doc.
 	// A raw refArchive.Load() races Close, which drains archiveActiveReqs
 	// (sees 0) and proceeds to archive.Close() while Clear is still
