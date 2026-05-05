@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Shared store contract suite** (`pkg/graph/store_contract_test.go`): reusable behavior tests run against `MemoryStore`, `BadgerStore`, and `TieredStore` for current visibility, version history visibility, delete tombstones/history IDs, cursor pagination, temporal filters, synchronous events through the public `Graph` API, and graph stats/cache metrics where supported.
 
+### Fixed
+
+- **TieredStore deleted entity history routing** (`pkg/graph/tieredstore.go`, `pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore_write.go`): node and relationship history reads/truncation now fall back to probing history-owning shards when live indexes no longer identify the owner after delete. Node history writes route reference snapshots to the reference shard; relationship history writes route by the relationship start-node shard, matching cross-shard entity ownership. This restores parity with `MemoryStore` and `BadgerStore` for tombstones after deleting reference nodes and `Case -> Signal` relationships.
+
 ## [3.1.6] - 2026-04-10
 
 ### Added

@@ -397,7 +397,7 @@ func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	shard, err := ts.shardForRelID(current.InternalID().SnowflakeID())
+	shard, err := ts.shardForNodeID(current.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 // --- Version history writes ---
 
 func (ts *TieredStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
-	shard, err := ts.shardForNodeID(id)
+	shard, err := ts.shardForNodeVersion(id, n)
 	if err != nil {
 		return err
 	}
@@ -415,15 +415,42 @@ func (ts *TieredStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.
 }
 
 func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
-	shard, err := ts.shardForNodeID(id)
+	shard, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
+	}
+	defer checkin()
+	history, err := shard.GetNodeHistory(id)
+	if err != nil {
+		return err
+	}
+	if len(history) > 0 {
+		return shard.TruncateNodeHistory(id, keepVersions)
+	}
+
+	truncated := false
+	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetNodeHistory(id)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		truncated = true
+		return true, candidate.TruncateNodeHistory(id, keepVersions)
+	})
+	if err != nil {
+		return err
+	}
+	if truncated {
+		return nil
 	}
 	return shard.TruncateNodeHistory(id, keepVersions)
 }
 
 func (ts *TieredStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
-	shard, err := ts.shardForRelID(id)
+	shard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
@@ -434,6 +461,32 @@ func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 	shard, err := ts.shardForRelID(id)
 	if err != nil {
 		return err
+	}
+	history, err := shard.GetRelHistory(id)
+	if err != nil {
+		return err
+	}
+	if len(history) > 0 {
+		return shard.TruncateRelHistory(id, keepVersions)
+	}
+
+	truncated := false
+	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetRelHistory(id)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		truncated = true
+		return true, candidate.TruncateRelHistory(id, keepVersions)
+	})
+	if err != nil {
+		return err
+	}
+	if truncated {
+		return nil
 	}
 	return shard.TruncateRelHistory(id, keepVersions)
 }

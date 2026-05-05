@@ -14,6 +14,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Default configuration values for TieredStore.
@@ -468,6 +469,17 @@ func (ts *TieredStore) shardForNodeID(id snowflake.ID) (*BadgerStore, error) {
 		}
 	}
 	return ts.timestampToEventShard(id)
+}
+
+// shardForNodeVersion resolves the shard that owns a node history entry.
+// When the current node still exists, shardForNodeID gives the exact owner.
+// After a reference node has been deleted, current indexes are gone and ID
+// timestamp fallback would select an event shard, so use the snapshot label.
+func (ts *TieredStore) shardForNodeVersion(id snowflake.ID, n *types.Node) (*BadgerStore, error) {
+	if n != nil && ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
+		return ts.refShard, nil
+	}
+	return ts.shardForNodeID(id)
 }
 
 // shardForRelID resolves which shard owns a relationship ID (entity + out/).

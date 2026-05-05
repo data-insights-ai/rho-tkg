@@ -660,11 +660,35 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 // --- History reads ---
 
 func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
-	shard, err := ts.shardForNodeID(id)
+	shard, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetNodeVersion(id, version)
+	defer checkin()
+	n, err := shard.GetNodeVersion(id, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return n, err
+	}
+
+	var found *types.Node
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		n, err := candidate.GetNodeVersion(id, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = n
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
 }
 
 func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
@@ -673,7 +697,27 @@ func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
 		return nil, err
 	}
 	defer checkin()
-	return store.GetNodeHistory(id)
+	history, err := store.GetNodeHistory(id)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	var found []*types.Node
+	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetNodeHistory(id)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
 }
 
 func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
@@ -681,7 +725,30 @@ func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelVersion(id, version)
+	r, err := shard.GetRelVersion(id, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return r, err
+	}
+
+	var found *types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		r, err := candidate.GetRelVersion(id, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = r
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
 }
 
 func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
@@ -689,7 +756,27 @@ func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, er
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelHistory(id)
+	history, err := shard.GetRelHistory(id)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	var found []*types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetRelHistory(id)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
 }
 
 func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
@@ -784,6 +871,61 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	}
 
 	return mergeIDSlices(slices), nil
+}
+
+// forEachHistoryShard probes shards that may own history after the live entity
+// index has been deleted. Reference entity history can live on the reference
+// shard even when timestamp fallback selects an event shard; cross-shard
+// relationship history lives with the relationship entity shard.
+func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	if ts.refShard != skip {
+		stop, err := fn(ts.refShard)
+		if err != nil || stop {
+			return err
+		}
+	}
+
+	ts.archiveMu.Lock()
+	archive := ts.refArchive
+	ts.archiveMu.Unlock()
+	if archive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return err
+		}
+		ts.archiveMu.Lock()
+		archive = ts.refArchive
+		ts.archiveMu.Unlock()
+	}
+	if archive != nil && archive != skip {
+		stop, err := fn(archive)
+		if err != nil || stop {
+			return err
+		}
+	}
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		if store == skip {
+			es.checkinStore()
+			continue
+		}
+		stop, cbErr := fn(store)
+		es.checkinStore()
+		if cbErr != nil {
+			return cbErr
+		}
+		if stop {
+			return nil
+		}
+	}
+	return nil
 }
 
 // --- ForEach iterators ---

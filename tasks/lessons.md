@@ -466,16 +466,26 @@ BAD:  func GetRelHistory(id) {
       // may live on a different shard than timestamp fallback chooses
 
 GOOD: func GetRelHistory(id) {
-          // route by known history IDs, probe history prefixes, or persist an
-          // id->owner mapping that survives deletion
+          shard := shardForRelID(id)
+          history := shard.GetRelHistory(id)
+          if len(history) > 0 { return history }
+          return probeHistoryShards(id) // current-index fallback failed
       }
 ```
 
 History and tombstone lookups must not depend solely on current-entity indexes.
-Contract tests should include deleted cross-shard relationships, because the
-failure only appears after the current relationship has been removed.
+Contract tests should include deleted reference nodes and deleted cross-shard
+relationships, because the failure only appears after the current entity has
+been removed.
+
+For history writes, route from the immutable entity shape: reference node
+snapshots belong to the reference shard; cross-shard relationship snapshots
+belong to the relationship start-node shard, because that is where the
+relationship entity and outgoing index are stored.
 
 **History:** Found while adding the store contract suite for the first contract-test MR.
+Fixed by probing history-owning shards for deleted entity reads and routing
+history writes by snapshot ownership.
 
 ---
 
