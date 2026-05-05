@@ -894,6 +894,21 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 		if v, ok := got.GetProperty("w"); !ok || v.(int64) != 2 {
 			t.Fatalf("post-update w = %v (ok=%v), want 2", v, ok)
 		}
+
+		// Assert the update went through ReplaceRelWithHistory (not the
+		// historyless ReplaceRelationship). The previous version must be
+		// preserved in history with its pre-update property.
+		history, err := ts.GetRelHistory(relID)
+		if err != nil {
+			t.Fatalf("GetRelHistory after update: %v", err)
+		}
+		if len(history) == 0 {
+			t.Fatal("expected at least one history entry after UpdateRelationship; got 0 (regression: silently routed through ReplaceRelationship?)")
+		}
+		prev := history[0]
+		if v, ok := prev.GetProperty("w"); !ok || v.(int64) != 1 {
+			t.Fatalf("pre-update history entry w = %v (ok=%v), want 1", v, ok)
+		}
 	})
 
 	t.Run("DeleteRelationship full lifecycle after cold demotion", func(t *testing.T) {
@@ -927,4 +942,99 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 			t.Fatal("expected at least one history entry (tombstone) after delete, got 0")
 		}
 	})
+}
+
+// shardForRelID and shardForRelIDChecked must probe refArchive when present.
+// Round 3 adds the archive probe so any rel that ends up on refArchive (e.g.
+// migrated by ArchiveNode when both endpoints are archived together, or
+// surfaced by recovery flows) remains reachable through every public lookup.
+//
+// We exercise the resolver directly by writing a rel to refArchive via the
+// underlying store: ArchiveNode currently drops rels whose other endpoint
+// isn't already in archive (PutRelationship rejects with ErrNodeNotFound),
+// so a end-to-end ArchiveNode setup is brittle for the routing-only check
+// this regression guards.
+func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	src, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode src: %v", err)
+	}
+	dst, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode dst: %v", err)
+	}
+	r, err := g.AddRelationship("LINKS", src, dst, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	relID := r.InternalID().SnowflakeID()
+
+	// Force-open the archive and copy the rel onto it. Mirrors what a
+	// successful ArchiveNode that migrated both endpoints together would
+	// produce.
+	if err := ts.ensureRefArchive(); err != nil {
+		t.Fatalf("ensureRefArchive: %v", err)
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ensureRefArchive returned nil archive")
+	}
+	// Endpoints must exist on the archive before the rel write (PutRelationship
+	// validates endpoint presence).
+	srcCopy, err := ts.refShard.GetNode(src.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode src: %v", err)
+	}
+	dstCopy, err := ts.refShard.GetNode(dst.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode dst: %v", err)
+	}
+	if err := archive.PutNode(srcCopy); err != nil {
+		t.Fatalf("archive PutNode src: %v", err)
+	}
+	if err := archive.PutNode(dstCopy); err != nil {
+		t.Fatalf("archive PutNode dst: %v", err)
+	}
+	relCopy, err := ts.refShard.GetRelationship(relID)
+	if err != nil {
+		t.Fatalf("refShard GetRelationship: %v", err)
+	}
+	if err := archive.PutRelationship(relCopy); err != nil {
+		t.Fatalf("archive PutRelationship: %v", err)
+	}
+
+	// Now both refShard and refArchive own the rel. We're testing only the
+	// archive probe, so the resolver should still pick refShard (it is checked
+	// first) — flip refShard's claim by deleting the rel entity from refShard
+	// to leave it only on archive.
+	if err := ts.refShard.DeleteRelationship(relID); err != nil {
+		t.Fatalf("delete rel from refShard: %v", err)
+	}
+
+	t.Run("shardForRelIDChecked finds rel on archive", func(t *testing.T) {
+		shard, checkin, err := ts.shardForRelIDChecked(relID)
+		if err != nil {
+			t.Fatalf("shardForRelIDChecked: %v", err)
+		}
+		checkin()
+		if shard != archive {
+			t.Fatalf("expected resolved shard to be refArchive, got %p (archive=%p)", shard, archive)
+		}
+	})
+
+	t.Run("GetRelationship finds rel on archive", func(t *testing.T) {
+		got, err := ts.GetRelationship(relID)
+		if err != nil {
+			t.Fatalf("GetRelationship for archived rel: %v", err)
+		}
+		if got.InternalID().SnowflakeID() != relID {
+			t.Fatalf("GetRelationship returned %d, want %d", got.InternalID().SnowflakeID(), relID)
+		}
+	})
+
+	// Use the graph helper to silence the unused-warning while still pinning
+	// the same end-to-end path.
+	_ = g
 }

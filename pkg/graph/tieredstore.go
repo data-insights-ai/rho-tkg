@@ -485,17 +485,40 @@ func (ts *TieredStore) shardForNodeVersion(id snowflake.ID, n *types.Node) (*Bad
 }
 
 // shardForRelID resolves which shard owns a relationship ID (entity + out/).
-// O(1): try ref (hasRelID), miss -> try timestamp extraction -> probe all event shards.
-// Probe is needed because cross-shard relationship entities may be stored in a
-// shard that doesn't match their creation timestamp (e.g., a rel created after
-// rotation whose entity lives in the start node's warm shard). The probe must
-// include cold shards: a cross-shard rel created while the start-node shard
-// was warm can age to cold without ever being deleted, and the rel still lives
-// there.
+// O(1): try ref (hasRelID), miss -> probe refArchive when present -> try
+// timestamp extraction -> probe all event shards.
+//
+// The refArchive probe matches the node resolver: ArchiveNode migrates ref
+// entities AND their relationships from refShard to refArchive (no history
+// migration), so an archived rel must be reachable via this resolver.
+//
+// The event-shard probe is needed because cross-shard relationship entities
+// may be stored in a shard that doesn't match their creation timestamp
+// (e.g., a rel created after rotation whose entity lives in the start
+// node's warm shard). The probe must include cold shards: a cross-shard rel
+// created while the start-node shard was warm can age to cold without ever
+// being deleted, and the rel still lives there.
+//
 // Returns error if cold shard lazy-open fails.
 func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 	if ts.refShard.hasRelID(id) {
 		return ts.refShard, nil
+	}
+
+	// Probe refArchive when present (open or in catalog). Archived rels live
+	// here after ArchiveNode.
+	archive := ts.refArchive.Load()
+	if archive != nil && archive.hasRelID(id) {
+		return archive, nil
+	}
+	if archive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return nil, err
+		}
+		archive = ts.refArchive.Load()
+		if archive != nil && archive.hasRelID(id) {
+			return archive, nil
+		}
 	}
 
 	// Try timestamp-based resolution first (fast path).
@@ -577,6 +600,23 @@ func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *eventShard {
 func (ts *TieredStore) shardForRelIDChecked(id snowflake.ID) (store *BadgerStore, checkin func(), err error) {
 	if ts.refShard.hasRelID(id) {
 		return ts.refShard, func() {}, nil
+	}
+
+	// Probe refArchive: ArchiveNode migrates a reference node AND its rels
+	// to refArchive, so archived rels live there after archive. refArchive
+	// has no idle-close lifecycle, so checkin is a no-op.
+	archive := ts.refArchive.Load()
+	if archive != nil && archive.hasRelID(id) {
+		return archive, func() {}, nil
+	}
+	if archive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return nil, nil, err
+		}
+		archive = ts.refArchive.Load()
+		if archive != nil && archive.hasRelID(id) {
+			return archive, func() {}, nil
+		}
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(id)

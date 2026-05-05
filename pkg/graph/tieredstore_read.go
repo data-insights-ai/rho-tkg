@@ -780,7 +780,10 @@ func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 
 	// If the live rel entity is on this shard, the local ErrVersionNotFound is
 	// authoritative — no need to wake other shards.
-	if shard.hasRelID(id) {
+	// Skip the optimisation when the live rel sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive rel history versions
+	// remain on refShard and must be discovered via the fan-out below.
+	if shard.hasRelID(id) && shard != ts.refArchive.Load() {
 		return nil, ErrVersionNotFound
 	}
 
@@ -819,7 +822,9 @@ func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, er
 	// If the live rel entity is on this shard, an empty history here is
 	// authoritative — skip the deleted-rel fan-out so cold shards are not
 	// needlessly opened.
-	if shard.hasRelID(id) {
+	// Skip the optimisation when the live rel sits on refArchive: pre-archive
+	// rel history remains on refShard, so fall through to the fan-out below.
+	if shard.hasRelID(id) && shard != ts.refArchive.Load() {
 		return nil, nil
 	}
 

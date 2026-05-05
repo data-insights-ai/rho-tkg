@@ -240,8 +240,9 @@ func (ts *TieredStore) DeleteNodesBatch(ids []snowflake.ID) error {
 // --- Relationship write operations ---
 // Relationships may be cross-shard when start and end nodes live in different shards.
 // After rotation, two event entities may live in different shards (warm vs hot).
-// We use shard-based routing (shardForNodeID) instead of class-based routing
-// to correctly handle E→E cross-shard relationships.
+// We use shard-based routing (shardForNodeIDChecked) instead of class-based routing
+// to correctly handle E→E cross-shard relationships, and pin cold owners for the
+// duration of the write.
 
 func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
@@ -547,7 +548,9 @@ func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 	// If the live rel entity is on this shard, the empty history is
 	// authoritative — the truncate is a no-op on this shard and there is no
 	// need to fan out across shards.
-	if shard.hasRelID(id) {
+	// Exception: when the live rel is on refArchive, pre-archive history may
+	// still live on refShard, so fall through to the fan-out.
+	if shard.hasRelID(id) && shard != ts.refArchive.Load() {
 		return shard.TruncateRelHistory(id, keepVersions)
 	}
 
