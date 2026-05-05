@@ -215,6 +215,14 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	startID := startNode.InternalID().SnowflakeID()
 	endID := endNode.InternalID().SnowflakeID()
 
+	// Apply the same self-loop policy as the standalone path
+	// (addRelationshipInternal). Without this gate a default graph would
+	// reject g.AddRelationship("R", n, n, nil) but accept the same rel
+	// through batch execution.
+	if startID == endID && !b.g.validation.AllowSelfLoops {
+		return nil, ErrSelfLoop
+	}
+
 	id := b.g.NextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
