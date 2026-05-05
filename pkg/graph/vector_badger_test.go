@@ -37,7 +37,7 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 	set, hasSet := bs.labelIdx[extra]
 	bs.idxMu.RUnlock()
 	if hasSet {
-		if _, inSet := set[id.SnowflakeID()]; inSet {
+		if _, inSet := set[id]; inSet {
 			t.Error("node still in label index after RemoveNodeLabelToken")
 		}
 	}

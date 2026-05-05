@@ -28,8 +28,10 @@ import (
 // Does NOT verify endpoints exist (caller's responsibility).
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
-	id := r.ID().SnowflakeID()
-	startID := r.StartNodeID().SnowflakeID()
+	rid := r.ID()
+	startNID := r.StartNodeID()
+	id := rid.SnowflakeID()
+	startID := startNID.SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
 
@@ -42,25 +44,25 @@ func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	if _, exists := bs.relIDs[id]; exists {
+	if _, exists := bs.relIDs[rid]; exists {
 		return ErrRelExists
 	}
 
 	// Update in-memory state.
 	bs.relCache.Put(id, r.DeepCopy())
-	bs.relIDs[id] = struct{}{}
+	bs.relIDs[rid] = struct{}{}
 
 	// Type index.
 	if bs.typeIdx[relType] == nil {
-		bs.typeIdx[relType] = make(map[snowflake.ID]struct{})
+		bs.typeIdx[relType] = make(map[types.RelID]struct{})
 	}
-	bs.typeIdx[relType][id] = struct{}{}
+	bs.typeIdx[relType][rid] = struct{}{}
 
 	// Outgoing adjacency only.
-	if bs.outIdx[startID] == nil {
-		bs.outIdx[startID] = make(map[snowflake.ID]struct{})
+	if bs.outIdx[startNID] == nil {
+		bs.outIdx[startNID] = make(map[types.RelID]struct{})
 	}
-	bs.outIdx[startID][id] = struct{}{}
+	bs.outIdx[startNID][rid] = struct{}{}
 
 	// NO inIdx update — the in/ key lives in the endpoint's shard.
 
@@ -82,13 +84,16 @@ func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
 // on the endpoint node find the relationship.
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
+	endNID := types.NodeID(endID)
+	rid := types.RelID(relID)
+
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	if bs.inIdx[endID] == nil {
-		bs.inIdx[endID] = make(map[snowflake.ID]uint16)
+	if bs.inIdx[endNID] == nil {
+		bs.inIdx[endNID] = make(map[types.RelID]uint16)
 	}
-	bs.inIdx[endID][relID] = relType
+	bs.inIdx[endNID][rid] = relType
 
 	op := writeOp{
 		opType: writeOpSet,
@@ -104,10 +109,12 @@ func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint1
 // the companion in-shard deletion.
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, error) {
+	rid := types.RelID(id)
+
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	r, err := bs.getRelLocked(types.RelID(id))
+	r, err := bs.getRelLocked(rid)
 	if err != nil {
 		return relDeleteInfo{}, err
 	}
@@ -118,24 +125,25 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 		startID: r.StartNodeID().SnowflakeID(),
 		endID:   r.EndNodeID().SnowflakeID(),
 	}
+	startNID := types.NodeID(info.startID)
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
-	delete(bs.relIDs, id)
+	delete(bs.relIDs, rid)
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.relType]; exists {
-		delete(set, id)
+		delete(set, rid)
 		if len(set) == 0 {
 			delete(bs.typeIdx, info.relType)
 		}
 	}
 
 	// Outgoing adjacency cleanup only.
-	if set, exists := bs.outIdx[info.startID]; exists {
-		delete(set, id)
+	if set, exists := bs.outIdx[startNID]; exists {
+		delete(set, rid)
 		if len(set) == 0 {
-			delete(bs.outIdx, info.startID)
+			delete(bs.outIdx, startNID)
 		}
 	}
 
@@ -158,13 +166,16 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 // cross-shard relationship.
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
+	endNID := types.NodeID(info.endID)
+	rid := types.RelID(info.id)
+
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	if set, exists := bs.inIdx[info.endID]; exists {
-		delete(set, info.id)
+	if set, exists := bs.inIdx[endNID]; exists {
+		delete(set, rid)
 		if len(set) == 0 {
-			delete(bs.inIdx, info.endID)
+			delete(bs.inIdx, endNID)
 		}
 	}
 
@@ -187,21 +198,24 @@ func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
 // inIdx is authoritative during runtime).
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.ID) error {
+	endNID := types.NodeID(endNodeID)
+	rid := types.RelID(relID)
+
 	bs.idxMu.Lock()
 
-	set, exists := bs.inIdx[endNodeID]
+	set, exists := bs.inIdx[endNID]
 	if !exists {
 		bs.idxMu.Unlock()
 		return nil // nothing to remove
 	}
-	if _, ok := set[relID]; !ok {
+	if _, ok := set[rid]; !ok {
 		bs.idxMu.Unlock()
 		return nil // relID not in set
 	}
 
-	delete(set, relID)
+	delete(set, rid)
 	if len(set) == 0 {
-		delete(bs.inIdx, endNodeID)
+		delete(bs.inIdx, endNID)
 	}
 	bs.idxMu.Unlock()
 
@@ -258,7 +272,7 @@ func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) erro
 // hasNodeID checks whether the given node ID exists in this shard. O(1).
 func (bs *BadgerStore) hasNodeID(id snowflake.ID) bool {
 	bs.idxMu.RLock()
-	_, exists := bs.nodeIDs[id]
+	_, exists := bs.nodeIDs[types.NodeID(id)]
 	bs.idxMu.RUnlock()
 	return exists
 }
@@ -266,7 +280,7 @@ func (bs *BadgerStore) hasNodeID(id snowflake.ID) bool {
 // hasRelID checks whether the given relationship ID exists in this shard. O(1).
 func (bs *BadgerStore) hasRelID(id snowflake.ID) bool {
 	bs.idxMu.RLock()
-	_, exists := bs.relIDs[id]
+	_, exists := bs.relIDs[types.RelID(id)]
 	bs.idxMu.RUnlock()
 	return exists
 }
@@ -275,7 +289,7 @@ func (bs *BadgerStore) hasRelID(id snowflake.ID) bool {
 // typeToken 0 = all types. Returns a sorted slice. Snapshot under RLock.
 func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowflake.ID {
 	bs.idxMu.RLock()
-	set := bs.inIdx[nodeID]
+	set := bs.inIdx[types.NodeID(nodeID)]
 	if len(set) == 0 {
 		bs.idxMu.RUnlock()
 		return nil
@@ -284,7 +298,7 @@ func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []s
 	ids := make([]snowflake.ID, 0, len(set))
 	for relID, tok := range set {
 		if typeToken == 0 || tok == typeToken {
-			ids = append(ids, relID)
+			ids = append(ids, relID.SnowflakeID())
 		}
 	}
 	bs.idxMu.RUnlock()
@@ -297,14 +311,14 @@ func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []s
 // Returns a sorted slice. Snapshot under RLock.
 func (bs *BadgerStore) outgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
 	bs.idxMu.RLock()
-	set := bs.outIdx[nodeID]
+	set := bs.outIdx[types.NodeID(nodeID)]
 	if len(set) == 0 {
 		bs.idxMu.RUnlock()
 		return nil
 	}
 	ids := make([]snowflake.ID, 0, len(set))
 	for relID := range set {
-		ids = append(ids, relID)
+		ids = append(ids, relID.SnowflakeID())
 	}
 	bs.idxMu.RUnlock()
 

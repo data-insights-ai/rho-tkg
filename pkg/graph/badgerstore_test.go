@@ -1476,14 +1476,14 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 	// would cache valid data). This simulates a rel that exists in indexes
 	// but has corrupted data in Badger.
 	bs.idxMu.Lock()
-	if bs.outIdx[nodeID] == nil {
-		bs.outIdx[nodeID] = make(map[snowflake.ID]struct{})
+	if bs.outIdx[types.NodeID(nodeID)] == nil {
+		bs.outIdx[types.NodeID(nodeID)] = make(map[types.RelID]struct{})
 	}
-	bs.outIdx[nodeID][relID] = struct{}{}
+	bs.outIdx[types.NodeID(nodeID)][types.RelID(relID)] = struct{}{}
 	if bs.typeIdx[1] == nil {
-		bs.typeIdx[1] = make(map[snowflake.ID]struct{})
+		bs.typeIdx[1] = make(map[types.RelID]struct{})
 	}
-	bs.typeIdx[1][relID] = struct{}{}
+	bs.typeIdx[1][types.RelID(relID)] = struct{}{}
 	bs.relCount.Add(1)
 	bs.idxMu.Unlock()
 
@@ -1524,15 +1524,15 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	bs.idxMu.Lock()
-	bs.relIDs[corruptRelID] = struct{}{}
-	if bs.outIdx[snowflake.ID(10)] == nil {
-		bs.outIdx[snowflake.ID(10)] = make(map[snowflake.ID]struct{})
+	bs.relIDs[types.RelID(corruptRelID)] = struct{}{}
+	if bs.outIdx[types.NodeID(10)] == nil {
+		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]struct{})
 	}
-	bs.outIdx[snowflake.ID(10)][corruptRelID] = struct{}{}
-	if bs.inIdx[snowflake.ID(20)] == nil {
-		bs.inIdx[snowflake.ID(20)] = make(map[snowflake.ID]uint16)
+	bs.outIdx[types.NodeID(10)][types.RelID(corruptRelID)] = struct{}{}
+	if bs.inIdx[types.NodeID(20)] == nil {
+		bs.inIdx[types.NodeID(20)] = make(map[types.RelID]uint16)
 	}
-	bs.inIdx[snowflake.ID(20)][corruptRelID] = 0
+	bs.inIdx[types.NodeID(20)][types.RelID(corruptRelID)] = 0
 	bs.relCount.Add(1)
 	bs.idxMu.Unlock()
 
@@ -1546,18 +1546,18 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 
-	if _, exists := bs.relIDs[snowflake.ID(100)]; !exists {
+	if _, exists := bs.relIDs[types.RelID(100)]; !exists {
 		t.Error("rel 100 was partially deleted — atomicity violation")
 	}
-	if _, exists := bs.relIDs[snowflake.ID(101)]; !exists {
+	if _, exists := bs.relIDs[types.RelID(101)]; !exists {
 		t.Error("rel 101 was partially deleted — atomicity violation")
 	}
-	if _, exists := bs.relIDs[corruptRelID]; !exists {
+	if _, exists := bs.relIDs[types.RelID(corruptRelID)]; !exists {
 		t.Error("corrupt rel 999 was removed — atomicity violation")
 	}
 
 	// Node should still exist.
-	if _, exists := bs.nodeIDs[snowflake.ID(10)]; !exists {
+	if _, exists := bs.nodeIDs[types.NodeID(10)]; !exists {
 		t.Error("node 10 was deleted despite cascade failure — atomicity violation")
 	}
 
@@ -1660,14 +1660,15 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 	id := snowflake.ID(42)
 	labelTok := uint16(5)
 
+	nid := types.NodeID(id)
 	bs.idxMu.Lock()
-	bs.nodeIDs[id] = struct{}{}
-	bs.labelIdx[labelTok] = map[snowflake.ID]struct{}{id: {}}
+	bs.nodeIDs[nid] = struct{}{}
+	bs.labelIdx[labelTok] = map[types.NodeID]struct{}{nid: {}}
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
 	// DeleteNodeCascade should return an error but still clean up indexes.
-	err := bs.DeleteNodeCascade(types.NodeID(id))
+	err := bs.DeleteNodeCascade(nid)
 	if err == nil {
 		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
@@ -1676,11 +1677,11 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
 
-	if _, exists := bs.nodeIDs[id]; exists {
+	if _, exists := bs.nodeIDs[nid]; exists {
 		t.Fatal("nodeIDs should not contain the deleted node")
 	}
 	if set, exists := bs.labelIdx[labelTok]; exists {
-		if _, inSet := set[id]; inSet {
+		if _, inSet := set[nid]; inSet {
 			t.Fatal("labelIdx should not contain the deleted node — ghost index entry leaked")
 		}
 	}
@@ -1699,14 +1700,15 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 	id := snowflake.ID(77)
 	tok1, tok2 := uint16(10), uint16(20)
 
+	nid := types.NodeID(id)
 	bs.idxMu.Lock()
-	bs.nodeIDs[id] = struct{}{}
-	bs.labelIdx[tok1] = map[snowflake.ID]struct{}{id: {}}
-	bs.labelIdx[tok2] = map[snowflake.ID]struct{}{id: {}}
+	bs.nodeIDs[nid] = struct{}{}
+	bs.labelIdx[tok1] = map[types.NodeID]struct{}{nid: {}}
+	bs.labelIdx[tok2] = map[types.NodeID]struct{}{nid: {}}
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
-	err := bs.DeleteNodeCascade(types.NodeID(id))
+	err := bs.DeleteNodeCascade(nid)
 	if err == nil {
 		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
@@ -1717,12 +1719,12 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 
 	for _, tok := range []uint16{tok1, tok2} {
 		if set, exists := bs.labelIdx[tok]; exists {
-			if _, inSet := set[id]; inSet {
+			if _, inSet := set[nid]; inSet {
 				t.Fatalf("labelIdx[%d] still contains ghost node %d", tok, id)
 			}
 		}
 	}
-	if _, exists := bs.nodeIDs[id]; exists {
+	if _, exists := bs.nodeIDs[nid]; exists {
 		t.Fatal("nodeIDs should not contain the deleted node")
 	}
 
@@ -5277,10 +5279,10 @@ func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
 
 	// Manually re-inject the orphan into outIdx to simulate stale index.
 	bs.idxMu.Lock()
-	if bs.outIdx[snowflake.ID(10)] == nil {
-		bs.outIdx[snowflake.ID(10)] = make(map[snowflake.ID]struct{})
+	if bs.outIdx[types.NodeID(10)] == nil {
+		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]struct{})
 	}
-	bs.outIdx[snowflake.ID(10)][snowflake.ID(100)] = struct{}{}
+	bs.outIdx[types.NodeID(10)][types.RelID(100)] = struct{}{}
 	bs.idxMu.Unlock()
 
 	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10)}, 0)
@@ -5310,10 +5312,10 @@ func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
 
 	// Manually re-inject the orphan into inIdx.
 	bs.idxMu.Lock()
-	if bs.inIdx[snowflake.ID(30)] == nil {
-		bs.inIdx[snowflake.ID(30)] = make(map[snowflake.ID]uint16)
+	if bs.inIdx[types.NodeID(30)] == nil {
+		bs.inIdx[types.NodeID(30)] = make(map[types.RelID]uint16)
 	}
-	bs.inIdx[snowflake.ID(30)][snowflake.ID(100)] = 5
+	bs.inIdx[types.NodeID(30)][types.RelID(100)] = 5
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(30)}, 0)
