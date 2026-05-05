@@ -6,27 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-> **v3.2.0 in progress: typed entity IDs at the Graph API boundary.** Hard-cut release. Phase 1+2 below are complete; Phases 3+4 are pending — see "Migration notes for downstream consumers" below for the full plan.
+> **v3.2.0 in progress: typed entity IDs across the entire pkg/graph surface.** Hard-cut release. Public API and internal plumbing migrated from raw `snowflake.ID` to typed entity wrappers. Awaiting tag.
 
-### Changed (in progress, v3.2.0)
+### Changed (v3.2.0 — typed entity IDs)
 
-- **Exported entity ID types** (`pkg/types/node.go`, `pkg/types/relationship.go`, `pkg/types/temporal.go`): `nodeID` → `NodeID`, `relID` → `RelID`, `entityID` → `EntityID`. The wrappers and their `SnowflakeID()` accessor were already public-shaped — only the type names became exported. No behavioral change; existing `n.InternalID()` / `r.InternalID()` calls keep compiling and now return the exported types.
-- **New `ID()` accessor** (`pkg/types/node.go`, `pkg/types/relationship.go`): added `func (n *Node) ID() NodeID` and `func (r *Relationship) ID() RelID`. `InternalID()` is retained as the legacy alias and will be removed once all callsites have switched.
+This release pushes typed entity wrappers (`types.NodeID`, `types.RelID`, `types.EntityID`) through every public method signature, struct field, and internal storage map in `pkg/graph`. The wrappers were already public-shaped via the `SnowflakeID()` accessor; this release exports them and makes them the lingua franca of the package.
 
-### Pending for v3.2.0
+**Architecture invariant**: only `keys.go` (binary key encoding), `wire.go` (msgpack on-disk format), the `snowflake.Node` library boundary, the LRU cache (`pkg/graph/lru.go`, type-agnostic infrastructure), and a small set of deliberately type-agnostic surfaces (`entityLockManager`, `collectDeleteIDs`, `sameIDSet`, `Graph.DecomposeID`) see raw `snowflake.ID`. Everything else flows typed.
 
-- **Graph method signatures** (`pkg/graph/graph.go`, `pkg/graph/context.go`, `pkg/graph/temporal.go`, `pkg/graph/txtime.go`, `pkg/graph/integrity.go`, `pkg/graph/tx.go`, `pkg/graph/batch.go`): replace `snowflake.ID` parameters that name a node or relationship with `types.NodeID` / `types.RelID`. ~56 `Graph` methods plus the `GraphTx` and `BatchBuilder` mirrors. Internal calls into `Store` continue to take `snowflake.ID` — convert at the boundary via `id.SnowflakeID()`. `Store` interface is **out of scope** (serialization layer stays raw).
-- **Callsite migration**: ~950 `n.InternalID().SnowflakeID()` patterns become `n.ID()` once Graph signatures move. Mostly mechanical.
-- **Removal of `InternalID()`**: scheduled for the same v3.2.0 cut, after the callsite sweep.
+#### Public type surface
 
-### Migration notes for downstream consumers (v3.2.0)
+- **Exported entity ID wrappers** (`pkg/types/node.go`, `pkg/types/relationship.go`, `pkg/types/temporal.go`): `nodeID` → `NodeID`, `relID` → `RelID`, `entityID` → `EntityID`. The wrappers and their `SnowflakeID()` accessor were already public-shaped — only the type names became exported.
+- **`ID()` accessors** (`pkg/types/node.go`, `pkg/types/relationship.go`): `func (n *Node) ID() NodeID` and `func (r *Relationship) ID() RelID`. `InternalID()` retained as a deprecated alias (scheduled for removal in this release).
+- **`TemporalMetadata.SetBaseEntityID`** (`pkg/types/temporal.go`): now takes `types.EntityID` instead of `snowflake.ID`. Symmetric with the existing `BaseEntityID() EntityID` getter.
 
-`engram` is the only known consumer. Migration steps when v3.2.0 ships:
+#### Public method signatures
+
+- **`Graph` methods** (`pkg/graph/graph.go`, `pkg/graph/context.go`, `pkg/graph/temporal.go`, `pkg/graph/txtime.go`, `pkg/graph/integrity.go`, `pkg/graph/tx.go`, `pkg/graph/batch.go`): 56+ methods now take `types.NodeID` / `types.RelID` parameters and return typed values. ~950 `n.InternalID().SnowflakeID()` patterns at callsites collapse to `n.ID()`.
+- **`Store` interface** (`pkg/graph/store.go`): all 35+ methods now use typed IDs. `MemoryStore`, `BadgerStore`, and `TieredStore` implementations updated.
+- **`GraphTx` and `BatchBuilder`**: typed mirrors of the `Graph` API.
+
+#### Public struct fields (Tier A — public-API leaks closed)
+
+- **`Event.EntityID`** (`pkg/graph/events.go`): `snowflake.ID` → `types.EntityID`. ~30 `.SnowflakeID()` unwraps dropped at event-publication sites in `tx.go`, `batch.go`, `context.go`, `graph.go`.
+- **`BatchError.ID`** (`pkg/graph/batch.go`): `snowflake.ID` → `types.EntityID`. 6 producer sites updated; `snowflake` import dropped from `batch.go` and `batch_test.go`.
+- **`QueryOpts.After`** (`pkg/graph/store.go`): `snowflake.ID` → `types.EntityID`. The 5 paginate helpers (`paginateIDs`, `paginateNodes`, `paginateRels`, `paginateNodeIDs`, `paginateRelIDs`) also take typed cursors now; each extracts `afterRaw := after.SnowflakeID()` once at the top.
+
+#### Internal helpers (Tier C — chokepoint consolidation)
+
+- **`highFrequencyIndex`** (`pkg/graph/hf_index.go`): bucket storage + `add`/`remove`/`pointQuery`/`rangeQuery` typed.
+- **`Graph.forEachKnownNodeID/RelID`** (`pkg/graph/temporal.go`): callback parameter types migrated; 11 caller closures + 6 in-scope helpers updated.
+- **`TieredStore.shardForNodeID/RelID/Checked`** (`pkg/graph/tieredstore.go`): ~43 callers across 5 tieredstore files updated.
+- **`Graph.publishEvent`** (`pkg/graph/graph.go`): parameter type migrated; 18 callsites updated as part of the `Event.EntityID` change.
+- **BadgerStore unexported helpers** (`pkg/graph/badgerstore.go`): `prefetchNode`, `getNodeLocked`, `getRelLocked`, `cascadeDeleteInner`, `cascadeDeleteLocked`, `filterNodeIDsByTemporalPeek`, `filterRelIDsByTemporalPeek`, `fetchNodesWithTemporalFilter`, `fetchRelsWithTemporalFilter` all take typed parameters.
+- **MemoryStore storage maps** (`pkg/graph/memorystore.go`): 8 maps (`nodes`, `rels`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx`, `nodeHistory`, `relHistory`) keyed by typed IDs. ~25 top-of-method `id := nid.SnowflakeID()` shims dropped entirely. 5 internal helpers retyped (`deleteRelLocked`, `filterNodeIDsByTemporal`, `filterRelIDsByTemporal`, `sortNodesByID`, `sortRelsByID`). `.SnowflakeID()` count: 46 → 17 (-63%).
+- **BadgerStore storage maps** (`pkg/graph/badgerstore.go`): 6 maps (`nodeIDs`, `relIDs`, `labelIdx`, `typeIdx`, `outIdx`, `inIdx`) keyed by typed IDs. Map type-safety prevents accidental cross-kind lookups (compiler now catches `bs.nodeIDs[someRelID]` mistakes).
+- **Pagination helpers** (`pkg/graph/pagination.go`): added `paginateNodeIDs`, `paginateRelIDs`, `toNodeIDs`, `toRelIDs` typed equivalents alongside the existing raw `paginateIDs`.
+
+#### Audit snapshot post-migration
+
+- 207 raw `snowflake.ID` references remain in production code (down from ~600+ pre-migration); all at deliberate Tier D boundaries (LRU cache, `keys.go`, `wire.go` format, `snowflake.Node` library calls, type-agnostic helpers).
+- 17 references in chokepoint files (`keys.go` + `wire.go`) — all justified.
+- Public API surface is fully typed; no exported field, parameter, or return type uses raw `snowflake.ID` except `Graph.DecomposeID` / `DecomposeID` (deliberately type-agnostic — accepts either node or relationship IDs).
+
+#### Migration notes for downstream consumers (v3.2.0)
+
+`engram` is the only known consumer (currently pinned at `v3.1.1`). Migration steps when bumping:
 
 1. `n.InternalID().SnowflakeID()` → `n.ID().SnowflakeID()` (still works during the alias window) or just `n.ID()` if passing into a Graph method that has already been migrated.
 2. Anywhere a raw `snowflake.ID` was passed to `g.GetNode`, `g.AddNodeLabel`, `g.DeleteNode`, etc.: wrap as `types.NodeID(id)` — or, preferred, switch the variable's type to `types.NodeID` at its declaration.
 3. Same pattern for relationships with `types.RelID`.
 4. `EntityID` is now public if you store base-entity references from `TemporalMetadata.BaseEntityID()`.
+5. `Event.EntityID`, `BatchError.ID`, `QueryOpts.After` are now `types.EntityID` — wrap raw IDs at the construction site or pass typed values directly.
+6. `TemporalMetadata.SetBaseEntityID` now takes `types.EntityID`; wrap with `types.EntityID(rawID)` at callsites.
 
 ### Benchmarks Added
 

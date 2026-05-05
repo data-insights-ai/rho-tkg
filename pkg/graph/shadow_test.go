@@ -29,7 +29,7 @@ func makeNodeWithMeta(t *testing.T) (*Graph, *types.Node) {
 		CreatedBy: "alice",
 		UpdatedBy: "bob",
 	}
-	tm.SetBaseEntityID(snowflake.ID(42))
+	tm.SetBaseEntityID(types.EntityID(42))
 	n.SetTemporal(tm)
 	n.SetIntegrity(&types.NodeIntegrity{Hash: "abc123", PrevHash: "def456"})
 	n.SetVersion(3)
@@ -60,7 +60,7 @@ func makeRelWithMeta(t *testing.T) (*Graph, *types.Relationship) {
 		CreatedBy: "alice",
 		UpdatedBy: "bob",
 	}
-	tm.SetBaseEntityID(snowflake.ID(99))
+	tm.SetBaseEntityID(types.EntityID(99))
 	r.SetTemporal(tm)
 	r.SetIntegrity(&types.RelIntegrity{Hash: "xyz789", PrevHash: "uvw012"})
 	r.SetVersion(7)

@@ -1,7 +1,6 @@
 package graph
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -140,7 +139,7 @@ func wireToNode(w nodeWire) *types.Node {
 			UpdatedBy: w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
-			tm.SetBaseEntityID(snowflake.ID(w.BaseEntityID))
+			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
 		}
 		n.SetTemporal(tm)
 	}
@@ -225,7 +224,7 @@ func wireToRel(w relWire) *types.Relationship {
 			UpdatedBy: w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
-			tm.SetBaseEntityID(snowflake.ID(w.BaseEntityID))
+			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
 		}
 		r.SetTemporal(tm)
 	}

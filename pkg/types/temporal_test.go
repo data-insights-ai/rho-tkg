@@ -10,7 +10,7 @@ func TestEntityIDSnowflakeIDRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tm := &TemporalMetadata{}
-	tm.SetBaseEntityID(snowflake.ID(42))
+	tm.SetBaseEntityID(EntityID(42))
 	got := tm.BaseEntityID().SnowflakeID()
 	if got != snowflake.ID(42) {
 		t.Errorf("entityID.SnowflakeID() = %d, want 42", got)

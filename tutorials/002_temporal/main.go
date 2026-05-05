@@ -271,7 +271,7 @@ func main() {
 		CreatedAt: now,
 		CreatedBy: "hr-system",
 	})
-	empV2.Temporal().SetBaseEntityID(emp.ID().SnowflakeID())
+	empV2.Temporal().SetBaseEntityID(types.EntityID(emp.ID()))
 
 	baseID, ok := g.ResolveNodeProperty(empV2, types.ShadowBaseEntity)
 	if ok {

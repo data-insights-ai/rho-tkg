@@ -47,7 +47,7 @@ func (tm *TemporalMetadata) BaseEntityID() EntityID {
 	return tm.baseEntityID
 }
 
-// SetBaseEntityID sets the base entity ID from a snowflake.ID.
-func (tm *TemporalMetadata) SetBaseEntityID(id snowflake.ID) {
-	tm.baseEntityID = EntityID(id)
+// SetBaseEntityID sets the base entity ID.
+func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
+	tm.baseEntityID = id
 }

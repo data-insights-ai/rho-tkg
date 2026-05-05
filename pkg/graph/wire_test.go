@@ -29,7 +29,7 @@ func TestNodeToWireAndBack(t *testing.T) {
 		CreatedBy: "admin",
 		UpdatedBy: "system",
 	})
-	n.Temporal().SetBaseEntityID(snowflake.ID(999))
+	n.Temporal().SetBaseEntityID(types.EntityID(999))
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:     "abc123",
 		PrevHash: "def456",
@@ -739,7 +739,7 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	// Non-zero base entity.
 	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetTemporal(&types.TemporalMetadata{})
-	n.Temporal().SetBaseEntityID(snowflake.ID(777))
+	n.Temporal().SetBaseEntityID(types.EntityID(777))
 
 	w := nodeToWire(n)
 	if w.BaseEntityID != 777 {

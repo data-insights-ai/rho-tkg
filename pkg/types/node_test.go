@@ -369,7 +369,7 @@ func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 		CreatedBy: "alice",
 		UpdatedBy: "bob",
 	}
-	tm.SetBaseEntityID(snowflake.ID(42))
+	tm.SetBaseEntityID(EntityID(42))
 	n.SetTemporal(tm)
 	got := n.Temporal()
 	if got.ValidFrom != 1000 || got.ValidTo != 2000 {
