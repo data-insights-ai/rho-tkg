@@ -79,6 +79,9 @@ func (ts *TieredStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(id)
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.RemoveNodeLabelToken(id, tok, updatedNode); err != nil {
 		return err
 	}
@@ -102,6 +105,9 @@ func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(id)
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.RemoveNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
@@ -123,6 +129,9 @@ func (ts *TieredStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNod
 	}
 	defer checkin()
 	old, _ := store.GetNode(id)
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.AddNodeLabelToken(id, tok, updatedNode); err != nil {
 		return err
 	}
@@ -146,6 +155,9 @@ func (ts *TieredStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16,
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(id)
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.AddNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
@@ -458,10 +470,11 @@ func (ts *TieredStore) PutRelVersion(id snowflake.ID, version uint32, r *types.R
 }
 
 func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
-	shard, err := ts.shardForRelID(id)
+	shard, checkin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	history, err := shard.GetRelHistory(id)
 	if err != nil {
 		return err
@@ -488,6 +501,8 @@ func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 	if truncated {
 		return nil
 	}
+	// No shard owns history for this id — delegate to the originally resolved
+	// shard so its NotFound/no-op semantics are surfaced consistently.
 	return shard.TruncateRelHistory(id, keepVersions)
 }
 
@@ -642,6 +657,28 @@ func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 // ErrEventPropertyIndex is returned when attempting to create a property index
 // on an event label in a TieredStore. Only reference entities support indexes.
 var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in TieredStore")
+
+// ErrPrimaryLabelClassMutation is returned when a label mutation would change a
+// node's primary-label ontology class (reference vs event). Such a change would
+// move the live entity to a different shard while leaving prior history on the
+// original shard, fragmenting the version chain. Callers must instead delete
+// and recreate the node under the new class.
+var ErrPrimaryLabelClassMutation = errors.New("graph: label mutation would change primary-label class (reference<->event); not supported on TieredStore")
+
+// ensurePrimaryLabelClassUnchanged compares the primary-label classes of the
+// pre-mutation and post-mutation nodes and rejects the mutation if they differ.
+// old may be nil (entity already gone) — in that case the check is skipped.
+func (ts *TieredStore) ensurePrimaryLabelClassUnchanged(old, updated *types.Node) error {
+	if old == nil || updated == nil {
+		return nil
+	}
+	oldClass := ts.ontology.ClassifyByToken(old.PrimaryLabelToken().Value())
+	newClass := ts.ontology.ClassifyByToken(updated.PrimaryLabelToken().Value())
+	if oldClass != newClass {
+		return ErrPrimaryLabelClassMutation
+	}
+	return nil
+}
 
 func (ts *TieredStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
 	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
@@ -900,6 +937,7 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
+	archive := ts.refArchive.Load()
 
 	// 3. Read node from refShard.
 	node, err := ts.refShard.GetNode(id)
@@ -941,7 +979,7 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	}
 
 	// 5. Write node + rels to refArchive.
-	if err := ts.refArchive.PutNode(node); err != nil {
+	if err := archive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
 
@@ -949,13 +987,13 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 		// PutRelationship validates endpoint existence. If the other endpoint
 		// isn't in the archive (partial archive), skip the rel — it will be
 		// deleted by DeleteNodeCascade below.
-		err := ts.refArchive.PutRelationship(r)
+		err := archive.PutRelationship(r)
 		if errors.Is(err, ErrNodeNotFound) {
 			continue
 		}
 		if err != nil {
 			// Best-effort rollback: remove partially written data from archive.
-			_ = ts.refArchive.DeleteNodeCascade(id)
+			_ = archive.DeleteNodeCascade(id)
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}
@@ -963,7 +1001,7 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
 	if err := ts.refShard.DeleteNodeCascade(id); err != nil {
 		// Best-effort rollback: remove data from archive since source delete failed.
-		_ = ts.refArchive.DeleteNodeCascade(id)
+		_ = archive.DeleteNodeCascade(id)
 		return fmt.Errorf("graph: archive delete from ref: %w", err)
 	}
 
@@ -981,21 +1019,22 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
+	archive := ts.refArchive.Load()
 
 	// 2. Verify node is in archive.
-	if !ts.refArchive.hasNodeID(id) {
+	if !archive.hasNodeID(id) {
 		return fmt.Errorf("graph: restore: %w", ErrNodeNotFound)
 	}
 
 	// 3. Read node from archive.
-	node, err := ts.refArchive.GetNode(id)
+	node, err := archive.GetNode(id)
 	if err != nil {
 		return fmt.Errorf("graph: restore read node: %w", err)
 	}
 
 	// 4. Read all rels from archive.
-	outIDs := ts.refArchive.outgoingRelIDs(id)
-	inIDs := ts.refArchive.incomingRelIDs(id, 0)
+	outIDs := archive.outgoingRelIDs(id)
+	inIDs := archive.incomingRelIDs(id, 0)
 
 	seen := make(map[snowflake.ID]struct{}, len(outIDs)+len(inIDs))
 	var relIDs []snowflake.ID
@@ -1014,7 +1053,7 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 
 	var rels []*types.Relationship
 	for _, rid := range relIDs {
-		r, err := ts.refArchive.GetRelationship(rid)
+		r, err := archive.GetRelationship(rid)
 		if errors.Is(err, ErrRelNotFound) {
 			continue
 		}
@@ -1042,7 +1081,7 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	}
 
 	// 6. Delete from archive.
-	if err := ts.refArchive.DeleteNodeCascade(id); err != nil {
+	if err := archive.DeleteNodeCascade(id); err != nil {
 		// Best-effort rollback: remove data from refShard since archive delete failed.
 		_ = ts.refShard.DeleteNodeCascade(id)
 		return fmt.Errorf("graph: restore delete from archive: %w", err)

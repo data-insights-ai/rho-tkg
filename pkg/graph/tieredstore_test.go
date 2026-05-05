@@ -3280,7 +3280,8 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// Node should be in refArchive.
-	if ts.refArchive == nil || !ts.refArchive.hasNodeID(caseID) {
+	archive := ts.refArchive.Load()
+	if archive == nil || !archive.hasNodeID(caseID) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -3312,7 +3313,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	}
 
 	// case1 in archive, not in refShard.
-	if !ts.refArchive.hasNodeID(case1ID) {
+	if archive := ts.refArchive.Load(); archive == nil || !archive.hasNodeID(case1ID) {
 		t.Error("case1 should be in archive")
 	}
 	if ts.refShard.hasNodeID(case1ID) {
@@ -3349,7 +3350,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// Node should NOT be in archive.
-	if ts.refArchive.hasNodeID(caseID) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(caseID) {
 		t.Error("node should not be in archive after restore")
 	}
 
@@ -3368,14 +3369,14 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 	_ = g
 
-	if ts.refArchive != nil {
+	if ts.refArchive.Load() != nil {
 		t.Error("refArchive should be nil initially")
 	}
 
 	caseNode, _ := g.AddNode([]string{"Case"}, nil)
 	_ = ts.ArchiveNode(caseNode.InternalID().SnowflakeID())
 
-	if ts.refArchive == nil {
+	if ts.refArchive.Load() == nil {
 		t.Error("refArchive should be opened after ArchiveNode")
 	}
 }
@@ -3393,7 +3394,7 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shard != ts.refArchive {
+	if shard != ts.refArchive.Load() {
 		t.Error("shardForNodeID should return refArchive for archived node")
 	}
 }
@@ -3441,7 +3442,9 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	_ = ts.refShard.Flush()
 
 	_ = ts.ArchiveNode(n.InternalID().SnowflakeID())
-	_ = ts.refArchive.Flush()
+	if archive := ts.refArchive.Load(); archive != nil {
+		_ = archive.Flush()
+	}
 
 	_ = ts.Close()
 
@@ -4782,7 +4785,7 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	if ts.refShard.hasNodeID(id1) {
 		t.Error("node should not be in refShard after archive")
 	}
-	if !ts.refArchive.hasNodeID(id1) {
+	if archive := ts.refArchive.Load(); archive == nil || !archive.hasNodeID(id1) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -4794,7 +4797,7 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	if !ts.refShard.hasNodeID(id1) {
 		t.Error("node should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1) {
 		t.Error("node should not be in refArchive after restore")
 	}
 }
@@ -4830,7 +4833,8 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 
 	// Verify both in archive.
-	if !ts.refArchive.hasNodeID(id1) || !ts.refArchive.hasNodeID(id2) {
+	archive := ts.refArchive.Load()
+	if archive == nil || !archive.hasNodeID(id1) || !archive.hasNodeID(id2) {
 		t.Fatal("both nodes should be in archive")
 	}
 
@@ -4843,7 +4847,7 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	if !ts.refShard.hasNodeID(id1) {
 		t.Error("n1 should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1) {
 		t.Error("n1 should not be in refArchive after restore")
 	}
 

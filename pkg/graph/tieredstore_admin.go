@@ -63,10 +63,10 @@ func (ts *TieredStore) ListShards() []ShardInfo {
 	infos = append(infos, refInfo)
 
 	// Archive shard (if open or in catalog).
-	if ts.refArchive != nil {
+	if archive := ts.refArchive.Load(); archive != nil {
 		archiveEntry, _ := ts.catalog.GetShard("archive")
-		archNodes, _ := ts.refArchive.NodeCount()
-		archRels, _ := ts.refArchive.RelationshipCount()
+		archNodes, _ := archive.NodeCount()
+		archRels, _ := archive.RelationshipCount()
 		archiveInfo := ShardInfo{
 			Name:     "archive",
 			Kind:     ShardArchive,
@@ -120,9 +120,9 @@ func (ts *TieredStore) RebuildCatalog() error {
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
 	// Update archive if open.
-	if ts.refArchive != nil {
-		archNodes, _ := ts.refArchive.NodeCount()
-		archRels, _ := ts.refArchive.RelationshipCount()
+	if archive := ts.refArchive.Load(); archive != nil {
+		archNodes, _ := archive.NodeCount()
+		archRels, _ := archive.RelationshipCount()
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
@@ -226,13 +226,13 @@ func (ts *TieredStore) resolveShardStore(name string) (*BadgerStore, error) {
 		return ts.refShard, nil
 	}
 	if name == "archive" {
-		if ts.refArchive != nil {
-			return ts.refArchive, nil
+		if archive := ts.refArchive.Load(); archive != nil {
+			return archive, nil
 		}
 		if err := ts.ensureRefArchive(); err != nil {
 			return nil, err
 		}
-		return ts.refArchive, nil
+		return ts.refArchive.Load(), nil
 	}
 
 	ts.mu.RLock()

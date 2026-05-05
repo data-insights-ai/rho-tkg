@@ -489,6 +489,43 @@ history writes by snapshot ownership.
 
 ---
 
+## B31. Primary-Label Class Must Be Immutable Across Versions
+
+```
+BAD:  RemoveNodeLabel(id, primaryLabel) auto-promotes the next extra label
+      to primary. If the new primary has a different ontology class, the
+      live entity stays on its original shard while subsequent history
+      snapshots route to a different shard, fragmenting the version chain
+      and breaking forEachHistoryShard's first-match semantics.
+
+GOOD: TieredStore.{Add,Remove}NodeLabelToken{,WithHistory} compare the
+      pre/post primary-label classes (ClassReference vs ClassEvent) and
+      reject the mutation with ErrPrimaryLabelClassMutation when they
+      differ. An entity's full history then provably lives on a single
+      shard, and read-fallback can stop at the first match.
+```
+
+When routing decisions depend on a property that is part of mutable state
+(primary label is a snapshot property; ontology class is derived from it),
+the routing component must either (a) treat that property as immutable
+across versions, or (b) merge across all candidate shards on read. Option
+(a) is cheaper and easier to reason about; enforce it at the write
+boundary that creates the inconsistency.
+
+**Audit:** When a write decides "where does this go?" based on a value
+that can change, grep for all paths that mutate that value and add a
+guard at each one — not just at the read site that exposes the bug.
+
+**History:** Surfaced during review of the deleted-entity history routing
+fix (B30). The fix routed history writes by snapshot label class, which
+made the first-match read fallback correct only as long as primary class
+never changes. v3.1.6's `AddNodeLabel`/`RemoveNodeLabel` plus
+`Node.RemoveLabelTokenRaw`'s auto-promotion made class change reachable.
+Closed at the TieredStore boundary because the graph layer is
+backend-agnostic.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

@@ -17,6 +17,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **TieredStore deleted entity history routing** (`pkg/graph/tieredstore.go`, `pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore_write.go`): node and relationship history reads/truncation now fall back to probing history-owning shards when live indexes no longer identify the owner after delete. Node history writes route reference snapshots to the reference shard; relationship history writes route by the relationship start-node shard, matching cross-shard entity ownership. This restores parity with `MemoryStore` and `BadgerStore` for tombstones after deleting reference nodes and `Case -> Signal` relationships.
+- **TieredStore relationship history cold-shard race** (`pkg/graph/tieredstore.go`, `pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore_write.go`): added `shardForRelIDChecked` paralleling `shardForNodeIDChecked` — increments `activeReqs` on event shards so `closeIdleShards` cannot close the DB while a relationship history read is in flight. `GetRelVersion`, `GetRelHistory`, and `TruncateRelHistory` now use the checked variant.
+- **TieredStore primary-label class invariant** (`pkg/graph/tieredstore_write.go`, new `ErrPrimaryLabelClassMutation`): `AddNodeLabelToken{,WithHistory}` and `RemoveNodeLabelToken{,WithHistory}` now reject mutations that would change the primary label's ontology class (reference ↔ event). Such mutations would leave the live entity on its original shard while subsequent history snapshots routed to a different shard, fragmenting the version chain. The guard preserves the invariant that an entity's full history lives on a single shard.
+- **TieredStore `refArchive` data race** (`pkg/graph/tieredstore.go`, `pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore_write.go`, `pkg/graph/tieredstore_admin.go`): `TieredStore.refArchive` is now `atomic.Pointer[BadgerStore]`. Concurrent reads from `shardForNodeID`, `shardForNodeIDChecked`, the `ForEach*ID` iterators, and admin helpers no longer race with `ensureRefArchive`'s lazy-open write. `archiveMu` is retained as a single-flight guard for the open operation.
+
+### Changed
+
+- **`forEachHistoryShard` shard scope** (`pkg/graph/tieredstore_read.go`): event-shard probing in the deleted-entity history fallback now uses `DepthWarm` (hot + warm only). Cold shards are correctly excluded — they are read-only archives, no new history is written there, and any history that legitimately lives on a cold shard belongs to an entity whose home shard the caller already passes via `skip`. The primary-label-class invariant guarantees a single entity's history cannot fragment across event shards, so warm-only iteration is sufficient as a safety net for cross-shard relationship snapshots routed by start-node shard. Avoids unnecessary cold-shard lazy-open on every history miss.
+
+### Tests Added (continued)
+
+- **TieredStore history-routing regression tests** (`pkg/graph/tieredstore_history_routing_test.go`): direct coverage for `shardForRelIDChecked` on same-shard reference rels and unknown IDs; rejection of primary-label-class change via `RemoveNodeLabel`; allowed same-class label add/remove; `GetNodeVersion`/`GetRelVersion` after deleting a reference node and a cross-shard relationship; `TruncateNodeHistory` after deleting a reference node; silent no-op truncate semantics for unknown IDs.
 
 ## [3.1.6] - 2026-04-10
 

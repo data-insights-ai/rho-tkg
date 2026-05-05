@@ -721,10 +721,11 @@ func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
 }
 
 func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+	shard, checkin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	r, err := shard.GetRelVersion(id, version)
 	if err == nil || !errors.Is(err, ErrVersionNotFound) {
 		return r, err
@@ -752,10 +753,11 @@ func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 }
 
 func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+	shard, checkin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	history, err := shard.GetRelHistory(id)
 	if err != nil || len(history) > 0 {
 		return history, err
@@ -874,9 +876,19 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 }
 
 // forEachHistoryShard probes shards that may own history after the live entity
-// index has been deleted. Reference entity history can live on the reference
+// index has been deleted. Reference entity history lives on the reference
 // shard even when timestamp fallback selects an event shard; cross-shard
 // relationship history lives with the relationship entity shard.
+//
+// Shard set probed: refShard, refArchive (if present), and hot+warm event
+// shards. Cold shards are intentionally excluded: cold shards are read-only
+// archives, no new history is written there, and any history that does exist
+// on a cold shard belongs to an entity whose own home shard is that cold
+// shard — which the caller already passed as skip. With the primary-label-
+// class invariant (TieredStore.ensurePrimaryLabelClassUnchanged), a single
+// entity's history cannot fragment across event shards, so iterating warm
+// shards is sufficient as a defence-in-depth safety net for cross-shard
+// relationship snapshots routed by start-node shard.
 func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
 	if ts.refShard != skip {
 		stop, err := fn(ts.refShard)
@@ -885,16 +897,12 @@ func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerSto
 		}
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive := ts.refArchive.Load()
 	if archive == nil && ts.hasArchiveShard() {
 		if err := ts.ensureRefArchive(); err != nil {
 			return err
 		}
-		ts.archiveMu.Lock()
-		archive = ts.refArchive
-		ts.archiveMu.Unlock()
+		archive = ts.refArchive.Load()
 	}
 	if archive != nil && archive != skip {
 		stop, err := fn(archive)
@@ -904,7 +912,7 @@ func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerSto
 	}
 
 	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
+	eventShards := ts.eventShardSnapshot(DepthWarm) // hot + warm only — cold excluded
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
@@ -948,9 +956,7 @@ func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 	}
 
 	// Archive shard (if open).
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive := ts.refArchive.Load()
 	if archive != nil {
 		if err := archive.ForEachNodeID(func(id snowflake.ID) bool {
 			if !fn(id) {
@@ -1009,9 +1015,7 @@ func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive := ts.refArchive.Load()
 	if archive != nil {
 		if err := archive.ForEachRelID(func(id snowflake.ID) bool {
 			if !fn(id) {
@@ -1069,9 +1073,7 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive := ts.refArchive.Load()
 	if archive != nil {
 		if err := archive.ForEachNodeHistoryID(func(id snowflake.ID) bool {
 			if !fn(id) {
@@ -1129,9 +1131,7 @@ func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive := ts.refArchive.Load()
 	if archive != nil {
 		if err := archive.ForEachRelHistoryID(func(id snowflake.ID) bool {
 			if !fn(id) {
