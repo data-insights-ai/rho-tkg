@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+> **v3.2.0 in progress: typed entity IDs at the Graph API boundary.** Hard-cut release. Phase 1+2 below are complete; Phases 3+4 are pending — see "Migration notes for downstream consumers" below for the full plan.
+
+### Changed (in progress, v3.2.0)
+
+- **Exported entity ID types** (`pkg/types/node.go`, `pkg/types/relationship.go`, `pkg/types/temporal.go`): `nodeID` → `NodeID`, `relID` → `RelID`, `entityID` → `EntityID`. The wrappers and their `SnowflakeID()` accessor were already public-shaped — only the type names became exported. No behavioral change; existing `n.InternalID()` / `r.InternalID()` calls keep compiling and now return the exported types.
+- **New `ID()` accessor** (`pkg/types/node.go`, `pkg/types/relationship.go`): added `func (n *Node) ID() NodeID` and `func (r *Relationship) ID() RelID`. `InternalID()` is retained as the legacy alias and will be removed once all callsites have switched.
+
+### Pending for v3.2.0
+
+- **Graph method signatures** (`pkg/graph/graph.go`, `pkg/graph/context.go`, `pkg/graph/temporal.go`, `pkg/graph/txtime.go`, `pkg/graph/integrity.go`, `pkg/graph/tx.go`, `pkg/graph/batch.go`): replace `snowflake.ID` parameters that name a node or relationship with `types.NodeID` / `types.RelID`. ~56 `Graph` methods plus the `GraphTx` and `BatchBuilder` mirrors. Internal calls into `Store` continue to take `snowflake.ID` — convert at the boundary via `id.SnowflakeID()`. `Store` interface is **out of scope** (serialization layer stays raw).
+- **Callsite migration**: ~950 `n.InternalID().SnowflakeID()` patterns become `n.ID()` once Graph signatures move. Mostly mechanical.
+- **Removal of `InternalID()`**: scheduled for the same v3.2.0 cut, after the callsite sweep.
+
+### Migration notes for downstream consumers (v3.2.0)
+
+`engram` is the only known consumer. Migration steps when v3.2.0 ships:
+
+1. `n.InternalID().SnowflakeID()` → `n.ID().SnowflakeID()` (still works during the alias window) or just `n.ID()` if passing into a Graph method that has already been migrated.
+2. Anywhere a raw `snowflake.ID` was passed to `g.GetNode`, `g.AddNodeLabel`, `g.DeleteNode`, etc.: wrap as `types.NodeID(id)` — or, preferred, switch the variable's type to `types.NodeID` at its declaration.
+3. Same pattern for relationships with `types.RelID`.
+4. `EntityID` is now public if you store base-entity references from `TemporalMetadata.BaseEntityID()`.
+
 ### Benchmarks Added
 
 - **Graph performance baseline suite** (`pkg/graph/bench_baseline_test.go`, `pkg/graph/bench_production_test.go`, `Makefile`): added `BenchmarkGraphBaseline/...` coverage for memory-store reads/writes, temporal queries, batch and transaction operations, Badger async/sync writes, Badger indexed reads, and TieredStore reference/event/cross-shard writes. Added `BenchmarkGraphProduction/...` scenarios for public `Graph` APIs covering large graph reads, high-degree traversal, temporal and bitemporal queries, node and relationship history chains, public method surface checks, export/import, sync/async event buses, TieredStore multi-shard queries, and batch/transaction write shapes. Added small and large production profiles: `make bench-graph-production-small` keeps the routine 10K-node/30-version suite, while `make bench-graph-production-large` raises the stress profile to 100K nodes, 1M regular relationships, a 10K-degree hub, 3,000-version node and relationship history chains, larger export/import, TieredStore, batch, and public-surface fixtures. `make bench-graph-production` remains an alias for the small profile; `make bench-graph-all` and `make bench-graph-all-large` run the baseline with the respective production profile for `benchstat` comparisons against `main`.

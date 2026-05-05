@@ -30,13 +30,13 @@ func TestVectorIndex_CreateAndSearch_Cosine(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
 	// First result should be n1 (exact match) or n3 (very close).
-	firstID := results[0].InternalID().SnowflakeID()
-	if firstID != n1.InternalID().SnowflakeID() && firstID != n3.InternalID().SnowflakeID() {
+	firstID := results[0].ID()
+	if firstID != n1.ID() && firstID != n3.ID() {
 		t.Errorf("first result should be n1 or n3 (closest to [1,0,0]), got other")
 	}
 	// n2 should be last (orthogonal).
-	lastID := results[len(results)-1].InternalID().SnowflakeID()
-	if lastID != n2.InternalID().SnowflakeID() {
+	lastID := results[len(results)-1].ID()
+	if lastID != n2.ID() {
 		t.Errorf("last result should be n2 (most distant), got other")
 	}
 	_ = n1
@@ -65,7 +65,7 @@ func TestVectorIndex_CreateAndSearch_Euclidean(t *testing.T) {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
 	// Closest to [0.1, 0.1]: n1=[0,0] d≈0.14, n2=[1,1] d≈1.27, n3 much farther.
-	if results[0].InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if results[0].ID() != n1.ID() {
 		t.Error("first result should be n1 (closest to origin)")
 	}
 	_ = n2
@@ -92,7 +92,7 @@ func TestVectorIndex_AutoMaintained_OnAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
-	if len(results) != 1 || results[0].InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if len(results) != 1 || results[0].ID() != n.ID() {
 		t.Error("node added after index creation should be searchable")
 	}
 }
@@ -103,7 +103,7 @@ func TestVectorIndex_AutoMaintained_OnDelete(t *testing.T) {
 	key := "v"
 
 	n, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.CreateVectorIndex(label, key, 2, graph.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -118,7 +118,7 @@ func TestVectorIndex_AutoMaintained_OnDelete(t *testing.T) {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
 	for _, r := range results {
-		if r.InternalID().SnowflakeID() == id {
+		if r.ID() == id {
 			t.Error("deleted node should not appear in search results")
 		}
 	}
@@ -230,7 +230,7 @@ func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
 	key := "v"
 
 	n, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.CreateVectorIndex(label, key, 2, graph.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -246,7 +246,7 @@ func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
-	if len(results) != 1 || results[0].InternalID().SnowflakeID() != id {
+	if len(results) != 1 || results[0].ID() != id {
 		t.Error("updated node should reflect new vector in index")
 	}
 }
@@ -272,7 +272,7 @@ func TestVectorIndex_toFloat32Slice_MixedAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
-	if len(results) != 1 || results[0].InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if len(results) != 1 || results[0].ID() != n.ID() {
 		t.Error("node with []any float64 vector should be indexed")
 	}
 }

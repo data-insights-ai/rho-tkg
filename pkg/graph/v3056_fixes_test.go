@@ -29,7 +29,7 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	// Insert 20 event nodes.
 	const total = 20
 	for i := 0; i < total; i++ {
-		n := types.NewNode(gen.Generate(), evtTok, nil)
+		n := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
 		if err := ts.PutNode(n); err != nil {
 			t.Fatalf("PutNode: %v", err)
 		}
@@ -47,16 +47,16 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 
 	// Second page using After cursor.
 	if len(nodes) > 0 {
-		afterID := nodes[len(nodes)-1].InternalID().SnowflakeID()
-		page2, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: afterID})
+		afterID := nodes[len(nodes)-1].ID()
+		page2, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: afterID.SnowflakeID()})
 		if err != nil {
 			t.Fatalf("NodesByLabel page2: %v", err)
 		}
 		// All page2 IDs should be > afterID.
 		for _, n := range page2 {
-			if n.InternalID().SnowflakeID() <= afterID {
+			if n.ID() <= afterID {
 				t.Errorf("page2 node %d <= afterID %d — cursor not respected",
-					n.InternalID().SnowflakeID(), afterID)
+					n.ID(), afterID)
 			}
 		}
 	}
@@ -123,8 +123,8 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	evtTok, _ := reg.GetOrCreate("Signal") // event (hot shard)
 	gen := tieredNodeGen(t)
 
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
-	evtNode := types.NewNode(gen.Generate(), evtTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
 
 	// Batch write succeeds normally.
 	if err := ts.PutNodesBatch([]*types.Node{refNode, evtNode}); err != nil {
@@ -132,8 +132,8 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	}
 
 	// Verify both are present.
-	refID := refNode.InternalID().SnowflakeID()
-	evtID := evtNode.InternalID().SnowflakeID()
+	refID := refNode.ID()
+	evtID := evtNode.ID()
 	if _, err := ts.GetNode(refID); err != nil {
 		t.Fatalf("ref node not found after batch: %v", err)
 	}
@@ -143,13 +143,13 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 
 	// Simulate hot-shard failure by pre-inserting a conflicting event node
 	// (PutNode returns ErrNodeExists for duplicates), causing the batch to fail.
-	dupEvtNode := types.NewNode(gen.Generate(), evtTok, nil)
+	dupEvtNode := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
 	if err := ts.PutNode(dupEvtNode); err != nil {
 		t.Fatalf("pre-insert dup: %v", err)
 	}
 
 	// Create a new ref node and try to batch it with the duplicate event node.
-	newRefNode := types.NewNode(gen.Generate(), caseTok, nil)
+	newRefNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	err := ts.PutNodesBatch([]*types.Node{newRefNode, dupEvtNode}) // dupEvtNode → ErrNodeExists
 	if err == nil {
 		// If the store accepts duplicates without error (MemoryStore is lenient),
@@ -158,7 +158,7 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	}
 
 	// After failure, the new ref node should NOT be present (rolled back).
-	newRefID := newRefNode.InternalID().SnowflakeID()
+	newRefID := newRefNode.ID()
 	_, getErr := ts.refShard.GetNode(newRefID)
 	if getErr == nil {
 		t.Errorf("ref node %d still present after hot-shard failure — rollback did not occur", newRefID)
@@ -176,7 +176,7 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(9901), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(9901)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -202,14 +202,14 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	}()
 
 	time.Sleep(1 * time.Millisecond) // let the goroutine acquire RLock first
-	if err := bs.DeleteNode(snowflake.ID(9901)); err != nil {
+	if err := bs.DeleteNode(types.NodeID(9901)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	<-done
 
 	// Verify deletion.
-	if _, err := bs.GetNode(snowflake.ID(9901)); err == nil {
+	if _, err := bs.GetNode(types.NodeID(9901)); err == nil {
 		t.Error("node still present after DeleteNode")
 	}
 }
@@ -261,7 +261,7 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	// dst.GetNode, which acquires g.mu.RLock — proving that reads are non-blocking
 	// during ImportGraph Phase 1 (which holds no lock after the fix).
 	const existingID = snowflake.ID(0xABCD0001)
-	if err := dst.store.PutNode(types.NewNode(existingID, 1, nil)); err != nil {
+	if err := dst.store.PutNode(types.NewNode(types.NodeID(existingID), 1, nil)); err != nil {
 		t.Fatalf("pre-populate store: %v", err)
 	}
 
@@ -276,7 +276,7 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	go func() {
 		defer readerWg.Done()
 		for i := 0; i < 20; i++ {
-			_, err := dst.GetNode(existingID)
+			_, err := dst.GetNode(types.NodeID(existingID))
 			if err == nil {
 				readSucceeded.Store(true)
 			}

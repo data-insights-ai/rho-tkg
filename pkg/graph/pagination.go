@@ -50,7 +50,7 @@ func paginateNodes(nodes []*types.Node, after snowflake.ID, limit int) []*types.
 	start := 0
 	if after > 0 {
 		start = sort.Search(len(nodes), func(i int) bool {
-			return nodes[i].InternalID().SnowflakeID() > after
+			return nodes[i].ID().SnowflakeID() > after
 		})
 	}
 	if start >= len(nodes) {
@@ -72,7 +72,7 @@ func paginateRels(rels []*types.Relationship, after snowflake.ID, limit int) []*
 	start := 0
 	if after > 0 {
 		start = sort.Search(len(rels), func(i int) bool {
-			return rels[i].InternalID().SnowflakeID() > after
+			return rels[i].ID().SnowflakeID() > after
 		})
 	}
 	if start >= len(rels) {

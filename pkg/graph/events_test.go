@@ -77,7 +77,7 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode without event bus: %v", err)
 	}
-	if _, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"x": "y"}); err != nil {
+	if _, err := g.UpdateNode(n.ID(), map[string]any{"x": "y"}); err != nil {
 		t.Fatalf("UpdateNode without event bus: %v", err)
 	}
 }
@@ -100,8 +100,8 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 	if got[0].Type != EventNodeCreate {
 		t.Fatalf("expected EventNodeCreate, got %v", got[0].Type)
 	}
-	if got[0].EntityID != n.InternalID().SnowflakeID() {
-		t.Fatalf("EntityID mismatch: expected %d, got %d", n.InternalID().SnowflakeID(), got[0].EntityID)
+	if got[0].EntityID != types.EntityID(n.ID()) {
+		t.Fatalf("EntityID mismatch: expected %d, got %d", n.ID(), got[0].EntityID)
 	}
 	if got[0].Timestamp == 0 {
 		t.Fatal("Timestamp must be non-zero")
@@ -116,7 +116,7 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	events := collectEvents(g, EventNodeUpdate)
 
@@ -125,7 +125,7 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != id {
+	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
 		t.Fatalf("expected 1 EventNodeUpdate for %d, got %v", id, got)
 	}
 }
@@ -138,7 +138,7 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	events := collectEvents(g, EventNodeDelete)
 
@@ -147,7 +147,7 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeDelete || got[0].EntityID != id {
+	if len(got) != 1 || got[0].Type != EventNodeDelete || got[0].EntityID != types.EntityID(id) {
 		t.Fatalf("expected 1 EventNodeDelete for %d, got %v", id, got)
 	}
 }
@@ -167,7 +167,7 @@ func TestGraph_RelCreate_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != r.InternalID().SnowflakeID() {
+	if len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
 		t.Fatalf("expected 1 EventRelCreate, got %v", got)
 	}
 }
@@ -179,7 +179,7 @@ func TestGraph_RelDelete_Event(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("LINKS", a, b, nil)
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	events := collectEvents(g, EventRelDelete)
 
@@ -188,7 +188,7 @@ func TestGraph_RelDelete_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelDelete || got[0].EntityID != rid {
+	if len(got) != 1 || got[0].Type != EventRelDelete || got[0].EntityID != types.EntityID(rid) {
 		t.Fatalf("expected 1 EventRelDelete, got %v", got)
 	}
 }
@@ -200,7 +200,7 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("LINKS", a, b, nil)
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	events := collectEvents(g, EventRelUpdate)
 
@@ -209,7 +209,7 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != rid {
+	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
 		t.Fatalf("expected 1 EventRelUpdate, got %v", got)
 	}
 }
@@ -249,7 +249,7 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	events := collectEvents(g, EventNodeUpdate)
 
@@ -259,7 +259,7 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != id {
+	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
 		t.Fatalf("expected 1 EventNodeUpdate for %d, got %v", id, got)
 	}
 }
@@ -271,7 +271,7 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("E", a, b, nil)
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	events := collectEvents(g, EventRelUpdate)
 
@@ -281,7 +281,7 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != rid {
+	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
 		t.Fatalf("expected 1 EventRelUpdate for %d, got %v", rid, got)
 	}
 }

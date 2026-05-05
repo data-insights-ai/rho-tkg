@@ -108,7 +108,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	originalFromHash := r.Integrity().FromNodeHash
 
 	// Update the start node — its hash changes.
-	updatedStart, err := g.UpdateNode(start.InternalID().SnowflakeID(), map[string]any{"x": 1})
+	updatedStart, err := g.UpdateNode(start.ID(), map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	}
 
 	// Now update the relationship — should pick up the new start node hash.
-	updated, err := g.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{"label": "updated"})
+	updated, err := g.UpdateRelationship(r.ID(), map[string]any{"label": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}

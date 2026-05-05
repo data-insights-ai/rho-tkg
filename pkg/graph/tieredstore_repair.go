@@ -40,7 +40,8 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 			return nil, err
 		}
 		for _, nodeID := range nodeIDs {
-			inRelIDs := ns.store.incomingRelIDs(nodeID, 0)
+			rawNodeID := nodeID.SnowflakeID()
+			inRelIDs := ns.store.incomingRelIDs(rawNodeID, 0)
 			for _, relID := range inRelIDs {
 				if ns.store.hasRelID(relID) {
 					continue // same-shard — entity exists here
@@ -51,7 +52,7 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 					continue // entity exists in another shard — not orphaned
 				}
 				// Orphaned in/ entry: entity doesn't exist anywhere.
-				if err := ns.store.deleteIncomingByRelID(nodeID, relID); err != nil {
+				if err := ns.store.deleteIncomingByRelID(rawNodeID, relID); err != nil {
 					return nil, err
 				}
 				result.OrphanedInEntries++
@@ -70,17 +71,18 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 			if err != nil {
 				continue // can't read — skip
 			}
+			rawRelID := relID.SnowflakeID()
 
 			startID := r.StartNodeID().SnowflakeID()
 			endID := r.EndNodeID().SnowflakeID()
 			relType := r.TypeToken().Value()
 
 			// Resolve which shard owns each endpoint.
-			startShard, err := ts.shardForNodeID(startID)
+			startShard, err := ts.shardForNodeID(r.StartNodeID())
 			if err != nil {
 				continue
 			}
-			endShard, err := ts.shardForNodeID(endID)
+			endShard, err := ts.shardForNodeID(r.EndNodeID())
 			if err != nil {
 				continue
 			}
@@ -92,12 +94,12 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 			result.CrossShardRelsChecked++
 
 			// Cross-shard: verify the end shard has the in/ entry.
-			if hasIncomingEntry(endShard, endID, relID) {
+			if hasIncomingEntry(endShard, endID, rawRelID) {
 				continue // in/ entry exists
 			}
 
 			// Missing in/ entry — re-create.
-			if err := endShard.putRelIncoming(endID, startID, relType, relID); err != nil {
+			if err := endShard.putRelIncoming(endID, startID, relType, rawRelID); err != nil {
 				return nil, err
 			}
 			result.MissingInEntries++

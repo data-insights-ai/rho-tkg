@@ -5,6 +5,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // ShardInfo describes a shard for admin API queries.
@@ -184,7 +185,7 @@ func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, e
 
 	// Verify each node.
 	for _, id := range nodeIDs {
-		ok, err := g.VerifyNodeHashChain(id)
+		ok, err := g.VerifyNodeHashChain(types.NodeID(id))
 		if err != nil {
 			return nil, fmt.Errorf("graph: verify node %d: %w", id, err)
 		}
@@ -197,7 +198,7 @@ func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, e
 
 	// Verify each relationship.
 	for _, id := range relIDs {
-		ok, err := g.VerifyRelHashChain(id)
+		ok, err := g.VerifyRelHashChain(types.RelID(id))
 		if err != nil {
 			return nil, fmt.Errorf("graph: verify rel %d: %w", id, err)
 		}

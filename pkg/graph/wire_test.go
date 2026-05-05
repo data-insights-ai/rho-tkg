@@ -12,7 +12,7 @@ import (
 func TestNodeToWireAndBack(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(1001), 1, []uint16{2, 3})
+	n := types.NewNode(types.NodeID(snowflake.ID(1001)), 1, []uint16{2, 3})
 	n.SetVersion(5)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"name": "Alice",
@@ -38,8 +38,8 @@ func TestNodeToWireAndBack(t *testing.T) {
 	w := nodeToWire(n)
 	got := wireToNode(w)
 
-	if int64(got.InternalID().SnowflakeID()) != 1001 {
-		t.Fatalf("ID mismatch: got %d", int64(got.InternalID().SnowflakeID()))
+	if int64(got.ID()) != 1001 {
+		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
 	}
 	if got.PrimaryLabelToken().Value() != 1 {
 		t.Fatalf("primary label mismatch: got %d", got.PrimaryLabelToken().Value())
@@ -84,7 +84,7 @@ func TestNodeToWireAndBack(t *testing.T) {
 func TestNodeWireNoExtras(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	w := nodeToWire(n)
 	got := wireToNode(w)
 
@@ -99,7 +99,7 @@ func TestNodeWireNoExtras(t *testing.T) {
 func TestNodeWireNilTemporal(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	w := nodeToWire(n)
 
 	if w.HasTemporal {
@@ -115,7 +115,7 @@ func TestNodeWireNilTemporal(t *testing.T) {
 func TestNodeWireNilIntegrity(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	w := nodeToWire(n)
 
 	if w.Hash != "" || w.PrevHash != "" {
@@ -131,7 +131,7 @@ func TestNodeWireNilIntegrity(t *testing.T) {
 func TestRelToWireAndBack(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(500), 3, snowflake.ID(100), snowflake.ID(200))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 3, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	r.SetVersion(2)
 	r.SetProperties(mustPropertySlice(t, map[string]any{
 		"weight": float64(1.5),
@@ -147,8 +147,8 @@ func TestRelToWireAndBack(t *testing.T) {
 	w := relToWire(r)
 	got := wireToRel(w)
 
-	if int64(got.InternalID().SnowflakeID()) != 500 {
-		t.Fatalf("ID mismatch: got %d", int64(got.InternalID().SnowflakeID()))
+	if int64(got.ID()) != 500 {
+		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
 	}
 	if got.TypeToken().Value() != 3 {
 		t.Fatalf("type token: got %d", got.TypeToken().Value())
@@ -180,7 +180,7 @@ func TestRelToWireAndBack(t *testing.T) {
 func TestRelWireNoProperties(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(1), 1, snowflake.ID(2), snowflake.ID(3))
+	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
 	w := relToWire(r)
 	got := wireToRel(w)
 
@@ -192,7 +192,7 @@ func TestRelWireNoProperties(t *testing.T) {
 func TestRelWireNilTemporalIntegrity(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(1), 1, snowflake.ID(2), snowflake.ID(3))
+	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
 	w := relToWire(r)
 	got := wireToRel(w)
 
@@ -297,7 +297,7 @@ func TestPropertyWireEmpty(t *testing.T) {
 func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(1001), 1, []uint16{2})
+	n := types.NewNode(types.NodeID(snowflake.ID(1001)), 1, []uint16{2})
 	n.SetVersion(3)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"name": "Bob",
@@ -315,7 +315,7 @@ func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
 	}
 
 	got := wireToNode(w2)
-	if int64(got.InternalID().SnowflakeID()) != 1001 {
+	if int64(got.ID()) != 1001 {
 		t.Fatal("ID mismatch after msgpack round-trip")
 	}
 	if got.Version() != 3 {
@@ -330,7 +330,7 @@ func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
 func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(500), 3, snowflake.ID(100), snowflake.ID(200))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 3, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	r.SetVersion(7)
 
 	w := relToWire(r)
@@ -345,7 +345,7 @@ func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
 	}
 
 	got := wireToRel(w2)
-	if int64(got.InternalID().SnowflakeID()) != 500 {
+	if int64(got.ID()) != 500 {
 		t.Fatal("ID mismatch")
 	}
 	if got.TypeToken().Value() != 3 {
@@ -737,7 +737,7 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	t.Parallel()
 
 	// Non-zero base entity.
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetTemporal(&types.TemporalMetadata{})
 	n.Temporal().SetBaseEntityID(snowflake.ID(777))
 
@@ -752,7 +752,7 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	}
 
 	// Zero base entity.
-	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{})
 	w2 := nodeToWire(n2)
 	got2 := wireToNode(w2)
@@ -765,7 +765,7 @@ func TestNodeWireTemporalZeroInstants(t *testing.T) {
 	t.Parallel()
 
 	// All-zero temporal with HasTemporal=true.
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetTemporal(&types.TemporalMetadata{})
 
 	w := nodeToWire(n)
@@ -787,7 +787,7 @@ func TestWireRoundTripIntSlice(t *testing.T) {
 	t.Parallel()
 
 	// Exercise toIntSlice via full marshal/unmarshal round-trip.
-	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"counts": []int{1, 2, 3},
 	}))

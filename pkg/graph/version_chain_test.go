@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -28,7 +27,7 @@ func TestGetPreviousNodeVersion_AtGenesis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	prev, err := g.GetPreviousNodeVersion(id, 0)
 	if err != nil {
@@ -46,7 +45,7 @@ func TestGetPreviousNodeVersion_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Update to version 1 (stores version 0 in history).
 	n1, err := g.UpdateNode(id, map[string]any{"name": "Alice Updated"})
@@ -83,7 +82,7 @@ func TestGetNextNodeVersion_AtTip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	// version 0 is the tip — next should be nil.
 	next, err := g.GetNextNodeVersion(id, 0)
 	if err != nil {
@@ -101,7 +100,7 @@ func TestGetNextNodeVersion_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Update to version 1.
 	_, err = g.UpdateNode(id, map[string]any{"name": "Bob v1"})
@@ -139,7 +138,7 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Create versions 1 and 2.
 	_, err = g.UpdateNode(id, map[string]any{"v": "1"})
@@ -187,7 +186,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Use a close time far enough in the future that the node's creation time
 	// (derived from its snowflake ID) is definitely before it.
@@ -226,7 +225,7 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	closeTime := types.Instant(time.Now().UnixMilli())
 	if err := g.CloseNodeVersion(id, closeTime); err != nil {
@@ -241,7 +240,7 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 // returns ErrNodeNotFound.
 func TestCloseNodeVersion_NotFound(t *testing.T) {
 	g := newTestGraphForChain(t)
-	err := g.CloseNodeVersion(snowflake.ID(999999999), types.Instant(time.Now().UnixMilli()))
+	err := g.CloseNodeVersion(types.NodeID(999999999), types.Instant(time.Now().UnixMilli()))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -264,7 +263,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// GetPreviousRelVersion at genesis.
 	prev, err := g.GetPreviousRelVersion(rid, 0)
@@ -297,7 +296,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	}
 
 	// NotFound.
-	if err := g.CloseRelVersion(snowflake.ID(777777777), closeTime); !errors.Is(err, ErrRelNotFound) {
+	if err := g.CloseRelVersion(types.RelID(777777777), closeTime); !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("CloseRelVersion missing: expected ErrRelNotFound, got %v", err)
 	}
 }
@@ -311,7 +310,7 @@ func TestGetPreviousRelVersion_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Update to version 1.
 	_, err = g.UpdateRelationship(rid, map[string]any{"w": int64(2)})
@@ -340,7 +339,7 @@ func TestGetNextNodeVersion_DeletedNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Update once so v0 is in history, current = v1.
 	_, err = g.UpdateNode(id, map[string]any{"name": "updated"})
@@ -372,7 +371,7 @@ func TestGetNextNodeVersion_GapAfterTruncation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Build version chain: v0, v1, v2, v3 (current).
 	for i := range 3 {
@@ -407,7 +406,7 @@ func TestGetNextRelVersion_DeletedRel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Update once so v0 is in history, current = v1.
 	_, err = g.UpdateRelationship(rid, map[string]any{"x": "y"})
@@ -439,7 +438,7 @@ func TestGetNextRelVersion_GapAfterTruncation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Build version chain: v0, v1, v2, v3 (current).
 	for i := range 3 {
@@ -474,7 +473,7 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Create versions 1 and 2 so version 1 lands in history.
 	_, err = g.UpdateRelationship(rid, map[string]any{"v": "1"})
@@ -520,7 +519,7 @@ func TestGetNextRelVersion_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Update to version 1.
 	_, err = g.UpdateRelationship(rid, map[string]any{"x": "updated"})

@@ -37,52 +37,52 @@ type QueryOpts struct {
 
 // Store is the persistence contract for the graph layer.
 // Implementations handle entity storage and index maintenance.
-// Keys are snowflake.ID — the bridge from opaque entity IDs.
+// Keys are typed entity IDs (types.NodeID / types.RelID).
 type Store interface {
 	// Node operations
 	PutNode(n *types.Node) error
-	GetNode(id snowflake.ID) (*types.Node, error)
+	GetNode(id types.NodeID) (*types.Node, error)
 	ReplaceNode(n *types.Node) error
-	DeleteNode(id snowflake.ID) error
+	DeleteNode(id types.NodeID) error
 
 	// Relationship operations
 	PutRelationship(r *types.Relationship) error
-	GetRelationship(id snowflake.ID) (*types.Relationship, error)
+	GetRelationship(id types.RelID) (*types.Relationship, error)
 	ReplaceRelationship(r *types.Relationship) error
-	DeleteRelationship(id snowflake.ID) error
+	DeleteRelationship(id types.RelID) error
 
 	// Index queries
 	NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error)
 	RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error)
 
 	// Adjacency queries — token 0 means "all types"
-	OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
-	IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error)
+	OutgoingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
+	IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
 
 	// OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
 	// in a single batched operation. Returns a map from nodeID to its outgoing
 	// relationships (sorted by ID). Nodes with zero outgoing rels are absent from
 	// the map. nil/empty nodeIDs returns nil, nil.
-	OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error)
+	OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error)
 
 	// IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
 	// in a single batched operation. Returns a map from nodeID to its incoming
 	// relationships (sorted by ID). Nodes with zero incoming rels are absent from
 	// the map. nil/empty nodeIDs returns nil, nil.
-	IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error)
+	IncomingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error)
 
 	// Bulk queries
 	AllNodes(opts QueryOpts) ([]*types.Node, error)
 	AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
-	GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error)
-	GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error)
+	GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error)
+	GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error)
 
 	// Batch operations — two-phase (validate then apply), all-or-nothing.
 	// Empty/nil input returns nil error with zero mutations.
 	PutNodesBatch(nodes []*types.Node) error
 	PutRelationshipsBatch(rels []*types.Relationship) error
-	DeleteNodesBatch(ids []snowflake.ID) error
-	DeleteRelationshipsBatch(ids []snowflake.ID) error
+	DeleteNodesBatch(ids []types.NodeID) error
+	DeleteRelationshipsBatch(ids []types.RelID) error
 
 	// Atomic replace + history — atomically writes a version history entry
 	// and replaces the current entity data. Prevents orphaned history entries
@@ -93,30 +93,30 @@ type Store interface {
 	ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error
 
 	// Version history — Node
-	PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error
-	GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error)
-	GetNodeHistory(id snowflake.ID) ([]*types.Node, error)
-	TruncateNodeHistory(id snowflake.ID, keepVersions int) error
+	PutNodeVersion(id types.NodeID, version uint32, n *types.Node) error
+	GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)
+	GetNodeHistory(id types.NodeID) ([]*types.Node, error)
+	TruncateNodeHistory(id types.NodeID, keepVersions int) error
 
 	// Version history — Relationship
-	PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error
-	GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error)
-	GetRelHistory(id snowflake.ID) ([]*types.Relationship, error)
-	TruncateRelHistory(id snowflake.ID, keepVersions int) error
+	PutRelVersion(id types.RelID, version uint32, r *types.Relationship) error
+	GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)
+	GetRelHistory(id types.RelID) ([]*types.Relationship, error)
+	TruncateRelHistory(id types.RelID, keepVersions int) error
 
 	// Cascade operations
-	DeleteNodeCascade(id snowflake.ID) error
+	DeleteNodeCascade(id types.NodeID) error
 
 	// DeleteNodeWithHistory atomically combines PutRelVersion×N + PutNodeVersion + DeleteNodeCascade
 	// into a single storage transaction. Eliminates orphaned tombstone history entries on crash.
 	// nodeTombstone must be a pre-built deep copy with DeletedAt/ValidTo/TxFrom/TxTo set.
 	// relTombstones is the pre-built list of all connected relationship tombstones.
-	DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error
+	DeleteNodeWithHistory(id types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error
 
 	// DeleteRelWithHistory atomically combines PutRelVersion + DeleteRelationship
 	// into a single storage transaction.
 	// tombstone must be a pre-built deep copy with DeletedAt/ValidTo/TxFrom/TxTo set.
-	DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error
+	DeleteRelWithHistory(id types.RelID, prevVersion uint32, tombstone *types.Relationship) error
 
 	// Counts
 	NodeCount() (int, error)
@@ -157,13 +157,13 @@ type Store interface {
 	// No version bump; no history entry. The graph layer has already applied the label
 	// removal to updatedNode (via RemoveLabelTokenRaw) and recomputed the hash.
 	// Returns ErrNodeNotFound if the node does not exist.
-	RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error
+	RemoveNodeLabelToken(id types.NodeID, tok uint16, updatedNode *types.Node) error
 
 	// RemoveNodeLabelTokenWithHistory atomically removes tok from the label index,
 	// writes a version history entry for prevState, and persists updatedNode.
 	// Eliminates the crash window between PutNodeVersion and RemoveNodeLabelToken.
 	// Returns ErrNodeNotFound if the node does not exist.
-	RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	RemoveNodeLabelTokenWithHistory(id types.NodeID, tok uint16, updatedNode *types.Node,
 		prevVersion uint32, prevState *types.Node) error
 
 	// AddNodeLabelTokenWithHistory atomically adds tok to the label index,
@@ -171,7 +171,7 @@ type Store interface {
 	// The graph layer has already added the label to updatedNode (via AddLabelTokenRaw),
 	// bumped the version, and recomputed the hash.
 	// Returns ErrNodeNotFound if the node does not exist.
-	AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+	AddNodeLabelTokenWithHistory(id types.NodeID, tok uint16, updatedNode *types.Node,
 		prevVersion uint32, prevState *types.Node) error
 
 	// AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
@@ -179,42 +179,42 @@ type Store interface {
 	// addition to updatedNode. Used by transaction rollback to reverse label deltas
 	// without polluting version history.
 	// Returns ErrNodeNotFound if the node does not exist.
-	AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error
+	AddNodeLabelToken(id types.NodeID, tok uint16, updatedNode *types.Node) error
 
 	// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
-	AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error)
+	AllNodeIDs(opts QueryOpts) ([]types.NodeID, error)
 
 	// AllRelIDs returns the IDs of all current relationships, with optional pagination.
 	// Returns only IDs — no entity deserialization or deep copy.
-	AllRelIDs(opts QueryOpts) ([]snowflake.ID, error)
+	AllRelIDs(opts QueryOpts) ([]types.RelID, error)
 
 	// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 	// This includes deleted nodes whose history was preserved.
-	AllNodeHistoryIDs() ([]snowflake.ID, error)
+	AllNodeHistoryIDs() ([]types.NodeID, error)
 
 	// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
-	AllRelHistoryIDs() ([]snowflake.ID, error)
+	AllRelHistoryIDs() ([]types.RelID, error)
 
 	// ForEachNodeID iterates over all current node IDs, calling fn for each.
 	// Iteration stops early if fn returns false. No ordering guarantee.
 	// The callback must NOT call other methods on this Store (lock reentrancy).
-	ForEachNodeID(fn func(snowflake.ID) bool) error
+	ForEachNodeID(fn func(types.NodeID) bool) error
 
 	// ForEachRelID iterates over all current relationship IDs, calling fn for each.
 	// Iteration stops early if fn returns false. No ordering guarantee.
 	// The callback must NOT call other methods on this Store (lock reentrancy).
-	ForEachRelID(fn func(snowflake.ID) bool) error
+	ForEachRelID(fn func(types.RelID) bool) error
 
 	// ForEachNodeHistoryID iterates over all node IDs with version history entries.
 	// Iteration stops early if fn returns false. No ordering guarantee.
 	// The callback must NOT call other methods on this Store (lock reentrancy).
-	ForEachNodeHistoryID(fn func(snowflake.ID) bool) error
+	ForEachNodeHistoryID(fn func(types.NodeID) bool) error
 
 	// ForEachRelHistoryID iterates over all relationship IDs with version history entries.
 	// Iteration stops early if fn returns false. No ordering guarantee.
 	// The callback must NOT call other methods on this Store (lock reentrancy).
-	ForEachRelHistoryID(fn func(snowflake.ID) bool) error
+	ForEachRelHistoryID(fn func(types.RelID) bool) error
 
 	// Vector indexes — in-memory brute-force k-NN index on node properties.
 	// Not persisted; the index must be rebuilt from nodes after restart.
@@ -244,7 +244,7 @@ type Store interface {
 // PrevVersion is the history slot to write the tombstone to (matches r.Version() before deletion).
 // Tombstone is a pre-built deep copy with DeletedAt, ValidTo, TxFrom, TxTo populated by the caller.
 type RelTombstone struct {
-	ID          snowflake.ID
+	ID          types.RelID
 	PrevVersion uint32
 	Tombstone   *types.Relationship
 }

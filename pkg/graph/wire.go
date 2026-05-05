@@ -75,7 +75,7 @@ type propertyWire struct {
 // nodeToWire converts a Node to its wire format for serialization.
 func nodeToWire(n *types.Node) nodeWire {
 	w := nodeWire{
-		ID:           int64(n.InternalID().SnowflakeID()),
+		ID:           int64(n.ID().SnowflakeID()),
 		PrimaryLabel: int(n.PrimaryLabelToken().Value()),
 		Version:      int(n.Version()),
 	}
@@ -123,7 +123,7 @@ func wireToNode(w nodeWire) *types.Node {
 		extras = append(extras, uint16(e)) // #nosec G115 — token values from our own serialization, always in uint16 range
 	}
 
-	n := types.NewNode(snowflake.ID(w.ID), uint16(w.PrimaryLabel), extras) // #nosec G115 — token from our own serialization
+	n := types.NewNode(types.NodeID(w.ID), uint16(w.PrimaryLabel), extras) // #nosec G115 — token from our own serialization
 	n.SetProperties(wireToProperties(w.Properties))
 	n.SetVersion(uint32(w.Version)) // #nosec G115 — version from our own serialization
 
@@ -164,7 +164,7 @@ func wireToNode(w nodeWire) *types.Node {
 // relToWire converts a Relationship to its wire format for serialization.
 func relToWire(r *types.Relationship) relWire {
 	w := relWire{
-		ID:      int64(r.InternalID().SnowflakeID()),
+		ID:      int64(r.ID().SnowflakeID()),
 		RelType: int(r.TypeToken().Value()),
 		StartID: int64(r.StartNodeID().SnowflakeID()),
 		EndID:   int64(r.EndNodeID().SnowflakeID()),
@@ -204,10 +204,10 @@ func relToWire(r *types.Relationship) relWire {
 // wireToRel reconstructs a Relationship from its wire format.
 func wireToRel(w relWire) *types.Relationship {
 	r := types.NewRelationship(
-		snowflake.ID(w.ID),
+		types.RelID(w.ID),
 		uint16(w.RelType), // #nosec G115 — token from our own serialization
-		snowflake.ID(w.StartID),
-		snowflake.ID(w.EndID),
+		types.NodeID(w.StartID),
+		types.NodeID(w.EndID),
 	)
 	r.SetProperties(wireToProperties(w.Properties))
 	r.SetVersion(uint32(w.Version)) // #nosec G115 — version from our own serialization

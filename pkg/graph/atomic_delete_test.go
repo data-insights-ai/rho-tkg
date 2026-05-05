@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -17,8 +16,8 @@ func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	ms := NewMemoryStore()
 	defer ms.Close() //nolint:errcheck
 
-	nA := types.NewNode(snowflake.ID(10), 1, nil)
-	nB := types.NewNode(snowflake.ID(20), 2, nil)
+	nA := types.NewNode(types.NodeID(10), 1, nil)
+	nB := types.NewNode(types.NodeID(20), 2, nil)
 	if err := ms.PutNode(nA); err != nil {
 		t.Fatalf("PutNode A: %v", err)
 	}
@@ -26,7 +25,7 @@ func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 		t.Fatalf("PutNode B: %v", err)
 	}
 
-	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(100), 1, types.NodeID(10), types.NodeID(20))
 	if err := ms.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship: %v", err)
 	}
@@ -45,17 +44,17 @@ func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	tm.TxTo = now
 
 	prevVersion := r.Version()
-	if err := ms.DeleteRelWithHistory(snowflake.ID(100), prevVersion, tombR); err != nil {
+	if err := ms.DeleteRelWithHistory(types.RelID(100), prevVersion, tombR); err != nil {
 		t.Fatalf("DeleteRelWithHistory: %v", err)
 	}
 
 	// (a) Rel must be gone from live store.
-	if _, err := ms.GetRelationship(snowflake.ID(100)); !errors.Is(err, ErrRelNotFound) {
+	if _, err := ms.GetRelationship(types.RelID(100)); !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("GetRelationship after delete: got %v, want ErrRelNotFound", err)
 	}
 
 	// (b) History entry must exist with tombstone fields.
-	hist, err := ms.GetRelVersion(snowflake.ID(100), prevVersion)
+	hist, err := ms.GetRelVersion(types.RelID(100), prevVersion)
 	if err != nil {
 		t.Fatalf("GetRelVersion: %v", err)
 	}
@@ -80,10 +79,10 @@ func TestDeleteRelWithHistory_NotFound(t *testing.T) {
 	ms := NewMemoryStore()
 	defer ms.Close() //nolint:errcheck
 
-	r := types.NewRelationship(snowflake.ID(999), 1, snowflake.ID(1), snowflake.ID(2))
+	r := types.NewRelationship(types.RelID(999), 1, types.NodeID(1), types.NodeID(2))
 	tombR := r.DeepCopy()
 
-	err := ms.DeleteRelWithHistory(snowflake.ID(999), 0, tombR)
+	err := ms.DeleteRelWithHistory(types.RelID(999), 0, tombR)
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("DeleteRelWithHistory on missing rel: got %v, want ErrRelNotFound", err)
 	}
@@ -98,18 +97,18 @@ func TestDeleteNodeWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	defer ms.Close() //nolint:errcheck
 
 	// Node to delete.
-	nA := types.NewNode(snowflake.ID(10), 1, nil)
+	nA := types.NewNode(types.NodeID(10), 1, nil)
 	// Two connected nodes.
-	nB := types.NewNode(snowflake.ID(20), 2, nil)
-	nC := types.NewNode(snowflake.ID(30), 3, nil)
+	nB := types.NewNode(types.NodeID(20), 2, nil)
+	nC := types.NewNode(types.NodeID(30), 3, nil)
 	for _, n := range []*types.Node{nA, nB, nC} {
 		if err := ms.PutNode(n); err != nil {
 			t.Fatalf("PutNode: %v", err)
 		}
 	}
 
-	r1 := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(10), snowflake.ID(20))
-	r2 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(30), snowflake.ID(10))
+	r1 := types.NewRelationship(types.RelID(100), 1, types.NodeID(10), types.NodeID(20))
+	r2 := types.NewRelationship(types.RelID(200), 1, types.NodeID(30), types.NodeID(10))
 	for _, r := range []*types.Relationship{r1, r2} {
 		if err := ms.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship: %v", err)
@@ -132,7 +131,7 @@ func TestDeleteNodeWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 		tm.TxFrom = now
 		tm.TxTo = now
 		relTombstones = append(relTombstones, RelTombstone{
-			ID:          r.InternalID().SnowflakeID(),
+			ID:          r.ID(),
 			PrevVersion: r.Version(),
 			Tombstone:   tombR,
 		})
@@ -151,23 +150,23 @@ func TestDeleteNodeWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	tmN.TxTo = now
 
 	prevNodeVersion := nA.Version()
-	if err := ms.DeleteNodeWithHistory(snowflake.ID(10), prevNodeVersion, tombN, relTombstones); err != nil {
+	if err := ms.DeleteNodeWithHistory(types.NodeID(10), prevNodeVersion, tombN, relTombstones); err != nil {
 		t.Fatalf("DeleteNodeWithHistory: %v", err)
 	}
 
 	// Node must be gone.
-	if _, err := ms.GetNode(snowflake.ID(10)); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := ms.GetNode(types.NodeID(10)); !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: got %v, want ErrNodeNotFound", err)
 	}
 	// Both rels must be gone.
-	for _, id := range []snowflake.ID{100, 200} {
+	for _, id := range []types.RelID{100, 200} {
 		if _, err := ms.GetRelationship(id); !errors.Is(err, ErrRelNotFound) {
 			t.Errorf("GetRelationship(%d) after delete: got %v, want ErrRelNotFound", id, err)
 		}
 	}
 
 	// Node history entry must exist.
-	nodeHist, err := ms.GetNodeVersion(snowflake.ID(10), prevNodeVersion)
+	nodeHist, err := ms.GetNodeVersion(types.NodeID(10), prevNodeVersion)
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
@@ -193,7 +192,7 @@ func TestDeleteNodeWithHistory_EmptyRelTombstones(t *testing.T) {
 	ms := NewMemoryStore()
 	defer ms.Close() //nolint:errcheck
 
-	n := types.NewNode(snowflake.ID(10), 1, nil)
+	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := ms.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -211,14 +210,14 @@ func TestDeleteNodeWithHistory_EmptyRelTombstones(t *testing.T) {
 	tmN.TxTo = now
 
 	// nil relTombstones — node has no connected rels.
-	if err := ms.DeleteNodeWithHistory(snowflake.ID(10), n.Version(), tombN, nil); err != nil {
+	if err := ms.DeleteNodeWithHistory(types.NodeID(10), n.Version(), tombN, nil); err != nil {
 		t.Fatalf("DeleteNodeWithHistory with nil relTombstones: %v", err)
 	}
 
-	if _, err := ms.GetNode(snowflake.ID(10)); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := ms.GetNode(types.NodeID(10)); !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: got %v, want ErrNodeNotFound", err)
 	}
-	hist, err := ms.GetNodeVersion(snowflake.ID(10), n.Version())
+	hist, err := ms.GetNodeVersion(types.NodeID(10), n.Version())
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
@@ -241,7 +240,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 	nC := putTestNode(t, bs, 30, 3, nil)
 
 	r1 := putTestRel(t, bs, 100, 1, 10, 20)
-	r2 := putTestRel(t, bs, 200, 1, int64(nC.InternalID().SnowflakeID()), 10)
+	r2 := putTestRel(t, bs, 200, 1, int64(nC.ID()), 10)
 
 	now := types.Instant(time.Now().UnixMilli())
 
@@ -259,7 +258,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 		tm.TxFrom = now
 		tm.TxTo = now
 		relTombstones = append(relTombstones, RelTombstone{
-			ID:          r.InternalID().SnowflakeID(),
+			ID:          r.ID(),
 			PrevVersion: r.Version(),
 			Tombstone:   tombR,
 		})
@@ -277,23 +276,23 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 	tmN.TxTo = now
 
 	prevNodeVersion := nA.Version()
-	if err := bs.DeleteNodeWithHistory(nA.InternalID().SnowflakeID(), prevNodeVersion, tombN, relTombstones); err != nil {
+	if err := bs.DeleteNodeWithHistory(nA.ID(), prevNodeVersion, tombN, relTombstones); err != nil {
 		t.Fatalf("DeleteNodeWithHistory: %v", err)
 	}
 
 	// SyncWrites=true — no explicit flush needed.
 	// Node gone.
-	if _, err := bs.GetNode(nA.InternalID().SnowflakeID()); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := bs.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: got %v, want ErrNodeNotFound", err)
 	}
 	// Rels gone.
-	for _, id := range []snowflake.ID{100, 200} {
+	for _, id := range []types.RelID{100, 200} {
 		if _, err := bs.GetRelationship(id); !errors.Is(err, ErrRelNotFound) {
 			t.Errorf("GetRelationship(%d) after delete: got %v, want ErrRelNotFound", id, err)
 		}
 	}
 	// Node history present.
-	nodeHist, err := bs.GetNodeVersion(nA.InternalID().SnowflakeID(), prevNodeVersion)
+	nodeHist, err := bs.GetNodeVersion(nA.ID(), prevNodeVersion)
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
@@ -312,10 +311,10 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 	}
 
 	// nB and nC must still be alive.
-	if _, err := bs.GetNode(nB.InternalID().SnowflakeID()); err != nil {
+	if _, err := bs.GetNode(nB.ID()); err != nil {
 		t.Errorf("GetNode(nB) should still exist: %v", err)
 	}
-	if _, err := bs.GetNode(nC.InternalID().SnowflakeID()); err != nil {
+	if _, err := bs.GetNode(nC.ID()); err != nil {
 		t.Errorf("GetNode(nC) should still exist: %v", err)
 	}
 }
@@ -350,8 +349,8 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	nodeID := nA.InternalID().SnowflakeID()
-	relID := r.InternalID().SnowflakeID()
+	nodeID := nA.ID()
+	relID := r.ID()
 	nodeVersion := nA.Version()
 	relVersion := r.Version()
 
@@ -392,7 +391,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	}
 
 	// nB must still be alive.
-	if _, err := ts.GetNode(nB.InternalID().SnowflakeID()); err != nil {
+	if _, err := ts.GetNode(nB.ID()); err != nil {
 		t.Errorf("GetNode(nB) should still exist: %v", err)
 	}
 }

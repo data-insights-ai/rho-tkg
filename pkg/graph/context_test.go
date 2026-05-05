@@ -60,7 +60,7 @@ func TestUpdateNodeWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.UpdateNodeWithContext(ctx, n.InternalID().SnowflakeID(), map[string]any{"name": "Bob"})
+	_, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{"name": "Bob"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("UpdateNodeWithContext err = %v, want context.Canceled", err)
 	}
@@ -75,7 +75,7 @@ func TestUpdateRelWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.UpdateRelationshipWithContext(ctx, r.InternalID().SnowflakeID(), map[string]any{"since": 2025})
+	_, err := g.UpdateRelationshipWithContext(ctx, r.ID(), map[string]any{"since": 2025})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("UpdateRelationshipWithContext err = %v, want context.Canceled", err)
 	}
@@ -88,13 +88,13 @@ func TestDeleteNodeWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := g.DeleteNodeWithContext(ctx, n.InternalID().SnowflakeID())
+	err := g.DeleteNodeWithContext(ctx, n.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("DeleteNodeWithContext err = %v, want context.Canceled", err)
 	}
 
 	// Node should still exist.
-	_, err = g.GetNode(n.InternalID().SnowflakeID())
+	_, err = g.GetNode(n.ID())
 	if err != nil {
 		t.Errorf("GetNode after cancelled delete returned error: %v", err)
 	}
@@ -109,13 +109,13 @@ func TestDeleteRelWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := g.DeleteRelationshipWithContext(ctx, r.InternalID().SnowflakeID())
+	err := g.DeleteRelationshipWithContext(ctx, r.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("DeleteRelationshipWithContext err = %v, want context.Canceled", err)
 	}
 
 	// Relationship should still exist.
-	_, err = g.GetRelationship(r.InternalID().SnowflakeID())
+	_, err = g.GetRelationship(r.ID())
 	if err != nil {
 		t.Errorf("GetRelationship after cancelled delete returned error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestGetNodeWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.GetNodeWithContext(ctx, n.InternalID().SnowflakeID())
+	_, err := g.GetNodeWithContext(ctx, n.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetNodeWithContext err = %v, want context.Canceled", err)
 	}
@@ -143,7 +143,7 @@ func TestGetRelWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.GetRelationshipWithContext(ctx, r.InternalID().SnowflakeID())
+	_, err := g.GetRelationshipWithContext(ctx, r.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetRelationshipWithContext err = %v, want context.Canceled", err)
 	}
@@ -208,7 +208,7 @@ func TestUpdateNodeWithContextSuccess(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	updated, err := g.UpdateNodeWithContext(context.Background(), id, map[string]any{"name": "Bob", "age": 25})
 	if err != nil {
@@ -235,7 +235,7 @@ func TestUpdateRelWithContextSuccess(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	updated, err := g.UpdateRelationshipWithContext(context.Background(), id, map[string]any{"since": 2025})
 	if err != nil {
@@ -263,13 +263,13 @@ func TestDeleteNodeWithContextSuccess(t *testing.T) {
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddRelationship("KNOWS", a, b, nil)
 
-	err := g.DeleteNodeWithContext(context.Background(), a.InternalID().SnowflakeID())
+	err := g.DeleteNodeWithContext(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("DeleteNodeWithContext error: %v", err)
 	}
 
 	// Node and cascade-deleted rels should be gone.
-	_, err = g.GetNode(a.InternalID().SnowflakeID())
+	_, err = g.GetNode(a.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: err = %v, want ErrNodeNotFound", err)
 	}
@@ -288,12 +288,12 @@ func TestDeleteRelWithContextSuccess(t *testing.T) {
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
 
-	err := g.DeleteRelationshipWithContext(context.Background(), r.InternalID().SnowflakeID())
+	err := g.DeleteRelationshipWithContext(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("DeleteRelationshipWithContext error: %v", err)
 	}
 
-	_, err = g.GetRelationship(r.InternalID().SnowflakeID())
+	_, err = g.GetRelationship(r.ID())
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("GetRelationship after delete: err = %v, want ErrRelNotFound", err)
 	}
@@ -304,7 +304,7 @@ func TestGetNodeWithContextSuccess(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	got, err := g.GetNodeWithContext(context.Background(), id)
 	if err != nil {
@@ -322,7 +322,7 @@ func TestGetRelWithContextSuccess(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	got, err := g.GetRelationshipWithContext(context.Background(), id)
 	if err != nil {
@@ -354,7 +354,7 @@ func TestUpdateNodeWithContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	_, err := g.UpdateNodeWithContext(ctx, n.InternalID().SnowflakeID(), map[string]any{"x": 1})
+	_, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{"x": 1})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -367,7 +367,7 @@ func TestDeleteNodeWithContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	err := g.DeleteNodeWithContext(ctx, n.InternalID().SnowflakeID())
+	err := g.DeleteNodeWithContext(ctx, n.ID())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -380,7 +380,7 @@ func TestGetNodeWithContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	_, err := g.GetNodeWithContext(ctx, n.InternalID().SnowflakeID())
+	_, err := g.GetNodeWithContext(ctx, n.ID())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -410,7 +410,7 @@ func TestUpdateNodeDelegatesToContext(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"name": "Bob"})
+	updated, err := g.UpdateNode(n.ID(), map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateNode error: %v", err)
 	}
@@ -424,11 +424,11 @@ func TestDeleteNodeDelegatesToContext(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	err := g.DeleteNode(n.InternalID().SnowflakeID())
+	err := g.DeleteNode(n.ID())
 	if err != nil {
 		t.Fatalf("DeleteNode error: %v", err)
 	}
-	_, err = g.GetNode(n.InternalID().SnowflakeID())
+	_, err = g.GetNode(n.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: err = %v, want ErrNodeNotFound", err)
 	}
@@ -439,7 +439,7 @@ func TestGetNodeDelegatesToContext(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	got, err := g.GetNode(n.InternalID().SnowflakeID())
+	got, err := g.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode error: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestUpdateNodeWithContextEmptyUpdatesNoop(t *testing.T) {
 	g := newTestGraph(t)
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	got, err := g.UpdateNodeWithContext(context.Background(), id, map[string]any{})
 	if err != nil {
@@ -474,7 +474,7 @@ func TestUpdateRelWithContextEmptyUpdatesNoop(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	got, err := g.UpdateRelationshipWithContext(context.Background(), id, map[string]any{})
 	if err != nil {
@@ -519,7 +519,7 @@ func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"count": 0})
-	rID := r.InternalID().SnowflakeID()
+	rID := r.ID()
 
 	// Concurrent delete + update on same rel. Under -race, this would fail
 	// without the entity lock in DeleteRelationshipWithContext.
@@ -552,7 +552,7 @@ func TestDeleteRelWithContext_ConcurrentUpdate(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": 1})
-	rID := r.InternalID().SnowflakeID()
+	rID := r.ID()
 
 	// Delete wins, rel is gone, tombstone version exists.
 	err := g.DeleteRelationshipWithContext(context.Background(), rID)
@@ -589,8 +589,8 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": 0})
-	aID := a.InternalID().SnowflakeID()
-	rID := r.InternalID().SnowflakeID()
+	aID := a.ID()
+	rID := r.ID()
 
 	// Concurrent delete node + update connected rel — race detector catches issues.
 	const goroutines = 20
@@ -625,7 +625,7 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
-	aID := a.InternalID().SnowflakeID()
+	aID := a.ID()
 
 	// Pre-create some rels.
 	for range 5 {
@@ -879,7 +879,7 @@ func TestBatchAddNodeWithTemporal(t *testing.T) {
 	}
 
 	// Re-read from store to verify temporal survived PutNodesBatch + DeepCopy.
-	stored, err := g.GetNodeWithContext(context.Background(), n.InternalID().SnowflakeID())
+	stored, err := g.GetNodeWithContext(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -919,7 +919,7 @@ func TestBatchAddRelationshipWithTemporal(t *testing.T) {
 		t.Fatalf("batch failed: %v", result.Errors)
 	}
 
-	stored, err := g.GetRelationshipWithContext(context.Background(), r.InternalID().SnowflakeID())
+	stored, err := g.GetRelationshipWithContext(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}

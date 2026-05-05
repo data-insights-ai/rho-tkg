@@ -14,6 +14,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Default configuration values for TieredStore.
@@ -451,23 +452,24 @@ func (ts *TieredStore) shardForNode(primaryLabel uint16) *BadgerStore {
 // shardForNodeID resolves which shard owns a node ID.
 // O(1): try ref (hasNodeID), miss -> archive check -> timestamp extraction -> event shard.
 // Returns error if cold shard lazy-open fails.
-func (ts *TieredStore) shardForNodeID(id snowflake.ID) (*BadgerStore, error) {
-	if ts.refShard.hasNodeID(id) {
+func (ts *TieredStore) shardForNodeID(id types.NodeID) (*BadgerStore, error) {
+	raw := id.SnowflakeID()
+	if ts.refShard.hasNodeID(raw) {
 		return ts.refShard, nil
 	}
 	// Check archive if open or catalog says it exists.
-	if ts.refArchive != nil && ts.refArchive.hasNodeID(id) {
+	if ts.refArchive != nil && ts.refArchive.hasNodeID(raw) {
 		return ts.refArchive, nil
 	}
 	if ts.refArchive == nil && ts.hasArchiveShard() {
 		if err := ts.ensureRefArchive(); err != nil {
 			return nil, err
 		}
-		if ts.refArchive.hasNodeID(id) {
+		if ts.refArchive.hasNodeID(raw) {
 			return ts.refArchive, nil
 		}
 	}
-	return ts.timestampToEventShard(id)
+	return ts.timestampToEventShard(raw)
 }
 
 // shardForRelID resolves which shard owns a relationship ID (entity + out/).
@@ -476,17 +478,18 @@ func (ts *TieredStore) shardForNodeID(id snowflake.ID) (*BadgerStore, error) {
 // shard that doesn't match their creation timestamp (e.g., a rel created after
 // rotation whose entity lives in the start node's warm shard).
 // Returns error if cold shard lazy-open fails.
-func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
-	if ts.refShard.hasRelID(id) {
+func (ts *TieredStore) shardForRelID(id types.RelID) (*BadgerStore, error) {
+	raw := id.SnowflakeID()
+	if ts.refShard.hasRelID(raw) {
 		return ts.refShard, nil
 	}
 
 	// Try timestamp-based resolution first (fast path).
-	candidate, err := ts.timestampToEventShard(id)
+	candidate, err := ts.timestampToEventShard(raw)
 	if err != nil {
 		return nil, err
 	}
-	if candidate.hasRelID(id) {
+	if candidate.hasRelID(raw) {
 		return candidate, nil
 	}
 
@@ -502,7 +505,7 @@ func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 		if err != nil {
 			return nil, err
 		}
-		if store.hasRelID(id) {
+		if store.hasRelID(raw) {
 			return store, nil
 		}
 	}
@@ -557,26 +560,27 @@ func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *eventShard {
 // refShard and refArchive are never subject to idle-close, so their checkin is
 // a no-op. Only event shards (especially cold tier) need the checkout/checkin
 // protocol.
-func (ts *TieredStore) shardForNodeIDChecked(id snowflake.ID) (store *BadgerStore, checkin func(), err error) {
-	if ts.refShard.hasNodeID(id) {
+func (ts *TieredStore) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
+	raw := id.SnowflakeID()
+	if ts.refShard.hasNodeID(raw) {
 		return ts.refShard, func() {}, nil // refShard: never closed, no-op checkin
 	}
 
 	// Archive probe.
-	if ts.refArchive != nil && ts.refArchive.hasNodeID(id) {
+	if ts.refArchive != nil && ts.refArchive.hasNodeID(raw) {
 		return ts.refArchive, func() {}, nil // refArchive: never subject to idle-close
 	}
 	if ts.refArchive == nil && ts.hasArchiveShard() {
 		if err := ts.ensureRefArchive(); err != nil {
 			return nil, nil, err
 		}
-		if ts.refArchive.hasNodeID(id) {
+		if ts.refArchive.hasNodeID(raw) {
 			return ts.refArchive, func() {}, nil
 		}
 	}
 
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close race.
-	es := ts.timestampToEventShardEntry(id)
+	es := ts.timestampToEventShardEntry(raw)
 	store, err = es.checkoutStore(ts)
 	if err != nil {
 		return nil, nil, err

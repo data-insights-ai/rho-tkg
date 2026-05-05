@@ -32,7 +32,7 @@ func newTestBadgerStore(t *testing.T) *BadgerStore {
 // putTestNode creates and stores a node with the given ID and labels.
 func putTestNode(t *testing.T, bs *BadgerStore, id int64, primary uint16, extras []uint16) *types.Node {
 	t.Helper()
-	n := types.NewNode(snowflake.ID(id), primary, extras)
+	n := types.NewNode(types.NodeID(snowflake.ID(id)), primary, extras)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode(%d): %v", id, err)
 	}
@@ -42,7 +42,7 @@ func putTestNode(t *testing.T, bs *BadgerStore, id int64, primary uint16, extras
 // putTestRel creates and stores a relationship.
 func putTestRel(t *testing.T, bs *BadgerStore, id int64, relType uint16, startID, endID int64) *types.Relationship {
 	t.Helper()
-	r := types.NewRelationship(snowflake.ID(id), relType, snowflake.ID(startID), snowflake.ID(endID))
+	r := types.NewRelationship(types.RelID(snowflake.ID(id)), relType, types.NodeID(snowflake.ID(startID)), types.NodeID(snowflake.ID(endID)))
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship(%d): %v", id, err)
 	}
@@ -55,7 +55,7 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, []uint16{2, 3})
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2, 3})
 	n.SetVersion(5)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"name": "Alice"}))
 
@@ -63,11 +63,11 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	if int64(got.InternalID().SnowflakeID()) != 100 {
+	if int64(got.ID()) != 100 {
 		t.Fatal("ID mismatch")
 	}
 	if got.PrimaryLabelToken().Value() != 1 {
@@ -87,7 +87,7 @@ func TestBadgerStorePutNodeDuplicate(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 100, 1, nil)
-	err := bs.PutNode(types.NewNode(snowflake.ID(100), 1, nil))
+	err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil))
 	if !errors.Is(err, ErrNodeExists) {
 		t.Fatalf("expected ErrNodeExists, got %v", err)
 	}
@@ -97,7 +97,7 @@ func TestBadgerStoreGetNodeNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	_, err := bs.GetNode(snowflake.ID(999))
+	_, err := bs.GetNode(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -108,11 +108,11 @@ func TestBadgerStoreDeleteNode(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 100, 1, nil)
-	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	_, err := bs.GetNode(snowflake.ID(100))
+	_, err := bs.GetNode(types.NodeID(100))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatal("node should not exist after delete")
 	}
@@ -122,7 +122,7 @@ func TestBadgerStoreDeleteNodeNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	err := bs.DeleteNode(snowflake.ID(999))
+	err := bs.DeleteNode(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -137,18 +137,18 @@ func TestBadgerStorePutGetRelationship(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(500), 3, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 3, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	r.SetVersion(2)
 	r.SetProperties(mustPropertySlice(t, map[string]any{"weight": float64(1.5)}))
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship: %v", err)
 	}
 
-	got, err := bs.GetRelationship(snowflake.ID(500))
+	got, err := bs.GetRelationship(types.RelID(500))
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
-	if int64(got.InternalID().SnowflakeID()) != 500 {
+	if int64(got.ID()) != 500 {
 		t.Fatal("ID mismatch")
 	}
 	if got.TypeToken().Value() != 3 {
@@ -171,7 +171,7 @@ func TestBadgerStorePutRelDuplicate(t *testing.T) {
 	putTestNode(t, bs, 20, 1, nil)
 	putTestRel(t, bs, 500, 1, 10, 20)
 
-	err := bs.PutRelationship(types.NewRelationship(snowflake.ID(500), 1, snowflake.ID(10), snowflake.ID(20)))
+	err := bs.PutRelationship(types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20))))
 	if !errors.Is(err, ErrRelExists) {
 		t.Fatalf("expected ErrRelExists, got %v", err)
 	}
@@ -181,7 +181,7 @@ func TestBadgerStoreGetRelNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	_, err := bs.GetRelationship(snowflake.ID(999))
+	_, err := bs.GetRelationship(types.RelID(999))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -195,10 +195,10 @@ func TestBadgerStoreDeleteRelationship(t *testing.T) {
 	putTestNode(t, bs, 20, 1, nil)
 	putTestRel(t, bs, 500, 1, 10, 20)
 
-	if err := bs.DeleteRelationship(snowflake.ID(500)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(500)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
-	_, err := bs.GetRelationship(snowflake.ID(500))
+	_, err := bs.GetRelationship(types.RelID(500))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatal("relationship should not exist after delete")
 	}
@@ -208,7 +208,7 @@ func TestBadgerStoreDeleteRelNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	err := bs.DeleteRelationship(snowflake.ID(999))
+	err := bs.DeleteRelationship(types.RelID(999))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -221,7 +221,7 @@ func TestBadgerStorePutRelMissingStartNode(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 20, 1, nil)
-	r := types.NewRelationship(snowflake.ID(500), 1, snowflake.ID(999), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(999)), types.NodeID(snowflake.ID(20)))
 	err := bs.PutRelationship(r)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
@@ -233,7 +233,7 @@ func TestBadgerStorePutRelMissingEndNode(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 10, 1, nil)
-	r := types.NewRelationship(snowflake.ID(500), 1, snowflake.ID(10), snowflake.ID(999))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(999)))
 	err := bs.PutRelationship(r)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
@@ -312,7 +312,7 @@ func TestBadgerStoreOutgoingAll(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 20)
 	putTestRel(t, bs, 501, 2, 10, 30)
 
-	rels, err := bs.OutgoingRelationships(snowflake.ID(10), 0)
+	rels, err := bs.OutgoingRelationships(types.NodeID(10), 0)
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestBadgerStoreOutgoingFiltered(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 20)
 	putTestRel(t, bs, 501, 2, 10, 30)
 
-	rels, err := bs.OutgoingRelationships(snowflake.ID(10), 1)
+	rels, err := bs.OutgoingRelationships(types.NodeID(10), 1)
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestBadgerStoreIncomingAll(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 30)
 	putTestRel(t, bs, 501, 2, 20, 30)
 
-	rels, err := bs.IncomingRelationships(snowflake.ID(30), 0)
+	rels, err := bs.IncomingRelationships(types.NodeID(30), 0)
 	if err != nil {
 		t.Fatalf("IncomingRelationships: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestBadgerStoreIncomingFiltered(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 30)
 	putTestRel(t, bs, 501, 2, 20, 30)
 
-	rels, err := bs.IncomingRelationships(snowflake.ID(30), 2)
+	rels, err := bs.IncomingRelationships(types.NodeID(30), 2)
 	if err != nil {
 		t.Fatalf("IncomingRelationships: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestBadgerStoreTypeZeroReturnsAll(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 20)
 	putTestRel(t, bs, 501, 2, 10, 20)
 
-	out, err := bs.OutgoingRelationships(snowflake.ID(10), 0)
+	out, err := bs.OutgoingRelationships(types.NodeID(10), 0)
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
@@ -395,7 +395,7 @@ func TestBadgerStoreTypeZeroReturnsAll(t *testing.T) {
 		t.Fatalf("expected 2 outgoing with type 0 (all), got %d", len(out))
 	}
 
-	in, err := bs.IncomingRelationships(snowflake.ID(20), 0)
+	in, err := bs.IncomingRelationships(types.NodeID(20), 0)
 	if err != nil {
 		t.Fatalf("IncomingRelationships: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestBadgerStoreNodesByLabelSorted(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(nodes))
 	}
 	for i := 1; i < len(nodes); i++ {
-		if nodes[i-1].InternalID().SnowflakeID() >= nodes[i].InternalID().SnowflakeID() {
+		if nodes[i-1].ID() >= nodes[i].ID() {
 			t.Fatal("nodes not sorted by ID")
 		}
 	}
@@ -498,7 +498,7 @@ func TestBadgerStoreRelsByTypeSorted(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(rels))
 	}
 	for i := 1; i < len(rels); i++ {
-		if rels[i-1].InternalID().SnowflakeID() >= rels[i].InternalID().SnowflakeID() {
+		if rels[i-1].ID() >= rels[i].ID() {
 			t.Fatal("rels not sorted by ID")
 		}
 	}
@@ -515,7 +515,7 @@ func TestBadgerStoreOutgoingSorted(t *testing.T) {
 	putTestRel(t, bs, 501, 2, 10, 30)
 	putTestRel(t, bs, 502, 1, 10, 30)
 
-	rels, err := bs.OutgoingRelationships(snowflake.ID(10), 0)
+	rels, err := bs.OutgoingRelationships(types.NodeID(10), 0)
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
@@ -523,7 +523,7 @@ func TestBadgerStoreOutgoingSorted(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(rels))
 	}
 	for i := 1; i < len(rels); i++ {
-		if rels[i-1].InternalID().SnowflakeID() >= rels[i].InternalID().SnowflakeID() {
+		if rels[i-1].ID() >= rels[i].ID() {
 			t.Fatal("outgoing rels not sorted by ID")
 		}
 	}
@@ -540,7 +540,7 @@ func TestBadgerStoreIncomingSorted(t *testing.T) {
 	putTestRel(t, bs, 501, 2, 20, 30)
 	putTestRel(t, bs, 502, 1, 20, 30)
 
-	rels, err := bs.IncomingRelationships(snowflake.ID(30), 0)
+	rels, err := bs.IncomingRelationships(types.NodeID(30), 0)
 	if err != nil {
 		t.Fatalf("IncomingRelationships: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestBadgerStoreIncomingSorted(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(rels))
 	}
 	for i := 1; i < len(rels); i++ {
-		if rels[i-1].InternalID().SnowflakeID() >= rels[i].InternalID().SnowflakeID() {
+		if rels[i-1].ID() >= rels[i].ID() {
 			t.Fatal("incoming rels not sorted by ID")
 		}
 	}
@@ -560,7 +560,7 @@ func TestBadgerStoreNodeWithTemporal(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetTemporal(&types.TemporalMetadata{
 		ValidFrom: 1000,
 		CreatedBy: "admin",
@@ -569,7 +569,7 @@ func TestBadgerStoreNodeWithTemporal(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -589,7 +589,7 @@ func TestBadgerStoreNodeWithIntegrity(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:     "abc",
 		PrevHash: "def",
@@ -598,7 +598,7 @@ func TestBadgerStoreNodeWithIntegrity(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -618,7 +618,7 @@ func TestBadgerStoreRelWithFullMetadata(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(500), 1, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	r.SetVersion(3)
 	r.SetProperties(mustPropertySlice(t, map[string]any{"key": "val"}))
 	r.SetTemporal(&types.TemporalMetadata{
@@ -632,7 +632,7 @@ func TestBadgerStoreRelWithFullMetadata(t *testing.T) {
 		t.Fatalf("PutRelationship: %v", err)
 	}
 
-	got, err := bs.GetRelationship(snowflake.ID(500))
+	got, err := bs.GetRelationship(types.RelID(500))
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -651,7 +651,7 @@ func TestBadgerStoreNodeWithProperties(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"name":   "Alice",
 		"age":    int64(30),
@@ -663,7 +663,7 @@ func TestBadgerStoreNodeWithProperties(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -766,7 +766,7 @@ func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"name":     "Alice",
 		"age":      int64(30),
@@ -780,7 +780,7 @@ func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -822,7 +822,7 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open 1: %v", err)
 	}
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"x": int64(1)}))
 	if err := bs1.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -839,7 +839,7 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	got, err := bs2.GetNode(snowflake.ID(100))
+	got, err := bs2.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode after reopen: %v", err)
 	}
@@ -860,22 +860,22 @@ func TestBadgerStoreDeleteRelCleansAdjacency(t *testing.T) {
 	putTestRel(t, bs, 500, 1, 10, 20)
 	putTestRel(t, bs, 501, 1, 10, 20)
 
-	if err := bs.DeleteRelationship(snowflake.ID(500)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(500)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	out, err := bs.OutgoingRelationships(snowflake.ID(10), 0)
+	out, err := bs.OutgoingRelationships(types.NodeID(10), 0)
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
 	if len(out) != 1 {
 		t.Fatalf("expected 1 outgoing after delete, got %d", len(out))
 	}
-	if int64(out[0].InternalID().SnowflakeID()) != 501 {
+	if int64(out[0].ID()) != 501 {
 		t.Fatal("wrong remaining relationship")
 	}
 
-	in, err := bs.IncomingRelationships(snowflake.ID(20), 0)
+	in, err := bs.IncomingRelationships(types.NodeID(20), 0)
 	if err != nil {
 		t.Fatalf("IncomingRelationships: %v", err)
 	}
@@ -892,13 +892,13 @@ func TestBadgerStoreGetNodePropagatesErrorOnCacheMiss(t *testing.T) {
 	bs.db.Close()
 
 	// GetNode on a cache miss should propagate the Badger error.
-	_, err := bs.GetNode(snowflake.ID(999))
+	_, err := bs.GetNode(types.NodeID(999))
 	if err == nil {
 		t.Fatal("GetNode cache miss should error on closed DB")
 	}
 
 	// GetRelationship on a cache miss should propagate the Badger error.
-	_, err = bs.GetRelationship(snowflake.ID(999))
+	_, err = bs.GetRelationship(types.RelID(999))
 	if err == nil {
 		t.Fatal("GetRelationship cache miss should error on closed DB")
 	}
@@ -940,27 +940,27 @@ func TestBadgerStoreDeleteNodeCascade(t *testing.T) {
 	putTestRel(t, bs, 502, 1, 30, 10) // 30→10 (incoming)
 
 	// Cascade delete node 10 — all 3 rels should go.
-	if err := bs.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+	if err := bs.DeleteNodeCascade(types.NodeID(10)); err != nil {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
 	// Node 10 gone.
-	if _, err := bs.GetNode(snowflake.ID(10)); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := bs.GetNode(types.NodeID(10)); !errors.Is(err, ErrNodeNotFound) {
 		t.Error("node 10 should be deleted")
 	}
 
 	// All 3 rels gone.
 	for _, relID := range []int64{500, 501, 502} {
-		if _, err := bs.GetRelationship(snowflake.ID(relID)); !errors.Is(err, ErrRelNotFound) {
+		if _, err := bs.GetRelationship(types.RelID(relID)); !errors.Is(err, ErrRelNotFound) {
 			t.Errorf("rel %d should be cascade-deleted", relID)
 		}
 	}
 
 	// Nodes 20 and 30 survive.
-	if _, err := bs.GetNode(snowflake.ID(20)); err != nil {
+	if _, err := bs.GetNode(types.NodeID(20)); err != nil {
 		t.Errorf("node 20 should exist: %v", err)
 	}
-	if _, err := bs.GetNode(snowflake.ID(30)); err != nil {
+	if _, err := bs.GetNode(types.NodeID(30)); err != nil {
 		t.Errorf("node 30 should exist: %v", err)
 	}
 
@@ -975,7 +975,7 @@ func TestBadgerStoreDeleteNodeCascade(t *testing.T) {
 	}
 
 	// Adjacency cleaned — node 30 should have no outgoing (502 was deleted).
-	out, _ := bs.OutgoingRelationships(snowflake.ID(30), 0)
+	out, _ := bs.OutgoingRelationships(types.NodeID(30), 0)
 	if len(out) != 0 {
 		t.Errorf("node 30 outgoing should be empty, got %d", len(out))
 	}
@@ -988,7 +988,7 @@ func TestBadgerStoreDeleteNodeCascadeSelfLoop(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestRel(t, bs, 500, 1, 10, 10) // self-loop
 
-	if err := bs.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+	if err := bs.DeleteNodeCascade(types.NodeID(10)); err != nil {
 		t.Fatalf("DeleteNodeCascade self-loop: %v", err)
 	}
 
@@ -1006,7 +1006,7 @@ func TestBadgerStoreDeleteNodeCascadeNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	err := bs.DeleteNodeCascade(snowflake.ID(999))
+	err := bs.DeleteNodeCascade(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -1035,14 +1035,14 @@ func TestBadgerStoreAtomicCountsPutDelete(t *testing.T) {
 	}
 
 	// Delete 1 rel.
-	bs.DeleteRelationship(snowflake.ID(500))
+	bs.DeleteRelationship(types.RelID(500))
 	rc, _ = bs.RelationshipCount()
 	if rc != 1 {
 		t.Fatalf("RelationshipCount = %d, want 1", rc)
 	}
 
 	// Delete 1 node (plain delete, no cascade).
-	bs.DeleteNode(snowflake.ID(30))
+	bs.DeleteNode(types.NodeID(30))
 	nc, _ = bs.NodeCount()
 	if nc != 2 {
 		t.Fatalf("NodeCount = %d, want 2", nc)
@@ -1067,7 +1067,7 @@ func TestBadgerStoreAtomicCountsCascade(t *testing.T) {
 	}
 
 	// Cascade node 10 — removes 3 rels and 1 node.
-	bs.DeleteNodeCascade(snowflake.ID(10))
+	bs.DeleteNodeCascade(types.NodeID(10))
 
 	nc, _ = bs.NodeCount()
 	rc, _ = bs.RelationshipCount()
@@ -1119,7 +1119,7 @@ func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
 	putTestNode(t, bs, 100, 1, []uint16{2})
 	putTestNode(t, bs, 200, 1, nil)
 
-	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -1171,13 +1171,13 @@ func TestBadgerStoreFlushPersistence(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	if _, err := bs2.GetNode(snowflake.ID(10)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(10)); err != nil {
 		t.Fatalf("node 10 not persisted: %v", err)
 	}
-	if _, err := bs2.GetNode(snowflake.ID(20)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(20)); err != nil {
 		t.Fatalf("node 20 not persisted: %v", err)
 	}
-	if _, err := bs2.GetRelationship(snowflake.ID(500)); err != nil {
+	if _, err := bs2.GetRelationship(types.RelID(500)); err != nil {
 		t.Fatalf("rel 500 not persisted: %v", err)
 	}
 
@@ -1203,7 +1203,7 @@ func TestBadgerStoreCountConcurrency(t *testing.T) {
 		go func(offset int) {
 			for i := range nodesPerGoroutine {
 				id := int64(offset*1000 + i + 1)
-				n := types.NewNode(snowflake.ID(id), 1, nil)
+				n := types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)
 				if err := bs.PutNode(n); err != nil {
 					t.Errorf("PutNode(%d): %v", id, err)
 				}
@@ -1247,17 +1247,17 @@ func TestBadgerStoreCacheTombstone(t *testing.T) {
 	putTestNode(t, bs, 100, 1, nil)
 
 	// Verify node exists.
-	if _, err := bs.GetNode(snowflake.ID(100)); err != nil {
+	if _, err := bs.GetNode(types.NodeID(100)); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
 
 	// Delete — creates tombstone in cache.
-	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Before flush: cache tombstone should prevent fallthrough to Badger.
-	_, err := bs.GetNode(snowflake.ID(100))
+	_, err := bs.GetNode(types.NodeID(100))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound from tombstone, got %v", err)
 	}
@@ -1283,12 +1283,12 @@ func TestBadgerStoreDeleteNodeAfterReopen(t *testing.T) {
 	defer bs2.Close()
 
 	// DeleteNode must read from Badger (cache miss) to get label tokens.
-	if err := bs2.DeleteNode(snowflake.ID(100)); err != nil {
+	if err := bs2.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode after reopen: %v", err)
 	}
 
 	// Verify node is gone.
-	_, err = bs2.GetNode(snowflake.ID(100))
+	_, err = bs2.GetNode(types.NodeID(100))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -1321,11 +1321,11 @@ func TestBadgerStoreDeleteRelAfterReopen(t *testing.T) {
 	defer bs2.Close()
 
 	// DeleteRelationship reads from Badger (cache miss) to get type/endpoints.
-	if err := bs2.DeleteRelationship(snowflake.ID(500)); err != nil {
+	if err := bs2.DeleteRelationship(types.RelID(500)); err != nil {
 		t.Fatalf("DeleteRelationship after reopen: %v", err)
 	}
 
-	_, err = bs2.GetRelationship(snowflake.ID(500))
+	_, err = bs2.GetRelationship(types.RelID(500))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -1381,11 +1381,11 @@ func TestBadgerStoreReopenAfterFlush(t *testing.T) {
 	}
 
 	// Adjacency rebuilt.
-	out, _ := bs2.OutgoingRelationships(snowflake.ID(10), 0)
+	out, _ := bs2.OutgoingRelationships(types.NodeID(10), 0)
 	if len(out) != 2 {
 		t.Errorf("node 10 outgoing: expected 2, got %d", len(out))
 	}
-	in, _ := bs2.IncomingRelationships(snowflake.ID(30), 0)
+	in, _ := bs2.IncomingRelationships(types.NodeID(30), 0)
 	if len(in) != 2 {
 		t.Errorf("node 30 incoming: expected 2, got %d", len(in))
 	}
@@ -1488,7 +1488,7 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 	bs.idxMu.Unlock()
 
 	// DeleteNodeCascade must propagate the unmarshal error — NOT silently skip it.
-	err = bs.DeleteNodeCascade(nodeID)
+	err = bs.DeleteNodeCascade(types.NodeID(nodeID))
 	if err == nil {
 		t.Fatal("expected error from corrupted relationship data")
 	}
@@ -1537,7 +1537,7 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	bs.idxMu.Unlock()
 
 	// DeleteNodeCascade should fail because of corruption.
-	err = bs.DeleteNodeCascade(snowflake.ID(10))
+	err = bs.DeleteNodeCascade(types.NodeID(10))
 	if err == nil {
 		t.Fatal("expected error from corrupted relationship data")
 	}
@@ -1582,7 +1582,7 @@ func TestBadgerStoreInMemoryCloseFlushes(t *testing.T) {
 		t.Fatalf("NewBadgerStore: %v", err)
 	}
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -1641,10 +1641,10 @@ func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
 	}
 
 	// Verify actual entities are also there — not just counters.
-	if _, err := bs2.GetNode(snowflake.ID(10)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(10)); err != nil {
 		t.Errorf("node 10 not persisted: %v", err)
 	}
-	if _, err := bs2.GetRelationship(snowflake.ID(500)); err != nil {
+	if _, err := bs2.GetRelationship(types.RelID(500)); err != nil {
 		t.Errorf("rel 500 not persisted: %v", err)
 	}
 }
@@ -1667,7 +1667,7 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 	bs.idxMu.Unlock()
 
 	// DeleteNodeCascade should return an error but still clean up indexes.
-	err := bs.DeleteNodeCascade(id)
+	err := bs.DeleteNodeCascade(types.NodeID(id))
 	if err == nil {
 		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
@@ -1706,7 +1706,7 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
-	err := bs.DeleteNodeCascade(id)
+	err := bs.DeleteNodeCascade(types.NodeID(id))
 	if err == nil {
 		t.Fatal("DeleteNodeCascade should return error on corrupted node data")
 	}
@@ -1829,7 +1829,7 @@ func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
 		t.Fatalf("corrupt write: %v", err)
 	}
 
-	_, err = bs.OutgoingRelationships(snowflake.ID(10), 0)
+	_, err = bs.OutgoingRelationships(types.NodeID(10), 0)
 	if err == nil {
 		t.Fatal("OutgoingRelationships should return error for corrupted rel data")
 	}
@@ -1859,7 +1859,7 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 		t.Fatalf("corrupt write: %v", err)
 	}
 
-	_, err = bs.IncomingRelationships(snowflake.ID(20), 0)
+	_, err = bs.IncomingRelationships(types.NodeID(20), 0)
 	if err == nil {
 		t.Fatal("IncomingRelationships should return error for corrupted rel data")
 	}
@@ -1871,7 +1871,7 @@ func TestBadgerStorePutNodeCacheIsolation(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 10, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)
@@ -1880,7 +1880,7 @@ func TestBadgerStorePutNodeCacheIsolation(t *testing.T) {
 	// Mutate the original after Put.
 	_ = n.SetProperty("name", "MUTATED")
 
-	got, err := bs.GetNode(snowflake.ID(1))
+	got, err := bs.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1894,14 +1894,14 @@ func TestBadgerStoreGetNodeReturnsCopy(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 10, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
 	bs.PutNode(n)
 
-	first, _ := bs.GetNode(snowflake.ID(1))
+	first, _ := bs.GetNode(types.NodeID(1))
 	_ = first.SetProperty("name", "MUTATED")
 
-	second, _ := bs.GetNode(snowflake.ID(1))
+	second, _ := bs.GetNode(types.NodeID(1))
 	v, _ := second.GetProperty("name")
 	if v != "Alice" {
 		t.Fatalf("GetNode returned shared pointer: got %v, want Alice", v)
@@ -1915,7 +1915,7 @@ func TestBadgerStorePutRelCacheIsolation(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", 1.0)
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatal(err)
@@ -1924,7 +1924,7 @@ func TestBadgerStorePutRelCacheIsolation(t *testing.T) {
 	// Mutate original after Put.
 	_ = r.SetProperty("weight", 999.0)
 
-	got, err := bs.GetRelationship(snowflake.ID(100))
+	got, err := bs.GetRelationship(types.RelID(100))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1941,14 +1941,14 @@ func TestBadgerStoreGetRelReturnsCopy(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", 1.0)
 	bs.PutRelationship(r)
 
-	first, _ := bs.GetRelationship(snowflake.ID(100))
+	first, _ := bs.GetRelationship(types.RelID(100))
 	_ = first.SetProperty("weight", 999.0)
 
-	second, _ := bs.GetRelationship(snowflake.ID(100))
+	second, _ := bs.GetRelationship(types.RelID(100))
 	v, _ := second.GetProperty("weight")
 	if v != 1.0 {
 		t.Fatalf("GetRelationship returned shared pointer: got %v, want 1.0", v)
@@ -1961,19 +1961,19 @@ func TestBadgerStoreReplaceNode(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	_ = n.SetProperty("name", "Alice")
 	bs.PutNode(n)
 
 	// Retrieve, modify, replace.
-	updated, _ := bs.GetNode(snowflake.ID(100))
+	updated, _ := bs.GetNode(types.NodeID(100))
 	_ = updated.SetProperty("name", "Bob")
 
 	if err := bs.ReplaceNode(updated); err != nil {
 		t.Fatalf("ReplaceNode() returned error: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode after replace: %v", err)
 	}
@@ -1987,7 +1987,7 @@ func TestBadgerStoreReplaceNodeNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(999), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(999)), 1, nil)
 	err := bs.ReplaceNode(n)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("ReplaceNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
@@ -1998,19 +1998,19 @@ func TestBadgerStoreReplaceNodeCacheIsolation(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	_ = n.SetProperty("name", "Alice")
 	bs.PutNode(n)
 
 	// Replace with a new value.
-	updated, _ := bs.GetNode(snowflake.ID(100))
+	updated, _ := bs.GetNode(types.NodeID(100))
 	_ = updated.SetProperty("name", "Bob")
 	bs.ReplaceNode(updated)
 
 	// Mutate the replaced node AFTER the call — must not affect store.
 	_ = updated.SetProperty("name", "MUTATED")
 
-	got, _ := bs.GetNode(snowflake.ID(100))
+	got, _ := bs.GetNode(types.NodeID(100))
 	v, _ := got.GetProperty("name")
 	if v != "Bob" {
 		t.Fatalf("ReplaceNode did not deep copy: got %v, want Bob", v)
@@ -2024,19 +2024,19 @@ func TestBadgerStoreReplaceRelationship(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", 1.0)
 	bs.PutRelationship(r)
 
 	// Retrieve, modify, replace.
-	updated, _ := bs.GetRelationship(snowflake.ID(100))
+	updated, _ := bs.GetRelationship(types.RelID(100))
 	_ = updated.SetProperty("weight", 2.0)
 
 	if err := bs.ReplaceRelationship(updated); err != nil {
 		t.Fatalf("ReplaceRelationship() returned error: %v", err)
 	}
 
-	got, err := bs.GetRelationship(snowflake.ID(100))
+	got, err := bs.GetRelationship(types.RelID(100))
 	if err != nil {
 		t.Fatalf("GetRelationship after replace: %v", err)
 	}
@@ -2050,7 +2050,7 @@ func TestBadgerStoreReplaceRelNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	r := types.NewRelationship(snowflake.ID(999), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(999)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	err := bs.ReplaceRelationship(r)
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("ReplaceRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
@@ -2064,19 +2064,19 @@ func TestBadgerStoreReplaceRelCacheIsolation(t *testing.T) {
 	putTestNode(t, bs, 10, 1, nil)
 	putTestNode(t, bs, 20, 1, nil)
 
-	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", 1.0)
 	bs.PutRelationship(r)
 
 	// Replace with new value.
-	updated, _ := bs.GetRelationship(snowflake.ID(100))
+	updated, _ := bs.GetRelationship(types.RelID(100))
 	_ = updated.SetProperty("weight", 2.0)
 	bs.ReplaceRelationship(updated)
 
 	// Mutate after call — must not affect store.
 	_ = updated.SetProperty("weight", 999.0)
 
-	got, _ := bs.GetRelationship(snowflake.ID(100))
+	got, _ := bs.GetRelationship(types.RelID(100))
 	v, _ := got.GetProperty("weight")
 	if v != 2.0 {
 		t.Fatalf("ReplaceRelationship did not deep copy: got %v, want 2.0", v)
@@ -2089,18 +2089,18 @@ func TestBadgerStorePutGetNodeVersion(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 10, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
 
-	if err := bs.PutNodeVersion(snowflake.ID(1), 0, n); err != nil {
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
 		t.Fatalf("PutNodeVersion: %v", err)
 	}
 
-	got, err := bs.GetNodeVersion(snowflake.ID(1), 0)
+	got, err := bs.GetNodeVersion(types.NodeID(1), 0)
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
-	if int64(got.InternalID().SnowflakeID()) != 1 {
+	if int64(got.ID()) != 1 {
 		t.Fatal("version snapshot has wrong ID")
 	}
 	v, ok := got.GetProperty("name")
@@ -2110,7 +2110,7 @@ func TestBadgerStorePutGetNodeVersion(t *testing.T) {
 
 	// Cache isolation: mutate returned copy.
 	_ = got.SetProperty("name", "mutated")
-	got2, _ := bs.GetNodeVersion(snowflake.ID(1), 0)
+	got2, _ := bs.GetNodeVersion(types.NodeID(1), 0)
 	v2, _ := got2.GetProperty("name")
 	if v2 != "Alice" {
 		t.Fatalf("GetNodeVersion returned shared pointer: got %v, want Alice", v2)
@@ -2121,7 +2121,7 @@ func TestBadgerStoreGetNodeVersionNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	_, err := bs.GetNodeVersion(snowflake.ID(1), 0)
+	_, err := bs.GetNodeVersion(types.NodeID(1), 0)
 	if !errors.Is(err, ErrVersionNotFound) {
 		t.Fatalf("expected ErrVersionNotFound, got %v", err)
 	}
@@ -2133,14 +2133,14 @@ func TestBadgerStoreGetNodeHistory(t *testing.T) {
 
 	id := snowflake.ID(1)
 	for ver := uint32(0); ver < 3; ver++ {
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		n.SetVersion(ver)
-		if err := bs.PutNodeVersion(id, ver, n); err != nil {
+		if err := bs.PutNodeVersion(types.NodeID(id), ver, n); err != nil {
 			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
 		}
 	}
 
-	history, err := bs.GetNodeHistory(id)
+	history, err := bs.GetNodeHistory(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -2158,7 +2158,7 @@ func TestBadgerStoreGetNodeHistoryEmpty(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	history, err := bs.GetNodeHistory(snowflake.ID(999))
+	history, err := bs.GetNodeHistory(types.NodeID(999))
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -2173,12 +2173,12 @@ func TestBadgerStoreGetNodeHistoryAscending(t *testing.T) {
 
 	id := snowflake.ID(1)
 	for _, ver := range []uint32{2, 0, 1} {
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		n.SetVersion(ver)
-		bs.PutNodeVersion(id, ver, n)
+		bs.PutNodeVersion(types.NodeID(id), ver, n)
 	}
 
-	history, _ := bs.GetNodeHistory(id)
+	history, _ := bs.GetNodeHistory(types.NodeID(id))
 	for i := 0; i < len(history)-1; i++ {
 		if history[i].Version() >= history[i+1].Version() {
 			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
@@ -2193,16 +2193,16 @@ func TestBadgerStoreTruncateNodeHistory(t *testing.T) {
 
 	id := snowflake.ID(1)
 	for ver := uint32(0); ver < 5; ver++ {
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		n.SetVersion(ver)
-		bs.PutNodeVersion(id, ver, n)
+		bs.PutNodeVersion(types.NodeID(id), ver, n)
 	}
 
-	if err := bs.TruncateNodeHistory(id, 2); err != nil {
+	if err := bs.TruncateNodeHistory(types.NodeID(id), 2); err != nil {
 		t.Fatalf("TruncateNodeHistory: %v", err)
 	}
 
-	history, _ := bs.GetNodeHistory(id)
+	history, _ := bs.GetNodeHistory(types.NodeID(id))
 	if len(history) != 2 {
 		t.Fatalf("len(history) = %d, want 2", len(history))
 	}
@@ -2220,16 +2220,16 @@ func TestBadgerStoreTruncateNodeHistoryAll(t *testing.T) {
 
 	id := snowflake.ID(1)
 	for ver := uint32(0); ver < 3; ver++ {
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		n.SetVersion(ver)
-		bs.PutNodeVersion(id, ver, n)
+		bs.PutNodeVersion(types.NodeID(id), ver, n)
 	}
 
-	if err := bs.TruncateNodeHistory(id, 0); err != nil {
+	if err := bs.TruncateNodeHistory(types.NodeID(id), 0); err != nil {
 		t.Fatalf("TruncateNodeHistory(0): %v", err)
 	}
 
-	history, _ := bs.GetNodeHistory(id)
+	history, _ := bs.GetNodeHistory(types.NodeID(id))
 	if len(history) != 0 {
 		t.Fatalf("expected empty after truncate all, got %d", len(history))
 	}
@@ -2241,17 +2241,17 @@ func TestBadgerStoreDeleteNodePreservesHistory(t *testing.T) {
 
 	putTestNode(t, bs, 1, 10, nil)
 	for ver := uint32(0); ver < 3; ver++ {
-		n := types.NewNode(snowflake.ID(1), 10, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 		n.SetVersion(ver)
-		bs.PutNodeVersion(snowflake.ID(1), ver, n)
+		bs.PutNodeVersion(types.NodeID(1), ver, n)
 	}
 
-	if err := bs.DeleteNodeCascade(snowflake.ID(1)); err != nil {
+	if err := bs.DeleteNodeCascade(types.NodeID(1)); err != nil {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
 	// History is preserved after cascade delete — temporal queries need it.
-	history, _ := bs.GetNodeHistory(snowflake.ID(1))
+	history, _ := bs.GetNodeHistory(types.NodeID(1))
 	if len(history) != 3 {
 		t.Fatalf("expected 3 preserved history entries after cascade, got %d", len(history))
 	}
@@ -2267,9 +2267,9 @@ func TestBadgerStoreNodeHistorySurvivesRestart(t *testing.T) {
 		t.Fatalf("open 1: %v", err)
 	}
 	for ver := uint32(0); ver < 3; ver++ {
-		n := types.NewNode(snowflake.ID(1), 10, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 		n.SetVersion(ver)
-		if err := bs1.PutNodeVersion(snowflake.ID(1), ver, n); err != nil {
+		if err := bs1.PutNodeVersion(types.NodeID(1), ver, n); err != nil {
 			t.Fatalf("PutNodeVersion: %v", err)
 		}
 	}
@@ -2284,7 +2284,7 @@ func TestBadgerStoreNodeHistorySurvivesRestart(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	history, err := bs2.GetNodeHistory(snowflake.ID(1))
+	history, err := bs2.GetNodeHistory(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNodeHistory after restart: %v", err)
 	}
@@ -2304,14 +2304,14 @@ func TestBadgerStorePutGetRelVersion(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", 1.5)
 
-	if err := bs.PutRelVersion(snowflake.ID(100), 0, r); err != nil {
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
 		t.Fatalf("PutRelVersion: %v", err)
 	}
 
-	got, err := bs.GetRelVersion(snowflake.ID(100), 0)
+	got, err := bs.GetRelVersion(types.RelID(100), 0)
 	if err != nil {
 		t.Fatalf("GetRelVersion: %v", err)
 	}
@@ -2322,7 +2322,7 @@ func TestBadgerStorePutGetRelVersion(t *testing.T) {
 
 	// Cache isolation.
 	_ = got.SetProperty("weight", 999.0)
-	got2, _ := bs.GetRelVersion(snowflake.ID(100), 0)
+	got2, _ := bs.GetRelVersion(types.RelID(100), 0)
 	v2, _ := got2.GetProperty("weight")
 	if v2 != 1.5 {
 		t.Fatalf("GetRelVersion returned shared pointer: got %v, want 1.5", v2)
@@ -2333,7 +2333,7 @@ func TestBadgerStoreGetRelVersionNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	_, err := bs.GetRelVersion(snowflake.ID(100), 0)
+	_, err := bs.GetRelVersion(types.RelID(100), 0)
 	if !errors.Is(err, ErrVersionNotFound) {
 		t.Fatalf("expected ErrVersionNotFound, got %v", err)
 	}
@@ -2345,12 +2345,12 @@ func TestBadgerStoreGetRelHistory(t *testing.T) {
 
 	id := snowflake.ID(100)
 	for ver := uint32(0); ver < 3; ver++ {
-		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(id), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(id, ver, r)
+		bs.PutRelVersion(types.RelID(id), ver, r)
 	}
 
-	history, err := bs.GetRelHistory(id)
+	history, err := bs.GetRelHistory(types.RelID(id))
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -2368,7 +2368,7 @@ func TestBadgerStoreGetRelHistoryEmpty(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	history, err := bs.GetRelHistory(snowflake.ID(999))
+	history, err := bs.GetRelHistory(types.RelID(999))
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -2383,12 +2383,12 @@ func TestBadgerStoreGetRelHistoryAscending(t *testing.T) {
 
 	id := snowflake.ID(100)
 	for _, ver := range []uint32{2, 0, 1} {
-		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(id), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(id, ver, r)
+		bs.PutRelVersion(types.RelID(id), ver, r)
 	}
 
-	history, _ := bs.GetRelHistory(id)
+	history, _ := bs.GetRelHistory(types.RelID(id))
 	for i := 0; i < len(history)-1; i++ {
 		if history[i].Version() >= history[i+1].Version() {
 			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
@@ -2403,16 +2403,16 @@ func TestBadgerStoreTruncateRelHistory(t *testing.T) {
 
 	id := snowflake.ID(100)
 	for ver := uint32(0); ver < 5; ver++ {
-		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(id), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(id, ver, r)
+		bs.PutRelVersion(types.RelID(id), ver, r)
 	}
 
-	if err := bs.TruncateRelHistory(id, 2); err != nil {
+	if err := bs.TruncateRelHistory(types.RelID(id), 2); err != nil {
 		t.Fatalf("TruncateRelHistory: %v", err)
 	}
 
-	history, _ := bs.GetRelHistory(id)
+	history, _ := bs.GetRelHistory(types.RelID(id))
 	if len(history) != 2 {
 		t.Fatalf("len(history) = %d, want 2", len(history))
 	}
@@ -2430,16 +2430,16 @@ func TestBadgerStoreTruncateRelHistoryAll(t *testing.T) {
 
 	id := snowflake.ID(100)
 	for ver := uint32(0); ver < 3; ver++ {
-		r := types.NewRelationship(id, 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(id), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(id, ver, r)
+		bs.PutRelVersion(types.RelID(id), ver, r)
 	}
 
-	if err := bs.TruncateRelHistory(id, 0); err != nil {
+	if err := bs.TruncateRelHistory(types.RelID(id), 0); err != nil {
 		t.Fatalf("TruncateRelHistory(0): %v", err)
 	}
 
-	history, _ := bs.GetRelHistory(id)
+	history, _ := bs.GetRelHistory(types.RelID(id))
 	if len(history) != 0 {
 		t.Fatalf("expected empty after truncate all, got %d", len(history))
 	}
@@ -2454,17 +2454,17 @@ func TestBadgerStoreDeleteRelPreservesHistory(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 10, 20)
 
 	for ver := uint32(0); ver < 3; ver++ {
-		r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(snowflake.ID(100), ver, r)
+		bs.PutRelVersion(types.RelID(100), ver, r)
 	}
 
-	if err := bs.DeleteRelationship(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(100)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
 	// History is preserved after delete — temporal queries need it.
-	history, _ := bs.GetRelHistory(snowflake.ID(100))
+	history, _ := bs.GetRelHistory(types.RelID(100))
 	if len(history) != 3 {
 		t.Fatalf("expected 3 preserved history entries after delete, got %d", len(history))
 	}
@@ -2480,26 +2480,26 @@ func TestBadgerStoreDeleteNodeCascadePreservesHistory(t *testing.T) {
 
 	// Store rel and node history.
 	for ver := uint32(0); ver < 3; ver++ {
-		r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs.PutRelVersion(snowflake.ID(100), ver, r)
+		bs.PutRelVersion(types.RelID(100), ver, r)
 
-		n := types.NewNode(snowflake.ID(10), 1, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
 		n.SetVersion(ver)
-		bs.PutNodeVersion(snowflake.ID(10), ver, n)
+		bs.PutNodeVersion(types.NodeID(10), ver, n)
 	}
 
-	if err := bs.DeleteNodeCascade(snowflake.ID(10)); err != nil {
+	if err := bs.DeleteNodeCascade(types.NodeID(10)); err != nil {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
 	// History is preserved after cascade delete — temporal queries need it.
-	relHistory, _ := bs.GetRelHistory(snowflake.ID(100))
+	relHistory, _ := bs.GetRelHistory(types.RelID(100))
 	if len(relHistory) != 3 {
 		t.Fatalf("expected 3 preserved rel history after cascade, got %d", len(relHistory))
 	}
 
-	nodeHistory, _ := bs.GetNodeHistory(snowflake.ID(10))
+	nodeHistory, _ := bs.GetNodeHistory(types.NodeID(10))
 	if len(nodeHistory) != 3 {
 		t.Fatalf("expected 3 preserved node history after cascade, got %d", len(nodeHistory))
 	}
@@ -2514,9 +2514,9 @@ func TestBadgerStoreRelHistorySurvivesRestart(t *testing.T) {
 		t.Fatalf("open 1: %v", err)
 	}
 	for ver := uint32(0); ver < 3; ver++ {
-		r := types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(10), snowflake.ID(20))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 		r.SetVersion(ver)
-		bs1.PutRelVersion(snowflake.ID(100), ver, r)
+		bs1.PutRelVersion(types.RelID(100), ver, r)
 	}
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("close 1: %v", err)
@@ -2528,7 +2528,7 @@ func TestBadgerStoreRelHistorySurvivesRestart(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	history, err := bs2.GetRelHistory(snowflake.ID(100))
+	history, err := bs2.GetRelHistory(types.RelID(100))
 	if err != nil {
 		t.Fatalf("GetRelHistory after restart: %v", err)
 	}
@@ -2580,13 +2580,13 @@ func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
 	if nc != 2 {
 		t.Fatalf("NodeCount = %d, want 2", nc)
 	}
-	if _, err := bs2.GetNode(snowflake.ID(1)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(1)); err != nil {
 		t.Fatalf("GetNode(1): %v", err)
 	}
-	if _, err := bs2.GetNode(snowflake.ID(2)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(2)); err != nil {
 		t.Fatalf("GetNode(2): %v", err)
 	}
-	if _, err := bs2.GetRelationship(snowflake.ID(3)); err != nil {
+	if _, err := bs2.GetRelationship(types.RelID(3)); err != nil {
 		t.Fatalf("GetRelationship(3): %v", err)
 	}
 }
@@ -2629,7 +2629,7 @@ func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
 	}
 	// Spot-check first, middle, and last.
 	for _, id := range []int64{1, 250, 500} {
-		if _, err := bs2.GetNode(snowflake.ID(id)); err != nil {
+		if _, err := bs2.GetNode(types.NodeID(id)); err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
 		}
 	}
@@ -2670,7 +2670,7 @@ func TestBadgerStoreEvictionFallsThroughToBadger(t *testing.T) {
 
 	// Spot-check across the range.
 	for _, id := range []int64{1, 100, 200, 250} {
-		if _, err := bs.GetNode(snowflake.ID(id)); err != nil {
+		if _, err := bs.GetNode(types.NodeID(id)); err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
 		}
 	}
@@ -2708,7 +2708,7 @@ func TestBadgerStoreDirtyNotEvictedUnderPressure(t *testing.T) {
 		t.Fatalf("NodeCount = %d, want 100", nc)
 	}
 	for _, id := range []int64{1, 50, 100} {
-		if _, err := bs.GetNode(snowflake.ID(id)); err != nil {
+		if _, err := bs.GetNode(types.NodeID(id)); err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
 		}
 	}
@@ -2768,18 +2768,18 @@ func TestBadgerStoreRecoveryAfterAbruptShutdown(t *testing.T) {
 		t.Fatalf("NodeCount = %d, want 2 (unflushed node lost)", nc)
 	}
 
-	if _, err := bs2.GetNode(snowflake.ID(1)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(1)); err != nil {
 		t.Fatalf("GetNode(1): %v (flushed data should survive)", err)
 	}
-	if _, err := bs2.GetNode(snowflake.ID(2)); err != nil {
+	if _, err := bs2.GetNode(types.NodeID(2)); err != nil {
 		t.Fatalf("GetNode(2): %v (flushed data should survive)", err)
 	}
-	if _, err := bs2.GetRelationship(snowflake.ID(3)); err != nil {
+	if _, err := bs2.GetRelationship(types.RelID(3)); err != nil {
 		t.Fatalf("GetRelationship(3): %v (flushed data should survive)", err)
 	}
 
 	// Unflushed node should be lost.
-	_, err = bs2.GetNode(snowflake.ID(99))
+	_, err = bs2.GetNode(types.NodeID(99))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("GetNode(99): expected ErrNodeNotFound (unflushed), got %v", err)
 	}
@@ -2803,7 +2803,7 @@ func TestBadgerStorePropertyBoundaryValues(t *testing.T) {
 		"false":    false,
 	}
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, props))
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -2812,7 +2812,7 @@ func TestBadgerStorePropertyBoundaryValues(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(1))
+	got, err := bs.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -2835,7 +2835,7 @@ func TestBadgerStoreLargeStringProperty(t *testing.T) {
 
 	const bigSize = 500 * 1024 // 500 KB — safely under Badger's 1 MB MaxValueSize
 	big := strings.Repeat("x", bigSize)
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"big": big}))
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -2844,7 +2844,7 @@ func TestBadgerStoreLargeStringProperty(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(1))
+	got, err := bs.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -2874,7 +2874,7 @@ func TestBadgerStoreDeeplyNestedProperty(t *testing.T) {
 		current = map[string]any{"nested": current}
 	}
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"deep": current}))
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
@@ -2883,7 +2883,7 @@ func TestBadgerStoreDeeplyNestedProperty(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(1))
+	got, err := bs.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -2916,7 +2916,7 @@ func TestBadgerStoreEmptyCollections(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{
 		"empty_slice": []any{},
 		"empty_map":   map[string]any{},
@@ -2928,7 +2928,7 @@ func TestBadgerStoreEmptyCollections(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	got, err := bs.GetNode(snowflake.ID(1))
+	got, err := bs.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -3007,8 +3007,8 @@ func TestBadgerStoreAllNodesSorted(t *testing.T) {
 		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
 	}
 	for i := 1; i < len(got); i++ {
-		prev := got[i-1].InternalID().SnowflakeID()
-		curr := got[i].InternalID().SnowflakeID()
+		prev := got[i-1].ID()
+		curr := got[i].ID()
 		if prev >= curr {
 			t.Errorf("AllNodes not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
@@ -3070,8 +3070,8 @@ func TestBadgerStoreAllRelsSorted(t *testing.T) {
 		t.Fatalf("AllRelationships() = %d rels, want 3", len(got))
 	}
 	for i := 1; i < len(got); i++ {
-		prev := got[i-1].InternalID().SnowflakeID()
-		curr := got[i].InternalID().SnowflakeID()
+		prev := got[i-1].ID()
+		curr := got[i].ID()
 		if prev >= curr {
 			t.Errorf("AllRelationships not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
@@ -3092,7 +3092,7 @@ func TestBadgerStoreGetNodesByIDsEmpty(t *testing.T) {
 		t.Fatalf("GetNodesByIDs(nil) = %v, want nil", got)
 	}
 
-	got, err = bs.GetNodesByIDs([]snowflake.ID{})
+	got, err = bs.GetNodesByIDs([]types.NodeID{})
 	if err != nil {
 		t.Fatalf("GetNodesByIDs([]) returned error: %v", err)
 	}
@@ -3110,7 +3110,7 @@ func TestBadgerStoreGetNodesByIDs(t *testing.T) {
 	putTestNode(t, bs, 3, 10, nil)
 
 	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := bs.GetNodesByIDs([]snowflake.ID{snowflake.ID(1), snowflake.ID(999), snowflake.ID(3)})
+	got, err := bs.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
 	if err != nil {
 		t.Fatalf("GetNodesByIDs() returned error: %v", err)
 	}
@@ -3128,7 +3128,7 @@ func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
 	putTestNode(t, bs, 20, 1, nil)
 
 	// Request in reverse order — results must still be sorted ascending.
-	got, err := bs.GetNodesByIDs([]snowflake.ID{snowflake.ID(30), snowflake.ID(10), snowflake.ID(20)})
+	got, err := bs.GetNodesByIDs([]types.NodeID{types.NodeID(30), types.NodeID(10), types.NodeID(20)})
 	if err != nil {
 		t.Fatalf("GetNodesByIDs() returned error: %v", err)
 	}
@@ -3136,8 +3136,8 @@ func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
 		t.Fatalf("GetNodesByIDs() = %d nodes, want 3", len(got))
 	}
 	for i := 1; i < len(got); i++ {
-		prev := got[i-1].InternalID().SnowflakeID()
-		curr := got[i].InternalID().SnowflakeID()
+		prev := got[i-1].ID()
+		curr := got[i].ID()
 		if prev >= curr {
 			t.Errorf("GetNodesByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
@@ -3158,7 +3158,7 @@ func TestBadgerStoreGetRelsByIDsEmpty(t *testing.T) {
 		t.Fatalf("GetRelationshipsByIDs(nil) = %v, want nil", got)
 	}
 
-	got, err = bs.GetRelationshipsByIDs([]snowflake.ID{})
+	got, err = bs.GetRelationshipsByIDs([]types.RelID{})
 	if err != nil {
 		t.Fatalf("GetRelationshipsByIDs([]) returned error: %v", err)
 	}
@@ -3179,7 +3179,7 @@ func TestBadgerStoreGetRelsByIDs(t *testing.T) {
 	putTestRel(t, bs, 102, 5, 20, 10)
 
 	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := bs.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(100), snowflake.ID(999), snowflake.ID(102)})
+	got, err := bs.GetRelationshipsByIDs([]types.RelID{types.RelID(100), types.RelID(999), types.RelID(102)})
 	if err != nil {
 		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
 	}
@@ -3200,7 +3200,7 @@ func TestBadgerStoreGetRelsByIDsSorted(t *testing.T) {
 	putTestRel(t, bs, 200, 5, 1, 2)
 
 	// Request in reverse order — results must still be sorted ascending.
-	got, err := bs.GetRelationshipsByIDs([]snowflake.ID{snowflake.ID(300), snowflake.ID(100), snowflake.ID(200)})
+	got, err := bs.GetRelationshipsByIDs([]types.RelID{types.RelID(300), types.RelID(100), types.RelID(200)})
 	if err != nil {
 		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
 	}
@@ -3208,8 +3208,8 @@ func TestBadgerStoreGetRelsByIDsSorted(t *testing.T) {
 		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 3", len(got))
 	}
 	for i := 1; i < len(got); i++ {
-		prev := got[i-1].InternalID().SnowflakeID()
-		curr := got[i].InternalID().SnowflakeID()
+		prev := got[i-1].ID()
+		curr := got[i].ID()
 		if prev >= curr {
 			t.Errorf("GetRelationshipsByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
@@ -3235,9 +3235,9 @@ func TestBadgerStorePutNodesBatch(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	nodes := []*types.Node{
-		types.NewNode(snowflake.ID(1), 10, nil),
-		types.NewNode(snowflake.ID(2), 10, []uint16{20}),
-		types.NewNode(snowflake.ID(3), 20, nil),
+		types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil),
+		types.NewNode(types.NodeID(snowflake.ID(2)), 10, []uint16{20}),
+		types.NewNode(types.NodeID(snowflake.ID(3)), 20, nil),
 	}
 
 	if err := bs.PutNodesBatch(nodes); err != nil {
@@ -3250,12 +3250,12 @@ func TestBadgerStorePutNodesBatch(t *testing.T) {
 	}
 
 	for _, n := range nodes {
-		got, err := bs.GetNode(n.InternalID().SnowflakeID())
+		got, err := bs.GetNode(n.ID())
 		if err != nil {
-			t.Fatalf("GetNode(%d) returned error: %v", n.InternalID().SnowflakeID(), err)
+			t.Fatalf("GetNode(%d) returned error: %v", n.ID(), err)
 		}
 		if got.PrimaryLabelToken().Value() != n.PrimaryLabelToken().Value() {
-			t.Errorf("node %d: primary label mismatch", n.InternalID().SnowflakeID())
+			t.Errorf("node %d: primary label mismatch", n.ID())
 		}
 	}
 
@@ -3273,8 +3273,8 @@ func TestBadgerStorePutNodesBatchDuplicate(t *testing.T) {
 	putTestNode(t, bs, 1, 10, nil)
 
 	nodes := []*types.Node{
-		types.NewNode(snowflake.ID(2), 10, nil),
-		types.NewNode(snowflake.ID(1), 10, nil), // duplicate
+		types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil),
+		types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil), // duplicate
 	}
 
 	err := bs.PutNodesBatch(nodes)
@@ -3293,8 +3293,8 @@ func TestBadgerStorePutNodesBatchInternalDuplicate(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	nodes := []*types.Node{
-		types.NewNode(snowflake.ID(1), 10, nil),
-		types.NewNode(snowflake.ID(1), 20, nil),
+		types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil),
+		types.NewNode(types.NodeID(snowflake.ID(1)), 20, nil),
 	}
 
 	err := bs.PutNodesBatch(nodes)
@@ -3326,9 +3326,9 @@ func TestBadgerStorePutRelsBatch(t *testing.T) {
 	putTestNode(t, bs, 3, 10, nil)
 
 	rels := []*types.Relationship{
-		types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)),
-		types.NewRelationship(snowflake.ID(101), 5, snowflake.ID(2), snowflake.ID(3)),
-		types.NewRelationship(snowflake.ID(102), 6, snowflake.ID(1), snowflake.ID(3)),
+		types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))),
+		types.NewRelationship(types.RelID(snowflake.ID(101)), 5, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3))),
+		types.NewRelationship(types.RelID(snowflake.ID(102)), 6, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(3))),
 	}
 
 	if err := bs.PutRelationshipsBatch(rels); err != nil {
@@ -3340,7 +3340,7 @@ func TestBadgerStorePutRelsBatch(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 3", count)
 	}
 
-	outgoing, _ := bs.OutgoingRelationships(snowflake.ID(1), 0)
+	outgoing, _ := bs.OutgoingRelationships(types.NodeID(1), 0)
 	if len(outgoing) != 2 {
 		t.Fatalf("OutgoingRelationships(1, 0) = %d, want 2", len(outgoing))
 	}
@@ -3356,8 +3356,8 @@ func TestBadgerStorePutRelsBatchDuplicate(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 1, 2)
 
 	rels := []*types.Relationship{
-		types.NewRelationship(snowflake.ID(101), 5, snowflake.ID(1), snowflake.ID(2)),
-		types.NewRelationship(snowflake.ID(100), 5, snowflake.ID(1), snowflake.ID(2)), // duplicate
+		types.NewRelationship(types.RelID(snowflake.ID(101)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))),
+		types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))), // duplicate
 	}
 
 	err := bs.PutRelationshipsBatch(rels)
@@ -3388,7 +3388,7 @@ func TestBadgerStoreDeleteNodesBatch(t *testing.T) {
 	putTestNode(t, bs, 2, 10, nil)
 	putTestNode(t, bs, 3, 20, nil)
 
-	if err := bs.DeleteNodesBatch([]snowflake.ID{snowflake.ID(1), snowflake.ID(3)}); err != nil {
+	if err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(1), types.NodeID(3)}); err != nil {
 		t.Fatalf("DeleteNodesBatch returned error: %v", err)
 	}
 
@@ -3410,7 +3410,7 @@ func TestBadgerStoreDeleteNodesBatchMissing(t *testing.T) {
 	putTestNode(t, bs, 1, 10, nil)
 	putTestNode(t, bs, 2, 10, nil)
 
-	err := bs.DeleteNodesBatch([]snowflake.ID{snowflake.ID(1), snowflake.ID(999)})
+	err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(1), types.NodeID(999)})
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -3440,7 +3440,7 @@ func TestBadgerStoreDeleteRelsBatch(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 1, 2)
 	putTestRel(t, bs, 101, 5, 2, 1)
 
-	if err := bs.DeleteRelationshipsBatch([]snowflake.ID{snowflake.ID(100), snowflake.ID(101)}); err != nil {
+	if err := bs.DeleteRelationshipsBatch([]types.RelID{types.RelID(100), types.RelID(101)}); err != nil {
 		t.Fatalf("DeleteRelationshipsBatch returned error: %v", err)
 	}
 
@@ -3467,7 +3467,7 @@ func TestBadgerStoreReplaceNodeWithHistory(t *testing.T) {
 	}
 
 	// Get current state.
-	current, _ := bs.GetNode(snowflake.ID(1))
+	current, _ := bs.GetNode(types.NodeID(1))
 	prevState := current.DeepCopy()
 	prevVersion := current.Version()
 
@@ -3480,13 +3480,13 @@ func TestBadgerStoreReplaceNodeWithHistory(t *testing.T) {
 	}
 
 	// Verify current state.
-	got, _ := bs.GetNode(snowflake.ID(1))
+	got, _ := bs.GetNode(types.NodeID(1))
 	if got.PropertiesMap()["name"] != "Bob" {
 		t.Fatalf("got name=%v, want Bob", got.PropertiesMap()["name"])
 	}
 
 	// Verify history.
-	hist, err := bs.GetNodeVersion(snowflake.ID(1), prevVersion)
+	hist, err := bs.GetNodeVersion(types.NodeID(1), prevVersion)
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
@@ -3499,7 +3499,7 @@ func TestBadgerStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(999), 10, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(999)), 10, nil)
 	err := bs.ReplaceNodeWithHistory(n, 0, n)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("want ErrNodeNotFound, got %v", err)
@@ -3511,7 +3511,7 @@ func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 1, 10, nil)
-	current, _ := bs.GetNode(snowflake.ID(1))
+	current, _ := bs.GetNode(types.NodeID(1))
 	prevState := current.DeepCopy()
 	_ = current.SetProperty("x", int64(42))
 	current.SetVersion(1)
@@ -3526,11 +3526,11 @@ func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
 	}
 
 	// Both entity and history must be in Badger now.
-	got, _ := bs.GetNode(snowflake.ID(1))
+	got, _ := bs.GetNode(types.NodeID(1))
 	if got.Version() != 1 {
 		t.Fatalf("version = %d, want 1", got.Version())
 	}
-	hist, _ := bs.GetNodeVersion(snowflake.ID(1), 0)
+	hist, _ := bs.GetNodeVersion(types.NodeID(1), 0)
 	if hist.Version() != 0 {
 		t.Fatalf("history version = %d, want 0", hist.Version())
 	}
@@ -3552,7 +3552,7 @@ func TestBadgerStoreReplaceRelWithHistory(t *testing.T) {
 	}
 
 	// Get current state.
-	current, _ := bs.GetRelationship(snowflake.ID(100))
+	current, _ := bs.GetRelationship(types.RelID(100))
 	prevState := current.DeepCopy()
 	prevVersion := current.Version()
 
@@ -3565,13 +3565,13 @@ func TestBadgerStoreReplaceRelWithHistory(t *testing.T) {
 	}
 
 	// Verify current state.
-	got, _ := bs.GetRelationship(snowflake.ID(100))
+	got, _ := bs.GetRelationship(types.RelID(100))
 	if got.PropertiesMap()["weight"] != int64(10) {
 		t.Fatalf("got weight=%v, want 10", got.PropertiesMap()["weight"])
 	}
 
 	// Verify history.
-	hist, err := bs.GetRelVersion(snowflake.ID(100), prevVersion)
+	hist, err := bs.GetRelVersion(types.RelID(100), prevVersion)
 	if err != nil {
 		t.Fatalf("GetRelVersion: %v", err)
 	}
@@ -3584,7 +3584,7 @@ func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	r := types.NewRelationship(snowflake.ID(999), 1, snowflake.ID(1), snowflake.ID(2))
+	r := types.NewRelationship(types.RelID(snowflake.ID(999)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 	err := bs.ReplaceRelWithHistory(r, 0, r)
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("want ErrRelNotFound, got %v", err)
@@ -3597,7 +3597,7 @@ func TestBadgerStoreCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = n.SetProperty("name", "Alice")
 	_ = bs.PutNode(n)
 
@@ -3652,11 +3652,11 @@ func TestBadgerStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = n1.SetProperty("name", "Alice")
 	_ = bs.PutNode(n1)
 
-	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	_ = n2.SetProperty("name", "Bob")
 	_ = bs.PutNode(n2)
 
@@ -3675,7 +3675,7 @@ func TestBadgerStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = n.SetProperty("name", "Alice")
 	_ = bs.PutNode(n)
 
@@ -3694,11 +3694,11 @@ func TestBadgerStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n1 := types.NewNode(snowflake.ID(1), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = n1.SetProperty("name", "Alice")
 	_ = bs.PutNode(n1)
 
-	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	_ = n2.SetProperty("name", "Bob")
 	_ = bs.PutNode(n2)
 
@@ -3716,7 +3716,7 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = n.SetProperty("name", "Alice")
 	_ = bs.PutNode(n)
 
@@ -3729,7 +3729,7 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 	}
 
 	// Replace with updated property.
-	updated := types.NewNode(snowflake.ID(1), 1, nil)
+	updated := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	_ = updated.SetProperty("name", "Alicia")
 	_ = bs.ReplaceNode(updated)
 
@@ -3743,7 +3743,7 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 	}
 
 	// Delete the node.
-	_ = bs.DeleteNode(snowflake.ID(1))
+	_ = bs.DeleteNode(types.NodeID(1))
 	nodes, _ = bs.NodesByLabelAndProperty(1, "name", "Alicia", QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
@@ -3779,7 +3779,7 @@ func TestBadgerStoreNodeCountByLabel_AfterDelete(t *testing.T) {
 	putTestNode(t, bs, 100, 1, nil)
 	putTestNode(t, bs, 200, 1, nil)
 
-	if err := bs.DeleteNode(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -3830,7 +3830,7 @@ func TestBadgerStoreRelCountByType_AfterDelete(t *testing.T) {
 	putTestRel(t, bs, 300, 5, 100, 200)
 	putTestRel(t, bs, 400, 5, 200, 100)
 
-	if err := bs.DeleteRelationship(snowflake.ID(300)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(300)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -3848,7 +3848,7 @@ func TestBadgerStoreCountByLabel_CascadeDelete(t *testing.T) {
 	putTestNode(t, bs, 200, 1, nil)
 	putTestRel(t, bs, 300, 5, 100, 200)
 
-	if err := bs.DeleteNodeCascade(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteNodeCascade(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
@@ -3871,9 +3871,9 @@ func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	nodes := []*types.Node{
-		types.NewNode(snowflake.ID(100), 1, nil),
-		types.NewNode(snowflake.ID(200), 1, []uint16{2}),
-		types.NewNode(snowflake.ID(300), 2, nil),
+		types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil),
+		types.NewNode(types.NodeID(snowflake.ID(200)), 1, []uint16{2}),
+		types.NewNode(types.NodeID(snowflake.ID(300)), 2, nil),
 	}
 	if err := bs.PutNodesBatch(nodes); err != nil {
 		t.Fatalf("PutNodesBatch: %v", err)
@@ -3889,7 +3889,7 @@ func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
 	}
 
 	// Batch delete.
-	if err := bs.DeleteNodesBatch([]snowflake.ID{snowflake.ID(100), snowflake.ID(200)}); err != nil {
+	if err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(100), types.NodeID(200)}); err != nil {
 		t.Fatalf("DeleteNodesBatch: %v", err)
 	}
 
@@ -3921,12 +3921,12 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 	labels.GetOrCreate("Company") // token 2
 	relTypes.GetOrCreate("KNOWS") // token 1
 
-	n1 := types.NewNode(snowflake.ID(100), 1, []uint16{2})
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	bs1.PutNode(n1)
 	bs1.PutNode(n2)
 
-	r1 := types.NewRelationship(snowflake.ID(300), 1, snowflake.ID(100), snowflake.ID(200))
+	r1 := types.NewRelationship(types.RelID(snowflake.ID(300)), 1, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	bs1.PutRelationship(r1)
 
 	// Verify counts before close.
@@ -3973,17 +3973,17 @@ func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
 	}
 
 	// Store nodes with label token 1.
-	n1 := types.NewNode(snowflake.ID(100), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	_ = n1.SetProperty("city", "Berlin")
 	if err := bs1.PutNode(n1); err != nil {
 		t.Fatalf("PutNode 1: %v", err)
 	}
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	_ = n2.SetProperty("city", "Munich")
 	if err := bs1.PutNode(n2); err != nil {
 		t.Fatalf("PutNode 2: %v", err)
 	}
-	n3 := types.NewNode(snowflake.ID(300), 1, nil)
+	n3 := types.NewNode(types.NodeID(snowflake.ID(300)), 1, nil)
 	_ = n3.SetProperty("city", "Berlin")
 	if err := bs1.PutNode(n3); err != nil {
 		t.Fatalf("PutNode 3: %v", err)
@@ -4053,15 +4053,15 @@ func TestBadgerStoreAllNodeHistoryIDs(t *testing.T) {
 	putTestNode(t, bs, 200, 1, nil)
 	putTestNode(t, bs, 300, 1, nil)
 
-	n100 := types.NewNode(snowflake.ID(100), 1, nil)
+	n100 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	_ = n100.SetProperty("v", int64(1))
-	if err := bs.PutNodeVersion(snowflake.ID(100), 0, n100); err != nil {
+	if err := bs.PutNodeVersion(types.NodeID(100), 0, n100); err != nil {
 		t.Fatalf("PutNodeVersion(100): %v", err)
 	}
 
-	n300 := types.NewNode(snowflake.ID(300), 1, nil)
+	n300 := types.NewNode(types.NodeID(snowflake.ID(300)), 1, nil)
 	_ = n300.SetProperty("v", int64(1))
-	if err := bs.PutNodeVersion(snowflake.ID(300), 0, n300); err != nil {
+	if err := bs.PutNodeVersion(types.NodeID(300), 0, n300); err != nil {
 		t.Fatalf("PutNodeVersion(300): %v", err)
 	}
 
@@ -4085,8 +4085,8 @@ func TestBadgerStoreAllNodeHistoryIDs_PendingBuffer(t *testing.T) {
 
 	// Add node and version — don't flush, so it's in the pending buffer.
 	putTestNode(t, bs, 100, 1, nil)
-	n := types.NewNode(snowflake.ID(100), 1, nil)
-	if err := bs.PutNodeVersion(snowflake.ID(100), 0, n); err != nil {
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	if err := bs.PutNodeVersion(types.NodeID(100), 0, n); err != nil {
 		t.Fatalf("PutNodeVersion: %v", err)
 	}
 
@@ -4129,8 +4129,8 @@ func TestBadgerStoreAllRelHistoryIDs(t *testing.T) {
 	putTestRel(t, bs, 100, 1, 1, 2)
 	putTestRel(t, bs, 200, 1, 1, 2)
 
-	r100 := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
-	if err := bs.PutRelVersion(snowflake.ID(100), 0, r100); err != nil {
+	r100 := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r100); err != nil {
 		t.Fatalf("PutRelVersion(100): %v", err)
 	}
 
@@ -4151,8 +4151,8 @@ func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
 	putTestNode(t, bs, 2, 1, nil)
 	putTestRel(t, bs, 100, 1, 1, 2)
 
-	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
-	if err := bs.PutRelVersion(snowflake.ID(100), 0, r); err != nil {
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
 		t.Fatalf("PutRelVersion: %v", err)
 	}
 
@@ -4225,7 +4225,7 @@ func TestBadgerStoreAllNodeIDs_Pagination(t *testing.T) {
 		t.Fatalf("page1 len=%d, want 2", len(ids))
 	}
 
-	ids2, _ := bs.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1]})
+	ids2, _ := bs.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
@@ -4288,7 +4288,7 @@ func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
 		t.Fatalf("page1 len=%d, want 2", len(ids))
 	}
 
-	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: ids[1]})
+	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
@@ -4302,7 +4302,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
 
 	// Pre-populate with existing nodes.
 	for i := int64(1); i <= 50; i++ {
-		n := types.NewNode(snowflake.ID(i), 1, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 		_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
 		if err := bs.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
@@ -4323,7 +4323,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := int64(51); i <= 100; i++ {
-			n := types.NewNode(snowflake.ID(i), 1, nil)
+			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 			_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
 			if err := bs.PutNode(n); err != nil {
 				t.Errorf("PutNode(%d): %v", i, err)
@@ -4378,7 +4378,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {
 
 	// Pre-populate 100 nodes with "status" property.
 	for i := int64(1); i <= 100; i++ {
-		n := types.NewNode(snowflake.ID(i), 1, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 		_ = n.SetProperty("status", "active")
 		if err := bs.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
@@ -4400,7 +4400,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := int64(1); i <= 50; i++ {
-			n := types.NewNode(snowflake.ID(i), 1, nil)
+			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 			// No "status" property — effectively deleting it.
 			_ = n.SetProperty("other", "value")
 			if err := bs.ReplaceNode(n); err != nil {
@@ -4421,7 +4421,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {
 	// Due to concurrency, the exact count depends on timing.
 	// But we can verify NO deleted node is resurrected.
 	for _, node := range results {
-		id := node.InternalID().SnowflakeID()
+		id := node.ID()
 		// Re-read the current state of the node.
 		current, err := bs.GetNode(id)
 		if err != nil {
@@ -4441,7 +4441,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
 
 	// Pre-populate with nodes having status="old".
 	for i := int64(1); i <= 50; i++ {
-		n := types.NewNode(snowflake.ID(i), 1, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 		_ = n.SetProperty("status", "old")
 		if err := bs.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
@@ -4460,7 +4460,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := int64(1); i <= 25; i++ {
-			n := types.NewNode(snowflake.ID(i), 1, nil)
+			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 			_ = n.SetProperty("status", "new")
 			_ = bs.ReplaceNode(n)
 		}
@@ -4471,7 +4471,7 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
 	// Verify: no node should appear under "old" if its current value is "new".
 	oldResults, _ := bs.NodesByLabelAndProperty(1, "status", "old", QueryOpts{})
 	for _, node := range oldResults {
-		id := node.InternalID().SnowflakeID()
+		id := node.ID()
 		current, err := bs.GetNode(id)
 		if err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
@@ -4504,7 +4504,7 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	})
 
 	// Enqueue a write op by storing a node.
-	n := types.NewNode(snowflake.ID(42), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -4571,7 +4571,7 @@ func TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency(t *testing.T) 
 			defer wg.Done()
 			for i := 0; i < nodesPerGoroutine; i++ {
 				id := snowflake.ID(int64(g*nodesPerGoroutine+i) + 1)
-				n := types.NewNode(id, 1, nil)
+				n := types.NewNode(types.NodeID(id), 1, nil)
 				if err := bs.PutNode(n); err != nil {
 					t.Errorf("PutNode: %v", err)
 				}
@@ -4598,14 +4598,14 @@ func TestBadgerStore_ForEachNodeID(t *testing.T) {
 
 	ids := []snowflake.ID{10, 20, 30}
 	for _, id := range ids {
-		if err := bs.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		if err := bs.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := bs.ForEachNodeID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := bs.ForEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -4626,13 +4626,13 @@ func TestBadgerStore_ForEachNodeID_EarlyStop(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	for _, id := range []snowflake.ID{10, 20, 30} {
-		if err := bs.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		if err := bs.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
 	}
 
 	count := 0
-	err := bs.ForEachNodeID(func(id snowflake.ID) bool {
+	err := bs.ForEachNodeID(func(id types.NodeID) bool {
 		count++
 		return false
 	})
@@ -4649,24 +4649,24 @@ func TestBadgerStore_ForEachRelID(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Create endpoints.
-	if err := bs.PutNode(types.NewNode(1, 1, nil)); err != nil {
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := bs.PutNode(types.NewNode(2, 1, nil)); err != nil {
+	if err := bs.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
 
 	relIDs := []snowflake.ID{100, 200}
 	for _, id := range relIDs {
-		r := types.NewRelationship(id, 1, 1, 2)
+		r := types.NewRelationship(types.RelID(id), 1, types.NodeID(1), types.NodeID(2))
 		if err := bs.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship(%d): %v", id, err)
 		}
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := bs.ForEachRelID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := bs.ForEachRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -4682,7 +4682,7 @@ func TestBadgerStore_ForEachNodeHistoryID(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Add node and write history (unflushed — pending buffer).
-	n := types.NewNode(10, 1, nil)
+	n := types.NewNode(types.NodeID(10), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -4692,8 +4692,8 @@ func TestBadgerStore_ForEachNodeHistoryID(t *testing.T) {
 
 	// Verify it finds the pending history entry.
 	seen := make(map[snowflake.ID]struct{})
-	err := bs.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -4709,8 +4709,8 @@ func TestBadgerStore_ForEachNodeHistoryID(t *testing.T) {
 	}
 
 	seen2 := make(map[snowflake.ID]struct{})
-	err = bs.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		seen2[id] = struct{}{}
+	err = bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen2[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -4727,11 +4727,11 @@ func TestBadgerStore_ForEachNodeHistoryID_EarlyStop(t *testing.T) {
 
 	// Create two nodes with history, flush both.
 	for _, id := range []snowflake.ID{10, 20} {
-		n := types.NewNode(id, 1, nil)
+		n := types.NewNode(types.NodeID(id), 1, nil)
 		if err := bs.PutNode(n); err != nil {
 			t.Fatal(err)
 		}
-		if err := bs.PutNodeVersion(id, 0, n); err != nil {
+		if err := bs.PutNodeVersion(types.NodeID(id), 0, n); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -4740,7 +4740,7 @@ func TestBadgerStore_ForEachNodeHistoryID_EarlyStop(t *testing.T) {
 	}
 
 	// Add a third unflushed.
-	n3 := types.NewNode(30, 1, nil)
+	n3 := types.NewNode(types.NodeID(30), 1, nil)
 	if err := bs.PutNode(n3); err != nil {
 		t.Fatal(err)
 	}
@@ -4749,7 +4749,7 @@ func TestBadgerStore_ForEachNodeHistoryID_EarlyStop(t *testing.T) {
 	}
 
 	count := 0
-	err := bs.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+	err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
 		count++
 		return false // stop after first
 	})
@@ -4766,13 +4766,13 @@ func TestBadgerStore_ForEachRelHistoryID(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Create endpoints + rel + history.
-	if err := bs.PutNode(types.NewNode(1, 1, nil)); err != nil {
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := bs.PutNode(types.NewNode(2, 1, nil)); err != nil {
+	if err := bs.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
-	r := types.NewRelationship(100, 1, 1, 2)
+	r := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -4781,8 +4781,8 @@ func TestBadgerStore_ForEachRelHistoryID(t *testing.T) {
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := bs.ForEachRelHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := bs.ForEachRelHistoryID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -4801,7 +4801,7 @@ func seedBadgerStore(t *testing.T, bs *BadgerStore, label uint16, count int) []s
 	for i := range count {
 		id := snowflake.ID(1000 + i)
 		ids[i] = id
-		n := types.NewNode(id, label, nil)
+		n := types.NewNode(types.NodeID(id), label, nil)
 		if err := bs.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
@@ -4823,7 +4823,7 @@ func TestBadgerStoreNodesByLabel_Paginated(t *testing.T) {
 		t.Fatalf("expected 3, got %d", len(got))
 	}
 	for i := 1; i < len(got); i++ {
-		if got[i].InternalID().SnowflakeID() <= got[i-1].InternalID().SnowflakeID() {
+		if got[i].ID() <= got[i-1].ID() {
 			t.Fatal("results not sorted")
 		}
 	}
@@ -4846,7 +4846,7 @@ func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 			break
 		}
 		all = append(all, page...)
-		cursor = page[len(page)-1].InternalID().SnowflakeID()
+		cursor = page[len(page)-1].ID().SnowflakeID()
 		if len(page) < 3 {
 			break
 		}
@@ -4856,7 +4856,7 @@ func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	}
 	seen := make(map[snowflake.ID]struct{})
 	for _, n := range all {
-		id := n.InternalID().SnowflakeID()
+		id := n.ID().SnowflakeID()
 		if _, dup := seen[id]; dup {
 			t.Fatalf("duplicate ID %d", id)
 		}
@@ -4883,12 +4883,12 @@ func TestBadgerStoreRelationshipsByType_Paginated(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
 	_ = bs.PutNode(n1)
 	_ = bs.PutNode(n2)
 	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 		if err := bs.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship: %v", err)
 		}
@@ -4922,12 +4922,12 @@ func TestBadgerStoreAllRelationships_Paginated(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
 	_ = bs.PutNode(n1)
 	_ = bs.PutNode(n2)
 	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 		_ = bs.PutRelationship(r)
 	}
 
@@ -4947,7 +4947,7 @@ func TestBadgerStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
 		n.SetProperties(ps)
 		if err := bs.PutNode(n); err != nil {
@@ -4974,7 +4974,7 @@ func TestBadgerStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
 		n.SetProperties(ps)
 		if err := bs.PutNode(n); err != nil {
@@ -5006,16 +5006,15 @@ func TestBadgerStoreOutgoingForNodesAll(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 10, 30) // 10 -> 30
 	putTestRel(t, bs, 102, 5, 20, 30) // 20 -> 30
 
-	got, err := bs.OutgoingRelationshipsForNodes(
-		[]snowflake.ID{snowflake.ID(10), snowflake.ID(20)}, 0)
+	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10), types.NodeID(20)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got[snowflake.ID(10)]) != 2 {
-		t.Fatalf("node 10: got %d rels, want 2", len(got[snowflake.ID(10)]))
+	if len(got[types.NodeID(10)]) != 2 {
+		t.Fatalf("node 10: got %d rels, want 2", len(got[types.NodeID(10)]))
 	}
-	if len(got[snowflake.ID(20)]) != 1 {
-		t.Fatalf("node 20: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	if len(got[types.NodeID(20)]) != 1 {
+		t.Fatalf("node 20: got %d rels, want 1", len(got[types.NodeID(20)]))
 	}
 }
 
@@ -5032,15 +5031,14 @@ func TestBadgerStoreOutgoingForNodesFiltered(t *testing.T) {
 	putTestRel(t, bs, 102, 5, 20, 30) // type 5
 
 	// Filter type 7 — only node 10 has one.
-	got, err := bs.OutgoingRelationshipsForNodes(
-		[]snowflake.ID{snowflake.ID(10), snowflake.ID(20)}, 7)
+	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10), types.NodeID(20)}, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got[snowflake.ID(10)]) != 1 {
-		t.Fatalf("node 10 type=7: got %d, want 1", len(got[snowflake.ID(10)]))
+	if len(got[types.NodeID(10)]) != 1 {
+		t.Fatalf("node 10 type=7: got %d, want 1", len(got[types.NodeID(10)]))
 	}
-	if _, ok := got[snowflake.ID(20)]; ok {
+	if _, ok := got[types.NodeID(20)]; ok {
 		t.Fatal("node 20 should not be in result (no type 7 rels)")
 	}
 }
@@ -5057,7 +5055,7 @@ func TestBadgerStoreOutgoingForNodesEmpty(t *testing.T) {
 		t.Fatalf("nil input: got %v, want nil", got)
 	}
 
-	got, err = bs.OutgoingRelationshipsForNodes([]snowflake.ID{}, 0)
+	got, err = bs.OutgoingRelationshipsForNodes([]types.NodeID{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5079,19 +5077,19 @@ func TestBadgerStoreOutgoingForNodesSorted(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 10, 20)
 	putTestRel(t, bs, 200, 7, 10, 30)
 
-	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels := got[snowflake.ID(10)]
+	rels := got[types.NodeID(10)]
 	if len(rels) != 3 {
 		t.Fatalf("got %d rels, want 3", len(rels))
 	}
 	for i := 1; i < len(rels); i++ {
-		if rels[i].InternalID().SnowflakeID() <= rels[i-1].InternalID().SnowflakeID() {
+		if rels[i].ID() <= rels[i-1].ID() {
 			t.Fatalf("rels not sorted: [%d]=%d >= [%d]=%d",
-				i-1, rels[i-1].InternalID().SnowflakeID(),
-				i, rels[i].InternalID().SnowflakeID())
+				i-1, rels[i-1].ID(),
+				i, rels[i].ID())
 		}
 	}
 }
@@ -5110,16 +5108,15 @@ func TestBadgerStoreIncomingForNodesAll(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 10, 30) // -> 30
 	putTestRel(t, bs, 102, 5, 20, 30) // -> 30
 
-	got, err := bs.IncomingRelationshipsForNodes(
-		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 0)
+	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(20), types.NodeID(30)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got[snowflake.ID(20)]) != 1 {
-		t.Fatalf("node 20: got %d rels, want 1", len(got[snowflake.ID(20)]))
+	if len(got[types.NodeID(20)]) != 1 {
+		t.Fatalf("node 20: got %d rels, want 1", len(got[types.NodeID(20)]))
 	}
-	if len(got[snowflake.ID(30)]) != 2 {
-		t.Fatalf("node 30: got %d rels, want 2", len(got[snowflake.ID(30)]))
+	if len(got[types.NodeID(30)]) != 2 {
+		t.Fatalf("node 30: got %d rels, want 2", len(got[types.NodeID(30)]))
 	}
 }
 
@@ -5136,16 +5133,15 @@ func TestBadgerStoreIncomingForNodesFiltered(t *testing.T) {
 	putTestRel(t, bs, 102, 5, 20, 30) // type 5 -> 30
 
 	// Filter type 7 — only node 30 has one.
-	got, err := bs.IncomingRelationshipsForNodes(
-		[]snowflake.ID{snowflake.ID(20), snowflake.ID(30)}, 7)
+	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(20), types.NodeID(30)}, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := got[snowflake.ID(20)]; ok {
+	if _, ok := got[types.NodeID(20)]; ok {
 		t.Fatal("node 20 should not be in result (no type 7 incoming)")
 	}
-	if len(got[snowflake.ID(30)]) != 1 {
-		t.Fatalf("node 30 type=7: got %d, want 1", len(got[snowflake.ID(30)]))
+	if len(got[types.NodeID(30)]) != 1 {
+		t.Fatalf("node 30 type=7: got %d, want 1", len(got[types.NodeID(30)]))
 	}
 }
 
@@ -5161,7 +5157,7 @@ func TestBadgerStoreIncomingForNodesEmpty(t *testing.T) {
 		t.Fatalf("nil input: got %v, want nil", got)
 	}
 
-	got, err = bs.IncomingRelationshipsForNodes([]snowflake.ID{}, 0)
+	got, err = bs.IncomingRelationshipsForNodes([]types.NodeID{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5183,19 +5179,19 @@ func TestBadgerStoreIncomingForNodesSorted(t *testing.T) {
 	putTestRel(t, bs, 100, 5, 10, 30)
 	putTestRel(t, bs, 200, 7, 10, 30)
 
-	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(30)}, 0)
+	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(30)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rels := got[snowflake.ID(30)]
+	rels := got[types.NodeID(30)]
 	if len(rels) != 3 {
 		t.Fatalf("got %d rels, want 3", len(rels))
 	}
 	for i := 1; i < len(rels); i++ {
-		if rels[i].InternalID().SnowflakeID() <= rels[i-1].InternalID().SnowflakeID() {
+		if rels[i].ID() <= rels[i-1].ID() {
 			t.Fatalf("rels not sorted: [%d]=%d >= [%d]=%d",
-				i-1, rels[i-1].InternalID().SnowflakeID(),
-				i, rels[i].InternalID().SnowflakeID())
+				i-1, rels[i-1].ID(),
+				i, rels[i].ID())
 		}
 	}
 }
@@ -5227,7 +5223,7 @@ func TestBadgerStoreOutgoingForNodesCorruptionError(t *testing.T) {
 		t.Fatalf("corrupt write: %v", err)
 	}
 
-	_, err = bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	_, err = bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10)}, 0)
 	if err == nil {
 		t.Fatal("expected error for corrupted rel data")
 	}
@@ -5258,7 +5254,7 @@ func TestBadgerStoreIncomingForNodesCorruptionError(t *testing.T) {
 		t.Fatalf("corrupt write: %v", err)
 	}
 
-	_, err = bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(20)}, 0)
+	_, err = bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(20)}, 0)
 	if err == nil {
 		t.Fatal("expected error for corrupted rel data")
 	}
@@ -5275,7 +5271,7 @@ func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 10, 30)
 
 	// Delete rel 100 to create an index orphan in outIdx.
-	if err := bs.DeleteRelationship(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(100)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -5287,13 +5283,13 @@ func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
 	bs.outIdx[snowflake.ID(10)][snowflake.ID(100)] = struct{}{}
 	bs.idxMu.Unlock()
 
-	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(10)}, 0)
+	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10)}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Only rel 101 should survive; rel 100 is an orphan.
-	if len(got[snowflake.ID(10)]) != 1 {
-		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[snowflake.ID(10)]))
+	if len(got[types.NodeID(10)]) != 1 {
+		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[types.NodeID(10)]))
 	}
 }
 
@@ -5308,7 +5304,7 @@ func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 20, 30)
 
 	// Delete rel 100 to create an index orphan in inIdx.
-	if err := bs.DeleteRelationship(snowflake.ID(100)); err != nil {
+	if err := bs.DeleteRelationship(types.RelID(100)); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -5320,13 +5316,13 @@ func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
 	bs.inIdx[snowflake.ID(30)][snowflake.ID(100)] = 5
 	bs.idxMu.Unlock()
 
-	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(30)}, 0)
+	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(30)}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Only rel 101 should survive; rel 100 is an orphan.
-	if len(got[snowflake.ID(30)]) != 1 {
-		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[snowflake.ID(30)]))
+	if len(got[types.NodeID(30)]) != 1 {
+		t.Fatalf("got %d rels, want 1 (orphan should be skipped)", len(got[types.NodeID(30)]))
 	}
 }
 
@@ -5335,7 +5331,7 @@ func TestBadgerStoreOutgoingForNodesNonexistentNode(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Query a node that was never added.
-	got, err := bs.OutgoingRelationshipsForNodes([]snowflake.ID{snowflake.ID(999)}, 0)
+	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(999)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5349,7 +5345,7 @@ func TestBadgerStoreIncomingForNodesNonexistentNode(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Query a node that was never added.
-	got, err := bs.IncomingRelationshipsForNodes([]snowflake.ID{snowflake.ID(999)}, 0)
+	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(999)}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

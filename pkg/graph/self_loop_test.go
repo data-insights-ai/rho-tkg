@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestSelfLoop_ZeroValueRejects(t *testing.T) {
@@ -57,7 +58,7 @@ func TestSelfLoop_ImportRejected(t *testing.T) {
 	nA, _ := g.AddNode([]string{"A"}, nil)
 
 	// Use a synthetic rel ID that won't collide.
-	relID := nA.InternalID().SnowflakeID() + 1
+	relID := types.RelID(nA.ID().SnowflakeID() + 1)
 	_, err := g.ImportRelationshipWithID(
 		t.Context(), relID, "SELF", nA, nA, nil,
 	)

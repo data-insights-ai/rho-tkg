@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -50,7 +49,7 @@ func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Set explicit validity: valid from 1000 to 2000.
 	current, _ := g.store.GetNode(id)
@@ -81,7 +80,7 @@ func TestGetNodesValidAt_Expired(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Set ValidTo in the past.
 	current, _ := g.store.GetNode(id)
@@ -102,7 +101,7 @@ func TestGetNodesValidAt_Future(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Set ValidFrom far in the future.
 	futureMs := types.Instant(time.Now().Add(24 * time.Hour).UnixMilli())
@@ -129,13 +128,13 @@ func TestGetNodesValidAt_Mixed(t *testing.T) {
 
 	// Node B: expired.
 	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
-	bCurrent, _ := g.store.GetNode(nB.InternalID().SnowflakeID())
+	bCurrent, _ := g.store.GetNode(nB.ID())
 	bCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(bCurrent)
 
 	// Node C: valid at query time with explicit range.
 	nC, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "C"})
-	cCurrent, _ := g.store.GetNode(nC.InternalID().SnowflakeID())
+	cCurrent, _ := g.store.GetNode(nC.ID())
 	cCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 0})
 	_ = g.store.ReplaceNode(cCurrent)
 
@@ -168,7 +167,7 @@ func TestGetRelsValidAt_ExplicitValidity(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -203,7 +202,7 @@ func TestGetRelsValidAt_Mixed(t *testing.T) {
 
 	// Rel 2: expired.
 	r2, _ := g.AddRelationship("LIKES", a, b, nil)
-	r2Current, _ := g.store.GetRelationship(r2.InternalID().SnowflakeID())
+	r2Current, _ := g.store.GetRelationship(r2.ID())
 	r2Current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(r2Current)
 
@@ -237,7 +236,7 @@ func TestGetNodesByLabelValidAt_Filtered(t *testing.T) {
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Valid"})
 
 	nExpired, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Expired"})
-	ec, _ := g.store.GetNode(nExpired.InternalID().SnowflakeID())
+	ec, _ := g.store.GetNode(nExpired.ID())
 	ec.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(ec)
 
@@ -270,7 +269,7 @@ func TestGetNodesValidDuring_Overlap(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 3000})
@@ -291,7 +290,7 @@ func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -312,7 +311,7 @@ func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Open-ended (ValidTo=0) — overlaps any future interval.
 	current, _ := g.store.GetNode(id)
@@ -336,7 +335,7 @@ func TestGetRelsValidDuring_Overlap(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 3000})
@@ -358,7 +357,7 @@ func TestGetRelsValidDuring_NoOverlap(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -401,7 +400,7 @@ func TestGetNodeAt_CurrentVersion(t *testing.T) {
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — should return the (only) version.
-	result, err := g.GetNodeAt(n.InternalID().SnowflakeID(), nowMs())
+	result, err := g.GetNodeAt(n.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -416,7 +415,7 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Record creation time.
 	creationTime := g.nodeValidFrom(n)
@@ -456,7 +455,7 @@ func TestGetNodeAt_BeforeCreation(t *testing.T) {
 	n, _ := g.AddNode([]string{"Person"}, nil)
 
 	// Query before the entity existed.
-	_, err := g.GetNodeAt(n.InternalID().SnowflakeID(), 1)
+	_, err := g.GetNodeAt(n.ID(), 1)
 	if !errors.Is(err, ErrNoVersionValidAt) {
 		t.Fatalf("expected ErrNoVersionValidAt, got %v", err)
 	}
@@ -466,7 +465,7 @@ func TestGetNodeAt_NotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	_, err := g.GetNodeAt(snowflake.ID(999), nowMs())
+	_, err := g.GetNodeAt(types.NodeID(999), nowMs())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -477,7 +476,7 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "explicit"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Set explicit ValidFrom/ValidTo on the node.
 	current, _ := g.store.GetNode(id)
@@ -520,7 +519,7 @@ func TestGetNeighborsValidAt_AllValid(t *testing.T) {
 	g.AddRelationship("KNOWS", a, b, nil)
 	g.AddRelationship("KNOWS", c, a, nil)
 
-	neighbors, err := g.GetNeighborsValidAt(a.InternalID().SnowflakeID(), nowMs())
+	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -541,11 +540,11 @@ func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 	g.AddRelationship("KNOWS", a, c, nil)
 
 	// Expire node C.
-	cCurrent, _ := g.store.GetNode(c.InternalID().SnowflakeID())
+	cCurrent, _ := g.store.GetNode(c.ID())
 	cCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(cCurrent)
 
-	neighbors, err := g.GetNeighborsValidAt(a.InternalID().SnowflakeID(), nowMs())
+	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -564,11 +563,11 @@ func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
 
 	// Expire the relationship (node B is still valid).
-	rCurrent, _ := g.store.GetRelationship(r.InternalID().SnowflakeID())
+	rCurrent, _ := g.store.GetRelationship(r.ID())
 	rCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(rCurrent)
 
-	neighbors, err := g.GetNeighborsValidAt(a.InternalID().SnowflakeID(), nowMs())
+	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -645,7 +644,7 @@ func TestSnapshot_DanglingRelExcluded(t *testing.T) {
 	g.AddRelationship("KNOWS", a, b, nil)
 
 	// Expire node B — the rel becomes dangling.
-	bCurrent, _ := g.store.GetNode(b.InternalID().SnowflakeID())
+	bCurrent, _ := g.store.GetNode(b.ID())
 	bCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(bCurrent)
 
@@ -679,9 +678,9 @@ func TestSnapshot_SortedResults(t *testing.T) {
 	}
 
 	// Verify ascending snowflake ID order (from AllNodes which sorts by ID).
-	id1 := snap.Nodes[0].InternalID().SnowflakeID()
-	id2 := snap.Nodes[1].InternalID().SnowflakeID()
-	id3 := snap.Nodes[2].InternalID().SnowflakeID()
+	id1 := snap.Nodes[0].ID()
+	id2 := snap.Nodes[1].ID()
+	id3 := snap.Nodes[2].ID()
 
 	if id1 >= id2 || id2 >= id3 {
 		t.Fatalf("nodes not sorted by ID: %d, %d, %d", id1, id2, id3)
@@ -700,7 +699,7 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
 	g.UpdateNode(id, map[string]any{"name": "v1"})
@@ -754,7 +753,7 @@ func TestDeleteNodePreservesHistory(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
 	g.UpdateNode(id, map[string]any{"name": "v1"})
@@ -779,7 +778,7 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	beforeDelete := nowMs()
 	time.Sleep(2 * time.Millisecond)
@@ -818,7 +817,7 @@ func TestDeleteRelPreservesHistory(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	time.Sleep(2 * time.Millisecond)
 	g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
@@ -852,8 +851,8 @@ func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
-	rid := r.InternalID().SnowflakeID()
-	aid := a.InternalID().SnowflakeID()
+	rid := r.ID()
+	aid := a.ID()
 
 	time.Sleep(2 * time.Millisecond)
 	g.UpdateRelationship(rid, map[string]any{"since": int64(2021)})
@@ -896,7 +895,7 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Record a time when the node existed.
 	validTime := nowMs()
@@ -923,7 +922,7 @@ func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
 	if err := g.DeleteNode(id); err != nil {
@@ -943,7 +942,7 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Also add a node that stays alive.
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
@@ -980,7 +979,7 @@ func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
 	time.Sleep(2 * time.Millisecond)
@@ -1008,7 +1007,7 @@ func TestGetRelAt_Basic(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	creationTime := g.relValidFrom(r)
 	time.Sleep(2 * time.Millisecond)
@@ -1045,7 +1044,7 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	validTime := nowMs()
 	time.Sleep(2 * time.Millisecond)
@@ -1076,7 +1075,7 @@ func TestGetRelAt_NotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	_, err := g.GetRelAt(snowflake.ID(999), nowMs())
+	_, err := g.GetRelAt(types.RelID(999), nowMs())
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -1094,7 +1093,7 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete the relationship via cascade (delete node a).
-	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -1129,7 +1128,7 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete Alice — cascades to the KNOWS relationship.
-	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -1163,7 +1162,7 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
 	time.Sleep(2 * time.Millisecond)
@@ -1203,7 +1202,7 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	creationTime := g.relValidFrom(r)
 	time.Sleep(2 * time.Millisecond)
 
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 	if err := g.DeleteRelationship(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -1237,7 +1236,7 @@ func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Set explicit validity: 1000-2000.
 	current, _ := g.store.GetNode(id)
@@ -1261,7 +1260,7 @@ func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -1284,7 +1283,7 @@ func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -1322,7 +1321,7 @@ func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -1347,7 +1346,7 @@ func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
@@ -1371,7 +1370,7 @@ func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 
-	current, _ := g.store.GetNode(n.InternalID().SnowflakeID())
+	current, _ := g.store.GetNode(n.ID())
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(current)
 

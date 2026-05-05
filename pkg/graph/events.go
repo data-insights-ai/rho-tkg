@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"sync"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -40,7 +39,7 @@ const numPriorityLevels = 5
 // Event is a lifecycle notification emitted after a successful graph mutation.
 type Event struct {
 	Type      EventType
-	EntityID  snowflake.ID
+	EntityID  types.EntityID
 	Timestamp types.Instant
 	Priority  EventPriority // zero value = PriorityNormal
 }

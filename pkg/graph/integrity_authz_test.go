@@ -190,7 +190,7 @@ func TestAuthzPreservedOnUpdate(t *testing.T) {
 		t.Fatalf("AddNodeWithContext: %v", err)
 	}
 
-	updated, err := g.UpdateNodeWithContext(ctx, n.InternalID().SnowflakeID(), map[string]any{
+	updated, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{
 		"tkg_authorized_by": "new_admin",
 		"rev":               1,
 	})

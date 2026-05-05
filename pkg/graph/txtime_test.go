@@ -63,7 +63,7 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 	origTxFrom := n.Temporal().TxFrom
 
 	time.Sleep(2 * time.Millisecond) // ensure measurable time difference
@@ -105,7 +105,7 @@ func TestTxToSetOnDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	if err := g.DeleteNode(nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
@@ -134,7 +134,7 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 
 	before := types.Instant(time.Now().UnixMilli() - 1000) // 1 second in past
 	n, _ := g.AddNode([]string{"A"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	_, err := g.GetNodeAsOf(nid, before)
 	if !errors.Is(err, ErrNoVersionAsOf) {
@@ -146,7 +146,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	after := types.Instant(time.Now().UnixMilli() + 1000) // 1 second in future
 
@@ -154,7 +154,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNodeAsOf: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != nid {
+	if got.ID() != nid {
 		t.Error("wrong node returned")
 	}
 }
@@ -163,7 +163,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	// Record the TxFrom of the original version
 	origTxFrom := n.Temporal().TxFrom
@@ -213,11 +213,11 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 
 	found1, found2 := false, false
 	for _, node := range got {
-		id := node.InternalID().SnowflakeID()
-		if id == n1.InternalID().SnowflakeID() {
+		id := node.ID()
+		if id == n1.ID() {
 			found1 = true
 		}
-		if id == n2.InternalID().SnowflakeID() {
+		if id == n2.ID() {
 			found2 = true
 		}
 	}
@@ -235,7 +235,7 @@ func TestGetRelAsOf(t *testing.T) {
 	n1, _ := g.AddNode([]string{"A"}, nil)
 	n2, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("REL", n1, n2, nil)
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	before := r.Temporal().TxFrom - 1
 
@@ -249,7 +249,7 @@ func TestGetRelAsOf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelAsOf after: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != rid {
+	if got.ID() != rid {
 		t.Error("wrong rel returned")
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // BenchmarkAddNodeLabel measures the cost of adding a label to an existing
@@ -17,13 +17,13 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 	}
 	b.Cleanup(func() { g.Close() })
 
-	ids := make([]snowflake.ID, b.N)
+	ids := make([]types.NodeID, b.N)
 	for i := range ids {
 		n, err := g.AddNode([]string{"Base"}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
-		ids[i] = n.InternalID().SnowflakeID()
+		ids[i] = n.ID()
 	}
 	// Pre-intern labels outside the measured region.
 	labels := make([]string, b.N)
@@ -53,7 +53,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -73,7 +73,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 	}
 	b.Cleanup(func() { g.Close() })
 
-	ids := make([]snowflake.ID, b.N)
+	ids := make([]types.NodeID, b.N)
 	labels := make([]string, b.N)
 	for i := range ids {
 		lbl := "L" + strconv.Itoa(i%64)
@@ -81,7 +81,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		ids[i] = n.InternalID().SnowflakeID()
+		ids[i] = n.ID()
 		labels[i] = lbl
 	}
 

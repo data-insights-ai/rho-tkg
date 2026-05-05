@@ -11,7 +11,7 @@ import (
 func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"x": int64(1)})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err := g.UpdateNodeInPlace(id, map[string]any{"x": int64(2)})
 	if err != nil {
@@ -30,7 +30,7 @@ func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"v": int64(0)})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	origVersion := n.Version()
 
 	updated, err := g.UpdateNodeInPlace(id, map[string]any{"v": int64(1)})
@@ -45,7 +45,7 @@ func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"a": "old"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	updated, err := g.UpdateNodeInPlace(id, map[string]any{"a": "new"})
 	if err != nil {
@@ -61,7 +61,7 @@ func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Empty updates — should return current node without any write.
 	result, err := g.UpdateNodeInPlace(id, map[string]any{})
@@ -79,7 +79,7 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"Thing"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	var got []graph.Event
 	bus.Subscribe(func(e graph.Event) {
@@ -105,7 +105,7 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -123,7 +123,7 @@ func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": int64(1)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelInPlace(id, map[string]any{"x": int64(2)})
 	if err != nil {
@@ -144,7 +144,7 @@ func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": int64(0)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 	origVersion := r.Version()
 
 	updated, err := g.UpdateRelInPlace(id, map[string]any{"v": int64(1)})
@@ -161,7 +161,7 @@ func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"a": "old"})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	updated, err := g.UpdateRelInPlace(id, map[string]any{"a": "new"})
 	if err != nil {
@@ -179,7 +179,7 @@ func TestUpdateRelInPlace_NoOp(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	result, err := g.UpdateRelInPlace(id, map[string]any{})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	var got []graph.Event
 	bus.Subscribe(func(e graph.Event) {
@@ -223,7 +223,7 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 func TestUpdateNodeInPlace_CountedAsUpdate(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before := g.Stats().NodesUpdated
 	_, _ = g.UpdateNodeInPlace(id, map[string]any{"k": "v"})

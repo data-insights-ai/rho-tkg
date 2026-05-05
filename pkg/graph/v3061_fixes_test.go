@@ -46,7 +46,7 @@ func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 	t.Parallel()
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:      "h1",
 		Signature: []byte{0xAA, 0xBB},
@@ -75,7 +75,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	r.SetIntegrity(&types.RelIntegrity{
 		Hash:      "rh1",
 		Signature: []byte{0xCC, 0xDD},
@@ -201,13 +201,13 @@ func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	g.SetEventBus(bus)
 
 	// Sync handler calls g.GetNode inside the callback.
-	var handlerNodeID snowflake.ID
+	var handlerNodeID types.EntityID
 	bus.Subscribe(func(e Event) {
 		if e.Type == EventNodeCreate {
 			// This would deadlock if publishEvent ran under g.mu.RLock
 			// because GetNodeWithContext doesn't acquire g.mu.RLock,
 			// but more complex handlers calling write methods would.
-			_, _ = g.GetNode(e.EntityID)
+			_, _ = g.GetNode(types.NodeID(e.EntityID))
 			handlerNodeID = e.EntityID
 		}
 	})
@@ -310,16 +310,16 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	// Import node+rel in tx, commit, verify exists.
 	tx := g.BeginTx()
 	nodeID := snowflake.ID(888888)
-	c, err := tx.ImportNodeWithID(context.Background(), nodeID, []string{"Place"}, map[string]any{"name": "Berlin"})
+	c, err := tx.ImportNodeWithID(context.Background(), types.NodeID(nodeID), []string{"Place"}, map[string]any{"name": "Berlin"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	r, err := tx.ImportRelationshipWithID(context.Background(), relID, "KNOWS", a, c, nil)
+	r, err := tx.ImportRelationshipWithID(context.Background(), types.RelID(relID), "KNOWS", a, c, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.InternalID().SnowflakeID() != relID {
+	if r.ID() != types.RelID(relID) {
 		t.Fatal("ID mismatch")
 	}
 
@@ -328,14 +328,14 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// Verify exists.
-	got, err := g.GetRelationship(relID)
+	got, err := g.GetRelationship(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("GetRelationship after commit: %v", err)
 	}
 	_ = got
 
 	// Import duplicate — should fail.
-	_, err = g.ImportRelationshipWithID(context.Background(), relID, "KNOWS", a, b, nil)
+	_, err = g.ImportRelationshipWithID(context.Background(), types.RelID(relID), "KNOWS", a, b, nil)
 	if !errors.Is(err, ErrRelExists) {
 		t.Fatalf("expected ErrRelExists, got %v", err)
 	}
@@ -343,7 +343,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	// Rollback: create new rel in tx, rollback, verify original persists.
 	tx2 := g.BeginTx()
 	newRelID := snowflake.ID(777777)
-	_, err = tx2.ImportRelationshipWithID(context.Background(), newRelID, "LIKES", a, b, nil)
+	_, err = tx2.ImportRelationshipWithID(context.Background(), types.RelID(newRelID), "LIKES", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,13 +352,13 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// New rel should not exist.
-	_, err = g.GetRelationship(newRelID)
+	_, err = g.GetRelationship(types.RelID(newRelID))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound after rollback, got %v", err)
 	}
 
 	// Original rel should still exist.
-	_, err = g.GetRelationship(relID)
+	_, err = g.GetRelationship(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("original rel lost after rollback: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 	txFrom1 := r.Temporal().TxFrom
 
 	// Small delay to ensure different timestamp.
@@ -401,7 +401,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	}
 	found := false
 	for _, rel := range rels {
-		if rel.InternalID().SnowflakeID() == rid {
+		if rel.ID() == rid {
 			found = true
 			v, _ := rel.GetProperty("weight")
 			if v != int64(1) {
@@ -420,7 +420,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	}
 	found = false
 	for _, rel := range rels2 {
-		if rel.InternalID().SnowflakeID() == rid {
+		if rel.ID() == rid {
 			found = true
 			v, _ := rel.GetProperty("weight")
 			if v != int64(2) {

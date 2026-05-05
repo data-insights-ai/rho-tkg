@@ -35,7 +35,7 @@ func TestMemoryStore_TemporalIndex_ZeroResultShortCircuit(t *testing.T) {
 
 	// All nodes: ValidFrom=5000, so none are valid at t=1.
 	for i := range n {
-		n := types.NewNode(snowflake.ID(i+1), 1, nil)
+		n := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
 		n.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 0})
 		if err := ms.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
@@ -82,7 +82,7 @@ func TestBadgerStore_TemporalIndex_ZeroResultShortCircuit(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	for i := range n {
-		nd := types.NewNode(snowflake.ID(i+1), 1, nil)
+		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
 		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 0})
 		if err := bs.PutNode(nd); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
@@ -145,7 +145,7 @@ func TestMemoryStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 
 	for i := range total {
 		id := snowflake.ID(i + 1)
-		n := types.NewNode(id, 1, nil)
+		n := types.NewNode(types.NodeID(id), 1, nil)
 		validTo := types.Instant(0)
 		if i < closed {
 			validTo = closedAt
@@ -189,9 +189,9 @@ func TestMemoryStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 
 	// IDs must match.
 	for i, n := range withIdxCurrent {
-		if n.InternalID().SnowflakeID() != noIdxCurrent[i].InternalID().SnowflakeID() {
+		if n.ID() != noIdxCurrent[i].ID() {
 			t.Errorf("result[%d] ID mismatch: index=%d, scan=%d",
-				i, n.InternalID().SnowflakeID(), noIdxCurrent[i].InternalID().SnowflakeID())
+				i, n.ID(), noIdxCurrent[i].ID())
 		}
 	}
 
@@ -232,7 +232,7 @@ func TestBadgerStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 
 	for i := range total {
 		id := snowflake.ID(i + 1)
-		nd := types.NewNode(id, 1, nil)
+		nd := types.NewNode(types.NodeID(id), 1, nil)
 		validTo := types.Instant(0)
 		if i < closed {
 			validTo = closedAt
@@ -284,9 +284,9 @@ func TestBadgerStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 
 	// IDs must match no-index results.
 	for i, n := range withIdxCurrent {
-		if n.InternalID().SnowflakeID() != noIdxCurrent[i].InternalID().SnowflakeID() {
+		if n.ID() != noIdxCurrent[i].ID() {
 			t.Errorf("result[%d] mismatch: idx=%d scan=%d",
-				i, n.InternalID().SnowflakeID(), noIdxCurrent[i].InternalID().SnowflakeID())
+				i, n.ID(), noIdxCurrent[i].ID())
 		}
 	}
 }
@@ -306,7 +306,7 @@ func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 
 	ms := NewMemoryStore()
 	for i := range nodes {
-		nd := types.NewNode(snowflake.ID(i+1), 1, nil)
+		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
 		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 10), ValidTo: 0})
 		if err := ms.PutNode(nd); err != nil {
 			t.Fatalf("PutNode: %v", err)
@@ -349,7 +349,7 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 
 	// Seed initial nodes and create index.
 	for i := range 100 {
-		nd := types.NewNode(snowflake.ID(i+1), 1, nil)
+		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
 		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 10), ValidTo: 0})
 		if err := ms.PutNode(nd); err != nil {
 			t.Fatalf("PutNode seed: %v", err)
@@ -367,7 +367,7 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := range 200 {
-			nd := types.NewNode(snowflake.ID(1000+i+1), 1, nil)
+			nd := types.NewNode(types.NodeID(snowflake.ID(1000+i+1)), 1, nil)
 			nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 5), ValidTo: 0})
 			if err := ms.PutNode(nd); err != nil {
 				errCh <- fmt.Errorf("writer PutNode: %v", err)
@@ -460,7 +460,7 @@ func TestBatchBuilder_NodesAndRelationships(t *testing.T) {
 	for i := range relCount {
 		src := nodes[i%nodeCount]
 		dst := nodes[(i*7+3)%nodeCount]
-		if src.InternalID().SnowflakeID() == dst.InternalID().SnowflakeID() {
+		if src.ID() == dst.ID() {
 			dst = nodes[(i*7+4)%nodeCount]
 		}
 		if _, err := b.AddRelationship("LINK", src, dst, nil); err != nil {
@@ -527,7 +527,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 		wg.Add(1)
 		go func(rID int) {
 			defer wg.Done()
-			id := preNodes[rID%len(preNodes)].InternalID().SnowflakeID()
+			id := preNodes[rID%len(preNodes)].ID()
 			for range 50 {
 				if _, err := g.GetNode(id); err != nil {
 					errCh <- fmt.Errorf("reader %d GetNode: %v", rID, err)
@@ -574,7 +574,7 @@ func TestMemoryStore_PropertyIndex_LargeScale(t *testing.T) {
 	ms := NewMemoryStore()
 	for i := range total {
 		id := snowflake.ID(i + 1)
-		n := types.NewNode(id, 1, nil)
+		n := types.NewNode(types.NodeID(id), 1, nil)
 		ps, err := types.NewPropertySlice(map[string]any{"tier": i % numValues})
 		if err != nil {
 			t.Fatalf("NewPropertySlice: %v", err)
@@ -624,7 +624,7 @@ func TestMemoryStore_PropertyIndex_ConsistencyAfterUpdate(t *testing.T) {
 	// 100 nodes: tier=0 or tier=1, alternating.
 	for i := range 100 {
 		id := snowflake.ID(i + 1)
-		n := types.NewNode(id, 1, nil)
+		n := types.NewNode(types.NodeID(id), 1, nil)
 		ps, err := types.NewPropertySlice(map[string]any{"tier": i % 2})
 		if err != nil {
 			t.Fatalf("NewPropertySlice: %v", err)
@@ -639,7 +639,7 @@ func TestMemoryStore_PropertyIndex_ConsistencyAfterUpdate(t *testing.T) {
 	}
 
 	// Move node 1 from tier=0 to tier=1 via ReplaceNode.
-	oldNode, err := ms.GetNode(snowflake.ID(1))
+	oldNode, err := ms.GetNode(types.NodeID(1))
 	if err != nil {
 		t.Fatalf("GetNode(1): %v", err)
 	}
@@ -672,7 +672,7 @@ func TestMemoryStore_PropertyIndex_ConsistencyAfterUpdate(t *testing.T) {
 	}
 
 	// Delete node 1 (now tier=1).
-	if err := ms.DeleteNode(snowflake.ID(1)); err != nil {
+	if err := ms.DeleteNode(types.NodeID(1)); err != nil {
 		t.Fatalf("DeleteNode(1): %v", err)
 	}
 

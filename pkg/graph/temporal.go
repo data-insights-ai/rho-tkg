@@ -50,7 +50,7 @@ func (g *Graph) nodeValidFrom(n *types.Node) types.Instant {
 	if tm := n.Temporal(); tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	return types.Instant(g.nodeIDGen.CreatedAt(n.InternalID().SnowflakeID()).UnixMilli())
+	return types.Instant(g.nodeIDGen.CreatedAt(n.ID().SnowflakeID()).UnixMilli())
 }
 
 // relValidFrom returns the effective valid-from time for a relationship.
@@ -59,7 +59,7 @@ func (g *Graph) relValidFrom(r *types.Relationship) types.Instant {
 	if tm := r.Temporal(); tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	return types.Instant(g.relIDGen.CreatedAt(r.InternalID().SnowflakeID()).UnixMilli())
+	return types.Instant(g.relIDGen.CreatedAt(r.ID().SnowflakeID()).UnixMilli())
 }
 
 // isNodeValidAt checks if a node is valid at the given instant.
@@ -94,7 +94,7 @@ func (g *Graph) isRelValidAt(r *types.Relationship, t types.Instant) bool {
 // version history in addition to current entities.
 func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -116,7 +116,7 @@ func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 // History-aware: includes deleted relationships that were valid at time t.
 func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, error) {
 	var result []*types.Relationship
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -143,7 +143,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 		return nil, nil
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -168,7 +168,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 // during the interval.
 func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.getNodeVersionDuring(id, start, end)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -190,7 +190,7 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 // History-aware: includes deleted or updated relationships.
 func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	var result []*types.Relationship
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.getRelVersionDuring(id, start, end)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -225,7 +225,7 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 //
 // Returns ErrNodeNotFound if the node never existed (no current, no history).
 // Returns ErrNoVersionValidAt if no version covers the given time.
-func (g *Graph) GetNodeAt(id snowflake.ID, t types.Instant) (*types.Node, error) {
+func (g *Graph) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error) {
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -311,7 +311,7 @@ func (g *Graph) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, ty
 //
 // Returns ErrRelNotFound if the relationship never existed (no current, no history).
 // Returns ErrNoVersionValidAt if no version covers the given time.
-func (g *Graph) GetRelAt(id snowflake.ID, t types.Instant) (*types.Relationship, error) {
+func (g *Graph) GetRelAt(id types.RelID, t types.Instant) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -399,17 +399,17 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 // deadlock. The map is the unavoidable bridge between the two phases.
 // For history-unaware queries over only current entities, prefer the
 // streaming ForEach iterators in the Store interface directly.
-func (g *Graph) forEachKnownNodeID(fn func(snowflake.ID) error) error {
-	seen := make(map[snowflake.ID]struct{})
+func (g *Graph) forEachKnownNodeID(fn func(types.NodeID) error) error {
+	seen := make(map[types.NodeID]struct{})
 
 	// Phase 1: collect unique IDs (no store method calls in callbacks — lock reentrancy).
-	if err := g.store.ForEachNodeID(func(id snowflake.ID) bool {
+	if err := g.store.ForEachNodeID(func(id types.NodeID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
 		return err
 	}
-	if err := g.store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+	if err := g.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -431,17 +431,17 @@ func (g *Graph) forEachKnownNodeID(fn func(snowflake.ID) error) error {
 //
 // Memory note: same O(N) materialisation trade-off as forEachKnownNodeID.
 // See that function's doc comment for the rationale.
-func (g *Graph) forEachKnownRelID(fn func(snowflake.ID) error) error {
-	seen := make(map[snowflake.ID]struct{})
+func (g *Graph) forEachKnownRelID(fn func(types.RelID) error) error {
+	seen := make(map[types.RelID]struct{})
 
 	// Phase 1: collect unique IDs.
-	if err := g.store.ForEachRelID(func(id snowflake.ID) bool {
+	if err := g.store.ForEachRelID(func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
 		return err
 	}
-	if err := g.store.ForEachRelHistoryID(func(id snowflake.ID) bool {
+	if err := g.store.ForEachRelHistoryID(func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -470,7 +470,7 @@ func (opts QueryOpts) hasTemporalFilter() bool {
 // at any moment in the interval is found, even if a later version no longer
 // matches. Returns ErrNoVersionValidAt if no overlapping version satisfies
 // pred. pred==nil means "any overlapping version".
-func (g *Graph) findNodeVersionForOpts(id snowflake.ID, opts QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+func (g *Graph) findNodeVersionForOpts(id types.NodeID, opts QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if opts.ValidAt != 0 {
 		n, err := g.GetNodeAt(id, opts.ValidAt)
 		if err != nil {
@@ -485,7 +485,7 @@ func (g *Graph) findNodeVersionForOpts(id snowflake.ID, opts QueryOpts, pred fun
 }
 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
-func (g *Graph) findRelVersionForOpts(id snowflake.ID, opts QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (g *Graph) findRelVersionForOpts(id types.RelID, opts QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if opts.ValidAt != 0 {
 		r, err := g.GetRelAt(id, opts.ValidAt)
 		if err != nil {
@@ -511,7 +511,7 @@ func (g *Graph) findRelVersionForOpts(id snowflake.ID, opts QueryOpts, pred func
 // property can hold during part of the interval and not on the most-recent
 // version. Scanning all overlapping versions is the only correct semantic for
 // "did this node match the predicate at any point during [start, end)?".
-func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -546,7 +546,7 @@ func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.
 }
 
 // findRelVersionMatchingDuring is the relationship counterpart.
-func (g *Graph) findRelVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (g *Graph) findRelVersionMatchingDuring(id types.RelID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -582,22 +582,22 @@ func (g *Graph) findRelVersionMatchingDuring(id snowflake.ID, start, end types.I
 // getNodeVersionDuring is a thin wrapper preserving the original "any overlap"
 // semantic. Use findNodeVersionMatchingDuring with a predicate when the query
 // has a label/property filter.
-func (g *Graph) getNodeVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Node, error) {
+func (g *Graph) getNodeVersionDuring(id types.NodeID, start, end types.Instant) (*types.Node, error) {
 	return g.findNodeVersionMatchingDuring(id, start, end, nil)
 }
 
 // getRelVersionDuring is a thin wrapper preserving the original "any overlap"
 // semantic for relationships.
-func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (*types.Relationship, error) {
+func (g *Graph) getRelVersionDuring(id types.RelID, start, end types.Instant) (*types.Relationship, error) {
 	return g.findRelVersionMatchingDuring(id, start, end, nil)
 }
 
 // GetNeighborsValidAt returns all neighbor nodes reachable from nodeID via
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant.
-func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*types.Node, error) {
+func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
 	neighborIDs := make(map[snowflake.ID]struct{})
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -605,9 +605,9 @@ func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*ty
 			}
 			return err
 		}
-		if r.StartNodeID().SnowflakeID() == nodeID {
+		if r.StartNodeID() == nodeID {
 			neighborIDs[r.EndNodeID().SnowflakeID()] = struct{}{}
-		} else if r.EndNodeID().SnowflakeID() == nodeID {
+		} else if r.EndNodeID() == nodeID {
 			neighborIDs[r.StartNodeID().SnowflakeID()] = struct{}{}
 		}
 		return nil
@@ -622,7 +622,7 @@ func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*ty
 
 	var result []*types.Node
 	for id := range neighborIDs {
-		n, err := g.GetNodeAt(id, t)
+		n, err := g.GetNodeAt(types.NodeID(id), t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
 				continue
@@ -655,7 +655,7 @@ func (g *Graph) snapshotAt(t types.Instant) (*GraphSnapshot, error) {
 	// Build set of valid node IDs for endpoint filtering.
 	nodeSet := make(map[snowflake.ID]struct{}, len(nodes))
 	for _, n := range nodes {
-		nodeSet[n.InternalID().SnowflakeID()] = struct{}{}
+		nodeSet[n.ID().SnowflakeID()] = struct{}{}
 	}
 
 	allRels, err := g.GetRelationshipsValidAt(t)
@@ -719,11 +719,11 @@ func buildDiff(t1, t2 types.Instant, snap1, snap2 *GraphSnapshot) *SnapshotDiff 
 	// --- Nodes ---
 	nodes1 := make(map[snowflake.ID]*types.Node, len(snap1.Nodes))
 	for _, n := range snap1.Nodes {
-		nodes1[n.InternalID().SnowflakeID()] = n
+		nodes1[n.ID().SnowflakeID()] = n
 	}
 	nodes2 := make(map[snowflake.ID]*types.Node, len(snap2.Nodes))
 	for _, n := range snap2.Nodes {
-		nodes2[n.InternalID().SnowflakeID()] = n
+		nodes2[n.ID().SnowflakeID()] = n
 	}
 
 	for id, n2 := range nodes2 {
@@ -750,11 +750,11 @@ func buildDiff(t1, t2 types.Instant, snap1, snap2 *GraphSnapshot) *SnapshotDiff 
 	// --- Relationships ---
 	rels1 := make(map[snowflake.ID]*types.Relationship, len(snap1.Relationships))
 	for _, r := range snap1.Relationships {
-		rels1[r.InternalID().SnowflakeID()] = r
+		rels1[r.ID().SnowflakeID()] = r
 	}
 	rels2 := make(map[snowflake.ID]*types.Relationship, len(snap2.Relationships))
 	for _, r := range snap2.Relationships {
-		rels2[r.InternalID().SnowflakeID()] = r
+		rels2[r.ID().SnowflakeID()] = r
 	}
 
 	for id, r2 := range rels2 {
@@ -808,7 +808,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 		return nil, nil
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -853,7 +853,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {

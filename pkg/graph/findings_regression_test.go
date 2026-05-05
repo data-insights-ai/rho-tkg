@@ -5,13 +5,12 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-func containsNodeID(nodes []*types.Node, id snowflake.ID) bool {
+func containsNodeID(nodes []*types.Node, id types.NodeID) bool {
 	for _, n := range nodes {
-		if n.InternalID().SnowflakeID() == id {
+		if n.ID() == id {
 			return true
 		}
 	}
@@ -20,13 +19,13 @@ func containsNodeID(nodes []*types.Node, id snowflake.ID) bool {
 
 // assertNodeSet fails the test if the result set is not exactly want
 // (same elements, same count). Catches both "missed" and "over-reported" bugs.
-func assertNodeSet(t *testing.T, label string, got []*types.Node, want []snowflake.ID) {
+func assertNodeSet(t *testing.T, label string, got []*types.Node, want []types.NodeID) {
 	t.Helper()
-	gotSet := make(map[snowflake.ID]struct{}, len(got))
+	gotSet := make(map[types.NodeID]struct{}, len(got))
 	for _, n := range got {
-		gotSet[n.InternalID().SnowflakeID()] = struct{}{}
+		gotSet[n.ID()] = struct{}{}
 	}
-	wantSet := make(map[snowflake.ID]struct{}, len(want))
+	wantSet := make(map[types.NodeID]struct{}, len(want))
 	for _, id := range want {
 		wantSet[id] = struct{}{}
 	}
@@ -45,13 +44,13 @@ func assertNodeSet(t *testing.T, label string, got []*types.Node, want []snowfla
 	}
 }
 
-func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []snowflake.ID) {
+func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []types.RelID) {
 	t.Helper()
-	gotSet := make(map[snowflake.ID]struct{}, len(got))
+	gotSet := make(map[types.RelID]struct{}, len(got))
 	for _, r := range got {
-		gotSet[r.InternalID().SnowflakeID()] = struct{}{}
+		gotSet[r.ID()] = struct{}{}
 	}
-	wantSet := make(map[snowflake.ID]struct{}, len(want))
+	wantSet := make(map[types.RelID]struct{}, len(want))
 	for _, id := range want {
 		wantSet[id] = struct{}{}
 	}
@@ -98,7 +97,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		id := n.InternalID().SnowflakeID()
+		id := n.ID()
 		if err := g.AddNodeLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
@@ -119,28 +118,24 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 	})
 
 	t.Run("history tamper accepted under current-label rule rejected under per-entry rule", func(t *testing.T) {
-		// Chain v0={A}, v1={A,B}, v2={A}. Rewrite v1 in history to:
-		//   tokens = {A,C}
-		//   hash   = ComputeNodeHash(v1_orig, NodeLabels(current))   // = H(v1, 1, ["A"])
-		// then re-link v2.PrevHash to the new v1 hash.
-		//
-		// Hash inputs (id, version, labels-arg, properties) for v1_orig and
-		// v1_tampered are identical when labels-arg is fixed to current's view,
-		// so under the pre-fix rule (labels = current's = ["A"] for all
-		// entries) the recomputed v1 hash matches the stored hash and the
-		// chain verifies. Under the per-entry rule, NodeLabels(v1_tampered) =
-		// ["A","C"] differs from ["A"] and the recomputation mismatches.
+		// Constructs a tamper that the pre-fix (current-label) rule accepts but
+		// the post-fix (per-entry) rule rejects — the only shape that
+		// discriminates the two implementations.
 		g := newTestGraph(t)
+
+		// MemoryStore-only: the test pokes private history/nodes fields;
+		// other backends don't expose them.
 		ms, ok := g.store.(*MemoryStore)
 		if !ok {
 			t.Fatalf("test requires MemoryStore, got %T", g.store)
 		}
 
+		// 1. Build a real chain: v0={A}, v1={A,B}, v2={A}.
 		n, err := g.AddNode([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		id := n.InternalID().SnowflakeID()
+		id := n.ID()
 		if err := g.AddNodeLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
@@ -148,6 +143,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
 
+		// 2. Resolve raw token IDs — labels are stored as tokens, not strings.
 		bTok, ok := g.labels.Lookup("B")
 		if !ok {
 			t.Fatal("labels.Lookup(B): not registered")
@@ -164,9 +160,10 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		currentLabels := g.NodeLabels(current) // ["A"]
 
 		ms.mu.RLock()
-		v1Orig := ms.nodeHistory[id][1].DeepCopy()
+		v1Orig := ms.nodeHistory[id.SnowflakeID()][1].DeepCopy()
 		ms.mu.RUnlock()
 
+		// 3. Tamper v1: swap B→C so its labels become {A,C}.
 		v1Tampered := v1Orig.DeepCopy()
 		if !v1Tampered.RemoveLabelTokenRaw(bTok) {
 			t.Fatal("v1.RemoveLabelTokenRaw(B): not removed")
@@ -175,12 +172,21 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 			t.Fatal("v1.AddLabelTokenRaw(C): not added")
 		}
 
+		// 4. Compute both candidate hashes:
+		//    preFix  = original entry hashed under current's labels  ["A"]
+		//    postFix = tampered entry hashed under its own labels    ["A","C"]
 		preFixV1Hash := ComputeNodeHash(v1Orig, currentLabels)
 		postFixV1Hash := ComputeNodeHash(v1Tampered, g.NodeLabels(v1Tampered))
+
+		// 5. Sanity guard: if the two hashes coincide, the test can't
+		//    discriminate — fail loudly rather than silently pass.
 		if preFixV1Hash == postFixV1Hash {
 			t.Fatalf("pre-fix and post-fix hashes coincide (%s); test cannot discriminate", preFixV1Hash)
 		}
 
+		// 6. Stamp the forgery: tampered v1 stores preFixV1Hash; v2 is
+		//    re-linked so its PrevHash matches. Chain is now internally
+		//    consistent under the pre-fix rule.
 		v1Tampered.SetIntegrity(&types.NodeIntegrity{
 			Hash:     preFixV1Hash,
 			PrevHash: v1Orig.Integrity().PrevHash,
@@ -191,11 +197,16 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 			PrevHash: preFixV1Hash,
 		})
 
+		// 7. Inject directly under lock — no legitimate API path can
+		//    produce this state.
 		ms.mu.Lock()
-		ms.nodeHistory[id][1] = v1Tampered
-		ms.nodes[id] = v2Relinked
+		ms.nodeHistory[id.SnowflakeID()][1] = v1Tampered
+		ms.nodes[id.SnowflakeID()] = v2Relinked
 		ms.mu.Unlock()
 
+		// Assertion: pre-fix would recompute v1 with ["A"], match preFixV1Hash,
+		// wrongly accept. Post-fix recomputes with NodeLabels(v1Tampered) =
+		// ["A","C"], mismatches, rejects.
 		valid, err := g.VerifyNodeHashChain(id)
 		if err != nil {
 			t.Fatalf("VerifyNodeHashChain: %v", err)
@@ -211,7 +222,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		id := n.InternalID().SnowflakeID()
+		id := n.ID()
 		if err := g.AddNodeLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
@@ -255,7 +266,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Integrity() returns *types.NodeIntegrity{Hash, PrevHash}; nil only on entities
 	// created without hashing (not possible via AddNode). Genesis: PrevHash must be empty.
@@ -333,7 +344,7 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
@@ -357,7 +368,7 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
@@ -402,15 +413,15 @@ func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 	queryTime := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteRelationship(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	neighbors, err := g.GetNeighborsValidAt(a.InternalID().SnowflakeID(), queryTime)
+	neighbors, err := g.GetNeighborsValidAt(a.ID(), queryTime)
 	if err != nil {
 		t.Fatalf("GetNeighborsValidAt: %v", err)
 	}
-	if !containsNodeID(neighbors, b.InternalID().SnowflakeID()) {
+	if !containsNodeID(neighbors, b.ID()) {
 		t.Fatalf("historical neighbor missing at %d; got %d neighbors", queryTime, len(neighbors))
 	}
 }
@@ -419,19 +430,19 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 	tests := []struct {
 		name   string
 		labels []string
-		mutate func(*Graph, snowflake.ID) error
+		mutate func(*Graph, types.NodeID) error
 	}{
 		{
 			name:   "add",
 			labels: []string{"A"},
-			mutate: func(g *Graph, id snowflake.ID) error {
+			mutate: func(g *Graph, id types.NodeID) error {
 				return g.AddNodeLabel(id, "B")
 			},
 		},
 		{
 			name:   "remove",
 			labels: []string{"A", "B"},
-			mutate: func(g *Graph, id snowflake.ID) error {
+			mutate: func(g *Graph, id types.NodeID) error {
 				return g.RemoveNodeLabel(id, "B")
 			},
 		},
@@ -444,7 +455,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 			if err != nil {
 				t.Fatalf("AddNode: %v", err)
 			}
-			id := n.InternalID().SnowflakeID()
+			id := n.ID()
 			origTxFrom := n.Temporal().TxFrom
 
 			time.Sleep(2 * time.Millisecond)
@@ -488,7 +499,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventNodeUpdate)
 
-		if err := g.AddNodeLabel(n.InternalID().SnowflakeID(), "B"); err != nil {
+		if err := g.AddNodeLabel(n.ID(), "B"); err != nil {
 			t.Fatalf("AddNodeLabel: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -504,7 +515,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventNodeUpdate)
 
-		if _, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{}); err != nil {
+		if _, err := g.UpdateNode(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -522,7 +533,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventRelUpdate)
 
-		if _, err := g.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{}); err != nil {
+		if _, err := g.UpdateRelationship(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -538,7 +549,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventNodeUpdate)
 
-		if _, err := g.UpdateNodeInPlace(n.InternalID().SnowflakeID(), map[string]any{}); err != nil {
+		if _, err := g.UpdateNodeInPlace(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNodeInPlace: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -556,7 +567,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventRelUpdate)
 
-		if _, err := g.UpdateRelInPlace(r.InternalID().SnowflakeID(), map[string]any{}); err != nil {
+		if _, err := g.UpdateRelInPlace(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelInPlace: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -572,7 +583,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, EventNodeUpdate)
 
-		ok, err := g.CompareAndSetProperty(n.InternalID().SnowflakeID(), "missing", nil, nil)
+		ok, err := g.CompareAndSetProperty(n.ID(), "missing", nil, nil)
 		if err != nil {
 			t.Fatalf("CompareAndSetProperty: %v", err)
 		}
@@ -590,7 +601,7 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	events := collectEvents(g, EventNodeCreate)
 	before := g.Stats()
 
-	n, err := g.ImportNodeWithID(context.Background(), snowflake.ID(12345), []string{"Person"}, map[string]any{
+	n, err := g.ImportNodeWithID(context.Background(), types.NodeID(12345), []string{"Person"}, map[string]any{
 		"name":           "Alice",
 		"tkg_valid_from": int64(1000),
 		"tkg_created_at": int64(900),
@@ -612,7 +623,7 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	if _, ok := n.GetProperty("tkg_valid_from"); ok {
 		t.Fatal("reserved temporal key should not be stored as a normal property")
 	}
-	if got := drain(events); len(got) != 1 || got[0].Type != EventNodeCreate || got[0].EntityID != n.InternalID().SnowflakeID() {
+	if got := drain(events); len(got) != 1 || got[0].Type != EventNodeCreate || got[0].EntityID != types.EntityID(n.ID()) {
 		t.Fatalf("expected one EventNodeCreate for imported node, got %v", got)
 	}
 	after := g.Stats()
@@ -635,7 +646,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 	events := collectEvents(g, EventRelCreate)
 	before := g.Stats()
 
-	r, err := g.ImportRelationshipWithID(context.Background(), snowflake.ID(54321), "REL", a, b, map[string]any{
+	r, err := g.ImportRelationshipWithID(context.Background(), types.RelID(54321), "REL", a, b, map[string]any{
 		"weight":         int64(1),
 		"tkg_valid_from": int64(2000),
 		"tkg_created_at": int64(1900),
@@ -657,7 +668,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 	if _, ok := r.GetProperty("tkg_valid_from"); ok {
 		t.Fatal("reserved temporal key should not be stored as a normal property")
 	}
-	if got := drain(events); len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != r.InternalID().SnowflakeID() {
+	if got := drain(events); len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
 		t.Fatalf("expected one EventRelCreate for imported relationship, got %v", got)
 	}
 	after := g.Stats()
@@ -702,9 +713,9 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode carol: %v", err)
 	}
-	aliceID := alice.InternalID().SnowflakeID()
-	bobID := bob.InternalID().SnowflakeID()
-	carolID := carol.InternalID().SnowflakeID()
+	aliceID := alice.ID()
+	bobID := bob.ID()
+	carolID := carol.ID()
 
 	// t0: carol was created last, so her snowflake time is within v0 of all three.
 	t0 := g.nodeValidFrom(carol)
@@ -728,14 +739,14 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Pending@t0: %v", err)
 	}
-	assertNodeSet(t, "Pending@t0", hits, []snowflake.ID{aliceID, carolID})
+	assertNodeSet(t, "Pending@t0", hits, []types.NodeID{aliceID, carolID})
 
 	// At tNow: alice lost Pending, carol is gone, only bob has it.
 	hits, err = g.NodesByLabel("Pending", QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("Pending@tNow: %v", err)
 	}
-	assertNodeSet(t, "Pending@tNow", hits, []snowflake.ID{bobID})
+	assertNodeSet(t, "Pending@tNow", hits, []types.NodeID{bobID})
 
 	// During [t0, tNow): each had Pending at some overlapping moment.
 	// Requires findNodeVersionMatchingDuring to scan all overlapping versions.
@@ -743,18 +754,18 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Pending@[t0,tNow): %v", err)
 	}
-	assertNodeSet(t, "Pending@[t0,tNow)", hits, []snowflake.ID{aliceID, bobID, carolID})
+	assertNodeSet(t, "Pending@[t0,tNow)", hits, []types.NodeID{aliceID, bobID, carolID})
 
 	// Pagination on the temporal path: Limit + cursor walks without duplication.
 	page1, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, Limit: 1})
 	if err != nil || len(page1) != 1 {
 		t.Fatalf("page1: got %d nodes, err=%v; want 1, nil", len(page1), err)
 	}
-	page2, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, After: page1[0].InternalID().SnowflakeID()})
+	page2, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, After: page1[0].ID().SnowflakeID()})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
 	}
-	assertNodeSet(t, "paginated Pending@t0", append(page1, page2...), []snowflake.ID{aliceID, carolID})
+	assertNodeSet(t, "paginated Pending@t0", append(page1, page2...), []types.NodeID{aliceID, carolID})
 
 	// A label nobody ever wrote returns empty (and does not error).
 	hits, err = g.NodesByLabel("Phantom", QueryOpts{ValidAt: t0})
@@ -809,10 +820,10 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode dave: %v", err)
 	}
-	aliceID := alice.InternalID().SnowflakeID()
-	bobID := bob.InternalID().SnowflakeID()
-	carolID := carol.InternalID().SnowflakeID()
-	daveID := dave.InternalID().SnowflakeID()
+	aliceID := alice.ID()
+	bobID := bob.ID()
+	carolID := carol.ID()
+	daveID := dave.ID()
 
 	// t0: dave was created last, so his snowflake time is within v0 of all four.
 	t0 := g.nodeValidFrom(dave)
@@ -839,14 +850,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("draft@t0: %v", err)
 	}
-	assertNodeSet(t, "draft@t0", hits, []snowflake.ID{aliceID, carolID, daveID})
+	assertNodeSet(t, "draft@t0", hits, []types.NodeID{aliceID, carolID, daveID})
 
 	// At tNow: alice changed, dave deleted; bob and carol have status=draft.
 	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("draft@tNow: %v", err)
 	}
-	assertNodeSet(t, "draft@tNow", hits, []snowflake.ID{bobID, carolID})
+	assertNodeSet(t, "draft@tNow", hits, []types.NodeID{bobID, carolID})
 
 	// During [t0, tNow): every node had status=draft at some overlapping
 	// moment. The discriminating case is alice — her most-recent overlapping
@@ -858,7 +869,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("draft@[t0,tNow): %v", err)
 	}
-	assertNodeSet(t, "draft@[t0,tNow)", hits, []snowflake.ID{aliceID, bobID, carolID, daveID})
+	assertNodeSet(t, "draft@[t0,tNow)", hits, []types.NodeID{aliceID, bobID, carolID, daveID})
 
 	// Boundary: alice's v0 is valid [aliceCreate, aliceMutation). At ValidAt
 	// equal to aliceMutation she is on v1 (published), so draft must NOT
@@ -921,9 +932,9 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship r3: %v", err)
 	}
-	r1ID := r1.InternalID().SnowflakeID()
-	r2ID := r2.InternalID().SnowflakeID()
-	r3ID := r3.InternalID().SnowflakeID()
+	r1ID := r1.ID()
+	r2ID := r2.ID()
+	r3ID := r3.ID()
 
 	// t0: r3 was created last, so its snowflake time is within v0 of all three.
 	t0 := g.relValidFrom(r3)
@@ -943,24 +954,24 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("KNOWS@t0: %v", err)
 	}
-	assertRelSet(t, "KNOWS@t0", got, []snowflake.ID{r1ID, r3ID})
+	assertRelSet(t, "KNOWS@t0", got, []types.RelID{r1ID, r3ID})
 	got, err = g.RelationshipsByType("WORKS_WITH", QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@t0: %v", err)
 	}
-	assertRelSet(t, "WORKS_WITH@t0", got, []snowflake.ID{r2ID})
+	assertRelSet(t, "WORKS_WITH@t0", got, []types.RelID{r2ID})
 
 	// At tNow: r1 and r2 deleted; r3 survives. WORKS_WITH is empty.
 	got, err = g.RelationshipsByType("KNOWS", QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("KNOWS@tNow: %v", err)
 	}
-	assertRelSet(t, "KNOWS@tNow", got, []snowflake.ID{r3ID})
+	assertRelSet(t, "KNOWS@tNow", got, []types.RelID{r3ID})
 	got, err = g.RelationshipsByType("WORKS_WITH", QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@tNow: %v", err)
 	}
-	assertRelSet(t, "WORKS_WITH@tNow", got, []snowflake.ID{})
+	assertRelSet(t, "WORKS_WITH@tNow", got, []types.RelID{})
 
 	// A type nobody ever used returns empty.
 	got, err = g.RelationshipsByType("Phantom", QueryOpts{ValidAt: t0})

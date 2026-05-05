@@ -368,14 +368,14 @@ func (g *Graph) validateProperties(props map[string]any) error {
 	return nil
 }
 
-// NextNodeID generates a unique snowflake ID for a new node.
-func (g *Graph) NextNodeID() snowflake.ID {
-	return g.nodeIDGen.Generate()
+// NextNodeID generates a unique typed ID for a new node.
+func (g *Graph) NextNodeID() types.NodeID {
+	return types.NodeID(g.nodeIDGen.Generate())
 }
 
-// NextRelID generates a unique snowflake ID for a new relationship.
-func (g *Graph) NextRelID() snowflake.ID {
-	return g.relIDGen.Generate()
+// NextRelID generates a unique typed ID for a new relationship.
+func (g *Graph) NextRelID() types.RelID {
+	return types.RelID(g.relIDGen.Generate())
 }
 
 // --- Registry passthrough ---
@@ -458,16 +458,16 @@ func (g *Graph) AddRelationship(typeName string, startNode, endNode *types.Node,
 	return g.AddRelationshipWithContext(context.Background(), typeName, startNode, endNode, props)
 }
 
-// AddRelationshipByID creates a relationship using endpoint snowflake IDs
+// AddRelationshipByID creates a relationship using endpoint node IDs
 // without fetching the endpoint nodes. See AddRelationshipByIDWithContext for details.
-func (g *Graph) AddRelationshipByID(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+func (g *Graph) AddRelationshipByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	return g.AddRelationshipByIDWithContext(context.Background(), typeName, startID, endID, props)
 }
 
 // AddRelationshipByIDIfAbsent atomically creates a relationship using endpoint
-// snowflake IDs only if no relationship of the same type between the same endpoints
+// node IDs only if no relationship of the same type between the same endpoints
 // already exists. See AddRelationshipByIDIfAbsentWithContext for details.
-func (g *Graph) AddRelationshipByIDIfAbsent(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+func (g *Graph) AddRelationshipByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	return g.AddRelationshipByIDIfAbsentWithContext(context.Background(), typeName, startID, endID, props)
 }
 
@@ -475,13 +475,13 @@ func (g *Graph) AddRelationshipByIDIfAbsent(typeName string, startID, endID snow
 // Acquires the entity lock for the node to prevent write-skew with concurrent
 // AddRelationship targeting the same node.
 // Returns ErrNodeNotFound if the node does not exist.
-func (g *Graph) DeleteNode(id snowflake.ID) error {
+func (g *Graph) DeleteNode(id types.NodeID) error {
 	return g.DeleteNodeWithContext(context.Background(), id)
 }
 
 // DeleteRelationship removes a relationship from the store.
 // Returns ErrRelNotFound if the relationship does not exist.
-func (g *Graph) DeleteRelationship(id snowflake.ID) error {
+func (g *Graph) DeleteRelationship(id types.RelID) error {
 	return g.DeleteRelationshipWithContext(context.Background(), id)
 }
 
@@ -491,7 +491,7 @@ func (g *Graph) DeleteRelationship(id snowflake.ID) error {
 // The updates map keys are property names; values are the new values.
 // A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
 // Returns the updated node. Empty updates map is a no-op (no version bump).
-func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
 	return g.UpdateNodeWithContext(context.Background(), id, updates)
 }
 
@@ -499,30 +499,30 @@ func (g *Graph) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node
 // The updates map keys are property names; values are the new values.
 // A nil value deletes the property. Keys with the "tkg_" prefix are rejected.
 // Returns the updated relationship. Empty updates map is a no-op.
-func (g *Graph) UpdateRelationship(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) UpdateRelationship(id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	return g.UpdateRelationshipWithContext(context.Background(), id, updates)
 }
 
 // SetNodeProperty sets a single property on an existing node.
-func (g *Graph) SetNodeProperty(id snowflake.ID, key string, value any) error {
+func (g *Graph) SetNodeProperty(id types.NodeID, key string, value any) error {
 	_, err := g.UpdateNode(id, map[string]any{key: value})
 	return err
 }
 
 // DeleteNodeProperty removes a single property from an existing node.
-func (g *Graph) DeleteNodeProperty(id snowflake.ID, key string) error {
+func (g *Graph) DeleteNodeProperty(id types.NodeID, key string) error {
 	_, err := g.UpdateNode(id, map[string]any{key: nil})
 	return err
 }
 
 // SetRelationshipProperty sets a single property on an existing relationship.
-func (g *Graph) SetRelationshipProperty(id snowflake.ID, key string, value any) error {
+func (g *Graph) SetRelationshipProperty(id types.RelID, key string, value any) error {
 	_, err := g.UpdateRelationship(id, map[string]any{key: value})
 	return err
 }
 
 // DeleteRelationshipProperty removes a single property from an existing relationship.
-func (g *Graph) DeleteRelationshipProperty(id snowflake.ID, key string) error {
+func (g *Graph) DeleteRelationshipProperty(id types.RelID, key string) error {
 	_, err := g.UpdateRelationship(id, map[string]any{key: nil})
 	return err
 }
@@ -531,26 +531,26 @@ func (g *Graph) DeleteRelationshipProperty(id snowflake.ID, key string) error {
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
 // Value comparison uses reflect.DeepEqual — type must match exactly (int(42) != int64(42)).
-func (g *Graph) CompareAndSetProperty(id snowflake.ID, key string, expected, newVal any) (bool, error) {
+func (g *Graph) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
 	return g.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
 }
 
 // CompareAndSetPropertyWithContext is the context-aware variant of CompareAndSetProperty.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) CompareAndSetPropertyWithContext(ctx context.Context, id snowflake.ID, key string, expected, newVal any) (bool, error) {
+func (g *Graph) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	g.mu.RLock()
 	ok, mutated, err := g.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
 	ep := g.events
 	g.mu.RUnlock()
 	if ok && mutated && err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return ok, err
 }
 
 // compareAndSetPropertyInternal is the lock-free implementation.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.ID, key string, expected, newVal any) (bool, bool, error) {
+func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, bool, error) {
 	if err := checkCtx(ctx); err != nil {
 		return false, false, err
 	}
@@ -576,8 +576,8 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 	}
 
 	// Entity lock → read-modify-write under serialization.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return false, false, err
@@ -665,24 +665,24 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id snowflake.
 // --- Version history passthrough ---
 
 // GetNodeHistory returns all version history snapshots for the given node.
-func (g *Graph) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
+func (g *Graph) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
 	return g.store.GetNodeHistory(id)
 }
 
 // GetRelHistory returns all version history snapshots for the given relationship.
-func (g *Graph) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
+func (g *Graph) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
 	return g.store.GetRelHistory(id)
 }
 
 // --- Store passthrough queries ---
 
 // GetNode retrieves a node by snowflake ID.
-func (g *Graph) GetNode(id snowflake.ID) (*types.Node, error) {
+func (g *Graph) GetNode(id types.NodeID) (*types.Node, error) {
 	return g.GetNodeWithContext(context.Background(), id)
 }
 
 // GetRelationship retrieves a relationship by snowflake ID.
-func (g *Graph) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
+func (g *Graph) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	return g.GetRelationshipWithContext(context.Background(), id)
 }
 
@@ -704,7 +704,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	}
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -740,7 +740,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	}
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
 	var result []*types.Relationship
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -761,7 +761,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 // OutgoingRelationships returns all outgoing relationships from the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).
-func (g *Graph) OutgoingRelationships(nodeID snowflake.ID, typeName string) ([]*types.Relationship, error) {
+func (g *Graph) OutgoingRelationships(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	var tok uint16
 	if typeName != "" {
 		t, ok := g.relTypes.Lookup(typeName)
@@ -778,7 +778,7 @@ func (g *Graph) OutgoingRelationships(nodeID snowflake.ID, typeName string) ([]*
 // (sorted by ID). Nodes with zero outgoing rels are absent from the map.
 // If typeName is non-empty, only relationships of that type are returned.
 // Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
-func (g *Graph) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName string) (map[snowflake.ID][]*types.Relationship, error) {
+func (g *Graph) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
@@ -798,7 +798,7 @@ func (g *Graph) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName s
 // (sorted by ID). Nodes with zero incoming rels are absent from the map.
 // If typeName is non-empty, only relationships of that type are returned.
 // Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
-func (g *Graph) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName string) (map[snowflake.ID][]*types.Relationship, error) {
+func (g *Graph) IncomingRelationshipsForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
@@ -816,7 +816,7 @@ func (g *Graph) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeName s
 // IncomingRelationships returns all incoming relationships to the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).
-func (g *Graph) IncomingRelationships(nodeID snowflake.ID, typeName string) ([]*types.Relationship, error) {
+func (g *Graph) IncomingRelationships(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	var tok uint16
 	if typeName != "" {
 		t, ok := g.relTypes.Lookup(typeName)
@@ -847,12 +847,12 @@ func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 }
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.
-func (g *Graph) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+func (g *Graph) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return g.store.GetNodesByIDs(ids)
 }
 
 // GetRelationshipsByIDs returns relationships matching the given IDs. Missing IDs are skipped.
-func (g *Graph) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+func (g *Graph) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	return g.store.GetRelationshipsByIDs(ids)
 }
 
@@ -1059,7 +1059,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -1080,7 +1080,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 // ArchiveNode moves a reference node and its relationships from the reference
 // shard to the reference archive. Only available with TieredStore.
 // Returns ErrNodeNotFound if the node is not in the reference shard.
-func (g *Graph) ArchiveNode(id snowflake.ID) error {
+func (g *Graph) ArchiveNode(id types.NodeID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.ArchiveNode(id)
 	}
@@ -1090,7 +1090,7 @@ func (g *Graph) ArchiveNode(id snowflake.ID) error {
 // RestoreNode moves a reference node and its relationships from the reference
 // archive back to the reference shard. Only available with TieredStore.
 // Returns ErrNodeNotFound if the node is not in the archive.
-func (g *Graph) RestoreNode(id snowflake.ID) error {
+func (g *Graph) RestoreNode(id types.NodeID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
 		return ts.RestoreNode(id)
 	}
@@ -1204,7 +1204,7 @@ func (g *Graph) SetAsyncEventBus(bus *AsyncEventBus) {
 // because it reads g.events and g.txEventBuffer without additional synchronization.
 // For dispatch AFTER releasing g.mu, capture ep := g.events under lock and call
 // dispatchEvent(ep, ...) instead.
-func (g *Graph) publishEvent(typ EventType, id snowflake.ID, t types.Instant, priority EventPriority) {
+func (g *Graph) publishEvent(typ EventType, id types.EntityID, t types.Instant, priority EventPriority) {
 	if g.events == nil {
 		return
 	}
@@ -1254,13 +1254,13 @@ func (g *Graph) Stats() GraphStats {
 // node already has the label. Validates label name length and enforces
 // MaxLabelsPerNode. Returns ErrNodeNotFound if the node does not exist.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) AddNodeLabel(id snowflake.ID, label string) error {
+func (g *Graph) AddNodeLabel(id types.NodeID, label string) error {
 	g.mu.RLock()
 	mutated, err := g.addNodeLabelInternal(id, label)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && mutated {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return err
 }
@@ -1268,13 +1268,13 @@ func (g *Graph) AddNodeLabel(id snowflake.ID, label string) error {
 // addNodeLabelInternal is the lock-free implementation of AddNodeLabel.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
 // Returns mutated=false if the node already has the label.
-func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) (bool, error) {
+func (g *Graph) addNodeLabelInternal(id types.NodeID, label string) (bool, error) {
 	if err := g.validateName(label); err != nil {
 		return false, err
 	}
 
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	current, err := g.store.GetNode(id)
 	if err != nil {
@@ -1345,27 +1345,27 @@ func (g *Graph) addNodeLabelInternal(id snowflake.ID, label string) (bool, error
 
 // RemoveNodeLabel removes the given label from an existing node.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) RemoveNodeLabel(id snowflake.ID, label string) error {
+func (g *Graph) RemoveNodeLabel(id types.NodeID, label string) error {
 	g.mu.RLock()
 	err := g.removeNodeLabelInternal(id, label)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return err
 }
 
 // removeNodeLabelInternal is the lock-free implementation of RemoveNodeLabel.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
+func (g *Graph) removeNodeLabelInternal(id types.NodeID, label string) error {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return ErrLabelNotFound
 	}
 
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	current, err := g.store.GetNode(id)
 	if err != nil {
@@ -1425,7 +1425,7 @@ func (g *Graph) removeNodeLabelInternal(id snowflake.ID, label string) error {
 
 // GetPreviousNodeVersion returns the version immediately before the given version.
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
-func (g *Graph) GetPreviousNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+func (g *Graph) GetPreviousNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if version == 0 {
 		return nil, nil
 	}
@@ -1439,7 +1439,7 @@ func (g *Graph) GetPreviousNodeVersion(id snowflake.ID, version uint32) (*types.
 // GetNextNodeVersion returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current node (which may be version+1).
-func (g *Graph) GetNextNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+func (g *Graph) GetNextNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	n, err := g.store.GetNodeVersion(id, version+1)
 	if err == nil {
 		return n, nil
@@ -1464,22 +1464,22 @@ func (g *Graph) GetNextNodeVersion(id snowflake.ID, version uint32) (*types.Node
 // CloseNodeVersion sets ValidTo on the current node to t, marking it temporally
 // expired without deleting it or incrementing its version number.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) CloseNodeVersion(id snowflake.ID, t types.Instant) error {
+func (g *Graph) CloseNodeVersion(id types.NodeID, t types.Instant) error {
 	g.mu.RLock()
 	err := g.closeNodeVersionInternal(id, t)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return err
 }
 
 // closeNodeVersionInternal is the lock-free implementation of CloseNodeVersion.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) closeNodeVersionInternal(id snowflake.ID, t types.Instant) error {
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+func (g *Graph) closeNodeVersionInternal(id types.NodeID, t types.Instant) error {
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	// GetNode returns a deep copy (Store contract). Mutations below are safe.
 	current, err := g.store.GetNode(id)
@@ -1515,7 +1515,7 @@ func (g *Graph) closeNodeVersionInternal(id snowflake.ID, t types.Instant) error
 
 // GetPreviousRelVersion returns the version immediately before the given version.
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
-func (g *Graph) GetPreviousRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+func (g *Graph) GetPreviousRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if version == 0 {
 		return nil, nil
 	}
@@ -1529,7 +1529,7 @@ func (g *Graph) GetPreviousRelVersion(id snowflake.ID, version uint32) (*types.R
 // GetNextRelVersion returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current relationship (which may be version+1).
-func (g *Graph) GetNextRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+func (g *Graph) GetNextRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	r, err := g.store.GetRelVersion(id, version+1)
 	if err == nil {
 		return r, nil
@@ -1554,22 +1554,22 @@ func (g *Graph) GetNextRelVersion(id snowflake.ID, version uint32) (*types.Relat
 // CloseRelVersion sets ValidTo on the current relationship to t, marking it
 // temporally expired without deleting it or incrementing its version number.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) CloseRelVersion(id snowflake.ID, t types.Instant) error {
+func (g *Graph) CloseRelVersion(id types.RelID, t types.Instant) error {
 	g.mu.RLock()
 	err := g.closeRelVersionInternal(id, t)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return err
 }
 
 // closeRelVersionInternal is the lock-free implementation of CloseRelVersion.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) closeRelVersionInternal(id snowflake.ID, t types.Instant) error {
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+func (g *Graph) closeRelVersionInternal(id types.RelID, t types.Instant) error {
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	// GetRelationship returns a deep copy (Store contract). Mutations below are safe.
 	current, err := g.store.GetRelationship(id)

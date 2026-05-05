@@ -88,10 +88,10 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(EventNodeCreate, types.EntityID(n.ID()), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
-	tx.createdNodes = append(tx.createdNodes, n.InternalID().SnowflakeID())
+	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
 	tx.mu.Unlock()
 
 	return n, nil
@@ -112,10 +112,10 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
-	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	tx.mu.Unlock()
 
 	return r, nil
@@ -123,7 +123,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 
 // ImportNodeWithID creates a node with a caller-specified snowflake ID within the transaction.
 // The node ID is tracked for rollback. Delegates to Graph.ImportNodeWithID.
-func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -136,10 +136,10 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventNodeCreate, n.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(EventNodeCreate, types.EntityID(n.ID()), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
-	tx.createdNodes = append(tx.createdNodes, n.InternalID().SnowflakeID())
+	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
 	tx.mu.Unlock()
 
 	return n, nil
@@ -147,7 +147,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels
 
 // ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID within the transaction.
 // The relationship ID is tracked for rollback. Delegates to Graph.ImportRelationshipWithID.
-func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -160,10 +160,10 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
-	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	tx.mu.Unlock()
 
 	return r, nil
@@ -172,7 +172,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id snowflake.ID
 // UpdateNode applies property updates to a node within the transaction.
 // Snapshots the pre-mutation state on first mutation (for rollback).
 // Delegates the actual update to Graph.UpdateNode.
-func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -184,13 +184,13 @@ func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.N
 		return tx.g.GetNodeWithContext(context.Background(), id)
 	}
 
-	if err := tx.snapshotNode(id); err != nil {
+	if err := tx.snapshotNode(id.SnowflakeID()); err != nil {
 		return nil, err
 	}
 
 	n, err := tx.g.updateNodeInternal(context.Background(), id, updates)
 	if err == nil {
-		tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+		tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
 	}
 	return n, err
 }
@@ -198,7 +198,7 @@ func (tx *GraphTx) UpdateNode(id snowflake.ID, updates map[string]any) (*types.N
 // UpdateRelationship applies property updates to a relationship within the transaction.
 // Snapshots the pre-mutation state on first mutation (for rollback).
 // Delegates the actual update to Graph.UpdateRelationship.
-func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -210,37 +210,37 @@ func (tx *GraphTx) UpdateRelationship(id snowflake.ID, updates map[string]any) (
 		return tx.g.GetRelationshipWithContext(context.Background(), id)
 	}
 
-	if err := tx.snapshotRel(id); err != nil {
+	if err := tx.snapshotRel(id.SnowflakeID()); err != nil {
 		return nil, err
 	}
 
 	r, err := tx.g.updateRelationshipInternal(context.Background(), id, updates)
 	if err == nil {
-		tx.g.publishEvent(EventRelUpdate, id, nowInstant(), PriorityNormal)
+		tx.g.publishEvent(EventRelUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
 	}
 	return r, err
 }
 
 // SetNodeProperty sets a single property on a node within the transaction.
-func (tx *GraphTx) SetNodeProperty(id snowflake.ID, key string, value any) error {
+func (tx *GraphTx) SetNodeProperty(id types.NodeID, key string, value any) error {
 	_, err := tx.UpdateNode(id, map[string]any{key: value})
 	return err
 }
 
 // DeleteNodeProperty removes a single property from a node within the transaction.
-func (tx *GraphTx) DeleteNodeProperty(id snowflake.ID, key string) error {
+func (tx *GraphTx) DeleteNodeProperty(id types.NodeID, key string) error {
 	_, err := tx.UpdateNode(id, map[string]any{key: nil})
 	return err
 }
 
 // SetRelationshipProperty sets a single property on a relationship within the transaction.
-func (tx *GraphTx) SetRelationshipProperty(id snowflake.ID, key string, value any) error {
+func (tx *GraphTx) SetRelationshipProperty(id types.RelID, key string, value any) error {
 	_, err := tx.UpdateRelationship(id, map[string]any{key: value})
 	return err
 }
 
 // DeleteRelationshipProperty removes a single property from a relationship within the transaction.
-func (tx *GraphTx) DeleteRelationshipProperty(id snowflake.ID, key string) error {
+func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error {
 	_, err := tx.UpdateRelationship(id, map[string]any{key: nil})
 	return err
 }
@@ -248,7 +248,7 @@ func (tx *GraphTx) DeleteRelationshipProperty(id snowflake.ID, key string) error
 // DeleteNode removes a node and all connected relationships within the transaction.
 // Snapshots the node and all cascade-deleted relationships for rollback.
 // Delegates the actual deletion to Graph.DeleteNode.
-func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
+func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -280,7 +280,7 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 	allRels = append(allRels, outRels...)
 	allRels = append(allRels, inRels...)
 	for _, r := range allRels {
-		rid := r.InternalID().SnowflakeID()
+		rid := r.ID().SnowflakeID()
 		if seen[rid] {
 			continue
 		}
@@ -293,7 +293,7 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 		return err
 	}
 
-	tx.g.publishEvent(EventNodeDelete, id, nowInstant(), PriorityCritical)
+	tx.g.publishEvent(EventNodeDelete, types.EntityID(id), nowInstant(), PriorityCritical)
 
 	tx.mu.Lock()
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
@@ -307,7 +307,7 @@ func (tx *GraphTx) DeleteNode(id snowflake.ID) error {
 
 // DeleteRelationship removes a relationship within the transaction.
 // Snapshots the relationship for rollback. Delegates to Graph.DeleteRelationship.
-func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
+func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -327,7 +327,7 @@ func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
 		return err
 	}
 
-	tx.g.publishEvent(EventRelDelete, id, nowInstant(), PriorityCritical)
+	tx.g.publishEvent(EventRelDelete, types.EntityID(id), nowInstant(), PriorityCritical)
 
 	tx.mu.Lock()
 	tx.deletedRels = append(tx.deletedRels, relCopy)
@@ -340,7 +340,7 @@ func (tx *GraphTx) DeleteRelationship(id snowflake.ID) error {
 // Snapshots the pre-mutation state on first mutation and records a label
 // delta so Rollback can reverse the label index change. Idempotent: if the
 // node already has the label, returns nil with no snapshot or delta recorded.
-func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
+func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -360,7 +360,7 @@ func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
 		}
 	}
 
-	if err := tx.snapshotNode(id); err != nil {
+	if err := tx.snapshotNode(id.SnowflakeID()); err != nil {
 		return err
 	}
 
@@ -378,10 +378,10 @@ func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
 	}
 
 	tx.mu.Lock()
-	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id, tok: tok, added: true})
+	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: true})
 	tx.mu.Unlock()
 
-	tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+	tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
 	return nil
 }
 
@@ -389,7 +389,7 @@ func (tx *GraphTx) AddNodeLabel(id snowflake.ID, label string) error {
 // Snapshots the pre-mutation state on first mutation and records a label
 // delta so Rollback can reverse the label index change. Returns ErrLastLabel
 // if the label is the only one on the node.
-func (tx *GraphTx) RemoveNodeLabel(id snowflake.ID, label string) error {
+func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -400,7 +400,7 @@ func (tx *GraphTx) RemoveNodeLabel(id snowflake.ID, label string) error {
 	// Resolve token before the mutation so we can record the delta.
 	tok, _ := tx.g.labels.Lookup(label)
 
-	if err := tx.snapshotNode(id); err != nil {
+	if err := tx.snapshotNode(id.SnowflakeID()); err != nil {
 		return err
 	}
 
@@ -409,10 +409,10 @@ func (tx *GraphTx) RemoveNodeLabel(id snowflake.ID, label string) error {
 	}
 
 	tx.mu.Lock()
-	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id, tok: tok, added: false})
+	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: false})
 	tx.mu.Unlock()
 
-	tx.g.publishEvent(EventNodeUpdate, id, nowInstant(), PriorityNormal)
+	tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
 	return nil
 }
 
@@ -426,7 +426,7 @@ func (tx *GraphTx) snapshotNode(id snowflake.ID) error {
 	}
 	tx.mu.Unlock()
 
-	node, err := tx.g.store.GetNode(id)
+	node, err := tx.g.store.GetNode(types.NodeID(id))
 	if err != nil {
 		return err
 	}
@@ -451,7 +451,7 @@ func (tx *GraphTx) snapshotRel(id snowflake.ID) error {
 	}
 	tx.mu.Unlock()
 
-	rel, err := tx.g.store.GetRelationship(id)
+	rel, err := tx.g.store.GetRelationship(types.RelID(id))
 	if err != nil {
 		return err
 	}
@@ -565,28 +565,28 @@ func (tx *GraphTx) Rollback() error {
 	// reflects the pre-mutation labels, so we just need to patch the index.
 	for i := len(tx.labelDeltas) - 1; i >= 0; i-- {
 		d := tx.labelDeltas[i]
-		restored, err := tx.g.store.GetNode(d.id)
+		restored, err := tx.g.store.GetNode(types.NodeID(d.id))
 		if err != nil {
 			capture(err)
 			continue
 		}
 		if d.added {
 			// Undo an added label: remove it from the label index.
-			capture(tx.g.store.RemoveNodeLabelToken(d.id, d.tok, restored))
+			capture(tx.g.store.RemoveNodeLabelToken(types.NodeID(d.id), d.tok, restored))
 		} else {
 			// Undo a removed label: add it back to the label index.
-			capture(tx.g.store.AddNodeLabelToken(d.id, d.tok, restored))
+			capture(tx.g.store.AddNodeLabelToken(types.NodeID(d.id), d.tok, restored))
 		}
 	}
 
 	// 5. Delete created relationships in reverse creation order.
 	for i := len(tx.createdRels) - 1; i >= 0; i-- {
-		capture(tx.g.store.DeleteRelationship(tx.createdRels[i]))
+		capture(tx.g.store.DeleteRelationship(types.RelID(tx.createdRels[i])))
 	}
 
 	// 6. Delete created nodes in reverse creation order (cascade).
 	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
-		capture(tx.g.store.DeleteNodeCascade(tx.createdNodes[i]))
+		capture(tx.g.store.DeleteNodeCascade(types.NodeID(tx.createdNodes[i])))
 	}
 
 	return firstErr
@@ -594,7 +594,7 @@ func (tx *GraphTx) Rollback() error {
 
 // GetNode reads a node by ID within the transaction.
 // Safe because the tx holds the write lock — no concurrent modifications possible.
-func (tx *GraphTx) GetNode(id snowflake.ID) (*types.Node, error) {
+func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -607,7 +607,7 @@ func (tx *GraphTx) GetNode(id snowflake.ID) (*types.Node, error) {
 
 // AddRelationshipByID creates a relationship using endpoint snowflake IDs within the transaction.
 // The relationship ID is tracked for rollback. Delegates to Graph.addRelationshipByIDInternal.
-func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -620,10 +620,10 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID snowflake
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
 
 	tx.mu.Lock()
-	tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	tx.mu.Unlock()
 
 	return r, nil
@@ -633,7 +633,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID snowflake
 // type between the same endpoints and creates one only if absent. Returns (rel, created, err)
 // where created=true if a new relationship was created.
 // The relationship ID is tracked for rollback only if created.
-func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
@@ -647,31 +647,35 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID s
 	}
 
 	if created {
-		tx.g.publishEvent(EventRelCreate, r.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+		tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
 
 		tx.mu.Lock()
-		tx.createdRels = append(tx.createdRels, r.InternalID().SnowflakeID())
+		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 		tx.mu.Unlock()
 	}
 
 	return r, created, nil
 }
 
-// CreatedNodeIDs returns the snowflake IDs of all nodes created in this transaction.
+// CreatedNodeIDs returns the typed IDs of all nodes created in this transaction.
 // Useful for inspecting transaction state in tests.
-func (tx *GraphTx) CreatedNodeIDs() []snowflake.ID {
+func (tx *GraphTx) CreatedNodeIDs() []types.NodeID {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
-	cp := make([]snowflake.ID, len(tx.createdNodes))
-	copy(cp, tx.createdNodes)
+	cp := make([]types.NodeID, len(tx.createdNodes))
+	for i, id := range tx.createdNodes {
+		cp[i] = types.NodeID(id)
+	}
 	return cp
 }
 
-// CreatedRelIDs returns the snowflake IDs of all relationships created in this transaction.
-func (tx *GraphTx) CreatedRelIDs() []snowflake.ID {
+// CreatedRelIDs returns the typed IDs of all relationships created in this transaction.
+func (tx *GraphTx) CreatedRelIDs() []types.RelID {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
-	cp := make([]snowflake.ID, len(tx.createdRels))
-	copy(cp, tx.createdRels)
+	cp := make([]types.RelID, len(tx.createdRels))
+	for i, id := range tx.createdRels {
+		cp[i] = types.RelID(id)
+	}
 	return cp
 }

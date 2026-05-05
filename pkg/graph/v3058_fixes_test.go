@@ -132,7 +132,7 @@ func TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval(t *testing.T) {
 
 	t.Run("remove_only_extra", func(t *testing.T) {
 		t.Parallel()
-		n := types.NewNode(snowflake.ID(1), primary, []uint16{extra1})
+		n := types.NewNode(types.NodeID(snowflake.ID(1)), primary, []uint16{extra1})
 		// Sanity: one extra label present.
 		if extras := n.ExtraLabelTokens(); len(extras) != 1 {
 			t.Fatalf("pre-condition: ExtraLabelTokens = %v, want [2]", extras)
@@ -150,7 +150,7 @@ func TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval(t *testing.T) {
 	t.Run("promote_only_extra_to_primary", func(t *testing.T) {
 		t.Parallel()
 		// Node with primary=1, extra=2. Remove primary → extra2 becomes primary.
-		n := types.NewNode(snowflake.ID(2), primary, []uint16{extra1})
+		n := types.NewNode(types.NodeID(snowflake.ID(2)), primary, []uint16{extra1})
 		ok := n.RemoveLabelTokenRaw(primary)
 		if !ok {
 			t.Fatal("RemoveLabelTokenRaw(primary) returned false, want true")
@@ -166,7 +166,7 @@ func TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval(t *testing.T) {
 
 	t.Run("remove_one_of_two_extras_leaves_non_nil", func(t *testing.T) {
 		t.Parallel()
-		n := types.NewNode(snowflake.ID(3), primary, []uint16{extra1, extra2})
+		n := types.NewNode(types.NodeID(snowflake.ID(3)), primary, []uint16{extra1, extra2})
 		ok := n.RemoveLabelTokenRaw(extra1)
 		if !ok {
 			t.Fatal("RemoveLabelTokenRaw returned false")

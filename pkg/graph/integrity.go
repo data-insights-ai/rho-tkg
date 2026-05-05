@@ -9,7 +9,6 @@ import (
 	"sort"
 	"sync"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -21,7 +20,7 @@ import (
 // Handles deleted entities: if the current node is gone (ErrNodeNotFound) but
 // history exists, verifies the history chain alone. Labels are extracted from
 // the last history entry's internal tokens.
-func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
+func (g *Graph) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return false, err
@@ -86,7 +85,7 @@ func (g *Graph) VerifyNodeHashChain(id snowflake.ID) (bool, error) {
 //
 // Handles deleted entities: if the current relationship is gone (ErrRelNotFound)
 // but history exists, verifies the history chain alone.
-func (g *Graph) VerifyRelHashChain(id snowflake.ID) (bool, error) {
+func (g *Graph) VerifyRelHashChain(id types.RelID) (bool, error) {
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return false, err
@@ -166,7 +165,7 @@ func ComputeNodeHash(n *types.Node, labels []string) string {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 
-	buf = binary.BigEndian.AppendUint64(buf, uint64(n.InternalID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
+	buf = binary.BigEndian.AppendUint64(buf, uint64(n.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, n.Version())
 
 	// Defensive sort — caller may pass unsorted labels.
@@ -198,7 +197,7 @@ func ComputeRelHash(r *types.Relationship, typeName string) string {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 
-	buf = binary.BigEndian.AppendUint64(buf, uint64(r.InternalID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
+	buf = binary.BigEndian.AppendUint64(buf, uint64(r.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, r.Version())
 	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName))) // #nosec G115 — type name bounded by MaxNameLength (256)
 	buf = append(buf, typeName...)

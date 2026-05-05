@@ -271,12 +271,12 @@ func main() {
 		CreatedAt: now,
 		CreatedBy: "hr-system",
 	})
-	empV2.Temporal().SetBaseEntityID(emp.InternalID().SnowflakeID())
+	empV2.Temporal().SetBaseEntityID(emp.ID().SnowflakeID())
 
 	baseID, ok := g.ResolveNodeProperty(empV2, types.ShadowBaseEntity)
 	if ok {
 		fmt.Printf("empV2 base entity: %s (points to original %s)\n",
-			commasFmt(baseID), commas(int64(emp.InternalID().SnowflakeID())))
+			commasFmt(baseID), commas(int64(emp.ID())))
 	}
 
 	fmt.Println("\n=== 10. Reserved Prefix Protection ===")

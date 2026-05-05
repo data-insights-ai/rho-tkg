@@ -43,7 +43,7 @@ import (
 func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.AddNodeLabel(id, "Employee"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
@@ -61,7 +61,7 @@ func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Person", "Employee"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before, _ := g.GetNode(id)
 	beforeVersion := before.Version()
@@ -80,7 +80,7 @@ func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.AddNodeLabel(id, ""); err == nil {
 		t.Fatal("expected error for empty label name")
@@ -90,7 +90,7 @@ func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 func TestAddNodeLabel_NameTooLong(t *testing.T) {
 	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{MaxNameLength: 5}})
 	n, _ := g.AddNode([]string{"Short"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	err := g.AddNodeLabel(id, strings.Repeat("a", 6))
 	if !errors.Is(err, graph.ErrNameTooLong) {
@@ -101,7 +101,7 @@ func TestAddNodeLabel_NameTooLong(t *testing.T) {
 func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{MaxLabelsPerNode: 2}})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	err := g.AddNodeLabel(id, "C")
 	if !errors.Is(err, graph.ErrTooManyLabels) {
@@ -120,7 +120,7 @@ func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	origHash := ""
 	if ig := n.Integrity(); ig != nil {
@@ -147,7 +147,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before, _ := g.GetNodeHistory(id)
 	if len(before) != 0 {
@@ -175,7 +175,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.AddNodeLabel(id, "Tag"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
@@ -184,7 +184,7 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	nodes, _ := g.NodesByLabel("Tag", graph.QueryOpts{})
 	found := false
 	for _, node := range nodes {
-		if node.InternalID().SnowflakeID() == id {
+		if node.ID() == id {
 			found = true
 			break
 		}
@@ -200,7 +200,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	var events []graph.Event
 	bus.Subscribe(func(e graph.Event) {
@@ -225,7 +225,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
@@ -245,7 +245,7 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
@@ -265,7 +265,7 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
@@ -279,7 +279,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	// Label index must not contain this node under "B" after rollback.
 	nodes, _ := g.NodesByLabel("B", graph.QueryOpts{})
 	for _, nd := range nodes {
-		if nd.InternalID().SnowflakeID() == id {
+		if nd.ID() == id {
 			t.Fatal("label index still contains node under B after rollback")
 		}
 	}
@@ -288,7 +288,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
@@ -302,7 +302,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	nodes, _ := g.NodesByLabel("B", graph.QueryOpts{})
 	found := false
 	for _, nd := range nodes {
-		if nd.InternalID().SnowflakeID() == id {
+		if nd.ID() == id {
 			found = true
 			break
 		}
@@ -315,7 +315,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.Commit(); err != nil {
@@ -331,7 +331,7 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
@@ -351,7 +351,7 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
@@ -371,7 +371,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Solo"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	defer tx.Rollback()
@@ -385,7 +385,7 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.Rollback(); err != nil {

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -33,7 +32,7 @@ func TestRemoveNodeLabel_PreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Version 0 exists (genesis); no history yet.
 	history0, err := g.store.GetNodeHistory(id)
@@ -93,7 +92,7 @@ type deleteRelPanicStore struct {
 	Store
 }
 
-func (s *deleteRelPanicStore) DeleteRelationship(_ snowflake.ID) error {
+func (s *deleteRelPanicStore) DeleteRelationship(_ types.RelID) error {
 	panic("injected store panic during DeleteRelationship")
 }
 
@@ -177,7 +176,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	setNodeTemporal(t, g, n.InternalID().SnowflakeID(), 1000, 0)
+	setNodeTemporal(t, g, n.ID(), 1000, 0)
 
 	t1 := types.Instant(500)
 	t2 := types.Instant(2000)
@@ -255,13 +254,13 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 		{1, 1, 1},
 	}
 
-	ids := make([]snowflake.ID, len(vectors))
+	ids := make([]types.NodeID, len(vectors))
 	for i, vec := range vectors {
 		n, nerr := g.AddNode([]string{label}, map[string]any{key: vec})
 		if nerr != nil {
 			t.Fatalf("AddNode[%d]: %v", i, nerr)
 		}
-		ids[i] = n.InternalID().SnowflakeID()
+		ids[i] = n.ID()
 	}
 
 	const vecDims = 3 // each vector is 3-dimensional
@@ -273,7 +272,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 
 	// Brute-force: compute distances and sort ascending.
 	type scoredID struct {
-		id   snowflake.ID
+		id   types.NodeID
 		dist float64
 	}
 	bf := make([]scoredID, len(vectors))
@@ -290,8 +289,8 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 	if len(results1) != 1 {
 		t.Fatalf("k=1: got %d results, want 1", len(results1))
 	}
-	if results1[0].InternalID().SnowflakeID() != bf[0].id {
-		t.Errorf("k=1: got ID %d, want %d (brute-force nearest)", results1[0].InternalID().SnowflakeID(), bf[0].id)
+	if results1[0].ID() != bf[0].id {
+		t.Errorf("k=1: got ID %d, want %d (brute-force nearest)", results1[0].ID(), bf[0].id)
 	}
 
 	// k=3 — top-3 IDs must match brute-force top-3 (same set, ascending order).
@@ -304,20 +303,20 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 		t.Fatalf("k=3: got %d results, want %d", len(results3), k3)
 	}
 	// Verify the returned IDs form the same set as brute-force top-3.
-	bfTop3 := make(map[snowflake.ID]struct{}, k3)
+	bfTop3 := make(map[types.NodeID]struct{}, k3)
 	for i := range k3 {
 		bfTop3[bf[i].id] = struct{}{}
 	}
 	for i, node := range results3 {
-		nid := node.InternalID().SnowflakeID()
+		nid := node.ID()
 		if _, ok := bfTop3[nid]; !ok {
 			t.Errorf("k=3 result[%d] ID %d not in brute-force top-3", i, nid)
 		}
 	}
 	// Verify ascending distance order.
 	for i := 1; i < len(results3); i++ {
-		dPrev := euclideanDist64(query, vectors[indexOfID(ids, results3[i-1].InternalID().SnowflakeID())])
-		dCurr := euclideanDist64(query, vectors[indexOfID(ids, results3[i].InternalID().SnowflakeID())])
+		dPrev := euclideanDist64(query, vectors[indexOfID(ids, results3[i-1].ID())])
+		dCurr := euclideanDist64(query, vectors[indexOfID(ids, results3[i].ID())])
 		if dPrev > dCurr+1e-9 {
 			t.Errorf("k=3: results not in ascending distance order at index %d", i)
 		}
@@ -336,20 +335,20 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 		t.Fatalf("k=N: got %d results, want %d", len(resultsN), kN)
 	}
 	// Verify set equality with brute-force.
-	bfAll := make(map[snowflake.ID]struct{}, kN)
+	bfAll := make(map[types.NodeID]struct{}, kN)
 	for _, s := range bf {
 		bfAll[s.id] = struct{}{}
 	}
 	for i, node := range resultsN {
-		nid := node.InternalID().SnowflakeID()
+		nid := node.ID()
 		if _, ok := bfAll[nid]; !ok {
 			t.Errorf("k=N: result[%d] ID %d not in brute-force set", i, nid)
 		}
 	}
 	// Verify non-decreasing distance order.
 	for i := 1; i < len(resultsN); i++ {
-		dPrev := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i-1].InternalID().SnowflakeID())])
-		dCurr := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i].InternalID().SnowflakeID())])
+		dPrev := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i-1].ID())])
+		dCurr := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i].ID())])
 		if dPrev > dCurr+1e-9 {
 			t.Errorf("k=N: distances not in non-decreasing order at index %d (prev=%.4f curr=%.4f)", i, dPrev, dCurr)
 		}
@@ -357,7 +356,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 }
 
 // indexOfID returns the position of id in ids, or -1 if not found.
-func indexOfID(ids []snowflake.ID, id snowflake.ID) int {
+func indexOfID(ids []types.NodeID, id types.NodeID) int {
 	for i, v := range ids {
 		if v == id {
 			return i

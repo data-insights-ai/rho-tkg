@@ -10,6 +10,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/vmihailenco/msgpack/v5"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Export format version. Increment when the record layout changes in a
@@ -108,9 +109,9 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 		for _, n := range nodes {
 			w2 := nodeToWire(n)
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
-				return fmt.Errorf("export: write node %d: %w", n.InternalID().SnowflakeID(), err)
+				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
-			nodeCursor = n.InternalID().SnowflakeID()
+			nodeCursor = n.ID().SnowflakeID()
 		}
 		if len(nodes) < exportBatchSize {
 			break
@@ -151,9 +152,9 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 		for _, r := range rels {
 			w2 := relToWire(r)
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
-				return fmt.Errorf("export: write rel %d: %w", r.InternalID().SnowflakeID(), err)
+				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
-			relCursor = r.InternalID().SnowflakeID()
+			relCursor = r.ID().SnowflakeID()
 		}
 		if len(rels) < exportBatchSize {
 			break
@@ -277,7 +278,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
 			}
 			n := wireToNode(wn)
-			id := snowflake.ID(wn.ID) //nolint:gosec — ID from our own serialization
+			id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutNodeVersion(id, n.Version(), n); err != nil {
 				return fmt.Errorf("import: put node history %d v%d: %w", wn.ID, n.Version(), err)
 			}
@@ -298,7 +299,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
 			}
 			rel := wireToRel(wr)
-			id := snowflake.ID(wr.ID) //nolint:gosec — ID from our own serialization
+			id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutRelVersion(id, rel.Version(), rel); err != nil {
 				return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
 			}

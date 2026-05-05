@@ -11,7 +11,7 @@ import (
 // labelToken is the primary label token. ValidFrom/ValidTo are explicit.
 func putTestNodeWithTemporal(t *testing.T, ms *MemoryStore, id snowflake.ID, labelToken uint16, validFrom, validTo types.Instant) {
 	t.Helper()
-	n := types.NewNode(id, labelToken, nil)
+	n := types.NewNode(types.NodeID(id), labelToken, nil)
 	n.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo})
 	if err := ms.PutNode(n); err != nil {
 		t.Fatalf("PutNode(%d): %v", id, err)
@@ -21,7 +21,7 @@ func putTestNodeWithTemporal(t *testing.T, ms *MemoryStore, id snowflake.ID, lab
 // putTestRelWithTemporal creates and stores a relationship with explicit temporal metadata.
 func putTestRelWithTemporal(t *testing.T, ms *MemoryStore, id snowflake.ID, typeToken uint16, startID, endID snowflake.ID, validFrom, validTo types.Instant) {
 	t.Helper()
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
 	r.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo})
 	if err := ms.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship(%d): %v", id, err)
@@ -45,8 +45,8 @@ func TestMemoryStore_NodesByLabel_ValidAt(t *testing.T) {
 	if len(nodes) != 2 {
 		t.Fatalf("got %d nodes, want 2", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != 10 || nodes[1].InternalID().SnowflakeID() != 20 {
-		t.Errorf("unexpected node IDs: %d, %d", nodes[0].InternalID().SnowflakeID(), nodes[1].InternalID().SnowflakeID())
+	if nodes[0].ID() != 10 || nodes[1].ID() != 20 {
+		t.Errorf("unexpected node IDs: %d, %d", nodes[0].ID(), nodes[1].ID())
 	}
 }
 
@@ -71,7 +71,7 @@ func TestMemoryStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 	}
 
 	// Page 2: After the last node of page 1.
-	nodes2, err := ms.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].InternalID().SnowflakeID()})
+	nodes2, err := ms.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].ID().SnowflakeID()})
 	if err != nil {
 		t.Fatalf("NodesByLabel page 2: %v", err)
 	}
@@ -104,8 +104,8 @@ func TestMemoryStore_AllNodes_ValidAt(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("got %d nodes at t=250, want 1", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != 20 {
-		t.Errorf("expected node 20, got %d", nodes[0].InternalID().SnowflakeID())
+	if nodes[0].ID() != 20 {
+		t.Errorf("expected node 20, got %d", nodes[0].ID())
 	}
 }
 
@@ -129,8 +129,8 @@ func TestMemoryStore_RelationshipsByType_ValidAt(t *testing.T) {
 	if len(rels) != 1 {
 		t.Fatalf("got %d rels, want 1", len(rels))
 	}
-	if rels[0].InternalID().SnowflakeID() != 200 {
-		t.Errorf("expected rel 200, got %d", rels[0].InternalID().SnowflakeID())
+	if rels[0].ID() != 200 {
+		t.Errorf("expected rel 200, got %d", rels[0].ID())
 	}
 }
 
@@ -139,14 +139,14 @@ func TestMemoryStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	ms := NewMemoryStore()
 
 	// 2 nodes with label 1 and property "color"="red".
-	n1 := types.NewNode(snowflake.ID(10), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
 	n1.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 300})
 	n1.SetProperties(mustPropertySlice(t, map[string]any{"color": "red"}))
 	if err := ms.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
 
-	n2 := types.NewNode(snowflake.ID(20), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 0})
 	n2.SetProperties(mustPropertySlice(t, map[string]any{"color": "red"}))
 	if err := ms.PutNode(n2); err != nil {
@@ -161,8 +161,8 @@ func TestMemoryStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("fallback: got %d nodes, want 1", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != 20 {
-		t.Errorf("fallback: expected node 20, got %d", nodes[0].InternalID().SnowflakeID())
+	if nodes[0].ID() != 20 {
+		t.Errorf("fallback: expected node 20, got %d", nodes[0].ID())
 	}
 
 	// Create property index and test indexed path.
@@ -177,8 +177,8 @@ func TestMemoryStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("indexed: got %d nodes, want 1", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != 20 {
-		t.Errorf("indexed: expected node 20, got %d", nodes[0].InternalID().SnowflakeID())
+	if nodes[0].ID() != 20 {
+		t.Errorf("indexed: expected node 20, got %d", nodes[0].ID())
 	}
 }
 
@@ -197,7 +197,7 @@ func TestMemoryStore_AllRelationships_ValidAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rels) != 1 || rels[0].InternalID().SnowflakeID() != 100 {
+	if len(rels) != 1 || rels[0].ID() != 100 {
 		t.Fatalf("t=150: got %d rels, want 1 (rel 100)", len(rels))
 	}
 
@@ -206,7 +206,7 @@ func TestMemoryStore_AllRelationships_ValidAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rels) != 1 || rels[0].InternalID().SnowflakeID() != 200 {
+	if len(rels) != 1 || rels[0].ID() != 200 {
 		t.Fatalf("t=350: got %d rels, want 1 (rel 200)", len(rels))
 	}
 }

@@ -20,11 +20,11 @@ func TestCompression_BadgerStore_None(t *testing.T) {
 	defer bs.Close()
 
 	// Write and read back to verify the store works with no compression.
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	got, err := bs.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -44,11 +44,11 @@ func TestCompression_BadgerStore_Snappy(t *testing.T) {
 	}
 	defer bs.Close()
 
-	n := types.NewNode(snowflake.ID(2), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	got, err := bs.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -69,11 +69,11 @@ func TestCompression_BadgerStore_ZSTD(t *testing.T) {
 	}
 	defer bs.Close()
 
-	n := types.NewNode(snowflake.ID(3), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(3)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	got, err := bs.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -93,11 +93,11 @@ func TestCompression_BadgerStore_ZeroKeepsDefault(t *testing.T) {
 	}
 	defer bs.Close()
 
-	n := types.NewNode(snowflake.ID(4), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(4)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	got, err := bs.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -117,11 +117,11 @@ func TestCompression_BadgerStore_InMemory(t *testing.T) {
 	}
 	defer bs.Close()
 
-	n := types.NewNode(snowflake.ID(5), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(5)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	got, err := bs.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	got, err := g.GetNode(node.InternalID().SnowflakeID())
+	got, err := g.GetNode(node.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
 		t.Fatalf("NewBadgerStore (write): %v", err)
 	}
 
-	n := types.NewNode(snowflake.ID(6), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(6)), 1, nil)
 	if err := bs1.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	got, err := bs2.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs2.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}

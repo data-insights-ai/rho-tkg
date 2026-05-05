@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -301,13 +300,13 @@ func TestBadgerStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	updated.SetVersion(prevVersion + 1)
 
 	if err := bs.RemoveNodeLabelTokenWithHistory(
-		snowflake.ID(100), extra, updated, prevVersion, prevState,
+		types.NodeID(100), extra, updated, prevVersion, prevState,
 	); err != nil {
 		t.Fatalf("RemoveNodeLabelTokenWithHistory: %v", err)
 	}
 
 	// Verify history entry exists.
-	hist, err := bs.GetNodeVersion(snowflake.ID(100), prevVersion)
+	hist, err := bs.GetNodeVersion(types.NodeID(100), prevVersion)
 	if err != nil {
 		t.Fatalf("GetNodeVersion(%d): %v", prevVersion, err)
 	}
@@ -316,7 +315,7 @@ func TestBadgerStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	}
 
 	// Verify current node has updated version.
-	got, err := bs.GetNode(snowflake.ID(100))
+	got, err := bs.GetNode(types.NodeID(100))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -330,7 +329,7 @@ func TestBadgerStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 		t.Fatalf("NodesByLabel(%d): %v", extra, err)
 	}
 	for _, node := range byLabel {
-		if node.InternalID().SnowflakeID() == snowflake.ID(100) {
+		if node.ID() == types.NodeID(100) {
 			t.Error("node still in label index after RemoveNodeLabelTokenWithHistory")
 		}
 	}
@@ -466,7 +465,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Remove "User" label via Graph API (uses RemoveNodeLabelTokenWithHistory internally).
 	if err := g.RemoveNodeLabel(id, "User"); err != nil {
@@ -503,7 +502,7 @@ func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.RemoveNodeLabel(id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)

@@ -48,14 +48,14 @@ func BenchmarkNewPropertySlice(b *testing.B) {
 func BenchmarkNewNode(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
-		types.NewNode(12345, 1, nil)
+		types.NewNode(types.NodeID(12345), 1, nil)
 	}
 }
 
 func BenchmarkComputeNodeHash(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(benchProps())
-	n := types.NewNode(g.NextNodeID(), 1, nil)
+	n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
 	n.SetProperties(ps)
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
@@ -67,7 +67,7 @@ func BenchmarkComputeNodeHash(b *testing.B) {
 func BenchmarkNodeDeepCopy(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(benchProps())
-	n := types.NewNode(g.NextNodeID(), 1, nil)
+	n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
 	n.SetProperties(ps)
 	n.SetTemporal(&types.TemporalMetadata{})
 	n.SetIntegrity(&types.NodeIntegrity{Hash: "abc123"})
@@ -84,7 +84,7 @@ func BenchmarkMemoryStorePutNode(b *testing.B) {
 	nodes := make([]*types.Node, b.N)
 	for i := range nodes {
 		ps, _ := types.NewPropertySlice(benchProps())
-		n := types.NewNode(g.NextNodeID(), 1, nil)
+		n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
 		n.SetProperties(ps)
 		n.SetTemporal(&types.TemporalMetadata{})
 		n.SetIntegrity(&types.NodeIntegrity{Hash: "abc"})
@@ -101,7 +101,7 @@ func BenchmarkMemoryStorePutNode(b *testing.B) {
 func BenchmarkComputeRelHash(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(map[string]any{"weight": 1})
-	r := types.NewRelationship(g.NextRelID(), 1, 100, 200)
+	r := types.NewRelationship(types.RelID(g.NextRelID()), 1, types.NodeID(100), types.NodeID(200))
 	r.SetProperties(ps)
 	b.ResetTimer()
 	for b.Loop() {
@@ -113,21 +113,21 @@ func BenchmarkMemoryStorePutRel(b *testing.B) {
 	ms := NewMemoryStore()
 	g := benchGraph(b)
 	// Create two anchor nodes
-	n1 := types.NewNode(g.NextNodeID(), 1, nil)
+	n1 := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
 	n1.SetTemporal(&types.TemporalMetadata{})
 	n1.SetIntegrity(&types.NodeIntegrity{Hash: "a"})
-	n2 := types.NewNode(g.NextNodeID(), 1, nil)
+	n2 := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{})
 	n2.SetIntegrity(&types.NodeIntegrity{Hash: "b"})
 	ms.PutNode(n1)
 	ms.PutNode(n2)
-	startID := n1.InternalID().SnowflakeID()
-	endID := n2.InternalID().SnowflakeID()
+	startID := n1.ID()
+	endID := n2.ID()
 	// Pre-build rels
 	rels := make([]*types.Relationship, b.N)
 	for i := range rels {
 		ps, _ := types.NewPropertySlice(map[string]any{"weight": 1})
-		r := types.NewRelationship(g.NextRelID(), 1, startID, endID)
+		r := types.NewRelationship(types.RelID(g.NextRelID()), 1, types.NodeID(startID), types.NodeID(endID))
 		r.SetProperties(ps)
 		r.SetTemporal(&types.TemporalMetadata{})
 		r.SetIntegrity(&types.RelIntegrity{Hash: "h"})

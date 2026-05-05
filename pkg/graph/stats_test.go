@@ -28,7 +28,7 @@ func TestGraphStats_NodeCounters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	s := g.Stats()
 	if s.NodesAdded != 1 {
@@ -75,7 +75,7 @@ func TestGraphStats_RelCounters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	s := g.Stats()
 	if s.RelsAdded != 1 {
@@ -117,7 +117,7 @@ func TestGraphStats_EmptyUpdate_NoUpdateIncrement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before := g.Stats()
 	// Empty updates → returns GetNode result; increments Read but not Updated.
@@ -141,7 +141,7 @@ func TestGraphStats_CacheMetrics_MemoryStore_Zero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	if _, err := g.GetNode(id); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// PutNode inserted the node into the LRU cache, so both GetNode calls are hits.
 	if _, err := g.GetNode(id); err != nil {
@@ -204,7 +204,7 @@ func TestGraphStats_UpdateNodeInPlace_CountsAsUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before := g.Stats().NodesUpdated
 	if _, err := g.UpdateNodeInPlace(id, map[string]any{"k": "v"}); err != nil {
@@ -231,7 +231,7 @@ func TestGraphStats_UpdateRelInPlace_CountsAsUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	before := g.Stats().RelsUpdated
 	if _, err := g.UpdateRelInPlace(id, map[string]any{"k": "v"}); err != nil {

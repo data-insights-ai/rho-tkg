@@ -12,8 +12,8 @@ import (
 	"os"
 	"strconv"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // commas formats an integer with thousand separators: 1234567 -> "1,234,567".
@@ -73,7 +73,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		aliceID = int64(alice.InternalID().SnowflakeID())
+		aliceID = int64(alice.ID())
 
 		bob, err := g.AddNode([]string{"Person", "Developer"}, map[string]any{
 			"name": "Bob",
@@ -82,7 +82,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		bobID = int64(bob.InternalID().SnowflakeID())
+		bobID = int64(bob.ID())
 
 		charlie, err := g.AddNode([]string{"Person"}, map[string]any{
 			"name": "Charlie",
@@ -97,7 +97,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		knowsID = int64(knows.InternalID().SnowflakeID())
+		knowsID = int64(knows.ID())
 
 		_, err = g.AddRelationship("WORKS_WITH", bob, charlie, nil)
 		if err != nil {
@@ -144,7 +144,7 @@ func main() {
 		fmt.Printf("Counts after reopen: %d nodes, %d relationships\n", nc, rc)
 
 		// Retrieve by ID.
-		alice, err := g.GetNode(snowflake.ID(aliceID))
+		alice, err := g.GetNode(types.NodeID(aliceID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -152,7 +152,7 @@ func main() {
 		age, _ := alice.GetProperty("age")
 		fmt.Printf("GetNode(Alice): name=%s, age=%d\n", name, age)
 
-		bob, err := g.GetNode(snowflake.ID(bobID))
+		bob, err := g.GetNode(types.NodeID(bobID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func main() {
 		fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
 		// Retrieve relationship by ID.
-		rel, err := g.GetRelationship(snowflake.ID(knowsID))
+		rel, err := g.GetRelationship(types.RelID(knowsID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -201,7 +201,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Dave ID: %s\n", commas(int64(dave.InternalID().SnowflakeID())))
+		fmt.Printf("Dave ID: %s\n", commas(int64(dave.ID())))
 
 		_, err = g.AddRelationship("KNOWS", alice, dave, nil)
 		if err != nil {

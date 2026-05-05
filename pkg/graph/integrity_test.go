@@ -16,7 +16,7 @@ func TestComputeNodeHashDeterministic(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("name", "Alice")
 	n.SetVersion(1)
 
@@ -37,10 +37,10 @@ func TestComputeNodeHashChangesWithProperties(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n1 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n1.SetProperty("name", "Alice")
 
-	n2 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n2.SetProperty("name", "Bob")
 
 	h1 := ComputeNodeHash(n1, []string{"Person"})
@@ -57,10 +57,10 @@ func TestComputeNodeHashChangesWithVersion(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n1 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	n1.SetVersion(0)
 
-	n2 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	n2.SetVersion(1)
 
 	h1 := ComputeNodeHash(n1, []string{"Person"})
@@ -77,7 +77,7 @@ func TestComputeNodeHashChangesWithLabels(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 
 	h1 := ComputeNodeHash(n, []string{"Person"})
 	h2 := ComputeNodeHash(n, []string{"Employee"})
@@ -94,7 +94,7 @@ func TestComputeNodeHashLabelOrderIndependent(t *testing.T) {
 	personTok, _ := g.GetOrCreateLabel("Person")
 	actorTok, _ := g.GetOrCreateLabel("Actor")
 
-	n := types.NewNode(snowflake.ID(100), personTok, []uint16{actorTok})
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, []uint16{actorTok})
 
 	h1 := ComputeNodeHash(n, []string{"Person", "Actor"})
 	h2 := ComputeNodeHash(n, []string{"Actor", "Person"})
@@ -109,7 +109,7 @@ func TestComputeNodeHashLabelOrderIndependent(t *testing.T) {
 func TestComputeRelHashDeterministic(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r.SetProperty("weight", int64(5))
 	r.SetVersion(1)
 
@@ -127,10 +127,10 @@ func TestComputeRelHashDeterministic(t *testing.T) {
 func TestComputeRelHashChangesWithProperties(t *testing.T) {
 	t.Parallel()
 
-	r1 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r1 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r1.SetProperty("weight", int64(5))
 
-	r2 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r2 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	_ = r2.SetProperty("weight", int64(10))
 
 	h1 := ComputeRelHash(r1, "KNOWS")
@@ -144,10 +144,10 @@ func TestComputeRelHashChangesWithProperties(t *testing.T) {
 func TestComputeRelHashChangesWithVersion(t *testing.T) {
 	t.Parallel()
 
-	r1 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r1 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	r1.SetVersion(0)
 
-	r2 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r2 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	r2.SetVersion(1)
 
 	h1 := ComputeRelHash(r1, "KNOWS")
@@ -161,7 +161,7 @@ func TestComputeRelHashChangesWithVersion(t *testing.T) {
 func TestComputeRelHashChangesWithType(t *testing.T) {
 	t.Parallel()
 
-	r := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 
 	h1 := ComputeRelHash(r, "KNOWS")
 	h2 := ComputeRelHash(r, "LIKES")
@@ -174,8 +174,8 @@ func TestComputeRelHashChangesWithType(t *testing.T) {
 func TestComputeRelHashChangesWithEndpoints(t *testing.T) {
 	t.Parallel()
 
-	r1 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
-	r2 := types.NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(30))
+	r1 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+	r2 := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(30)))
 
 	h1 := ComputeRelHash(r1, "KNOWS")
 	h2 := ComputeRelHash(r2, "KNOWS")
@@ -193,7 +193,7 @@ func TestHashMapPropertyDeterministic(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("meta", map[string]any{
 		"z": "last",
 		"a": "first",
@@ -218,10 +218,10 @@ func TestHashTypeDistinction(t *testing.T) {
 	personTok, _ := g.GetOrCreateLabel("Person")
 
 	// int(1) vs string("1") must produce different hashes.
-	n1 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n1.SetProperty("val", int(1))
 
-	n2 := types.NewNode(snowflake.ID(100), personTok, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n2.SetProperty("val", "1")
 
 	h1 := ComputeNodeHash(n1, []string{"Person"})
@@ -238,7 +238,7 @@ func TestHashNestedMapDeterministic(t *testing.T) {
 	g, _ := New(Config{})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n := types.NewNode(snowflake.ID(100), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("nested", []any{
 		map[string]any{"b": int64(2), "a": int64(1)},
 		"hello",
@@ -262,7 +262,7 @@ func TestVerifyNodeHashChain_GenesisOnly(t *testing.T) {
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 
-	valid, err := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+	valid, err := g.VerifyNodeHashChain(n.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestVerifyNodeHashChain_MultipleUpdates(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g.UpdateNode(id, map[string]any{"name": "Bob"})
 	g.UpdateNode(id, map[string]any{"name": "Charlie"})
@@ -296,7 +296,7 @@ func TestVerifyNodeHashChain_TamperedHash(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Tamper with the stored hash.
 	current, _ := g.store.GetNode(id)
@@ -317,7 +317,7 @@ func TestVerifyNodeHashChain_BrokenPrevHash(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g.UpdateNode(id, map[string]any{"name": "Bob"})
 
@@ -341,7 +341,7 @@ func TestVerifyNodeHashChain_NonExistent(t *testing.T) {
 
 	g, _ := New(Config{})
 
-	_, err := g.VerifyNodeHashChain(snowflake.ID(999))
+	_, err := g.VerifyNodeHashChain(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -352,7 +352,7 @@ func TestVerifyNodeHashChain_NilIntegrity(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Clear integrity metadata.
 	current, _ := g.store.GetNode(id)
@@ -373,7 +373,7 @@ func TestVerifyNodeHashChain_PropertyChange(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g.UpdateNode(id, map[string]any{"name": "Bob"})
 	g.UpdateNode(id, map[string]any{"name": nil, "age": int64(25)})
@@ -397,7 +397,7 @@ func TestVerifyRelHashChain_GenesisOnly(t *testing.T) {
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
 
-	valid, err := g.VerifyRelHashChain(r.InternalID().SnowflakeID())
+	valid, err := g.VerifyRelHashChain(r.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestVerifyRelHashChain_MultipleUpdates(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})
 	g.UpdateRelationship(id, map[string]any{"weight": int64(3)})
@@ -435,7 +435,7 @@ func TestVerifyRelHashChain_TamperedHash(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetIntegrity(&types.RelIntegrity{Hash: "tampered", PrevHash: ""})
@@ -457,7 +457,7 @@ func TestVerifyRelHashChain_BrokenPrevHash(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	g.UpdateRelationship(id, map[string]any{"weight": int64(5)})
 
@@ -480,7 +480,7 @@ func TestVerifyRelHashChain_NonExistent(t *testing.T) {
 
 	g, _ := New(Config{})
 
-	_, err := g.VerifyRelHashChain(snowflake.ID(999))
+	_, err := g.VerifyRelHashChain(types.RelID(999))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -493,7 +493,7 @@ func TestVerifyRelHashChain_NilIntegrity(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetIntegrity(nil)
@@ -515,7 +515,7 @@ func TestVerifyRelHashChain_PropertyChange(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	g.UpdateRelationship(id, map[string]any{"weight": int64(10)})
 	g.UpdateRelationship(id, map[string]any{"weight": nil, "note": "test"})
@@ -536,7 +536,7 @@ func TestVerifyNodeHashChain_AfterTruncation(t *testing.T) {
 
 	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
 	g.UpdateNode(id, map[string]any{"name": "Bob"})
@@ -574,7 +574,7 @@ func TestVerifyRelHashChain_AfterTruncation(t *testing.T) {
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
 	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})

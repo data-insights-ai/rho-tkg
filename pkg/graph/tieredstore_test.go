@@ -64,13 +64,13 @@ func makeRefNode(t *testing.T, gen *snowflake.Node, ts *TieredStore) *types.Node
 	t.Helper()
 	// Token 1 = first label registered. We need the ontology to know about it.
 	// For direct store tests, use token 1 and set up the ontology to recognize it.
-	return types.NewNode(gen.Generate(), 1, nil) // token 1 = reference
+	return types.NewNode(types.NodeID(gen.Generate()), 1, nil) // token 1 = reference
 }
 
 // makeEvtNode creates a node with an event label token.
 func makeEvtNode(t *testing.T, gen *snowflake.Node, ts *TieredStore) *types.Node {
 	t.Helper()
-	return types.NewNode(gen.Generate(), 3, nil) // token 3 = event (not in ref list)
+	return types.NewNode(types.NodeID(gen.Generate()), 3, nil) // token 3 = event (not in ref list)
 }
 
 // --- Ontology routing tests ---
@@ -127,22 +127,22 @@ func TestTieredStore_PutGetNode_Ref(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := ts.GetNode(n.InternalID().SnowflakeID())
+	got, err := ts.GetNode(n.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("node ID mismatch")
 	}
 
 	// Verify it's in the ref shard.
-	if !ts.refShard.hasNodeID(n.InternalID().SnowflakeID()) {
+	if !ts.refShard.hasNodeID(n.ID().SnowflakeID()) {
 		t.Error("ref node should be in refShard")
 	}
 }
@@ -157,25 +157,25 @@ func TestTieredStore_PutGetNode_Event(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal") // tok 3 = event
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := ts.GetNode(n.InternalID().SnowflakeID())
+	got, err := ts.GetNode(n.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("node ID mismatch")
 	}
 
 	// Verify it's in the event shard, not ref.
-	if ts.refShard.hasNodeID(n.InternalID().SnowflakeID()) {
+	if ts.refShard.hasNodeID(n.ID().SnowflakeID()) {
 		t.Error("event node should NOT be in refShard")
 	}
-	if !ts.hotShard.store.hasNodeID(n.InternalID().SnowflakeID()) {
+	if !ts.hotShard.store.hasNodeID(n.ID().SnowflakeID()) {
 		t.Error("event node should be in hotShard")
 	}
 }
@@ -187,14 +187,14 @@ func TestTieredStore_DeleteNode_Ref(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 
-	if err := ts.DeleteNode(n.InternalID().SnowflakeID()); err != nil {
+	if err := ts.DeleteNode(n.ID()); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := ts.GetNode(n.InternalID().SnowflakeID())
+	_, err := ts.GetNode(n.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -207,7 +207,7 @@ func TestTieredStore_ReplaceNode(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 
 	// Replace with updated version.
@@ -217,7 +217,7 @@ func TestTieredStore_ReplaceNode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := ts.GetNode(n.InternalID().SnowflakeID())
+	got, _ := ts.GetNode(n.ID())
 	if got.Version() != 1 {
 		t.Errorf("version = %d, want 1", got.Version())
 	}
@@ -237,22 +237,22 @@ func TestTieredStore_SameShardRel_EventToEvent(t *testing.T) {
 	_ = relTypeTok                                                // not used directly
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
-	n2 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := ts.GetRelationship(r.InternalID().SnowflakeID())
+	got, err := ts.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != r.InternalID().SnowflakeID() {
+	if got.ID() != r.ID() {
 		t.Error("rel ID mismatch")
 	}
 }
@@ -265,19 +265,19 @@ func TestTieredStore_SameShardRel_RefToRef(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
 
 	// Both entity and in/ should be in refShard.
-	if !ts.refShard.hasRelID(r.InternalID().SnowflakeID()) {
+	if !ts.refShard.hasRelID(r.ID().SnowflakeID()) {
 		t.Error("R->R rel should be in refShard")
 	}
 }
@@ -294,33 +294,33 @@ func TestTieredStore_CrossShardRel_EventToRef(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(signal)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), caseNode.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
 
 	// Entity + out/ in event shard (start node's shard).
-	if !ts.hotShard.store.hasRelID(r.InternalID().SnowflakeID()) {
+	if !ts.hotShard.store.hasRelID(r.ID().SnowflakeID()) {
 		t.Error("E->R: entity should be in event shard")
 	}
 	// in/ should be in ref shard (end node's shard).
-	inIDs := ts.refShard.incomingRelIDs(caseNode.InternalID().SnowflakeID(), 0)
-	if len(inIDs) != 1 || inIDs[0] != r.InternalID().SnowflakeID() {
+	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
+	if len(inIDs) != 1 || inIDs[0] != r.ID().SnowflakeID() {
 		t.Errorf("E->R: ref shard inIdx should contain rel, got %v", inIDs)
 	}
 
 	// GetRelationship should still work (routes via event shard).
-	got, err := ts.GetRelationship(r.InternalID().SnowflakeID())
+	got, err := ts.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != r.InternalID().SnowflakeID() {
+	if got.ID() != r.ID() {
 		t.Error("rel ID mismatch")
 	}
 }
@@ -335,24 +335,24 @@ func TestTieredStore_CrossShardRel_RefToEvent(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(caseNode)
 	_ = ts.PutNode(signal)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, caseNode.InternalID().SnowflakeID(), signal.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, caseNode.ID(), signal.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
 
 	// Entity + out/ in ref shard (start node's shard).
-	if !ts.refShard.hasRelID(r.InternalID().SnowflakeID()) {
+	if !ts.refShard.hasRelID(r.ID().SnowflakeID()) {
 		t.Error("R->E: entity should be in ref shard")
 	}
 	// in/ should be in event shard (end node's shard).
-	inIDs := ts.hotShard.store.incomingRelIDs(signal.InternalID().SnowflakeID(), 0)
-	if len(inIDs) != 1 || inIDs[0] != r.InternalID().SnowflakeID() {
+	inIDs := ts.hotShard.store.incomingRelIDs(signal.ID().SnowflakeID(), 0)
+	if len(inIDs) != 1 || inIDs[0] != r.ID().SnowflakeID() {
 		t.Errorf("R->E: event shard inIdx should contain rel, got %v", inIDs)
 	}
 }
@@ -367,21 +367,21 @@ func TestTieredStore_CrossShardRel_IncomingRelationships(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
-	signal1 := types.NewNode(gen.Generate(), signalTok, nil)
-	signal2 := types.NewNode(gen.Generate(), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	signal1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	signal2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(caseNode)
 	_ = ts.PutNode(signal1)
 	_ = ts.PutNode(signal2)
 
 	rGen := tieredRelGen(t)
-	r1 := types.NewRelationship(rGen.Generate(), 1, signal1.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
-	r2 := types.NewRelationship(rGen.Generate(), 1, signal2.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r1 := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal1.ID(), caseNode.ID())
+	r2 := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal2.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r1)
 	_ = ts.PutRelationship(r2)
 
 	// IncomingRelationships on the case node should find both signals.
-	incoming, err := ts.IncomingRelationships(caseNode.InternalID().SnowflakeID(), 0)
+	incoming, err := ts.IncomingRelationships(caseNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,17 +400,17 @@ func TestTieredStore_CrossShardRel_OutgoingRelationships(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(signal)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// OutgoingRelationships delegates to the start node's shard.
-	outgoing, err := ts.OutgoingRelationships(signal.InternalID().SnowflakeID(), 0)
+	outgoing, err := ts.OutgoingRelationships(signal.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,26 +429,26 @@ func TestTieredStore_CrossShardRel_Delete(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(signal)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// Delete cross-shard rel.
-	if err := ts.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+	if err := ts.DeleteRelationship(r.ID()); err != nil {
 		t.Fatal(err)
 	}
 
 	// Entity should be gone from event shard.
-	if ts.hotShard.store.hasRelID(r.InternalID().SnowflakeID()) {
+	if ts.hotShard.store.hasRelID(r.ID().SnowflakeID()) {
 		t.Error("deleted rel should be gone from event shard")
 	}
 	// in/ should be gone from ref shard.
-	inIDs := ts.refShard.incomingRelIDs(caseNode.InternalID().SnowflakeID(), 0)
+	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("deleted rel in/ should be gone from ref shard, got %v", inIDs)
 	}
@@ -464,12 +464,12 @@ func TestTieredStore_CrossShardRel_EndpointNotFound(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(signal)
 
 	rGen := tieredRelGen(t)
 	fakeEndID := snowflake.ID(999999999)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), fakeEndID)
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), types.NodeID(fakeEndID))
 
 	// Creating with token that maps to ref, but endpoint doesn't exist.
 	// Since fakeEndID is not in refShard, it falls to event shard routing.
@@ -480,11 +480,11 @@ func TestTieredStore_CrossShardRel_EndpointNotFound(t *testing.T) {
 	}
 
 	// Now test cross-shard with a real ref node as endpoint but missing start.
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(caseNode)
 
 	fakeStartID := snowflake.ID(888888888)
-	r2 := types.NewRelationship(rGen.Generate(), 1, fakeStartID, caseNode.InternalID().SnowflakeID())
+	r2 := types.NewRelationship(types.RelID(rGen.Generate()), 1, types.NodeID(fakeStartID), caseNode.ID())
 	err = ts.PutRelationship(r2)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound for missing start, got %v", err)
@@ -503,8 +503,8 @@ func TestTieredStore_AllNodes_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	ref := types.NewNode(gen.Generate(), caseTok, nil)
-	evt := types.NewNode(gen.Generate(), signalTok, nil)
+	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evt := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(ref)
 	_ = ts.PutNode(evt)
 
@@ -516,7 +516,7 @@ func TestTieredStore_AllNodes_MergesShards(t *testing.T) {
 		t.Fatalf("AllNodes = %d, want 2", len(all))
 	}
 	// Verify sorted.
-	if all[0].InternalID().SnowflakeID() > all[1].InternalID().SnowflakeID() {
+	if all[0].ID() > all[1].ID() {
 		t.Error("AllNodes should be sorted by ID")
 	}
 }
@@ -531,18 +531,18 @@ func TestTieredStore_AllRelationships_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
 	_ = ts.PutNode(s2)
 
 	rGen := tieredRelGen(t)
-	rr := types.NewRelationship(rGen.Generate(), 1, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID())
-	ee := types.NewRelationship(rGen.Generate(), 1, s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID())
+	rr := types.NewRelationship(types.RelID(rGen.Generate()), 1, c1.ID(), c2.ID())
+	ee := types.NewRelationship(types.RelID(rGen.Generate()), 1, s1.ID(), s2.ID())
 	_ = ts.PutRelationship(rr)
 	_ = ts.PutRelationship(ee)
 
@@ -565,9 +565,9 @@ func TestTieredStore_NodeCount(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil))
 
 	count, err := ts.NodeCount()
 	if err != nil {
@@ -586,13 +586,13 @@ func TestTieredStore_RelationshipCount(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID()))
 
 	count, err := ts.RelationshipCount()
 	if err != nil {
@@ -613,9 +613,9 @@ func TestTieredStore_NodeCountByLabel(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil))
 
 	caseCount, err := ts.NodeCountByLabel(caseTok)
 	if err != nil {
@@ -644,8 +644,8 @@ func TestTieredStore_NodesByLabel(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil))
 
 	caseNodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
 	if err != nil {
@@ -668,28 +668,28 @@ func TestTieredStore_DeleteNodeCascade_RefNodeWithCrossShardRels(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(caseNode)
 	_ = ts.PutNode(signal)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// Cascade delete the case node.
-	if err := ts.DeleteNodeCascade(caseNode.InternalID().SnowflakeID()); err != nil {
+	if err := ts.DeleteNodeCascade(caseNode.ID()); err != nil {
 		t.Fatal(err)
 	}
 
 	// Node should be gone.
-	_, err := ts.GetNode(caseNode.InternalID().SnowflakeID())
+	_, err := ts.GetNode(caseNode.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
 
 	// Rel should be gone from both shards.
-	_, err = ts.GetRelationship(r.InternalID().SnowflakeID())
+	_, err = ts.GetRelationship(r.ID())
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("expected ErrRelNotFound, got %v", err)
 	}
@@ -705,31 +705,31 @@ func TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels(t *testing.T)
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal := types.NewNode(gen.Generate(), signalTok, nil)
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(signal)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, signal.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, signal.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// Cascade delete the signal node.
-	if err := ts.DeleteNodeCascade(signal.InternalID().SnowflakeID()); err != nil {
+	if err := ts.DeleteNodeCascade(signal.ID()); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := ts.GetNode(signal.InternalID().SnowflakeID())
+	_, err := ts.GetNode(signal.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
-	_, err = ts.GetRelationship(r.InternalID().SnowflakeID())
+	_, err = ts.GetRelationship(r.ID())
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("expected ErrRelNotFound, got %v", err)
 	}
 
 	// in/ in ref shard should be cleaned up.
-	inIDs := ts.refShard.incomingRelIDs(caseNode.InternalID().SnowflakeID(), 0)
+	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("cascade should clean in/ from ref shard, got %v", inIDs)
 	}
@@ -744,16 +744,16 @@ func TestTieredStore_VersionHistory_RefNode(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 
 	// Save version 0.
-	if err := ts.PutNodeVersion(n.InternalID().SnowflakeID(), 0, n); err != nil {
+	if err := ts.PutNodeVersion(n.ID(), 0, n); err != nil {
 		t.Fatal(err)
 	}
 
 	// Retrieve history.
-	hist, err := ts.GetNodeHistory(n.InternalID().SnowflakeID())
+	hist, err := ts.GetNodeHistory(n.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,20 +772,20 @@ func TestTieredStore_VersionHistory_EventRel(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
-	n2 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
 
-	if err := ts.PutRelVersion(r.InternalID().SnowflakeID(), 0, r); err != nil {
+	if err := ts.PutRelVersion(r.ID(), 0, r); err != nil {
 		t.Fatal(err)
 	}
 
-	hist, err := ts.GetRelHistory(r.InternalID().SnowflakeID())
+	hist, err := ts.GetRelHistory(r.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -804,12 +804,12 @@ func TestTieredStore_AllNodeHistoryIDs_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	refN := types.NewNode(gen.Generate(), caseTok, nil)
-	evtN := types.NewNode(gen.Generate(), signalTok, nil)
+	refN := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(refN)
 	_ = ts.PutNode(evtN)
-	_ = ts.PutNodeVersion(refN.InternalID().SnowflakeID(), 0, refN)
-	_ = ts.PutNodeVersion(evtN.InternalID().SnowflakeID(), 0, evtN)
+	_ = ts.PutNodeVersion(refN.ID(), 0, refN)
+	_ = ts.PutNodeVersion(evtN.ID(), 0, evtN)
 
 	ids, err := ts.AllNodeHistoryIDs()
 	if err != nil {
@@ -832,17 +832,17 @@ func TestTieredStore_PutNodesBatch_MixedRefEvent(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
-	evtNode := types.NewNode(gen.Generate(), signalTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 
 	if err := ts.PutNodesBatch([]*types.Node{refNode, evtNode}); err != nil {
 		t.Fatal(err)
 	}
 
-	if !ts.refShard.hasNodeID(refNode.InternalID().SnowflakeID()) {
+	if !ts.refShard.hasNodeID(refNode.ID().SnowflakeID()) {
 		t.Error("batch ref node should be in refShard")
 	}
-	if !ts.hotShard.store.hasNodeID(evtNode.InternalID().SnowflakeID()) {
+	if !ts.hotShard.store.hasNodeID(evtNode.ID().SnowflakeID()) {
 		t.Error("batch event node should be in hotShard")
 	}
 }
@@ -857,14 +857,14 @@ func TestTieredStore_DeleteNodesBatch(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
-	evtNode := types.NewNode(gen.Generate(), signalTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(refNode)
 	_ = ts.PutNode(evtNode)
 
-	if err := ts.DeleteNodesBatch([]snowflake.ID{
-		refNode.InternalID().SnowflakeID(),
-		evtNode.InternalID().SnowflakeID(),
+	if err := ts.DeleteNodesBatch([]types.NodeID{
+		refNode.ID(),
+		evtNode.ID(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -885,16 +885,16 @@ func TestTieredStore_PutRelationshipsBatch_MixedSameAndCross(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
 
 	rGen := tieredRelGen(t)
-	sameShard := types.NewRelationship(rGen.Generate(), 1, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID())
-	crossShard := types.NewRelationship(rGen.Generate(), 1, s1.InternalID().SnowflakeID(), c1.InternalID().SnowflakeID())
+	sameShard := types.NewRelationship(types.RelID(rGen.Generate()), 1, c1.ID(), c2.ID())
+	crossShard := types.NewRelationship(types.RelID(rGen.Generate()), 1, s1.ID(), c1.ID())
 
 	if err := ts.PutRelationshipsBatch([]*types.Relationship{sameShard, crossShard}); err != nil {
 		t.Fatal(err)
@@ -916,7 +916,7 @@ func TestTieredStore_PropertyIndex_RoutedByLabel(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	ps, _ := types.NewPropertySlice(map[string]any{"status": "open"})
 	n.SetProperties(ps)
 	_ = ts.PutNode(n)
@@ -969,8 +969,8 @@ func TestTieredStore_Clear_AllShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil))
 
 	if err := ts.Clear(); err != nil {
 		t.Fatal(err)
@@ -1010,8 +1010,8 @@ func TestTieredStore_AllNodeIDs_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	_ = ts.PutNode(types.NewNode(gen.Generate(), caseTok, nil))
-	_ = ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), caseTok, nil))
+	_ = ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil))
 
 	ids, err := ts.AllNodeIDs(QueryOpts{})
 	if err != nil {
@@ -1036,18 +1036,18 @@ func TestTieredStore_AllRelIDs_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
 	_ = ts.PutNode(s2)
 
 	rGen := tieredRelGen(t)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), 1, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID()))
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), 1, s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), 1, c1.ID(), c2.ID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), 1, s1.ID(), s2.ID()))
 
 	ids, err := ts.AllRelIDs(QueryOpts{})
 	if err != nil {
@@ -1072,14 +1072,14 @@ func TestTieredStore_AllNodes_Pagination(t *testing.T) {
 	gen := tieredNodeGen(t)
 	var nodeIDs []snowflake.ID
 	for i := 0; i < 3; i++ {
-		n := types.NewNode(gen.Generate(), caseTok, nil)
+		n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 		_ = ts.PutNode(n)
-		nodeIDs = append(nodeIDs, n.InternalID().SnowflakeID())
+		nodeIDs = append(nodeIDs, n.ID().SnowflakeID())
 	}
 	for i := 0; i < 3; i++ {
-		n := types.NewNode(gen.Generate(), signalTok, nil)
+		n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 		_ = ts.PutNode(n)
-		nodeIDs = append(nodeIDs, n.InternalID().SnowflakeID())
+		nodeIDs = append(nodeIDs, n.ID().SnowflakeID())
 	}
 
 	// Page 1.
@@ -1092,14 +1092,14 @@ func TestTieredStore_AllNodes_Pagination(t *testing.T) {
 	}
 
 	// Page 2.
-	page2, err := ts.AllNodes(QueryOpts{Limit: 2, After: page1[1].InternalID().SnowflakeID()})
+	page2, err := ts.AllNodes(QueryOpts{Limit: 2, After: page1[1].ID().SnowflakeID()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page2) != 2 {
 		t.Fatalf("page2 = %d, want 2", len(page2))
 	}
-	if page2[0].InternalID().SnowflakeID() <= page1[1].InternalID().SnowflakeID() {
+	if page2[0].ID() <= page1[1].ID() {
 		t.Error("page2 should start after page1")
 	}
 }
@@ -1120,7 +1120,7 @@ func TestTieredStore_DiskBacked_CreateAndReopen(t *testing.T) {
 	}
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), 1, nil) // token 1 = first label
+	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil) // token 1 = first label
 	if err := ts.refShard.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -1278,15 +1278,15 @@ func TestTieredStore_GetNodesByIDs(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	refN := types.NewNode(gen.Generate(), caseTok, nil)
-	evtN := types.NewNode(gen.Generate(), signalTok, nil)
+	refN := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(refN)
 	_ = ts.PutNode(evtN)
 
-	got, err := ts.GetNodesByIDs([]snowflake.ID{
-		refN.InternalID().SnowflakeID(),
-		evtN.InternalID().SnowflakeID(),
-		snowflake.ID(999), // missing
+	got, err := ts.GetNodesByIDs([]types.NodeID{
+		refN.ID(),
+		evtN.ID(),
+		types.NodeID(999), // missing
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1304,18 +1304,18 @@ func TestTieredStore_GetRelationshipsByIDs(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
 
-	got, err := ts.GetRelationshipsByIDs([]snowflake.ID{
-		r.InternalID().SnowflakeID(),
-		snowflake.ID(999), // missing
+	got, err := ts.GetRelationshipsByIDs([]types.RelID{
+		r.ID(),
+		types.RelID(999), // missing
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1337,10 +1337,10 @@ func TestTieredStore_RelationshipsByType_MergesShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
@@ -1348,8 +1348,8 @@ func TestTieredStore_RelationshipsByType_MergesShards(t *testing.T) {
 
 	rGen := tieredRelGen(t)
 	var relType uint16 = 1
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID()))
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType, s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType, c1.ID(), c2.ID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType, s1.ID(), s2.ID()))
 
 	rels, err := ts.RelationshipsByType(relType, QueryOpts{})
 	if err != nil {
@@ -1372,10 +1372,10 @@ func TestTieredStore_RelCountByType(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
@@ -1383,8 +1383,8 @@ func TestTieredStore_RelCountByType(t *testing.T) {
 
 	rGen := tieredRelGen(t)
 	var relType uint16 = 1
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID()))
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType, s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType, c1.ID(), c2.ID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType, s1.ID(), s2.ID()))
 
 	count, err := ts.RelCountByType(relType)
 	if err != nil {
@@ -1405,13 +1405,13 @@ func TestTieredStore_ReplaceRelationship(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
 
 	updated := r.DeepCopy()
@@ -1420,7 +1420,7 @@ func TestTieredStore_ReplaceRelationship(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := ts.GetRelationship(r.InternalID().SnowflakeID())
+	got, _ := ts.GetRelationship(r.ID())
 	if got.Version() != 1 {
 		t.Errorf("version = %d, want 1", got.Version())
 	}
@@ -1435,10 +1435,10 @@ func TestTieredStore_TruncateHistory(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 	_ = ts.PutNodeVersion(nid, 0, n)
 	_ = ts.PutNodeVersion(nid, 1, n)
 	_ = ts.PutNodeVersion(nid, 2, n)
@@ -1462,15 +1462,15 @@ func TestTieredStore_GetNodeVersion(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
-	_ = ts.PutNodeVersion(n.InternalID().SnowflakeID(), 0, n)
+	_ = ts.PutNodeVersion(n.ID(), 0, n)
 
-	got, err := ts.GetNodeVersion(n.InternalID().SnowflakeID(), 0)
+	got, err := ts.GetNodeVersion(n.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("version node ID mismatch")
 	}
 }
@@ -1482,21 +1482,21 @@ func TestTieredStore_GetRelVersion(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
-	_ = ts.PutRelVersion(r.InternalID().SnowflakeID(), 0, r)
+	_ = ts.PutRelVersion(r.ID(), 0, r)
 
-	got, err := ts.GetRelVersion(r.InternalID().SnowflakeID(), 0)
+	got, err := ts.GetRelVersion(r.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != r.InternalID().SnowflakeID() {
+	if got.ID() != r.ID() {
 		t.Error("version rel ID mismatch")
 	}
 }
@@ -1510,7 +1510,7 @@ func TestTieredStore_ReplaceNodeWithHistory(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 
 	prev := n.DeepCopy()
@@ -1521,12 +1521,12 @@ func TestTieredStore_ReplaceNodeWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := ts.GetNode(n.InternalID().SnowflakeID())
+	got, _ := ts.GetNode(n.ID())
 	if got.Version() != 1 {
 		t.Errorf("version = %d, want 1", got.Version())
 	}
 
-	hist, _ := ts.GetNodeHistory(n.InternalID().SnowflakeID())
+	hist, _ := ts.GetNodeHistory(n.ID())
 	if len(hist) != 1 {
 		t.Errorf("history = %d, want 1", len(hist))
 	}
@@ -1539,13 +1539,13 @@ func TestTieredStore_ReplaceRelWithHistory(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
 
 	prev := r.DeepCopy()
@@ -1556,7 +1556,7 @@ func TestTieredStore_ReplaceRelWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := ts.GetRelationship(r.InternalID().SnowflakeID())
+	got, _ := ts.GetRelationship(r.ID())
 	if got.Version() != 1 {
 		t.Errorf("version = %d, want 1", got.Version())
 	}
@@ -1574,16 +1574,16 @@ func TestTieredStore_DeleteRelationshipsBatch(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c := types.NewNode(gen.Generate(), caseTok, nil)
-	s := types.NewNode(gen.Generate(), signalTok, nil)
+	c := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c)
 	_ = ts.PutNode(s)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, s.InternalID().SnowflakeID(), c.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, s.ID(), c.ID())
 	_ = ts.PutRelationship(r)
 
-	if err := ts.DeleteRelationshipsBatch([]snowflake.ID{r.InternalID().SnowflakeID()}); err != nil {
+	if err := ts.DeleteRelationshipsBatch([]types.RelID{r.ID()}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1605,22 +1605,22 @@ func TestTieredStore_AllRelHistoryIDs(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	c1 := types.NewNode(gen.Generate(), caseTok, nil)
-	c2 := types.NewNode(gen.Generate(), caseTok, nil)
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	c1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	c2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(c1)
 	_ = ts.PutNode(c2)
 	_ = ts.PutNode(s1)
 	_ = ts.PutNode(s2)
 
 	rGen := tieredRelGen(t)
-	rr := types.NewRelationship(rGen.Generate(), 1, c1.InternalID().SnowflakeID(), c2.InternalID().SnowflakeID())
-	ee := types.NewRelationship(rGen.Generate(), 1, s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID())
+	rr := types.NewRelationship(types.RelID(rGen.Generate()), 1, c1.ID(), c2.ID())
+	ee := types.NewRelationship(types.RelID(rGen.Generate()), 1, s1.ID(), s2.ID())
 	_ = ts.PutRelationship(rr)
 	_ = ts.PutRelationship(ee)
-	_ = ts.PutRelVersion(rr.InternalID().SnowflakeID(), 0, rr)
-	_ = ts.PutRelVersion(ee.InternalID().SnowflakeID(), 0, ee)
+	_ = ts.PutRelVersion(rr.ID(), 0, rr)
+	_ = ts.PutRelVersion(ee.ID(), 0, ee)
 
 	ids, err := ts.AllRelHistoryIDs()
 	if err != nil {
@@ -1640,16 +1640,16 @@ func TestTieredStore_TruncateRelHistory(t *testing.T) {
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), caseTok, nil)
-	n2 := types.NewNode(gen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1, n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r)
 
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 	_ = ts.PutRelVersion(rid, 0, r)
 	_ = ts.PutRelVersion(rid, 1, r)
 
@@ -1696,7 +1696,7 @@ func TestTieredStore_Rotation(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Write event node before rotation.
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -1772,7 +1772,7 @@ func TestTieredStore_WarmShardStillReadable(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Write event node before rotation.
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -1780,11 +1780,11 @@ func TestTieredStore_WarmShardStillReadable(t *testing.T) {
 	forceRotation(t, ts)
 
 	// Entity from warm shard should still be readable.
-	got, err := ts.GetNode(n1.InternalID().SnowflakeID())
+	got, err := ts.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode from warm shard: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if got.ID() != n1.ID() {
 		t.Error("node ID mismatch from warm shard")
 	}
 }
@@ -1801,20 +1801,20 @@ func TestTieredStore_WriteAfterRotation(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Write before rotation.
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 
 	forceRotation(t, ts)
 	newHotStore := ts.hotShard.store
 
 	// Write after rotation.
-	n2 := types.NewNode(gen.Generate(), signalTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
 
 	// n2 should be in new hot shard, not the warm shard.
-	if !newHotStore.hasNodeID(n2.InternalID().SnowflakeID()) {
+	if !newHotStore.hasNodeID(n2.ID().SnowflakeID()) {
 		t.Error("post-rotation node should be in new hot shard")
 	}
 
@@ -1838,7 +1838,7 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
 
 	oldHotName := ts.hotShard.name
@@ -1864,7 +1864,7 @@ func TestTieredStore_PutRelCrossEventShards(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Create node in what will become the warm shard.
-	warmNode := types.NewNode(gen.Generate(), signalTok, nil)
+	warmNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(warmNode); err != nil {
 		t.Fatal(err)
 	}
@@ -1872,23 +1872,23 @@ func TestTieredStore_PutRelCrossEventShards(t *testing.T) {
 	forceRotation(t, ts)
 
 	// Create node in the new hot shard.
-	hotNode := types.NewNode(gen.Generate(), signalTok, nil)
+	hotNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(hotNode); err != nil {
 		t.Fatal(err)
 	}
 
 	// Connect warm → hot (E→E cross-shard).
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1,
-		warmNode.InternalID().SnowflakeID(),
-		hotNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		warmNode.ID(),
+		hotNode.ID())
 
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship E→E cross-shard: %v", err)
 	}
 
 	// Verify: outgoing from warm node should find the rel.
-	outRels, err := ts.OutgoingRelationships(warmNode.InternalID().SnowflakeID(), 0)
+	outRels, err := ts.OutgoingRelationships(warmNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1897,7 +1897,7 @@ func TestTieredStore_PutRelCrossEventShards(t *testing.T) {
 	}
 
 	// Verify: incoming to hot node should find the rel.
-	inRels, err := ts.IncomingRelationships(hotNode.InternalID().SnowflakeID(), 0)
+	inRels, err := ts.IncomingRelationships(hotNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1917,27 +1917,27 @@ func TestTieredStore_DeleteRelCrossEventShards(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 
-	warmNode := types.NewNode(gen.Generate(), signalTok, nil)
+	warmNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmNode)
 
 	forceRotation(t, ts)
 
-	hotNode := types.NewNode(gen.Generate(), signalTok, nil)
+	hotNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotNode)
 
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1,
-		warmNode.InternalID().SnowflakeID(),
-		hotNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		warmNode.ID(),
+		hotNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// Delete the cross-shard E→E relationship.
-	if err := ts.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+	if err := ts.DeleteRelationship(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship cross-shard E→E: %v", err)
 	}
 
 	// Outgoing from warm node should be empty.
-	outRels, err := ts.OutgoingRelationships(warmNode.InternalID().SnowflakeID(), 0)
+	outRels, err := ts.OutgoingRelationships(warmNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1946,7 +1946,7 @@ func TestTieredStore_DeleteRelCrossEventShards(t *testing.T) {
 	}
 
 	// Incoming to hot node should be empty.
-	inRels, err := ts.IncomingRelationships(hotNode.InternalID().SnowflakeID(), 0)
+	inRels, err := ts.IncomingRelationships(hotNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1967,30 +1967,30 @@ func TestTieredStore_OutgoingRelsCrossEventShards(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Create multiple nodes in warm shard.
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
-	n2 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 	_ = ts.PutNode(n2)
 
 	forceRotation(t, ts)
 
 	// Create hot node and connect warm→hot.
-	n3 := types.NewNode(gen.Generate(), signalTok, nil)
+	n3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n3)
 
 	rGen := tieredRelGen(t)
 	// warm→warm (same shard).
-	r1 := types.NewRelationship(rGen.Generate(), 1,
-		n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r1 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		n1.ID(), n2.ID())
 	_ = ts.PutRelationship(r1)
 
 	// warm→hot (cross-shard).
-	r2 := types.NewRelationship(rGen.Generate(), 1,
-		n1.InternalID().SnowflakeID(), n3.InternalID().SnowflakeID())
+	r2 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		n1.ID(), n3.ID())
 	_ = ts.PutRelationship(r2)
 
 	// Outgoing from n1 (warm) should have both rels.
-	outRels, err := ts.OutgoingRelationships(n1.InternalID().SnowflakeID(), 0)
+	outRels, err := ts.OutgoingRelationships(n1.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2010,22 +2010,22 @@ func TestTieredStore_IncomingRelsCrossEventShards(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 
-	warmNode := types.NewNode(gen.Generate(), signalTok, nil)
+	warmNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmNode)
 
 	forceRotation(t, ts)
 
-	hotNode := types.NewNode(gen.Generate(), signalTok, nil)
+	hotNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotNode)
 
 	// hot→warm (cross-shard, incoming to warm).
 	rGen := tieredRelGen(t)
-	r := types.NewRelationship(rGen.Generate(), 1,
-		hotNode.InternalID().SnowflakeID(), warmNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		hotNode.ID(), warmNode.ID())
 	_ = ts.PutRelationship(r)
 
 	// Incoming to warm node from hot rel.
-	inRels, err := ts.IncomingRelationships(warmNode.InternalID().SnowflakeID(), 0)
+	inRels, err := ts.IncomingRelationships(warmNode.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2048,13 +2048,13 @@ func TestTieredStore_DepthHot(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Write to warm shard.
-	warmN := types.NewNode(gen.Generate(), signalTok, nil)
+	warmN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmN)
 
 	forceRotation(t, ts)
 
 	// Write to hot shard.
-	hotN := types.NewNode(gen.Generate(), signalTok, nil)
+	hotN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotN)
 
 	// DepthHot: only hot shard entities.
@@ -2065,7 +2065,7 @@ func TestTieredStore_DepthHot(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Errorf("AllNodes(DepthHot) = %d, want 1 (hot only)", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != hotN.InternalID().SnowflakeID() {
+	if nodes[0].ID() != hotN.ID() {
 		t.Error("DepthHot should return the hot node")
 	}
 }
@@ -2081,12 +2081,12 @@ func TestTieredStore_DepthWarm(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 
-	warmN := types.NewNode(gen.Generate(), signalTok, nil)
+	warmN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmN)
 
 	forceRotation(t, ts)
 
-	hotN := types.NewNode(gen.Generate(), signalTok, nil)
+	hotN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotN)
 
 	// DepthWarm: hot + warm.
@@ -2110,12 +2110,12 @@ func TestTieredStore_DepthAll(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 
-	warmN := types.NewNode(gen.Generate(), signalTok, nil)
+	warmN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmN)
 
 	forceRotation(t, ts)
 
-	hotN := types.NewNode(gen.Generate(), signalTok, nil)
+	hotN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotN)
 
 	// DepthAll: all tiers.
@@ -2139,12 +2139,12 @@ func TestTieredStore_DepthZeroIsAll(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 
-	warmN := types.NewNode(gen.Generate(), signalTok, nil)
+	warmN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmN)
 
 	forceRotation(t, ts)
 
-	hotN := types.NewNode(gen.Generate(), signalTok, nil)
+	hotN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotN)
 
 	// Zero Depth should be backward-compatible (all tiers).
@@ -2169,14 +2169,14 @@ func TestTieredStore_DepthCounters(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// 1 ref node, 1 warm event, 1 hot event.
-	refN := types.NewNode(gen.Generate(), caseTok, nil)
+	refN := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(refN)
-	warmN := types.NewNode(gen.Generate(), signalTok, nil)
+	warmN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(warmN)
 
 	forceRotation(t, ts)
 
-	hotN := types.NewNode(gen.Generate(), signalTok, nil)
+	hotN := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(hotN)
 
 	// NodeCount always returns total (DepthAll).
@@ -2224,7 +2224,7 @@ func TestTieredStore_RestartWithWarmShards(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	// Token 3 = event (after Case=1, User=2 if we had them, but just use 3 directly).
-	n1 := types.NewNode(gen.Generate(), 3, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts1.hotShard.store.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -2265,11 +2265,11 @@ func TestTieredStore_RestartWithWarmShards(t *testing.T) {
 	}
 
 	// Verify warm shard entity is accessible.
-	got, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	got, err := ts2.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode from warm shard after restart: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if got.ID() != n1.ID() {
 		t.Error("node ID mismatch after restart")
 	}
 }
@@ -2378,7 +2378,7 @@ func TestTieredStore_RestartSnowflakeResolution(t *testing.T) {
 	}
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), 3, nil) // event node
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil) // event node
 	if err := ts1.hotShard.store.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -2392,7 +2392,7 @@ func TestTieredStore_RestartSnowflakeResolution(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Create another node in new hot shard.
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts1.hotShard.store.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
@@ -2412,19 +2412,19 @@ func TestTieredStore_RestartSnowflakeResolution(t *testing.T) {
 	defer ts2.Close()
 
 	// IDs from warm shard should resolve correctly.
-	got1, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	got1, err := ts2.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode n1 (warm): %v", err)
 	}
-	if got1.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if got1.ID() != n1.ID() {
 		t.Error("n1 ID mismatch")
 	}
 
-	got2, err := ts2.GetNode(n2.InternalID().SnowflakeID())
+	got2, err := ts2.GetNode(n2.ID())
 	if err != nil {
 		t.Fatalf("GetNode n2 (hot): %v", err)
 	}
-	if got2.InternalID().SnowflakeID() != n2.InternalID().SnowflakeID() {
+	if got2.ID() != n2.ID() {
 		t.Error("n2 ID mismatch")
 	}
 }
@@ -2444,7 +2444,7 @@ func TestBadgerStore_ReadOnly(t *testing.T) {
 	}
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), 1, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -2465,11 +2465,11 @@ func TestBadgerStore_ReadOnly(t *testing.T) {
 	defer bs2.Close()
 
 	// Reads should work.
-	got, err := bs2.GetNode(n.InternalID().SnowflakeID())
+	got, err := bs2.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode from read-only: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("node ID mismatch")
 	}
 }
@@ -2593,22 +2593,22 @@ func TestTieredStore_DepthRelationshipsByType(t *testing.T) {
 	var relType uint16 = 1
 
 	// Create rel in warm shard.
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(s1)
 	_ = ts.PutNode(s2)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType,
-		s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType,
+		s1.ID(), s2.ID()))
 
 	forceRotation(t, ts)
 
 	// Create rel in hot shard.
-	s3 := types.NewNode(gen.Generate(), signalTok, nil)
-	s4 := types.NewNode(gen.Generate(), signalTok, nil)
+	s3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s4 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(s3)
 	_ = ts.PutNode(s4)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), relType,
-		s3.InternalID().SnowflakeID(), s4.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), relType,
+		s3.ID(), s4.ID()))
 
 	// DepthHot: only hot shard rels.
 	hotRels, err := ts.RelationshipsByType(relType, QueryOpts{Depth: DepthHot})
@@ -2643,21 +2643,21 @@ func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 	gen := tieredNodeGen(t)
 	rGen := tieredRelGen(t)
 
-	s1 := types.NewNode(gen.Generate(), signalTok, nil)
-	s2 := types.NewNode(gen.Generate(), signalTok, nil)
+	s1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(s1)
 	_ = ts.PutNode(s2)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), 1,
-		s1.InternalID().SnowflakeID(), s2.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		s1.ID(), s2.ID()))
 
 	forceRotation(t, ts)
 
-	s3 := types.NewNode(gen.Generate(), signalTok, nil)
-	s4 := types.NewNode(gen.Generate(), signalTok, nil)
+	s3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	s4 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(s3)
 	_ = ts.PutNode(s4)
-	_ = ts.PutRelationship(types.NewRelationship(rGen.Generate(), 1,
-		s3.InternalID().SnowflakeID(), s4.InternalID().SnowflakeID()))
+	_ = ts.PutRelationship(types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		s3.ID(), s4.ID()))
 
 	hotIDs, err := ts.AllRelIDs(QueryOpts{Depth: DepthHot})
 	if err != nil {
@@ -2703,11 +2703,11 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	// Remember which shard has the node.
 	ts.mu.RLock()
@@ -2744,7 +2744,7 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode from cold shard: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != nodeID {
+	if got.ID() != nodeID {
 		t.Error("node ID mismatch after cold shard access")
 	}
 }
@@ -2771,9 +2771,9 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	// Flush to disk so data survives close+reopen.
 	ts.mu.RLock()
@@ -2815,7 +2815,7 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after idle-close + re-open: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != nodeID {
+	if got.ID() != nodeID {
 		t.Error("node ID mismatch after re-open")
 	}
 }
@@ -2829,7 +2829,7 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
 
 	// Remember shard name, rotate, then manually demote to cold.
@@ -2845,11 +2845,11 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 	demoteToCold(ts, hotName)
 
 	// Resolve shard via shardForNodeID — should find the cold shard.
-	shard, err := ts.shardForNodeID(n.InternalID().SnowflakeID())
+	shard, err := ts.shardForNodeID(n.ID())
 	if err != nil {
 		t.Fatalf("shardForNodeID: %v", err)
 	}
-	if !shard.hasNodeID(n.InternalID().SnowflakeID()) {
+	if !shard.hasNodeID(n.ID().SnowflakeID()) {
 		t.Error("shard should have the node")
 	}
 }
@@ -2968,7 +2968,7 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
 
 	// Flush the hot shard so data is persisted to Badger.
@@ -3020,11 +3020,11 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 	}
 
 	// Verify data is accessible (triggers lazy-open).
-	got, err := ts2.GetNode(n.InternalID().SnowflakeID())
+	got, err := ts2.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode from cold shard after restart: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("node ID mismatch")
 	}
 }
@@ -3063,9 +3063,9 @@ func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	// Remember shard, rotate, demote to cold.
 	ts.mu.RLock()
@@ -3111,11 +3111,11 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Add ref node.
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(refNode)
 
 	// Add event node, rotate, add another event node.
-	evtNode1 := types.NewNode(gen.Generate(), signalTok, nil)
+	evtNode1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(evtNode1)
 
 	time.Sleep(2 * time.Millisecond)
@@ -3123,7 +3123,7 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 	_ = ts.RotateHotShard()
 	ts.mu.Unlock()
 
-	evtNode2 := types.NewNode(gen.Generate(), signalTok, nil)
+	evtNode2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(evtNode2)
 
 	// AllNodes should return 3 nodes (parallel query).
@@ -3137,7 +3137,7 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 
 	// Verify sorted order.
 	for i := 1; i < len(nodes); i++ {
-		if nodes[i].InternalID().SnowflakeID() <= nodes[i-1].InternalID().SnowflakeID() {
+		if nodes[i].ID() <= nodes[i-1].ID() {
 			t.Error("AllNodes result not sorted")
 		}
 	}
@@ -3183,7 +3183,7 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Add node in shard 1, rotate, add in shard 2, rotate, add in shard 3.
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 
 	ts.mu.RLock()
@@ -3195,7 +3195,7 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	_ = ts.RotateHotShard()
 	ts.mu.Unlock()
 
-	n2 := types.NewNode(gen.Generate(), signalTok, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n2)
 
 	ts.mu.RLock()
@@ -3207,7 +3207,7 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	_ = ts.RotateHotShard()
 	ts.mu.Unlock()
 
-	n3 := types.NewNode(gen.Generate(), signalTok, nil)
+	n3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n3)
 
 	// Demote older shards to cold.
@@ -3235,7 +3235,7 @@ func TestTieredStore_ParallelErrorPropagation(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
 
 	time.Sleep(2 * time.Millisecond)
@@ -3267,7 +3267,7 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, _ := g.AddNode([]string{"Case"}, map[string]any{"name": "C001"})
-	caseID := caseNode.InternalID().SnowflakeID()
+	caseID := caseNode.ID()
 
 	// Archive.
 	if err := ts.ArchiveNode(caseID); err != nil {
@@ -3275,12 +3275,12 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// Node should no longer be in refShard.
-	if ts.refShard.hasNodeID(caseID) {
+	if ts.refShard.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should not be in refShard after archive")
 	}
 
 	// Node should be in refArchive.
-	if ts.refArchive == nil || !ts.refArchive.hasNodeID(caseID) {
+	if ts.refArchive == nil || !ts.refArchive.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -3289,7 +3289,7 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after archive: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != caseID {
+	if got.ID() != caseID {
 		t.Error("node ID mismatch")
 	}
 }
@@ -3302,8 +3302,8 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	case2, _ := g.AddNode([]string{"Case"}, nil)
 	_, _ = g.AddRelationship("RELATED_TO", case1, case2, nil)
 
-	case1ID := case1.InternalID().SnowflakeID()
-	case2ID := case2.InternalID().SnowflakeID()
+	case1ID := case1.ID()
+	case2ID := case2.ID()
 
 	// Archiving case1 alone: rel is skipped (case2 not in archive) and
 	// cascade-deleted from refShard. This is correct partial-archive behavior.
@@ -3312,15 +3312,15 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	}
 
 	// case1 in archive, not in refShard.
-	if !ts.refArchive.hasNodeID(case1ID) {
+	if !ts.refArchive.hasNodeID(case1ID.SnowflakeID()) {
 		t.Error("case1 should be in archive")
 	}
-	if ts.refShard.hasNodeID(case1ID) {
+	if ts.refShard.hasNodeID(case1ID.SnowflakeID()) {
 		t.Error("case1 should not be in refShard")
 	}
 
 	// case2 still in refShard.
-	if !ts.refShard.hasNodeID(case2ID) {
+	if !ts.refShard.hasNodeID(case2ID.SnowflakeID()) {
 		t.Error("case2 should still be in refShard")
 	}
 
@@ -3333,7 +3333,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, _ := g.AddNode([]string{"Case"}, map[string]any{"status": "closed"})
-	caseID := caseNode.InternalID().SnowflakeID()
+	caseID := caseNode.ID()
 
 	// Archive then restore.
 	if err := ts.ArchiveNode(caseID); err != nil {
@@ -3344,12 +3344,12 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// Node should be back in refShard.
-	if !ts.refShard.hasNodeID(caseID) {
+	if !ts.refShard.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should be in refShard after restore")
 	}
 
 	// Node should NOT be in archive.
-	if ts.refArchive.hasNodeID(caseID) {
+	if ts.refArchive.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should not be in archive after restore")
 	}
 
@@ -3358,7 +3358,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.InternalID().SnowflakeID() != caseID {
+	if got.ID() != caseID {
 		t.Error("node ID mismatch after restore")
 	}
 }
@@ -3373,7 +3373,7 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 	}
 
 	caseNode, _ := g.AddNode([]string{"Case"}, nil)
-	_ = ts.ArchiveNode(caseNode.InternalID().SnowflakeID())
+	_ = ts.ArchiveNode(caseNode.ID())
 
 	if ts.refArchive == nil {
 		t.Error("refArchive should be opened after ArchiveNode")
@@ -3385,7 +3385,7 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, _ := g.AddNode([]string{"Case"}, nil)
-	caseID := caseNode.InternalID().SnowflakeID()
+	caseID := caseNode.ID()
 
 	_ = ts.ArchiveNode(caseID)
 
@@ -3406,14 +3406,14 @@ func TestTieredStore_ArchiveDepthAll(t *testing.T) {
 	sig1, _ := g.AddNode([]string{"Signal"}, nil)
 	_ = sig1
 
-	_ = ts.ArchiveNode(case1.InternalID().SnowflakeID())
+	_ = ts.ArchiveNode(case1.ID())
 
 	// GetNode should find archived node.
-	got, err := g.GetNode(case1.InternalID().SnowflakeID())
+	got, err := g.GetNode(case1.ID())
 	if err != nil {
 		t.Fatalf("GetNode for archived node: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != case1.InternalID().SnowflakeID() {
+	if got.ID() != case1.ID() {
 		t.Error("archived node ID mismatch")
 	}
 }
@@ -3436,11 +3436,11 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
 	_ = ts.refShard.Flush()
 
-	_ = ts.ArchiveNode(n.InternalID().SnowflakeID())
+	_ = ts.ArchiveNode(n.ID())
 	_ = ts.refArchive.Flush()
 
 	_ = ts.Close()
@@ -3461,11 +3461,11 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	_, _ = reg2.GetOrCreate("Case")
 
 	// Node should be findable (triggers archive lazy-open via shardForNodeID).
-	got, err := ts2.GetNode(n.InternalID().SnowflakeID())
+	got, err := ts2.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode after restart: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+	if got.ID() != n.ID() {
 		t.Error("archived node ID mismatch after restart")
 	}
 }
@@ -3475,7 +3475,7 @@ func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	sigNode, _ := g.AddNode([]string{"Signal"}, nil)
-	err := ts.ArchiveNode(sigNode.InternalID().SnowflakeID())
+	err := ts.ArchiveNode(sigNode.ID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound for event node archive, got %v", err)
 	}
@@ -3494,7 +3494,7 @@ func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
 	id := gen.Generate()
 
 	// Normal case: no error for non-existent node (falls back to hot shard).
-	shard, err := ts.shardForNodeID(id)
+	shard, err := ts.shardForNodeID(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("shardForNodeID should not error: %v", err)
 	}
@@ -3511,7 +3511,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 	gen := tieredRelGen(t)
 	id := gen.Generate()
 
-	shard, err := ts.shardForRelID(id)
+	shard, err := ts.shardForRelID(types.RelID(id))
 	if err != nil {
 		t.Fatalf("shardForRelID should not error: %v", err)
 	}
@@ -3530,7 +3530,7 @@ func TestTieredStore_RoutingErrorInWrite(t *testing.T) {
 	id := gen.Generate()
 
 	// DeleteNode for non-existent node should hit shardForNodeID then store.
-	err := ts.DeleteNode(id)
+	err := ts.DeleteNode(types.NodeID(id))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -3549,7 +3549,7 @@ func TestGraph_ArchiveNode_NotTiered(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	gen := tieredNodeGen(t)
-	err = g.ArchiveNode(gen.Generate())
+	err = g.ArchiveNode(types.NodeID(gen.Generate()))
 	if err == nil {
 		t.Error("expected error for ArchiveNode on non-TieredStore")
 	}
@@ -3565,7 +3565,7 @@ func TestGraph_RestoreNode_NotTiered(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	gen := tieredNodeGen(t)
-	err = g.RestoreNode(gen.Generate())
+	err = g.RestoreNode(types.NodeID(gen.Generate()))
 	if err == nil {
 		t.Error("expected error for RestoreNode on non-TieredStore")
 	}
@@ -3664,7 +3664,7 @@ func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
 
 	// Create a ref node for the index to index.
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), caseTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	ps, _ := types.NewPropertySlice(map[string]any{"status": "open"})
 	n.SetProperties(ps)
 	if err := ts.PutNode(n); err != nil {
@@ -4076,11 +4076,11 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	relGen := tieredRelGen(t)
 
 	// Create a ref node (Case) and an event node (Signal).
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	if err := ts.PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
-	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
 	if err := ts.PutNode(evtNode); err != nil {
 		t.Fatalf("PutNode evt: %v", err)
 	}
@@ -4088,8 +4088,8 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	// Manually create an orphaned in/ entry on refShard pointing to a non-existent rel.
 	fakeRelID := relGen.Generate()
 	if err := ts.refShard.putRelIncoming(
-		refNode.InternalID().SnowflakeID(),
-		evtNode.InternalID().SnowflakeID(),
+		refNode.ID().SnowflakeID(),
+		evtNode.ID().SnowflakeID(),
 		relTok,
 		fakeRelID,
 	); err != nil {
@@ -4097,7 +4097,7 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	}
 
 	// Verify the orphaned in/ entry exists.
-	inIDs := ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	inIDs := ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Fatalf("expected 1 incoming rel, got %d", len(inIDs))
 	}
@@ -4112,7 +4112,7 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	}
 
 	// Verify the orphaned in/ entry was removed.
-	inIDs = ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	inIDs = ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("expected 0 incoming rels after repair, got %d", len(inIDs))
 	}
@@ -4132,11 +4132,11 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	relGen := tieredRelGen(t)
 
 	// Create a ref node and an event node.
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	if err := ts.PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
-	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
 	if err := ts.PutNode(evtNode); err != nil {
 		t.Fatalf("PutNode evt: %v", err)
 	}
@@ -4144,9 +4144,9 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	// Create a cross-shard relationship (E→R) but ONLY the entity+out side.
 	// This simulates a partial write failure where the in/ write didn't happen.
 	relID := relGen.Generate()
-	r := types.NewRelationship(relID, relTypeTok,
-		evtNode.InternalID().SnowflakeID(),
-		refNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relID), relTypeTok,
+		evtNode.ID(),
+		refNode.ID())
 
 	// Write only entity+out to the event shard (hotShard).
 	ts.mu.RLock()
@@ -4157,7 +4157,7 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	}
 
 	// Verify the in/ entry is missing on refShard.
-	inIDs := ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	inIDs := ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Fatalf("expected 0 incoming rels before repair, got %d", len(inIDs))
 	}
@@ -4172,7 +4172,7 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	}
 
 	// Verify the in/ entry was created.
-	inIDs = ts.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	inIDs = ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Errorf("expected 1 incoming rel after repair, got %d", len(inIDs))
 	}
@@ -4228,11 +4228,11 @@ func TestMigrateFromBadger_NodesOnly(t *testing.T) {
 	gen := newTestGen(t, 0)
 
 	// Add nodes to source.
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	if err := src.PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
-	evtNode := types.NewNode(gen.Generate(), sigTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
 	if err := src.PutNode(evtNode); err != nil {
 		t.Fatalf("PutNode evt: %v", err)
 	}
@@ -4244,14 +4244,14 @@ func TestMigrateFromBadger_NodesOnly(t *testing.T) {
 	}
 
 	// Ref node should be in refShard.
-	if !dst.refShard.hasNodeID(refNode.InternalID().SnowflakeID()) {
+	if !dst.refShard.hasNodeID(refNode.ID().SnowflakeID()) {
 		t.Error("ref node not in refShard")
 	}
 	// Event node should be in hotShard.
 	dst.mu.RLock()
 	hotStore := dst.hotShard.store
 	dst.mu.RUnlock()
-	if !hotStore.hasNodeID(evtNode.InternalID().SnowflakeID()) {
+	if !hotStore.hasNodeID(evtNode.ID().SnowflakeID()) {
 		t.Error("event node not in hotShard")
 	}
 
@@ -4275,8 +4275,8 @@ func TestMigrateFromBadger_WithRels(t *testing.T) {
 	relGen := newTestGen(t, 1)
 
 	// Two ref nodes with a relationship.
-	n1 := types.NewNode(nodeGen.Generate(), caseTok, nil)
-	n2 := types.NewNode(nodeGen.Generate(), caseTok, nil)
+	n1 := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
+	n2 := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
 	if err := src.PutNode(n1); err != nil {
 		t.Fatalf("PutNode n1: %v", err)
 	}
@@ -4287,8 +4287,8 @@ func TestMigrateFromBadger_WithRels(t *testing.T) {
 	rtReg := newRelTypeRegistry()
 	relTok, _ := rtReg.GetOrCreate("RELATED")
 
-	r := types.NewRelationship(relGen.Generate(), relTok,
-		n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relGen.Generate()), relTok,
+		n1.ID(), n2.ID())
 	if err := src.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship: %v", err)
 	}
@@ -4308,11 +4308,11 @@ func TestMigrateFromBadger_WithRels(t *testing.T) {
 	}
 
 	// Verify the relationship is accessible.
-	gotRel, err := dst.GetRelationship(r.InternalID().SnowflakeID())
+	gotRel, err := dst.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
-	if gotRel.InternalID() != r.InternalID() {
+	if gotRel.ID() != r.ID() {
 		t.Error("relationship ID mismatch")
 	}
 }
@@ -4333,8 +4333,8 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 	relGen := newTestGen(t, 1)
 
 	// One ref node (Case) and one event node (Signal).
-	refNode := types.NewNode(nodeGen.Generate(), caseTok, nil)
-	evtNode := types.NewNode(nodeGen.Generate(), sigTok, nil)
+	refNode := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
+	evtNode := types.NewNode(types.NodeID(nodeGen.Generate()), sigTok, nil)
 	if err := src.PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
@@ -4346,8 +4346,8 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 	relTok, _ := rtReg.GetOrCreate("TRIGGERED")
 
 	// E→R relationship in source (single store, no cross-shard concern).
-	r := types.NewRelationship(relGen.Generate(), relTok,
-		evtNode.InternalID().SnowflakeID(), refNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relGen.Generate()), relTok,
+		evtNode.ID(), refNode.ID())
 	if err := src.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship: %v", err)
 	}
@@ -4362,12 +4362,12 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 	hotStore := dst.hotShard.store
 	dst.mu.RUnlock()
 
-	if !hotStore.hasRelID(r.InternalID().SnowflakeID()) {
+	if !hotStore.hasRelID(r.ID().SnowflakeID()) {
 		t.Error("rel entity should be in hot shard (event start node)")
 	}
 
 	// The ref shard should have the incoming index entry.
-	inIDs := dst.refShard.incomingRelIDs(refNode.InternalID().SnowflakeID(), 0)
+	inIDs := dst.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Errorf("refShard incoming rels = %d, want 1", len(inIDs))
 	}
@@ -4397,7 +4397,7 @@ func TestGraph_DecomposeID(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	c := g.DecomposeID(n.InternalID().SnowflakeID())
+	c := g.DecomposeID(n.ID().SnowflakeID())
 	// SnowflakeNodeID 5 → nodeGen uses 5*2=10, relGen uses 5*2+1=11.
 	if c.NodeID != 10 {
 		t.Errorf("NodeID = %d, want 10", c.NodeID)
@@ -4423,7 +4423,7 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -4502,7 +4502,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -4572,7 +4572,7 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -4639,7 +4639,7 @@ func TestTieredStore_ShardForRelID_SkipsColdShards(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
@@ -4667,7 +4667,7 @@ func TestTieredStore_ShardForRelID_SkipsColdShards(t *testing.T) {
 	coldES.shardMu.Unlock()
 
 	// Query a nonexistent relID — fallback should NOT open cold shard.
-	_, _ = ts.shardForRelID(snowflake.ID(999999999))
+	_, _ = ts.shardForRelID(types.RelID(999999999))
 
 	coldES.shardMu.Lock()
 	storeClosed := coldES.store == nil
@@ -4691,8 +4691,8 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	relGen := tieredRelGen(t)
 
 	// Create ref node and event node in hot shard.
-	refNode := types.NewNode(gen.Generate(), caseTok, nil)
-	evtNode := types.NewNode(gen.Generate(), signalTok, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts.PutNode(refNode); err != nil {
 		t.Fatal(err)
 	}
@@ -4702,7 +4702,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 
 	// Create cross-shard relationship (ref→event).
 	relID := relGen.Generate()
-	r := types.NewRelationship(relID, relTypeTok, refNode.InternalID().SnowflakeID(), evtNode.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relID), relTypeTok, refNode.ID(), evtNode.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -4718,7 +4718,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	ts.mu.Unlock()
 
 	// Verify the relationship can still be found via shardForRelID.
-	shard, err := ts.shardForRelID(relID)
+	shard, err := ts.shardForRelID(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("shardForRelID: %v", err)
 	}
@@ -4740,7 +4740,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 
 	// Entity lives in ref shard (for ref-node rels). It should still be found.
 	// The ref shard fast path should resolve it.
-	shard, err = ts.shardForRelID(relID)
+	shard, err = ts.shardForRelID(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("shardForRelID after cold: %v", err)
 	}
@@ -4773,16 +4773,16 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 
 	// Archive n1 — should move to archive.
-	id1 := n1.InternalID().SnowflakeID()
+	id1 := n1.ID()
 	if err := ts.ArchiveNode(id1); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
 	// Verify n1 is in archive, not in refShard.
-	if ts.refShard.hasNodeID(id1) {
+	if ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refShard after archive")
 	}
-	if !ts.refArchive.hasNodeID(id1) {
+	if !ts.refArchive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -4791,10 +4791,10 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatalf("RestoreNode: %v", err)
 	}
 
-	if !ts.refShard.hasNodeID(id1) {
+	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1) {
+	if ts.refArchive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refArchive after restore")
 	}
 }
@@ -4817,9 +4817,9 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id1 := n1.InternalID().SnowflakeID()
-	id2 := n2.InternalID().SnowflakeID()
-	relID := rel.InternalID().SnowflakeID()
+	id1 := n1.ID()
+	id2 := n2.ID()
+	relID := rel.ID()
 
 	// Archive both.
 	if err := ts.ArchiveNode(id1); err != nil {
@@ -4830,7 +4830,7 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 
 	// Verify both in archive.
-	if !ts.refArchive.hasNodeID(id1) || !ts.refArchive.hasNodeID(id2) {
+	if !ts.refArchive.hasNodeID(id1.SnowflakeID()) || !ts.refArchive.hasNodeID(id2.SnowflakeID()) {
 		t.Fatal("both nodes should be in archive")
 	}
 
@@ -4840,15 +4840,15 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatalf("RestoreNode(n1): %v", err)
 	}
 
-	if !ts.refShard.hasNodeID(id1) {
+	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1) {
+	if ts.refArchive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should not be in refArchive after restore")
 	}
 
 	// The rel should not be in refShard (n2 endpoint still in archive).
-	if ts.refShard.hasRelID(relID) {
+	if ts.refShard.hasRelID(relID.SnowflakeID()) {
 		t.Error("rel should not be in refShard (other endpoint still archived)")
 	}
 
@@ -4856,7 +4856,7 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	if err := ts.RestoreNode(id2); err != nil {
 		t.Fatalf("RestoreNode(n2): %v", err)
 	}
-	if !ts.refShard.hasNodeID(id2) {
+	if !ts.refShard.hasNodeID(id2.SnowflakeID()) {
 		t.Error("n2 should be in refShard after restore")
 	}
 	_ = relID // acknowledged
@@ -4936,7 +4936,7 @@ func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
 	}
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), 3, nil) // token 3 = event label
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil) // token 3 = event label
 	if err := ts1.hotShard.store.PutNode(n1); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -5006,11 +5006,11 @@ func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
 	}
 
 	// Verify the node written before crash is still accessible.
-	got, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	got, err := ts2.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode from recovered warm shard: %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if got.ID() != n1.ID() {
 		t.Error("node ID mismatch after WAL recovery")
 	}
 }
@@ -5037,7 +5037,7 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	if err := ts1.PutNode(n1); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -5100,11 +5100,11 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 	}
 
 	// Phase 4: trigger lazy-open by reading the node — should recover.
-	got, err := ts2.GetNode(n1.InternalID().SnowflakeID())
+	got, err := ts2.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode from corrupt cold shard (lazy-open recovery): %v", err)
 	}
-	if got.InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if got.ID() != n1.ID() {
 		t.Error("node ID mismatch after cold shard WAL recovery")
 	}
 }
@@ -5181,14 +5181,14 @@ func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
 
 	// Write multiple nodes and flush between each to ensure they're committed.
 	const nodeCount = 10
-	nodeIDs := make([]snowflake.ID, nodeCount)
+	nodeIDs := make([]types.NodeID, nodeCount)
 	for i := range nodeCount {
-		n := types.NewNode(gen.Generate(), 3, nil)
+		n := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 		if err := ts1.hotShard.store.PutNode(n); err != nil {
 			t.Fatalf("PutNode[%d]: %v", i, err)
 		}
 		_ = ts1.hotShard.store.Flush()
-		nodeIDs[i] = n.InternalID().SnowflakeID()
+		nodeIDs[i] = n.ID()
 	}
 
 	// Rotate hot→warm.
@@ -5222,13 +5222,13 @@ func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
 
 	// ALL nodes written before the crash must survive.
 	for i, id := range nodeIDs {
-		got, err := ts2.GetNode(id)
+		got, err := ts2.GetNode(types.NodeID(id))
 		if err != nil {
 			t.Errorf("node[%d] id=%d lost after recovery: %v", i, id, err)
 			continue
 		}
-		if got.InternalID().SnowflakeID() != id {
-			t.Errorf("node[%d] id mismatch: got %d, want %d", i, got.InternalID().SnowflakeID(), id)
+		if got.ID() != types.NodeID(id) {
+			t.Errorf("node[%d] id mismatch: got %d, want %d", i, got.ID(), id)
 		}
 	}
 }
@@ -5254,7 +5254,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	n1 := types.NewNode(gen.Generate(), signalTok, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts1.PutNode(n1)
 
 	ts1.mu.RLock()
@@ -5297,7 +5297,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 	defer ts2.Close()
 	ts2.SetLabelRegistry(reg)
 
-	nodeID := n1.InternalID().SnowflakeID()
+	nodeID := n1.ID()
 
 	// Hammer with 50 concurrent goroutines — all trigger lazy-open recovery.
 	const goroutines = 50
@@ -5312,7 +5312,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 				errs[idx] = fmt.Errorf("goroutine %d: GetNode: %w", idx, err)
 				return
 			}
-			if got.InternalID().SnowflakeID() != nodeID {
+			if got.ID() != nodeID {
 				errs[idx] = fmt.Errorf("goroutine %d: id mismatch", idx)
 			}
 		}(i)
@@ -5339,30 +5339,30 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	// signal1 and signal2 are event nodes (hot shard).
-	signal1 := types.NewNode(gen.Generate(), signalTok, nil)
-	signal2 := types.NewNode(gen.Generate(), signalTok, nil)
+	signal1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	signal2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	// caseNode is a reference node (ref shard).
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(signal1)
 	_ = ts.PutNode(signal2)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
 	// signal1 -> caseNode (cross-shard)
-	r1 := types.NewRelationship(rGen.Generate(), 1,
-		signal1.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r1 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		signal1.ID(), caseNode.ID())
 	// signal2 -> caseNode (cross-shard)
-	r2 := types.NewRelationship(rGen.Generate(), 1,
-		signal2.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r2 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		signal2.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r1)
 	_ = ts.PutRelationship(r2)
 
-	s1ID := signal1.InternalID().SnowflakeID()
-	s2ID := signal2.InternalID().SnowflakeID()
-	cID := caseNode.InternalID().SnowflakeID()
+	s1ID := signal1.ID()
+	s2ID := signal2.ID()
+	cID := caseNode.ID()
 
 	// Batch query for both signal nodes.
-	got, err := ts.OutgoingRelationshipsForNodes([]snowflake.ID{s1ID, s2ID}, 0)
+	got, err := ts.OutgoingRelationshipsForNodes([]types.NodeID{s1ID, s2ID}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5374,7 +5374,7 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// caseNode has no outgoing — absent from result.
-	got, err = ts.OutgoingRelationshipsForNodes([]snowflake.ID{cID}, 0)
+	got, err = ts.OutgoingRelationshipsForNodes([]types.NodeID{cID}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5383,7 +5383,7 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// Mixed: event + ref nodes in one call.
-	got, err = ts.OutgoingRelationshipsForNodes([]snowflake.ID{s1ID, cID}, 0)
+	got, err = ts.OutgoingRelationshipsForNodes([]types.NodeID{s1ID, cID}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5416,28 +5416,28 @@ func TestTieredStore_IncomingRelationshipsForNodes(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	signal1 := types.NewNode(gen.Generate(), signalTok, nil) // event shard
-	signal2 := types.NewNode(gen.Generate(), signalTok, nil) // event shard
-	caseNode := types.NewNode(gen.Generate(), caseTok, nil)  // ref shard
+	signal1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil) // event shard
+	signal2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil) // event shard
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)  // ref shard
 	_ = ts.PutNode(signal1)
 	_ = ts.PutNode(signal2)
 	_ = ts.PutNode(caseNode)
 
 	rGen := tieredRelGen(t)
 	// signal1 -> caseNode (cross-shard: incoming to caseNode)
-	r1 := types.NewRelationship(rGen.Generate(), 1,
-		signal1.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r1 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		signal1.ID(), caseNode.ID())
 	// signal2 -> caseNode (cross-shard: incoming to caseNode)
-	r2 := types.NewRelationship(rGen.Generate(), 1,
-		signal2.InternalID().SnowflakeID(), caseNode.InternalID().SnowflakeID())
+	r2 := types.NewRelationship(types.RelID(rGen.Generate()), 1,
+		signal2.ID(), caseNode.ID())
 	_ = ts.PutRelationship(r1)
 	_ = ts.PutRelationship(r2)
 
-	s1ID := signal1.InternalID().SnowflakeID()
-	cID := caseNode.InternalID().SnowflakeID()
+	s1ID := signal1.ID()
+	cID := caseNode.ID()
 
 	// Batch query: caseNode has 2 incoming, signal1 has 0 incoming.
-	got, err := ts.IncomingRelationshipsForNodes([]snowflake.ID{cID, s1ID}, 0)
+	got, err := ts.IncomingRelationshipsForNodes([]types.NodeID{cID, s1ID}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -15,7 +14,7 @@ func TestHFIndex_Add_PointQuery(t *testing.T) {
 	hfi := newHighFrequencyIndex(time.Hour, origin)
 
 	// Add an ID with validFrom = origin + 30min
-	id := snowflake.ID(1)
+	id := types.NodeID(1)
 	validFrom := origin + types.Instant(30*60*1000) // 30 minutes in ms
 	hfi.add(id, validFrom)
 
@@ -40,9 +39,9 @@ func TestHFIndex_RangeQuery(t *testing.T) {
 	hfi := newHighFrequencyIndex(time.Hour, origin)
 
 	// Add IDs in different hour buckets
-	id1 := snowflake.ID(1)
-	id2 := snowflake.ID(2)
-	id3 := snowflake.ID(3)
+	id1 := types.NodeID(1)
+	id2 := types.NodeID(2)
+	id3 := types.NodeID(3)
 
 	hfi.add(id1, types.Instant(0))         // bucket 0: hour 0
 	hfi.add(id2, types.Instant(3600*1000)) // bucket 1: hour 1
@@ -76,7 +75,7 @@ func TestHFIndex_Remove(t *testing.T) {
 	origin := types.Instant(0)
 	hfi := newHighFrequencyIndex(time.Hour, origin)
 
-	id := snowflake.ID(42)
+	id := types.NodeID(42)
 	hfi.add(id, types.Instant(1000))
 
 	// Verify it's there
@@ -108,7 +107,7 @@ func TestHFIndex_HighWriteRate(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			id := snowflake.ID(n + 1)
+			id := types.NodeID(n + 1)
 			ts := types.Instant(n * 100) // spread across time
 			hfi.add(id, ts)
 			counter.Add(1)
@@ -281,7 +280,7 @@ func TestHFIndex_BucketFor_BeforeOrigin(t *testing.T) {
 	hfi := newHighFrequencyIndex(time.Hour, origin)
 
 	// validFrom = 0 ms (before origin by exactly one bucket)
-	id := snowflake.ID(99)
+	id := types.NodeID(99)
 	hfi.add(id, types.Instant(0))
 
 	results := hfi.pointQuery(types.Instant(0))
@@ -318,7 +317,7 @@ func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
 	hfi := newHighFrequencyIndex(time.Hour, origin)
 
 	// Add a single entry so the index is non-empty.
-	hfi.add(snowflake.ID(1), types.Instant(0))
+	hfi.add(types.NodeID(1), types.Instant(0))
 
 	// End at math.MaxInt64 — must not loop for 2.5 trillion iterations.
 	// If the implementation regresses, this test will time out via -timeout.

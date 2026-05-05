@@ -10,7 +10,7 @@ import (
 func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Person", "Employee"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.RemoveNodeLabel(id, "Employee"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
@@ -28,7 +28,7 @@ func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Primary", "Secondary"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.RemoveNodeLabel(id, "Primary"); err != nil {
 		t.Fatalf("RemoveNodeLabel primary: %v", err)
@@ -45,7 +45,7 @@ func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Solo"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	err := g.RemoveNodeLabel(id, "Solo")
 	if !errors.Is(err, graph.ErrLastLabel) {
@@ -56,7 +56,7 @@ func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 func TestRemoveNodeLabel_LabelNotFoundError(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	err := g.RemoveNodeLabel(id, "Ghost")
 	if !errors.Is(err, graph.ErrLabelNotFound) {
@@ -79,7 +79,7 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	origHash := ""
 	if ig := n.Integrity(); ig != nil {
 		origHash = ig.Hash
@@ -105,7 +105,7 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	g, _ := graph.New(graph.Config{})
 	n, _ := g.AddNode([]string{"Thing", "Tag"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	before, _ := g.NodesByLabel("Tag", graph.QueryOpts{})
 	if len(before) == 0 {
@@ -118,7 +118,7 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 
 	after, _ := g.NodesByLabel("Tag", graph.QueryOpts{})
 	for _, node := range after {
-		if node.InternalID().SnowflakeID() == id {
+		if node.ID() == id {
 			t.Error("node still found in 'Tag' label index after removal")
 		}
 	}
@@ -130,7 +130,7 @@ func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	var events []graph.Event
 	bus.Subscribe(func(e graph.Event) {

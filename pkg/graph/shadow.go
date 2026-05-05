@@ -45,7 +45,7 @@ func (g *Graph) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
 		if tm := n.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return types.Instant(g.nodeIDGen.CreatedAt(n.InternalID().SnowflakeID()).UnixMilli()), true
+		return types.Instant(g.nodeIDGen.CreatedAt(n.ID().SnowflakeID()).UnixMilli()), true
 	case types.ShadowUpdatedAt:
 		if tm := n.Temporal(); tm != nil {
 			return tm.UpdatedAt, true
@@ -158,7 +158,7 @@ func (g *Graph) ResolveRelProperty(r *types.Relationship, key string) (any, bool
 		if tm := r.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return types.Instant(g.relIDGen.CreatedAt(r.InternalID().SnowflakeID()).UnixMilli()), true
+		return types.Instant(g.relIDGen.CreatedAt(r.ID().SnowflakeID()).UnixMilli()), true
 	case types.ShadowUpdatedAt:
 		if tm := r.Temporal(); tm != nil {
 			return tm.UpdatedAt, true

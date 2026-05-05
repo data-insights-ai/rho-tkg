@@ -222,7 +222,7 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 	})
 
 	n, _ := g.AddNode([]string{"X"}, nil)
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 	_ = g.DeleteNode(nid)
 
 	// Wait for delivery

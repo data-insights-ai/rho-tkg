@@ -9,7 +9,7 @@ import (
 
 func putBadgerNodeTemporal(t *testing.T, bs *BadgerStore, id snowflake.ID, labelToken uint16, validFrom, validTo types.Instant) {
 	t.Helper()
-	n := types.NewNode(id, labelToken, nil)
+	n := types.NewNode(types.NodeID(id), labelToken, nil)
 	n.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo})
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode(%d): %v", id, err)
@@ -18,7 +18,7 @@ func putBadgerNodeTemporal(t *testing.T, bs *BadgerStore, id snowflake.ID, label
 
 func putBadgerRelTemporal(t *testing.T, bs *BadgerStore, id snowflake.ID, typeToken uint16, startID, endID snowflake.ID, validFrom, validTo types.Instant) {
 	t.Helper()
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
 	r.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo})
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship(%d): %v", id, err)
@@ -59,7 +59,7 @@ func TestBadgerStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 		t.Fatalf("page 1: got %d nodes, want 2", len(nodes))
 	}
 
-	nodes2, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].InternalID().SnowflakeID()})
+	nodes2, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].ID().SnowflakeID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,8 +82,8 @@ func TestBadgerStore_AllNodes_ValidAt(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("got %d nodes at t=250, want 1", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != 20 {
-		t.Errorf("expected node 20, got %d", nodes[0].InternalID().SnowflakeID())
+	if nodes[0].ID() != 20 {
+		t.Errorf("expected node 20, got %d", nodes[0].ID())
 	}
 }
 
@@ -104,8 +104,8 @@ func TestBadgerStore_RelationshipsByType_ValidAt(t *testing.T) {
 	if len(rels) != 1 {
 		t.Fatalf("got %d rels, want 1", len(rels))
 	}
-	if rels[0].InternalID().SnowflakeID() != 200 {
-		t.Errorf("expected rel 200, got %d", rels[0].InternalID().SnowflakeID())
+	if rels[0].ID() != 200 {
+		t.Errorf("expected rel 200, got %d", rels[0].ID())
 	}
 }
 
@@ -123,7 +123,7 @@ func TestBadgerStore_AllRelationships_ValidAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rels) != 1 || rels[0].InternalID().SnowflakeID() != 200 {
+	if len(rels) != 1 || rels[0].ID() != 200 {
 		t.Fatalf("got %d rels, want 1 (rel 200)", len(rels))
 	}
 }
@@ -132,14 +132,14 @@ func TestBadgerStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n1 := types.NewNode(snowflake.ID(10), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
 	n1.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 300})
 	n1.SetProperties(mustPropertySlice(t, map[string]any{"color": "red"}))
 	if err := bs.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
 
-	n2 := types.NewNode(snowflake.ID(20), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 0})
 	n2.SetProperties(mustPropertySlice(t, map[string]any{"color": "red"}))
 	if err := bs.PutNode(n2); err != nil {
@@ -151,7 +151,7 @@ func TestBadgerStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 1 || nodes[0].InternalID().SnowflakeID() != 20 {
+	if len(nodes) != 1 || nodes[0].ID() != 20 {
 		t.Fatalf("fallback: got %d nodes, want 1 (node 20)", len(nodes))
 	}
 
@@ -164,7 +164,7 @@ func TestBadgerStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 1 || nodes[0].InternalID().SnowflakeID() != 20 {
+	if len(nodes) != 1 || nodes[0].ID() != 20 {
 		t.Fatalf("indexed: got %d nodes, want 1 (node 20)", len(nodes))
 	}
 }

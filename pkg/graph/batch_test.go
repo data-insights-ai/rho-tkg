@@ -33,7 +33,7 @@ func TestBatchBuilderAddNode(t *testing.T) {
 	if n == nil {
 		t.Fatal("AddNode returned nil node")
 	}
-	if n.InternalID().SnowflakeID() == 0 {
+	if n.ID() == 0 {
 		t.Fatal("AddNode returned zero ID")
 	}
 
@@ -104,7 +104,7 @@ func TestBatchBuilderAddRelationship(t *testing.T) {
 	if r == nil {
 		t.Fatal("AddRelationship returned nil")
 	}
-	if r.InternalID().SnowflakeID() == 0 {
+	if r.ID() == 0 {
 		t.Fatal("AddRelationship returned zero ID")
 	}
 
@@ -142,7 +142,7 @@ func TestBatchBuilderUpdateNodeInvalidKey(t *testing.T) {
 	g := newTestGraph(t)
 	b := NewBatchBuilder(g)
 
-	err := b.UpdateNode(snowflake.ID(1), map[string]any{"tkg_version": 5})
+	err := b.UpdateNode(types.NodeID(1), map[string]any{"tkg_version": 5})
 	if err == nil {
 		t.Fatal("expected error for tkg_ key, got nil")
 	}
@@ -233,7 +233,7 @@ func TestBatchBuilderExecuteNodesAndRels(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 2", relCount)
 	}
 
-	outgoing, _ := g.OutgoingRelationships(n1.InternalID().SnowflakeID(), "")
+	outgoing, _ := g.OutgoingRelationships(n1.ID(), "")
 	if len(outgoing) != 2 {
 		t.Fatalf("OutgoingRelationships(n1) = %d, want 2", len(outgoing))
 	}
@@ -248,7 +248,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	b := NewBatchBuilder(g)
 	if err := b.UpdateNode(id, map[string]any{"name": "Bob", "age": 30}); err != nil {
@@ -284,8 +284,8 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 	r, _ := g.AddRelationship("KNOWS", n1, n2, nil)
 
 	b := NewBatchBuilder(g)
-	b.DeleteRelationship(r.InternalID().SnowflakeID())
-	b.DeleteNode(n1.InternalID().SnowflakeID())
+	b.DeleteRelationship(r.ID())
+	b.DeleteNode(n1.ID())
 
 	result, err := b.Execute()
 	if err != nil {
@@ -311,7 +311,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 
 	// Pre-existing data.
 	existing, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Eve"})
-	existingID := existing.InternalID().SnowflakeID()
+	existingID := existing.ID()
 
 	b := NewBatchBuilder(g)
 
@@ -398,7 +398,7 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 	n1, _ := g.AddNode([]string{"Person"}, nil)
 	n2, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", n1, n2, map[string]any{"weight": 1})
-	rID := r.InternalID().SnowflakeID()
+	rID := r.ID()
 
 	b := NewBatchBuilder(g)
 	if err := b.UpdateRelationship(rID, map[string]any{"weight": 10}); err != nil {
@@ -428,7 +428,7 @@ func TestBatchBuilderUpdateRelInvalidKey(t *testing.T) {
 	g := newTestGraph(t)
 	b := NewBatchBuilder(g)
 
-	err := b.UpdateRelationship(snowflake.ID(1), map[string]any{"tkg_type": "bad"})
+	err := b.UpdateRelationship(types.RelID(1), map[string]any{"tkg_type": "bad"})
 	if err == nil {
 		t.Fatal("expected error for tkg_ key, got nil")
 	}
@@ -449,7 +449,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 
 	// Create a node so we can update it.
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	nID := n.InternalID().SnowflakeID()
+	nID := n.ID()
 
 	b := NewBatchBuilder(g)
 
@@ -459,12 +459,12 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	}
 
 	// Update on non-existent node — will fail during Execute.
-	if err := b.UpdateNode(snowflake.ID(999999), map[string]any{"name": "Ghost"}); err != nil {
+	if err := b.UpdateNode(types.NodeID(999999), map[string]any{"name": "Ghost"}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Delete a non-existent relationship — will fail during Execute.
-	b.DeleteRelationship(snowflake.ID(888888))
+	b.DeleteRelationship(types.RelID(888888))
 
 	result, err := b.Execute()
 	if err != nil {
@@ -640,7 +640,7 @@ func TestBatchBuilder_AddNode_HashChainVerification(t *testing.T) {
 		t.Fatalf("expected 1 created, got %d", result.Created)
 	}
 
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	ok, err := g.VerifyNodeHashChain(id)
 	if err != nil {
 		t.Fatalf("VerifyNodeHashChain: %v", err)

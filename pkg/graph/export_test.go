@@ -34,12 +34,12 @@ func buildExportGraph(t *testing.T) (g *graph.Graph, nodeID, relID uint64) {
 	}
 
 	// Create a version history entry on the start node.
-	_, err = g.UpdateNode(start.InternalID().SnowflakeID(), map[string]any{"name": "Alice Updated"})
+	_, err = g.UpdateNode(start.ID(), map[string]any{"name": "Alice Updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	return g, uint64(start.InternalID().SnowflakeID()), uint64(r.InternalID().SnowflakeID())
+	return g, uint64(start.ID()), uint64(r.ID())
 }
 
 // TestExportImport_RoundTrip_MemoryStore tests a full export→import roundtrip
@@ -128,7 +128,7 @@ func TestExport_WithNodeHistory(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"Item"}, map[string]any{"v": int64(1)})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	_, _ = g.UpdateNode(id, map[string]any{"v": int64(2)})
 	_, _ = g.UpdateNode(id, map[string]any{"v": int64(3)})
 
@@ -163,7 +163,7 @@ func TestExport_RelHistory(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("EDGE", a, b, map[string]any{"w": int64(1)})
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 	_, _ = g.UpdateRelationship(rid, map[string]any{"w": int64(2)})
 
 	srcHistory, _ := g.GetRelHistory(rid)
@@ -286,7 +286,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 	}
 
 	// Verify imported node hash is preserved.
-	importedA, err := dst.GetNode(a.InternalID().SnowflakeID())
+	importedA, err := dst.GetNode(a.ID())
 	if err != nil {
 		t.Fatalf("GetNode after import: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 	}
 
 	// Verify imported rel hash is preserved.
-	importedR, err := dst.GetRelationship(r.InternalID().SnowflakeID())
+	importedR, err := dst.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after import: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	importedR, err := dst.GetRelationship(r.InternalID().SnowflakeID())
+	importedR, err := dst.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	imported, err := dst.GetNode(n.InternalID().SnowflakeID())
+	imported, err := dst.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	imported, _ := dst.GetNode(n.InternalID().SnowflakeID())
+	imported, _ := dst.GetNode(n.ID())
 	dstHash, _ := dst.ResolveNodeProperty(imported, types.ShadowHash)
 	if dstHash != srcHash {
 		t.Errorf("tkg_hash: dst=%v, src=%v", dstHash, srcHash)

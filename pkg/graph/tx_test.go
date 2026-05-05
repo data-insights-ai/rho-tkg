@@ -199,7 +199,7 @@ func TestGraphTx_RollbackLeavesNoHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
@@ -299,7 +299,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	updated, err := tx.UpdateNode(nodeID, map[string]any{"name": "Alicia"})
@@ -329,7 +329,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Alicia"}); err != nil {
@@ -357,7 +357,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Bob"}); err != nil {
@@ -402,7 +402,7 @@ func TestGraphTx_DeleteNode_Commit(t *testing.T) {
 	}
 
 	tx := g.BeginTx()
-	if err := tx.DeleteNode(n1.InternalID().SnowflakeID()); err != nil {
+	if err := tx.DeleteNode(n1.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -437,7 +437,7 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	}
 
 	tx := g.BeginTx()
-	if err := tx.DeleteNode(n1.InternalID().SnowflakeID()); err != nil {
+	if err := tx.DeleteNode(n1.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 	if err := tx.Rollback(); err != nil {
@@ -455,7 +455,7 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	}
 
 	// Verify the node's properties are intact.
-	got, err := g.GetNode(n1.InternalID().SnowflakeID())
+	got, err := g.GetNode(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	tx := g.BeginTx()
 	if err := tx.DeleteRelationship(relID); err != nil {
@@ -516,7 +516,7 @@ func TestGraphTx_CreateThenDelete_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tx.DeleteNode(n.InternalID().SnowflakeID()); err != nil {
+	if err := tx.DeleteNode(n.ID()); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {
@@ -538,7 +538,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Bob"}); err != nil {
@@ -570,7 +570,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	if err := tx.SetNodeProperty(nodeID, "age", int64(42)); err != nil {
@@ -606,7 +606,7 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	tx := g.BeginTx()
 	if _, err := tx.UpdateRelationship(relID, map[string]any{"weight": int64(99)}); err != nil {
@@ -634,7 +634,7 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	n2, err := g.AddNode([]string{"Person"}, nil)
 	if err != nil {
@@ -644,7 +644,7 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	tx := g.BeginTx()
 	if err := tx.Commit(); err != nil {
@@ -676,7 +676,7 @@ func TestTxGetNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	tx := g.BeginTx()
 	got, err := tx.GetNode(nodeID)
@@ -705,7 +705,7 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.GetNode(n.InternalID().SnowflakeID())
+	_, err = tx.GetNode(n.ID())
 	if !errors.Is(err, ErrTxDone) {
 		t.Errorf("GetNode after commit: got %v, want ErrTxDone", err)
 	}
@@ -725,7 +725,7 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	}
 
 	tx := g.BeginTx()
-	r, err := tx.AddRelationshipByID("KNOWS", n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID(), map[string]any{"since": int64(2024)})
+	r, err := tx.AddRelationshipByID("KNOWS", n1.ID(), n2.ID(), map[string]any{"since": int64(2024)})
 	if err != nil {
 		t.Fatalf("AddRelationshipByID: %v", err)
 	}
@@ -741,7 +741,7 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	if rc != 1 {
 		t.Errorf("rel count after commit: got %d, want 1", rc)
 	}
-	got, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	got, err := g.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -765,7 +765,7 @@ func TestTxAddRelationshipByID_Rollback(t *testing.T) {
 	}
 
 	tx := g.BeginTx()
-	_, err = tx.AddRelationshipByID("KNOWS", n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID(), nil)
+	_, err = tx.AddRelationshipByID("KNOWS", n1.ID(), n2.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddRelationshipByID: %v", err)
 	}
@@ -792,8 +792,8 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id1 := n1.InternalID().SnowflakeID()
-	id2 := n2.InternalID().SnowflakeID()
+	id1 := n1.ID()
+	id2 := n2.ID()
 
 	// First: create in tx and commit.
 	tx := g.BeginTx()
@@ -846,8 +846,8 @@ func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id1 := n1.InternalID().SnowflakeID()
-	id2 := n2.InternalID().SnowflakeID()
+	id1 := n1.ID()
+	id2 := n2.ID()
 
 	// Create in tx then rollback.
 	tx := g.BeginTx()
@@ -933,7 +933,7 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 	}
 
 	// Update to create version history.
-	_, err = g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"name": "Bob"})
+	_, err = g.UpdateNode(n.ID(), map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -943,7 +943,7 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 	}
 
 	// History should be cleared.
-	history, err := g.GetNodeHistory(n.InternalID().SnowflakeID())
+	history, err := g.GetNodeHistory(n.ID())
 	if err != nil {
 		t.Fatal(err)
 	}

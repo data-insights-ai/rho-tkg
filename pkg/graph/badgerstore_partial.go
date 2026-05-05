@@ -28,7 +28,7 @@ import (
 // Does NOT verify endpoints exist (caller's responsibility).
 // Acquires idxMu.Lock internally.
 func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
-	id := r.InternalID().SnowflakeID()
+	id := r.ID().SnowflakeID()
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
@@ -107,7 +107,7 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	r, err := bs.getRelLocked(id)
+	r, err := bs.getRelLocked(types.RelID(id))
 	if err != nil {
 		return relDeleteInfo{}, err
 	}

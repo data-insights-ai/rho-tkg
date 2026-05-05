@@ -3,7 +3,7 @@ package graph
 import (
 	"fmt"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // MigrateFromBadger copies all nodes and relationships from a single BadgerStore
@@ -24,7 +24,7 @@ func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *labelRegistry
 
 	// Migrate nodes one at a time via ForEachNodeID.
 	var migrateErr error
-	if err := src.ForEachNodeID(func(id snowflake.ID) bool {
+	if err := src.ForEachNodeID(func(id types.NodeID) bool {
 		n, err := src.GetNode(id)
 		if err != nil {
 			migrateErr = fmt.Errorf("graph: migrate: get node %d: %w", id, err)
@@ -43,7 +43,7 @@ func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *labelRegistry
 	}
 
 	// Migrate relationships one at a time via ForEachRelID.
-	if err := src.ForEachRelID(func(id snowflake.ID) bool {
+	if err := src.ForEachRelID(func(id types.RelID) bool {
 		r, err := src.GetRelationship(id)
 		if err != nil {
 			migrateErr = fmt.Errorf("graph: migrate: get rel %d: %w", id, err)

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -23,7 +22,7 @@ func newDiffGraph(t *testing.T) *Graph {
 // setNodeTemporal directly sets ValidFrom/ValidTo on a stored node.
 // This gives tests precise control over temporal visibility without relying
 // on snowflake timestamp resolution.
-func setNodeTemporal(t *testing.T, g *Graph, id snowflake.ID, validFrom, validTo types.Instant) {
+func setNodeTemporal(t *testing.T, g *Graph, id types.NodeID, validFrom, validTo types.Instant) {
 	t.Helper()
 	n, err := g.store.GetNode(id)
 	if err != nil {
@@ -42,7 +41,7 @@ func setNodeTemporal(t *testing.T, g *Graph, id snowflake.ID, validFrom, validTo
 }
 
 // setRelTemporal directly sets ValidFrom/ValidTo on a stored relationship.
-func setRelTemporal(t *testing.T, g *Graph, id snowflake.ID, validFrom, validTo types.Instant) {
+func setRelTemporal(t *testing.T, g *Graph, id types.RelID, validFrom, validTo types.Instant) {
 	t.Helper()
 	r, err := g.store.GetRelationship(id)
 	if err != nil {
@@ -121,7 +120,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	// ValidFrom between t1 and t2 → not visible at t1, visible at t2.
 	setNodeTemporal(t, g, nid, base+150, 0)
@@ -134,7 +133,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 		t.Fatalf("expected 1 created node, got %d (deleted=%d, updated=%d)",
 			len(diff.NodesCreated), len(diff.NodesDeleted), len(diff.NodesUpdated))
 	}
-	if diff.NodesCreated[0].InternalID().SnowflakeID() != nid {
+	if diff.NodesCreated[0].ID() != nid {
 		t.Fatal("created node ID mismatch")
 	}
 }
@@ -152,7 +151,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	// ValidFrom before t1, ValidTo between t1 and t2 → visible at t1, gone at t2.
 	setNodeTemporal(t, g, nid, base+50, base+200)
@@ -165,7 +164,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 		t.Fatalf("expected 1 deleted node, got %d (created=%d, updated=%d)",
 			len(diff.NodesDeleted), len(diff.NodesCreated), len(diff.NodesUpdated))
 	}
-	if diff.NodesDeleted[0].InternalID().SnowflakeID() != nid {
+	if diff.NodesDeleted[0].ID() != nid {
 		t.Fatal("deleted node ID mismatch")
 	}
 }
@@ -179,7 +178,7 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 
 	// t1 captures state BEFORE the update.
 	t1 := types.Instant(time.Now().UnixMilli())
@@ -227,7 +226,7 @@ func TestDiffSnapshots_Unchanged(t *testing.T) {
 
 	// Explicitly set ValidFrom before t1 so the node is visible at both t1 and t2.
 	// No updates → hash identical at both snapshots → should not appear in any list.
-	setNodeTemporal(t, g, n.InternalID().SnowflakeID(), base+50, 0)
+	setNodeTemporal(t, g, n.ID(), base+50, 0)
 
 	diff, err := g.DiffSnapshots(t1, t2)
 	if err != nil {
@@ -252,14 +251,14 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 	b, _ := g.AddNode([]string{"B"}, nil)
 
 	// Both nodes valid at t1.
-	setNodeTemporal(t, g, a.InternalID().SnowflakeID(), base+50, 0)
-	setNodeTemporal(t, g, b.InternalID().SnowflakeID(), base+50, 0)
+	setNodeTemporal(t, g, a.ID(), base+50, 0)
+	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
 	r, err := g.AddRelationship("LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Rel ValidFrom between t1 and t2 → not visible at t1, visible at t2.
 	setRelTemporal(t, g, rid, base+150, 0)
@@ -272,7 +271,7 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 		t.Fatalf("expected 1 created rel, got %d (deleted=%d, updated=%d)",
 			len(diff.RelsCreated), len(diff.RelsDeleted), len(diff.RelsUpdated))
 	}
-	if diff.RelsCreated[0].InternalID().SnowflakeID() != rid {
+	if diff.RelsCreated[0].ID() != rid {
 		t.Fatal("created rel ID mismatch")
 	}
 }
@@ -289,14 +288,14 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 
-	setNodeTemporal(t, g, a.InternalID().SnowflakeID(), base+50, 0)
-	setNodeTemporal(t, g, b.InternalID().SnowflakeID(), base+50, 0)
+	setNodeTemporal(t, g, a.ID(), base+50, 0)
+	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
 	r, err := g.AddRelationship("LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	// Rel ValidFrom before t1, ValidTo between t1 and t2.
 	setRelTemporal(t, g, rid, base+50, base+200)
@@ -309,7 +308,7 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 		t.Fatalf("expected 1 deleted rel, got %d (created=%d, updated=%d)",
 			len(diff.RelsDeleted), len(diff.RelsCreated), len(diff.RelsUpdated))
 	}
-	if diff.RelsDeleted[0].InternalID().SnowflakeID() != rid {
+	if diff.RelsDeleted[0].ID() != rid {
 		t.Fatal("deleted rel ID mismatch")
 	}
 }
@@ -325,7 +324,7 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rid := r.InternalID().SnowflakeID()
+	rid := r.ID()
 
 	t1 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
@@ -433,7 +432,7 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Perform the update between t1 and t2.
-	if _, err := g.UpdateNode(toUpdate.InternalID().SnowflakeID(), map[string]any{"v": "after"}); err != nil {
+	if _, err := g.UpdateNode(toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -453,13 +452,13 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	if len(diff.NodesCreated) != 1 {
 		t.Fatalf("expected 1 created, got %d", len(diff.NodesCreated))
 	}
-	if diff.NodesCreated[0].InternalID().SnowflakeID() != created.InternalID().SnowflakeID() {
+	if diff.NodesCreated[0].ID() != created.ID() {
 		t.Fatal("wrong node in Created list")
 	}
 	if len(diff.NodesUpdated) != 1 {
 		t.Fatalf("expected 1 updated, got %d", len(diff.NodesUpdated))
 	}
-	if diff.NodesUpdated[0].Before.InternalID().SnowflakeID() != toUpdate.InternalID().SnowflakeID() {
+	if diff.NodesUpdated[0].Before.ID() != toUpdate.ID() {
 		t.Fatal("wrong node in Updated list")
 	}
 	if len(diff.NodesDeleted) != 0 {

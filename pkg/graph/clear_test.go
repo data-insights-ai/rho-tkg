@@ -26,17 +26,17 @@ func TestMemoryStoreClear_ClearsEntities(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := ms.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
 
-	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	if err := ms.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
 
-	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 	if err := ms.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -51,12 +51,12 @@ func TestMemoryStoreClear_ClearsEntities(t *testing.T) {
 		t.Fatalf("after clear: nodes=%d, rels=%d", nc, rc)
 	}
 
-	_, err := ms.GetNode(snowflake.ID(1))
+	_, err := ms.GetNode(types.NodeID(1))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
 
-	_, err = ms.GetRelationship(snowflake.ID(100))
+	_, err = ms.GetRelationship(types.RelID(100))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Errorf("expected ErrRelNotFound, got %v", err)
 	}
@@ -66,11 +66,11 @@ func TestMemoryStoreClear_ClearsHistory(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := ms.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
-	if err := ms.PutNodeVersion(snowflake.ID(1), 0, n); err != nil {
+	if err := ms.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestMemoryStoreClear_ClearsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	history, err := ms.GetNodeHistory(snowflake.ID(1))
+	history, err := ms.GetNodeHistory(types.NodeID(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestMemoryStoreClear_ClearsPropertyIndexes(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"name": "Alice"}))
 	if err := ms.PutNode(n); err != nil {
 		t.Fatal(err)
@@ -130,15 +130,15 @@ func TestBadgerStoreClear_ClearsAll(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
-	n2 := types.NewNode(snowflake.ID(2), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	if err := bs.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
-	r := types.NewRelationship(snowflake.ID(100), 1, snowflake.ID(1), snowflake.ID(2))
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestBadgerStoreClear_ClearsAll(t *testing.T) {
 		t.Fatalf("after clear: nodes=%d, rels=%d", nc, rc)
 	}
 
-	_, err := bs.GetNode(snowflake.ID(1))
+	_, err := bs.GetNode(types.NodeID(1))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -163,11 +163,11 @@ func TestBadgerStoreClear_ClearsHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)
 	}
-	if err := bs.PutNodeVersion(snowflake.ID(1), 0, n); err != nil {
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
 		t.Fatal(err)
 	}
 	// Flush to persist history to Badger.
@@ -179,7 +179,7 @@ func TestBadgerStoreClear_ClearsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	history, err := bs.GetNodeHistory(snowflake.ID(1))
+	history, err := bs.GetNodeHistory(types.NodeID(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestBadgerStoreClear_ClearsPropertyIndexes(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetProperties(mustPropertySlice(t, map[string]any{"name": "Alice"}))
 	if err := bs.PutNode(n); err != nil {
 		t.Fatal(err)

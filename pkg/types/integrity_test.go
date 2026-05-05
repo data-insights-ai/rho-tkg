@@ -108,7 +108,7 @@ func TestRelIntegrity_DeepCopy_NilSignature(t *testing.T) {
 
 func TestNodeDeepCopy_SignatureIsolation(t *testing.T) {
 	t.Parallel()
-	n := NewNode(snowflake.ID(100), 1, nil)
+	n := NewNode(NodeID(snowflake.ID(100)), 1, nil)
 	n.SetIntegrity(&NodeIntegrity{
 		Hash:      "h1",
 		Signature: []byte{0xAA, 0xBB},
@@ -124,7 +124,7 @@ func TestNodeDeepCopy_SignatureIsolation(t *testing.T) {
 
 func TestRelDeepCopy_SignatureIsolation(t *testing.T) {
 	t.Parallel()
-	r := NewRelationship(snowflake.ID(200), 1, snowflake.ID(10), snowflake.ID(20))
+	r := NewRelationship(RelID(snowflake.ID(200)), 1, NodeID(snowflake.ID(10)), NodeID(snowflake.ID(20)))
 	r.SetIntegrity(&RelIntegrity{
 		Hash:      "rh1",
 		Signature: []byte{0xCC, 0xDD},

@@ -16,14 +16,14 @@ func TestMemoryStore_ForEachNodeID(t *testing.T) {
 
 	ids := []snowflake.ID{10, 20, 30}
 	for _, id := range ids {
-		if err := ms.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		if err := ms.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ms.ForEachNodeID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ms.ForEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -44,13 +44,13 @@ func TestMemoryStore_ForEachNodeID_EarlyStop(t *testing.T) {
 	ms := NewMemoryStore()
 
 	for _, id := range []snowflake.ID{10, 20, 30} {
-		if err := ms.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		if err := ms.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
 	}
 
 	count := 0
-	err := ms.ForEachNodeID(func(id snowflake.ID) bool {
+	err := ms.ForEachNodeID(func(id types.NodeID) bool {
 		count++
 		return false // stop after first
 	})
@@ -67,7 +67,7 @@ func TestMemoryStore_ForEachNodeID_Empty(t *testing.T) {
 	ms := NewMemoryStore()
 
 	count := 0
-	err := ms.ForEachNodeID(func(id snowflake.ID) bool {
+	err := ms.ForEachNodeID(func(id types.NodeID) bool {
 		count++
 		return true
 	})
@@ -84,24 +84,24 @@ func TestMemoryStore_ForEachRelID(t *testing.T) {
 	ms := NewMemoryStore()
 
 	// Create endpoints.
-	if err := ms.PutNode(types.NewNode(1, 1, nil)); err != nil {
+	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := ms.PutNode(types.NewNode(2, 1, nil)); err != nil {
+	if err := ms.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
 
 	relIDs := []snowflake.ID{100, 200, 300}
 	for _, id := range relIDs {
-		r := types.NewRelationship(id, 1, 1, 2)
+		r := types.NewRelationship(types.RelID(id), 1, types.NodeID(1), types.NodeID(2))
 		if err := ms.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship(%d): %v", id, err)
 		}
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ms.ForEachRelID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ms.ForEachRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -123,21 +123,21 @@ func TestMemoryStore_ForEachNodeHistoryID(t *testing.T) {
 
 	// Create two nodes with history.
 	for _, id := range []snowflake.ID{10, 20} {
-		if err := ms.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		if err := ms.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatal(err)
 		}
-		if err := ms.PutNodeVersion(id, 0, types.NewNode(id, 1, nil)); err != nil {
+		if err := ms.PutNodeVersion(types.NodeID(id), 0, types.NewNode(types.NodeID(id), 1, nil)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Third node without history.
-	if err := ms.PutNode(types.NewNode(30, 1, nil)); err != nil {
+	if err := ms.PutNode(types.NewNode(types.NodeID(30), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ms.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ms.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -156,15 +156,15 @@ func TestMemoryStore_ForEachRelHistoryID(t *testing.T) {
 	ms := NewMemoryStore()
 
 	// Create endpoints.
-	if err := ms.PutNode(types.NewNode(1, 1, nil)); err != nil {
+	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := ms.PutNode(types.NewNode(2, 1, nil)); err != nil {
+	if err := ms.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create rel with history.
-	r := types.NewRelationship(100, 1, 1, 2)
+	r := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
 	if err := ms.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -173,14 +173,14 @@ func TestMemoryStore_ForEachRelHistoryID(t *testing.T) {
 	}
 
 	// Create rel without history.
-	r2 := types.NewRelationship(200, 1, 1, 2)
+	r2 := types.NewRelationship(types.RelID(200), 1, types.NodeID(1), types.NodeID(2))
 	if err := ms.PutRelationship(r2); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ms.ForEachRelHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ms.ForEachRelHistoryID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -203,20 +203,20 @@ func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Ref node (directly on refShard since no label registry set).
-	refNode := types.NewNode(gen.Generate(), 1, nil)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
 	if err := ts.refShard.PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
 
 	// Event node (via hot shard — all unrecognized tokens route to event).
-	evNode := types.NewNode(gen.Generate(), 3, nil)
+	evNode := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(evNode); err != nil {
 		t.Fatalf("PutNode event: %v", err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ts.ForEachNodeID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ts.ForEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -225,10 +225,10 @@ func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
 	if len(seen) != 2 {
 		t.Fatalf("got %d IDs, want 2 (ref + event)", len(seen))
 	}
-	if _, ok := seen[refNode.InternalID().SnowflakeID()]; !ok {
+	if _, ok := seen[refNode.ID().SnowflakeID()]; !ok {
 		t.Error("missing ref node")
 	}
-	if _, ok := seen[evNode.InternalID().SnowflakeID()]; !ok {
+	if _, ok := seen[evNode.ID().SnowflakeID()]; !ok {
 		t.Error("missing event node")
 	}
 }
@@ -241,20 +241,20 @@ func TestTieredStore_ForEachNodeID_EarlyStop(t *testing.T) {
 
 	// Add 3 event nodes + 2 ref nodes.
 	for i := 0; i < 3; i++ {
-		n := types.NewNode(gen.Generate(), 3, nil) // event
+		n := types.NewNode(types.NodeID(gen.Generate()), 3, nil) // event
 		if err := ts.PutNode(n); err != nil {
 			t.Fatalf("PutNode: %v", err)
 		}
 	}
 	for i := 0; i < 2; i++ {
-		n := types.NewNode(gen.Generate(), 1, nil)
+		n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
 		if err := ts.refShard.PutNode(n); err != nil {
 			t.Fatalf("PutNode ref: %v", err)
 		}
 	}
 
 	count := 0
-	err := ts.ForEachNodeID(func(id snowflake.ID) bool {
+	err := ts.ForEachNodeID(func(id types.NodeID) bool {
 		count++
 		return count < 2 // stop after 2
 	})
@@ -273,7 +273,7 @@ func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Add event node to hot shard.
-	n1 := types.NewNode(gen.Generate(), 3, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -287,14 +287,14 @@ func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
 	ts.mu.Unlock()
 
 	// Add event node to new hot shard.
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ts.ForEachNodeID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ts.ForEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -312,8 +312,8 @@ func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Create event nodes (both in hot shard for same-shard rel).
-	n1 := types.NewNode(gen.Generate(), 3, nil)
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -323,14 +323,14 @@ func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
 
 	// Create rel.
 	relGen := tieredRelGen(t)
-	r := types.NewRelationship(relGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relGen.Generate()), 1, n1.ID(), n2.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ts.ForEachRelID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ts.ForEachRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -348,28 +348,28 @@ func TestTieredStore_ForEachNodeHistoryID(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	// Ref node with history (directly on refShard).
-	n1 := types.NewNode(gen.Generate(), 1, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
 	if err := ts.refShard.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
-	id1 := n1.InternalID().SnowflakeID()
-	if err := ts.PutNodeVersion(id1, 0, n1); err != nil {
+	id1 := n1.ID().SnowflakeID()
+	if err := ts.PutNodeVersion(types.NodeID(id1), 0, n1); err != nil {
 		t.Fatal(err)
 	}
 
 	// Event node with history (via PutNode routing).
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
-	id2 := n2.InternalID().SnowflakeID()
-	if err := ts.PutNodeVersion(id2, 0, n2); err != nil {
+	id2 := n2.ID().SnowflakeID()
+	if err := ts.PutNodeVersion(types.NodeID(id2), 0, n2); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ts.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ts.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -388,8 +388,8 @@ func TestTieredStore_ForEachRelHistoryID(t *testing.T) {
 	relGen := tieredRelGen(t)
 
 	// Create event nodes + rel + history.
-	n1 := types.NewNode(gen.Generate(), 3, nil)
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -397,18 +397,18 @@ func TestTieredStore_ForEachRelHistoryID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := types.NewRelationship(relGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+	r := types.NewRelationship(types.RelID(relGen.Generate()), 1, n1.ID(), n2.ID())
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
-	relID := r.InternalID().SnowflakeID()
-	if err := ts.PutRelVersion(relID, 0, r); err != nil {
+	relID := r.ID().SnowflakeID()
+	if err := ts.PutRelVersion(types.RelID(relID), 0, r); err != nil {
 		t.Fatal(err)
 	}
 
 	seen := make(map[snowflake.ID]struct{})
-	err := ts.ForEachRelHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	err := ts.ForEachRelHistoryID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -430,8 +430,8 @@ func TestTieredStore_ForEachRelID_EarlyStop(t *testing.T) {
 	relGen := tieredRelGen(t)
 
 	// Create event nodes.
-	n1 := types.NewNode(gen.Generate(), 3, nil)
-	n2 := types.NewNode(gen.Generate(), 3, nil)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
 	if err := ts.PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
@@ -441,14 +441,14 @@ func TestTieredStore_ForEachRelID_EarlyStop(t *testing.T) {
 
 	// Create 3 rels.
 	for i := 0; i < 3; i++ {
-		r := types.NewRelationship(relGen.Generate(), 1, n1.InternalID().SnowflakeID(), n2.InternalID().SnowflakeID())
+		r := types.NewRelationship(types.RelID(relGen.Generate()), 1, n1.ID(), n2.ID())
 		if err := ts.PutRelationship(r); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	count := 0
-	err := ts.ForEachRelID(func(id snowflake.ID) bool {
+	err := ts.ForEachRelID(func(id types.RelID) bool {
 		count++
 		return false // stop after first
 	})
@@ -479,7 +479,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 	time.Sleep(2 * time.Millisecond)
 	now := types.Instant(time.Now().UnixMilli())
 
@@ -491,7 +491,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("got %d nodes, want 1", len(nodes))
 	}
-	if nodes[0].InternalID().SnowflakeID() != nodeID {
+	if nodes[0].ID() != nodeID {
 		t.Error("wrong node ID")
 	}
 

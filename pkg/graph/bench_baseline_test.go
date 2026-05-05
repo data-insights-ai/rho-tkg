@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -19,8 +18,8 @@ type graphBaselineFixture struct {
 	g         *Graph
 	nodes     []*types.Node
 	rels      []*types.Relationship
-	nodeIDs   []snowflake.ID
-	relIDs    []snowflake.ID
+	nodeIDs   []types.NodeID
+	relIDs    []types.RelID
 	queryTime types.Instant
 	relTime   types.Instant
 }
@@ -79,25 +78,25 @@ func baselineNodeProps(i int) map[string]any {
 func newGraphBaselineFixture(b *testing.B, g *Graph, size int) graphBaselineFixture {
 	b.Helper()
 	nodes := make([]*types.Node, 0, size)
-	nodeIDs := make([]snowflake.ID, 0, size)
+	nodeIDs := make([]types.NodeID, 0, size)
 	for i := 0; i < size; i++ {
 		n, err := g.AddNode([]string{"Person"}, baselineNodeProps(i))
 		if err != nil {
 			b.Fatal(err)
 		}
 		nodes = append(nodes, n)
-		nodeIDs = append(nodeIDs, n.InternalID().SnowflakeID())
+		nodeIDs = append(nodeIDs, n.ID())
 	}
 
 	rels := make([]*types.Relationship, 0, size)
-	relIDs := make([]snowflake.ID, 0, size)
+	relIDs := make([]types.RelID, 0, size)
 	for i := 0; i < size; i++ {
 		r, err := g.AddRelationship("KNOWS", nodes[i], nodes[(i+1)%size], map[string]any{"weight": i % 5})
 		if err != nil {
 			b.Fatal(err)
 		}
 		rels = append(rels, r)
-		relIDs = append(relIDs, r.InternalID().SnowflakeID())
+		relIDs = append(relIDs, r.ID())
 	}
 
 	if err := g.CreatePropertyIndex("Person", "group"); err != nil {
@@ -230,7 +229,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 	b.Run("ImportNodeWithID", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		ids := make([]snowflake.ID, b.N)
+		ids := make([]types.NodeID, b.N)
 		for i := range ids {
 			ids[i] = g.NextNodeID()
 		}
@@ -246,13 +245,13 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 
 	b.Run("UpdateNode", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		ids := make([]snowflake.ID, b.N)
+		ids := make([]types.NodeID, b.N)
 		for i := range ids {
 			n, err := g.AddNode([]string{"Person"}, baselineNodeProps(i))
 			if err != nil {
 				b.Fatal(err)
 			}
-			ids[i] = n.InternalID().SnowflakeID()
+			ids[i] = n.ID()
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -265,13 +264,13 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 
 	b.Run("CompareAndSetProperty", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		ids := make([]snowflake.ID, b.N)
+		ids := make([]types.NodeID, b.N)
 		for i := range ids {
 			n, err := g.AddNode([]string{"Person"}, map[string]any{"state": "open"})
 			if err != nil {
 				b.Fatal(err)
 			}
-			ids[i] = n.InternalID().SnowflakeID()
+			ids[i] = n.ID()
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -285,7 +284,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 
 	b.Run("UpdateRelationship", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		relIDs := make([]snowflake.ID, b.N)
+		relIDs := make([]types.RelID, b.N)
 		for i := range relIDs {
 			a, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i})
 			c, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i + b.N})
@@ -293,7 +292,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			relIDs[i] = r.InternalID().SnowflakeID()
+			relIDs[i] = r.ID()
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -306,7 +305,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 
 	b.Run("DeleteRelationship", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		relIDs := make([]snowflake.ID, b.N)
+		relIDs := make([]types.RelID, b.N)
 		for i := range relIDs {
 			a, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i})
 			c, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i + b.N})
@@ -314,7 +313,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			relIDs[i] = r.InternalID().SnowflakeID()
+			relIDs[i] = r.ID()
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -327,13 +326,13 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 
 	b.Run("DeleteNodeNoRels", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		nodeIDs := make([]snowflake.ID, b.N)
+		nodeIDs := make([]types.NodeID, b.N)
 		for i := range nodeIDs {
 			n, err := g.AddNode([]string{"Person"}, map[string]any{"seq": i})
 			if err != nil {
 				b.Fatal(err)
 			}
-			nodeIDs[i] = n.InternalID().SnowflakeID()
+			nodeIDs[i] = n.ID()
 		}
 		b.ReportAllocs()
 		b.ResetTimer()

@@ -29,7 +29,7 @@ func TestBenchMillionNodes(t *testing.T) {
 	nodes := make([]*Node, benchCount)
 	for i := range benchCount {
 		id := snowflake.ID(i + 1)
-		n := NewNode(id, 1, []uint16{2, 3})
+		n := NewNode(NodeID(id), 1, []uint16{2, 3})
 		_ = n.SetProperty("name", fmt.Sprintf("node_%d", i))
 		_ = n.SetProperty("score", i)
 		_ = n.SetProperty("active", i%2 == 0)
@@ -72,7 +72,7 @@ func TestBenchMillionRelationships(t *testing.T) {
 		id := snowflake.ID(i + 1)
 		startID := snowflake.ID(i*2 + 1)
 		endID := snowflake.ID(i*2 + 2)
-		r := NewRelationship(id, 1, startID, endID)
+		r := NewRelationship(RelID(id), 1, NodeID(startID), NodeID(endID))
 		_ = r.SetProperty("weight", float64(i))
 		_ = r.SetProperty("label", fmt.Sprintf("rel_%d", i))
 		_ = r.SetProperty("active", i%2 == 0)
@@ -104,13 +104,13 @@ func TestBenchMillionNodeLookup(t *testing.T) {
 		t.Skip("skipping million-node lookup benchmark in short mode")
 	}
 
-	nodes := make(map[nodeID]*Node, benchCount)
-	ids := make([]nodeID, benchCount)
+	nodes := make(map[NodeID]*Node, benchCount)
+	ids := make([]NodeID, benchCount)
 	for i := range benchCount {
 		id := snowflake.ID(i + 1)
-		n := NewNode(id, 1, nil)
+		n := NewNode(NodeID(id), 1, nil)
 		_ = n.SetProperty("val", i)
-		nid := n.InternalID()
+		nid := n.ID()
 		nodes[nid] = n
 		ids[i] = nid
 	}
@@ -168,7 +168,7 @@ func TestBenchFootprintNodeBare(t *testing.T) {
 	data, heap := measureHeap(func() any {
 		nodes := make([]*Node, footprintCount)
 		for i := range footprintCount {
-			nodes[i] = NewNode(snowflake.ID(i+1), 1, nil)
+			nodes[i] = NewNode(NodeID(i+1), 1, nil)
 		}
 		return nodes
 	})
@@ -188,7 +188,7 @@ func TestBenchFootprintNodeNonTemporal(t *testing.T) {
 	data, heap := measureHeap(func() any {
 		nodes := make([]*Node, footprintCount)
 		for i := range footprintCount {
-			n := NewNode(snowflake.ID(i+1), 1, nil)
+			n := NewNode(NodeID(i+1), 1, nil)
 			_ = n.SetProperty("name", fmt.Sprintf("entity_%d", i))
 			_ = n.SetProperty("desc", "a short description value")
 			_ = n.SetProperty("score", i)
@@ -214,7 +214,7 @@ func TestBenchFootprintNodeFullTemporal(t *testing.T) {
 	data, heap := measureHeap(func() any {
 		nodes := make([]*Node, footprintCount)
 		for i := range footprintCount {
-			n := NewNode(snowflake.ID(i+1), 1, nil)
+			n := NewNode(NodeID(i+1), 1, nil)
 			_ = n.SetProperty("name", fmt.Sprintf("entity_%d", i))
 			_ = n.SetProperty("desc", "a short description value")
 			_ = n.SetProperty("score", i)
@@ -254,7 +254,7 @@ func TestBenchFootprintRelNonTemporal(t *testing.T) {
 	data, heap := measureHeap(func() any {
 		rels := make([]*Relationship, footprintCount)
 		for i := range footprintCount {
-			r := NewRelationship(snowflake.ID(i+1), 1, snowflake.ID(i*2+1), snowflake.ID(i*2+2))
+			r := NewRelationship(RelID(i+1), 1, NodeID(i*2+1), NodeID(i*2+2))
 			_ = r.SetProperty("weight", float64(i))
 			_ = r.SetProperty("label", fmt.Sprintf("edge_%d", i))
 			_ = r.SetProperty("score", i)
@@ -279,7 +279,7 @@ func TestBenchFootprintRelFullTemporal(t *testing.T) {
 	data, heap := measureHeap(func() any {
 		rels := make([]*Relationship, footprintCount)
 		for i := range footprintCount {
-			r := NewRelationship(snowflake.ID(i+1), 1, snowflake.ID(i*2+1), snowflake.ID(i*2+2))
+			r := NewRelationship(RelID(i+1), 1, NodeID(i*2+1), NodeID(i*2+2))
 			_ = r.SetProperty("weight", float64(i))
 			_ = r.SetProperty("label", fmt.Sprintf("edge_%d", i))
 			_ = r.SetProperty("score", i)
@@ -397,7 +397,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d1, heapBareNode := measureHeap(func() any {
 		nodes := make([]*Node, n)
 		for i := range n {
-			nodes[i] = NewNode(snowflake.ID(i+1), 1, nil)
+			nodes[i] = NewNode(NodeID(i+1), 1, nil)
 		}
 		return nodes
 	})
@@ -406,7 +406,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d2, heapNonTempNode := measureHeap(func() any {
 		nodes := make([]*Node, n)
 		for i := range n {
-			nd := NewNode(snowflake.ID(i+1), 1, nil)
+			nd := NewNode(NodeID(i+1), 1, nil)
 			_ = nd.SetProperty("name", fmt.Sprintf("entity_%d", i))
 			_ = nd.SetProperty("desc", "a short description value")
 			_ = nd.SetProperty("score", i)
@@ -421,7 +421,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d3, heapFullNode := measureHeap(func() any {
 		nodes := make([]*Node, n)
 		for i := range n {
-			nd := NewNode(snowflake.ID(i+1), 1, nil)
+			nd := NewNode(NodeID(i+1), 1, nil)
 			_ = nd.SetProperty("name", fmt.Sprintf("entity_%d", i))
 			_ = nd.SetProperty("desc", "a short description value")
 			_ = nd.SetProperty("score", i)
@@ -445,7 +445,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d4, heapBareRel := measureHeap(func() any {
 		rels := make([]*Relationship, n)
 		for i := range n {
-			rels[i] = NewRelationship(snowflake.ID(i+1), 1, snowflake.ID(i*2+1), snowflake.ID(i*2+2))
+			rels[i] = NewRelationship(RelID(i+1), 1, NodeID(i*2+1), NodeID(i*2+2))
 		}
 		return rels
 	})
@@ -454,7 +454,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d5, heapNonTempRel := measureHeap(func() any {
 		rels := make([]*Relationship, n)
 		for i := range n {
-			r := NewRelationship(snowflake.ID(i+1), 1, snowflake.ID(i*2+1), snowflake.ID(i*2+2))
+			r := NewRelationship(RelID(i+1), 1, NodeID(i*2+1), NodeID(i*2+2))
 			_ = r.SetProperty("weight", float64(i))
 			_ = r.SetProperty("label", fmt.Sprintf("edge_%d", i))
 			_ = r.SetProperty("score", i)
@@ -469,7 +469,7 @@ func TestBenchFootprintSummary(t *testing.T) {
 	d6, heapFullRel := measureHeap(func() any {
 		rels := make([]*Relationship, n)
 		for i := range n {
-			r := NewRelationship(snowflake.ID(i+1), 1, snowflake.ID(i*2+1), snowflake.ID(i*2+2))
+			r := NewRelationship(RelID(i+1), 1, NodeID(i*2+1), NodeID(i*2+2))
 			_ = r.SetProperty("weight", float64(i))
 			_ = r.SetProperty("label", fmt.Sprintf("edge_%d", i))
 			_ = r.SetProperty("score", i)

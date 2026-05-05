@@ -9,14 +9,14 @@ type labelToken uint16
 // Value returns the underlying uint16 value of the token.
 func (t labelToken) Value() uint16 { return uint16(t) }
 
-// nodeID is the opaque, unexported ID type for nodes.
+// NodeID is the opaque, unexported ID type for nodes.
 // Wraps snowflake.ID — external packages cannot construct or compare these
 // directly. The graph layer creates nodes with snowflake.ID values.
-type nodeID snowflake.ID
+type NodeID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a nodeID.
 // This is the bridge for pkg/graph to get persistence keys from entities.
-func (id nodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+func (id NodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
 // Node represents a vertex in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
@@ -27,7 +27,7 @@ func (id nodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes
 // with only 2 bytes of trailing padding (vs. 88 bytes with naive ordering).
 type Node struct {
-	id           nodeID            // 8B, offset  0
+	id           NodeID            // 8B, offset  0
 	properties   PropertySlice     // 24B (slice header), offset  8
 	extraLabels  []labelToken      // 24B (slice header), offset 32
 	temporal     *TemporalMetadata // 8B, offset 56
@@ -37,14 +37,14 @@ type Node struct {
 	// 2B trailing padding → 80B total
 }
 
-// NewNode creates a Node with the given snowflake ID, primary label token,
+// NewNode creates a Node with the given typed node ID, primary label token,
 // and optional extra label tokens.
-func NewNode(id snowflake.ID, primaryLabel uint16, extraLabels []uint16) *Node {
+func NewNode(id NodeID, primaryLabel uint16, extraLabels []uint16) *Node {
 	if primaryLabel == 0 {
 		panic("types: primary label token 0 is reserved")
 	}
 	n := &Node{
-		id:           nodeID(id),
+		id:           id,
 		primaryLabel: labelToken(primaryLabel),
 	}
 	if len(extraLabels) > 0 {
@@ -66,10 +66,14 @@ func NewNode(id snowflake.ID, primaryLabel uint16, extraLabels []uint16) *Node {
 	return n
 }
 
-// InternalID returns the node's opaque internal ID.
-// The returned type is unexported — external packages can store and compare
-// these values but cannot construct them.
-func (n *Node) InternalID() nodeID {
+// ID returns the node's typed ID.
+func (n *Node) ID() NodeID {
+	return n.id
+}
+
+// InternalID is the legacy accessor kept for migration; prefer ID().
+// Will be removed once all callsites have switched.
+func (n *Node) InternalID() NodeID {
 	return n.id
 }
 

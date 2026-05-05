@@ -8,13 +8,13 @@ type Instant int64
 
 // SnowflakeID extracts the underlying snowflake.ID from an entityID.
 // This is the bridge for pkg/graph to resolve base entity references.
-func (id entityID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+func (id EntityID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
-// entityID is the opaque, unexported ID type for cross-entity references
+// EntityID is the opaque, unexported ID type for cross-entity references
 // (version chains) where the target may be either a node or a relationship.
 // Wraps snowflake.ID — external packages cannot construct or compare these
 // directly.
-type entityID snowflake.ID
+type EntityID snowflake.ID
 
 // TemporalMetadata holds temporal lifecycle fields for nodes and relationships.
 // Populated by the graph layer.
@@ -38,16 +38,16 @@ type TemporalMetadata struct {
 	// UpdatedBy identifies who last updated the entity.
 	UpdatedBy string
 	// baseEntityID links to the original entity in a version chain.
-	baseEntityID entityID
+	baseEntityID EntityID
 }
 
 // BaseEntityID returns the opaque ID linking to the original entity in a
 // version chain. Zero value means no base entity (this is the original).
-func (tm *TemporalMetadata) BaseEntityID() entityID {
+func (tm *TemporalMetadata) BaseEntityID() EntityID {
 	return tm.baseEntityID
 }
 
 // SetBaseEntityID sets the base entity ID from a snowflake.ID.
 func (tm *TemporalMetadata) SetBaseEntityID(id snowflake.ID) {
-	tm.baseEntityID = entityID(id)
+	tm.baseEntityID = EntityID(id)
 }

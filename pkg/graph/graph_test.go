@@ -33,7 +33,7 @@ func TestGraphNodeLabels(t *testing.T) {
 	personTok, _ := g.GetOrCreateLabel("Person")
 	actorTok, _ := g.GetOrCreateLabel("Actor")
 
-	n := types.NewNode(snowflake.ID(1), personTok, []uint16{actorTok})
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), personTok, []uint16{actorTok})
 	labels := g.NodeLabels(n)
 
 	if len(labels) != 2 {
@@ -50,7 +50,7 @@ func TestGraphNodePrimaryLabel(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
-	n := types.NewNode(snowflake.ID(1), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), personTok, nil)
 	got := g.NodePrimaryLabel(n)
 	if got != "Person" {
 		t.Errorf("NodePrimaryLabel = %q, want \"Person\"", got)
@@ -65,7 +65,7 @@ func TestGraphNodeHasLabel(t *testing.T) {
 	actorTok, _ := g.GetOrCreateLabel("Actor")
 
 	// Single-label node: primary label hit.
-	n := types.NewNode(snowflake.ID(1), personTok, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), personTok, nil)
 	if !g.NodeHasLabel(n, "Person") {
 		t.Error("NodeHasLabel(\"Person\") = false, want true (primary)")
 	}
@@ -74,7 +74,7 @@ func TestGraphNodeHasLabel(t *testing.T) {
 	}
 
 	// Multi-label node: extra label hit.
-	n2 := types.NewNode(snowflake.ID(2), personTok, []uint16{actorTok})
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), personTok, []uint16{actorTok})
 	if !g.NodeHasLabel(n2, "Actor") {
 		t.Error("NodeHasLabel(\"Actor\") = false, want true (extra label)")
 	}
@@ -89,7 +89,7 @@ func TestGraphRelationshipType(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	knowsTok, _ := g.GetOrCreateRelType("KNOWS")
 
-	r := types.NewRelationship(snowflake.ID(1), knowsTok, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(1)), knowsTok, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 	got := g.RelationshipType(r)
 	if got != "KNOWS" {
 		t.Errorf("RelationshipType = %q, want \"KNOWS\"", got)
@@ -102,7 +102,7 @@ func TestGraphRelationshipHasType(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	knowsTok, _ := g.GetOrCreateRelType("KNOWS")
 
-	r := types.NewRelationship(snowflake.ID(1), knowsTok, snowflake.ID(10), snowflake.ID(20))
+	r := types.NewRelationship(types.RelID(snowflake.ID(1)), knowsTok, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
 
 	if !g.RelationshipHasType(r, "KNOWS") {
 		t.Error("RelationshipHasType(\"KNOWS\") = false, want true")
@@ -240,13 +240,13 @@ func TestGraphNodeRelIDValueUniqueness(t *testing.T) {
 	all := make(map[snowflake.ID]string, count*2)
 
 	for range count {
-		nid := g.NextNodeID()
+		nid := g.NextNodeID().SnowflakeID()
 		if prev, dup := all[nid]; dup {
 			t.Fatalf("node ID %d collides with %s", nid, prev)
 		}
 		all[nid] = "node"
 
-		rid := g.NextRelID()
+		rid := g.NextRelID().SnowflakeID()
 		if prev, dup := all[rid]; dup {
 			t.Fatalf("rel ID %d collides with %s", rid, prev)
 		}
@@ -265,7 +265,7 @@ func TestGraphSnowflakeIDsAreUnique(t *testing.T) {
 	const count = 1000
 	seen := make(map[snowflake.ID]struct{}, count)
 	for range count {
-		id := g.NextNodeID()
+		id := g.NextNodeID().SnowflakeID()
 		if _, dup := seen[id]; dup {
 			t.Fatalf("duplicate node ID: %d", id)
 		}
@@ -274,7 +274,7 @@ func TestGraphSnowflakeIDsAreUnique(t *testing.T) {
 
 	seenRel := make(map[snowflake.ID]struct{}, count)
 	for range count {
-		id := g.NextRelID()
+		id := g.NextRelID().SnowflakeID()
 		if _, dup := seenRel[id]; dup {
 			t.Fatalf("duplicate rel ID: %d", id)
 		}
@@ -310,11 +310,11 @@ func TestGraphAddNode(t *testing.T) {
 	}
 
 	// Verify retrievable from store.
-	got, err := g.GetNode(n.InternalID().SnowflakeID())
+	got, err := g.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode() returned error: %v", err)
 	}
-	if got.InternalID() != n.InternalID() {
+	if got.ID() != n.ID() {
 		t.Fatal("GetNode() returned node with different ID")
 	}
 	gotName, _ := got.GetProperty("name")
@@ -388,7 +388,7 @@ func TestGraphAddNodeUniqueIDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		id := n.InternalID().SnowflakeID()
+		id := n.ID().SnowflakeID()
 		if _, dup := seen[id]; dup {
 			t.Fatalf("duplicate node ID: %d", id)
 		}
@@ -427,10 +427,10 @@ func TestGraphAddRelationship(t *testing.T) {
 	}
 
 	// Verify endpoints.
-	if r.StartNodeID().SnowflakeID() != nA.InternalID().SnowflakeID() {
+	if r.StartNodeID() != nA.ID() {
 		t.Error("StartNodeID does not match nA")
 	}
-	if r.EndNodeID().SnowflakeID() != nB.InternalID().SnowflakeID() {
+	if r.EndNodeID() != nB.ID() {
 		t.Error("EndNodeID does not match nB")
 	}
 
@@ -487,8 +487,8 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	nA, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 
-	aID := nA.InternalID().SnowflakeID()
-	bID := nB.InternalID().SnowflakeID()
+	aID := nA.ID()
+	bID := nB.ID()
 
 	r, err := g.AddRelationshipByID("KNOWS", aID, bID, map[string]any{"since": 2020})
 	if err != nil {
@@ -501,10 +501,10 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	}
 
 	// Verify endpoints.
-	if r.StartNodeID().SnowflakeID() != aID {
+	if r.StartNodeID() != aID {
 		t.Error("StartNodeID does not match nA")
 	}
-	if r.EndNodeID().SnowflakeID() != bID {
+	if r.EndNodeID() != bID {
 		t.Error("EndNodeID does not match nB")
 	}
 
@@ -515,7 +515,7 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	}
 
 	// Verify relationship is retrievable from the store.
-	fetched, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	fetched, err := g.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship() returned error: %v", err)
 	}
@@ -553,7 +553,7 @@ func TestGraphAddRelationshipByID_SelfLoop(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"X"}, nil)
-	nID := n.InternalID().SnowflakeID()
+	nID := n.ID()
 
 	_, err := g.AddRelationshipByID("SELF", nID, nID, nil)
 	if !errors.Is(err, ErrSelfLoop) {
@@ -568,7 +568,7 @@ func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
-	r, err := g.AddRelationshipByID("REL", nA.InternalID().SnowflakeID(), nB.InternalID().SnowflakeID(), map[string]any{
+	r, err := g.AddRelationshipByID("REL", nA.ID(), nB.ID(), map[string]any{
 		"tkg_valid_from": int64(1000),
 		"tkg_created_at": int64(2000),
 	})
@@ -595,8 +595,8 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
-	aID := nA.InternalID().SnowflakeID()
-	bID := nB.InternalID().SnowflakeID()
+	aID := nA.ID()
+	bID := nB.ID()
 
 	// First call: should create.
 	r1, created1, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
@@ -615,7 +615,7 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	if created2 {
 		t.Error("second call: created should be false")
 	}
-	if r2.InternalID().SnowflakeID() != r1.InternalID().SnowflakeID() {
+	if r2.ID() != r1.ID() {
 		t.Error("second call should return same relationship")
 	}
 
@@ -635,8 +635,8 @@ func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
-	aID := nA.InternalID().SnowflakeID()
-	bID := nB.InternalID().SnowflakeID()
+	aID := nA.ID()
+	bID := nB.ID()
 
 	// Same endpoints, different types — both should create.
 	_, created1, err := g.AddRelationshipByIDIfAbsent("KNOWS", aID, bID, nil)
@@ -671,8 +671,8 @@ func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
-	aID := nA.InternalID().SnowflakeID()
-	bID := nB.InternalID().SnowflakeID()
+	aID := nA.ID()
+	bID := nB.ID()
 
 	const goroutines = 10
 	const iterations = 50
@@ -720,7 +720,7 @@ func TestGraphDeleteNode(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.DeleteNode(id); err != nil {
 		t.Fatalf("DeleteNode() returned error: %v", err)
@@ -746,28 +746,28 @@ func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 	rCA, _ := g.AddRelationship("FOLLOWS", nC, nA, nil)
 
 	// Delete A — both relationships should be cascade-deleted.
-	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() returned error: %v", err)
 	}
 
 	// Verify node A is gone.
-	if _, err := g.GetNode(nA.InternalID().SnowflakeID()); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := g.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 
 	// Verify relationships are gone.
-	if _, err := g.GetRelationship(rAB.InternalID().SnowflakeID()); !errors.Is(err, ErrRelNotFound) {
+	if _, err := g.GetRelationship(rAB.ID()); !errors.Is(err, ErrRelNotFound) {
 		t.Error("Rel A→B should be cascade-deleted")
 	}
-	if _, err := g.GetRelationship(rCA.InternalID().SnowflakeID()); !errors.Is(err, ErrRelNotFound) {
+	if _, err := g.GetRelationship(rCA.ID()); !errors.Is(err, ErrRelNotFound) {
 		t.Error("Rel C→A should be cascade-deleted")
 	}
 
 	// Verify B and C still exist.
-	if _, err := g.GetNode(nB.InternalID().SnowflakeID()); err != nil {
+	if _, err := g.GetNode(nB.ID()); err != nil {
 		t.Errorf("Node B should still exist: %v", err)
 	}
-	if _, err := g.GetNode(nC.InternalID().SnowflakeID()); err != nil {
+	if _, err := g.GetNode(nC.ID()); err != nil {
 		t.Errorf("Node C should still exist: %v", err)
 	}
 }
@@ -792,7 +792,7 @@ func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 	}
 
 	// Delete A — both relationships should be gone.
-	g.DeleteNode(nA.InternalID().SnowflakeID())
+	g.DeleteNode(nA.ID())
 	rc, err = g.RelationshipCount()
 	if err != nil {
 		t.Fatal(err)
@@ -919,8 +919,8 @@ func TestGraphDefaultMemoryStore(t *testing.T) {
 	}
 	// Verify the default store works by adding and retrieving a node.
 	n, _ := g.AddNode([]string{"Test"}, nil)
-	got, _ := g.GetNode(n.InternalID().SnowflakeID())
-	if got.InternalID() != n.InternalID() {
+	got, _ := g.GetNode(n.ID())
+	if got.ID() != n.ID() {
 		t.Fatal("Default store should round-trip nodes")
 	}
 }
@@ -933,7 +933,7 @@ func TestGraphDeleteRelationship(t *testing.T) {
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("R", nA, nB, nil)
 
-	if err := g.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteRelationship(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship() returned error: %v", err)
 	}
 	rc, err := g.RelationshipCount()
@@ -980,17 +980,17 @@ func TestGraphDeleteNodeCascadeToleratesPreDeletedOutgoingRel(t *testing.T) {
 	// Simulate a concurrent delete: remove the outgoing relationship before
 	// cascade-deleting the node. Without the ErrRelNotFound guard in the
 	// outgoing loop, DeleteNode would return an error and leave the node stranded.
-	if err := g.DeleteRelationship(r.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteRelationship(r.ID()); err != nil {
 		t.Fatalf("pre-delete rel: %v", err)
 	}
 
 	// DeleteNode must succeed — the outgoing loop must tolerate ErrRelNotFound.
-	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() after pre-deleted outgoing rel: %v", err)
 	}
 
 	// Node A should be gone.
-	if _, err := g.GetNode(nA.InternalID().SnowflakeID()); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := g.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 }
@@ -1016,7 +1016,7 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 	}
 
 	// DeleteNode must handle the self-loop appearing in both loops without error.
-	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() with self-loop: %v", err)
 	}
 
@@ -1258,7 +1258,7 @@ func TestGraphDeleteNodeCascade_MemStore(t *testing.T) {
 	}
 
 	// Cascade delete nA: should remove all 3 relationships.
-	if err := g.DeleteNode(nA.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -1315,7 +1315,7 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 			nodeA, _ := g.AddNode([]string{"A"}, nil)
 			nodeB, _ := g.AddNode([]string{"B"}, nil)
 			target, _ := g.AddNode([]string{"Target"}, nil)
-			targetID := target.InternalID().SnowflakeID()
+			targetID := target.ID()
 
 			// Race: AddRelationship(A→target) vs DeleteNode(target)
 			done := make(chan struct{}, 2)
@@ -1380,7 +1380,7 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 
 			// Final invariant: verify no rels reference non-existent nodes.
 			// Check nodeB outgoing (should be empty).
-			bID := nodeB.InternalID().SnowflakeID()
+			bID := nodeB.ID()
 			outB, _ := g.OutgoingRelationships(bID, "")
 			if len(outB) != 0 {
 				t.Errorf("nodeB should have no outgoing rels, got %d", len(outB))
@@ -1401,7 +1401,7 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 	g.AddRelationship("WORKS_WITH", a, c, nil)
 
 	// All outgoing from A.
-	all, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "")
+	all, err := g.OutgoingRelationships(a.ID(), "")
 	if err != nil {
 		t.Fatalf("OutgoingRelationships(all): %v", err)
 	}
@@ -1410,7 +1410,7 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 	}
 
 	// Filtered by type.
-	knows, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "KNOWS")
+	knows, err := g.OutgoingRelationships(a.ID(), "KNOWS")
 	if err != nil {
 		t.Fatalf("OutgoingRelationships(KNOWS): %v", err)
 	}
@@ -1419,7 +1419,7 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 	}
 
 	// Unregistered type returns nil.
-	none, err := g.OutgoingRelationships(a.InternalID().SnowflakeID(), "NONEXISTENT")
+	none, err := g.OutgoingRelationships(a.ID(), "NONEXISTENT")
 	if err != nil {
 		t.Fatalf("OutgoingRelationships(NONEXISTENT): %v", err)
 	}
@@ -1428,7 +1428,7 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 	}
 
 	// Node with no outgoing.
-	empty, err := g.OutgoingRelationships(c.InternalID().SnowflakeID(), "")
+	empty, err := g.OutgoingRelationships(c.ID(), "")
 	if err != nil {
 		t.Fatalf("OutgoingRelationships(c, all): %v", err)
 	}
@@ -1449,7 +1449,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	g.AddRelationship("WORKS_WITH", c, b, nil)
 
 	// All incoming to B.
-	all, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "")
+	all, err := g.IncomingRelationships(b.ID(), "")
 	if err != nil {
 		t.Fatalf("IncomingRelationships(all): %v", err)
 	}
@@ -1458,7 +1458,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	}
 
 	// Filtered by type.
-	knows, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "KNOWS")
+	knows, err := g.IncomingRelationships(b.ID(), "KNOWS")
 	if err != nil {
 		t.Fatalf("IncomingRelationships(KNOWS): %v", err)
 	}
@@ -1467,7 +1467,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	}
 
 	// Unregistered type returns nil.
-	none, err := g.IncomingRelationships(b.InternalID().SnowflakeID(), "NONEXISTENT")
+	none, err := g.IncomingRelationships(b.ID(), "NONEXISTENT")
 	if err != nil {
 		t.Fatalf("IncomingRelationships(NONEXISTENT): %v", err)
 	}
@@ -1476,7 +1476,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	}
 
 	// Node with no incoming.
-	empty, err := g.IncomingRelationships(a.InternalID().SnowflakeID(), "")
+	empty, err := g.IncomingRelationships(a.ID(), "")
 	if err != nil {
 		t.Fatalf("IncomingRelationships(a, all): %v", err)
 	}
@@ -1492,7 +1492,7 @@ func TestGraphUpdateNode(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	updated, err := g.UpdateNode(id, map[string]any{"name": "Bob", "age": 31})
 	if err != nil {
@@ -1520,7 +1520,7 @@ func TestGraphUpdateNodeAddProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err := g.UpdateNode(id, map[string]any{"email": "alice@example.com"})
 	if err != nil {
@@ -1544,7 +1544,7 @@ func TestGraphUpdateNodeDeleteProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err := g.UpdateNode(id, map[string]any{"age": nil})
 	if err != nil {
@@ -1567,7 +1567,7 @@ func TestGraphUpdateNodeMixed(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30, "city": "NYC"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Add email, modify name, delete city — all in one call.
 	_, err := g.UpdateNode(id, map[string]any{
@@ -1602,7 +1602,7 @@ func TestGraphUpdateNodeNotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: NewMemoryStore()})
-	_, err := g.UpdateNode(snowflake.ID(999), map[string]any{"name": "Alice"})
+	_, err := g.UpdateNode(types.NodeID(999), map[string]any{"name": "Alice"})
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("UpdateNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
 	}
@@ -1613,7 +1613,7 @@ func TestGraphUpdateNodeInvalidProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err := g.UpdateNode(id, map[string]any{"tkg_hack": "bad"})
 	if !errors.Is(err, types.ErrReservedPrefix) {
@@ -1626,7 +1626,7 @@ func TestGraphUpdateNodeInvalidValue(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	type badStruct struct{ X int }
 	_, err := g.UpdateNode(id, map[string]any{"bad": badStruct{42}})
@@ -1640,7 +1640,7 @@ func TestGraphUpdateNodeVersionIncrement(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if n.Version() != 0 {
 		t.Fatalf("initial version = %d, want 0", n.Version())
@@ -1662,7 +1662,7 @@ func TestGraphUpdateNodeUpdatedAt(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	updated, _ := g.UpdateNode(id, map[string]any{"name": "Alice"})
 	tm := updated.Temporal()
@@ -1679,7 +1679,7 @@ func TestGraphUpdateNodeEmptyUpdates(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	got, err := g.UpdateNode(id, map[string]any{})
 	if err != nil {
@@ -1699,7 +1699,7 @@ func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"counter": 0})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	const workers = 50
 	var wg sync.WaitGroup
@@ -1738,10 +1738,10 @@ func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
 	g, _ := New(Config{Store: NewMemoryStore()})
 
 	const count = 20
-	ids := make([]snowflake.ID, count)
+	ids := make([]types.NodeID, count)
 	for i := range count {
 		n, _ := g.AddNode([]string{"X"}, map[string]any{"v": 0})
-		ids[i] = n.InternalID().SnowflakeID()
+		ids[i] = n.ID()
 	}
 
 	var wg sync.WaitGroup
@@ -1771,7 +1771,7 @@ func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g.UpdateNode(id, map[string]any{"name": "Bob"})
 
@@ -1791,7 +1791,7 @@ func TestGraphUpdateRelationship(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	updated, err := g.UpdateRelationship(id, map[string]any{"since": 2021})
 	if err != nil {
@@ -1817,7 +1817,7 @@ func TestGraphUpdateRelAddProperty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelationship(id, map[string]any{"weight": 0.5})
 	if err != nil {
@@ -1838,7 +1838,7 @@ func TestGraphUpdateRelDeleteProperty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelationship(id, map[string]any{"note": nil})
 	if err != nil {
@@ -1863,7 +1863,7 @@ func TestGraphUpdateRelMixed(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelationship(id, map[string]any{
 		"since":  2021,
@@ -1893,7 +1893,7 @@ func TestGraphUpdateRelNotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: NewMemoryStore()})
-	_, err := g.UpdateRelationship(snowflake.ID(999), map[string]any{"x": 1})
+	_, err := g.UpdateRelationship(types.RelID(999), map[string]any{"x": 1})
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("UpdateRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
 	}
@@ -1906,7 +1906,7 @@ func TestGraphUpdateRelInvalidProperty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelationship(id, map[string]any{"tkg_hack": "bad"})
 	if !errors.Is(err, types.ErrReservedPrefix) {
@@ -1921,7 +1921,7 @@ func TestGraphUpdateRelInvalidValue(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	type badStruct struct{ X int }
 	_, err := g.UpdateRelationship(id, map[string]any{"bad": badStruct{42}})
@@ -1937,7 +1937,7 @@ func TestGraphUpdateRelVersionIncrement(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	if r.Version() != 0 {
 		t.Fatalf("initial version = %d, want 0", r.Version())
@@ -1961,7 +1961,7 @@ func TestGraphUpdateRelUpdatedAt(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	updated, _ := g.UpdateRelationship(id, map[string]any{"x": 1})
 	tm := updated.Temporal()
@@ -1980,7 +1980,7 @@ func TestGraphUpdateRelEmptyUpdates(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	got, err := g.UpdateRelationship(id, map[string]any{})
 	if err != nil {
@@ -1998,7 +1998,7 @@ func TestGraphUpdateRelEndpointsUnchanged(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 	origStartID := r.StartNodeID().SnowflakeID()
 	origEndID := r.EndNodeID().SnowflakeID()
 
@@ -2020,7 +2020,7 @@ func TestGraphSetNodeProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.SetNodeProperty(id, "name", "Alice"); err != nil {
 		t.Fatalf("SetNodeProperty: %v", err)
@@ -2038,7 +2038,7 @@ func TestGraphDeleteNodeProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.DeleteNodeProperty(id, "name"); err != nil {
 		t.Fatalf("DeleteNodeProperty: %v", err)
@@ -2058,7 +2058,7 @@ func TestGraphSetRelationshipProperty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	if err := g.SetRelationshipProperty(id, "weight", 0.5); err != nil {
 		t.Fatalf("SetRelationshipProperty: %v", err)
@@ -2078,7 +2078,7 @@ func TestGraphDeleteRelationshipProperty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 0.5})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	if err := g.DeleteRelationshipProperty(id, "weight"); err != nil {
 		t.Fatalf("DeleteRelationshipProperty: %v", err)
@@ -2103,7 +2103,7 @@ func TestGraphUpdateNodeWithMemStore(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	updated, err := g.UpdateNode(id, map[string]any{"name": "Bob", "age": 30})
 	if err != nil {
@@ -2137,7 +2137,7 @@ func TestGraphUpdateRelWithMemStore(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err = g.UpdateRelationship(id, map[string]any{"since": 2021})
 	if err != nil {
@@ -2161,7 +2161,7 @@ func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
 		t.Fatalf("New 1: %v", err)
 	}
 	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err = g1.UpdateNode(id, map[string]any{"name": "Bob"})
 	if err != nil {
@@ -2203,7 +2203,7 @@ func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
 	nA, _ := g1.AddNode([]string{"X"}, nil)
 	nB, _ := g1.AddNode([]string{"X"}, nil)
 	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	_, err = g1.UpdateRelationship(relID, map[string]any{"since": 2021})
 	if err != nil {
@@ -2241,7 +2241,7 @@ func TestGraphUpdateNodeSavesHistory(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Update: should save version 0 (pre-mutation) to history.
 	_, err := g.UpdateNode(id, map[string]any{"name": "Bob"})
@@ -2271,7 +2271,7 @@ func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	for i := 1; i <= 5; i++ {
 		_, err := g.UpdateNode(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
@@ -2295,7 +2295,7 @@ func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	for i := 1; i <= 3; i++ {
 		g.UpdateNode(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
@@ -2316,7 +2316,7 @@ func TestGraphGetNodeHistoryEmpty(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// No updates = no history.
 	history, err := g.GetNodeHistory(id)
@@ -2334,7 +2334,7 @@ func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g.UpdateNode(id, map[string]any{"name": "v1"})
 	g.UpdateNode(id, map[string]any{"name": "v2"})
@@ -2360,7 +2360,7 @@ func TestGraphUpdateRelSavesHistory(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 1.0})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	_, err := g.UpdateRelationship(id, map[string]any{"weight": 2.0})
 	if err != nil {
@@ -2391,7 +2391,7 @@ func TestGraphUpdateRelHistoryGrows(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	for i := 1; i <= 5; i++ {
 		g.UpdateRelationship(id, map[string]any{"w": int64(i)})
@@ -2411,7 +2411,7 @@ func TestGraphUpdateRelHistoryAscendingOrder(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	for i := 1; i <= 3; i++ {
 		g.UpdateRelationship(id, map[string]any{"w": int64(i)})
@@ -2434,7 +2434,7 @@ func TestGraphGetRelHistoryEmpty(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	history, err := g.GetRelHistory(id)
 	if err != nil {
@@ -2453,7 +2453,7 @@ func TestGraphDeleteRelPreservesHistory(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	id := r.InternalID().SnowflakeID()
+	id := r.ID()
 
 	g.UpdateRelationship(id, map[string]any{"w": int64(1)})
 	g.UpdateRelationship(id, map[string]any{"w": int64(2)})
@@ -2480,7 +2480,7 @@ func TestGraphBadgerNodeHistoryPersistence(t *testing.T) {
 		t.Fatalf("New 1: %v", err)
 	}
 	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g1.UpdateNode(id, map[string]any{"name": "v1"})
 	g1.UpdateNode(id, map[string]any{"name": "v2"})
@@ -2518,7 +2518,7 @@ func TestGraphBadgerRelHistoryPersistence(t *testing.T) {
 	nA, _ := g1.AddNode([]string{"X"}, nil)
 	nB, _ := g1.AddNode([]string{"X"}, nil)
 	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	g1.UpdateRelationship(relID, map[string]any{"w": int64(1)})
 	g1.UpdateRelationship(relID, map[string]any{"w": int64(2)})
@@ -2551,7 +2551,7 @@ func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
 		t.Fatalf("New 1: %v", err)
 	}
 	n, _ := g1.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	g1.UpdateNode(id, map[string]any{"name": "v1"})
 
@@ -2586,7 +2586,7 @@ func TestGraphBadgerDeleteRelPreservesHistory(t *testing.T) {
 	nA, _ := g1.AddNode([]string{"X"}, nil)
 	nB, _ := g1.AddNode([]string{"X"}, nil)
 	r, _ := g1.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	g1.UpdateRelationship(relID, map[string]any{"w": int64(1)})
 
@@ -2733,7 +2733,7 @@ func TestGraphUpdateNodeHashChain(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	oldHash := n.Integrity().Hash
 
@@ -2759,7 +2759,7 @@ func TestGraphUpdateNodeMultipleUpdatesChain(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	h0 := n.Integrity().Hash
 
@@ -2792,7 +2792,7 @@ func TestGraphUpdateNodeHashChanges(t *testing.T) {
 
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	hashBefore := n.Integrity().Hash
 
 	updated, _ := g.UpdateNode(id, map[string]any{"age": int64(30)})
@@ -2810,7 +2810,7 @@ func TestGraphUpdateRelHashChain(t *testing.T) {
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": int64(1)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	oldHash := r.Integrity().Hash
 
@@ -2838,7 +2838,7 @@ func TestGraphUpdateRelMultipleUpdatesChain(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	h0 := r.Integrity().Hash
 
@@ -2872,7 +2872,7 @@ func TestGraphUpdateRelHashChanges(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(1)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 	hashBefore := r.Integrity().Hash
 
 	updated, _ := g.UpdateRelationship(relID, map[string]any{"extra": "data"})
@@ -2895,7 +2895,7 @@ func TestGraphVerifyNodeHashChain_DeletedEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID := n.InternalID().SnowflakeID()
+	nodeID := n.ID()
 
 	// Update to create version history.
 	_, err = g.UpdateNode(nodeID, map[string]any{"name": "Bob"})
@@ -2929,7 +2929,7 @@ func TestGraphVerifyRelHashChain_DeletedEntity(t *testing.T) {
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(1)})
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID()
 
 	// Update to create version history.
 	_, err = g.UpdateRelationship(relID, map[string]any{"w": int64(2)})
@@ -2960,7 +2960,7 @@ func TestGraphVerifyNodeHashChain_NeverExisted(t *testing.T) {
 	}
 	defer g.Close()
 
-	_, err = g.VerifyNodeHashChain(snowflake.ID(999))
+	_, err = g.VerifyNodeHashChain(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -2974,7 +2974,7 @@ func TestGraphVerifyRelHashChain_NeverExisted(t *testing.T) {
 	}
 	defer g.Close()
 
-	_, err = g.VerifyRelHashChain(snowflake.ID(999))
+	_, err = g.VerifyRelHashChain(types.RelID(999))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
 	}
@@ -3024,7 +3024,7 @@ func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
 				t.Fatalf("RelationshipCount = %d, want 2", rc)
 			}
 
-			out, err := g.OutgoingRelationships(nA.InternalID().SnowflakeID(), "")
+			out, err := g.OutgoingRelationships(nA.ID(), "")
 			if err != nil {
 				t.Fatalf("OutgoingRelationships: %v", err)
 			}
@@ -3061,11 +3061,11 @@ func TestGraphConcurrentDeleteNodeOverlappingRels(t *testing.T) {
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				g.DeleteNode(nA.InternalID().SnowflakeID())
+				g.DeleteNode(nA.ID())
 			}()
 			go func() {
 				defer wg.Done()
-				g.DeleteNode(nB.InternalID().SnowflakeID())
+				g.DeleteNode(nB.ID())
 			}()
 			wg.Wait()
 
@@ -3132,11 +3132,11 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 				g.NodesByLabel("Hub", QueryOpts{})
 
 				// Update.
-				g.UpdateNode(wn.InternalID().SnowflakeID(), map[string]any{"iter": int64(i)})
+				g.UpdateNode(wn.ID(), map[string]any{"iter": int64(i)})
 
 				// Delete on even iterations.
 				if i == opsPerWorker-1 && workerID%2 == 0 {
-					g.DeleteNode(wn.InternalID().SnowflakeID())
+					g.DeleteNode(wn.ID())
 				}
 			}
 		}(w)
@@ -3227,10 +3227,10 @@ func TestGraphGetNodesByIDs(t *testing.T) {
 	n2, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil) // n3 — not requested
 
-	ids := []snowflake.ID{
-		n1.InternalID().SnowflakeID(),
-		snowflake.ID(999), // missing
-		n2.InternalID().SnowflakeID(),
+	ids := []types.NodeID{
+		n1.ID(),
+		types.NodeID(999), // missing
+		n2.ID(),
 	}
 
 	got, err := g.GetNodesByIDs(ids)
@@ -3264,10 +3264,10 @@ func TestGraphGetRelsByIDs(t *testing.T) {
 	r1, _ := g.AddRelationship("KNOWS", nA, nB, nil)
 	r2, _ := g.AddRelationship("LIKES", nA, nB, nil)
 
-	ids := []snowflake.ID{
-		r1.InternalID().SnowflakeID(),
-		snowflake.ID(999), // missing
-		r2.InternalID().SnowflakeID(),
+	ids := []types.RelID{
+		r1.ID(),
+		types.RelID(999), // missing
+		r2.ID(),
 	}
 
 	got, err := g.GetRelationshipsByIDs(ids)
@@ -3362,7 +3362,7 @@ func TestNodeCountByLabel_AfterDelete(t *testing.T) {
 	n1, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil)
 
-	g.DeleteNode(n1.InternalID().SnowflakeID())
+	g.DeleteNode(n1.ID())
 
 	count, err := g.NodeCountByLabel("Person")
 	if err != nil {
@@ -3427,7 +3427,7 @@ func TestRelCountByType_AfterDelete(t *testing.T) {
 	r1, _ := g.AddRelationship("KNOWS", a, b, nil)
 	g.AddRelationship("KNOWS", b, a, nil)
 
-	g.DeleteRelationship(r1.InternalID().SnowflakeID())
+	g.DeleteRelationship(r1.ID())
 
 	count, err := g.RelCountByType("KNOWS")
 	if err != nil {
@@ -3768,7 +3768,7 @@ func TestUpdateNodePropertyCountExceedsLimit(t *testing.T) {
 	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Try to add a 3rd property via update — should fail.
-	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"c": 3})
+	_, err := g.UpdateNode(n.ID(), map[string]any{"c": 3})
 	if err == nil {
 		t.Fatal("expected error for exceeding property limit on update")
 	}
@@ -3783,7 +3783,7 @@ func TestUpdateNodePropertyKeyTooLong(t *testing.T) {
 
 	n, _ := g.AddNode([]string{"X"}, nil)
 
-	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"toolong": "v"})
+	_, err := g.UpdateNode(n.ID(), map[string]any{"toolong": "v"})
 	if err == nil {
 		t.Fatal("expected error for key too long on update")
 	}
@@ -3798,7 +3798,7 @@ func TestUpdateNodePropertyValueTooLarge(t *testing.T) {
 
 	n, _ := g.AddNode([]string{"X"}, nil)
 
-	_, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"k": "toolong"})
+	_, err := g.UpdateNode(n.ID(), map[string]any{"k": "toolong"})
 	if err == nil {
 		t.Fatal("expected error for value too large on update")
 	}
@@ -3815,7 +3815,7 @@ func TestUpdateRelPropertyCountExceedsLimit(t *testing.T) {
 	b, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("REL", a, b, map[string]any{"a": 1})
 
-	_, err := g.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{"b": 2})
+	_, err := g.UpdateRelationship(r.ID(), map[string]any{"b": 2})
 	if err == nil {
 		t.Fatal("expected error for exceeding property limit on rel update")
 	}
@@ -3831,7 +3831,7 @@ func TestUpdateNodeReplacementWithinLimit(t *testing.T) {
 	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Replacing an existing property should not trip the limit.
-	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"a": 99})
+	updated, err := g.UpdateNode(n.ID(), map[string]any{"a": 99})
 	if err != nil {
 		t.Fatalf("replacement should succeed: %v", err)
 	}
@@ -3848,7 +3848,7 @@ func TestUpdateNodeDeleteThenAddWithinLimit(t *testing.T) {
 	n, _ := g.AddNode([]string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Delete one and add one — should still be at limit.
-	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"a": nil, "c": 3})
+	updated, err := g.UpdateNode(n.ID(), map[string]any{"a": nil, "c": 3})
 	if err != nil {
 		t.Fatalf("delete+add should succeed: %v", err)
 	}
@@ -3894,7 +3894,7 @@ func TestBatchUpdateNodePropertyKeyTooLong(t *testing.T) {
 	n, _ := g.AddNode([]string{"X"}, nil)
 
 	batch := NewBatchBuilder(g)
-	err := batch.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{"toolong": "v"})
+	err := batch.UpdateNode(n.ID(), map[string]any{"toolong": "v"})
 	if err == nil {
 		t.Fatal("expected error for key too long in batch update")
 	}
@@ -3912,7 +3912,7 @@ func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
 	r, _ := g.AddRelationship("REL", a, b, nil)
 
 	batch := NewBatchBuilder(g)
-	err := batch.UpdateRelationship(r.InternalID().SnowflakeID(), map[string]any{"k": "toolong"})
+	err := batch.UpdateRelationship(r.ID(), map[string]any{"k": "toolong"})
 	if err == nil {
 		t.Fatal("expected error for value too large in batch update")
 	}
@@ -3927,7 +3927,7 @@ func TestMemStoreNodeCountByLabel_AfterPut(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n := types.NewNode(snowflake.ID(100), 1, []uint16{2})
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
 	if err := ms.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -3950,12 +3950,12 @@ func TestMemStoreNodeCountByLabel_AfterDelete(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n := types.NewNode(snowflake.ID(100), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	ms.PutNode(n)
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	ms.PutNode(n2)
 
-	ms.DeleteNode(snowflake.ID(100))
+	ms.DeleteNode(types.NodeID(100))
 
 	c, _ := ms.NodeCountByLabel(1)
 	if c != 1 {
@@ -3968,7 +3968,7 @@ func TestMemStoreNodeCountByLabel_MultiLabel(t *testing.T) {
 	ms := NewMemoryStore()
 
 	// Node with labels 1, 2, 3 — each label counter incremented.
-	n := types.NewNode(snowflake.ID(100), 1, []uint16{2, 3})
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2, 3})
 	ms.PutNode(n)
 
 	for _, tok := range []uint16{1, 2, 3} {
@@ -3983,12 +3983,12 @@ func TestMemStoreRelCountByType_AfterPut(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n1 := types.NewNode(snowflake.ID(100), 1, nil)
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	ms.PutNode(n1)
 	ms.PutNode(n2)
 
-	r := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
+	r := types.NewRelationship(types.RelID(snowflake.ID(300)), 5, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	ms.PutRelationship(r)
 
 	c, _ := ms.RelCountByType(5)
@@ -4005,17 +4005,17 @@ func TestMemStoreRelCountByType_AfterDelete(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n1 := types.NewNode(snowflake.ID(100), 1, nil)
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	ms.PutNode(n1)
 	ms.PutNode(n2)
 
-	r1 := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
-	r2 := types.NewRelationship(snowflake.ID(400), 5, snowflake.ID(200), snowflake.ID(100))
+	r1 := types.NewRelationship(types.RelID(snowflake.ID(300)), 5, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
+	r2 := types.NewRelationship(types.RelID(snowflake.ID(400)), 5, types.NodeID(snowflake.ID(200)), types.NodeID(snowflake.ID(100)))
 	ms.PutRelationship(r1)
 	ms.PutRelationship(r2)
 
-	ms.DeleteRelationship(snowflake.ID(300))
+	ms.DeleteRelationship(types.RelID(300))
 
 	c, _ := ms.RelCountByType(5)
 	if c != 1 {
@@ -4027,16 +4027,16 @@ func TestMemStoreNodeCountByLabel_CascadeDelete(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 
-	n1 := types.NewNode(snowflake.ID(100), 1, []uint16{2})
-	n2 := types.NewNode(snowflake.ID(200), 1, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
+	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
 	ms.PutNode(n1)
 	ms.PutNode(n2)
 
-	r := types.NewRelationship(snowflake.ID(300), 5, snowflake.ID(100), snowflake.ID(200))
+	r := types.NewRelationship(types.RelID(snowflake.ID(300)), 5, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	ms.PutRelationship(r)
 
 	// Cascade deletes n1 and its relationship.
-	ms.DeleteNodeCascade(snowflake.ID(100))
+	ms.DeleteNodeCascade(types.NodeID(100))
 
 	c1, _ := ms.NodeCountByLabel(1)
 	if c1 != 1 {
@@ -4093,7 +4093,7 @@ func TestCountAfterCascadeDelete(t *testing.T) {
 	}
 
 	// Cascade delete a — removes 2 rels.
-	g.DeleteNode(a.InternalID().SnowflakeID())
+	g.DeleteNode(a.ID())
 
 	nc, _ = g.NodeCountByLabel("Person")
 	if nc != 1 {
@@ -4229,7 +4229,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	}
 
 	// Update the property.
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value should be gone.
@@ -4365,7 +4365,7 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value gone.
@@ -4388,7 +4388,7 @@ func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	g.DeleteNode(n.InternalID().SnowflakeID())
+	g.DeleteNode(n.ID())
 
 	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
 	if len(nodes) != 0 {
@@ -4455,7 +4455,7 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	validTime := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
@@ -4500,7 +4500,7 @@ func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
 	snapshotTime := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
-	if err := g.DeleteNode(a.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -4528,7 +4528,7 @@ func TestGraphAddNode_DuplicateLabelsHashVerifies(t *testing.T) {
 	}
 
 	// Hash chain must verify — the hash was computed from canonical (deduplicated) labels.
-	valid, err := g.VerifyNodeHashChain(n.InternalID().SnowflakeID())
+	valid, err := g.VerifyNodeHashChain(n.ID())
 	if err != nil {
 		t.Fatalf("VerifyNodeHashChain: %v", err)
 	}
@@ -4561,7 +4561,7 @@ func TestCAS_Match(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", "draft", "published")
 	if err != nil {
@@ -4582,7 +4582,7 @@ func TestCAS_Mismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", "archived", "published")
 	if err != nil {
@@ -4603,7 +4603,7 @@ func TestCAS_NilExpected_Absent(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", nil, "active")
 	if err != nil {
@@ -4624,7 +4624,7 @@ func TestCAS_NilExpected_Present(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", nil, "active")
 	if err != nil {
@@ -4639,7 +4639,7 @@ func TestCAS_DeleteOnMatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", "draft", nil)
 	if err != nil {
@@ -4659,7 +4659,7 @@ func TestCAS_NilBoth_Absent(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, err := g.CompareAndSetProperty(id, "status", nil, nil)
 	if err != nil {
@@ -4674,7 +4674,7 @@ func TestCAS_ShadowKey(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	_, err := g.CompareAndSetProperty(id, "tkg_labels", nil, "hack")
 	if err == nil {
@@ -4689,7 +4689,7 @@ func TestCAS_NodeNotFound(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 
-	_, err := g.CompareAndSetProperty(snowflake.ID(999999), "status", nil, "x")
+	_, err := g.CompareAndSetProperty(types.NodeID(999999), "status", nil, "x")
 	if err == nil {
 		t.Fatal("CAS should return error for non-existent node")
 	}
@@ -4702,7 +4702,7 @@ func TestCAS_VersionBump(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	before, _ := g.GetNode(id)
 	vBefore := before.Version()
 
@@ -4721,7 +4721,7 @@ func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 	before, _ := g.GetNode(id)
 	vBefore := before.Version()
 
@@ -4740,7 +4740,7 @@ func TestCAS_History(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	ok, _ := g.CompareAndSetProperty(id, "v", 1, 2)
 	if !ok {
@@ -4765,7 +4765,7 @@ func TestCAS_TypeMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": int(42)})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// int64(42) != int(42) — type must match exactly.
 	ok, err := g.CompareAndSetProperty(id, "v", int64(42), int(99))
@@ -4787,7 +4787,7 @@ func TestCAS_DeleteMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: NewMemoryStore()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Try to delete with wrong expected value.
 	ok, err := g.CompareAndSetProperty(id, "status", "archived", nil)
@@ -4819,12 +4819,12 @@ func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 	g.AddRelationship("WORKS_WITH", a, c, nil)
 	g.AddRelationship("KNOWS", b, c, nil)
 
-	aID := a.InternalID().SnowflakeID()
-	bID := b.InternalID().SnowflakeID()
-	cID := c.InternalID().SnowflakeID()
+	aID := a.ID()
+	bID := b.ID()
+	cID := c.ID()
 
 	// All outgoing for A and B.
-	got, err := g.OutgoingRelationshipsForNodes([]snowflake.ID{aID, bID}, "")
+	got, err := g.OutgoingRelationshipsForNodes([]types.NodeID{aID, bID}, "")
 	if err != nil {
 		t.Fatalf("OutgoingRelationshipsForNodes: %v", err)
 	}
@@ -4836,7 +4836,7 @@ func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// Type-filtered.
-	got, err = g.OutgoingRelationshipsForNodes([]snowflake.ID{aID, bID}, "KNOWS")
+	got, err = g.OutgoingRelationshipsForNodes([]types.NodeID{aID, bID}, "KNOWS")
 	if err != nil {
 		t.Fatalf("OutgoingRelationshipsForNodes(KNOWS): %v", err)
 	}
@@ -4848,7 +4848,7 @@ func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// Node with no outgoing absent from result.
-	got, err = g.OutgoingRelationshipsForNodes([]snowflake.ID{cID}, "")
+	got, err = g.OutgoingRelationshipsForNodes([]types.NodeID{cID}, "")
 	if err != nil {
 		t.Fatalf("OutgoingRelationshipsForNodes(c): %v", err)
 	}
@@ -4875,7 +4875,7 @@ func TestGraphOutgoingForNodesUnregisteredType(t *testing.T) {
 	g.AddRelationship("KNOWS", a, b, nil)
 
 	got, err := g.OutgoingRelationshipsForNodes(
-		[]snowflake.ID{a.InternalID().SnowflakeID()}, "NONEXISTENT")
+		[]types.NodeID{a.ID()}, "NONEXISTENT")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4898,12 +4898,12 @@ func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 	g.AddRelationship("WORKS_WITH", a, c, nil)
 	g.AddRelationship("KNOWS", c, b, nil)
 
-	aID := a.InternalID().SnowflakeID()
-	bID := b.InternalID().SnowflakeID()
-	cID := c.InternalID().SnowflakeID()
+	aID := a.ID()
+	bID := b.ID()
+	cID := c.ID()
 
 	// All incoming to B and C.
-	got, err := g.IncomingRelationshipsForNodes([]snowflake.ID{bID, cID}, "")
+	got, err := g.IncomingRelationshipsForNodes([]types.NodeID{bID, cID}, "")
 	if err != nil {
 		t.Fatalf("IncomingRelationshipsForNodes: %v", err)
 	}
@@ -4915,7 +4915,7 @@ func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// Type-filtered.
-	got, err = g.IncomingRelationshipsForNodes([]snowflake.ID{bID, cID}, "KNOWS")
+	got, err = g.IncomingRelationshipsForNodes([]types.NodeID{bID, cID}, "KNOWS")
 	if err != nil {
 		t.Fatalf("IncomingRelationshipsForNodes(KNOWS): %v", err)
 	}
@@ -4927,7 +4927,7 @@ func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 	}
 
 	// Node with no incoming absent from result.
-	got, err = g.IncomingRelationshipsForNodes([]snowflake.ID{aID}, "")
+	got, err = g.IncomingRelationshipsForNodes([]types.NodeID{aID}, "")
 	if err != nil {
 		t.Fatalf("IncomingRelationshipsForNodes(a): %v", err)
 	}
@@ -4954,7 +4954,7 @@ func TestGraphIncomingForNodesUnregisteredType(t *testing.T) {
 	g.AddRelationship("KNOWS", a, b, nil)
 
 	got, err := g.IncomingRelationshipsForNodes(
-		[]snowflake.ID{b.InternalID().SnowflakeID()}, "NONEXISTENT")
+		[]types.NodeID{b.ID()}, "NONEXISTENT")
 	if err != nil {
 		t.Fatal(err)
 	}

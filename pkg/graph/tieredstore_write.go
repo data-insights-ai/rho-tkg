@@ -20,7 +20,7 @@ func (ts *TieredStore) PutNode(n *types.Node) error {
 	if err := shard.PutNode(n); err != nil {
 		return err
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 	ts.vectorIdxMu.Lock()
 	addNodeToVectorIndexes(ts.vectorIndexes, n, id)
 	ts.vectorIdxMu.Unlock()
@@ -28,14 +28,14 @@ func (ts *TieredStore) PutNode(n *types.Node) error {
 }
 
 func (ts *TieredStore) ReplaceNode(n *types.Node) error {
-	id := n.InternalID().SnowflakeID()
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+	id := n.ID().SnowflakeID()
+	store, checkin, err := ts.shardForNodeIDChecked(n.ID())
 	if err != nil {
 		return err
 	}
 	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := store.GetNode(id)
+	old, _ := store.GetNode(types.NodeID(id))
 	if err := store.ReplaceNode(n); err != nil {
 		return err
 	}
@@ -50,15 +50,17 @@ func (ts *TieredStore) ReplaceNode(n *types.Node) error {
 	return nil
 }
 
-func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+func (ts *TieredStore) DeleteNode(nid types.NodeID) error {
+	id := nid.SnowflakeID()
+
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
 	defer checkin()
 	// Read node before deletion for vector index maintenance.
-	old, _ := store.GetNode(id)
-	if err := store.DeleteNode(id); err != nil {
+	old, _ := store.GetNode(types.NodeID(id))
+	if err := store.DeleteNode(types.NodeID(id)); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -71,15 +73,17 @@ func (ts *TieredStore) DeleteNode(id snowflake.ID) error {
 	return nil
 }
 
-func (ts *TieredStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+func (ts *TieredStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	id := nid.SnowflakeID()
+
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
 	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := store.GetNode(id)
-	if err := store.RemoveNodeLabelToken(id, tok, updatedNode); err != nil {
+	old, _ := store.GetNode(types.NodeID(id))
+	if err := store.RemoveNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -93,16 +97,18 @@ func (ts *TieredStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 	return nil
 }
 
-func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+	id := nid.SnowflakeID()
+
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
 	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := store.GetNode(id)
-	if err := store.RemoveNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState); err != nil {
+	old, _ := store.GetNode(types.NodeID(id))
+	if err := store.RemoveNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -116,14 +122,16 @@ func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 	return nil
 }
 
-func (ts *TieredStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+func (ts *TieredStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	id := nid.SnowflakeID()
+
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
 	defer checkin()
-	old, _ := store.GetNode(id)
-	if err := store.AddNodeLabelToken(id, tok, updatedNode); err != nil {
+	old, _ := store.GetNode(types.NodeID(id))
+	if err := store.AddNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -137,16 +145,18 @@ func (ts *TieredStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNod
 	return nil
 }
 
-func (ts *TieredStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+func (ts *TieredStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+	id := nid.SnowflakeID()
+
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
 	defer checkin()
 	// Read old state for accurate vector index removal.
-	old, _ := store.GetNode(id)
-	if err := store.AddNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState); err != nil {
+	old, _ := store.GetNode(types.NodeID(id))
+	if err := store.AddNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
 	ts.vectorIdxMu.Lock()
@@ -189,7 +199,7 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 			// If rollback itself fails, the store is already in a broken state — log and return
 			// the original error so the caller knows to expect inconsistency.
 			for _, n := range refNodes {
-				_ = ts.refShard.DeleteNode(n.InternalID().SnowflakeID())
+				_ = ts.refShard.DeleteNode(n.ID())
 			}
 			return fmt.Errorf("tiered: put hot nodes (ref writes rolled back best-effort): %w", err)
 		}
@@ -197,9 +207,9 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 	return nil
 }
 
-func (ts *TieredStore) DeleteNodesBatch(ids []snowflake.ID) error {
+func (ts *TieredStore) DeleteNodesBatch(ids []types.NodeID) error {
 	// Partition by actual shard using shardForNodeID.
-	shardBuckets := make(map[*BadgerStore][]snowflake.ID)
+	shardBuckets := make(map[*BadgerStore][]types.NodeID)
 	for _, id := range ids {
 		shard, err := ts.shardForNodeID(id)
 		if err != nil {
@@ -229,14 +239,14 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
-	relID := r.InternalID().SnowflakeID()
+	relID := r.ID().SnowflakeID()
 
 	// Resolve actual shards — not class. Two event entities may be in different shards.
-	startShard, err := ts.shardForNodeID(startID)
+	startShard, err := ts.shardForNodeID(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(endID)
+	endShard, err := ts.shardForNodeID(r.EndNodeID())
 	if err != nil {
 		return err
 	}
@@ -273,38 +283,40 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 }
 
 func (ts *TieredStore) ReplaceRelationship(r *types.Relationship) error {
-	shard, err := ts.shardForRelID(r.InternalID().SnowflakeID())
+	shard, err := ts.shardForRelID(r.ID())
 	if err != nil {
 		return err
 	}
 	return shard.ReplaceRelationship(r)
 }
 
-func (ts *TieredStore) DeleteRelationship(id snowflake.ID) error {
+func (ts *TieredStore) DeleteRelationship(rid types.RelID) error {
+	id := rid.SnowflakeID()
+
 	// Find which shard owns the entity.
-	entityShard, err := ts.shardForRelID(id)
+	entityShard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return err
 	}
 
 	// Check if this is a cross-shard relationship by reading the rel metadata.
-	r, err := entityShard.GetRelationship(id)
+	r, err := entityShard.GetRelationship(types.RelID(id))
 	if err != nil {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	startShard, err := ts.shardForNodeID(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+	endShard, err := ts.shardForNodeID(r.EndNodeID())
 	if err != nil {
 		return err
 	}
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
-		return entityShard.DeleteRelationship(id)
+		return entityShard.DeleteRelationship(types.RelID(id))
 	}
 
 	// Cross-shard: delete entity+out from entity shard, in/ from in shard.
@@ -327,11 +339,11 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	shardBuckets := make(map[*BadgerStore][]*types.Relationship)
 
 	for _, r := range rels {
-		startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+		startShard, err := ts.shardForNodeID(r.StartNodeID())
 		if err != nil {
 			return err
 		}
-		endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+		endShard, err := ts.shardForNodeID(r.EndNodeID())
 		if err != nil {
 			return err
 		}
@@ -361,7 +373,7 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 			// Best-effort rollback: delete rels written to previously committed shards.
 			for _, cb := range committed {
 				for _, r := range cb.rels {
-					_ = cb.shard.DeleteRelationship(r.InternalID().SnowflakeID())
+					_ = cb.shard.DeleteRelationship(r.ID())
 				}
 			}
 			return fmt.Errorf("tiered: put rels batch (prior shard writes rolled back best-effort): %w", err)
@@ -371,7 +383,7 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	return nil
 }
 
-func (ts *TieredStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
+func (ts *TieredStore) DeleteRelationshipsBatch(ids []types.RelID) error {
 	// Cross-shard aware: per-ID delete. Each relationship may be cross-shard
 	// (entity+out/ in one shard, in/ in another), so DeleteRelationship handles
 	// the split-delete logic correctly at the cost of one shard-resolution lookup
@@ -389,7 +401,7 @@ func (ts *TieredStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 // --- Atomic replace + history ---
 
 func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
-	shard, err := ts.shardForNodeID(current.InternalID().SnowflakeID())
+	shard, err := ts.shardForNodeID(current.ID())
 	if err != nil {
 		return err
 	}
@@ -397,7 +409,7 @@ func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	shard, err := ts.shardForRelID(current.InternalID().SnowflakeID())
+	shard, err := ts.shardForRelID(current.ID())
 	if err != nil {
 		return err
 	}
@@ -406,42 +418,44 @@ func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 
 // --- Version history writes ---
 
-func (ts *TieredStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
-	shard, err := ts.shardForNodeID(id)
+func (ts *TieredStore) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return err
 	}
-	return shard.PutNodeVersion(id, version, n)
+	return shard.PutNodeVersion(nid, version, n)
 }
 
-func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
-	shard, err := ts.shardForNodeID(id)
+func (ts *TieredStore) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return err
 	}
-	return shard.TruncateNodeHistory(id, keepVersions)
+	return shard.TruncateNodeHistory(nid, keepVersions)
 }
 
-func (ts *TieredStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
-	shard, err := ts.shardForRelID(id)
+func (ts *TieredStore) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
+	shard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return err
 	}
-	return shard.PutRelVersion(id, version, r)
+	return shard.PutRelVersion(rid, version, r)
 }
 
-func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
-	shard, err := ts.shardForRelID(id)
+func (ts *TieredStore) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	shard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return err
 	}
-	return shard.TruncateRelHistory(id, keepVersions)
+	return shard.TruncateRelHistory(rid, keepVersions)
 }
 
 // --- Cascade operations ---
 
-func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
-	shard, err := ts.shardForNodeID(id)
+func (ts *TieredStore) DeleteNodeCascade(nid types.NodeID) error {
+	id := nid.SnowflakeID()
+
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return err
 	}
@@ -457,7 +471,7 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 			continue
 		}
 		seen[relID] = struct{}{}
-		if err := ts.DeleteRelationship(relID); err != nil {
+		if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
 			return err
 		}
 	}
@@ -466,13 +480,13 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 			continue
 		}
 		seen[relID] = struct{}{}
-		if err := ts.DeleteRelationship(relID); err != nil {
+		if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
 			return err
 		}
 	}
 
 	// Delete the node itself.
-	return shard.DeleteNode(id)
+	return shard.DeleteNode(types.NodeID(id))
 }
 
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry
@@ -481,35 +495,37 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 // Same shard: delegates to the entity shard (fully atomic within the shard).
 // Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on the entity shard;
 // the in/ cleanup on the end-node shard is a separate operation (B7 limitation).
-func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
-	entityShard, err := ts.shardForRelID(id)
+func (ts *TieredStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
+	id := rid.SnowflakeID()
+
+	entityShard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return err
 	}
 
-	r, err := entityShard.GetRelationship(id)
+	r, err := entityShard.GetRelationship(types.RelID(id))
 	if err != nil {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	startShard, err := ts.shardForNodeID(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+	endShard, err := ts.shardForNodeID(r.EndNodeID())
 	if err != nil {
 		return err
 	}
 
 	if startShard == endShard {
 		// Same shard: fully atomic.
-		return entityShard.DeleteRelWithHistory(id, prevVersion, tombstone)
+		return entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone)
 	}
 
 	// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on entity shard.
 	// deleteRelByInfo in DeleteRelWithHistory attempts in/ cleanup on the entity shard
 	// as a no-op (endNode lives on a different shard). Clean up actual in/ separately.
-	if err := entityShard.DeleteRelWithHistory(id, prevVersion, tombstone); err != nil {
+	if err := entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone); err != nil {
 		return err
 	}
 	info := relDeleteInfo{
@@ -530,8 +546,10 @@ func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32,
 // handled above individually).
 //
 // Cross-shard atomicity is per-shard only (B7 limitation — same as DeleteNodeCascade).
-func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	shard, err := ts.shardForNodeID(id)
+func (ts *TieredStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	id := nid.SnowflakeID()
+
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return err
 	}
@@ -539,7 +557,7 @@ func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 	// Build lookup map: relID → RelTombstone.
 	tombMap := make(map[snowflake.ID]RelTombstone, len(relTombstones))
 	for _, rt := range relTombstones {
-		tombMap[rt.ID] = rt
+		tombMap[rt.ID.SnowflakeID()] = rt
 	}
 
 	// Collect all connected relIDs and delete each with history.
@@ -552,13 +570,14 @@ func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 			continue
 		}
 		seen[relID] = struct{}{}
+		typedRelID := types.RelID(relID)
 		if rt, ok := tombMap[relID]; ok {
-			if err := ts.DeleteRelWithHistory(relID, rt.PrevVersion, rt.Tombstone); err != nil {
+			if err := ts.DeleteRelWithHistory(typedRelID, rt.PrevVersion, rt.Tombstone); err != nil {
 				return err
 			}
 		} else {
 			// Unexpected rel (not in tombstones) — fall back to plain delete.
-			if err := ts.DeleteRelationship(relID); err != nil {
+			if err := ts.DeleteRelationship(typedRelID); err != nil {
 				return err
 			}
 		}
@@ -568,12 +587,13 @@ func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 			continue
 		}
 		seen[relID] = struct{}{}
+		typedRelID := types.RelID(relID)
 		if rt, ok := tombMap[relID]; ok {
-			if err := ts.DeleteRelWithHistory(relID, rt.PrevVersion, rt.Tombstone); err != nil {
+			if err := ts.DeleteRelWithHistory(typedRelID, rt.PrevVersion, rt.Tombstone); err != nil {
 				return err
 			}
 		} else {
-			if err := ts.DeleteRelationship(relID); err != nil {
+			if err := ts.DeleteRelationship(typedRelID); err != nil {
 				return err
 			}
 		}
@@ -581,7 +601,7 @@ func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 
 	// Delete the node itself with its tombstone. relTombstones=nil because
 	// all rels were handled individually above.
-	return shard.DeleteNodeWithHistory(id, prevNodeVersion, nodeTombstone, nil)
+	return shard.DeleteNodeWithHistory(types.NodeID(id), prevNodeVersion, nodeTombstone, nil)
 }
 
 // --- Property indexes ---
@@ -751,7 +771,7 @@ func (ts *TieredStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 		if !ok {
 			continue
 		}
-		id := n.InternalID().SnowflakeID()
+		id := n.ID().SnowflakeID()
 		_ = vi.add(id, vec)
 	}
 	return nil
@@ -797,7 +817,7 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
-		n, err := ts.GetNode(id)
+		n, err := ts.GetNode(types.NodeID(id))
 		if err != nil {
 			continue // node may have been deleted concurrently
 		}
@@ -837,7 +857,9 @@ var ErrNotReferenceEntity = errors.New("graph: entity is not a reference entity"
 // stores simultaneously. The repair subsystem (tieredstore_repair.go) can
 // detect and resolve this: a node present in both refShard and refArchive
 // is flagged as a split-brain condition and corrected using the refShard copy.
-func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
+func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
+	id := nid.SnowflakeID()
+
 	// 1. Verify node is in refShard.
 	if !ts.refShard.hasNodeID(id) {
 		return fmt.Errorf("graph: archive: %w", ErrNodeNotFound)
@@ -849,7 +871,7 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	}
 
 	// 3. Read node from refShard.
-	node, err := ts.refShard.GetNode(id)
+	node, err := ts.refShard.GetNode(types.NodeID(id))
 	if err != nil {
 		return fmt.Errorf("graph: archive read node: %w", err)
 	}
@@ -877,7 +899,7 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 	// Read all relationship entities from refShard.
 	var rels []*types.Relationship
 	for _, rid := range relIDs {
-		r, err := ts.refShard.GetRelationship(rid)
+		r, err := ts.refShard.GetRelationship(types.RelID(rid))
 		if errors.Is(err, ErrRelNotFound) {
 			continue // cross-shard entity, skip
 		}
@@ -902,15 +924,15 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 		}
 		if err != nil {
 			// Best-effort rollback: remove partially written data from archive.
-			_ = ts.refArchive.DeleteNodeCascade(id)
+			_ = ts.refArchive.DeleteNodeCascade(types.NodeID(id))
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}
 
 	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
-	if err := ts.refShard.DeleteNodeCascade(id); err != nil {
+	if err := ts.refShard.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		// Best-effort rollback: remove data from archive since source delete failed.
-		_ = ts.refArchive.DeleteNodeCascade(id)
+		_ = ts.refArchive.DeleteNodeCascade(types.NodeID(id))
 		return fmt.Errorf("graph: archive delete from ref: %w", err)
 	}
 
@@ -923,7 +945,9 @@ func (ts *TieredStore) ArchiveNode(id snowflake.ID) error {
 // Atomicity: same best-effort rollback guarantee as ArchiveNode — NOT
 // transactional across two BadgerStores. If both the primary write and the
 // rollback fail, the repair subsystem resolves the split-brain state.
-func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
+func (ts *TieredStore) RestoreNode(nid types.NodeID) error {
+	id := nid.SnowflakeID()
+
 	// 1. Ensure archive is open.
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
@@ -935,7 +959,7 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 	}
 
 	// 3. Read node from archive.
-	node, err := ts.refArchive.GetNode(id)
+	node, err := ts.refArchive.GetNode(types.NodeID(id))
 	if err != nil {
 		return fmt.Errorf("graph: restore read node: %w", err)
 	}
@@ -961,7 +985,7 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 
 	var rels []*types.Relationship
 	for _, rid := range relIDs {
-		r, err := ts.refArchive.GetRelationship(rid)
+		r, err := ts.refArchive.GetRelationship(types.RelID(rid))
 		if errors.Is(err, ErrRelNotFound) {
 			continue
 		}
@@ -983,15 +1007,15 @@ func (ts *TieredStore) RestoreNode(id snowflake.ID) error {
 		}
 		if err != nil {
 			// Best-effort rollback: remove partially written data from refShard.
-			_ = ts.refShard.DeleteNodeCascade(id)
+			_ = ts.refShard.DeleteNodeCascade(types.NodeID(id))
 			return fmt.Errorf("graph: restore write rel: %w", err)
 		}
 	}
 
 	// 6. Delete from archive.
-	if err := ts.refArchive.DeleteNodeCascade(id); err != nil {
+	if err := ts.refArchive.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		// Best-effort rollback: remove data from refShard since archive delete failed.
-		_ = ts.refShard.DeleteNodeCascade(id)
+		_ = ts.refShard.DeleteNodeCascade(types.NodeID(id))
 		return fmt.Errorf("graph: restore delete from archive: %w", err)
 	}
 

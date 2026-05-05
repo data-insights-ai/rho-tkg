@@ -59,7 +59,7 @@ func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
 	}
 
 	// Create a minimal node
-	n := types.NewNode(snowflake.ID(1), 1, nil)
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	if err := bs1.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	nid := n.InternalID().SnowflakeID()
+	nid := n.ID()
 	got, err := bs2.GetNode(nid)
 	if err != nil {
 		t.Fatalf("GetNode: node should exist after sync write, got err: %v", err)

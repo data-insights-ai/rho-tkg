@@ -97,7 +97,7 @@ func seedMemoryStore(t *testing.T, ms *MemoryStore, label uint16, count int) []s
 	for i := range count {
 		id := snowflake.ID(1000 + i)
 		ids[i] = id
-		n := types.NewNode(id, label, nil)
+		n := types.NewNode(types.NodeID(id), label, nil)
 		if err := ms.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", id, err)
 		}
@@ -119,7 +119,7 @@ func TestMemoryStoreNodesByLabel_Paginated(t *testing.T) {
 	}
 	// Verify sorted.
 	for i := 1; i < len(got); i++ {
-		if got[i].InternalID().SnowflakeID() <= got[i-1].InternalID().SnowflakeID() {
+		if got[i].ID() <= got[i-1].ID() {
 			t.Fatal("results not sorted")
 		}
 	}
@@ -141,7 +141,7 @@ func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 			break
 		}
 		all = append(all, page...)
-		cursor = page[len(page)-1].InternalID().SnowflakeID()
+		cursor = page[len(page)-1].ID().SnowflakeID()
 		if len(page) < 3 {
 			break
 		}
@@ -152,11 +152,11 @@ func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	// Verify no duplicates.
 	seen := make(map[snowflake.ID]struct{})
 	for _, n := range all {
-		id := n.InternalID().SnowflakeID()
-		if _, dup := seen[id]; dup {
+		id := n.ID()
+		if _, dup := seen[id.SnowflakeID()]; dup {
 			t.Fatalf("duplicate ID %d in multi-page walk", id)
 		}
-		seen[id] = struct{}{}
+		seen[id.SnowflakeID()] = struct{}{}
 	}
 }
 
@@ -178,12 +178,12 @@ func TestMemoryStoreRelationshipsByType_Paginated(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
 	// Create 2 nodes and 5 rels.
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
 	_ = ms.PutNode(n1)
 	_ = ms.PutNode(n2)
 	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 		if err := ms.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship: %v", err)
 		}
@@ -215,12 +215,12 @@ func TestMemoryStoreAllNodes_Paginated(t *testing.T) {
 func TestMemoryStoreAllRelationships_Paginated(t *testing.T) {
 	t.Parallel()
 	ms := NewMemoryStore()
-	n1 := types.NewNode(snowflake.ID(1), 10, nil)
-	n2 := types.NewNode(snowflake.ID(2), 10, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
 	_ = ms.PutNode(n1)
 	_ = ms.PutNode(n2)
 	for i := range 5 {
-		r := types.NewRelationship(snowflake.ID(100+i), 5, snowflake.ID(1), snowflake.ID(2))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
 		_ = ms.PutRelationship(r)
 	}
 
@@ -239,7 +239,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
 		n.SetProperties(ps)
 		if err := ms.PutNode(n); err != nil {
@@ -265,7 +265,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
-		n := types.NewNode(id, 10, nil)
+		n := types.NewNode(types.NodeID(id), 10, nil)
 		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
 		n.SetProperties(ps)
 		if err := ms.PutNode(n); err != nil {

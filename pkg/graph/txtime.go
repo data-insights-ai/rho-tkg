@@ -18,7 +18,7 @@ var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the give
 //  2. Scan GetNodeHistory(id): find version where TxFrom > 0 && TxFrom <= txTime
 //     && (TxTo == 0 || TxTo > txTime) → return latest matching.
 //  3. None found → ErrNoVersionAsOf.
-func (g *Graph) GetNodeAsOf(id snowflake.ID, txTime types.Instant) (*types.Node, error) {
+func (g *Graph) GetNodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	// Try current node first.
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
@@ -57,7 +57,7 @@ func (g *Graph) GetNodeAsOf(id snowflake.ID, txTime types.Instant) (*types.Node,
 
 // GetRelAsOf returns the relationship version that was current at the given
 // transaction time. Mirrors GetNodeAsOf for relationships.
-func (g *Graph) GetRelAsOf(id snowflake.ID, txTime types.Instant) (*types.Relationship, error) {
+func (g *Graph) GetRelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -99,14 +99,14 @@ func (g *Graph) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// Two-phase: collect IDs under store locks, then process after lock release.
 	// Callback must NOT call store methods (B15 — lock reentrancy deadlock).
 	seen := make(map[snowflake.ID]struct{})
-	if err := g.store.ForEachNodeID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	if err := g.store.ForEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	}); err != nil {
 		return nil, err
 	}
-	if err := g.store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	if err := g.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	}); err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (g *Graph) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// Phase 2: process with store locks released — safe to call GetNodeAsOf.
 	var result []*types.Node
 	for id := range seen {
-		n, err := g.GetNodeAsOf(id, txTime)
+		n, err := g.GetNodeAsOf(types.NodeID(id), txTime)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				continue
@@ -132,14 +132,14 @@ func (g *Graph) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 func (g *Graph) GetRelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	// Two-phase: collect IDs under store locks, then process after lock release.
 	seen := make(map[snowflake.ID]struct{})
-	if err := g.store.ForEachRelID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	if err := g.store.ForEachRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	}); err != nil {
 		return nil, err
 	}
-	if err := g.store.ForEachRelHistoryID(func(id snowflake.ID) bool {
-		seen[id] = struct{}{}
+	if err := g.store.ForEachRelHistoryID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
 		return true
 	}); err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (g *Graph) GetRelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 	// Phase 2: process with store locks released.
 	var result []*types.Relationship
 	for id := range seen {
-		r, err := g.GetRelAsOf(id, txTime)
+		r, err := g.GetRelAsOf(types.RelID(id), txTime)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				continue

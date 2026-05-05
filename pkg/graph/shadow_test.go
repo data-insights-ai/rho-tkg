@@ -202,7 +202,7 @@ func TestResolveNodePropertyNilTemporal(t *testing.T) {
 	// loaded from disk without temporal metadata. AddNode now always sets TxFrom,
 	// so the nil-temporal code path must be tested via direct construction.
 	tok, _ := g.GetOrCreateLabel("X")
-	n := types.NewNode(g.NextNodeID(), tok, nil)
+	n := types.NewNode(types.NodeID(g.NextNodeID()), tok, nil)
 	// Temporal is nil — most temporal shadow keys should return (nil, false).
 	// Exception: tkg_created_at derives from snowflake ID.
 
@@ -244,7 +244,7 @@ func TestResolveNodePropertyNilIntegrity(t *testing.T) {
 	// Construct a node directly (bypassing AddNode) to simulate a legacy
 	// entity loaded from disk without integrity metadata.
 	tok, _ := g.GetOrCreateLabel("X")
-	n := types.NewNode(g.NextNodeID(), tok, nil)
+	n := types.NewNode(types.NodeID(g.NextNodeID()), tok, nil)
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
 		val, ok := g.ResolveNodeProperty(n, key)
@@ -380,7 +380,7 @@ func TestResolveRelPropertyNilTemporal(t *testing.T) {
 	// now always sets TxFrom, so the nil-temporal code path must be tested via
 	// direct construction.
 	tok, _ := g.GetOrCreateRelType("R")
-	r := types.NewRelationship(g.NextRelID(), tok, g.NextNodeID(), g.NextNodeID())
+	r := types.NewRelationship(types.RelID(g.NextRelID()), tok, types.NodeID(g.NextNodeID()), types.NodeID(g.NextNodeID()))
 
 	// Most temporal keys return (nil, false) without temporal metadata.
 	// Exception: tkg_created_at derives from snowflake ID.
@@ -422,7 +422,7 @@ func TestResolveRelPropertyNilIntegrity(t *testing.T) {
 	// Construct a relationship directly (bypassing AddRelationship) to simulate
 	// a legacy entity loaded from disk without integrity metadata.
 	tok, _ := g.GetOrCreateRelType("R")
-	r := types.NewRelationship(g.NextRelID(), tok, g.NextNodeID(), g.NextNodeID())
+	r := types.NewRelationship(types.RelID(g.NextRelID()), tok, types.NodeID(g.NextNodeID()), types.NodeID(g.NextNodeID()))
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
 		val, ok := g.ResolveRelProperty(r, key)

@@ -18,27 +18,73 @@ func stripDepth(opts QueryOpts) QueryOpts {
 	return opts
 }
 
+// Internal slice converters bridging typed entity IDs and raw snowflake.ID
+// for cross-shard merge helpers (mergeIDSlices, applyIDPagination).
+func nodeIDsToRaw(ids []types.NodeID) []snowflake.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]snowflake.ID, len(ids))
+	for i, id := range ids {
+		out[i] = id.SnowflakeID()
+	}
+	return out
+}
+
+func relIDsToRaw(ids []types.RelID) []snowflake.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]snowflake.ID, len(ids))
+	for i, id := range ids {
+		out[i] = id.SnowflakeID()
+	}
+	return out
+}
+
+func rawToNodeIDs(ids []snowflake.ID) []types.NodeID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]types.NodeID, len(ids))
+	for i, id := range ids {
+		out[i] = types.NodeID(id)
+	}
+	return out
+}
+
+func rawToRelIDs(ids []snowflake.ID) []types.RelID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]types.RelID, len(ids))
+	for i, id := range ids {
+		out[i] = types.RelID(id)
+	}
+	return out
+}
+
 // --- Entity reads ---
 // O(1) shard resolution: ref probe + timestamp extraction.
 
-func (ts *TieredStore) GetNode(id snowflake.ID) (*types.Node, error) {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+func (ts *TieredStore) GetNode(nid types.NodeID) (*types.Node, error) {
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
 	}
 	defer checkin()
-	return store.GetNode(id)
+	return store.GetNode(nid)
 }
 
-func (ts *TieredStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+func (ts *TieredStore) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	shard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelationship(id)
+	return shard.GetRelationship(rid)
 }
 
-func (ts *TieredStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+func (ts *TieredStore) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	var result []*types.Node
 	for _, id := range ids {
 		n, err := ts.GetNode(id)
@@ -53,7 +99,7 @@ func (ts *TieredStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) 
 	return result, nil
 }
 
-func (ts *TieredStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+func (ts *TieredStore) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	var result []*types.Relationship
 	for _, id := range ids {
 		r, err := ts.GetRelationship(id)
@@ -262,24 +308,24 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 
 // --- Adjacency queries ---
 
-func (ts *TieredStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
+func (ts *TieredStore) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	// Entity + out/ are co-located in the node's shard.
-	shard, err := ts.shardForNodeID(nodeID)
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.OutgoingRelationships(nodeID, typeToken)
+	return shard.OutgoingRelationships(nid, typeToken)
 }
 
 // OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
 // Groups nodeIDs by shard, delegates per-shard, and merges results.
-func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
+func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
 
 	// Partition nodeIDs by shard.
-	shardBuckets := make(map[*BadgerStore][]snowflake.ID)
+	shardBuckets := make(map[*BadgerStore][]types.NodeID)
 	for _, id := range nodeIDs {
 		shard, err := ts.shardForNodeID(id)
 		if err != nil {
@@ -289,7 +335,7 @@ func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 	}
 
 	// Delegate per-shard and merge.
-	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
+	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
 	for shard, bucket := range shardBuckets {
 		m, err := shard.OutgoingRelationshipsForNodes(bucket, typeToken)
 		if err != nil {
@@ -306,9 +352,11 @@ func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 	return result, nil
 }
 
-func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
+func (ts *TieredStore) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	nodeID := nid.SnowflakeID()
+
 	// Get relIDs from the node's shard inIdx.
-	shard, err := ts.shardForNodeID(nodeID)
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -321,11 +369,11 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	// Fetch each rel entity via shard resolution (relID timestamp -> O(1) per entity).
 	result := make([]*types.Relationship, 0, len(relIDs))
 	for _, relID := range relIDs {
-		relShard, err := ts.shardForRelID(relID)
+		relShard, err := ts.shardForRelID(types.RelID(relID))
 		if err != nil {
 			return nil, err
 		}
-		r, err := relShard.GetRelationship(relID)
+		r, err := relShard.GetRelationship(types.RelID(relID))
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
@@ -336,7 +384,7 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].InternalID().SnowflakeID() < result[j].InternalID().SnowflakeID()
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
 	})
 	return result, nil
 }
@@ -344,8 +392,8 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 // IncomingRelationshipsForNodes batches incoming relationship queries for multiple
 // nodes. For each node, relIDs come from the node's shard inIdx; relationship
 // entities are fetched via cross-shard resolution (relID timestamp -> shard).
-func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
-	if len(nodeIDs) == 0 {
+func (ts *TieredStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
 		return nil, nil
 	}
 
@@ -355,15 +403,16 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 		relID  snowflake.ID
 	}
 	var refs []relRef
-	seen := make(map[snowflake.ID]struct{}, len(nodeIDs))
+	seen := make(map[snowflake.ID]struct{}, len(typedNodeIDs))
 
-	for _, nid := range nodeIDs {
+	for _, tnid := range typedNodeIDs {
+		nid := tnid.SnowflakeID()
 		if _, dup := seen[nid]; dup {
 			continue
 		}
 		seen[nid] = struct{}{}
 
-		shard, err := ts.shardForNodeID(nid)
+		shard, err := ts.shardForNodeID(tnid)
 		if err != nil {
 			return nil, err
 		}
@@ -378,20 +427,21 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 	}
 
 	// Phase 2: fetch each rel entity via shard resolution.
-	result := make(map[snowflake.ID][]*types.Relationship, len(seen))
+	result := make(map[types.NodeID][]*types.Relationship, len(seen))
 	for _, ref := range refs {
-		relShard, err := ts.shardForRelID(ref.relID)
+		relShard, err := ts.shardForRelID(types.RelID(ref.relID))
 		if err != nil {
 			return nil, err
 		}
-		r, err := relShard.GetRelationship(ref.relID)
+		r, err := relShard.GetRelationship(types.RelID(ref.relID))
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
 		if err != nil {
 			return nil, err
 		}
-		result[ref.nodeID] = append(result[ref.nodeID], r)
+		key := types.NodeID(ref.nodeID)
+		result[key] = append(result[key], r)
 	}
 
 	// Sort per-node slices for deterministic output.
@@ -561,15 +611,16 @@ func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, va
 
 // --- ID enumeration ---
 
-func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
+func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllNodeIDs(stripDepth(opts))
+	refTyped, err := ts.refShard.AllNodeIDs(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+	refIDs := nodeIDsToRaw(refTyped)
 
 	type result struct {
 		ids []snowflake.ID
@@ -587,7 +638,9 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 				return
 			}
 			defer es.checkinStore()
-			results[i].ids, results[i].err = store.AllNodeIDs(stripDepth(opts))
+			typed, err := store.AllNodeIDs(stripDepth(opts))
+			results[i].ids = nodeIDsToRaw(typed)
+			results[i].err = err
 		}(i, es)
 	}
 	wg.Wait()
@@ -606,18 +659,20 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	}
 
 	merged := mergeIDSlices(slices)
-	return applyIDPagination(merged, opts), nil
+	paginated := applyIDPagination(merged, opts)
+	return rawToNodeIDs(paginated), nil
 }
 
-func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
+func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllRelIDs(stripDepth(opts))
+	refTyped, err := ts.refShard.AllRelIDs(stripDepth(opts))
 	if err != nil {
 		return nil, err
 	}
+	refIDs := relIDsToRaw(refTyped)
 
 	type result struct {
 		ids []snowflake.ID
@@ -635,7 +690,9 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 				return
 			}
 			defer es.checkinStore()
-			results[i].ids, results[i].err = store.AllRelIDs(stripDepth(opts))
+			typed, err := store.AllRelIDs(stripDepth(opts))
+			results[i].ids = relIDsToRaw(typed)
+			results[i].err = err
 		}(i, es)
 	}
 	wg.Wait()
@@ -654,53 +711,55 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	}
 
 	merged := mergeIDSlices(slices)
-	return applyIDPagination(merged, opts), nil
+	paginated := applyIDPagination(merged, opts)
+	return rawToRelIDs(paginated), nil
 }
 
 // --- History reads ---
 
-func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
-	shard, err := ts.shardForNodeID(id)
+func (ts *TieredStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	shard, err := ts.shardForNodeID(nid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetNodeVersion(id, version)
+	return shard.GetNodeVersion(nid, version)
 }
 
-func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+func (ts *TieredStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
 	}
 	defer checkin()
-	return store.GetNodeHistory(id)
+	return store.GetNodeHistory(nid)
 }
 
-func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+func (ts *TieredStore) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	shard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelVersion(id, version)
+	return shard.GetRelVersion(rid, version)
 }
 
-func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+func (ts *TieredStore) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	shard, err := ts.shardForRelID(rid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelHistory(id)
+	return shard.GetRelHistory(rid)
 }
 
-func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
+func (ts *TieredStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllNodeHistoryIDs()
+	refTyped, err := ts.refShard.AllNodeHistoryIDs()
 	if err != nil {
 		return nil, err
 	}
+	refIDs := nodeIDsToRaw(refTyped)
 
 	type result struct {
 		ids []snowflake.ID
@@ -718,7 +777,9 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 				return
 			}
 			defer es.checkinStore()
-			results[i].ids, results[i].err = store.AllNodeHistoryIDs()
+			typed, err := store.AllNodeHistoryIDs()
+			results[i].ids = nodeIDsToRaw(typed)
+			results[i].err = err
 		}(i, es)
 	}
 	wg.Wait()
@@ -736,18 +797,19 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		}
 	}
 
-	return mergeIDSlices(slices), nil
+	return rawToNodeIDs(mergeIDSlices(slices)), nil
 }
 
-func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
+func (ts *TieredStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
-	refIDs, err := ts.refShard.AllRelHistoryIDs()
+	refTyped, err := ts.refShard.AllRelHistoryIDs()
 	if err != nil {
 		return nil, err
 	}
+	refIDs := relIDsToRaw(refTyped)
 
 	type result struct {
 		ids []snowflake.ID
@@ -765,7 +827,9 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 				return
 			}
 			defer es.checkinStore()
-			results[i].ids, results[i].err = store.AllRelHistoryIDs()
+			typed, err := store.AllRelHistoryIDs()
+			results[i].ids = relIDsToRaw(typed)
+			results[i].err = err
 		}(i, es)
 	}
 	wg.Wait()
@@ -783,16 +847,16 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 		}
 	}
 
-	return mergeIDSlices(slices), nil
+	return rawToRelIDs(mergeIDSlices(slices)), nil
 }
 
 // --- ForEach iterators ---
 // Sequential shard iteration — one shard at a time, no goroutines, no mergeIDSlices.
 // This eliminates the O(N) per-shard slice allocations that cause OOM on large graphs.
 
-func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
+func (ts *TieredStore) ForEachNodeID(fn func(types.NodeID) bool) error {
 	stopped := false
-	if err := ts.refShard.ForEachNodeID(func(id snowflake.ID) bool {
+	if err := ts.refShard.ForEachNodeID(func(id types.NodeID) bool {
 		if !fn(id) {
 			stopped = true
 			return false
@@ -810,7 +874,7 @@ func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 	archive := ts.refArchive
 	ts.archiveMu.Unlock()
 	if archive != nil {
-		if err := archive.ForEachNodeID(func(id snowflake.ID) bool {
+		if err := archive.ForEachNodeID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -834,7 +898,7 @@ func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 		if err != nil {
 			return err
 		}
-		err = store.ForEachNodeID(func(id snowflake.ID) bool {
+		err = store.ForEachNodeID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -852,9 +916,9 @@ func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 	return nil
 }
 
-func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
+func (ts *TieredStore) ForEachRelID(fn func(types.RelID) bool) error {
 	stopped := false
-	if err := ts.refShard.ForEachRelID(func(id snowflake.ID) bool {
+	if err := ts.refShard.ForEachRelID(func(id types.RelID) bool {
 		if !fn(id) {
 			stopped = true
 			return false
@@ -871,7 +935,7 @@ func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 	archive := ts.refArchive
 	ts.archiveMu.Unlock()
 	if archive != nil {
-		if err := archive.ForEachRelID(func(id snowflake.ID) bool {
+		if err := archive.ForEachRelID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -894,7 +958,7 @@ func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 		if err != nil {
 			return err
 		}
-		err = store.ForEachRelID(func(id snowflake.ID) bool {
+		err = store.ForEachRelID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -912,9 +976,9 @@ func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 	return nil
 }
 
-func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
+func (ts *TieredStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	stopped := false
-	if err := ts.refShard.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+	if err := ts.refShard.ForEachNodeHistoryID(func(id types.NodeID) bool {
 		if !fn(id) {
 			stopped = true
 			return false
@@ -931,7 +995,7 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 	archive := ts.refArchive
 	ts.archiveMu.Unlock()
 	if archive != nil {
-		if err := archive.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		if err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -954,7 +1018,7 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 		if err != nil {
 			return err
 		}
-		err = store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		err = store.ForEachNodeHistoryID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -972,9 +1036,9 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 	return nil
 }
 
-func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
+func (ts *TieredStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	stopped := false
-	if err := ts.refShard.ForEachRelHistoryID(func(id snowflake.ID) bool {
+	if err := ts.refShard.ForEachRelHistoryID(func(id types.RelID) bool {
 		if !fn(id) {
 			stopped = true
 			return false
@@ -991,7 +1055,7 @@ func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 	archive := ts.refArchive
 	ts.archiveMu.Unlock()
 	if archive != nil {
-		if err := archive.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		if err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -1014,7 +1078,7 @@ func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 		if err != nil {
 			return err
 		}
-		err = store.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		err = store.ForEachRelHistoryID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
@@ -1056,7 +1120,7 @@ func mergeNodeSlices(slices [][]*types.Node) []*types.Node {
 		result = append(result, s...)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].InternalID().SnowflakeID() < result[j].InternalID().SnowflakeID()
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
 	})
 	return result
 }
@@ -1078,7 +1142,7 @@ func mergeRelSlices(slices [][]*types.Relationship) []*types.Relationship {
 		result = append(result, s...)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].InternalID().SnowflakeID() < result[j].InternalID().SnowflakeID()
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
 	})
 	return result
 }
@@ -1111,7 +1175,7 @@ func mergeIDSlices(slices [][]snowflake.ID) []snowflake.ID {
 func applyNodePagination(nodes []*types.Node, opts QueryOpts) []*types.Node {
 	if opts.After != 0 {
 		i := sort.Search(len(nodes), func(i int) bool {
-			return nodes[i].InternalID().SnowflakeID() > opts.After
+			return nodes[i].ID().SnowflakeID() > opts.After
 		})
 		nodes = nodes[i:]
 	}
@@ -1127,7 +1191,7 @@ func applyNodePagination(nodes []*types.Node, opts QueryOpts) []*types.Node {
 func applyRelPagination(rels []*types.Relationship, opts QueryOpts) []*types.Relationship {
 	if opts.After != 0 {
 		i := sort.Search(len(rels), func(i int) bool {
-			return rels[i].InternalID().SnowflakeID() > opts.After
+			return rels[i].ID().SnowflakeID() > opts.After
 		})
 		rels = rels[i:]
 	}

@@ -200,7 +200,7 @@ func main() {
 	const lookupCount = 10_000
 	start := time.Now()
 	for i := range lookupCount {
-		id := qNodes[i%nodeCount].InternalID().SnowflakeID()
+		id := qNodes[i%nodeCount].ID()
 		if _, err := gQuery.GetNode(id); err != nil {
 			log.Fatal(err)
 		}
@@ -211,7 +211,7 @@ func main() {
 
 	start = time.Now()
 	for i := range lookupCount {
-		id := qRels[i%relCount].InternalID().SnowflakeID()
+		id := qRels[i%relCount].ID()
 		if _, err := gQuery.GetRelationship(id); err != nil {
 			log.Fatal(err)
 		}
@@ -232,7 +232,7 @@ func main() {
 	var outTotalEntities int64
 	start = time.Now()
 	for i := range outQueryCount {
-		id := qNodes[i%nodeCount].InternalID().SnowflakeID()
+		id := qNodes[i%nodeCount].ID()
 		rels, err := gQuery.OutgoingRelationships(id, "")
 		if err != nil {
 			log.Fatal(err)
@@ -409,7 +409,7 @@ func main() {
 		tempNodes[i] = n
 	}
 	for i := range tempClosed {
-		id := tempNodes[i].InternalID().SnowflakeID()
+		id := tempNodes[i].ID()
 		if err := gTemp.CloseNodeVersion(id, closeTime); err != nil {
 			log.Fatalf("CloseNodeVersion: %v", err)
 		}

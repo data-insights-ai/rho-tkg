@@ -17,12 +17,12 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 
 	primary := uint16(1)
 	extra := uint16(2)
-	n := types.NewNode(snowflake.ID(100), primary, []uint16{extra})
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), primary, []uint16{extra})
 	if err := bs.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	// Simulate RemoveLabelTokenRaw on a copy.
 	copy := n.DeepCopy()
@@ -37,7 +37,7 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 	set, hasSet := bs.labelIdx[extra]
 	bs.idxMu.RUnlock()
 	if hasSet {
-		if _, inSet := set[id]; inSet {
+		if _, inSet := set[id.SnowflakeID()]; inSet {
 			t.Error("node still in label index after RemoveNodeLabelToken")
 		}
 	}
@@ -46,8 +46,8 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 func TestBadgerStore_RemoveNodeLabelToken_NotFound(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
-	copy := types.NewNode(snowflake.ID(999), 1, nil)
-	err := bs.RemoveNodeLabelToken(snowflake.ID(999), 1, copy)
+	copy := types.NewNode(types.NodeID(snowflake.ID(999)), 1, nil)
+	err := bs.RemoveNodeLabelToken(types.NodeID(999), 1, copy)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -61,12 +61,12 @@ func TestBadgerStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	key := "vec"
 
 	// Put two nodes with float32 vector properties.
-	n1 := types.NewNode(snowflake.ID(101), labelTok, nil)
+	n1 := types.NewNode(types.NodeID(snowflake.ID(101)), labelTok, nil)
 	ps1, _ := types.NewPropertySlice(map[string]any{key: []float32{1, 0, 0}})
 	n1.SetProperties(ps1)
 	bs.PutNode(n1)
 
-	n2 := types.NewNode(snowflake.ID(102), labelTok, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(102)), labelTok, nil)
 	ps2, _ := types.NewPropertySlice(map[string]any{key: []float32{0, 1, 0}})
 	n2.SetProperties(ps2)
 	bs.PutNode(n2)
@@ -82,7 +82,7 @@ func TestBadgerStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected results, got none")
 	}
-	if results[0].InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
+	if results[0].ID() != n1.ID() {
 		t.Error("expected n1 as closest to [1,0,0]")
 	}
 }
@@ -143,7 +143,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID()
 
 	if err := g.RemoveNodeLabel(id, "Admin"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
@@ -174,8 +174,8 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected results, got none")
 	}
-	if results[0].InternalID().SnowflakeID() != n1.InternalID().SnowflakeID() {
-		t.Errorf("expected n1 as closest, got something else (n2=%v)", n2.InternalID().SnowflakeID())
+	if results[0].ID() != n1.ID() {
+		t.Errorf("expected n1 as closest, got something else (n2=%v)", n2.ID())
 	}
 }
 

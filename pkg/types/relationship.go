@@ -9,14 +9,14 @@ type relTypeToken uint16
 // Value returns the underlying uint16 value of the token.
 func (t relTypeToken) Value() uint16 { return uint16(t) }
 
-// relID is the opaque, unexported ID type for relationships.
+// RelID is the opaque, unexported ID type for relationships.
 // Wraps snowflake.ID — external packages cannot construct or compare these
 // directly. The graph layer creates relationships with snowflake.ID values.
-type relID snowflake.ID
+type RelID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a relID.
 // This is the bridge for pkg/graph to get persistence keys from entities.
-func (id relID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
+func (id RelID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
 // Relationship represents a directed edge in the temporal knowledge graph.
 // All fields are unexported; access is through methods only.
@@ -25,9 +25,9 @@ func (id relID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 72 bytes
 // with only 2 bytes of trailing padding (vs. 80 bytes with naive ordering).
 type Relationship struct {
-	id         relID             // 8B, offset  0
-	startID    nodeID            // 8B, offset  8
-	endID      nodeID            // 8B, offset 16
+	id         RelID             // 8B, offset  0
+	startID    NodeID            // 8B, offset  8
+	endID      NodeID            // 8B, offset 16
 	properties PropertySlice     // 24B (slice header), offset 24
 	temporal   *TemporalMetadata // 8B, offset 48
 	integrity  *RelIntegrity     // 8B, offset 56
@@ -36,23 +36,27 @@ type Relationship struct {
 	// 2B trailing padding → 72B total
 }
 
-// NewRelationship creates a Relationship with snowflake IDs for all parties.
-func NewRelationship(id snowflake.ID, relType uint16, startID, endID snowflake.ID) *Relationship {
+// NewRelationship creates a Relationship with typed IDs for all parties.
+func NewRelationship(id RelID, relType uint16, startID, endID NodeID) *Relationship {
 	if relType == 0 {
 		panic("types: relationship type token 0 is reserved")
 	}
 	return &Relationship{
-		id:      relID(id),
+		id:      id,
 		relType: relTypeToken(relType),
-		startID: nodeID(startID),
-		endID:   nodeID(endID),
+		startID: startID,
+		endID:   endID,
 	}
 }
 
-// InternalID returns the relationship's opaque internal ID.
-// The returned type is unexported — external packages can store and compare
-// these values but cannot construct them.
-func (r *Relationship) InternalID() relID {
+// ID returns the relationship's typed ID.
+func (r *Relationship) ID() RelID {
+	return r.id
+}
+
+// InternalID is the legacy accessor kept for migration; prefer ID().
+// Will be removed once all callsites have switched.
+func (r *Relationship) InternalID() RelID {
 	return r.id
 }
 
@@ -75,12 +79,12 @@ func (r *Relationship) HasTypeTokenRaw(tok uint16) bool {
 }
 
 // StartNodeID returns the source node's opaque internal ID.
-func (r *Relationship) StartNodeID() nodeID {
+func (r *Relationship) StartNodeID() NodeID {
 	return r.startID
 }
 
 // EndNodeID returns the target node's opaque internal ID.
-func (r *Relationship) EndNodeID() nodeID {
+func (r *Relationship) EndNodeID() NodeID {
 	return r.endID
 }
 

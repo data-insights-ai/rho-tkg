@@ -24,10 +24,10 @@ type BatchBuilder struct {
 	g           *Graph
 	nodes       []pendingNode
 	rels        []pendingRel
-	nodeUpdates []pendingUpdate
-	relUpdates  []pendingUpdate
-	nodeDeletes []snowflake.ID
-	relDeletes  []snowflake.ID
+	nodeUpdates []pendingNodeUpdate
+	relUpdates  []pendingRelUpdate
+	nodeDeletes []types.NodeID
+	relDeletes  []types.RelID
 }
 
 type pendingNode struct {
@@ -37,12 +37,17 @@ type pendingNode struct {
 
 type pendingRel struct {
 	rel     *types.Relationship
-	startID snowflake.ID
-	endID   snowflake.ID
+	startID types.NodeID
+	endID   types.NodeID
 }
 
-type pendingUpdate struct {
-	id      snowflake.ID
+type pendingNodeUpdate struct {
+	id      types.NodeID
+	updates map[string]any
+}
+
+type pendingRelUpdate struct {
+	id      types.RelID
 	updates map[string]any
 }
 
@@ -119,7 +124,7 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	}
 
 	id := b.g.NextNodeID()
-	n := types.NewNode(id, primaryToken, extraTokens)
+	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
 	n.SetProperties(ps)
 
 	canonicalLabels := b.g.NodeLabels(n)
@@ -172,11 +177,11 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
 	}
 
-	startID := startNode.InternalID().SnowflakeID()
-	endID := endNode.InternalID().SnowflakeID()
+	startID := startNode.ID()
+	endID := endNode.ID()
 
 	id := b.g.NextRelID()
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
@@ -197,7 +202,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 }
 
 // UpdateNode queues a node update. Keys and values are validated eagerly.
-func (b *BatchBuilder) UpdateNode(id snowflake.ID, updates map[string]any) error {
+func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error {
 	for key, val := range updates {
 		if types.IsShadowKey(key) {
 			return fmt.Errorf("graph: batch update node: %w: %q", types.ErrReservedPrefix, key)
@@ -215,12 +220,12 @@ func (b *BatchBuilder) UpdateNode(id snowflake.ID, updates map[string]any) error
 			}
 		}
 	}
-	b.nodeUpdates = append(b.nodeUpdates, pendingUpdate{id: id, updates: updates})
+	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, updates: updates})
 	return nil
 }
 
 // UpdateRelationship queues a relationship update. Keys and values are validated eagerly.
-func (b *BatchBuilder) UpdateRelationship(id snowflake.ID, updates map[string]any) error {
+func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any) error {
 	for key, val := range updates {
 		if types.IsShadowKey(key) {
 			return fmt.Errorf("graph: batch update relationship: %w: %q", types.ErrReservedPrefix, key)
@@ -238,17 +243,17 @@ func (b *BatchBuilder) UpdateRelationship(id snowflake.ID, updates map[string]an
 			}
 		}
 	}
-	b.relUpdates = append(b.relUpdates, pendingUpdate{id: id, updates: updates})
+	b.relUpdates = append(b.relUpdates, pendingRelUpdate{id: id, updates: updates})
 	return nil
 }
 
 // DeleteNode queues a node for deletion (cascade via Graph.DeleteNode).
-func (b *BatchBuilder) DeleteNode(id snowflake.ID) {
+func (b *BatchBuilder) DeleteNode(id types.NodeID) {
 	b.nodeDeletes = append(b.nodeDeletes, id)
 }
 
 // DeleteRelationship queues a relationship for deletion.
-func (b *BatchBuilder) DeleteRelationship(id snowflake.ID) {
+func (b *BatchBuilder) DeleteRelationship(id types.RelID) {
 	b.relDeletes = append(b.relDeletes, id)
 }
 
@@ -292,7 +297,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
-					ID:  pn.node.InternalID().SnowflakeID(),
+					ID:  pn.node.ID().SnowflakeID(),
 					Err: err,
 				})
 			}
@@ -300,27 +305,27 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Created += len(b.nodes)
 			now := nowInstant()
 			for _, pn := range b.nodes {
-				b.g.publishEvent(EventNodeCreate, pn.node.InternalID().SnowflakeID(), now, PriorityHigh)
+				b.g.publishEvent(EventNodeCreate, types.EntityID(pn.node.ID()), now, PriorityHigh)
 			}
 		}
 	}
 
 	// 2. Create relationships — lock endpoints per-rel.
 	for _, pr := range b.rels {
-		b.g.entityLocks.LockTwo(pr.startID, pr.endID)
+		b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 		err := b.g.store.PutRelationship(pr.rel)
-		b.g.entityLocks.UnlockTwo(pr.startID, pr.endID)
+		b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
-				ID:  pr.rel.InternalID().SnowflakeID(),
+				ID:  pr.rel.ID().SnowflakeID(),
 				Err: err,
 			})
 		} else {
 			result.Created++
-			b.g.publishEvent(EventRelCreate, pr.rel.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+			b.g.publishEvent(EventRelCreate, types.EntityID(pr.rel.ID()), nowInstant(), PriorityHigh)
 		}
 	}
 
@@ -331,12 +336,12 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "UpdateNode",
-				ID:  pu.id,
+				ID:  pu.id.SnowflakeID(),
 				Err: err,
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(EventNodeUpdate, pu.id, nowInstant(), PriorityNormal)
+			b.g.publishEvent(EventNodeUpdate, types.EntityID(pu.id), nowInstant(), PriorityNormal)
 		}
 	}
 
@@ -347,12 +352,12 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "UpdateRelationship",
-				ID:  pu.id,
+				ID:  pu.id.SnowflakeID(),
 				Err: err,
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(EventRelUpdate, pu.id, nowInstant(), PriorityNormal)
+			b.g.publishEvent(EventRelUpdate, types.EntityID(pu.id), nowInstant(), PriorityNormal)
 		}
 	}
 
@@ -362,12 +367,12 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteRelationship",
-				ID:  id,
+				ID:  id.SnowflakeID(),
 				Err: err,
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(EventRelDelete, id, nowInstant(), PriorityCritical)
+			b.g.publishEvent(EventRelDelete, types.EntityID(id), nowInstant(), PriorityCritical)
 		}
 	}
 
@@ -377,12 +382,12 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteNode",
-				ID:  id,
+				ID:  id.SnowflakeID(),
 				Err: err,
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(EventNodeDelete, id, nowInstant(), PriorityCritical)
+			b.g.publishEvent(EventNodeDelete, types.EntityID(id), nowInstant(), PriorityCritical)
 		}
 	}
 

@@ -159,7 +159,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Self-loop: Alice -[REVIEWS]-> Alice (ID: %s)\n",
-		commas(int64(selfLoop.InternalID().SnowflakeID())))
+		commas(int64(selfLoop.ID())))
 
 	nc, err := g.NodeCount()
 	if err != nil {
@@ -282,7 +282,7 @@ func main() {
 	// ----------------------------------------------------------------
 
 	// All outgoing from Alice.
-	outAll, err := g.OutgoingRelationships(alice.InternalID().SnowflakeID(), "")
+	outAll, err := g.OutgoingRelationships(alice.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func main() {
 	}
 
 	// All incoming to Bob.
-	inBob, err := g.IncomingRelationships(bob.InternalID().SnowflakeID(), "")
+	inBob, err := g.IncomingRelationships(bob.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func main() {
 
 	// Filtered by type.
 	assignedOnly, err := g.OutgoingRelationships(
-		alice.InternalID().SnowflakeID(), "ASSIGNED_TO")
+		alice.ID(), "ASSIGNED_TO")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func main() {
 	fmt.Printf("Before delete: %d nodes, %d rels\n", nc, rc)
 
 	// Delete Alice — cascade removes all her relationships.
-	aliceID := alice.InternalID().SnowflakeID()
+	aliceID := alice.ID()
 	if err := g.DeleteNode(aliceID); err != nil {
 		log.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func main() {
 		fmt.Println("GetNode(deleted Alice): ErrNodeNotFound")
 	}
 
-	_, err = g.GetRelationship(worksIn.InternalID().SnowflakeID())
+	_, err = g.GetRelationship(worksIn.ID())
 	if errors.Is(err, graph.ErrRelNotFound) {
 		fmt.Println("GetRelationship(cascaded rel): ErrRelNotFound")
 	}

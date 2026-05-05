@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TestMutationBlockedDuringTx verifies that standalone mutations (AddNode)
@@ -236,7 +238,7 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 	bus.Subscribe(func(e Event) {
 		if e.Type == EventNodeCreate {
 			// This must not deadlock — g.mu must be unlocked at this point.
-			n, err := g.GetNode(e.EntityID)
+			n, err := g.GetNode(types.NodeID(e.EntityID))
 			if err == nil && n != nil {
 				handlerOK.Store(true)
 			}

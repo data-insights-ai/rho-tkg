@@ -123,7 +123,7 @@ func TestAuthorIDPreservedOnUpdate(t *testing.T) {
 
 	n, _ := g.AddNode([]string{"User"}, nil)
 
-	updated, err := g.UpdateNode(n.InternalID().SnowflakeID(), map[string]any{
+	updated, err := g.UpdateNode(n.ID(), map[string]any{
 		"score":         42,
 		"tkg_author_id": "updater@example.com",
 	})

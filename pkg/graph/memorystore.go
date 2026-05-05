@@ -67,7 +67,7 @@ func NewMemoryStore() *MemoryStore {
 // PutNode stores a node and indexes all its label tokens.
 // Returns ErrNodeExists if a node with the same ID already exists.
 func (ms *MemoryStore) PutNode(n *types.Node) error {
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -95,7 +95,8 @@ func (ms *MemoryStore) PutNode(n *types.Node) error {
 
 // GetNode retrieves a node by its snowflake ID.
 // Returns ErrNodeNotFound if the node does not exist.
-func (ms *MemoryStore) GetNode(id snowflake.ID) (*types.Node, error) {
+func (ms *MemoryStore) GetNode(nid types.NodeID) (*types.Node, error) {
+	id := nid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -109,7 +110,8 @@ func (ms *MemoryStore) GetNode(id snowflake.ID) (*types.Node, error) {
 // DeleteNode removes a node and its label index entries.
 // The Graph layer is responsible for cascade-deleting relationships first.
 // Returns ErrNodeNotFound if the node does not exist.
-func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
+func (ms *MemoryStore) DeleteNode(nid types.NodeID) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -139,7 +141,8 @@ func (ms *MemoryStore) DeleteNode(id snowflake.ID) error {
 // RemoveNodeLabelToken removes tok from the label index for id and stores updatedNode.
 // updatedNode must already have the label removed (via RemoveLabelTokenRaw).
 // Returns ErrNodeNotFound if the node does not exist.
-func (ms *MemoryStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+func (ms *MemoryStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -169,8 +172,9 @@ func (ms *MemoryStore) RemoveNodeLabelToken(id snowflake.ID, tok uint16, updated
 
 // RemoveNodeLabelTokenWithHistory atomically removes tok from the label index,
 // writes a version history entry, and persists updatedNode under a single lock.
-func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -209,7 +213,8 @@ func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(id snowflake.ID, tok uint
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
 // No version bump; no history entry. Used by transaction rollback.
 // Returns ErrNodeNotFound if the node does not exist.
-func (ms *MemoryStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNode *types.Node) error {
+func (ms *MemoryStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -237,8 +242,9 @@ func (ms *MemoryStore) AddNodeLabelToken(id snowflake.ID, tok uint16, updatedNod
 
 // AddNodeLabelTokenWithHistory atomically adds tok to the label index,
 // writes a version history entry, and persists updatedNode under a single lock.
-func (ms *MemoryStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16, updatedNode *types.Node,
+func (ms *MemoryStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -279,7 +285,7 @@ func (ms *MemoryStore) AddNodeLabelTokenWithHistory(id snowflake.ID, tok uint16,
 // No label index changes — labels are immutable after creation.
 // Property indexes are updated to reflect property changes.
 func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -302,7 +308,7 @@ func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
 // Returns ErrNodeNotFound if start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (ms *MemoryStore) PutRelationship(r *types.Relationship) error {
-	id := r.InternalID().SnowflakeID()
+	id := r.ID().SnowflakeID()
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 
@@ -347,7 +353,8 @@ func (ms *MemoryStore) PutRelationship(r *types.Relationship) error {
 
 // GetRelationship retrieves a relationship by its snowflake ID.
 // Returns ErrRelNotFound if the relationship does not exist.
-func (ms *MemoryStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
+func (ms *MemoryStore) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	id := rid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -362,7 +369,7 @@ func (ms *MemoryStore) GetRelationship(id snowflake.ID) (*types.Relationship, er
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (ms *MemoryStore) ReplaceRelationship(r *types.Relationship) error {
-	id := r.InternalID().SnowflakeID()
+	id := r.ID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -376,7 +383,8 @@ func (ms *MemoryStore) ReplaceRelationship(r *types.Relationship) error {
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
-func (ms *MemoryStore) DeleteRelationship(id snowflake.ID) error {
+func (ms *MemoryStore) DeleteRelationship(rid types.RelID) error {
+	id := rid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -424,7 +432,8 @@ func (ms *MemoryStore) deleteRelLocked(id snowflake.ID) error {
 // DeleteNodeCascade atomically removes a node and all connected relationships.
 // Holds the write lock for the entire operation — no TOCTOU window.
 // Returns ErrNodeNotFound if the node does not exist.
-func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
+func (ms *MemoryStore) DeleteNodeCascade(nid types.NodeID) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -469,7 +478,8 @@ func (ms *MemoryStore) DeleteNodeCascade(id snowflake.ID) error {
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry
 // and deletes the live relationship in a single locked operation.
 // All under one lock: atomic with respect to concurrent readers.
-func (ms *MemoryStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
+func (ms *MemoryStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
+	id := rid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -490,7 +500,8 @@ func (ms *MemoryStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32,
 // DeleteNodeWithHistory atomically writes tombstone history entries for the node
 // and all connected relationships, then performs the cascade delete.
 // All under one lock: atomic with respect to concurrent readers.
-func (ms *MemoryStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+func (ms *MemoryStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -509,10 +520,11 @@ func (ms *MemoryStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion ui
 
 	// Write rel tombstones to history.
 	for _, rt := range relTombstones {
-		relInner, ok := ms.relHistory[rt.ID]
+		rtID := rt.ID.SnowflakeID()
+		relInner, ok := ms.relHistory[rtID]
 		if !ok {
 			relInner = make(map[uint32]*types.Relationship)
-			ms.relHistory[rt.ID] = relInner
+			ms.relHistory[rtID] = relInner
 		}
 		relInner[rt.PrevVersion] = rt.Tombstone.DeepCopy()
 	}
@@ -651,7 +663,8 @@ func (ms *MemoryStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 // MemoryStore never returns an error.
-func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
+func (ms *MemoryStore) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	nodeID := nid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -675,17 +688,21 @@ func (ms *MemoryStore) OutgoingRelationships(nodeID snowflake.ID, typeToken uint
 
 // OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
 // in a single batched operation under one read lock.
-func (ms *MemoryStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
-	if len(nodeIDs) == 0 {
+func (ms *MemoryStore) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
 		return nil, nil
+	}
+	nodeIDs := make([]snowflake.ID, len(typedNodeIDs))
+	for i, n := range typedNodeIDs {
+		nodeIDs[i] = n.SnowflakeID()
 	}
 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
-	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
+	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
 	for _, nid := range nodeIDs {
-		if _, done := result[nid]; done {
+		if _, done := result[types.NodeID(nid)]; done {
 			continue // deduplicate input
 		}
 		set := ms.outIdx[nid]
@@ -704,7 +721,7 @@ func (ms *MemoryStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 		}
 		if len(rels) > 0 {
 			sortRelsByID(rels)
-			result[nid] = rels
+			result[types.NodeID(nid)] = rels
 		}
 	}
 
@@ -718,7 +735,8 @@ func (ms *MemoryStore) OutgoingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 // MemoryStore never returns an error.
-func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint16) ([]*types.Relationship, error) {
+func (ms *MemoryStore) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	nodeID := nid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -742,17 +760,21 @@ func (ms *MemoryStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 
 // IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
 // in a single batched operation under one read lock.
-func (ms *MemoryStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typeToken uint16) (map[snowflake.ID][]*types.Relationship, error) {
-	if len(nodeIDs) == 0 {
+func (ms *MemoryStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
 		return nil, nil
+	}
+	nodeIDs := make([]snowflake.ID, len(typedNodeIDs))
+	for i, n := range typedNodeIDs {
+		nodeIDs[i] = n.SnowflakeID()
 	}
 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
-	result := make(map[snowflake.ID][]*types.Relationship, len(nodeIDs))
+	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
 	for _, nid := range nodeIDs {
-		if _, done := result[nid]; done {
+		if _, done := result[types.NodeID(nid)]; done {
 			continue // deduplicate input
 		}
 		set := ms.inIdx[nid]
@@ -771,7 +793,7 @@ func (ms *MemoryStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 		}
 		if len(rels) > 0 {
 			sortRelsByID(rels)
-			result[nid] = rels
+			result[types.NodeID(nid)] = rels
 		}
 	}
 
@@ -817,7 +839,8 @@ func (ms *MemoryStore) RelCountByType(token uint16) (int, error) {
 
 // PutNodeVersion stores a node snapshot at the given version.
 // Deep-copies the node at the store boundary.
-func (ms *MemoryStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
+func (ms *MemoryStore) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -832,7 +855,8 @@ func (ms *MemoryStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.
 
 // GetNodeVersion retrieves a node snapshot at the given version.
 // Returns ErrVersionNotFound if the version does not exist.
-func (ms *MemoryStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.Node, error) {
+func (ms *MemoryStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	id := nid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -849,7 +873,8 @@ func (ms *MemoryStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.N
 
 // GetNodeHistory returns all node version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
-func (ms *MemoryStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
+func (ms *MemoryStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	id := nid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -873,7 +898,8 @@ func (ms *MemoryStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
 
 // TruncateNodeHistory removes all but the N most recent node versions.
 // If keepVersions <= 0, all history is cleared.
-func (ms *MemoryStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) error {
+func (ms *MemoryStore) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
+	id := nid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -906,7 +932,8 @@ func (ms *MemoryStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) er
 
 // PutRelVersion stores a relationship snapshot at the given version.
 // Deep-copies the relationship at the store boundary.
-func (ms *MemoryStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
+func (ms *MemoryStore) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
+	id := rid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -921,7 +948,8 @@ func (ms *MemoryStore) PutRelVersion(id snowflake.ID, version uint32, r *types.R
 
 // GetRelVersion retrieves a relationship snapshot at the given version.
 // Returns ErrVersionNotFound if the version does not exist.
-func (ms *MemoryStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Relationship, error) {
+func (ms *MemoryStore) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	id := rid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -938,7 +966,8 @@ func (ms *MemoryStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 
 // GetRelHistory returns all relationship version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
-func (ms *MemoryStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, error) {
+func (ms *MemoryStore) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	id := rid.SnowflakeID()
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -962,7 +991,8 @@ func (ms *MemoryStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, er
 
 // TruncateRelHistory removes all but the N most recent relationship versions.
 // If keepVersions <= 0, all history is cleared.
-func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) error {
+func (ms *MemoryStore) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	id := rid.SnowflakeID()
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -995,7 +1025,7 @@ func (ms *MemoryStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 // ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
-	id := current.InternalID().SnowflakeID()
+	id := current.ID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -1025,7 +1055,7 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 // ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *MemoryStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	id := current.InternalID().SnowflakeID()
+	id := current.ID().SnowflakeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -1343,7 +1373,7 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 
 // AllNodeIDs returns the IDs of all current nodes, with optional pagination.
 // Returns only IDs — no entity deserialization or deep copy.
-func (ms *MemoryStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
+func (ms *MemoryStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1359,12 +1389,12 @@ func (ms *MemoryStore) AllNodeIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return ids, nil
+	return rawToNodeIDs(ids), nil
 }
 
 // AllRelIDs returns the IDs of all current relationships, with optional pagination.
 // Returns only IDs — no entity deserialization or deep copy.
-func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
+func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1380,16 +1410,16 @@ func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]snowflake.ID, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return ids, nil
+	return rawToRelIDs(ids), nil
 }
 
 // ForEachNodeID iterates over all current node IDs, calling fn for each.
 // Iteration stops early if fn returns false. No ordering guarantee.
-func (ms *MemoryStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
+func (ms *MemoryStore) ForEachNodeID(fn func(types.NodeID) bool) error {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	for id := range ms.nodes {
-		if !fn(id) {
+		if !fn(types.NodeID(id)) {
 			return nil
 		}
 	}
@@ -1398,11 +1428,11 @@ func (ms *MemoryStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 
 // ForEachRelID iterates over all current relationship IDs, calling fn for each.
 // Iteration stops early if fn returns false. No ordering guarantee.
-func (ms *MemoryStore) ForEachRelID(fn func(snowflake.ID) bool) error {
+func (ms *MemoryStore) ForEachRelID(fn func(types.RelID) bool) error {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	for id := range ms.rels {
-		if !fn(id) {
+		if !fn(types.RelID(id)) {
 			return nil
 		}
 	}
@@ -1411,11 +1441,11 @@ func (ms *MemoryStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 
 // ForEachNodeHistoryID iterates over all node IDs with version history entries.
 // Iteration stops early if fn returns false. No ordering guarantee.
-func (ms *MemoryStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
+func (ms *MemoryStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	for id := range ms.nodeHistory {
-		if !fn(id) {
+		if !fn(types.NodeID(id)) {
 			return nil
 		}
 	}
@@ -1424,11 +1454,11 @@ func (ms *MemoryStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 
 // ForEachRelHistoryID iterates over all relationship IDs with version history entries.
 // Iteration stops early if fn returns false. No ordering guarantee.
-func (ms *MemoryStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
+func (ms *MemoryStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	for id := range ms.relHistory {
-		if !fn(id) {
+		if !fn(types.RelID(id)) {
 			return nil
 		}
 	}
@@ -1436,7 +1466,7 @@ func (ms *MemoryStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 }
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
-func (ms *MemoryStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
+func (ms *MemoryStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1448,11 +1478,11 @@ func (ms *MemoryStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids, nil
+	return rawToNodeIDs(ids), nil
 }
 
 // AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
-func (ms *MemoryStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
+func (ms *MemoryStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1464,7 +1494,7 @@ func (ms *MemoryStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids, nil
+	return rawToRelIDs(ids), nil
 }
 
 // Clear removes all entities, indexes, history, and property indexes.
@@ -1507,7 +1537,7 @@ func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
 	// Phase 1: validate — no duplicates in store or within batch.
 	seen := make(map[snowflake.ID]struct{}, len(nodes))
 	for _, n := range nodes {
-		id := n.InternalID().SnowflakeID()
+		id := n.ID().SnowflakeID()
 		if _, exists := ms.nodes[id]; exists {
 			return ErrNodeExists
 		}
@@ -1519,7 +1549,7 @@ func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
 
 	// Phase 2: apply — all validated, safe to mutate.
 	for _, n := range nodes {
-		id := n.InternalID().SnowflakeID()
+		id := n.ID().SnowflakeID()
 		ms.nodes[id] = n.DeepCopy()
 
 		for _, tok := range n.AllLabelTokens() {
@@ -1550,7 +1580,7 @@ func (ms *MemoryStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	// Phase 1: validate — endpoints exist, no duplicates.
 	seen := make(map[snowflake.ID]struct{}, len(rels))
 	for _, r := range rels {
-		id := r.InternalID().SnowflakeID()
+		id := r.ID().SnowflakeID()
 		startID := r.StartNodeID().SnowflakeID()
 		endID := r.EndNodeID().SnowflakeID()
 
@@ -1571,7 +1601,7 @@ func (ms *MemoryStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 	// Phase 2: apply — all validated, safe to mutate.
 	for _, r := range rels {
-		id := r.InternalID().SnowflakeID()
+		id := r.ID().SnowflakeID()
 		startID := r.StartNodeID().SnowflakeID()
 		endID := r.EndNodeID().SnowflakeID()
 
@@ -1601,10 +1631,11 @@ func (ms *MemoryStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 // Phase 1: check all IDs exist.
 // Phase 2: remove each from store and clean label indexes.
 // Missing ID → ErrNodeNotFound, zero mutations. Nil/empty input → nil error.
-func (ms *MemoryStore) DeleteNodesBatch(ids []snowflake.ID) error {
-	if len(ids) == 0 {
+func (ms *MemoryStore) DeleteNodesBatch(typedIDs []types.NodeID) error {
+	if len(typedIDs) == 0 {
 		return nil
 	}
+	ids := nodeIDsToRaw(typedIDs)
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -1639,10 +1670,11 @@ func (ms *MemoryStore) DeleteNodesBatch(ids []snowflake.ID) error {
 // Phase 1: check all IDs exist.
 // Phase 2: delete each via deleteRelLocked (handles type/adjacency/history cleanup).
 // Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
-func (ms *MemoryStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
-	if len(ids) == 0 {
+func (ms *MemoryStore) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	if len(typedIDs) == 0 {
 		return nil
 	}
+	ids := relIDsToRaw(typedIDs)
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -1733,7 +1765,7 @@ func (ms *MemoryStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 
 // GetNodesByIDs returns nodes matching the given IDs.
 // Missing IDs are silently skipped. Results are sorted by snowflake.ID.
-func (ms *MemoryStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) {
+func (ms *MemoryStore) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1743,7 +1775,7 @@ func (ms *MemoryStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) 
 
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
-		if n, ok := ms.nodes[id]; ok {
+		if n, ok := ms.nodes[id.SnowflakeID()]; ok {
 			result = append(result, n.DeepCopy())
 		}
 	}
@@ -1756,7 +1788,7 @@ func (ms *MemoryStore) GetNodesByIDs(ids []snowflake.ID) ([]*types.Node, error) 
 
 // GetRelationshipsByIDs returns relationships matching the given IDs.
 // Missing IDs are silently skipped. Results are sorted by snowflake.ID.
-func (ms *MemoryStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relationship, error) {
+func (ms *MemoryStore) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1766,7 +1798,7 @@ func (ms *MemoryStore) GetRelationshipsByIDs(ids []snowflake.ID) ([]*types.Relat
 
 	result := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
-		if r, ok := ms.rels[id]; ok {
+		if r, ok := ms.rels[id.SnowflakeID()]; ok {
 			result = append(result, r.DeepCopy())
 		}
 	}
@@ -1823,7 +1855,7 @@ func (ms *MemoryStore) filterRelIDsByTemporal(ids []snowflake.ID, opts QueryOpts
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func sortNodesByID(nodes []*types.Node) {
 	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].InternalID().SnowflakeID() < nodes[j].InternalID().SnowflakeID()
+		return nodes[i].ID().SnowflakeID() < nodes[j].ID().SnowflakeID()
 	})
 }
 
@@ -1831,6 +1863,6 @@ func sortNodesByID(nodes []*types.Node) {
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func sortRelsByID(rels []*types.Relationship) {
 	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].InternalID().SnowflakeID() < rels[j].InternalID().SnowflakeID()
+		return rels[i].ID().SnowflakeID() < rels[j].ID().SnowflakeID()
 	})
 }

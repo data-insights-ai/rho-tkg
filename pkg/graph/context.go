@@ -147,7 +147,7 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 }
 
 // GetNodeWithContext retrieves a node by snowflake ID with context support.
-func (g *Graph) GetNodeWithContext(ctx context.Context, id snowflake.ID) (*types.Node, error) {
+func (g *Graph) GetNodeWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (g *Graph) GetNodeWithContext(ctx context.Context, id snowflake.ID) (*types
 }
 
 // GetRelationshipWithContext retrieves a relationship by snowflake ID with context support.
-func (g *Graph) GetRelationshipWithContext(ctx context.Context, id snowflake.ID) (*types.Relationship, error) {
+func (g *Graph) GetRelationshipWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (g *Graph) AddNodeWithContext(ctx context.Context, labels []string, props m
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: n.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: types.EntityID(n.ID()), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return n, err
 }
@@ -242,7 +242,7 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 	}
 
 	id := g.NextNodeID()
-	n := types.NewNode(id, primaryToken, extraTokens)
+	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
 	n.SetProperties(ps)
 
 	// Hash from canonical (deduplicated) labels, not raw user input.
@@ -299,7 +299,7 @@ func (g *Graph) AddRelationshipWithContext(ctx context.Context, typeName string,
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: r.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return r, err
 }
@@ -346,8 +346,8 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
 
-	startID := startNode.InternalID().SnowflakeID()
-	endID := endNode.InternalID().SnowflakeID()
+	startID := startNode.ID()
+	endID := endNode.ID()
 
 	if startID == endID && !g.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
@@ -359,8 +359,8 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 
 	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
 	// Lock ordering: ascending shard index — deadlock-free.
-	g.entityLocks.LockTwo(startID, endID)
-	defer g.entityLocks.UnlockTwo(startID, endID)
+	g.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+	defer g.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
 	id := g.NextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
@@ -434,13 +434,13 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 //
 // Use AddRelationshipWithContext when endpoint integrity hashing or temporal
 // constraint validation against endpoint nodes is required.
-func (g *Graph) AddRelationshipByIDWithContext(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+func (g *Graph) AddRelationshipByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
 	r, err := g.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: r.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return r, err
 }
@@ -448,7 +448,7 @@ func (g *Graph) AddRelationshipByIDWithContext(ctx context.Context, typeName str
 // addRelationshipByIDInternal is the lock-free implementation of AddRelationshipByIDWithContext.
 // Unlike addRelationshipInternal, it does NOT require pre-fetched endpoint nodes.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, error) {
+func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -494,8 +494,8 @@ func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string
 
 	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
 	// Lock ordering: ascending shard index — deadlock-free.
-	g.entityLocks.LockTwo(startID, endID)
-	defer g.entityLocks.UnlockTwo(startID, endID)
+	g.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+	defer g.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
 	id := g.NextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
@@ -562,13 +562,13 @@ func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string
 //
 // Trade-offs vs AddRelationshipByIDWithContext: same (no endpoint hashing, no
 // temporal constraint checks against endpoint nodes).
-func (g *Graph) AddRelationshipByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+func (g *Graph) AddRelationshipByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	g.mu.RLock()
 	r, created, err := g.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && created {
-		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: r.InternalID().SnowflakeID(), Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return r, created, err
 }
@@ -577,7 +577,7 @@ func (g *Graph) AddRelationshipByIDIfAbsentWithContext(ctx context.Context, type
 // AddRelationshipByIDIfAbsentWithContext. Under entity locks it checks for an
 // existing relationship before creating, making the operation atomic.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName string, startID, endID snowflake.ID, props map[string]any) (*types.Relationship, bool, error) {
+func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
@@ -622,8 +622,8 @@ func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeNam
 	}
 
 	// Lock both endpoints — serializes with concurrent Add/Delete on same endpoints.
-	g.entityLocks.LockTwo(startID, endID)
-	defer g.entityLocks.UnlockTwo(startID, endID)
+	g.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+	defer g.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
 	// Check for existing relationship under entity locks (atomic with creation).
 	existing, err := g.store.OutgoingRelationships(startID, typeToken)
@@ -631,7 +631,7 @@ func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeNam
 		return nil, false, fmt.Errorf("graph: check existing relationships: %w", err)
 	}
 	for _, r := range existing {
-		if r.EndNodeID().SnowflakeID() == endID {
+		if r.EndNodeID() == endID {
 			return r, false, nil
 		}
 	}
@@ -689,13 +689,13 @@ func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeNam
 
 // DeleteNodeWithContext atomically removes a node and all connected relationships.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) error {
+func (g *Graph) DeleteNodeWithContext(ctx context.Context, id types.NodeID) error {
 	g.mu.RLock()
 	err := g.deleteNodeInternal(ctx, id)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeDelete, EntityID: id, Timestamp: nowInstant(), Priority: PriorityCritical})
+		dispatchEvent(ep, Event{Type: EventNodeDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityCritical})
 	}
 	return err
 }
@@ -708,7 +708,7 @@ func (g *Graph) DeleteNodeWithContext(ctx context.Context, id snowflake.ID) erro
 //	Phase A (node lock only): read node + adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read adjacency, verify unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (g *Graph) deleteNodeInternal(ctx context.Context, id snowflake.ID) error {
+func (g *Graph) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
@@ -717,32 +717,32 @@ func (g *Graph) deleteNodeInternal(ctx context.Context, id snowflake.ID) error {
 	for range maxRetries {
 
 		// Phase A: read under node lock only.
-		g.entityLocks.LockEntity(id)
+		g.entityLocks.LockEntity(id.SnowflakeID())
 
 		if err := checkCtx(ctx); err != nil {
-			g.entityLocks.UnlockEntity(id)
+			g.entityLocks.UnlockEntity(id.SnowflakeID())
 			return err
 		}
 
 		current, err := g.store.GetNode(id)
 		if err != nil {
-			g.entityLocks.UnlockEntity(id)
+			g.entityLocks.UnlockEntity(id.SnowflakeID())
 			return err
 		}
 
 		outRels, err := g.store.OutgoingRelationships(id, 0)
 		if err != nil {
-			g.entityLocks.UnlockEntity(id)
+			g.entityLocks.UnlockEntity(id.SnowflakeID())
 			return err
 		}
 		inRels, err := g.store.IncomingRelationships(id, 0)
 		if err != nil {
-			g.entityLocks.UnlockEntity(id)
+			g.entityLocks.UnlockEntity(id.SnowflakeID())
 			return err
 		}
 
-		allIDs := collectDeleteIDs(id, outRels, inRels)
-		g.entityLocks.UnlockEntity(id)
+		allIDs := collectDeleteIDs(id.SnowflakeID(), outRels, inRels)
+		g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 		// Phase B: lock ALL entities (node + rels), re-verify adjacency.
 		g.entityLocks.LockMany(allIDs)
@@ -759,7 +759,7 @@ func (g *Graph) deleteNodeInternal(ctx context.Context, id snowflake.ID) error {
 			return err
 		}
 
-		allIDs2 := collectDeleteIDs(id, outRels2, inRels2)
+		allIDs2 := collectDeleteIDs(id.SnowflakeID(), outRels2, inRels2)
 		if !sameIDSet(allIDs, allIDs2) {
 			// Adjacency changed — retry. Yield the goroutine so the competing
 			// rel-writer can commit before we re-read adjacency.
@@ -779,14 +779,18 @@ func (g *Graph) deleteNodeInternal(ctx context.Context, id snowflake.ID) error {
 
 // collectDeleteIDs builds a deduplicated slice of all entity IDs involved in a
 // node deletion: the node itself plus all connected relationship IDs.
+//
+// Returns raw snowflake.ID by design: the slice mixes a node ID with rel IDs
+// for the LockMany locking surface, which uses a single 256-shard pool keyed by
+// snowflake bits regardless of entity kind. See tasks/todo.md, Tier D.
 func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship) []snowflake.ID {
 	seen := make(map[snowflake.ID]struct{}, 1+len(outRels)+len(inRels))
 	seen[nodeID] = struct{}{}
 	for _, r := range outRels {
-		seen[r.InternalID().SnowflakeID()] = struct{}{}
+		seen[r.ID().SnowflakeID()] = struct{}{}
 	}
 	for _, r := range inRels {
-		seen[r.InternalID().SnowflakeID()] = struct{}{}
+		seen[r.ID().SnowflakeID()] = struct{}{}
 	}
 	ids := make([]snowflake.ID, 0, len(seen))
 	for id := range seen {
@@ -796,6 +800,11 @@ func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship
 }
 
 // sameIDSet returns true if a and b contain the same set of IDs (order-independent).
+//
+// Stays on raw snowflake.ID by design: callers pass a heterogeneous slice
+// (node ID + rel IDs) produced by collectDeleteIDs and consumed by LockMany.
+// A typed wrapper would be a lie — the slice is intentionally type-agnostic.
+// See tasks/todo.md, Tier D.
 func sameIDSet(a, b []snowflake.ID) bool {
 	if len(a) != len(b) {
 		return false
@@ -816,7 +825,7 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // Builds tombstones for all connected rels and the node, then issues a single
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
-func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *types.Node, outRels, inRels []*types.Relationship) error {
+func (g *Graph) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) error {
 	now := types.Instant(time.Now().UnixMilli())
 
 	// Build relationship tombstones (dedup self-loops).
@@ -826,7 +835,7 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 	allRels = append(allRels, inRels...)
 	relTombstones := make([]RelTombstone, 0, len(allRels))
 	for _, r := range allRels {
-		rid := r.InternalID().SnowflakeID()
+		rid := r.ID().SnowflakeID()
 		if _, ok := seen[rid]; ok {
 			continue // dedup self-loops
 		}
@@ -843,7 +852,7 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 		tmR.TxFrom = now
 		tmR.TxTo = now
 		relTombstones = append(relTombstones, RelTombstone{
-			ID:          rid,
+			ID:          types.RelID(rid),
 			PrevVersion: r.Version(),
 			Tombstone:   tombR,
 		})
@@ -872,26 +881,26 @@ func (g *Graph) deleteNodeLocked(ctx context.Context, id snowflake.ID, current *
 
 // DeleteRelationshipWithContext removes a relationship from the store.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id snowflake.ID) error {
+func (g *Graph) DeleteRelationshipWithContext(ctx context.Context, id types.RelID) error {
 	g.mu.RLock()
 	err := g.deleteRelationshipInternal(ctx, id)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelDelete, EntityID: id, Timestamp: nowInstant(), Priority: PriorityCritical})
+		dispatchEvent(ep, Event{Type: EventRelDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityCritical})
 	}
 	return err
 }
 
 // deleteRelationshipInternal is the lock-free implementation of DeleteRelationshipWithContext.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) deleteRelationshipInternal(ctx context.Context, id snowflake.ID) error {
+func (g *Graph) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	// Read current state for tombstone.
 	current, err := g.store.GetRelationship(id)
@@ -922,20 +931,20 @@ func (g *Graph) deleteRelationshipInternal(ctx context.Context, id snowflake.ID)
 
 // UpdateNodeWithContext applies property updates to an existing node with context support.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) UpdateNodeWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) UpdateNodeWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	g.mu.RLock()
 	n, err := g.updateNodeInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return n, err
 }
 
 // updateNodeInternal is the lock-free implementation of UpdateNodeWithContext.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -977,8 +986,8 @@ func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates
 	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -1069,20 +1078,20 @@ func (g *Graph) updateNodeInternal(ctx context.Context, id snowflake.ID, updates
 
 // UpdateRelationshipWithContext applies property updates to an existing relationship with context support.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) UpdateRelationshipWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
 	r, err := g.updateRelationshipInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
-		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return r, err
 }
 
 // updateRelationshipInternal is the lock-free implementation of UpdateRelationshipWithContext.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1122,8 +1131,8 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID,
 	}
 
 	// Phase 2: Entity lock on rel ID only — property changes don't affect adjacency.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -1201,12 +1210,12 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID,
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if sn, sErr := g.store.GetNode(current.StartNodeID().SnowflakeID()); sErr == nil {
+	if sn, sErr := g.store.GetNode(current.StartNodeID()); sErr == nil {
 		if sIg := sn.Integrity(); sIg != nil {
 			relIG.FromNodeHash = sIg.Hash
 		}
 	}
-	if en, eErr := g.store.GetNode(current.EndNodeID().SnowflakeID()); eErr == nil {
+	if en, eErr := g.store.GetNode(current.EndNodeID()); eErr == nil {
 		if eIg := en.Integrity(); eIg != nil {
 			relIG.ToNodeHash = eIg.Hash
 		}
@@ -1228,20 +1237,20 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id snowflake.ID,
 
 // ImportNodeWithID creates a node with a caller-specified snowflake ID.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) ImportNodeWithID(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+func (g *Graph) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	g.mu.RLock()
 	n, err := g.importNodeWithIDInternal(ctx, id, labels, props)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventNodeCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return n, err
 }
 
 // importNodeWithIDInternal is the lock-free implementation of ImportNodeWithID.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, labels []string, props map[string]any) (*types.Node, error) {
+func (g *Graph) importNodeWithIDInternal(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1299,7 +1308,7 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, l
 		return nil, ErrNodeExists
 	}
 
-	n := types.NewNode(id, primaryToken, extraTokens)
+	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
 	n.SetProperties(ps)
 
 	canonicalLabels := g.NodeLabels(n)
@@ -1344,20 +1353,20 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id snowflake.ID, l
 
 // ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) ImportRelationshipWithID(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (g *Graph) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
 	r, err := g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityHigh})
+		dispatchEvent(ep, Event{Type: EventRelCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityHigh})
 	}
 	return r, err
 }
 
 // importRelWithIDInternal is the lock-free implementation of ImportRelationshipWithID.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (g *Graph) importRelWithIDInternal(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1396,8 +1405,8 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, ty
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
 
-	startID := startNode.InternalID().SnowflakeID()
-	endID := endNode.InternalID().SnowflakeID()
+	startID := startNode.ID()
+	endID := endNode.ID()
 
 	if startID == endID && !g.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
@@ -1408,8 +1417,8 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, ty
 	}
 
 	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
-	g.entityLocks.LockTwo(startID, endID)
-	defer g.entityLocks.UnlockTwo(startID, endID)
+	g.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+	defer g.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
 	// Check for collision.
 	if _, err := g.store.GetRelationship(id); err == nil {
@@ -1473,33 +1482,33 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id snowflake.ID, ty
 // Version number is NOT incremented. PrevHash in the integrity chain is preserved.
 // Use for high-frequency counter updates where history accumulation is undesirable.
 // Returns ErrNodeNotFound if the node does not exist. Empty updates map is a no-op.
-func (g *Graph) UpdateNodeInPlace(id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) UpdateNodeInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
 	return g.UpdateNodeInPlaceWithContext(context.Background(), id, updates)
 }
 
 // UpdateRelInPlace applies property updates to a relationship without creating a version history entry.
 // Version number is NOT incremented. PrevHash in the integrity chain is preserved.
 // Returns ErrRelNotFound if the relationship does not exist. Empty updates map is a no-op.
-func (g *Graph) UpdateRelInPlace(id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) UpdateRelInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	return g.UpdateRelInPlaceWithContext(context.Background(), id, updates)
 }
 
 // UpdateNodeInPlaceWithContext applies property updates to a node without history.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) UpdateNodeInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	g.mu.RLock()
 	n, err := g.updateNodeInPlaceInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return n, err
 }
 
 // updateNodeInPlaceInternal is the lock-free implementation of UpdateNodeInPlaceWithContext.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Node, error) {
+func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1532,8 +1541,8 @@ func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, 
 	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -1600,20 +1609,20 @@ func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id snowflake.ID, 
 
 // UpdateRelInPlaceWithContext applies property updates to a relationship without history.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
-func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) UpdateRelInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	g.mu.RLock()
 	r, err := g.updateRelInPlaceInternal(ctx, id, updates)
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
-		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: id, Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
 	}
 	return r, err
 }
 
 // updateRelInPlaceInternal is the lock-free implementation of UpdateRelInPlaceWithContext.
 // Callers must hold g.mu.RLock (standalone) or g.mu.Lock (tx/batch).
-func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id snowflake.ID, updates map[string]any) (*types.Relationship, error) {
+func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -1646,8 +1655,8 @@ func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id snowflake.ID, u
 	}
 
 	// Phase 2: Entity lock on rel ID only.
-	g.entityLocks.LockEntity(id)
-	defer g.entityLocks.UnlockEntity(id)
+	g.entityLocks.LockEntity(id.SnowflakeID())
+	defer g.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

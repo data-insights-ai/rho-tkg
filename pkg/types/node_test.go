@@ -14,7 +14,7 @@ import (
 func TestNodeSetPropertyRejectsTKGPrefix(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if err := n.SetProperty("tkg_labels", "hack"); err == nil {
 		t.Fatal("SetProperty(\"tkg_labels\", ...) should return error")
 	}
@@ -24,7 +24,7 @@ func TestNodeSetPropertyRejectsTKGPrefixVariants(t *testing.T) {
 	t.Parallel()
 
 	keys := []string{"tkg_type", "tkg_version", "tkg_", "tkg_anything"}
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	for _, key := range keys {
 		err := n.SetProperty(key, "x")
 		if err == nil {
@@ -41,7 +41,7 @@ func TestNodeSetPropertyRejectsNestedPointer(t *testing.T) {
 	t.Parallel()
 
 	type myStruct struct{ X int }
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	err := n.SetProperty("bad", []any{&myStruct{X: 1}})
 	if err == nil {
 		t.Fatal("SetProperty should reject nested pointer in []any")
@@ -56,10 +56,10 @@ func TestNewNodePanicsOnZeroPrimaryLabel(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("NewNode(id, 0, nil) should panic on reserved token 0")
+			t.Fatal("NewNode(NodeID(id), 0, nil) should panic on reserved token 0")
 		}
 	}()
-	NewNode(snowflake.ID(1), 0, nil)
+	NewNode(NodeID(snowflake.ID(1)), 0, nil)
 }
 
 func TestNewNodePanicsOnZeroExtraLabel(t *testing.T) {
@@ -67,16 +67,16 @@ func TestNewNodePanicsOnZeroExtraLabel(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("NewNode(id, 1, []uint16{5, 0}) should panic on reserved token 0 in extras")
+			t.Fatal("NewNode(NodeID(id), 1, []uint16{5, 0}) should panic on reserved token 0 in extras")
 		}
 	}()
-	NewNode(snowflake.ID(1), 1, []uint16{5, 0})
+	NewNode(NodeID(snowflake.ID(1)), 1, []uint16{5, 0})
 }
 
 func TestNewNodeDeduplicatesExtraLabels(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30, 20})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30, 20})
 	extras := n.ExtraLabelTokens()
 	if len(extras) != 2 {
 		t.Fatalf("ExtraLabelTokens() len = %d, want 2 (deduped)", len(extras))
@@ -89,7 +89,7 @@ func TestNewNodeDeduplicatesExtraLabels(t *testing.T) {
 func TestNewNodeRemovesPrimaryFromExtras(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{10, 20})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{10, 20})
 	extras := n.ExtraLabelTokens()
 	if len(extras) != 1 {
 		t.Fatalf("ExtraLabelTokens() len = %d, want 1 (primary removed)", len(extras))
@@ -105,7 +105,7 @@ func TestNewNodeRemovesPrimaryFromExtras(t *testing.T) {
 func TestTokenZeroReservedNode(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 5, nil) // valid token
+	n := NewNode(NodeID(snowflake.ID(1)), 5, nil) // valid token
 	if n.HasLabelToken(labelToken(0)) {
 		t.Fatal("HasLabelToken(0) should always return false (reserved)")
 	}
@@ -114,7 +114,7 @@ func TestTokenZeroReservedNode(t *testing.T) {
 func TestNodeExtraLabelTokensReturnsCopy(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
 	extras := n.ExtraLabelTokens()
 	extras[0] = labelToken(999) // Mutate the returned slice.
 
@@ -130,9 +130,9 @@ func TestNodeExtraLabelTokensReturnsCopy(t *testing.T) {
 func TestNewNode(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(42), 10, []uint16{20, 30})
-	if n.InternalID() != nodeID(snowflake.ID(42)) {
-		t.Errorf("InternalID() = %d, want 42", n.InternalID())
+	n := NewNode(NodeID(snowflake.ID(42)), 10, []uint16{20, 30})
+	if n.ID() != NodeID(snowflake.ID(42)) {
+		t.Errorf("InternalID() = %d, want 42", n.ID())
 	}
 	if n.PrimaryLabelToken() != labelToken(10) {
 		t.Errorf("PrimaryLabelToken() = %d, want 10", n.PrimaryLabelToken())
@@ -146,7 +146,7 @@ func TestNewNode(t *testing.T) {
 func TestNodePrimaryLabelToken(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 7, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 7, nil)
 	if n.PrimaryLabelToken() != labelToken(7) {
 		t.Errorf("PrimaryLabelToken() = %d, want 7", n.PrimaryLabelToken())
 	}
@@ -156,13 +156,13 @@ func TestNodeExtraLabelTokens(t *testing.T) {
 	t.Parallel()
 
 	// Single-label node: extras should be nil.
-	single := NewNode(snowflake.ID(1), 10, nil)
+	single := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if extras := single.ExtraLabelTokens(); extras != nil {
 		t.Errorf("single-label ExtraLabelTokens() = %v, want nil", extras)
 	}
 
 	// Multi-label node: extras should match.
-	multi := NewNode(snowflake.ID(2), 10, []uint16{20, 30})
+	multi := NewNode(NodeID(snowflake.ID(2)), 10, []uint16{20, 30})
 	extras := multi.ExtraLabelTokens()
 	if len(extras) != 2 {
 		t.Fatalf("multi-label ExtraLabelTokens() len = %d, want 2", len(extras))
@@ -172,7 +172,7 @@ func TestNodeExtraLabelTokens(t *testing.T) {
 func TestNodeHasLabelToken(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
 
 	if !n.HasLabelToken(labelToken(10)) {
 		t.Error("HasLabelToken(10) = false, want true (primary)")
@@ -188,12 +188,12 @@ func TestNodeHasLabelToken(t *testing.T) {
 func TestNodeLabelTokenCount(t *testing.T) {
 	t.Parallel()
 
-	single := NewNode(snowflake.ID(1), 10, nil)
+	single := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if single.LabelTokenCount() != 1 {
 		t.Errorf("single-label LabelTokenCount() = %d, want 1", single.LabelTokenCount())
 	}
 
-	multi := NewNode(snowflake.ID(2), 10, []uint16{20, 30})
+	multi := NewNode(NodeID(snowflake.ID(2)), 10, []uint16{20, 30})
 	if multi.LabelTokenCount() != 3 {
 		t.Errorf("multi-label LabelTokenCount() = %d, want 3", multi.LabelTokenCount())
 	}
@@ -202,7 +202,7 @@ func TestNodeLabelTokenCount(t *testing.T) {
 func TestNodeAllLabelTokens(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
 	all := n.AllLabelTokens()
 	if len(all) != 3 || all[0] != labelToken(10) || all[1] != labelToken(20) || all[2] != labelToken(30) {
 		t.Errorf("AllLabelTokens() = %v, want [10 20 30]", all)
@@ -212,16 +212,16 @@ func TestNodeAllLabelTokens(t *testing.T) {
 func TestNodeInternalID(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(123456789), 1, nil)
-	if n.InternalID() != nodeID(snowflake.ID(123456789)) {
-		t.Errorf("InternalID() = %d, want 123456789", n.InternalID())
+	n := NewNode(NodeID(snowflake.ID(123456789)), 1, nil)
+	if n.ID() != NodeID(snowflake.ID(123456789)) {
+		t.Errorf("InternalID() = %d, want 123456789", n.ID())
 	}
 }
 
 func TestNodeSetPropertyAcceptsNormalKeys(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if err := n.SetProperty("name", "Alice"); err != nil {
 		t.Fatalf("SetProperty(\"name\", \"Alice\") returned unexpected error: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestNodeSetPropertyAcceptsNormalKeys(t *testing.T) {
 func TestNodeGetProperty(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if err := n.SetProperty("name", "Alice"); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestNodePureDataStruct(t *testing.T) {
 	t.Parallel()
 
 	// Node must work immediately after construction — no graph needed.
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if err := n.SetProperty("x", 1); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestNodePureDataStruct(t *testing.T) {
 func TestNodePropertiesMap(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
 	_ = n.SetProperty("age", 30)
 
@@ -282,7 +282,7 @@ func TestNodePropertiesMap(t *testing.T) {
 func TestNodeDeleteProperty(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
 	_ = n.SetProperty("age", 30)
 
@@ -301,7 +301,7 @@ func TestNodeDeleteProperty(t *testing.T) {
 func TestNodePropertiesMapIsIndependent(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("tags", []string{"a", "b"})
 
 	m := n.PropertiesMap()
@@ -317,7 +317,7 @@ func TestNodePropertiesMapIsIndependent(t *testing.T) {
 func TestNodeTemporalDefaultNil(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if n.Temporal() != nil {
 		t.Fatal("Temporal() should default to nil")
 	}
@@ -326,7 +326,7 @@ func TestNodeTemporalDefaultNil(t *testing.T) {
 func TestNodeTemporalRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	tm := &TemporalMetadata{}
 	n.SetTemporal(tm)
 	if n.Temporal() != tm {
@@ -337,7 +337,7 @@ func TestNodeTemporalRoundTrip(t *testing.T) {
 func TestNodeIntegrityDefaultNil(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if n.Integrity() != nil {
 		t.Fatal("Integrity() should default to nil")
 	}
@@ -346,7 +346,7 @@ func TestNodeIntegrityDefaultNil(t *testing.T) {
 func TestNodeIntegrityRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	ig := &NodeIntegrity{}
 	n.SetIntegrity(ig)
 	if n.Integrity() != ig {
@@ -357,7 +357,7 @@ func TestNodeIntegrityRoundTrip(t *testing.T) {
 func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	tm := &TemporalMetadata{
 		ValidFrom: 1000,
 		ValidTo:   2000,
@@ -385,7 +385,7 @@ func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 	if got.CreatedBy != "alice" || got.UpdatedBy != "bob" {
 		t.Errorf("CreatedBy/UpdatedBy = %q/%q, want alice/bob", got.CreatedBy, got.UpdatedBy)
 	}
-	if got.BaseEntityID() != entityID(snowflake.ID(42)) {
+	if got.BaseEntityID() != EntityID(snowflake.ID(42)) {
 		t.Errorf("BaseEntityID() = %v, want 42", got.BaseEntityID())
 	}
 }
@@ -393,7 +393,7 @@ func TestNodeTemporalFieldsRoundTrip(t *testing.T) {
 func TestNodeIntegrityFieldsRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	ig := &NodeIntegrity{
 		Hash:     "abc123",
 		PrevHash: "def456",
@@ -408,7 +408,7 @@ func TestNodeIntegrityFieldsRoundTrip(t *testing.T) {
 func TestNodePropertiesReturnsCopy(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if err := n.SetProperty("weight", 42); err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestNodePropertiesReturnsCopy(t *testing.T) {
 func TestNodeHasLabelTokenRaw(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, []uint16{20, 30})
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
 
 	cases := []struct {
 		name string
@@ -450,7 +450,7 @@ func TestNodeHasLabelTokenRaw(t *testing.T) {
 func TestLabelTokenValue(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 42, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 42, nil)
 	tok := n.PrimaryLabelToken()
 	if tok.Value() != 42 {
 		t.Errorf("labelToken(42).Value() = %d, want 42", tok.Value())
@@ -460,7 +460,7 @@ func TestLabelTokenValue(t *testing.T) {
 func TestNodeVersion(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	if n.Version() != 0 {
 		t.Errorf("default Version() = %d, want 0", n.Version())
 	}
@@ -475,8 +475,8 @@ func TestNodeVersion(t *testing.T) {
 func TestNodeIDSnowflakeIDRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(42), 10, nil)
-	got := n.InternalID().SnowflakeID()
+	n := NewNode(NodeID(snowflake.ID(42)), 10, nil)
+	got := n.ID().SnowflakeID()
 	if got != snowflake.ID(42) {
 		t.Errorf("nodeID.SnowflakeID() = %d, want 42", got)
 	}
@@ -487,7 +487,7 @@ func TestNodeIDSnowflakeIDRoundTrip(t *testing.T) {
 func TestNodeSetProperties(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	ps, err := NewPropertySlice(map[string]any{"name": "Alice", "age": 30})
 	if err != nil {
 		t.Fatal(err)
@@ -513,7 +513,7 @@ func TestNodeHasLabelTokenRawHighCardinality(t *testing.T) {
 	for i := range extras {
 		extras[i] = uint16(100 + i) // tokens 100..114
 	}
-	n := NewNode(snowflake.ID(1), 10, extras)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, extras)
 
 	// Hit on last extra label (full scan).
 	if !n.HasLabelTokenRaw(114) {
@@ -528,7 +528,7 @@ func TestNodeHasLabelTokenRawHighCardinality(t *testing.T) {
 func TestNodeTemporalSharedPointerMutation(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	tm := &TemporalMetadata{ValidFrom: 1000}
 	n.SetTemporal(tm)
 
@@ -544,7 +544,7 @@ func TestNodeTemporalSharedPointerMutation(t *testing.T) {
 func TestNodeSetTemporalNil(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	tm := &TemporalMetadata{ValidFrom: 1000}
 	n.SetTemporal(tm)
 	n.SetTemporal(nil)
@@ -557,7 +557,7 @@ func TestNodeSetTemporalNil(t *testing.T) {
 func TestNodeTemporalOverwrite(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	old := &TemporalMetadata{ValidFrom: 1000}
 	n.SetTemporal(old)
 
@@ -577,7 +577,7 @@ func TestNodeTemporalOverwrite(t *testing.T) {
 func TestNodeStressManyProperties(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	for i := range 1000 {
 		key := fmt.Sprintf("prop_%04d", i)
 		if err := n.SetProperty(key, i); err != nil {
@@ -606,7 +606,7 @@ func TestNodeStressManyProperties(t *testing.T) {
 func TestNodeDeepCopy(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(42), 10, []uint16{20, 30})
+	n := NewNode(NodeID(snowflake.ID(42)), 10, []uint16{20, 30})
 	_ = n.SetProperty("name", "Alice")
 	_ = n.SetProperty("tags", []string{"a", "b"})
 	n.SetVersion(7)
@@ -616,8 +616,8 @@ func TestNodeDeepCopy(t *testing.T) {
 	cp := n.DeepCopy()
 
 	// All fields copied correctly.
-	if cp.InternalID() != n.InternalID() {
-		t.Errorf("ID: got %v, want %v", cp.InternalID(), n.InternalID())
+	if cp.ID() != n.ID() {
+		t.Errorf("ID: got %v, want %v", cp.ID(), n.ID())
 	}
 	if cp.PrimaryLabelToken() != n.PrimaryLabelToken() {
 		t.Errorf("PrimaryLabel: got %v, want %v", cp.PrimaryLabelToken(), n.PrimaryLabelToken())
@@ -675,7 +675,7 @@ func TestNodeDeepCopy(t *testing.T) {
 func TestNodeDeepCopyNilTemporalIntegrity(t *testing.T) {
 	t.Parallel()
 
-	n := NewNode(snowflake.ID(1), 10, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	cp := n.DeepCopy()
 	if cp.Temporal() != nil {
 		t.Fatal("DeepCopy should preserve nil temporal")
@@ -687,7 +687,7 @@ func TestNodeDeepCopyNilTemporalIntegrity(t *testing.T) {
 
 func TestNodePropertyCount(t *testing.T) {
 	t.Parallel()
-	n := NewNode(snowflake.ID(1), 1, nil)
+	n := NewNode(NodeID(snowflake.ID(1)), 1, nil)
 
 	if n.PropertyCount() != 0 {
 		t.Fatalf("PropertyCount = %d, want 0", n.PropertyCount())

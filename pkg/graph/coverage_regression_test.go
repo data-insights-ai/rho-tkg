@@ -24,19 +24,19 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 	}
 
 	tx := g.BeginTx()
-	if err := tx.SetNodeProperty(n.InternalID().SnowflakeID(), "new", "set"); err != nil {
+	if err := tx.SetNodeProperty(n.ID(), "new", "set"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("SetNodeProperty: %v", err)
 	}
-	if err := tx.DeleteNodeProperty(n.InternalID().SnowflakeID(), "old"); err != nil {
+	if err := tx.DeleteNodeProperty(n.ID(), "old"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("DeleteNodeProperty: %v", err)
 	}
-	if err := tx.SetRelationshipProperty(r.InternalID().SnowflakeID(), "weight", int64(2)); err != nil {
+	if err := tx.SetRelationshipProperty(r.ID(), "weight", int64(2)); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("SetRelationshipProperty: %v", err)
 	}
-	if err := tx.DeleteRelationshipProperty(r.InternalID().SnowflakeID(), "old_weight"); err != nil {
+	if err := tx.DeleteRelationshipProperty(r.ID(), "old_weight"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("DeleteRelationshipProperty: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	gotNode, err := g.GetNode(n.InternalID().SnowflakeID())
+	gotNode, err := g.GetNode(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatal("node old property should be deleted")
 	}
 
-	gotRel, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	gotRel, err := g.GetRelationship(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -71,13 +71,13 @@ func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	n := putTestNode(t, bs, 100, 1, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 	updated := n.DeepCopy()
 	if !updated.AddLabelTokenRaw(2) {
 		t.Fatal("AddLabelTokenRaw returned false")
 	}
 
-	if err := bs.AddNodeLabelToken(id, 2, updated); err != nil {
+	if err := bs.AddNodeLabelToken(types.NodeID(id), 2, updated); err != nil {
 		t.Fatalf("AddNodeLabelToken: %v", err)
 	}
 
@@ -85,10 +85,10 @@ func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
-	if !containsNodeID(nodes, id) {
+	if !containsNodeID(nodes, types.NodeID(id)) {
 		t.Fatal("node missing from added label index")
 	}
-	got, err := bs.GetNode(id)
+	got, err := bs.GetNode(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -101,18 +101,18 @@ func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	n := putTestNode(t, bs, 101, 1, nil)
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 	prevVersion := n.Version()
 	prevState := n.DeepCopy()
 	updated := n.DeepCopy()
 	updated.AddLabelTokenRaw(2)
 	updated.SetVersion(prevVersion + 1)
 
-	if err := bs.AddNodeLabelTokenWithHistory(id, 2, updated, prevVersion, prevState); err != nil {
+	if err := bs.AddNodeLabelTokenWithHistory(types.NodeID(id), 2, updated, prevVersion, prevState); err != nil {
 		t.Fatalf("AddNodeLabelTokenWithHistory: %v", err)
 	}
 
-	hist, err := bs.GetNodeVersion(id, prevVersion)
+	hist, err := bs.GetNodeVersion(types.NodeID(id), prevVersion)
 	if err != nil {
 		t.Fatalf("GetNodeVersion: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
-	if !containsNodeID(nodes, id) {
+	if !containsNodeID(nodes, types.NodeID(id)) {
 		t.Fatal("node missing from added label index")
 	}
 }
@@ -135,7 +135,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 	tok, err := g.GetOrCreateLabel("User")
 	if err != nil {
 		t.Fatalf("GetOrCreateLabel: %v", err)
@@ -143,7 +143,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 	updated := n.DeepCopy()
 	updated.AddLabelTokenRaw(tok)
 
-	if err := ts.AddNodeLabelToken(id, tok, updated); err != nil {
+	if err := ts.AddNodeLabelToken(types.NodeID(id), tok, updated); err != nil {
 		t.Fatalf("AddNodeLabelToken: %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
-	if !containsNodeID(nodes, id) {
+	if !containsNodeID(nodes, types.NodeID(id)) {
 		t.Fatal("node missing from TieredStore added label index")
 	}
 }
@@ -163,7 +163,7 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	id := n.InternalID().SnowflakeID()
+	id := n.ID().SnowflakeID()
 	tok, err := g.GetOrCreateLabel("User")
 	if err != nil {
 		t.Fatalf("GetOrCreateLabel: %v", err)
@@ -174,11 +174,11 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	updated.AddLabelTokenRaw(tok)
 	updated.SetVersion(prevVersion + 1)
 
-	if err := ts.AddNodeLabelTokenWithHistory(id, tok, updated, prevVersion, prevState); err != nil {
+	if err := ts.AddNodeLabelTokenWithHistory(types.NodeID(id), tok, updated, prevVersion, prevState); err != nil {
 		t.Fatalf("AddNodeLabelTokenWithHistory: %v", err)
 	}
 
-	hist, err := g.GetNodeHistory(id)
+	hist, err := g.GetNodeHistory(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
-	if !containsNodeID(nodes, id) {
+	if !containsNodeID(nodes, types.NodeID(id)) {
 		t.Fatal("node missing from TieredStore added label index")
 	}
 }
@@ -197,8 +197,8 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 func TestBadgerStore_AddNodeLabelToken_NotFound(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
-	updated := types.NewNode(snowflake.ID(999), 1, []uint16{2})
-	err := bs.AddNodeLabelToken(snowflake.ID(999), 2, updated)
+	updated := types.NewNode(types.NodeID(snowflake.ID(999)), 1, []uint16{2})
+	err := bs.AddNodeLabelToken(types.NodeID(999), 2, updated)
 	if err == nil {
 		t.Fatal("expected error for missing node")
 	}

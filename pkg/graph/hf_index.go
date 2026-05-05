@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -27,7 +26,7 @@ type highFrequencyIndex struct {
 	mu         sync.RWMutex
 	bucketSize types.Instant // bucket width in milliseconds
 	origin     types.Instant // epoch offset for bucket 0
-	buckets    map[int64][]snowflake.ID
+	buckets    map[int64][]types.NodeID
 }
 
 // newHighFrequencyIndex creates a new highFrequencyIndex.
@@ -37,7 +36,7 @@ func newHighFrequencyIndex(bucketSize time.Duration, origin types.Instant) *high
 	return &highFrequencyIndex{
 		bucketSize: types.Instant(bucketSize.Milliseconds()),
 		origin:     origin,
-		buckets:    make(map[int64][]snowflake.ID),
+		buckets:    make(map[int64][]types.NodeID),
 	}
 }
 
@@ -56,7 +55,7 @@ func (hfi *highFrequencyIndex) bucketFor(validFrom types.Instant) int64 {
 }
 
 // add inserts id into the bucket for validFrom. O(1) amortized.
-func (hfi *highFrequencyIndex) add(id snowflake.ID, validFrom types.Instant) {
+func (hfi *highFrequencyIndex) add(id types.NodeID, validFrom types.Instant) {
 	b := hfi.bucketFor(validFrom)
 	hfi.mu.Lock()
 	hfi.buckets[b] = append(hfi.buckets[b], id)
@@ -65,7 +64,7 @@ func (hfi *highFrequencyIndex) add(id snowflake.ID, validFrom types.Instant) {
 
 // remove removes id from the bucket for validFrom. O(n/num_buckets) amortized.
 // No-op if id is not in the bucket.
-func (hfi *highFrequencyIndex) remove(id snowflake.ID, validFrom types.Instant) {
+func (hfi *highFrequencyIndex) remove(id types.NodeID, validFrom types.Instant) {
 	b := hfi.bucketFor(validFrom)
 	hfi.mu.Lock()
 	defer hfi.mu.Unlock()
@@ -81,7 +80,7 @@ func (hfi *highFrequencyIndex) remove(id snowflake.ID, validFrom types.Instant) 
 // pointQuery returns all IDs in the bucket containing t.
 // Returns candidates — the HFI does not store ValidTo, so callers must
 // re-filter if exact interval matching is needed.
-func (hfi *highFrequencyIndex) pointQuery(t types.Instant) []snowflake.ID {
+func (hfi *highFrequencyIndex) pointQuery(t types.Instant) []types.NodeID {
 	b := hfi.bucketFor(t)
 	hfi.mu.RLock()
 	ids := hfi.buckets[b]
@@ -89,7 +88,7 @@ func (hfi *highFrequencyIndex) pointQuery(t types.Instant) []snowflake.ID {
 		hfi.mu.RUnlock()
 		return nil
 	}
-	out := make([]snowflake.ID, len(ids))
+	out := make([]types.NodeID, len(ids))
 	copy(out, ids)
 	hfi.mu.RUnlock()
 	return out
@@ -100,14 +99,14 @@ func (hfi *highFrequencyIndex) pointQuery(t types.Instant) []snowflake.ID {
 //
 // Iterates the actual bucket map rather than a numeric range to avoid a CPU hang
 // when end is very large (e.g. math.MaxInt64): only non-empty buckets are visited.
-func (hfi *highFrequencyIndex) rangeQuery(start, end types.Instant) []snowflake.ID {
+func (hfi *highFrequencyIndex) rangeQuery(start, end types.Instant) []types.NodeID {
 	startBucket := hfi.bucketFor(start)
 	endBucket := hfi.bucketFor(end)
 
 	hfi.mu.RLock()
 	defer hfi.mu.RUnlock()
 
-	var out []snowflake.ID
+	var out []types.NodeID
 	for b, ids := range hfi.buckets {
 		if b >= startBucket && b <= endBucket {
 			out = append(out, ids...)

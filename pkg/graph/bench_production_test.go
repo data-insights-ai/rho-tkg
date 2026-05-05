@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -32,9 +31,9 @@ const (
 type graphProductionFixture struct {
 	g          *Graph
 	nodes      []*types.Node
-	nodeIDs    []snowflake.ID
-	relIDs     []snowflake.ID
-	hubID      snowflake.ID
+	nodeIDs    []types.NodeID
+	relIDs     []types.RelID
+	hubID      types.NodeID
 	groupValue string
 }
 
@@ -120,7 +119,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 	g := newBaselineMemoryGraph(b)
 
 	nodes := make([]*types.Node, 0, nodeCount)
-	nodeIDs := make([]snowflake.ID, 0, nodeCount)
+	nodeIDs := make([]types.NodeID, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		labels := []string{"Person"}
 		if i%10 == 0 {
@@ -131,10 +130,10 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 			b.Fatal(err)
 		}
 		nodes = append(nodes, n)
-		nodeIDs = append(nodeIDs, n.InternalID().SnowflakeID())
+		nodeIDs = append(nodeIDs, n.ID())
 	}
 
-	relIDs := make([]snowflake.ID, 0, nodeCount*fanout+hubDegree)
+	relIDs := make([]types.RelID, 0, nodeCount*fanout+hubDegree)
 	for i := 0; i < nodeCount; i++ {
 		for j := 1; j <= fanout; j++ {
 			r, err := g.AddRelationship("FOLLOWS", nodes[i], nodes[(i+j)%nodeCount], map[string]any{
@@ -144,7 +143,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 			if err != nil {
 				b.Fatal(err)
 			}
-			relIDs = append(relIDs, r.InternalID().SnowflakeID())
+			relIDs = append(relIDs, r.ID())
 		}
 	}
 	for i := 1; i <= hubDegree; i++ {
@@ -155,7 +154,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 		if err != nil {
 			b.Fatal(err)
 		}
-		relIDs = append(relIDs, r.InternalID().SnowflakeID())
+		relIDs = append(relIDs, r.ID())
 	}
 
 	if err := g.CreatePropertyIndex("Person", "group"); err != nil {
@@ -317,13 +316,13 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 
 type graphHistoryProductionFixture struct {
 	g          *Graph
-	nodeIDs    []snowflake.ID
-	relIDs     []snowflake.ID
+	nodeIDs    []types.NodeID
+	relIDs     []types.RelID
 	queryTime  types.Instant
 	asOfTime   types.Instant
 	relAsOf    types.Instant
-	updatedID  snowflake.ID
-	updatedRel snowflake.ID
+	updatedID  types.NodeID
+	updatedRel types.RelID
 	historyLen int
 }
 
@@ -333,7 +332,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 	nodeCount := productionHistoryNodes(b)
 	historyDays := productionHistoryDays(b)
 	nodes := make([]*types.Node, 0, nodeCount)
-	nodeIDs := make([]snowflake.ID, 0, nodeCount)
+	nodeIDs := make([]types.NodeID, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		n, err := g.AddNode([]string{"Account"}, map[string]any{
 			"account": i,
@@ -344,10 +343,10 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 			b.Fatal(err)
 		}
 		nodes = append(nodes, n)
-		nodeIDs = append(nodeIDs, n.InternalID().SnowflakeID())
+		nodeIDs = append(nodeIDs, n.ID())
 	}
 
-	relIDs := make([]snowflake.ID, 0, nodeCount)
+	relIDs := make([]types.RelID, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		r, err := g.AddRelationship("ACCOUNT_LINK", nodes[i], nodes[(i+1)%nodeCount], map[string]any{
 			"day":    0,
@@ -356,7 +355,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 		if err != nil {
 			b.Fatal(err)
 		}
-		relIDs = append(relIDs, r.InternalID().SnowflakeID())
+		relIDs = append(relIDs, r.ID())
 	}
 	if err := g.CreatePropertyIndex("Account", "account"); err != nil {
 		b.Fatal(err)
@@ -668,13 +667,13 @@ func BenchmarkGraphProduction_BatchAndTxWriteShapes_MemoryStore(b *testing.B) {
 
 	b.Run("TxUpdateNodes", func(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
-		ids := make([]snowflake.ID, batchSize)
+		ids := make([]types.NodeID, batchSize)
 		for i := range ids {
 			n, err := g.AddNode([]string{"TxPerson"}, productionProps(i))
 			if err != nil {
 				b.Fatal(err)
 			}
-			ids[i] = n.InternalID().SnowflakeID()
+			ids[i] = n.ID()
 		}
 		b.ReportAllocs()
 		for b.Loop() {

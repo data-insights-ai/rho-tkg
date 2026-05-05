@@ -74,7 +74,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice ID: %s, labels: %v\n",
-		commas(int64(alice.InternalID().SnowflakeID())), g.NodeLabels(alice))
+		commas(int64(alice.ID())), g.NodeLabels(alice))
 
 	// Multi-label node.
 	bob, err := g.AddNode([]string{"Person", "Employee"}, map[string]any{
@@ -85,7 +85,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Bob   ID: %s, labels: %v\n",
-		commas(int64(bob.InternalID().SnowflakeID())), g.NodeLabels(bob))
+		commas(int64(bob.ID())), g.NodeLabels(bob))
 
 	charlie, err := g.AddNode([]string{"Person"}, map[string]any{
 		"name":   "Charlie",
@@ -96,7 +96,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Charlie ID: %s, labels: %v\n",
-		commas(int64(charlie.InternalID().SnowflakeID())), g.NodeLabels(charlie))
+		commas(int64(charlie.ID())), g.NodeLabels(charlie))
 
 	fmt.Println("\n=== 2. Adding Relationships ===")
 
@@ -107,7 +107,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice -[%s]-> Bob  (ID: %s)\n",
-		g.RelationshipType(knows), commas(int64(knows.InternalID().SnowflakeID())))
+		g.RelationshipType(knows), commas(int64(knows.ID())))
 
 	worksWith, err := g.AddRelationship("WORKS_WITH", bob, charlie, map[string]any{
 		"project": "Atlas",
@@ -116,14 +116,14 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Bob -[%s]-> Charlie  (ID: %s)\n",
-		g.RelationshipType(worksWith), commas(int64(worksWith.InternalID().SnowflakeID())))
+		g.RelationshipType(worksWith), commas(int64(worksWith.ID())))
 
 	knows2, err := g.AddRelationship("KNOWS", alice, charlie, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice -[%s]-> Charlie  (ID: %s)\n",
-		g.RelationshipType(knows2), commas(int64(knows2.InternalID().SnowflakeID())))
+		g.RelationshipType(knows2), commas(int64(knows2.ID())))
 
 	fmt.Println("\n=== 3. Entity Counts ===")
 
@@ -175,14 +175,14 @@ func main() {
 
 	fmt.Println("\n=== 6. Retrieve by ID ===")
 
-	fetched, err := g.GetNode(alice.InternalID().SnowflakeID())
+	fetched, err := g.GetNode(alice.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
 	name, _ := fetched.GetProperty("name")
 	fmt.Printf("GetNode(Alice): name=%s\n", name)
 
-	fetchedRel, err := g.GetRelationship(knows.InternalID().SnowflakeID())
+	fetchedRel, err := g.GetRelationship(knows.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func main() {
 	fmt.Println("\n=== 9. Adjacency Queries ===")
 
 	// All outgoing from Alice.
-	outAll, err := g.OutgoingRelationships(alice.InternalID().SnowflakeID(), "")
+	outAll, err := g.OutgoingRelationships(alice.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -218,14 +218,14 @@ func main() {
 	}
 
 	// Filtered: only KNOWS.
-	outKnows, err := g.OutgoingRelationships(alice.InternalID().SnowflakeID(), "KNOWS")
+	outKnows, err := g.OutgoingRelationships(alice.ID(), "KNOWS")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice outgoing KNOWS: %d\n", len(outKnows))
 
 	// Incoming to Charlie.
-	inCharlie, err := g.IncomingRelationships(charlie.InternalID().SnowflakeID(), "")
+	inCharlie, err := g.IncomingRelationships(charlie.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func main() {
 
 	fmt.Println("\n=== 10. Delete a Relationship ===")
 
-	if err := g.DeleteRelationship(worksWith.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteRelationship(worksWith.ID()); err != nil {
 		log.Fatal(err)
 	}
 	rc, err = g.RelationshipCount()
@@ -242,7 +242,7 @@ func main() {
 	}
 	fmt.Printf("After deleting WORKS_WITH: relationships=%d\n", rc)
 
-	_, err = g.GetRelationship(worksWith.InternalID().SnowflakeID())
+	_, err = g.GetRelationship(worksWith.ID())
 	if errors.Is(err, graph.ErrRelNotFound) {
 		fmt.Println("WORKS_WITH correctly not found after deletion")
 	}
@@ -250,7 +250,7 @@ func main() {
 	fmt.Println("\n=== 11. Delete a Node (Cascade) ===")
 
 	// Alice has two KNOWS relationships. Deleting Alice removes them.
-	if err := g.DeleteNode(alice.InternalID().SnowflakeID()); err != nil {
+	if err := g.DeleteNode(alice.ID()); err != nil {
 		log.Fatal(err)
 	}
 	nc, err = g.NodeCount()
@@ -263,7 +263,7 @@ func main() {
 	}
 	fmt.Printf("After deleting Alice: nodes=%d, relationships=%d\n", nc, rc)
 
-	_, err = g.GetNode(alice.InternalID().SnowflakeID())
+	_, err = g.GetNode(alice.ID())
 	if errors.Is(err, graph.ErrNodeNotFound) {
 		fmt.Println("Alice correctly not found after deletion")
 	}
