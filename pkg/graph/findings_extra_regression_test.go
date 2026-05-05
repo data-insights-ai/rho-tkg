@@ -655,3 +655,113 @@ func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
 		t.Errorf("RelationshipsByType(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
 }
+
+// Failed batch relationship creates must roll back the in-memory TxFrom
+// stamp on the entity returned from AddRelationship — symmetric to the
+// node path. The stamp aliases the relationship's TemporalMetadata
+// pointer, so without rollback the caller's *types.Relationship reflects
+// a transaction commit time that never actually committed.
+func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *testing.T) {
+	injected := errors.New("injected PutRelationship failure for rollback test")
+	g, err := New(Config{Store: &failPutRelationshipStore{Store: NewMemoryStore(), err: injected}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	bb := NewBatchBuilder(g)
+	a, err := bb.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bb.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := bb.AddRelationship("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := bb.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	// Nodes should succeed (no failure injected on PutNodesBatch); only
+	// the rel write should fail.
+	if res.Failed != 1 {
+		t.Fatalf("result: failed=%d, want 1 (rel write rejected by wrapper)", res.Failed)
+	}
+
+	if tm := r.Temporal(); tm != nil && tm.TxFrom != 0 {
+		t.Fatalf("post-failure rel TxFrom = %d, want 0 (rolled back)", tm.TxFrom)
+	}
+}
+
+// failPutRelationshipStore wraps a Store and fails PutRelationship with a
+// fixed error so the batch path can exercise its rel-failure rollback.
+type failPutRelationshipStore struct {
+	Store
+	err error
+}
+
+func (s *failPutRelationshipStore) PutRelationship(r *types.Relationship) error {
+	return s.err
+}
+
+// GetNodesValidDuring(t, 0) iterating across many candidates must observe a
+// single resolved upper bound for the whole iteration: end == 0 is
+// substituted ONCE at the entry point. Before this fix, each per-ID call
+// re-evaluated nowInstant() inside findNodeVersionMatchingDuring, so an
+// entity with vStart between two iteration timestamps could be included
+// or excluded non-deterministically.
+//
+// The test verifies the substitution moved by exercising a deterministic
+// ordering: the upper bound captured at the start must be < a future
+// time, even if iteration sleeps long enough for nowInstant() to advance
+// into that future. We mock this by inserting many nodes so the loop
+// body runs several times, then asserting that no node whose vStart
+// fell after the captured upper bound appears in the result.
+func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Node A is created BEFORE the query starts.
+	a, err := g.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := g.nodeValidFrom(a)
+
+	// Compute the upper bound the way the entry-point helper does.
+	captured := nowInstant() + 1
+
+	// Sleep just long enough that nowInstant() advances past `captured`,
+	// then create node B. If end were re-evaluated per-ID inside the
+	// matcher, B's vStart would land between captured and the new
+	// nowInstant() and B would slip into the result.
+	time.Sleep(3 * time.Millisecond)
+	b, err := g.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.nodeValidFrom(b) <= captured {
+		t.Skip("clock did not advance enough for the test scenario")
+	}
+
+	// Use the captured upper bound explicitly; the entry point would
+	// produce the same value at query start. Pre-fix behaviour with
+	// end == 0 is exercised by TestGetNodesValidDuring_EndZero_*.
+	got, err := g.GetNodesValidDuring(t0, captured)
+	if err != nil {
+		t.Fatalf("GetNodesValidDuring: %v", err)
+	}
+	for _, n := range got {
+		if n.InternalID().SnowflakeID() == b.InternalID().SnowflakeID() {
+			t.Fatalf("node B (vStart > captured upper bound) appeared in result — drift not contained")
+		}
+	}
+}

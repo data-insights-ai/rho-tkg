@@ -467,6 +467,14 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		b.g.entityLocks.UnlockTwo(pr.startID, pr.endID)
 
 		if err != nil {
+			// Roll back the in-memory TxFrom stamp on failure — same
+			// reason as the node path above. The stamp aliases the
+			// relationship's own TemporalMetadata pointer, so the
+			// caller-held *types.Relationship returned from
+			// AddRelationship would otherwise carry a transaction time
+			// for a write that never persisted.
+			pr.temporal.TxFrom = 0
+			pr.rel.SetTemporal(pr.temporal)
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",

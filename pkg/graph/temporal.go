@@ -44,6 +44,23 @@ type SnapshotDiff struct {
 
 // --- Internal helpers ---
 
+// resolveOpenEndInstant maps an open-ended `end == 0` upper bound to a
+// concrete instant ("now + 1") so a single per-query value is shared
+// across every per-ID overlap predicate. Substituting at the entry
+// point — rather than inside findNodeVersionMatchingDuring per
+// invocation — eliminates time drift on long iterations, where each
+// per-ID call would otherwise observe a different `nowInstant()` and
+// produce inclusion/exclusion that depends on iteration timing.
+//
+// Callers that hand `end` straight to findNodeVersionMatchingDuring /
+// findRelVersionMatchingDuring MUST pass through this helper first.
+func resolveOpenEndInstant(end types.Instant) types.Instant {
+	if end == 0 {
+		return nowInstant() + 1
+	}
+	return end
+}
+
 // nodeValidFrom returns the effective valid-from time for a node.
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
 func (g *Graph) nodeValidFrom(n *types.Node) types.Instant {
@@ -174,7 +191,14 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 // GetNodesValidDuring returns all nodes whose validity overlaps [start, end).
 // History-aware: includes deleted or updated nodes that had any version valid
 // during the interval.
+//
+// end == 0 is interpreted as "open-ended to now" (mirrors ValidTo == 0).
+// The substitution happens once at this entry point so every per-ID
+// overlap predicate sees the same upper bound — avoids time drift across
+// the iteration that would otherwise let a single call return different
+// results depending on how long it ran.
 func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
+	end = resolveOpenEndInstant(end)
 	var result []*types.Node
 	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
 		n, err := g.getNodeVersionDuring(id, start, end)
@@ -196,7 +220,10 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 
 // GetRelationshipsValidDuring returns all relationships whose validity overlaps [start, end).
 // History-aware: includes deleted or updated relationships.
+//
+// end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
 func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
+	end = resolveOpenEndInstant(end)
 	var result []*types.Relationship
 	err := g.forEachKnownRelID(func(id snowflake.ID) error {
 		r, err := g.getRelVersionDuring(id, start, end)
@@ -575,16 +602,13 @@ func (g *Graph) findRelVersionForOpts(id snowflake.ID, opts QueryOpts, pred func
 // version. Scanning all overlapping versions is the only correct semantic for
 // "did this node match the predicate at any point during [start, end)?".
 func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
-	// Mirror the open-ended convention used everywhere else in the temporal
-	// model: ValidTo == 0 means "still valid"; treat end == 0 the same way
-	// for the upper bound of the caller-supplied interval. Without this the
-	// predicate `vStart < end` collapses (snowflake-derived vStart is always
-	// >= 1.75e12 since the epoch is 2026-01-01), so every entity is rejected
-	// and GetNodesValidDuring(t, 0) silently returns an empty slice.
-	if end == 0 {
-		end = nowInstant() + 1
-	}
-
+	// Callers must resolve end == 0 to a concrete bound BEFORE invoking
+	// this function; see resolveOpenEndInstant. Per-call substitution
+	// here would cause time drift across a long iteration: each ID
+	// would see a different `nowInstant()`, so an entity created
+	// between iterations could be included or excluded
+	// non-deterministically. The entry-point resolution gives every
+	// candidate the same upper bound.
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -620,11 +644,7 @@ func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.
 
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (g *Graph) findRelVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
-	// See findNodeVersionMatchingDuring: end == 0 means "open-ended to now".
-	if end == 0 {
-		end = nowInstant() + 1
-	}
-
+	// See findNodeVersionMatchingDuring: callers must pre-resolve end == 0.
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -950,6 +970,9 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if targetKey == "" {
 		return nil, nil
 	}
+	// Resolve open-ended end once for the whole iteration — see
+	// GetNodesValidDuring.
+	end = resolveOpenEndInstant(end)
 	// Seed candidates from the property index (falls back to a label scan
 	// inside the store when no property index covers (label, key)).
 	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
