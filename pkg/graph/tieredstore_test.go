@@ -2682,7 +2682,15 @@ func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 
 // --- Cold shard tests ---
 
-// demoteToCode manually sets a shard to cold tier. For testing only.
+// demoteToCold manually sets a shard to cold tier. Test-only helper.
+//
+// Bypasses the normal warm→cold transition (driven by ColdAfter and the
+// idle-close goroutine) so tests can deterministically observe behaviour
+// against a cold shard without sleeping. Holds ts.mu across the tier flip
+// AND the catalog update so a concurrent rotation cannot read a half-updated
+// state — but does NOT close the underlying BadgerStore. Pair with
+// closeEventShardStore to fully simulate a cold idle-close, or leave the
+// store open to test pure tier-based code paths.
 func demoteToCold(ts *TieredStore, shardName string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()

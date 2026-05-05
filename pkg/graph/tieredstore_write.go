@@ -389,7 +389,12 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 		if startShard != endShard {
 			// Cross-shard: individual put — release these checkins immediately
-			// since PutRelationship pins again internally.
+			// since PutRelationship pins again internally. There is a brief
+			// unpinned window between checkin here and PutRelationship's
+			// internal re-pin, but closeIdleShards cannot fire inside it:
+			// each owner shard's lastAccess was just bumped by the prior
+			// checkout (line above), and IdleTimeout >= 5min, so the window
+			// is bounded by IdleTimeout and the activeReqs gap is microseconds.
 			startCheckin()
 			endCheckin()
 			if err := ts.PutRelationship(r); err != nil {

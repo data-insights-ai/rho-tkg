@@ -1033,8 +1033,4 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 			t.Fatalf("GetRelationship returned %d, want %d", got.InternalID().SnowflakeID(), relID)
 		}
 	})
-
-	// Use the graph helper to silence the unused-warning while still pinning
-	// the same end-to-end path.
-	_ = g
 }
