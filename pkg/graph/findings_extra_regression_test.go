@@ -527,3 +527,131 @@ func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 		t.Fatalf("rel error = %q, want a clear 'skipped — endpoint failed' message", msg)
 	}
 }
+
+// GetNodesValidDuring(t, 0) and GetRelationshipsValidDuring(t, 0) must treat
+// end == 0 as the "open-ended to now" sentinel that ValidTo == 0 already uses
+// elsewhere. Without the fix the overlap predicate vStart < end collapses
+// (snowflake-derived vStart >= 1.75e12 is never less than 0) and the query
+// silently returns an empty slice for a still-live entity.
+func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, err := g.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	t0 := g.nodeValidFrom(n)
+
+	got, err := g.GetNodesValidDuring(t0, 0)
+	if err != nil {
+		t.Fatalf("GetNodesValidDuring(t0, 0): %v", err)
+	}
+	if len(got) != 1 || got[0].InternalID().SnowflakeID() != n.InternalID().SnowflakeID() {
+		t.Fatalf("got %d nodes, want exactly the live node n", len(got))
+	}
+}
+
+func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	a, _ := g.AddNode([]string{"A"}, nil)
+	b, _ := g.AddNode([]string{"B"}, nil)
+	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	t0 := g.relValidFrom(r)
+
+	got, err := g.GetRelationshipsValidDuring(t0, 0)
+	if err != nil {
+		t.Fatalf("GetRelationshipsValidDuring(t0, 0): %v", err)
+	}
+	if len(got) != 1 || got[0].InternalID().SnowflakeID() != r.InternalID().SnowflakeID() {
+		t.Fatalf("got %d rels, want exactly the live rel r", len(got))
+	}
+}
+
+// BatchBuilder.Execute mutates the entity returned from AddNode through the
+// aliased pendingNode.temporal pointer, stamping TxFrom before the
+// PutNodesBatch call. If the store rejects the batch the in-memory entity
+// must NOT carry a TxFrom for a transaction that never committed —
+// otherwise the caller observes a half-committed state through the same
+// pointer that AddNode returned.
+func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *testing.T) {
+	injected := errors.New("injected PutNodesBatch failure for rollback test")
+	g, err := New(Config{Store: &failPutNodesBatchStore{Store: NewMemoryStore(), err: injected}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	bb := NewBatchBuilder(g)
+	n, err := bb.AddNode([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if tm := n.Temporal(); tm != nil && tm.TxFrom != 0 {
+		t.Fatalf("queue-time TxFrom = %d, want 0 before Execute", tm.TxFrom)
+	}
+
+	res, err := bb.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if res.Failed != 1 || res.Created != 0 {
+		t.Fatalf("result: failed=%d created=%d, want failed=1 created=0", res.Failed, res.Created)
+	}
+
+	if tm := n.Temporal(); tm != nil && tm.TxFrom != 0 {
+		t.Fatalf("post-failure TxFrom on returned entity = %d, want 0 (rolled back)", tm.TxFrom)
+	}
+}
+
+// AllNodes / NodesByLabel / NodesByLabelAndProperty / RelationshipsByType /
+// AllRelationships must reject opts.Depth+temporal explicitly: the
+// history-aware path enumerates IDs through ForEach* iterators that have
+// no QueryOpts, so the underlying TieredStore cannot honor Depth there.
+// Surfacing the limitation is preferable to silently returning entities
+// the caller asked to exclude.
+func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Seed enough state that the registered label/reltype Lookup paths
+	// reach the Depth gate (the early "label/type not registered → nil"
+	// short-circuit hides the gate from the test otherwise).
+	a, _ := g.AddNode([]string{"A"}, map[string]any{"k": "v"})
+	b, _ := g.AddNode([]string{"A"}, nil)
+	if _, err := g.AddRelationship("KNOWS", a, b, nil); err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	now := nowInstant()
+	opts := QueryOpts{ValidAt: now, Depth: DepthHot}
+
+	if _, err := g.AllNodes(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+		t.Errorf("AllNodes(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	}
+	if _, err := g.AllRelationships(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+		t.Errorf("AllRelationships(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	}
+	if _, err := g.NodesByLabel("A", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+		t.Errorf("NodesByLabel(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	}
+	if _, err := g.NodesByLabelAndProperty("A", "k", "v", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+		t.Errorf("NodesByLabelAndProperty(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	}
+	if _, err := g.RelationshipsByType("KNOWS", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+		t.Errorf("RelationshipsByType(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	}
+}

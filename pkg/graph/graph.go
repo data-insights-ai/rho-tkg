@@ -25,6 +25,13 @@ var (
 	ErrInvalidTimeRange = errors.New("graph: invalid time range")
 	ErrLabelNotFound    = errors.New("graph: node does not have the specified label")
 	ErrLastLabel        = errors.New("graph: cannot remove the last label from a node")
+	// ErrDepthTemporalUnsupported is returned when QueryOpts combines a
+	// non-default Depth with a temporal filter. The history-aware
+	// resolution path enumerates IDs through ForEach* iterators that have
+	// no QueryOpts, so the underlying Store cannot honor Depth in that
+	// path — surface the limitation to the caller rather than silently
+	// returning entities the caller asked to exclude.
+	ErrDepthTemporalUnsupported = errors.New("graph: opts.Depth is not supported with a temporal filter")
 )
 
 // Sentinel errors for validation limits.
@@ -702,6 +709,9 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if !opts.hasTemporalFilter() {
 		return g.store.NodesByLabel(tok, opts)
 	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
 	// Indexed candidate set: current nodes that carry the label NOW, plus all
 	// node IDs that ever appeared in history (covering the case where the
 	// label was held in a previous version but not the current one). Avoids
@@ -749,6 +759,9 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	}
 	if !opts.hasTemporalFilter() {
 		return g.store.RelationshipsByType(tok, opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
 	}
 	// Indexed candidate set: current rels of this type, plus history IDs.
 	// Type tokens are structurally immutable so the type predicate is only
@@ -872,6 +885,9 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if !opts.hasTemporalFilter() {
 		return g.store.AllNodes(opts)
 	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
 	var result []*types.Node
 	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, nil)
@@ -902,6 +918,9 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	if !opts.hasTemporalFilter() {
 		return g.store.AllRelationships(opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
 	}
 	var result []*types.Relationship
 	err := g.forEachKnownRelID(func(id snowflake.ID) error {
@@ -1126,6 +1145,9 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	}
 	if !opts.hasTemporalFilter() {
 		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
 	}
 	targetKey := propertyValueKey(value)
 	if targetKey == "" {

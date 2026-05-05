@@ -575,6 +575,16 @@ func (g *Graph) findRelVersionForOpts(id snowflake.ID, opts QueryOpts, pred func
 // version. Scanning all overlapping versions is the only correct semantic for
 // "did this node match the predicate at any point during [start, end)?".
 func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+	// Mirror the open-ended convention used everywhere else in the temporal
+	// model: ValidTo == 0 means "still valid"; treat end == 0 the same way
+	// for the upper bound of the caller-supplied interval. Without this the
+	// predicate `vStart < end` collapses (snowflake-derived vStart is always
+	// >= 1.75e12 since the epoch is 2026-01-01), so every entity is rejected
+	// and GetNodesValidDuring(t, 0) silently returns an empty slice.
+	if end == 0 {
+		end = nowInstant() + 1
+	}
+
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -610,6 +620,11 @@ func (g *Graph) findNodeVersionMatchingDuring(id snowflake.ID, start, end types.
 
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (g *Graph) findRelVersionMatchingDuring(id snowflake.ID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	// See findNodeVersionMatchingDuring: end == 0 means "open-ended to now".
+	if end == 0 {
+		end = nowInstant() + 1
+	}
+
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err

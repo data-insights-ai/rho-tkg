@@ -369,6 +369,17 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 		if err := b.g.store.PutNodesBatch(nodes); err != nil {
 			// PutNodesBatch is all-or-nothing — every queued node failed.
+			// The TxFrom stamp above mutates the entity through the aliased
+			// pendingNode.temporal pointer and is observable through the
+			// caller's reference returned from AddNode. Roll the stamp back
+			// on failure so the caller does not see TxFrom != 0 on a node
+			// that was never persisted; this matches addNodeInternal's
+			// failure semantics where a failed write leaves no committed
+			// transaction time on the entity.
+			for _, pn := range b.nodes {
+				pn.temporal.TxFrom = 0
+				pn.node.SetTemporal(pn.temporal)
+			}
 			failedNodeIDs = make(map[snowflake.ID]struct{}, len(b.nodes))
 			for _, pn := range b.nodes {
 				id := pn.node.InternalID().SnowflakeID()
