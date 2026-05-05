@@ -30,22 +30,31 @@ type BatchBuilder struct {
 	relDeletes  []snowflake.ID
 }
 
+// pendingNode and pendingRel keep aliased pointers to the entity's integrity
+// and temporal structs. AddNode/AddRelationship call SetIntegrity / construct
+// the temporal struct at queue time; Execute stamps TxFrom (and refreshes
+// rel endpoint hashes) in place. Because the pointers are aliased to the
+// entity's own fields, callers that hold a reference to the entity returned
+// from AddNode/AddRelationship observe the post-Execute state through that
+// entity — no extra SetTemporal/SetIntegrity round-trip is required after
+// the in-place mutation, and that is fine for batch's contract since the
+// entity is documented as "queue-time skeleton, finalised at Execute".
 type pendingNode struct {
 	node      *types.Node
 	labels    []string
-	integrity *types.NodeIntegrity    // hash + provenance set at queue time
-	temporal  *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt set at queue time;
-	// TxFrom stamped at Execute time
+	integrity *types.NodeIntegrity    // aliases node.integrity
+	temporal  *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingRel struct {
 	rel       *types.Relationship
 	startID   snowflake.ID
 	endID     snowflake.ID
-	integrity *types.RelIntegrity // Hash + provenance set at queue time;
-	// FromNodeHash/ToNodeHash refreshed at Execute time
-	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt set at queue time;
-	// TxFrom stamped at Execute time
+	integrity *types.RelIntegrity // aliases rel.integrity;
+	// FromNodeHash/ToNodeHash mutated under per-rel endpoint locks in Execute
+	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingUpdate struct {
@@ -373,19 +382,34 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	for _, pr := range b.rels {
 		b.g.entityLocks.LockTwo(pr.startID, pr.endID)
 
-		if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
-			if sIg := startNode.Integrity(); sIg != nil {
-				pr.integrity.FromNodeHash = sIg.Hash
+		// Self-loop fast path: a single GetNode covers both endpoints.
+		if pr.startID == pr.endID {
+			if n, err := b.g.store.GetNode(pr.startID); err == nil {
+				if ig := n.Integrity(); ig != nil {
+					pr.integrity.FromNodeHash = ig.Hash
+					pr.integrity.ToNodeHash = ig.Hash
+				}
+			}
+		} else {
+			if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
+				if sIg := startNode.Integrity(); sIg != nil {
+					pr.integrity.FromNodeHash = sIg.Hash
+				}
+			}
+			if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
+				if eIg := endNode.Integrity(); eIg != nil {
+					pr.integrity.ToNodeHash = eIg.Hash
+				}
 			}
 		}
-		if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
-			if eIg := endNode.Integrity(); eIg != nil {
-				pr.integrity.ToNodeHash = eIg.Hash
-			}
-		}
+		// SetIntegrity is a no-op against the same pointer the rel already
+		// holds, but keep the call so the queue-time alias is not load-bearing
+		// — a future refactor that copies pendingRel.integrity does not need
+		// to also remember to call SetIntegrity here.
 		pr.rel.SetIntegrity(pr.integrity)
 
-		pr.temporal.TxFrom = nowInstant()
+		txNow := nowInstant()
+		pr.temporal.TxFrom = txNow
 		pr.rel.SetTemporal(pr.temporal)
 
 		err := b.g.store.PutRelationship(pr.rel)
@@ -400,7 +424,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Created++
-			b.g.publishEvent(EventRelCreate, pr.rel.InternalID().SnowflakeID(), nowInstant(), PriorityHigh)
+			b.g.publishEvent(EventRelCreate, pr.rel.InternalID().SnowflakeID(), txNow, PriorityHigh)
 		}
 	}
 
