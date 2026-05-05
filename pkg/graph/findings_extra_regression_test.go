@@ -62,12 +62,11 @@ func newTemporalCandidateCountingGraph(t *testing.T) (*Graph, *temporalCandidate
 }
 
 // History-aware indexed temporal queries must not scan the full current-ID set
-// when the label/property index already narrows candidates. Currently the
-// Generic*ByLabel* paths fall back to ForEachNodeID even when an index exists.
-//
-// FIX: temporal.go history-aware planner should consult the label/property
-// index for candidates and merge with history IDs, not full-scan all current
-// IDs (B30 history-aware extension to indexed paths).
+// when the label/property index already narrows candidates. Guards the new
+// indexed-candidate planner in temporal.go: every label/property/adjacency
+// query path under a temporal QueryOpts must derive candidates from the
+// matching index and merge them with history IDs via forEach{Node,Rel}CandidateID,
+// rather than degrading to ForEachNodeID/ForEachRelID over every entity.
 func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
@@ -107,11 +106,10 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 }
 
 // History-aware neighbor traversal must not scan the full current-rel-ID set;
-// adjacency indexes already provide a narrow candidate set.
-//
-// FIX: GetNeighborsValidAt and the generic RelationshipsByType temporal path
-// should derive candidates from outgoing/incoming adjacency, then merge with
-// history IDs — instead of full-scanning all current rel IDs.
+// adjacency and type indexes already provide a narrow candidate set. Guards
+// GetNeighborsValidAt and the generic RelationshipsByType temporal path: both
+// must derive candidates from outgoing/incoming adjacency / type index and
+// merge with history IDs, never falling back to ForEachRelID over every rel.
 func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
@@ -302,6 +300,9 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 	}
 	if ig := storedRel.Integrity(); ig == nil || ig.AuthorID != "rel-author" {
 		t.Fatalf("relationship integrity = %+v, want AuthorID rel-author", ig)
+	}
+	if ig := storedRel.Integrity(); ig == nil || ig.FromNodeHash == "" || ig.ToNodeHash == "" {
+		t.Fatalf("relationship integrity = %+v, want non-empty FromNodeHash and ToNodeHash (parity with addRelationshipInternal)", ig)
 	}
 	if tm := storedRel.Temporal(); tm == nil || tm.TxFrom == 0 || tm.ValidFrom != 200 {
 		t.Fatalf("relationship temporal = %+v, want TxFrom set and ValidFrom 200", tm)

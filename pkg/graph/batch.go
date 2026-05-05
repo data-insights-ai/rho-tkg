@@ -207,14 +207,25 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{
+	// Capture endpoint hashes at creation time for cross-validation. Mirrors
+	// addRelationshipInternal — FromNodeHash/ToNodeHash are NOT part of
+	// ComputeRelHash to avoid cascading hash invalidation whenever endpoint
+	// nodes are updated.
+	ig := &types.RelIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
 		AuthorID:           authorID,
 		Signature:          sig,
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
-	})
+	}
+	if startIg := startNode.Integrity(); startIg != nil {
+		ig.FromNodeHash = startIg.Hash
+	}
+	if endIg := endNode.Integrity(); endIg != nil {
+		ig.ToNodeHash = endIg.Hash
+	}
+	r.SetIntegrity(ig)
 
 	// Set transaction time + caller-provided temporal metadata (NOT hashed —
 	// set after hash). Mirrors addRelationshipInternal so batch-created rels
