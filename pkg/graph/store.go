@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -21,8 +20,8 @@ const (
 // QueryOpts controls pagination and temporal filtering for unbounded query methods.
 // Zero values mean "return all" — backward-compatible with existing callers.
 type QueryOpts struct {
-	Limit int          // Max results. 0 = no limit.
-	After snowflake.ID // Return entities with ID > After. 0 = from start.
+	Limit int            // Max results. 0 = no limit.
+	After types.EntityID // Return entities with ID > After. 0 = from start.
 
 	// Temporal filters — zero values = no filter (backward-compatible).
 	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.

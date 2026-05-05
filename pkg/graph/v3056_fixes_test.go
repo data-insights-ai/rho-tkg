@@ -48,7 +48,7 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	// Second page using After cursor.
 	if len(nodes) > 0 {
 		afterID := nodes[len(nodes)-1].ID()
-		page2, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: afterID.SnowflakeID()})
+		page2, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: types.EntityID(afterID)})
 		if err != nil {
 			t.Fatalf("NodesByLabel page2: %v", err)
 		}

@@ -16,16 +16,16 @@ import (
 //   - limit > 0: return at most limit IDs.
 //
 // Returns nil if the result is empty.
-func paginateIDs(ids []snowflake.ID, after snowflake.ID, limit int) []snowflake.ID {
+func paginateIDs(ids []snowflake.ID, after types.EntityID, limit int) []snowflake.ID {
 	if len(ids) == 0 {
 		return nil
 	}
-
+	afterRaw := after.SnowflakeID()
 	start := 0
-	if after > 0 {
+	if afterRaw > 0 {
 		// Binary search for the first ID > after.
 		start = sort.Search(len(ids), func(i int) bool {
-			return ids[i] > after
+			return ids[i] > afterRaw
 		})
 	}
 
@@ -43,14 +43,15 @@ func paginateIDs(ids []snowflake.ID, after snowflake.ID, limit int) []snowflake.
 
 // paginateNodes applies cursor-based pagination to a slice of nodes sorted
 // ascending by snowflake ID. Same semantics as paginateIDs.
-func paginateNodes(nodes []*types.Node, after snowflake.ID, limit int) []*types.Node {
+func paginateNodes(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
 	if len(nodes) == 0 {
 		return nil
 	}
+	afterRaw := after.SnowflakeID()
 	start := 0
-	if after > 0 {
+	if afterRaw > 0 {
 		start = sort.Search(len(nodes), func(i int) bool {
-			return nodes[i].ID().SnowflakeID() > after
+			return nodes[i].ID().SnowflakeID() > afterRaw
 		})
 	}
 	if start >= len(nodes) {
@@ -65,14 +66,15 @@ func paginateNodes(nodes []*types.Node, after snowflake.ID, limit int) []*types.
 
 // paginateRels applies cursor-based pagination to a slice of relationships
 // sorted ascending by snowflake ID. Same semantics as paginateIDs.
-func paginateRels(rels []*types.Relationship, after snowflake.ID, limit int) []*types.Relationship {
+func paginateRels(rels []*types.Relationship, after types.EntityID, limit int) []*types.Relationship {
 	if len(rels) == 0 {
 		return nil
 	}
+	afterRaw := after.SnowflakeID()
 	start := 0
-	if after > 0 {
+	if afterRaw > 0 {
 		start = sort.Search(len(rels), func(i int) bool {
-			return rels[i].ID().SnowflakeID() > after
+			return rels[i].ID().SnowflakeID() > afterRaw
 		})
 	}
 	if start >= len(rels) {
@@ -114,14 +116,15 @@ func toRelIDs(ids []snowflake.ID) []types.RelID {
 // paginateNodeIDs is the typed equivalent of paginateIDs for []types.NodeID.
 // Same semantics: input must be sorted ascending by underlying snowflake ID;
 // after == 0 starts from the beginning; limit == 0 returns all remaining.
-func paginateNodeIDs(ids []types.NodeID, after snowflake.ID, limit int) []types.NodeID {
+func paginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []types.NodeID {
 	if len(ids) == 0 {
 		return nil
 	}
+	afterRaw := after.SnowflakeID()
 	start := 0
-	if after > 0 {
+	if afterRaw > 0 {
 		start = sort.Search(len(ids), func(i int) bool {
-			return ids[i].SnowflakeID() > after
+			return ids[i].SnowflakeID() > afterRaw
 		})
 	}
 	if start >= len(ids) {
@@ -135,14 +138,15 @@ func paginateNodeIDs(ids []types.NodeID, after snowflake.ID, limit int) []types.
 }
 
 // paginateRelIDs is the typed equivalent of paginateIDs for []types.RelID.
-func paginateRelIDs(ids []types.RelID, after snowflake.ID, limit int) []types.RelID {
+func paginateRelIDs(ids []types.RelID, after types.EntityID, limit int) []types.RelID {
 	if len(ids) == 0 {
 		return nil
 	}
+	afterRaw := after.SnowflakeID()
 	start := 0
-	if after > 0 {
+	if afterRaw > 0 {
 		start = sort.Search(len(ids), func(i int) bool {
-			return ids[i].SnowflakeID() > after
+			return ids[i].SnowflakeID() > afterRaw
 		})
 	}
 	if start >= len(ids) {

@@ -59,7 +59,7 @@ func TestBadgerStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 		t.Fatalf("page 1: got %d nodes, want 2", len(nodes))
 	}
 
-	nodes2, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].ID().SnowflakeID()})
+	nodes2, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: types.EntityID(nodes[1].ID())})
 	if err != nil {
 		t.Fatal(err)
 	}

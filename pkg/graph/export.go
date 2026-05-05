@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -100,7 +99,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	// AllNodes with cursor-based pagination caps memory to exportBatchSize entities
 	// per iteration. Avoids the OOM that results from collecting all IDs into a
 	// single monolithic slice before fetching (8+ GB for 1B nodes).
-	var nodeCursor snowflake.ID
+	var nodeCursor types.EntityID
 	for {
 		nodes, err := g.store.AllNodes(QueryOpts{Limit: exportBatchSize, After: nodeCursor})
 		if err != nil {
@@ -111,7 +110,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
 				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
-			nodeCursor = n.ID().SnowflakeID()
+			nodeCursor = types.EntityID(n.ID().SnowflakeID())
 		}
 		if len(nodes) < exportBatchSize {
 			break
@@ -143,7 +142,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	}
 
 	// --- Current relationships (paginated) ---
-	var relCursor snowflake.ID
+	var relCursor types.EntityID
 	for {
 		rels, err := g.store.AllRelationships(QueryOpts{Limit: exportBatchSize, After: relCursor})
 		if err != nil {
@@ -154,7 +153,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
 				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
-			relCursor = r.ID().SnowflakeID()
+			relCursor = types.EntityID(r.ID().SnowflakeID())
 		}
 		if len(rels) < exportBatchSize {
 			break

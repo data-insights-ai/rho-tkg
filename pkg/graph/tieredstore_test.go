@@ -1092,7 +1092,7 @@ func TestTieredStore_AllNodes_Pagination(t *testing.T) {
 	}
 
 	// Page 2.
-	page2, err := ts.AllNodes(QueryOpts{Limit: 2, After: page1[1].ID().SnowflakeID()})
+	page2, err := ts.AllNodes(QueryOpts{Limit: 2, After: types.EntityID(page1[1].ID())})
 	if err != nil {
 		t.Fatal(err)
 	}

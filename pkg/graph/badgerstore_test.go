@@ -4225,7 +4225,7 @@ func TestBadgerStoreAllNodeIDs_Pagination(t *testing.T) {
 		t.Fatalf("page1 len=%d, want 2", len(ids))
 	}
 
-	ids2, _ := bs.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
+	ids2, _ := bs.AllNodeIDs(QueryOpts{Limit: 2, After: types.EntityID(ids[1])})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
@@ -4288,7 +4288,7 @@ func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
 		t.Fatalf("page1 len=%d, want 2", len(ids))
 	}
 
-	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
+	ids2, _ := bs.AllRelIDs(QueryOpts{Limit: 2, After: types.EntityID(ids[1])})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
@@ -4838,7 +4838,7 @@ func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	var all []*types.Node
 	var cursor snowflake.ID
 	for {
-		page, err := bs.NodesByLabel(10, QueryOpts{Limit: 3, After: cursor})
+		page, err := bs.NodesByLabel(10, QueryOpts{Limit: 3, After: types.EntityID(cursor)})
 		if err != nil {
 			t.Fatalf("NodesByLabel: %v", err)
 		}

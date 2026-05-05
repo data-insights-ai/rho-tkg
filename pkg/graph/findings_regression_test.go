@@ -761,7 +761,7 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	if err != nil || len(page1) != 1 {
 		t.Fatalf("page1: got %d nodes, err=%v; want 1, nil", len(page1), err)
 	}
-	page2, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, After: page1[0].ID().SnowflakeID()})
+	page2, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, After: types.EntityID(page1[0].ID())})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
 	}

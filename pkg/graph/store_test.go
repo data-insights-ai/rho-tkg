@@ -2131,7 +2131,7 @@ func TestMemoryStoreAllNodeIDs_Pagination(t *testing.T) {
 	}
 
 	// Page 2: After last ID from page 1.
-	ids2, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
+	ids2, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: types.EntityID(ids[1])})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}
@@ -2140,7 +2140,7 @@ func TestMemoryStoreAllNodeIDs_Pagination(t *testing.T) {
 	}
 
 	// Page 3: remaining.
-	ids3, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: ids2[1].SnowflakeID()})
+	ids3, _ := ms.AllNodeIDs(QueryOpts{Limit: 2, After: types.EntityID(ids2[1])})
 	if len(ids3) != 1 {
 		t.Fatalf("page3 len=%d, want 1", len(ids3))
 	}
@@ -2211,7 +2211,7 @@ func TestMemoryStoreAllRelIDs_Pagination(t *testing.T) {
 	}
 
 	// Page 2.
-	ids2, _ := ms.AllRelIDs(QueryOpts{Limit: 2, After: ids[1].SnowflakeID()})
+	ids2, _ := ms.AllRelIDs(QueryOpts{Limit: 2, After: types.EntityID(ids[1])})
 	if len(ids2) != 2 {
 		t.Fatalf("page2 len=%d, want 2", len(ids2))
 	}

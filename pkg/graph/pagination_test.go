@@ -133,7 +133,7 @@ func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	var all []*types.Node
 	var cursor snowflake.ID
 	for {
-		page, err := ms.NodesByLabel(10, QueryOpts{Limit: 3, After: cursor})
+		page, err := ms.NodesByLabel(10, QueryOpts{Limit: 3, After: types.EntityID(cursor)})
 		if err != nil {
 			t.Fatalf("NodesByLabel: %v", err)
 		}

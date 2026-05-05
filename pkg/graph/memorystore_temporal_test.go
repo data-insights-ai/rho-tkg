@@ -71,7 +71,7 @@ func TestMemoryStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 	}
 
 	// Page 2: After the last node of page 1.
-	nodes2, err := ms.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: nodes[1].ID().SnowflakeID()})
+	nodes2, err := ms.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: types.EntityID(nodes[1].ID())})
 	if err != nil {
 		t.Fatalf("NodesByLabel page 2: %v", err)
 	}

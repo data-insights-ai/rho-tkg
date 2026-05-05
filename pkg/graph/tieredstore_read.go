@@ -1174,8 +1174,9 @@ func mergeIDSlices(slices [][]snowflake.ID) []snowflake.ID {
 
 func applyNodePagination(nodes []*types.Node, opts QueryOpts) []*types.Node {
 	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
 		i := sort.Search(len(nodes), func(i int) bool {
-			return nodes[i].ID().SnowflakeID() > opts.After
+			return nodes[i].ID().SnowflakeID() > afterRaw
 		})
 		nodes = nodes[i:]
 	}
@@ -1190,8 +1191,9 @@ func applyNodePagination(nodes []*types.Node, opts QueryOpts) []*types.Node {
 
 func applyRelPagination(rels []*types.Relationship, opts QueryOpts) []*types.Relationship {
 	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
 		i := sort.Search(len(rels), func(i int) bool {
-			return rels[i].ID().SnowflakeID() > opts.After
+			return rels[i].ID().SnowflakeID() > afterRaw
 		})
 		rels = rels[i:]
 	}
@@ -1206,8 +1208,9 @@ func applyRelPagination(rels []*types.Relationship, opts QueryOpts) []*types.Rel
 
 func applyIDPagination(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
 	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
 		i := sort.Search(len(ids), func(i int) bool {
-			return ids[i] > opts.After
+			return ids[i] > afterRaw
 		})
 		ids = ids[i:]
 	}

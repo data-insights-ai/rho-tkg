@@ -2,14 +2,16 @@
 
 ## Status
 
-In progress, on the migration branch. Public Graph API surface migrated. `Store`
-interface and all three implementations (Memory / Badger / Tiered) migrated.
-~72 files touched in the callsite sweep, ~25 test files updated. Build green;
-full + race suites pass with `go clean -testcache && go test -count=1`.
+In progress, on the migration branch. Public Graph API surface, `Store`
+interface, all three Store implementations, AND all Tier A public exposures
+(`Event.EntityID`, `BatchError.ID`, `QueryOpts.After`) migrated. ~72 files
+touched in the callsite sweep, ~25 test files updated. Build green; full +
+race suites pass with `go clean -testcache && go test -count=1`.
 
-Tier A (3 public exposures still leaking raw `snowflake.ID`), Tier C (internal
-chokepoint consolidation), Tier D (reanalysis of justified raw uses), and final
-cleanup remain.
+What remains: Tier C internal storage maps (the largest single migration
+remaining; would drain ~140 of the residual `.SnowflakeID()` calls), Tier D
+final reanalysis, and Phase 8 cleanup (remove `InternalID()`, CHANGELOG, tag
+v3.2.0).
 
 Smoke tests 2026-05-05:
 - Round 1 (parallel, file-scoped prompt): 1 clean win (`highFrequencyIndex` →
@@ -31,6 +33,13 @@ Smoke tests 2026-05-05:
   helpers cleanly but introduced 4 pagination helpers in `badgerstore.go`
   (where `pagination.go` was off-limits). Main agent moved those to
   `pagination.go` post-merge. Joint-verify clean.
+- Round 6 (kernel + parallel, finish Tier A): main agent applied the kernel
+  change (`QueryOpts.After` field type + 5 `paginate*` signatures), then
+  spawned Agent A on production fixes (3 sites in tieredstore_read.go,
+  2 in export.go, 1 import in store.go) and Agent B on 12 test-file
+  producer sites. New pattern that worked: pre-break the build with the
+  kernel change, then have parallel agents fix file-disjoint compile
+  errors. Joint-verify clean. Tier A complete.
 
 See "Parallel-agent prompt template" below for the validated structure.
 
@@ -78,12 +87,12 @@ See "Parallel-agent prompt template" below for the validated structure.
 
 ## Open
 
-### Phase 5 — Tier A: public exposures (must close before tagging)
+### Phase 5 — Tier A: public exposures — COMPLETE
 
-These three public types still surface raw `snowflake.ID` to external callers.
-Each defeats type-safety at the API boundary the migration was meant to give us;
-each currently forces production code to do `.ID().SnowflakeID()` at the
-callsite (~30 of those are still in `pkg/graph` solely because of this).
+All three public-API leaks closed across rounds 4-6. The Graph's external
+type surface is now fully typed (`types.NodeID` / `types.RelID` /
+`types.EntityID`); no public field, parameter, or return type uses raw
+`snowflake.ID`.
 
 - [x] `events.go:43` `Event.EntityID` → `types.EntityID` and
       `(g *Graph).publishEvent` → typed. Parallel-agent run 2026-05-05.
@@ -93,10 +102,11 @@ callsite (~30 of those are still in `pkg/graph` solely because of this).
 - [x] `batch.go:67` `BatchError.ID` → `types.EntityID`. Parallel-agent run
       2026-05-05 (round 5). 6 producer sites + 1 test fix; `snowflake` import
       dropped from `batch.go` and `batch_test.go`.
-- [ ] `store.go:25` `QueryOpts.After` → polymorphic via an interface
-      (`{ SnowflakeID() snowflake.ID }`), OR document as deliberately raw and
-      keep the friction. Pagination cursor maps to either entity kind, so
-      typed-via-interface is the cleanest fit.
+- [x] `store.go:25` `QueryOpts.After` → `types.EntityID`. Round 6 (parallel)
+      2026-05-05. Main agent did the kernel change (struct + 5 paginate
+      signatures); Agent A fixed 3 production callsites + dropped 2 unused
+      `snowflake` imports; Agent B fixed 12 test producer sites across 8
+      test files. Joint-verify clean.
 
 ### Phase 6 — Tier C: internal chokepoint consolidation
 
