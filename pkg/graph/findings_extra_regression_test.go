@@ -34,11 +34,14 @@ func containsRelID(rels []*types.Relationship, id snowflake.ID) bool {
 
 // temporalCandidateCountingStore wraps a Store and counts ForEach*ID calls so
 // tests can assert that history-aware planners do NOT fall back to scanning
-// every current ID when an indexed candidate set is available.
+// every current ID when an indexed candidate set is available, and that the
+// tightest available index (property over label) is used when both apply.
 type temporalCandidateCountingStore struct {
 	Store
-	forEachNodeIDCalls int
-	forEachRelIDCalls  int
+	forEachNodeIDCalls         int
+	forEachRelIDCalls          int
+	nodesByLabelCalls          int
+	nodesByLabelAndPropertyCalls int
 }
 
 func (s *temporalCandidateCountingStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
@@ -49,6 +52,16 @@ func (s *temporalCandidateCountingStore) ForEachNodeID(fn func(snowflake.ID) boo
 func (s *temporalCandidateCountingStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 	s.forEachRelIDCalls++
 	return s.Store.ForEachRelID(fn)
+}
+
+func (s *temporalCandidateCountingStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	s.nodesByLabelCalls++
+	return s.Store.NodesByLabel(token, opts)
+}
+
+func (s *temporalCandidateCountingStore) NodesByLabelAndProperty(token uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	s.nodesByLabelAndPropertyCalls++
+	return s.Store.NodesByLabelAndProperty(token, key, value, opts)
 }
 
 func newTemporalCandidateCountingGraph(t *testing.T) (*Graph, *temporalCandidateCountingStore) {
@@ -102,6 +115,49 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 
 	if store.forEachNodeIDCalls != 0 {
 		t.Fatalf("history-aware indexed node queries scanned all current node IDs %d times", store.forEachNodeIDCalls)
+	}
+}
+
+// Combined label+property temporal queries must seed their candidate set from
+// the property index (g.store.NodesByLabelAndProperty) — not from a label-wide
+// scan that filters the property in Go. Guards the property-index pushdown on
+// NodesByLabelAndProperty (graph.go), NodesByLabelPropertyAndTime, and
+// NodesByLabelPropertyDuring (temporal.go).
+func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
+	g, store := newTemporalCandidateCountingGraph(t)
+
+	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := n.InternalID().SnowflakeID()
+	queryTime := g.nodeValidFrom(n)
+
+	time.Sleep(2 * time.Millisecond)
+	updated, err := g.UpdateNode(id, map[string]any{"status": "published"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	end := updated.Temporal().UpdatedAt
+
+	store.nodesByLabelCalls = 0
+	store.nodesByLabelAndPropertyCalls = 0
+
+	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", QueryOpts{ValidAt: queryTime}); err != nil {
+		t.Fatalf("NodesByLabelAndProperty temporal: %v", err)
+	}
+	if _, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime); err != nil {
+		t.Fatalf("NodesByLabelPropertyAndTime: %v", err)
+	}
+	if _, err := g.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
+		t.Fatalf("NodesByLabelPropertyDuring: %v", err)
+	}
+
+	if store.nodesByLabelAndPropertyCalls < 3 {
+		t.Errorf("expected at least 3 NodesByLabelAndProperty calls (one per combined query), got %d", store.nodesByLabelAndPropertyCalls)
+	}
+	if store.nodesByLabelCalls > 0 {
+		t.Errorf("expected combined property+temporal queries to seed from NodesByLabelAndProperty only, but NodesByLabel was called %d times", store.nodesByLabelCalls)
 	}
 }
 

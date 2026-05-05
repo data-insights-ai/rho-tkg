@@ -879,12 +879,14 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	if targetKey == "" {
 		return nil, nil
 	}
-	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	// Seed candidates from the property index (falls back to a label scan
+	// inside the store when no property index covers (label, key)).
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
-	for _, n := range currentByLabel {
+	currentIDs := make([]snowflake.ID, 0, len(currentMatching))
+	for _, n := range currentMatching {
 		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
 	}
 	var result []*types.Node
@@ -924,12 +926,14 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if targetKey == "" {
 		return nil, nil
 	}
-	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	// Seed candidates from the property index (falls back to a label scan
+	// inside the store when no property index covers (label, key)).
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
-	for _, n := range currentByLabel {
+	currentIDs := make([]snowflake.ID, 0, len(currentMatching))
+	for _, n := range currentMatching {
 		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
 	}
 	pred := func(n *types.Node) bool {

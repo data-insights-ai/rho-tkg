@@ -1127,15 +1127,16 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if targetKey == "" {
 		return nil, nil
 	}
-	// Indexed candidate set: nodes that currently match label+property,
-	// merged with all history IDs (covering deleted/changed nodes whose
-	// historical version matched).
-	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	// Indexed candidate set: nodes that currently match label+property via the
+	// store-level property index (when available — falls back internally to a
+	// label scan if no property index is registered), merged with all history
+	// IDs to cover deleted/changed nodes whose historical version matched.
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
-	for _, n := range currentByLabel {
+	currentIDs := make([]snowflake.ID, 0, len(currentMatching))
+	for _, n := range currentMatching {
 		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
 	}
 
