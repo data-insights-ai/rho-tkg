@@ -397,6 +397,19 @@ func (ts *TieredStore) Close() error {
 			}
 		}
 
+		// Wait for any in-flight checkouts to drain before closing event
+		// shard stores. Badger v4 WriteBatch.Flush blocks forever on a
+		// closed DB (CLAUDE.md: closeIdleShards uses the same pattern), so
+		// closing while a long-running RunRepair/VerifyShard still holds a
+		// checkout would deadlock that caller. Spin-wait with a short
+		// sleep — Close is rare and the wait is bounded by whatever
+		// outermost admin call is in flight.
+		for _, es := range ts.eventShards {
+			for es.activeReqs.Load() > 0 {
+				time.Sleep(time.Millisecond)
+			}
+		}
+
 		// Close all event shards. Cold shards may have nil stores.
 		for _, es := range ts.eventShards {
 			if es.store != nil {

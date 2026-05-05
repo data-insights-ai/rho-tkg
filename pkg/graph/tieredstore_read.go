@@ -856,6 +856,18 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 		return nil, err
 	}
 
+	// refArchive parity: ArchiveNode + post-archive UpdateNode write history
+	// records to refArchive via the rel/node ID resolvers. ForEachNodeHistoryID
+	// already enumerates refArchive; the slice variant must too, otherwise
+	// archived-then-updated entities silently disappear from history scans.
+	var archiveIDs []snowflake.ID
+	if archive := ts.refArchive.Load(); archive != nil {
+		archiveIDs, err = archive.AllNodeHistoryIDs()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	type result struct {
 		ids []snowflake.ID
 		err error
@@ -881,6 +893,9 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -901,6 +916,15 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	refIDs, err := ts.refShard.AllRelHistoryIDs()
 	if err != nil {
 		return nil, err
+	}
+
+	// refArchive parity: see AllNodeHistoryIDs above.
+	var archiveIDs []snowflake.ID
+	if archive := ts.refArchive.Load(); archive != nil {
+		archiveIDs, err = archive.AllRelHistoryIDs()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	type result struct {
@@ -927,6 +951,9 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 	var slices [][]snowflake.ID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
 	}
 	for _, r := range results {
 		if r.err != nil {

@@ -539,9 +539,15 @@ func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) er
 }
 
 func (ts *TieredStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
-	// Rel history co-locates with the start-node's owner shard; pin it to keep
-	// idle-close from racing the version write.
-	shard, checkin, err := ts.shardForNodeIDChecked(r.StartNodeID().SnowflakeID())
+	// Route by rel ID — consistent with ReplaceRelWithHistory above. The
+	// previous start-node-keyed routing skipped the refArchive probe baked
+	// into shardForRelIDChecked and diverged from the path that writes the
+	// current rel state, so a rel that was archived together with its
+	// start node had its history written on the wrong shard whenever the
+	// caller hit this path (currently only ImportGraph; future history
+	// writers must also land on the rel's home shard). Pin the resolved
+	// owner so a cold owner cannot be closed mid-write.
+	shard, checkin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return err
 	}
@@ -637,8 +643,13 @@ func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
 // and deletes the live relationship in one per-shard batch flush.
 //
 // Same shard: delegates to the entity shard (fully atomic within the shard).
-// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on the entity shard;
-// the in/ cleanup on the end-node shard is a separate operation (B7 limitation).
+// Cross-shard: delete the in/ leg first, then atomically tombstone+delete on
+// the entity shard. Reversing the order vs the plain DeleteRelationship path
+// makes rollback feasible — undoing a tombstone-history write on the entity
+// shard would require removing the history record, which is harder than
+// re-creating an in/ index entry on the end-node shard. If the entity-shard
+// write fails, the in/ leg is restored via putRelIncoming so callers never
+// observe a phantom delete-with-history that left a dangling in/ entry.
 func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32, tombstone *types.Relationship) error {
 	entityShard, entityCheckin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
@@ -667,19 +678,32 @@ func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32,
 		return entityShard.DeleteRelWithHistory(id, prevVersion, tombstone)
 	}
 
-	// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on entity shard.
-	// deleteRelByInfo in DeleteRelWithHistory attempts in/ cleanup on the entity shard
-	// as a no-op (endNode lives on a different shard). Clean up actual in/ separately.
-	if err := entityShard.DeleteRelWithHistory(id, prevVersion, tombstone); err != nil {
-		return err
-	}
+	// Cross-shard: delete in/ on end-node shard first so we can roll it back
+	// if the entity-shard write fails. Restoring an in/ entry is symmetric
+	// (putRelIncoming); restoring a tombstone-history write would require
+	// reversing an atomic Badger batch that already advanced the version
+	// chain, which is not part of the Store contract.
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
+	relType := r.TypeToken().Value()
 	info := relDeleteInfo{
 		id:      id,
-		relType: r.TypeToken().Value(),
-		startID: r.StartNodeID().SnowflakeID(),
-		endID:   r.EndNodeID().SnowflakeID(),
+		relType: relType,
+		startID: startID,
+		endID:   endID,
 	}
-	return endShard.deleteRelIncoming(info)
+	if err := endShard.deleteRelIncoming(info); err != nil {
+		return err
+	}
+	if err := entityShard.DeleteRelWithHistory(id, prevVersion, tombstone); err != nil {
+		// Roll back the in/ leg. If the rollback itself fails, surface both
+		// errors so operators can run RunRepair to reconcile.
+		if rbErr := endShard.putRelIncoming(endID, startID, relType, id); rbErr != nil {
+			return fmt.Errorf("tiered: cross-shard DeleteRelWithHistory entity-shard write failed: %w (rollback of in/ entry on end shard failed: %v)", err, rbErr)
+		}
+		return err
+	}
+	return nil
 }
 
 // DeleteNodeWithHistory atomically writes tombstone history for the node and all

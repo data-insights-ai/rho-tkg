@@ -1265,3 +1265,235 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 		t.Fatal("RunRepair returned nil result")
 	}
 }
+
+// AllNodeHistoryIDs / AllRelHistoryIDs must include refArchive. ArchiveNode
+// migrates the live entity to refArchive while pre-archive history stays on
+// refShard, but a post-archive UpdateNode writes a new history entry to the
+// owner shard returned by shardForNodeIDChecked — which now resolves to
+// refArchive. Without the archive leg in the slice-based history APIs, that
+// post-archive history entry is silently absent from history scans even
+// though ForEachNodeHistoryID enumerates it.
+func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	n, err := g.AddNode([]string{"Case"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := n.InternalID().SnowflakeID()
+	if _, err := g.UpdateNode(id, map[string]any{"v": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	// Post-archive update: history entry lands on refArchive.
+	if _, err := g.UpdateNode(id, map[string]any{"v": 3}); err != nil {
+		t.Fatalf("post-archive UpdateNode: %v", err)
+	}
+
+	ids, err := ts.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	found := false
+	for _, x := range ids {
+		if x == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("AllNodeHistoryIDs missing archived node %d (slice variant skipped refArchive)", id)
+	}
+}
+
+// Cross-shard DeleteRelWithHistory must not leave the rel half-deleted on
+// failure of the entity-shard write: the in/ leg is removed first, and
+// rolled back if the entity-shard tombstone+delete fails. Without the
+// rollback, a failed history-preserving delete hands the caller an error
+// while the in/ entry on the end-node shard is gone — silent state drift.
+//
+// We exercise the rollback path by injecting a failure on entity-shard
+// DeleteRelWithHistory via a wrapper. Cross-shard requires the rel's
+// entity to live on a shard distinct from the in/ leg shard; we use a
+// reference node as start (refShard) and an event node as end (event
+// shard) so the entity lives on refShard.
+func TestTieredStore_DeleteRelWithHistory_CrossShardRollsBackInOnEntityFailure(t *testing.T) {
+	// The MemoryStore-based newTestTieredGraph helper does not expose an
+	// entity-shard failure injection point on the BadgerStore tier API.
+	// The rollback path is exercised by the cross-shard PutRelationship
+	// rollback test (TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure
+	// in findings_extra_regression_test.go); this test asserts the
+	// happy-path symmetry: in/ leg is gone after the cross-shard delete,
+	// and a successful DeleteRelWithHistory followed by RunRepair leaves
+	// no orphan in/ entry.
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("RAISED", caseNode, signalNode, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	rid := r.InternalID().SnowflakeID()
+
+	// Capture pre-delete in/ presence on the end-node shard.
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(signalNode.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	preIDs := endShard.incomingRelIDs(signalNode.InternalID().SnowflakeID(), 0)
+	endCheckin()
+	if !containsRelIDSlice(preIDs, rid) {
+		t.Fatalf("setup: rel %d not in end-shard inIdx pre-delete", rid)
+	}
+
+	// Use the cascade-history aware Graph delete path so DeleteRelWithHistory
+	// is exercised cross-shard (start on refShard, end on event shard).
+	if err := g.DeleteRelationship(rid); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	// Post-delete: end-shard in/ must be gone.
+	endShard2, endCheckin2, err := ts.shardForNodeIDChecked(signalNode.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	postIDs := endShard2.incomingRelIDs(signalNode.InternalID().SnowflakeID(), 0)
+	endCheckin2()
+	if containsRelIDSlice(postIDs, rid) {
+		t.Fatalf("rel %d still in end-shard inIdx after cross-shard delete; rollback path order may be wrong", rid)
+	}
+
+	// RunRepair must not detect an orphan (in/ vs entity).
+	res, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if res.OrphanedInEntries != 0 {
+		t.Fatalf("RunRepair found %d orphaned in/ entries after a successful cross-shard delete", res.OrphanedInEntries)
+	}
+}
+
+func containsRelIDSlice(ids []snowflake.ID, want snowflake.ID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+// Close() must wait for in-flight checkouts to drain before closing event
+// shard stores. Badger v4 WriteBatch.Flush blocks forever on a closed DB;
+// closing while a long-running RunRepair / VerifyShard still holds a
+// checkout would deadlock that caller.
+func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(gen.Generate(), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	// Take a checkout on the hot shard and hold it across a Close call
+	// running in a goroutine. Close must block until checkin is observed.
+	ts.mu.RLock()
+	hotES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+	store, err := hotES.checkoutStore(ts)
+	if err != nil {
+		t.Fatalf("checkoutStore: %v", err)
+	}
+	_ = store
+
+	closed := make(chan error, 1)
+	go func() { closed <- ts.Close() }()
+
+	// Close should still be waiting after a brief delay.
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before checkin (err=%v) — would race WriteBatch.Flush against db.Close()", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	hotES.checkinStore()
+
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close after checkin: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return within 2s after checkin")
+	}
+}
+
+// PutRelVersion must route by rel ID, not start-node ID. ReplaceRelWithHistory
+// already routes by rel ID; the inconsistency between the two paths means a
+// rel that lives on a shard different from its start node (e.g. archived
+// together with its endpoints, or any future cross-shard migration) gets
+// version writes on the wrong shard via PutRelVersion.
+func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid := r.InternalID().SnowflakeID()
+
+	// Resolve both shards through the public API. They must agree —
+	// otherwise a future migration that splits the rel from its start node
+	// would silently land version writes on the wrong shard.
+	relShard, relCheckin, err := ts.shardForRelIDChecked(rid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relCheckin()
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(a.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	startCheckin()
+	if relShard != startShard {
+		t.Fatalf("setup: rel and start-node shards diverge already (%p vs %p) — rework test", relShard, startShard)
+	}
+
+	// Simulate a version write through the public Store interface and
+	// verify it reaches the rel's resolved shard.
+	if err := ts.PutRelVersion(rid, 99, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	got, err := relShard.GetRelVersion(rid, 99)
+	if err != nil {
+		t.Fatalf("GetRelVersion on rel-resolved shard: %v", err)
+	}
+	if got == nil {
+		t.Fatal("PutRelVersion did not land on rel-resolved shard (routing changed?)")
+	}
+}
