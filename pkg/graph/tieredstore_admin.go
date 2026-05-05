@@ -64,10 +64,10 @@ func (ts *TieredStore) ListShards() []ShardInfo {
 	infos = append(infos, refInfo)
 
 	// Archive shard (if open or in catalog).
-	if ts.refArchive != nil {
+	if archive := ts.refArchive.Load(); archive != nil {
 		archiveEntry, _ := ts.catalog.GetShard("archive")
-		archNodes, _ := ts.refArchive.NodeCount()
-		archRels, _ := ts.refArchive.RelationshipCount()
+		archNodes, _ := archive.NodeCount()
+		archRels, _ := archive.RelationshipCount()
 		archiveInfo := ShardInfo{
 			Name:     "archive",
 			Kind:     ShardArchive,
@@ -121,9 +121,9 @@ func (ts *TieredStore) RebuildCatalog() error {
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
 	// Update archive if open.
-	if ts.refArchive != nil {
-		archNodes, _ := ts.refArchive.NodeCount()
-		archRels, _ := ts.refArchive.RelationshipCount()
+	if archive := ts.refArchive.Load(); archive != nil {
+		archNodes, _ := archive.NodeCount()
+		archRels, _ := archive.RelationshipCount()
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
@@ -165,11 +165,13 @@ func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, e
 		}, nil
 	}
 
-	// Get the BadgerStore for this shard.
-	store, err := ts.resolveShardStore(shardName)
+	// Get the BadgerStore for this shard. release pins cold shards so
+	// closeIdleShards cannot race-close them mid-verification.
+	store, release, err := ts.resolveShardStore(shardName)
 	if err != nil {
 		return nil, err
 	}
+	defer release()
 
 	// Enumerate all entities.
 	nodeIDs, err := store.AllNodeIDs(QueryOpts{})
@@ -221,28 +223,39 @@ func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, e
 	return result, nil
 }
 
-// resolveShardStore returns the BadgerStore for a named shard.
-func (ts *TieredStore) resolveShardStore(name string) (*BadgerStore, error) {
+// resolveShardStore returns the BadgerStore for a named shard along with a
+// release function that the caller MUST invoke (typically via defer) to
+// balance the activeReqs increment taken on event shards. For
+// reference/archive shards the release is a no-op since those stores are
+// never closed by closeIdleShards. Cold event shards are pinned via
+// checkoutStore so they cannot be race-closed while the admin caller is
+// still using the returned pointer.
+func (ts *TieredStore) resolveShardStore(name string) (*BadgerStore, func(), error) {
+	noop := func() {}
 	if name == "reference" {
-		return ts.refShard, nil
+		return ts.refShard, noop, nil
 	}
 	if name == "archive" {
-		if ts.refArchive != nil {
-			return ts.refArchive, nil
+		if archive := ts.refArchive.Load(); archive != nil {
+			return archive, noop, nil
 		}
 		if err := ts.ensureRefArchive(); err != nil {
-			return nil, err
+			return nil, noop, err
 		}
-		return ts.refArchive, nil
+		return ts.refArchive.Load(), noop, nil
 	}
 
 	ts.mu.RLock()
 	es, ok := ts.eventShards[name]
 	ts.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("graph: shard %q not found", name)
+		return nil, noop, fmt.Errorf("graph: shard %q not found", name)
 	}
-	return es.getStore(ts)
+	store, err := es.checkoutStore(ts)
+	if err != nil {
+		return nil, noop, err
+	}
+	return store, es.checkinStore, nil
 }
 
 type namedStore struct {
@@ -250,8 +263,15 @@ type namedStore struct {
 	store *BadgerStore
 }
 
-// allShardStoresWithLazyOpen returns all BadgerStore instances, opening cold shards as needed.
-func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, error) {
+// allShardStoresWithLazyOpen returns all BadgerStore instances along with a
+// release function that the caller MUST invoke (typically via defer) to
+// balance the activeReqs increments taken on event shards. Cold event
+// shards are pinned via checkoutStore so closeIdleShards cannot race-close
+// them while the caller is still iterating.
+//
+// On error, any checkouts already taken are released before returning, so
+// the caller never has to handle partial cleanup.
+func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error) {
 	var stores []namedStore
 	stores = append(stores, namedStore{name: "reference", store: ts.refShard})
 
@@ -262,14 +282,23 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, error) {
 	}
 	ts.mu.RUnlock()
 
-	for _, es := range eventShards {
-		store, err := es.getStore(ts)
-		if err != nil {
-			return nil, err
+	checkedOut := make([]*eventShard, 0, len(eventShards))
+	releaseAll := func() {
+		for _, es := range checkedOut {
+			es.checkinStore()
 		}
+	}
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			releaseAll()
+			return nil, func() {}, err
+		}
+		checkedOut = append(checkedOut, es)
 		stores = append(stores, namedStore{name: es.name, store: store})
 	}
-	return stores, nil
+	return stores, releaseAll, nil
 }
 
 // findRelInAnyShardStore locates which BadgerStore owns a relationship entity.

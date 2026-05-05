@@ -2682,7 +2682,15 @@ func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 
 // --- Cold shard tests ---
 
-// demoteToCode manually sets a shard to cold tier. For testing only.
+// demoteToCold manually sets a shard to cold tier. Test-only helper.
+//
+// Bypasses the normal warm→cold transition (driven by ColdAfter and the
+// idle-close goroutine) so tests can deterministically observe behaviour
+// against a cold shard without sleeping. Holds ts.mu across the tier flip
+// AND the catalog update so a concurrent rotation cannot read a half-updated
+// state — but does NOT close the underlying BadgerStore. Pair with
+// closeEventShardStore to fully simulate a cold idle-close, or leave the
+// store open to test pure tier-based code paths.
 func demoteToCold(ts *TieredStore, shardName string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -3280,7 +3288,8 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// Node should be in refArchive.
-	if ts.refArchive == nil || !ts.refArchive.hasNodeID(caseID.SnowflakeID()) {
+	archive := ts.refArchive.Load()
+	if archive == nil || !archive.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -3312,7 +3321,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	}
 
 	// case1 in archive, not in refShard.
-	if !ts.refArchive.hasNodeID(case1ID.SnowflakeID()) {
+	if archive := ts.refArchive.Load(); archive == nil || !archive.hasNodeID(case1ID.SnowflakeID()) {
 		t.Error("case1 should be in archive")
 	}
 	if ts.refShard.hasNodeID(case1ID.SnowflakeID()) {
@@ -3349,7 +3358,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// Node should NOT be in archive.
-	if ts.refArchive.hasNodeID(caseID.SnowflakeID()) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should not be in archive after restore")
 	}
 
@@ -3368,14 +3377,14 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 	_ = g
 
-	if ts.refArchive != nil {
+	if ts.refArchive.Load() != nil {
 		t.Error("refArchive should be nil initially")
 	}
 
 	caseNode, _ := g.AddNode([]string{"Case"}, nil)
 	_ = ts.ArchiveNode(caseNode.ID())
 
-	if ts.refArchive == nil {
+	if ts.refArchive.Load() == nil {
 		t.Error("refArchive should be opened after ArchiveNode")
 	}
 }
@@ -3393,7 +3402,7 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shard != ts.refArchive {
+	if shard != ts.refArchive.Load() {
 		t.Error("shardForNodeID should return refArchive for archived node")
 	}
 }
@@ -3441,7 +3450,9 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	_ = ts.refShard.Flush()
 
 	_ = ts.ArchiveNode(n.ID())
-	_ = ts.refArchive.Flush()
+	if archive := ts.refArchive.Load(); archive != nil {
+		_ = archive.Flush()
+	}
 
 	_ = ts.Close()
 
@@ -4628,53 +4639,51 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	}
 }
 
-// --- Fix 2: shardForRelID — skip cold shards in fallback ---
+// --- Fix 2: shardForRelID — probe cold shards when needed ---
 
-func TestTieredStore_ShardForRelID_SkipsColdShards(t *testing.T) {
-	// Create cold shards, verify the fallback probe doesn't open them.
-	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	_, _ = reg.GetOrCreate("Case")
-	signalTok, _ := reg.GetOrCreate("Signal")
+// A cross-shard relationship written while the start-node shard was warm can
+// later age to cold without ever being deleted. The lookup must follow it,
+// even at the cost of opening the cold shard. The earlier "skip cold shards"
+// fast-path was incorrect — it silently lost live cross-shard rels once the
+// start-node shard aged out.
+func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
 
-	gen := tieredNodeGen(t)
-	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
-	if err := ts.PutNode(n); err != nil {
+	a, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	ts.mu.RLock()
-	hotName := ts.hotShard.name
+	originName := ts.hotShard.name
 	ts.mu.RUnlock()
 
-	// Rotate and demote to cold.
 	time.Sleep(2 * time.Millisecond)
 	ts.mu.Lock()
-	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
-	demoteToCold(ts, hotName)
-
-	// Close the cold shard store to verify it doesn't get opened.
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	coldES.shardMu.Lock()
-	if coldES.store != nil {
-		_ = coldES.store.Close()
-		coldES.store = nil
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
 	}
-	coldES.shardMu.Unlock()
+	ts.mu.Unlock()
 
-	// Query a nonexistent relID — fallback should NOT open cold shard.
-	_, _ = ts.shardForRelID(types.RelID(999999999))
+	r, err := g.AddRelationship("OBSERVED", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID()
 
-	coldES.shardMu.Lock()
-	storeClosed := coldES.store == nil
-	coldES.shardMu.Unlock()
+	demoteToCold(ts, originName)
 
-	if !storeClosed {
-		t.Error("shardForRelID fallback should skip cold shards, but it opened one")
+	shard, err := ts.shardForRelID(relID)
+	if err != nil {
+		t.Fatalf("shardForRelID after cold demotion: %v", err)
+	}
+	if !shard.hasRelID(relID.SnowflakeID()) {
+		t.Errorf("shardForRelID returned a shard that does not own rel %d after cold demotion", relID)
 	}
 }
 
@@ -4782,7 +4791,7 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	if ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refShard after archive")
 	}
-	if !ts.refArchive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.refArchive.Load(); archive == nil || !archive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -4794,7 +4803,7 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refArchive after restore")
 	}
 }
@@ -4830,7 +4839,8 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 
 	// Verify both in archive.
-	if !ts.refArchive.hasNodeID(id1.SnowflakeID()) || !ts.refArchive.hasNodeID(id2.SnowflakeID()) {
+	archive := ts.refArchive.Load()
+	if archive == nil || !archive.hasNodeID(id1.SnowflakeID()) || !archive.hasNodeID(id2.SnowflakeID()) {
 		t.Fatal("both nodes should be in archive")
 	}
 
@@ -4843,7 +4853,7 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should be in refShard after restore")
 	}
-	if ts.refArchive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should not be in refArchive after restore")
 	}
 

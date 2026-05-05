@@ -77,10 +77,11 @@ func (ts *TieredStore) GetNode(nid types.NodeID) (*types.Node, error) {
 }
 
 func (ts *TieredStore) GetRelationship(rid types.RelID) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(rid)
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	return shard.GetRelationship(rid)
 }
 
@@ -220,6 +221,24 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 
+	// refArchive parity: archived nodes are still GetNode-addressable, so
+	// public bulk scans must include them. Otherwise an archived entity
+	// silently disappears from AllNodes / NodeCount / similar APIs even
+	// though point lookups still find it. checkoutArchive lazy-opens on
+	// cold start (catalog-archive-shard-but-pointer-nil).
+	var archiveNodes []*types.Node
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveNodes, err = archive.AllNodes(stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	type result struct {
 		nodes []*types.Node
 		err   error
@@ -245,6 +264,9 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if len(refNodes) > 0 {
 		slices = append(slices, refNodes)
 	}
+	if len(archiveNodes) > 0 {
+		slices = append(slices, archiveNodes)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -266,6 +288,20 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	refRels, err := ts.refShard.AllRelationships(stripDepth(opts))
 	if err != nil {
 		return nil, err
+	}
+
+	// refArchive parity: see AllNodes above.
+	var archiveRels []*types.Relationship
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveRels, err = archive.AllRelationships(stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	type result struct {
@@ -293,6 +329,9 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	if len(refRels) > 0 {
 		slices = append(slices, refRels)
 	}
+	if len(archiveRels) > 0 {
+		slices = append(slices, archiveRels)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -309,30 +348,47 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 // --- Adjacency queries ---
 
 func (ts *TieredStore) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
-	// Entity + out/ are co-located in the node's shard.
-	shard, err := ts.shardForNodeID(nid)
+	// Entity + out/ are co-located in the node's shard. Use the checked
+	// resolver so a cold owner stays pinned for the duration of the read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	return shard.OutgoingRelationships(nid, typeToken)
 }
 
 // OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
 // Groups nodeIDs by shard, delegates per-shard, and merges results.
+//
+// Each owner shard is checked out via shardForNodeIDChecked so cold shards
+// remain pinned for the per-shard delegated read.
 func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
 
-	// Partition nodeIDs by shard.
+	// Partition nodeIDs by shard. Track checkin functions so each owner shard
+	// can be released once we are done with it.
 	shardBuckets := make(map[*BadgerStore][]types.NodeID)
+	checkins := make(map[*BadgerStore][]func())
+	releaseAll := func() {
+		for _, fns := range checkins {
+			for _, fn := range fns {
+				fn()
+			}
+		}
+	}
 	for _, id := range nodeIDs {
-		shard, err := ts.shardForNodeID(id)
+		shard, checkin, err := ts.shardForNodeIDChecked(id)
 		if err != nil {
+			releaseAll()
 			return nil, err
 		}
 		shardBuckets[shard] = append(shardBuckets[shard], id)
+		checkins[shard] = append(checkins[shard], checkin)
 	}
+	defer releaseAll()
 
 	// Delegate per-shard and merge.
 	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
@@ -353,27 +409,30 @@ func (ts *TieredStore) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typ
 }
 
 func (ts *TieredStore) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
-	nodeID := nid.SnowflakeID()
-
-	// Get relIDs from the node's shard inIdx.
-	shard, err := ts.shardForNodeID(nid)
+	// Get relIDs from the node's shard inIdx. The owner is checked out so a
+	// cold node shard cannot be closed mid-read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
 	}
-	relIDs := shard.incomingRelIDs(nodeID, typeToken)
+	relIDs := shard.incomingRelIDs(nid.SnowflakeID(), typeToken)
+	checkin()
 
 	if len(relIDs) == 0 {
 		return nil, nil
 	}
 
-	// Fetch each rel entity via shard resolution (relID timestamp -> O(1) per entity).
+	// Fetch each rel entity via checked shard resolution so cross-shard rels
+	// stored on shards that have aged to cold remain reachable.
 	result := make([]*types.Relationship, 0, len(relIDs))
 	for _, relID := range relIDs {
-		relShard, err := ts.shardForRelID(types.RelID(relID))
+		rid := types.RelID(relID)
+		relShard, checkin, err := ts.shardForRelIDChecked(rid)
 		if err != nil {
 			return nil, err
 		}
-		r, err := relShard.GetRelationship(types.RelID(relID))
+		r, err := relShard.GetRelationship(rid)
+		checkin()
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
@@ -412,11 +471,15 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 		}
 		seen[nid] = struct{}{}
 
-		shard, err := ts.shardForNodeID(tnid)
+		// Check out the node's owner shard so a cold owner stays pinned for
+		// the inIdx scan; release immediately afterwards because the rel
+		// fetch below uses its own checkout against the rel-owner shard.
+		shard, checkin, err := ts.shardForNodeIDChecked(tnid)
 		if err != nil {
 			return nil, err
 		}
 		relIDs := shard.incomingRelIDs(nid, typeToken)
+		checkin()
 		for _, rid := range relIDs {
 			refs = append(refs, relRef{nodeID: nid, relID: rid})
 		}
@@ -426,14 +489,16 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 		return nil, nil
 	}
 
-	// Phase 2: fetch each rel entity via shard resolution.
+	// Phase 2: fetch each rel entity via checked shard resolution so cross-shard
+	// rels stored on shards that have aged to cold remain reachable.
 	result := make(map[types.NodeID][]*types.Relationship, len(seen))
 	for _, ref := range refs {
-		relShard, err := ts.shardForRelID(types.RelID(ref.relID))
+		relShard, checkin, err := ts.shardForRelIDChecked(types.RelID(ref.relID))
 		if err != nil {
 			return nil, err
 		}
 		r, err := relShard.GetRelationship(types.RelID(ref.relID))
+		checkin()
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
@@ -469,6 +534,20 @@ func (ts *TieredStore) NodeCount() (int, error) {
 	}
 	total += n
 
+	// refArchive parity: archived nodes count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.NodeCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
 	for _, es := range eventShards {
 		store, err := es.checkoutStore(ts)
 		if err != nil {
@@ -495,6 +574,20 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 		return 0, err
 	}
 	total += n
+
+	// refArchive parity: archived rels count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		ar, err := archive.RelationshipCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += ar
+	}
 
 	for _, es := range eventShards {
 		store, err := es.checkoutStore(ts)
@@ -718,11 +811,44 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 // --- History reads ---
 
 func (ts *TieredStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
-	shard, err := ts.shardForNodeID(nid)
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetNodeVersion(nid, version)
+	defer checkin()
+	n, err := shard.GetNodeVersion(nid, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return n, err
+	}
+
+	// If the live entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards (incl. cold ones).
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if shard.hasNodeID(nid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, ErrVersionNotFound
+	}
+
+	var found *types.Node
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		n, err := candidate.GetNodeVersion(nid, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = n
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
 }
 
 func (ts *TieredStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
@@ -731,23 +857,116 @@ func (ts *TieredStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 		return nil, err
 	}
 	defer checkin()
-	return store.GetNodeHistory(nid)
+	history, err := store.GetNodeHistory(nid)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	// If the live entity is on this shard, an empty history here is
+	// authoritative — the deleted-entity fan-out is unnecessary and would
+	// needlessly wake cold shards.
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if store.hasNodeID(nid.SnowflakeID()) && store != ts.refArchive.Load() {
+		return nil, nil
+	}
+
+	var found []*types.Node
+	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetNodeHistory(nid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
 }
 
 func (ts *TieredStore) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(rid)
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelVersion(rid, version)
+	defer checkin()
+	r, err := shard.GetRelVersion(rid, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return r, err
+	}
+
+	// If the live rel entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards.
+	// Skip the optimisation when the live rel sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive rel history versions
+	// remain on refShard and must be discovered via the fan-out below.
+	if shard.hasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, ErrVersionNotFound
+	}
+
+	var found *types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		r, err := candidate.GetRelVersion(rid, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = r
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
 }
 
 func (ts *TieredStore) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
-	shard, err := ts.shardForRelID(rid)
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return nil, err
 	}
-	return shard.GetRelHistory(rid)
+	defer checkin()
+	history, err := shard.GetRelHistory(rid)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	// If the live rel entity is on this shard, an empty history here is
+	// authoritative — skip the deleted-rel fan-out so cold shards are not
+	// needlessly opened.
+	// Skip the optimisation when the live rel sits on refArchive: pre-archive
+	// rel history remains on refShard, so fall through to the fan-out below.
+	if shard.hasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, nil
+	}
+
+	var found []*types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetRelHistory(rid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
 }
 
 func (ts *TieredStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
@@ -760,6 +979,26 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 		return nil, err
 	}
 	refIDs := nodeIDsToRaw(refTyped)
+
+	// refArchive parity: ArchiveNode + post-archive UpdateNode write history
+	// records to refArchive via the rel/node ID resolvers. ForEachNodeHistoryID
+	// already enumerates refArchive; the slice variant must too, otherwise
+	// archived-then-updated entities silently disappear from history scans.
+	// checkoutArchive pins the archive against a concurrent Close so the
+	// underlying DB cannot be torn down between Load and use.
+	var archiveIDs []snowflake.ID
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveTyped, err := archive.AllNodeHistoryIDs()
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		archiveIDs = nodeIDsToRaw(archiveTyped)
+	}
 
 	type result struct {
 		ids []snowflake.ID
@@ -788,6 +1027,9 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -810,6 +1052,21 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]types.RelID, error) {
 		return nil, err
 	}
 	refIDs := relIDsToRaw(refTyped)
+
+	// refArchive parity: see AllNodeHistoryIDs above.
+	var archiveIDs []snowflake.ID
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveTyped, err := archive.AllRelHistoryIDs()
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		archiveIDs = relIDsToRaw(archiveTyped)
+	}
 
 	type result struct {
 		ids []snowflake.ID
@@ -838,6 +1095,9 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -848,6 +1108,65 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	}
 
 	return rawToRelIDs(mergeIDSlices(slices)), nil
+}
+
+// forEachHistoryShard probes shards that may own history after the live entity
+// index has been deleted. Reference entity history lives on the reference
+// shard even when timestamp fallback selects an event shard; cross-shard
+// relationship history lives with the relationship entity shard.
+//
+// Probes refShard, refArchive (if present), and ALL event shards (hot, warm,
+// and cold). Cold shards must be included: a cross-shard event→event
+// relationship's history is written to the start-node's home shard, which may
+// have transitioned warm→cold via `ColdAfter` demotion after the relationship
+// was deleted. Skipping cold shards here would silently lose deleted-rel
+// history once the start-node's shard ages out. The lazy-open cost is paid
+// once per cold shard per process; subsequent probes are cheap Badger Seeks.
+func (ts *TieredStore) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	if ts.refShard != skip {
+		stop, err := fn(ts.refShard)
+		if err != nil || stop {
+			return err
+		}
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil && ts.hasArchiveShard() {
+		if err := ts.ensureRefArchive(); err != nil {
+			return err
+		}
+		archive = ts.refArchive.Load()
+	}
+	if archive != nil && archive != skip {
+		stop, err := fn(archive)
+		if err != nil || stop {
+			return err
+		}
+	}
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		if store == skip {
+			es.checkinStore()
+			continue
+		}
+		stop, cbErr := fn(store)
+		es.checkinStore()
+		if cbErr != nil {
+			return cbErr
+		}
+		if stop {
+			return nil
+		}
+	}
+	return nil
 }
 
 // --- ForEach iterators ---
@@ -869,18 +1188,21 @@ func (ts *TieredStore) ForEachNodeID(fn func(types.NodeID) bool) error {
 		return nil
 	}
 
-	// Archive shard (if open).
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachNodeID(func(id types.NodeID) bool {
+		err := archive.ForEachNodeID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -931,17 +1253,20 @@ func (ts *TieredStore) ForEachRelID(fn func(types.RelID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachRelID(func(id types.RelID) bool {
+		err := archive.ForEachRelID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -991,17 +1316,20 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -1051,17 +1379,20 @@ func (ts *TieredStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 		return nil
 	}
 
-	ts.archiveMu.Lock()
-	archive := ts.refArchive
-	ts.archiveMu.Unlock()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
+		err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {

@@ -261,4 +261,5 @@ var (
 	ErrTemporalIndexExists   = errors.New("graph: temporal index already exists")
 	ErrTemporalIndexNotFound = errors.New("graph: temporal index not found")
 	ErrTxDone                = errors.New("graph: transaction already committed or rolled back")
+	ErrStoreClosed           = errors.New("graph: store already closed")
 )

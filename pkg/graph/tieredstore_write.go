@@ -83,6 +83,9 @@ func (ts *TieredStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, update
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(types.NodeID(id))
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.RemoveNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
 		return err
 	}
@@ -108,6 +111,9 @@ func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(types.NodeID(id))
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.RemoveNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
@@ -131,6 +137,9 @@ func (ts *TieredStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 	}
 	defer checkin()
 	old, _ := store.GetNode(types.NodeID(id))
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.AddNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
 		return err
 	}
@@ -156,6 +165,9 @@ func (ts *TieredStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16
 	defer checkin()
 	// Read old state for accurate vector index removal.
 	old, _ := store.GetNode(types.NodeID(id))
+	if err := ts.ensurePrimaryLabelClassUnchanged(old, updatedNode); err != nil {
+		return err
+	}
 	if err := store.AddNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
 		return err
 	}
@@ -208,15 +220,25 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 }
 
 func (ts *TieredStore) DeleteNodesBatch(ids []types.NodeID) error {
-	// Partition by actual shard using shardForNodeID.
+	// Partition by actual shard. Use the checked variant so a cold owner
+	// stays pinned during the per-shard batch write below.
 	shardBuckets := make(map[*BadgerStore][]types.NodeID)
+	var checkins []func()
+	releaseAll := func() {
+		for _, fn := range checkins {
+			fn()
+		}
+	}
 	for _, id := range ids {
-		shard, err := ts.shardForNodeID(id)
+		shard, checkin, err := ts.shardForNodeIDChecked(id)
 		if err != nil {
+			releaseAll()
 			return err
 		}
 		shardBuckets[shard] = append(shardBuckets[shard], id)
+		checkins = append(checkins, checkin)
 	}
+	defer releaseAll()
 	for shard, bucket := range shardBuckets {
 		if err := shard.DeleteNodesBatch(bucket); err != nil {
 			return err
@@ -228,8 +250,9 @@ func (ts *TieredStore) DeleteNodesBatch(ids []types.NodeID) error {
 // --- Relationship write operations ---
 // Relationships may be cross-shard when start and end nodes live in different shards.
 // After rotation, two event entities may live in different shards (warm vs hot).
-// We use shard-based routing (shardForNodeID) instead of class-based routing
-// to correctly handle E→E cross-shard relationships.
+// We use shard-based routing (shardForNodeIDChecked) instead of class-based routing
+// to correctly handle E→E cross-shard relationships, and pin cold owners for the
+// duration of the write.
 
 func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
@@ -242,14 +265,18 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	relID := r.ID().SnowflakeID()
 
 	// Resolve actual shards — not class. Two event entities may be in different shards.
-	startShard, err := ts.shardForNodeID(r.StartNodeID())
+	// Use the checked variants so cold owner shards stay pinned during the
+	// split-write below.
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID())
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
@@ -283,21 +310,24 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 }
 
 func (ts *TieredStore) ReplaceRelationship(r *types.Relationship) error {
-	shard, err := ts.shardForRelID(r.ID())
+	shard, checkin, err := ts.shardForRelIDChecked(r.ID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceRelationship(r)
 }
 
 func (ts *TieredStore) DeleteRelationship(rid types.RelID) error {
 	id := rid.SnowflakeID()
 
-	// Find which shard owns the entity.
-	entityShard, err := ts.shardForRelID(rid)
+	// Find which shard owns the entity. Use the checked variant so a cold
+	// owner stays pinned until the writes below complete.
+	entityShard, entityCheckin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return err
 	}
+	defer entityCheckin()
 
 	// Check if this is a cross-shard relationship by reading the rel metadata.
 	r, err := entityShard.GetRelationship(types.RelID(id))
@@ -305,14 +335,16 @@ func (ts *TieredStore) DeleteRelationship(rid types.RelID) error {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID())
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID())
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
@@ -320,13 +352,22 @@ func (ts *TieredStore) DeleteRelationship(rid types.RelID) error {
 	}
 
 	// Cross-shard: delete entity+out from entity shard, in/ from in shard.
+	// On failure of the second leg, restore the entity+out write so a re-read
+	// still observes the rel rather than leaving a phantom in/ entry on the
+	// end-node shard.
 	info, err := entityShard.deleteRelEntityAndOut(id)
 	if err != nil {
 		return err
 	}
 
 	inShard := endShard
-	return inShard.deleteRelIncoming(info)
+	if err := inShard.deleteRelIncoming(info); err != nil {
+		if rbErr := entityShard.putRelEntityAndOut(r); rbErr != nil {
+			return fmt.Errorf("tiered: delete cross-shard relationship in/ failed after entity/out delete: %w (rollback entity/out failed: %v)", err, rbErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
@@ -335,29 +376,54 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 
 	// Partition: same-shard rels can use batch, cross-shard use individual put.
-	// Group by *BadgerStore pointer for batching.
+	// Group by *BadgerStore pointer for batching. Owner shards are checked
+	// out so cold owners stay pinned for the per-shard batch write below.
 	shardBuckets := make(map[*BadgerStore][]*types.Relationship)
+	var checkins []func()
+	releaseAll := func() {
+		for _, fn := range checkins {
+			fn()
+		}
+	}
 
 	for _, r := range rels {
-		startShard, err := ts.shardForNodeID(r.StartNodeID())
+		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
 		if err != nil {
+			releaseAll()
 			return err
 		}
-		endShard, err := ts.shardForNodeID(r.EndNodeID())
+		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
 		if err != nil {
+			startCheckin()
+			releaseAll()
 			return err
 		}
 
 		if startShard != endShard {
-			// Cross-shard: individual put.
+			// Cross-shard: individual put — release these checkins immediately
+			// since PutRelationship pins again internally. There is a brief
+			// unpinned window between checkin here and PutRelationship's
+			// internal re-pin, but closeIdleShards cannot fire inside it:
+			// each owner shard's lastAccess was just bumped by the prior
+			// checkout (line above), and IdleTimeout >= 5min, so the window
+			// is bounded by IdleTimeout and the activeReqs gap is microseconds.
+			startCheckin()
+			endCheckin()
 			if err := ts.PutRelationship(r); err != nil {
+				releaseAll()
 				return err
 			}
 			continue
 		}
 
+		// Same-shard: hold the start-shard pin (covers both endpoints) until
+		// the per-shard batch write below. The endpoint pin is redundant but
+		// cheap; release it now so we don't leak duplicate references.
+		endCheckin()
 		shardBuckets[startShard] = append(shardBuckets[startShard], r)
+		checkins = append(checkins, startCheckin)
 	}
+	defer releaseAll()
 
 	// Write per-shard buckets, tracking committed batches for best-effort rollback.
 	// If a later shard fails, previously committed shards are rolled back to prevent
@@ -401,52 +467,151 @@ func (ts *TieredStore) DeleteRelationshipsBatch(ids []types.RelID) error {
 // --- Atomic replace + history ---
 
 func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
-	shard, err := ts.shardForNodeID(current.ID())
+	shard, checkin, err := ts.shardForNodeIDChecked(current.ID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceNodeWithHistory(current, prevVersion, prevState)
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	shard, err := ts.shardForRelID(current.ID())
+	// Resolve by rel ID — the start node is not authoritative for the rel's
+	// home shard once the entity has been migrated (e.g., archived together
+	// with its endpoints), and the start-node-keyed lookup also skips the
+	// refArchive probe baked into shardForRelIDChecked. Pin the resolved
+	// owner for the duration of the atomic replace+history write so a cold
+	// owner cannot be closed out by closeIdleShards mid-write.
+	shard, checkin, err := ts.shardForRelIDChecked(current.ID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceRelWithHistory(current, prevVersion, prevState)
 }
 
 // --- Version history writes ---
 
 func (ts *TieredStore) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
-	shard, err := ts.shardForNodeID(nid)
+	// Reference snapshots route to refShard regardless of timestamp; otherwise
+	// fall back to id-based resolution with checkout/checkin so a cold owner
+	// stays pinned for the write.
+	if n != nil && ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
+		return ts.refShard.PutNodeVersion(nid, version, n)
+	}
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.PutNodeVersion(nid, version, n)
 }
 
 func (ts *TieredStore) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
-	shard, err := ts.shardForNodeID(nid)
+	id := nid.SnowflakeID()
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
+	}
+	defer checkin()
+	history, err := shard.GetNodeHistory(nid)
+	if err != nil {
+		return err
+	}
+	if len(history) > 0 {
+		return shard.TruncateNodeHistory(nid, keepVersions)
+	}
+
+	// If the live entity is on this shard, the empty history is authoritative —
+	// the truncate is a no-op and there is no need to fan out across shards.
+	// Exception: when the live entity is on refArchive, pre-archive history may
+	// still live on refShard, so fall through to the fan-out.
+	if shard.hasNodeID(id) && shard != ts.refArchive.Load() {
+		return shard.TruncateNodeHistory(nid, keepVersions)
+	}
+
+	truncated := false
+	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetNodeHistory(nid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		truncated = true
+		return true, candidate.TruncateNodeHistory(nid, keepVersions)
+	})
+	if err != nil {
+		return err
+	}
+	if truncated {
+		return nil
 	}
 	return shard.TruncateNodeHistory(nid, keepVersions)
 }
 
 func (ts *TieredStore) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
-	shard, err := ts.shardForRelID(rid)
+	// Route by rel ID — consistent with ReplaceRelWithHistory above. The
+	// previous start-node-keyed routing skipped the refArchive probe baked
+	// into shardForRelIDChecked and diverged from the path that writes the
+	// current rel state, so a rel that was archived together with its
+	// start node had its history written on the wrong shard whenever the
+	// caller hit this path (currently only ImportGraph; future history
+	// writers must also land on the rel's home shard). Pin the resolved
+	// owner so a cold owner cannot be closed mid-write.
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.PutRelVersion(rid, version, r)
 }
 
 func (ts *TieredStore) TruncateRelHistory(rid types.RelID, keepVersions int) error {
-	shard, err := ts.shardForRelID(rid)
+	id := rid.SnowflakeID()
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return err
 	}
+	defer checkin()
+	history, err := shard.GetRelHistory(rid)
+	if err != nil {
+		return err
+	}
+	if len(history) > 0 {
+		return shard.TruncateRelHistory(rid, keepVersions)
+	}
+
+	// If the live rel entity is on this shard, the empty history is
+	// authoritative — the truncate is a no-op on this shard and there is no
+	// need to fan out across shards.
+	// Exception: when the live rel is on refArchive, pre-archive history may
+	// still live on refShard, so fall through to the fan-out.
+	if shard.hasRelID(id) && shard != ts.refArchive.Load() {
+		return shard.TruncateRelHistory(rid, keepVersions)
+	}
+
+	truncated := false
+	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetRelHistory(rid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		truncated = true
+		return true, candidate.TruncateRelHistory(rid, keepVersions)
+	})
+	if err != nil {
+		return err
+	}
+	if truncated {
+		return nil
+	}
+	// No shard owns history for this id — delegate to the originally resolved
+	// shard so its NotFound/no-op semantics are surfaced consistently.
 	return shard.TruncateRelHistory(rid, keepVersions)
 }
 
@@ -455,10 +620,11 @@ func (ts *TieredStore) TruncateRelHistory(rid types.RelID, keepVersions int) err
 func (ts *TieredStore) DeleteNodeCascade(nid types.NodeID) error {
 	id := nid.SnowflakeID()
 
-	shard, err := ts.shardForNodeID(nid)
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 
 	// Collect all connected relIDs from this shard's outIdx + inIdx.
 	outRels := shard.outgoingRelIDs(id)
@@ -493,48 +659,69 @@ func (ts *TieredStore) DeleteNodeCascade(nid types.NodeID) error {
 // and deletes the live relationship in one per-shard batch flush.
 //
 // Same shard: delegates to the entity shard (fully atomic within the shard).
-// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on the entity shard;
-// the in/ cleanup on the end-node shard is a separate operation (B7 limitation).
+// Cross-shard: delete the in/ leg first, then atomically tombstone+delete on
+// the entity shard. Reversing the order vs the plain DeleteRelationship path
+// makes rollback feasible — undoing a tombstone-history write on the entity
+// shard would require removing the history record, which is harder than
+// re-creating an in/ index entry on the end-node shard. If the entity-shard
+// write fails, the in/ leg is restored via putRelIncoming so callers never
+// observe a phantom delete-with-history that left a dangling in/ entry.
 func (ts *TieredStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
 	id := rid.SnowflakeID()
 
-	entityShard, err := ts.shardForRelID(rid)
+	entityShard, entityCheckin, err := ts.shardForRelIDChecked(rid)
 	if err != nil {
 		return err
 	}
+	defer entityCheckin()
 
 	r, err := entityShard.GetRelationship(types.RelID(id))
 	if err != nil {
 		return err
 	}
 
-	startShard, err := ts.shardForNodeID(r.StartNodeID())
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(r.EndNodeID())
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: fully atomic.
 		return entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone)
 	}
 
-	// Cross-shard: tombstone + entity/typeIdx/outIdx are atomic on entity shard.
-	// deleteRelByInfo in DeleteRelWithHistory attempts in/ cleanup on the entity shard
-	// as a no-op (endNode lives on a different shard). Clean up actual in/ separately.
-	if err := entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone); err != nil {
-		return err
-	}
+	// Cross-shard: delete in/ on end-node shard first so we can roll it back
+	// if the entity-shard write fails. Restoring an in/ entry is symmetric
+	// (putRelIncoming); restoring a tombstone-history write would require
+	// reversing an atomic Badger batch that already advanced the version
+	// chain, which is not part of the Store contract.
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
+	relType := r.TypeToken().Value()
 	info := relDeleteInfo{
 		id:      id,
-		relType: r.TypeToken().Value(),
-		startID: r.StartNodeID().SnowflakeID(),
-		endID:   r.EndNodeID().SnowflakeID(),
+		relType: relType,
+		startID: startID,
+		endID:   endID,
 	}
-	return endShard.deleteRelIncoming(info)
+	if err := endShard.deleteRelIncoming(info); err != nil {
+		return err
+	}
+	if err := entityShard.DeleteRelWithHistory(types.RelID(id), prevVersion, tombstone); err != nil {
+		// Roll back the in/ leg. If the rollback itself fails, surface both
+		// errors so operators can run RunRepair to reconcile.
+		if rbErr := endShard.putRelIncoming(endID, startID, relType, id); rbErr != nil {
+			return fmt.Errorf("tiered: cross-shard DeleteRelWithHistory entity-shard write failed: %w (rollback of in/ entry on end shard failed: %v)", err, rbErr)
+		}
+		return err
+	}
+	return nil
 }
 
 // DeleteNodeWithHistory atomically writes tombstone history for the node and all
@@ -549,10 +736,11 @@ func (ts *TieredStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32,
 func (ts *TieredStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
 	id := nid.SnowflakeID()
 
-	shard, err := ts.shardForNodeID(nid)
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 
 	// Build lookup map: relID → RelTombstone.
 	tombMap := make(map[snowflake.ID]RelTombstone, len(relTombstones))
@@ -609,6 +797,28 @@ func (ts *TieredStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 // ErrEventPropertyIndex is returned when attempting to create a property index
 // on an event label in a TieredStore. Only reference entities support indexes.
 var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in TieredStore")
+
+// ErrPrimaryLabelClassMutation is returned when a label mutation would change a
+// node's primary-label ontology class (reference vs event). Such a change would
+// move the live entity to a different shard while leaving prior history on the
+// original shard, fragmenting the version chain. Callers must instead delete
+// and recreate the node under the new class.
+var ErrPrimaryLabelClassMutation = errors.New("graph: label mutation would change primary-label class (reference<->event); not supported on TieredStore")
+
+// ensurePrimaryLabelClassUnchanged compares the primary-label classes of the
+// pre-mutation and post-mutation nodes and rejects the mutation if they differ.
+// old may be nil (entity already gone) — in that case the check is skipped.
+func (ts *TieredStore) ensurePrimaryLabelClassUnchanged(old, updated *types.Node) error {
+	if old == nil || updated == nil {
+		return nil
+	}
+	oldClass := ts.ontology.ClassifyByToken(old.PrimaryLabelToken().Value())
+	newClass := ts.ontology.ClassifyByToken(updated.PrimaryLabelToken().Value())
+	if oldClass != newClass {
+		return ErrPrimaryLabelClassMutation
+	}
+	return nil
+}
 
 func (ts *TieredStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
 	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
@@ -869,6 +1079,7 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
+	archive := ts.refArchive.Load()
 
 	// 3. Read node from refShard.
 	node, err := ts.refShard.GetNode(types.NodeID(id))
@@ -910,7 +1121,7 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 	}
 
 	// 5. Write node + rels to refArchive.
-	if err := ts.refArchive.PutNode(node); err != nil {
+	if err := archive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
 
@@ -918,13 +1129,13 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 		// PutRelationship validates endpoint existence. If the other endpoint
 		// isn't in the archive (partial archive), skip the rel — it will be
 		// deleted by DeleteNodeCascade below.
-		err := ts.refArchive.PutRelationship(r)
+		err := archive.PutRelationship(r)
 		if errors.Is(err, ErrNodeNotFound) {
 			continue
 		}
 		if err != nil {
 			// Best-effort rollback: remove partially written data from archive.
-			_ = ts.refArchive.DeleteNodeCascade(types.NodeID(id))
+			_ = archive.DeleteNodeCascade(types.NodeID(id))
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}
@@ -932,7 +1143,7 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
 	if err := ts.refShard.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		// Best-effort rollback: remove data from archive since source delete failed.
-		_ = ts.refArchive.DeleteNodeCascade(types.NodeID(id))
+		_ = archive.DeleteNodeCascade(types.NodeID(id))
 		return fmt.Errorf("graph: archive delete from ref: %w", err)
 	}
 
@@ -952,21 +1163,22 @@ func (ts *TieredStore) RestoreNode(nid types.NodeID) error {
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
+	archive := ts.refArchive.Load()
 
 	// 2. Verify node is in archive.
-	if !ts.refArchive.hasNodeID(id) {
+	if !archive.hasNodeID(id) {
 		return fmt.Errorf("graph: restore: %w", ErrNodeNotFound)
 	}
 
 	// 3. Read node from archive.
-	node, err := ts.refArchive.GetNode(types.NodeID(id))
+	node, err := archive.GetNode(types.NodeID(id))
 	if err != nil {
 		return fmt.Errorf("graph: restore read node: %w", err)
 	}
 
 	// 4. Read all rels from archive.
-	outIDs := ts.refArchive.outgoingRelIDs(id)
-	inIDs := ts.refArchive.incomingRelIDs(id, 0)
+	outIDs := archive.outgoingRelIDs(id)
+	inIDs := archive.incomingRelIDs(id, 0)
 
 	seen := make(map[snowflake.ID]struct{}, len(outIDs)+len(inIDs))
 	var relIDs []snowflake.ID
@@ -985,7 +1197,7 @@ func (ts *TieredStore) RestoreNode(nid types.NodeID) error {
 
 	var rels []*types.Relationship
 	for _, rid := range relIDs {
-		r, err := ts.refArchive.GetRelationship(types.RelID(rid))
+		r, err := archive.GetRelationship(types.RelID(rid))
 		if errors.Is(err, ErrRelNotFound) {
 			continue
 		}
@@ -1013,7 +1225,7 @@ func (ts *TieredStore) RestoreNode(nid types.NodeID) error {
 	}
 
 	// 6. Delete from archive.
-	if err := ts.refArchive.DeleteNodeCascade(types.NodeID(id)); err != nil {
+	if err := archive.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		// Best-effort rollback: remove data from refShard since archive delete failed.
 		_ = ts.refShard.DeleteNodeCascade(types.NodeID(id))
 		return fmt.Errorf("graph: restore delete from archive: %w", err)

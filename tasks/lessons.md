@@ -228,7 +228,7 @@ GOOD: func checkoutStore(ts) {
       }
 ```
 
-**History:** Found in code_review_phase3 as BLOCKER ("idleCloseLoop Hard-Panics Concurrent Readers"). First fix (v3.0.30) had a TOCTOU gap between `getStore` and `activeReqs.Add(1)`. Fully fixed in v3.0.33 by moving increment inside `shardMu`.
+**History:** Found in code_review_phase3 as BLOCKER ("idleCloseLoop Hard-Panics Concurrent Readers"). First fix (v3.0.30) had a TOCTOU gap between `getStore` and `activeReqs.Add(1)`. Fully fixed in v3.0.33 by moving increment inside `shardMu`. Later TieredStore relationship-routing fixes needed the same lifecycle assertion on fallback cold relationship-owner lookup: finding the cold owner is not enough; the returned store must stay pinned until checkin.
 
 ## B18. Shard Rotation: Boundary Alignment + Catalog Sync
 *See CLAUDE.md > TieredStore*
@@ -530,6 +530,75 @@ for the same public interfaces so they expose algorithmic regressions that a
 **Rule:** Before claiming "no performance regression", compare the feature branch
 against `main` with both a routine API baseline and small/large production-shaped
 benchmark suites using `benchstat`.
+
+## B30. Deleted Entity History Needs History-Aware Routing
+
+```
+BAD:  func GetRelHistory(id) {
+          shard := shardForRelID(id)  // probes current rel indexes
+          return shard.GetRelHistory(id)
+      }
+      // after delete, the current rel is gone; cross-shard tombstone history
+      // may live on a different shard than timestamp fallback chooses
+
+GOOD: func GetRelHistory(id) {
+          shard := shardForRelID(id)
+          history := shard.GetRelHistory(id)
+          if len(history) > 0 { return history }
+          return probeHistoryShards(id) // current-index fallback failed
+      }
+```
+
+History and tombstone lookups must not depend solely on current-entity indexes.
+Contract tests should include deleted reference nodes and deleted cross-shard
+relationships, because the failure only appears after the current entity has
+been removed.
+
+For history writes, route from the immutable entity shape: reference node
+snapshots belong to the reference shard; cross-shard relationship snapshots
+belong to the relationship start-node shard, because that is where the
+relationship entity and outgoing index are stored.
+
+**History:** Found while adding the store contract suite for the first contract-test MR.
+Fixed by probing history-owning shards for deleted entity reads and routing
+history writes by snapshot ownership.
+
+---
+
+## B31. Primary-Label Class Must Be Immutable Across Versions
+
+```
+BAD:  RemoveNodeLabel(id, primaryLabel) auto-promotes the next extra label
+      to primary. If the new primary has a different ontology class, the
+      live entity stays on its original shard while subsequent history
+      snapshots route to a different shard, fragmenting the version chain
+      and breaking forEachHistoryShard's first-match semantics.
+
+GOOD: TieredStore.{Add,Remove}NodeLabelToken{,WithHistory} compare the
+      pre/post primary-label classes (ClassReference vs ClassEvent) and
+      reject the mutation with ErrPrimaryLabelClassMutation when they
+      differ. An entity's full history then provably lives on a single
+      shard, and read-fallback can stop at the first match.
+```
+
+When routing decisions depend on a property that is part of mutable state
+(primary label is a snapshot property; ontology class is derived from it),
+the routing component must either (a) treat that property as immutable
+across versions, or (b) merge across all candidate shards on read. Option
+(a) is cheaper and easier to reason about; enforce it at the write
+boundary that creates the inconsistency.
+
+**Audit:** When a write decides "where does this go?" based on a value
+that can change, grep for all paths that mutate that value and add a
+guard at each one — not just at the read site that exposes the bug.
+
+**History:** Surfaced during review of the deleted-entity history routing
+fix (B30). The fix routed history writes by snapshot label class, which
+made the first-match read fallback correct only as long as primary class
+never changes. v3.1.6's `AddNodeLabel`/`RemoveNodeLabel` plus
+`Node.RemoveLabelTokenRaw`'s auto-promotion made class change reachable.
+Closed at the TieredStore boundary because the graph layer is
+backend-agnostic.
 
 ---
 
