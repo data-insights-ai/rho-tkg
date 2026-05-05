@@ -1300,7 +1300,7 @@ func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 			if len(ids) == 0 {
 				return nil, nil
 			}
-			return bs.fetchNodesWithTemporalFilter(ids, opts)
+			return bs.fetchNodesWithTemporalFilter(toNodeIDs(ids), opts)
 		}
 	}
 
@@ -1318,14 +1318,14 @@ func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	// Temporal pre-filter via Peek (zero allocation for cache hits).
-	ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+	nids := bs.filterNodeIDsByTemporalPeek(toNodeIDs(ids), opts)
 
-	ids = paginateIDs(ids, opts.After, opts.Limit)
-	if len(ids) == 0 {
+	nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+	if len(nids) == 0 {
 		return nil, nil
 	}
 
-	return bs.fetchNodesWithTemporalFilter(ids, opts)
+	return bs.fetchNodesWithTemporalFilter(nids, opts)
 }
 
 // RelationshipsByType returns relationships with the given type token, with optional pagination
@@ -1346,14 +1346,14 @@ func (bs *BadgerStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	// Temporal pre-filter via Peek.
-	ids = bs.filterRelIDsByTemporalPeek(ids, opts)
+	rids := bs.filterRelIDsByTemporalPeek(toRelIDs(ids), opts)
 
-	ids = paginateIDs(ids, opts.After, opts.Limit)
-	if len(ids) == 0 {
+	rids = paginateRelIDs(rids, opts.After, opts.Limit)
+	if len(rids) == 0 {
 		return nil, nil
 	}
 
-	return bs.fetchRelsWithTemporalFilter(ids, opts)
+	return bs.fetchRelsWithTemporalFilter(rids, opts)
 }
 
 // --- Adjacency queries ---
@@ -1578,14 +1578,14 @@ func (bs *BadgerStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	// Temporal pre-filter via Peek.
-	ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+	nids := bs.filterNodeIDsByTemporalPeek(toNodeIDs(ids), opts)
 
-	ids = paginateIDs(ids, opts.After, opts.Limit)
-	if len(ids) == 0 {
+	nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+	if len(nids) == 0 {
 		return nil, nil
 	}
 
-	return bs.fetchNodesWithTemporalFilter(ids, opts)
+	return bs.fetchNodesWithTemporalFilter(nids, opts)
 }
 
 // AllRelationships returns all stored relationships, with optional pagination
@@ -1606,14 +1606,14 @@ func (bs *BadgerStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 	// Temporal pre-filter via Peek.
-	ids = bs.filterRelIDsByTemporalPeek(ids, opts)
+	rids := bs.filterRelIDsByTemporalPeek(toRelIDs(ids), opts)
 
-	ids = paginateIDs(ids, opts.After, opts.Limit)
-	if len(ids) == 0 {
+	rids = paginateRelIDs(rids, opts.After, opts.Limit)
+	if len(rids) == 0 {
 		return nil, nil
 	}
 
-	return bs.fetchRelsWithTemporalFilter(ids, opts)
+	return bs.fetchRelsWithTemporalFilter(rids, opts)
 }
 
 // GetNodesByIDs returns nodes matching the given IDs.
@@ -3174,14 +3174,14 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 
 		// Temporal pre-filter via Peek.
-		ids = bs.filterNodeIDsByTemporalPeek(ids, opts)
+		nids := bs.filterNodeIDsByTemporalPeek(toNodeIDs(ids), opts)
 
-		ids = paginateIDs(ids, opts.After, opts.Limit)
-		if len(ids) == 0 {
+		nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+		if len(nids) == 0 {
 			return nil, nil
 		}
 
-		return bs.fetchNodesWithTemporalFilter(ids, opts)
+		return bs.fetchNodesWithTemporalFilter(nids, opts)
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.
@@ -3818,28 +3818,27 @@ func (bs *BadgerStore) getRelLocked(rid types.RelID) (*types.Relationship, error
 	return r, nil
 }
 
-// --- Temporal filtering helpers ---
-
 // filterNodeIDsByTemporalPeek removes IDs that don't match the temporal filter
 // using Peek (zero allocation for cache hits). Cache misses are kept as candidates
 // to be post-filtered after GetNode.
-func (bs *BadgerStore) filterNodeIDsByTemporalPeek(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+func (bs *BadgerStore) filterNodeIDsByTemporalPeek(ids []types.NodeID, opts QueryOpts) []types.NodeID {
 	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
 		return ids // no filter
 	}
-	filtered := make([]snowflake.ID, 0, len(ids))
-	for _, id := range ids {
+	filtered := make([]types.NodeID, 0, len(ids))
+	for _, nid := range ids {
+		id := nid.SnowflakeID()
 		v, status := bs.nodeCache.Peek(id)
 		switch status {
 		case cacheHit:
 			if matchesTemporalFilter(id, v.Temporal(), opts) {
-				filtered = append(filtered, id)
+				filtered = append(filtered, nid)
 			}
 		case cacheDeleted:
 			// skip — entity is deleted
 		case cacheMiss:
 			// Keep as candidate — will be post-filtered after GetNode.
-			filtered = append(filtered, id)
+			filtered = append(filtered, nid)
 		}
 	}
 	return filtered
@@ -3847,22 +3846,23 @@ func (bs *BadgerStore) filterNodeIDsByTemporalPeek(ids []snowflake.ID, opts Quer
 
 // filterRelIDsByTemporalPeek removes IDs that don't match the temporal filter
 // using Peek. Cache misses are kept as candidates.
-func (bs *BadgerStore) filterRelIDsByTemporalPeek(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+func (bs *BadgerStore) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) []types.RelID {
 	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
 		return ids // no filter
 	}
-	filtered := make([]snowflake.ID, 0, len(ids))
-	for _, id := range ids {
+	filtered := make([]types.RelID, 0, len(ids))
+	for _, rid := range ids {
+		id := rid.SnowflakeID()
 		v, status := bs.relCache.Peek(id)
 		switch status {
 		case cacheHit:
 			if matchesTemporalFilter(id, v.Temporal(), opts) {
-				filtered = append(filtered, id)
+				filtered = append(filtered, rid)
 			}
 		case cacheDeleted:
 			// skip
 		case cacheMiss:
-			filtered = append(filtered, id)
+			filtered = append(filtered, rid)
 		}
 	}
 	return filtered
@@ -3870,11 +3870,12 @@ func (bs *BadgerStore) filterRelIDsByTemporalPeek(ids []snowflake.ID, opts Query
 
 // fetchNodesWithTemporalFilter fetches nodes by ID and post-filters for temporal
 // match. Cache-miss candidates that were speculatively included are filtered here.
-func (bs *BadgerStore) fetchNodesWithTemporalFilter(ids []snowflake.ID, opts QueryOpts) ([]*types.Node, error) {
+func (bs *BadgerStore) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 	nodes := make([]*types.Node, 0, len(ids))
-	for _, id := range ids {
-		n, err := bs.GetNode(types.NodeID(id))
+	for _, nid := range ids {
+		id := nid.SnowflakeID()
+		n, err := bs.GetNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue
@@ -3891,11 +3892,12 @@ func (bs *BadgerStore) fetchNodesWithTemporalFilter(ids []snowflake.ID, opts Que
 
 // fetchRelsWithTemporalFilter fetches relationships by ID and post-filters for
 // temporal match.
-func (bs *BadgerStore) fetchRelsWithTemporalFilter(ids []snowflake.ID, opts QueryOpts) ([]*types.Relationship, error) {
+func (bs *BadgerStore) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
 	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 	rels := make([]*types.Relationship, 0, len(ids))
-	for _, id := range ids {
-		r, err := bs.GetRelationship(types.RelID(id))
+	for _, rid := range ids {
+		id := rid.SnowflakeID()
+		r, err := bs.GetRelationship(rid)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue

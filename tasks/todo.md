@@ -26,6 +26,11 @@ Smoke tests 2026-05-05:
   test files and stopped per protocol (vs round-1 type-lie). Agent B migrated
   BadgerStore `cascadeDelete*` helpers cleanly. Main agent applied the 3
   flagged trivial test-file fixes. Joint-verify clean.
+- Round 5 (parallel, remaining Tier A + Tier C): Agent A migrated
+  `BatchError.ID` cleanly. Agent B migrated BadgerStore `filter*`/`fetch*`
+  helpers cleanly but introduced 4 pagination helpers in `badgerstore.go`
+  (where `pagination.go` was off-limits). Main agent moved those to
+  `pagination.go` post-merge. Joint-verify clean.
 
 See "Parallel-agent prompt template" below for the validated structure.
 
@@ -85,9 +90,9 @@ callsite (~30 of those are still in `pkg/graph` solely because of this).
       35 callsites migrated across `events.go`, `graph.go`, `context.go`,
       `tx.go`, `batch.go`, plus 3 test-file fixes. Agent stopped at
       scope-exceeded for two test files; main agent fixed those manually.
-- [ ] `batch.go:67` `BatchError.ID` → `types.EntityID`, OR split into
-      `BatchNodeError` / `BatchRelError`. Today's `BatchError` is one struct
-      shared by both kinds.
+- [x] `batch.go:67` `BatchError.ID` → `types.EntityID`. Parallel-agent run
+      2026-05-05 (round 5). 6 producer sites + 1 test fix; `snowflake` import
+      dropped from `batch.go` and `batch_test.go`.
 - [ ] `store.go:25` `QueryOpts.After` → polymorphic via an interface
       (`{ SnowflakeID() snowflake.ID }`), OR document as deliberately raw and
       keep the friction. Pagination cursor maps to either entity kind, so
@@ -118,12 +123,18 @@ Currently raw inside `pkg/graph`:
       migrated as part of the paired `Event.EntityID` Tier A migration above.
 - [x] BadgerStore `cascadeDeleteInner` / `cascadeDeleteLocked` → typed
       `types.NodeID`. Parallel-agent run 2026-05-05.
-- [ ] BadgerStore remaining helpers: `filter*ByTemporalPeek`,
-      `fetch*WithTemporalFilter`.
+- [x] BadgerStore `filterNodeIDsByTemporalPeek` / `filterRelIDsByTemporalPeek`
+      / `fetchNodesWithTemporalFilter` / `fetchRelsWithTemporalFilter` → typed
+      slices. Parallel-agent run 2026-05-05 (round 5). 4 defs + 11 callers
+      migrated. Agent introduced 4 helpers (`toNodeIDs`/`toRelIDs`/
+      `paginateNodeIDs`/`paginateRelIDs`) in badgerstore.go to bridge typed
+      callers and the still-raw `paginateIDs`; main agent relocated those to
+      `pagination.go` post-merge (correct file).
 - [ ] Internal store maps (`bs.nodeIDs map[snowflake.ID]struct{}`, `bs.outIdx`,
       `ms.nodes`, `ms.nodeHistory`, etc.) → typed keys. This is the big one:
-      it drops the `id := nid.SnowflakeID()` shim from every store method
-      (the shims that round-3 agent B reported as un-droppable today).
+      it drops the `id := nid.SnowflakeID()` shim from every store method.
+      Once done, `paginateIDs` (raw) collapses into the typed paginators and
+      the `toNodeIDs`/`toRelIDs` adapters can also be deleted.
 
 Estimate: large but mostly mechanical. Each migration eliminates a fixed number
 of `.SnowflakeID()` calls. Track by `grep -c '.SnowflakeID()' pkg/graph/*.go`

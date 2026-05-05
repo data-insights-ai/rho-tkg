@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -436,7 +435,7 @@ func TestBatchBuilderUpdateRelInvalidKey(t *testing.T) {
 
 func TestBatchErrorString(t *testing.T) {
 	t.Parallel()
-	be := BatchError{Op: "AddNode", ID: snowflake.ID(42), Err: ErrNodeExists}
+	be := BatchError{Op: "AddNode", ID: types.EntityID(42), Err: ErrNodeExists}
 	s := be.Error()
 	if s == "" {
 		t.Fatal("BatchError.Error() returned empty string")

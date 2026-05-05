@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -64,7 +63,7 @@ type BatchResult struct {
 // BatchError describes a single operation failure within a batch.
 type BatchError struct {
 	Op  string
-	ID  snowflake.ID
+	ID  types.EntityID
 	Err error
 }
 
@@ -297,7 +296,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
-					ID:  pn.node.ID().SnowflakeID(),
+					ID:  types.EntityID(pn.node.ID()),
 					Err: err,
 				})
 			}
@@ -320,7 +319,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
-				ID:  pr.rel.ID().SnowflakeID(),
+				ID:  types.EntityID(pr.rel.ID()),
 				Err: err,
 			})
 		} else {
@@ -336,7 +335,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "UpdateNode",
-				ID:  pu.id.SnowflakeID(),
+				ID:  types.EntityID(pu.id),
 				Err: err,
 			})
 		} else {
@@ -352,7 +351,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "UpdateRelationship",
-				ID:  pu.id.SnowflakeID(),
+				ID:  types.EntityID(pu.id),
 				Err: err,
 			})
 		} else {
@@ -367,7 +366,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteRelationship",
-				ID:  id.SnowflakeID(),
+				ID:  types.EntityID(id),
 				Err: err,
 			})
 		} else {
@@ -382,7 +381,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteNode",
-				ID:  id.SnowflakeID(),
+				ID:  types.EntityID(id),
 				Err: err,
 			})
 		} else {
