@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Graph performance baseline suite** (`pkg/graph/bench_baseline_test.go`, `pkg/graph/bench_production_test.go`, `Makefile`): added `BenchmarkGraphBaseline/...` coverage for memory-store reads/writes, temporal queries, batch and transaction operations, Badger async/sync writes, Badger indexed reads, and TieredStore reference/event/cross-shard writes. Added `BenchmarkGraphProduction/...` scenarios for public `Graph` APIs covering large graph reads, high-degree traversal, temporal and bitemporal queries, node and relationship history chains, public method surface checks, export/import, sync/async event buses, TieredStore multi-shard queries, and batch/transaction write shapes. Added small and large production profiles: `make bench-graph-production-small` keeps the routine 10K-node/30-version suite, while `make bench-graph-production-large` raises the stress profile to 100K nodes, 1M regular relationships, a 10K-degree hub, 3,000-version node and relationship history chains, larger export/import, TieredStore, batch, and public-surface fixtures. `make bench-graph-production` remains an alias for the small profile; `make bench-graph-all` and `make bench-graph-all-large` run the baseline with the respective production profile for `benchstat` comparisons against `main`.
 
+### Tests Added
+
+- **Shared store contract suite** (`pkg/graph/store_contract_test.go`): reusable behavior tests run against `MemoryStore`, `BadgerStore`, and `TieredStore` for current visibility, version history visibility, delete tombstones/history IDs, cursor pagination, temporal filters, synchronous events through the public `Graph` API, and graph stats/cache metrics where supported.
+
 ## [3.1.6] - 2026-04-10
 
 ### Added

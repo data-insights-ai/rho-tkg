@@ -455,6 +455,28 @@ for the same public interfaces so they expose algorithmic regressions that a
 against `main` with both a routine API baseline and small/large production-shaped
 benchmark suites using `benchstat`.
 
+## B30. Deleted Entity History Needs History-Aware Routing
+
+```
+BAD:  func GetRelHistory(id) {
+          shard := shardForRelID(id)  // probes current rel indexes
+          return shard.GetRelHistory(id)
+      }
+      // after delete, the current rel is gone; cross-shard tombstone history
+      // may live on a different shard than timestamp fallback chooses
+
+GOOD: func GetRelHistory(id) {
+          // route by known history IDs, probe history prefixes, or persist an
+          // id->owner mapping that survives deletion
+      }
+```
+
+History and tombstone lookups must not depend solely on current-entity indexes.
+Contract tests should include deleted cross-shard relationships, because the
+failure only appears after the current relationship has been removed.
+
+**History:** Found while adding the store contract suite for the first contract-test MR.
+
 ---
 
 # Tier C — Reference
