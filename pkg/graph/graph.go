@@ -1111,10 +1111,14 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
 //
-// When opts carries a temporal filter, every known node is scanned: a node is
-// included if any version overlapping the requested time had the label and
-// property value, even if a later version no longer matches. Without a
-// temporal filter, the call falls through to the store-level property index.
+// Without a temporal filter, the call falls through to the store-level
+// property index for O(matches) lookup. When opts carries a temporal filter,
+// the candidate set is the union of (nodes currently matching label+property
+// — seeded via the same property-index lookup) and (every known history ID).
+// Each candidate is then resolved to its version overlapping the requested
+// time and the predicate re-checked against that historical version, so a
+// node whose label and property held at the requested time is included even
+// if a later version no longer matches.
 func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {

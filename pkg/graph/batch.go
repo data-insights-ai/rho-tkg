@@ -31,14 +31,21 @@ type BatchBuilder struct {
 }
 
 type pendingNode struct {
-	node   *types.Node
-	labels []string
+	node      *types.Node
+	labels    []string
+	integrity *types.NodeIntegrity    // hash + provenance set at queue time
+	temporal  *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt set at queue time;
+	// TxFrom stamped at Execute time
 }
 
 type pendingRel struct {
-	rel     *types.Relationship
-	startID snowflake.ID
-	endID   snowflake.ID
+	rel       *types.Relationship
+	startID   snowflake.ID
+	endID     snowflake.ID
+	integrity *types.RelIntegrity // Hash + provenance set at queue time;
+	// FromNodeHash/ToNodeHash refreshed at Execute time
+	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt set at queue time;
+	// TxFrom stamped at Execute time
 }
 
 type pendingUpdate struct {
@@ -130,34 +137,31 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 
 	canonicalLabels := b.g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{
+	integrity := &types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
 		AuthorID:           authorID,
 		Signature:          sig,
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
-	})
+	}
+	n.SetIntegrity(integrity)
 
-	// Set transaction time + caller-provided temporal metadata (NOT hashed —
-	// set after hash). Mirrors addNodeInternal so batch-created nodes have
-	// the same temporal/provenance shape as standalone-created nodes.
-	{
-		txNow := nowInstant()
-		ntm := &types.TemporalMetadata{TxFrom: txNow}
-		if validFrom != 0 {
-			ntm.ValidFrom = validFrom
-		}
-		if validTo != 0 {
-			ntm.ValidTo = validTo
-		}
-		if createdAt != 0 {
-			ntm.CreatedAt = createdAt
-		}
-		n.SetTemporal(ntm)
+	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
+	// so the recorded transaction time reflects when the batch actually
+	// commits, not when AddNode was queued — see Execute()).
+	temporal := &types.TemporalMetadata{
+		ValidFrom: validFrom,
+		ValidTo:   validTo,
+		CreatedAt: createdAt,
 	}
 
-	b.nodes = append(b.nodes, pendingNode{node: n, labels: canonicalLabels})
+	b.nodes = append(b.nodes, pendingNode{
+		node:      n,
+		labels:    canonicalLabels,
+		integrity: integrity,
+		temporal:  temporal,
+	})
 	return n, nil
 }
 
@@ -207,10 +211,12 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	// Capture endpoint hashes at creation time for cross-validation. Mirrors
-	// addRelationshipInternal — FromNodeHash/ToNodeHash are NOT part of
-	// ComputeRelHash to avoid cascading hash invalidation whenever endpoint
-	// nodes are updated.
+	// Build the integrity payload now (Hash and provenance are stable at
+	// queue time). FromNodeHash/ToNodeHash and TxFrom are deferred to
+	// Execute(): endpoint hashes are re-read from the live store after the
+	// per-rel endpoint locks are acquired so the recorded values reflect the
+	// committed endpoint state at relationship creation, not whatever the
+	// caller happened to hold when AddRelationship was queued.
 	ig := &types.RelIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -219,33 +225,23 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := startNode.Integrity(); startIg != nil {
-		ig.FromNodeHash = startIg.Hash
-	}
-	if endIg := endNode.Integrity(); endIg != nil {
-		ig.ToNodeHash = endIg.Hash
-	}
 	r.SetIntegrity(ig)
 
-	// Set transaction time + caller-provided temporal metadata (NOT hashed —
-	// set after hash). Mirrors addRelationshipInternal so batch-created rels
-	// have the same temporal/provenance shape as standalone-created rels.
-	{
-		txNow := nowInstant()
-		rtm := &types.TemporalMetadata{TxFrom: txNow}
-		if validFrom != 0 {
-			rtm.ValidFrom = validFrom
-		}
-		if validTo != 0 {
-			rtm.ValidTo = validTo
-		}
-		if createdAt != 0 {
-			rtm.CreatedAt = createdAt
-		}
-		r.SetTemporal(rtm)
+	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
+	// — same reasoning as AddNode: TxFrom must reflect commit time).
+	rtm := &types.TemporalMetadata{
+		ValidFrom: validFrom,
+		ValidTo:   validTo,
+		CreatedAt: createdAt,
 	}
 
-	b.rels = append(b.rels, pendingRel{rel: r, startID: startID, endID: endID})
+	b.rels = append(b.rels, pendingRel{
+		rel:       r,
+		startID:   startID,
+		endID:     endID,
+		integrity: ig,
+		temporal:  rtm,
+	})
 	return r, nil
 }
 
@@ -335,6 +331,16 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 1. Create nodes via batch store method.
 	if len(b.nodes) > 0 {
+		// Stamp TxFrom at execute time so the recorded transaction time
+		// reflects when the batch actually commits, not when AddNode was
+		// queued. Mirrors addNodeInternal which stamps TxFrom inside the
+		// single function call window.
+		txNow := nowInstant()
+		for _, pn := range b.nodes {
+			pn.temporal.TxFrom = txNow
+			pn.node.SetTemporal(pn.temporal)
+		}
+
 		nodes := make([]*types.Node, len(b.nodes))
 		for i, pn := range b.nodes {
 			nodes[i] = pn.node
@@ -351,16 +357,37 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			}
 		} else {
 			result.Created += len(b.nodes)
-			now := nowInstant()
 			for _, pn := range b.nodes {
-				b.g.publishEvent(EventNodeCreate, pn.node.InternalID().SnowflakeID(), now, PriorityHigh)
+				b.g.publishEvent(EventNodeCreate, pn.node.InternalID().SnowflakeID(), txNow, PriorityHigh)
 			}
 		}
 	}
 
 	// 2. Create relationships — lock endpoints per-rel.
+	//
+	// Inside the per-rel lock window, refresh endpoint hashes from the live
+	// store and stamp TxFrom. Both fields must reflect the committed state
+	// at relationship-creation time: queueing endpoint hashes in
+	// AddRelationship would let an intervening UpdateNode invalidate them
+	// before commit.
 	for _, pr := range b.rels {
 		b.g.entityLocks.LockTwo(pr.startID, pr.endID)
+
+		if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
+			if sIg := startNode.Integrity(); sIg != nil {
+				pr.integrity.FromNodeHash = sIg.Hash
+			}
+		}
+		if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
+			if eIg := endNode.Integrity(); eIg != nil {
+				pr.integrity.ToNodeHash = eIg.Hash
+			}
+		}
+		pr.rel.SetIntegrity(pr.integrity)
+
+		pr.temporal.TxFrom = nowInstant()
+		pr.rel.SetTemporal(pr.temporal)
+
 		err := b.g.store.PutRelationship(pr.rel)
 		b.g.entityLocks.UnlockTwo(pr.startID, pr.endID)
 

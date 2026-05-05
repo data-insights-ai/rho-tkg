@@ -38,9 +38,9 @@ func containsRelID(rels []*types.Relationship, id snowflake.ID) bool {
 // tightest available index (property over label) is used when both apply.
 type temporalCandidateCountingStore struct {
 	Store
-	forEachNodeIDCalls         int
-	forEachRelIDCalls          int
-	nodesByLabelCalls          int
+	forEachNodeIDCalls           int
+	forEachRelIDCalls            int
+	nodesByLabelCalls            int
 	nodesByLabelAndPropertyCalls int
 }
 
@@ -123,8 +123,17 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 // scan that filters the property in Go. Guards the property-index pushdown on
 // NodesByLabelAndProperty (graph.go), NodesByLabelPropertyAndTime, and
 // NodesByLabelPropertyDuring (temporal.go).
+//
+// A real property index is installed so MemoryStore.NodesByLabelAndProperty
+// hits the indexed path rather than its label-scan fallback. The combination
+// of "property index installed" + "planner only ever calls NodesByLabelAndProperty"
+// proves that the seed comes from the tightest available index.
 func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
+
+	if err := g.CreatePropertyIndex("Person", "status"); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
 
 	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
@@ -365,5 +374,81 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 	}
 	if _, ok := storedRel.GetProperty("tkg_author_id"); ok {
 		t.Fatal("batch relationship stored tkg_author_id as a normal property")
+	}
+}
+
+// Batch metadata stamping must reflect commit time, not queue time:
+//   - TxFrom on every batch-created entity must be a timestamp captured
+//     inside Execute(), so a batch assembled at T0 and committed at T1
+//     records T1.
+//   - FromNodeHash / ToNodeHash on batch-created relationships must reflect
+//     the endpoint state at commit time, so an UpdateNode that fires
+//     between AddRelationship and Execute is reflected.
+func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
+	g := newTestGraph(t)
+	bb := NewBatchBuilder(g)
+
+	a, err := g.AddNode([]string{"Person"}, map[string]any{"v": int64(1)})
+	if err != nil {
+		t.Fatalf("seed AddNode A: %v", err)
+	}
+	b, err := g.AddNode([]string{"Person"}, map[string]any{"v": int64(1)})
+	if err != nil {
+		t.Fatalf("seed AddNode B: %v", err)
+	}
+
+	queueStart := nowInstant()
+	c, err := bb.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("batch AddNode: %v", err)
+	}
+	r, err := bb.AddRelationship("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("batch AddRelationship: %v", err)
+	}
+
+	// Mutate an endpoint between queue and execute. Endpoint hash captured at
+	// queue time would now be stale.
+	updatedA, err := g.UpdateNode(a.InternalID().SnowflakeID(), map[string]any{"v": int64(2)})
+	if err != nil {
+		t.Fatalf("UpdateNode A: %v", err)
+	}
+	expectedFromHash := updatedA.Integrity().Hash
+
+	// Sleep to make sure execute time is meaningfully after queue time.
+	time.Sleep(2 * time.Millisecond)
+	beforeExecute := nowInstant()
+
+	if _, err := bb.Execute(); err != nil {
+		t.Fatalf("batch Execute: %v", err)
+	}
+
+	// TxFrom on batch-created node must be at-or-after execute, never at
+	// queueStart.
+	storedC, err := g.GetNode(c.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetNode batch C: %v", err)
+	}
+	tm := storedC.Temporal()
+	if tm == nil || tm.TxFrom < beforeExecute {
+		t.Fatalf("batch node TxFrom = %v, want >= execute time %v (queueStart = %v)", tm, beforeExecute, queueStart)
+	}
+
+	// TxFrom on batch-created rel must also be at-or-after execute, and
+	// FromNodeHash must reflect the post-update endpoint state.
+	storedR, err := g.GetRelationship(r.InternalID().SnowflakeID())
+	if err != nil {
+		t.Fatalf("GetRelationship batch R: %v", err)
+	}
+	rtm := storedR.Temporal()
+	if rtm == nil || rtm.TxFrom < beforeExecute {
+		t.Fatalf("batch rel TxFrom = %v, want >= execute time %v", rtm, beforeExecute)
+	}
+	rIg := storedR.Integrity()
+	if rIg == nil {
+		t.Fatal("batch rel integrity is nil")
+	}
+	if rIg.FromNodeHash != expectedFromHash {
+		t.Fatalf("batch rel FromNodeHash = %q, want post-update hash %q (queue-time capture would record the pre-update hash)", rIg.FromNodeHash, expectedFromHash)
 	}
 }
