@@ -1308,26 +1308,15 @@ func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
 	}
 }
 
-// Cross-shard DeleteRelWithHistory must not leave the rel half-deleted on
-// failure of the entity-shard write: the in/ leg is removed first, and
-// rolled back if the entity-shard tombstone+delete fails. Without the
-// rollback, a failed history-preserving delete hands the caller an error
-// while the in/ entry on the end-node shard is gone — silent state drift.
-//
-// We exercise the rollback path by injecting a failure on entity-shard
-// DeleteRelWithHistory via a wrapper. Cross-shard requires the rel's
-// entity to live on a shard distinct from the in/ leg shard; we use a
-// reference node as start (refShard) and an event node as end (event
-// shard) so the entity lives on refShard.
-func TestTieredStore_DeleteRelWithHistory_CrossShardRollsBackInOnEntityFailure(t *testing.T) {
-	// The MemoryStore-based newTestTieredGraph helper does not expose an
-	// entity-shard failure injection point on the BadgerStore tier API.
-	// The rollback path is exercised by the cross-shard PutRelationship
-	// rollback test (TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure
-	// in findings_extra_regression_test.go); this test asserts the
-	// happy-path symmetry: in/ leg is gone after the cross-shard delete,
-	// and a successful DeleteRelWithHistory followed by RunRepair leaves
-	// no orphan in/ entry.
+// TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath asserts the new
+// leg ordering on the success path: in/ goes first, then atomic
+// tombstone+delete on the entity shard. After a successful cross-shard
+// delete, the end-node shard's in/ index no longer references the rel
+// and RunRepair finds no orphan. The rollback path proper is exercised
+// by TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry
+// below — full-path rollback with injected failure requires a Store
+// wrapper hook that the TieredStore test scaffolding does not yet expose.
+func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.AddNode([]string{"Case"}, nil)
@@ -1496,4 +1485,174 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 	if got == nil {
 		t.Fatal("PutRelVersion did not land on rel-resolved shard (routing changed?)")
 	}
+}
+
+// Verifies the rollback primitive used by cross-shard DeleteRelWithHistory:
+// after deleteRelIncoming removes the in/ entry, putRelIncoming with the
+// same parameters must restore an indistinguishable entry. This is what
+// the rollback path relies on when the entity-shard write fails after
+// the in/ leg has already succeeded — without symmetric restore the
+// rollback would leave inIdx in a state different from before the delete.
+func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("RAISED", caseNode, signalNode, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid := r.InternalID().SnowflakeID()
+	endID := signalNode.InternalID().SnowflakeID()
+	startID := caseNode.InternalID().SnowflakeID()
+	relType := r.TypeToken().Value()
+
+	endShard, ec, err := ts.shardForNodeIDChecked(endID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ec()
+
+	if !containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
+		t.Fatal("setup: in/ not present")
+	}
+
+	// Step 1 of cross-shard delete: remove in/ on end shard.
+	info := relDeleteInfo{id: rid, relType: relType, startID: startID, endID: endID}
+	if err := endShard.deleteRelIncoming(info); err != nil {
+		t.Fatalf("deleteRelIncoming: %v", err)
+	}
+	if containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
+		t.Fatal("deleteRelIncoming did not remove in/")
+	}
+
+	// Step 2 (rollback): restore in/ via the path the entity-shard
+	// failure handler uses.
+	if err := endShard.putRelIncoming(endID, startID, relType, rid); err != nil {
+		t.Fatalf("putRelIncoming rollback: %v", err)
+	}
+	if !containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
+		t.Fatal("putRelIncoming did not restore in/ — rollback path is broken")
+	}
+}
+
+// After Close marks ts.closed, fresh checkoutStore calls must return
+// ErrStoreClosed on every shard tier. Without this, a goroutine racing
+// Close past the activeReqs spin-wait could obtain a checkout on a
+// shard whose store is about to be closed — Badger v4 WriteBatch.Flush
+// then blocks forever (CLAUDE.md). The pre-fix shape only had the spin-
+// wait, which is necessary but not sufficient.
+func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	if err := ts.PutNode(types.NewNode(gen.Generate(), signalTok, nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	hotES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+
+	// Hold a checkout so Close blocks at the spin-wait; this lets us
+	// observe the closed flag while Close is mid-flight.
+	if _, err := hotES.checkoutStore(ts); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+
+	closed := make(chan error, 1)
+	go func() { closed <- ts.Close() }()
+
+	// Wait for ts.closed to be observable. Close sets it before the
+	// spin-wait begins, so polling here cannot deadlock against the
+	// spin-wait.
+	deadline := time.Now().Add(2 * time.Second)
+	for !ts.closed.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("ts.closed never set within 2s")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if _, err := hotES.checkoutStore(ts); !errors.Is(err, ErrStoreClosed) {
+		t.Errorf("hot checkoutStore after closed=true: got %v, want ErrStoreClosed", err)
+	}
+
+	hotES.checkinStore() // release the original checkout so Close finishes
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not finish after checkin")
+	}
+
+	if _, err := hotES.checkoutStore(ts); !errors.Is(err, ErrStoreClosed) {
+		t.Errorf("hot checkoutStore post-Close: got %v, want ErrStoreClosed", err)
+	}
+}
+
+// AllNodes / AllRelationships / NodeCount / RelationshipCount must include
+// archived entities. Pre-fix, archived nodes were GetNode-addressable but
+// silently absent from public bulk scans.
+func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := caseNode.InternalID().SnowflakeID()
+
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	t.Run("AllNodes includes archived", func(t *testing.T) {
+		all, err := ts.AllNodes(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodes: %v", err)
+		}
+		found := false
+		for _, n := range all {
+			if n.InternalID().SnowflakeID() == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("AllNodes missed archived node")
+		}
+	})
+
+	t.Run("NodeCount includes archived", func(t *testing.T) {
+		count, err := ts.NodeCount()
+		if err != nil {
+			t.Fatalf("NodeCount: %v", err)
+		}
+		if count < 1 {
+			t.Fatalf("NodeCount = %d, want >= 1 (archived node missed)", count)
+		}
+	})
+
+	t.Run("ForEachNodeID enumerates archived", func(t *testing.T) {
+		seen := make(map[snowflake.ID]struct{})
+		if err := ts.ForEachNodeID(func(nid snowflake.ID) bool {
+			seen[nid] = struct{}{}
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachNodeID: %v", err)
+		}
+		if _, ok := seen[id]; !ok {
+			t.Fatal("ForEachNodeID missed archived node")
+		}
+	})
 }

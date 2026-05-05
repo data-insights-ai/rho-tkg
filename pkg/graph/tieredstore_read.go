@@ -175,6 +175,24 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 
+	// refArchive parity: archived nodes are still GetNode-addressable, so
+	// public bulk scans must include them. Otherwise an archived entity
+	// silently disappears from AllNodes / NodeCount / similar APIs even
+	// though point lookups still find it. checkoutArchive lazy-opens on
+	// cold start (catalog-archive-shard-but-pointer-nil).
+	var archiveNodes []*types.Node
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveNodes, err = archive.AllNodes(stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	type result struct {
 		nodes []*types.Node
 		err   error
@@ -200,6 +218,9 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if len(refNodes) > 0 {
 		slices = append(slices, refNodes)
 	}
+	if len(archiveNodes) > 0 {
+		slices = append(slices, archiveNodes)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -221,6 +242,20 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	refRels, err := ts.refShard.AllRelationships(stripDepth(opts))
 	if err != nil {
 		return nil, err
+	}
+
+	// refArchive parity: see AllNodes above.
+	var archiveRels []*types.Relationship
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveRels, err = archive.AllRelationships(stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	type result struct {
@@ -247,6 +282,9 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
 		slices = append(slices, refRels)
+	}
+	if len(archiveRels) > 0 {
+		slices = append(slices, archiveRels)
 	}
 	for _, r := range results {
 		if r.err != nil {
@@ -447,6 +485,20 @@ func (ts *TieredStore) NodeCount() (int, error) {
 	}
 	total += n
 
+	// refArchive parity: archived nodes count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.NodeCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
 	for _, es := range eventShards {
 		store, err := es.checkoutStore(ts)
 		if err != nil {
@@ -473,6 +525,20 @@ func (ts *TieredStore) RelationshipCount() (int, error) {
 		return 0, err
 	}
 	total += n
+
+	// refArchive parity: archived rels count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		ar, err := archive.RelationshipCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += ar
+	}
 
 	for _, es := range eventShards {
 		store, err := es.checkoutStore(ts)
@@ -860,9 +926,16 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]snowflake.ID, error) {
 	// records to refArchive via the rel/node ID resolvers. ForEachNodeHistoryID
 	// already enumerates refArchive; the slice variant must too, otherwise
 	// archived-then-updated entities silently disappear from history scans.
+	// checkoutArchive pins the archive against a concurrent Close so the
+	// underlying DB cannot be torn down between Load and use.
 	var archiveIDs []snowflake.ID
-	if archive := ts.refArchive.Load(); archive != nil {
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
 		archiveIDs, err = archive.AllNodeHistoryIDs()
+		archiveCheckin()
 		if err != nil {
 			return nil, err
 		}
@@ -920,8 +993,13 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]snowflake.ID, error) {
 
 	// refArchive parity: see AllNodeHistoryIDs above.
 	var archiveIDs []snowflake.ID
-	if archive := ts.refArchive.Load(); archive != nil {
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
 		archiveIDs, err = archive.AllRelHistoryIDs()
+		archiveCheckin()
 		if err != nil {
 			return nil, err
 		}
@@ -1045,16 +1123,21 @@ func (ts *TieredStore) ForEachNodeID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	// Archive shard (if open).
-	archive := ts.refArchive.Load()
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachNodeID(func(id snowflake.ID) bool {
+		err := archive.ForEachNodeID(func(id snowflake.ID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -1105,15 +1188,20 @@ func (ts *TieredStore) ForEachRelID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	archive := ts.refArchive.Load()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachRelID(func(id snowflake.ID) bool {
+		err := archive.ForEachRelID(func(id snowflake.ID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -1163,15 +1251,20 @@ func (ts *TieredStore) ForEachNodeHistoryID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	archive := ts.refArchive.Load()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		err := archive.ForEachNodeHistoryID(func(id snowflake.ID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {
@@ -1221,15 +1314,20 @@ func (ts *TieredStore) ForEachRelHistoryID(fn func(snowflake.ID) bool) error {
 		return nil
 	}
 
-	archive := ts.refArchive.Load()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
 	if archive != nil {
-		if err := archive.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		err := archive.ForEachRelHistoryID(func(id snowflake.ID) bool {
 			if !fn(id) {
 				stopped = true
 				return false
 			}
 			return true
-		}); err != nil {
+		})
+		archiveCheckin()
+		if err != nil {
 			return err
 		}
 		if stopped {

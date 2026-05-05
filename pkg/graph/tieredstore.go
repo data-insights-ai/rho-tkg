@@ -96,16 +96,38 @@ func (es *eventShard) getStore(ts *TieredStore) (*BadgerStore, error) {
 // For cold shards: acquires shardMu, opens if nil, increments activeReqs while
 // still holding the lock to prevent TOCTOU race with closeIdleShards.
 func (es *eventShard) checkoutStore(ts *TieredStore) (*BadgerStore, error) {
+	// Refuse new checkouts after Close has been initiated. Close drains
+	// activeReqs per shard before es.store.Close(), so a checkout that
+	// races past the drain would see its store closed under it. The
+	// activeReqs increment must therefore be guarded by the same flag
+	// Close consults; without this gate the spin-wait in Close gives
+	// only the illusion of safety. Mirrors ensureRefArchive's
+	// ErrStoreClosed semantics.
+	if ts.closed.Load() {
+		return nil, ErrStoreClosed
+	}
 	if es.tier != TierCold {
 		// Hot/warm: stores are always open, never closed by idle-close.
 		es.activeReqs.Add(1)
 		es.lastAccess.Store(time.Now().UnixMilli())
+		// Re-check closed AFTER the increment so a concurrent Close that
+		// observed activeReqs == 0 between our load and our add doesn't
+		// proceed to close the store. If we lost the race, decrement and
+		// surface ErrStoreClosed to the caller.
+		if ts.closed.Load() {
+			es.activeReqs.Add(-1)
+			return nil, ErrStoreClosed
+		}
 		return es.store, nil
 	}
 	// Cold shard: acquire shardMu to atomically open + increment activeReqs.
 	// This prevents closeIdleShards from closing the store between open and
 	// the activeReqs increment (the v3.0.30 TOCTOU bug).
 	es.shardMu.Lock()
+	if ts.closed.Load() {
+		es.shardMu.Unlock()
+		return nil, ErrStoreClosed
+	}
 	if es.store == nil {
 		store, err := ts.openBadgerStoreWithRecovery(es.path)
 		if err != nil {
@@ -127,6 +149,62 @@ func (es *eventShard) checkinStore() {
 	es.activeReqs.Add(-1)
 }
 
+// checkoutArchive returns the refArchive pointer pinned against a concurrent
+// Close. Callers MUST invoke checkin exactly once. If the store has been
+// closed or the catalog has no archive shard the returned pointer is nil
+// and checkin is a safe no-op — callers should treat nil as "no archive
+// available" and skip archive-side work.
+//
+// Cold-start handling: if the catalog records an archive shard but the
+// in-memory pointer is nil (e.g. fresh process restart, no GetNode has
+// triggered lazy-open yet), this helper invokes ensureRefArchive so bulk
+// scans see archive content without needing a prior point lookup. Without
+// this, AllNodes / AllNodeHistoryIDs / similar bulk APIs would silently
+// omit archived entities until some unrelated lookup opened the archive.
+//
+// Concurrency: mirrors eventShard.checkoutStore. Close drains
+// archiveActiveReqs before calling archive.Close(), so a checkout active
+// at Close-time will be observed and waited for. The post-increment
+// closed re-check closes the window where Close already advanced past
+// the spin-wait between our load and our increment.
+func (ts *TieredStore) checkoutArchive() (*BadgerStore, func(), error) {
+	noop := func() {}
+	if ts.closed.Load() {
+		return nil, noop, nil
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		// Cold-start: open the archive on demand if the catalog says one
+		// exists. ensureRefArchive itself refuses to open after Close, so
+		// a racing Close still surfaces the right error.
+		if !ts.hasArchiveShard() {
+			return nil, noop, nil
+		}
+		if err := ts.ensureRefArchive(); err != nil {
+			if errors.Is(err, ErrStoreClosed) {
+				return nil, noop, nil
+			}
+			return nil, noop, err
+		}
+		archive = ts.refArchive.Load()
+		if archive == nil {
+			return nil, noop, nil
+		}
+	}
+	ts.archiveActiveReqs.Add(1)
+	if ts.closed.Load() {
+		ts.archiveActiveReqs.Add(-1)
+		return nil, noop, nil
+	}
+	// Re-load after the increment: Close stores nil into refArchive under
+	// archiveMu, and a snapshot taken before the increment may have raced.
+	if ts.refArchive.Load() == nil {
+		ts.archiveActiveReqs.Add(-1)
+		return nil, noop, nil
+	}
+	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
+}
+
 // TieredStore implements the Store interface by routing entities across
 // multiple BadgerStore instances based on ontology classification.
 //
@@ -138,6 +216,7 @@ type TieredStore struct {
 	refShard    *BadgerStore           // reference shard (always hot)
 	refArchive  atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu   sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
+	archiveActiveReqs atomic.Int64            // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards map[string]*eventShard // name -> event shard
 	hotShard    *eventShard            // convenience pointer to current hot shard
 	ontology    *OntologyMapping
@@ -419,8 +498,15 @@ func (ts *TieredStore) Close() error {
 			}
 		}
 
-		// Close reference archive if it was open at close time.
+		// Close reference archive if it was open at close time. Drain
+		// archiveActiveReqs first so a concurrent AllNodeHistoryIDs /
+		// ForEachNodeHistoryID / similar archive reader cannot race the
+		// underlying db.Close() — same Badger v4 Flush-on-closed-DB
+		// concern as event shards above.
 		if archive != nil {
+			for ts.archiveActiveReqs.Load() > 0 {
+				time.Sleep(time.Millisecond)
+			}
 			if err := archive.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w", err))
 			}
