@@ -506,7 +506,7 @@ single-mutation. The MR author (Markus Nissl) added the missing two-phase
 tests; the original buggy code shipped across multiple Claude-co-authored
 commits, all with high test counts but only single-mutation coverage.
 
-## B26. Performance Tests Need Production Shape
+## B34. Performance Tests Need Production Shape
 
 ```
 BAD:  BenchmarkGetNode on 2K nodes and call it a performance gate

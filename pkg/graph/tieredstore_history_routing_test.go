@@ -419,7 +419,7 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	if err != nil {
 		t.Fatalf("OutgoingRelationships: %v", err)
 	}
-	assertRelIDs(t, "OutgoingRelationships proves rel remains live on start shard", outgoing, []snowflake.ID{relID.SnowflakeID()})
+	assertRelIDs(t, "OutgoingRelationships proves rel remains live on start shard", outgoing, []types.RelID{relID})
 
 	got, err := g.GetRelationship(relID)
 	if err != nil {
@@ -432,14 +432,14 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	if err != nil {
 		t.Errorf("IncomingRelationships: %v", err)
 	} else {
-		assertRelIDs(t, "IncomingRelationships after start shard cold demotion", incoming, []snowflake.ID{relID.SnowflakeID()})
+		assertRelIDs(t, "IncomingRelationships after start shard cold demotion", incoming, []types.RelID{relID})
 	}
 
 	batched, err := g.IncomingRelationshipsForNodes([]types.NodeID{endID}, "OBSERVED")
 	if err != nil {
 		t.Errorf("IncomingRelationshipsForNodes: %v", err)
 	} else {
-		assertRelIDs(t, "IncomingRelationshipsForNodes after start shard cold demotion", batched[endID], []snowflake.ID{relID.SnowflakeID()})
+		assertRelIDs(t, "IncomingRelationshipsForNodes after start shard cold demotion", batched[endID], []types.RelID{relID})
 	}
 }
 

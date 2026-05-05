@@ -10,10 +10,17 @@ type Instant int64
 // This is the bridge for pkg/graph to resolve base entity references.
 func (id EntityID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
-// EntityID is the opaque, unexported ID type for cross-entity references
-// (version chains) where the target may be either a node or a relationship.
-// Wraps snowflake.ID — external packages cannot construct or compare these
-// directly.
+// EntityID is the opaque, exported ID type for cross-entity references
+// (version chains, events, batch errors, query cursors) where the target
+// may be either a node or a relationship. Wraps snowflake.ID with a named
+// type so the compiler distinguishes EntityID from NodeID and RelID.
+//
+// Zero-value semantics: the literal 0 is a sentinel meaning "no value"
+// across the whole API surface — Event.EntityID, BatchError.ID,
+// QueryOpts.After, and TemporalMetadata.baseEntityID all use 0 to mean
+// unset. The literal `0` is convertible to EntityID without a cast
+// (Go's untyped-constant rule), so zero-value checks like
+// `if id == 0` and `if opts.After != 0` keep working unchanged.
 type EntityID snowflake.ID
 
 // TemporalMetadata holds temporal lifecycle fields for nodes and relationships.

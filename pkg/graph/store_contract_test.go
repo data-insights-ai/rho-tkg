@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -118,20 +117,20 @@ func TestStoreContract_CurrentVisibility(t *testing.T) {
 		}, 1)
 
 		assertNodeIDs(t, "AllNodes", mustAllNodes(t, g, QueryOpts{}),
-			[]snowflake.ID{caseNode.ID().SnowflakeID(), signalNode.ID().SnowflakeID()})
+			[]types.NodeID{caseNode.ID(), signalNode.ID()})
 		assertNodeIDs(t, "NodesByLabel(Case)", mustNodesByLabel(t, g, "Case", QueryOpts{}),
-			[]snowflake.ID{caseNode.ID().SnowflakeID()})
+			[]types.NodeID{caseNode.ID()})
 		assertNodeIDs(t, "NodesByLabel(Signal)", mustNodesByLabel(t, g, "Signal", QueryOpts{}),
-			[]snowflake.ID{signalNode.ID().SnowflakeID()})
+			[]types.NodeID{signalNode.ID()})
 
 		assertRelIDs(t, "AllRelationships", mustAllRelationships(t, g, QueryOpts{}),
-			[]snowflake.ID{observed.ID().SnowflakeID()})
+			[]types.RelID{observed.ID()})
 		assertRelIDs(t, "RelationshipsByType(OBSERVED)", mustRelationshipsByType(t, g, "OBSERVED", QueryOpts{}),
-			[]snowflake.ID{observed.ID().SnowflakeID()})
+			[]types.RelID{observed.ID()})
 		assertRelIDs(t, "OutgoingRelationships(Case)", mustOutgoingRelationships(t, g, caseNode.ID(), ""),
-			[]snowflake.ID{observed.ID().SnowflakeID()})
+			[]types.RelID{observed.ID()})
 		assertRelIDs(t, "IncomingRelationships(Signal)", mustIncomingRelationships(t, g, signalNode.ID(), ""),
-			[]snowflake.ID{observed.ID().SnowflakeID()})
+			[]types.RelID{observed.ID()})
 	})
 }
 
@@ -184,9 +183,9 @@ func TestStoreContract_HistoryVisibility(t *testing.T) {
 		}
 
 		assertNodeIDs(t, "AllNodeHistoryIDs", idsToNodes(t, g.store, mustStoreNodeHistoryIDs(t, g.store)),
-			[]snowflake.ID{caseNode.ID().SnowflakeID()})
+			[]types.NodeID{caseNode.ID()})
 		assertRelIDs(t, "AllRelHistoryIDs", idsToRels(t, g.store, mustStoreRelHistoryIDs(t, g.store)),
-			[]snowflake.ID{rel.ID().SnowflakeID()})
+			[]types.RelID{rel.ID()})
 
 		gotCurrent, err := g.GetNode(caseNode.ID())
 		if err != nil {
@@ -238,29 +237,29 @@ func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
 		assertNodeTombstone(t, g, caseNode.ID())
 		assertRelTombstone(t, g, cascadeRel.ID())
 
-		nodeHistoryIDs := nodeIDsToSnowflake(mustStoreNodeHistoryIDs(t, g.store))
-		assertIDSet(t, "AllNodeHistoryIDs after deletes", nodeHistoryIDs, []snowflake.ID{
-			caseNode.ID().SnowflakeID(),
-			signalNode.ID().SnowflakeID(),
+		nodeHistoryIDs := mustStoreNodeHistoryIDs(t, g.store)
+		assertIDSet(t, "AllNodeHistoryIDs after deletes", nodeHistoryIDs, []types.NodeID{
+			caseNode.ID(),
+			signalNode.ID(),
 		})
-		relHistoryIDs := relIDsToSnowflake(mustStoreRelHistoryIDs(t, g.store))
-		assertIDSet(t, "AllRelHistoryIDs after deletes", relHistoryIDs, []snowflake.ID{
-			rel.ID().SnowflakeID(),
-			cascadeRel.ID().SnowflakeID(),
+		relHistoryIDs := mustStoreRelHistoryIDs(t, g.store)
+		assertIDSet(t, "AllRelHistoryIDs after deletes", relHistoryIDs, []types.RelID{
+			rel.ID(),
+			cascadeRel.ID(),
 		})
 
-		var forEachNodeIDs []snowflake.ID
+		var forEachNodeIDs []types.NodeID
 		if err := g.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
-			forEachNodeIDs = append(forEachNodeIDs, id.SnowflakeID())
+			forEachNodeIDs = append(forEachNodeIDs, id)
 			return true
 		}); err != nil {
 			t.Fatalf("ForEachNodeHistoryID: %v", err)
 		}
 		assertIDSet(t, "ForEachNodeHistoryID", forEachNodeIDs, nodeHistoryIDs)
 
-		var forEachRelIDs []snowflake.ID
+		var forEachRelIDs []types.RelID
 		if err := g.store.ForEachRelHistoryID(func(id types.RelID) bool {
-			forEachRelIDs = append(forEachRelIDs, id.SnowflakeID())
+			forEachRelIDs = append(forEachRelIDs, id)
 			return true
 		}); err != nil {
 			t.Fatalf("ForEachRelHistoryID: %v", err)
@@ -299,12 +298,12 @@ func TestStoreContract_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AllNodeIDs first page: %v", err)
 		}
-		assertIDSetPreserveOrder(t, "AllNodeIDs first page", nodeIDsToSnowflake(allNodeIDs), wantNodeIDs[:3])
+		assertIDSetPreserveOrder(t, "AllNodeIDs first page", allNodeIDs, wantNodeIDs[:3])
 		allNodeIDs, err = g.store.AllNodeIDs(QueryOpts{After: types.EntityID(allNodeIDs[len(allNodeIDs)-1])})
 		if err != nil {
 			t.Fatalf("AllNodeIDs second page: %v", err)
 		}
-		assertIDSetPreserveOrder(t, "AllNodeIDs second page", nodeIDsToSnowflake(allNodeIDs), wantNodeIDs[3:])
+		assertIDSetPreserveOrder(t, "AllNodeIDs second page", allNodeIDs, wantNodeIDs[3:])
 
 		rels := make([]*types.Relationship, 0, 4)
 		for i := range 4 {
@@ -328,12 +327,12 @@ func TestStoreContract_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AllRelIDs first page: %v", err)
 		}
-		assertIDSetPreserveOrder(t, "AllRelIDs first page", relIDsToSnowflake(allRelIDs), wantRelIDs[:3])
+		assertIDSetPreserveOrder(t, "AllRelIDs first page", allRelIDs, wantRelIDs[:3])
 		allRelIDs, err = g.store.AllRelIDs(QueryOpts{After: types.EntityID(allRelIDs[len(allRelIDs)-1])})
 		if err != nil {
 			t.Fatalf("AllRelIDs second page: %v", err)
 		}
-		assertIDSetPreserveOrder(t, "AllRelIDs second page", relIDsToSnowflake(allRelIDs), wantRelIDs[3:])
+		assertIDSetPreserveOrder(t, "AllRelIDs second page", allRelIDs, wantRelIDs[3:])
 	})
 }
 
@@ -347,29 +346,29 @@ func TestStoreContract_TemporalFilters(t *testing.T) {
 		signal := addContractTemporalNode(t, g, "Signal", "event", 200, 400)
 
 		assertNodeIDs(t, "NodesByLabel Case ValidAt=250", mustNodesByLabel(t, g, "Case", QueryOpts{ValidAt: 250}),
-			[]snowflake.ID{caseA.ID().SnowflakeID(), caseB.ID().SnowflakeID()})
+			[]types.NodeID{caseA.ID(), caseB.ID()})
 		assertNodeIDs(t, "NodesByLabel Case ValidAt=350", mustNodesByLabel(t, g, "Case", QueryOpts{ValidAt: 350}),
-			[]snowflake.ID{caseB.ID().SnowflakeID()})
+			[]types.NodeID{caseB.ID()})
 		assertNodeIDs(t, "NodesByLabel Case interval", mustNodesByLabel(t, g, "Case", QueryOpts{ValidStart: 250, ValidEnd: 550}),
-			[]snowflake.ID{caseA.ID().SnowflakeID(), caseB.ID().SnowflakeID(), caseC.ID().SnowflakeID()})
+			[]types.NodeID{caseA.ID(), caseB.ID(), caseC.ID()})
 		assertNodeIDs(t, "AllNodes ValidAt=250", mustAllNodes(t, g, QueryOpts{ValidAt: 250}),
-			[]snowflake.ID{caseA.ID().SnowflakeID(), caseB.ID().SnowflakeID(), signal.ID().SnowflakeID()})
+			[]types.NodeID{caseA.ID(), caseB.ID(), signal.ID()})
 
 		if err := g.CreatePropertyIndex("Case", "color"); err != nil {
 			t.Fatalf("CreatePropertyIndex: %v", err)
 		}
 		assertNodeIDs(t, "NodesByLabelAndProperty indexed ValidAt=350",
 			mustNodesByLabelAndProperty(t, g, "Case", "color", "red", QueryOpts{ValidAt: 350}),
-			[]snowflake.ID{caseB.ID().SnowflakeID()})
+			[]types.NodeID{caseB.ID()})
 
 		relA := addContractTemporalRel(t, g, caseA, caseB, 100, 300)
 		relB := addContractTemporalRel(t, g, caseB, caseC, 400, 0)
 		assertRelIDs(t, "RelationshipsByType ValidAt=250", mustRelationshipsByType(t, g, "TEMPORAL_LINK", QueryOpts{ValidAt: 250}),
-			[]snowflake.ID{relA.ID().SnowflakeID()})
+			[]types.RelID{relA.ID()})
 		assertRelIDs(t, "RelationshipsByType interval", mustRelationshipsByType(t, g, "TEMPORAL_LINK", QueryOpts{ValidStart: 250, ValidEnd: 450}),
-			[]snowflake.ID{relA.ID().SnowflakeID(), relB.ID().SnowflakeID()})
+			[]types.RelID{relA.ID(), relB.ID()})
 		assertRelIDs(t, "AllRelationships ValidAt=450", mustAllRelationships(t, g, QueryOpts{ValidAt: 450}),
-			[]snowflake.ID{relB.ID().SnowflakeID()})
+			[]types.RelID{relB.ID()})
 	})
 }
 
@@ -696,60 +695,52 @@ func idsToRels(t *testing.T, store Store, ids []types.RelID) []*types.Relationsh
 	return rels
 }
 
-func nodeIDs(nodes []*types.Node) []snowflake.ID {
-	ids := make([]snowflake.ID, 0, len(nodes))
+// orderedID covers every typed-ID wrapper plus raw snowflake.ID. All have
+// underlying type int64, so `<` sorts and `==` compares correctly across all
+// of them. Keeps the assertion helpers polymorphic without an explicit
+// raw/typed bridge.
+type orderedID interface {
+	~int64
+}
+
+func nodeIDs(nodes []*types.Node) []types.NodeID {
+	ids := make([]types.NodeID, 0, len(nodes))
 	for _, n := range nodes {
-		ids = append(ids, n.ID().SnowflakeID())
+		ids = append(ids, n.ID())
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
 }
 
-func relIDs(rels []*types.Relationship) []snowflake.ID {
-	ids := make([]snowflake.ID, 0, len(rels))
+func relIDs(rels []*types.Relationship) []types.RelID {
+	ids := make([]types.RelID, 0, len(rels))
 	for _, r := range rels {
-		ids = append(ids, r.ID().SnowflakeID())
+		ids = append(ids, r.ID())
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
 }
 
-func nodeIDsToSnowflake(ids []types.NodeID) []snowflake.ID {
-	out := make([]snowflake.ID, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, id.SnowflakeID())
-	}
-	return out
-}
-
-func relIDsToSnowflake(ids []types.RelID) []snowflake.ID {
-	out := make([]snowflake.ID, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, id.SnowflakeID())
-	}
-	return out
-}
-
-func assertNodeIDs(t *testing.T, name string, nodes []*types.Node, want []snowflake.ID) {
+func assertNodeIDs(t *testing.T, name string, nodes []*types.Node, want []types.NodeID) {
 	t.Helper()
 	assertIDSetPreserveOrder(t, name, nodeIDs(nodes), want)
 }
 
-func assertRelIDs(t *testing.T, name string, rels []*types.Relationship, want []snowflake.ID) {
+func assertRelIDs(t *testing.T, name string, rels []*types.Relationship, want []types.RelID) {
 	t.Helper()
 	assertIDSetPreserveOrder(t, name, relIDs(rels), want)
 }
 
-func assertIDSet(t *testing.T, name string, got, want []snowflake.ID) {
+func assertIDSet[T orderedID](t *testing.T, name string, got, want []T) {
 	t.Helper()
-	got = append([]snowflake.ID(nil), got...)
-	want = append([]snowflake.ID(nil), want...)
+	got = append([]T(nil), got...)
+	want = append([]T(nil), want...)
 	sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 	assertIDSetPreserveOrder(t, name, got, want)
 }
 
-func assertIDSetPreserveOrder(t *testing.T, name string, got, want []snowflake.ID) {
+func assertIDSetPreserveOrder[T orderedID](t *testing.T, name string, got, want []T) {
 	t.Helper()
 	if len(got) == 0 && len(want) == 0 {
 		return
