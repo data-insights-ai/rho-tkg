@@ -440,6 +440,12 @@ func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) er
 		return shard.TruncateNodeHistory(id, keepVersions)
 	}
 
+	// If the live entity is on this shard, the empty history is authoritative —
+	// the truncate is a no-op and there is no need to fan out across shards.
+	if shard.hasNodeID(id) {
+		return shard.TruncateNodeHistory(id, keepVersions)
+	}
+
 	truncated := false
 	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetNodeHistory(id)
@@ -480,6 +486,13 @@ func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 		return err
 	}
 	if len(history) > 0 {
+		return shard.TruncateRelHistory(id, keepVersions)
+	}
+
+	// If the live rel entity is on this shard, the empty history is
+	// authoritative — the truncate is a no-op on this shard and there is no
+	// need to fan out across shards.
+	if shard.hasRelID(id) {
 		return shard.TruncateRelHistory(id, keepVersions)
 	}
 

@@ -297,13 +297,13 @@ func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
 // when the rel's timestamp-routed candidate shard differs from the shard that
 // actually owns the history. This is the cross-shard rel case where:
 //
-//   1. start + end nodes live on shard A (current hot at time of node creation),
-//   2. a rotation makes shard B the new hot shard,
-//   3. a rel between start↔end is created AFTER rotation — its timestamp
-//      candidate is shard B, but the rel entity (and its history) live on
-//      shard A per the start-node-routing rule,
-//   4. the rel is deleted (tombstone written to shard A),
-//   5. shard A ages warm→cold.
+//  1. start + end nodes live on shard A (current hot at time of node creation),
+//  2. a rotation makes shard B the new hot shard,
+//  3. a rel between start↔end is created AFTER rotation — its timestamp
+//     candidate is shard B, but the rel entity (and its history) live on
+//     shard A per the start-node-routing rule,
+//  4. the rel is deleted (tombstone written to shard A),
+//  5. shard A ages warm→cold.
 //
 // Reading the rel history must probe shard A. A naïve "skip cold shards"
 // optimisation in forEachHistoryShard regresses this path silently — the
@@ -372,5 +372,242 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 	last := history[len(history)-1]
 	if last.Temporal() == nil || last.Temporal().DeletedAt == 0 {
 		t.Errorf("expected a tombstone with DeletedAt set, got %+v", last.Temporal())
+	}
+}
+
+// A live relationship created after rotation can be stored on the start node's
+// old shard while its relationship ID timestamp resolves to the new hot shard.
+// If the old shard later becomes cold, every public relationship lookup path
+// must still find the live rel.
+func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startID := a.InternalID().SnowflakeID()
+	endID := b.InternalID().SnowflakeID()
+
+	ts.mu.RLock()
+	originName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+	time.Sleep(2 * time.Millisecond)
+
+	r, err := g.AddRelationship("OBSERVED", a, b, map[string]any{"w": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID().SnowflakeID()
+
+	demoteToCold(ts, originName)
+
+	outgoing, err := g.OutgoingRelationships(startID, "OBSERVED")
+	if err != nil {
+		t.Fatalf("OutgoingRelationships: %v", err)
+	}
+	assertRelIDs(t, "OutgoingRelationships proves rel remains live on start shard", outgoing, []snowflake.ID{relID})
+
+	got, err := g.GetRelationship(relID)
+	if err != nil {
+		t.Errorf("GetRelationship(%d) after start shard cold demotion: %v", relID, err)
+	} else if got.InternalID().SnowflakeID() != relID {
+		t.Errorf("GetRelationship returned rel %d, want %d", got.InternalID().SnowflakeID(), relID)
+	}
+
+	incoming, err := g.IncomingRelationships(endID, "OBSERVED")
+	if err != nil {
+		t.Errorf("IncomingRelationships: %v", err)
+	} else {
+		assertRelIDs(t, "IncomingRelationships after start shard cold demotion", incoming, []snowflake.ID{relID})
+	}
+
+	batched, err := g.IncomingRelationshipsForNodes([]snowflake.ID{endID}, "OBSERVED")
+	if err != nil {
+		t.Errorf("IncomingRelationshipsForNodes: %v", err)
+	} else {
+		assertRelIDs(t, "IncomingRelationshipsForNodes after start shard cold demotion", batched[endID], []snowflake.ID{relID})
+	}
+}
+
+func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
+	t.Run("Graph.GetNodeHistory current node", func(t *testing.T) {
+		g, _, cold := newTieredGraphWithClosedColdShard(t)
+		n, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		history, err := g.GetNodeHistory(n.InternalID().SnowflakeID())
+		if err != nil {
+			t.Fatalf("GetNodeHistory: %v", err)
+		}
+		if len(history) != 0 {
+			t.Fatalf("GetNodeHistory len = %d, want 0", len(history))
+		}
+		assertColdShardStillClosed(t, cold, "GetNodeHistory for current node with no history")
+	})
+
+	t.Run("Graph.GetRelHistory current rel", func(t *testing.T) {
+		g, _, cold := newTieredGraphWithClosedColdShard(t)
+		a, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.AddRelationship("LINK", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		history, err := g.GetRelHistory(r.InternalID().SnowflakeID())
+		if err != nil {
+			t.Fatalf("GetRelHistory: %v", err)
+		}
+		if len(history) != 0 {
+			t.Fatalf("GetRelHistory len = %d, want 0", len(history))
+		}
+		assertColdShardStillClosed(t, cold, "GetRelHistory for current rel with no history")
+	})
+
+	t.Run("Store.GetNodeVersion missing version", func(t *testing.T) {
+		g, ts, cold := newTieredGraphWithClosedColdShard(t)
+		n, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = ts.GetNodeVersion(n.InternalID().SnowflakeID(), 99)
+		if !errors.Is(err, ErrVersionNotFound) {
+			t.Fatalf("GetNodeVersion missing err = %v, want ErrVersionNotFound", err)
+		}
+		assertColdShardStillClosed(t, cold, "GetNodeVersion for missing version on current node")
+	})
+
+	t.Run("Store.GetRelVersion missing version", func(t *testing.T) {
+		g, ts, cold := newTieredGraphWithClosedColdShard(t)
+		a, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.AddRelationship("LINK", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = ts.GetRelVersion(r.InternalID().SnowflakeID(), 99)
+		if !errors.Is(err, ErrVersionNotFound) {
+			t.Fatalf("GetRelVersion missing err = %v, want ErrVersionNotFound", err)
+		}
+		assertColdShardStillClosed(t, cold, "GetRelVersion for missing version on current rel")
+	})
+
+	t.Run("Store.TruncateNodeHistory current node", func(t *testing.T) {
+		g, ts, cold := newTieredGraphWithClosedColdShard(t)
+		n, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := ts.TruncateNodeHistory(n.InternalID().SnowflakeID(), 0); err != nil {
+			t.Fatalf("TruncateNodeHistory: %v", err)
+		}
+		assertColdShardStillClosed(t, cold, "TruncateNodeHistory for current node with no history")
+	})
+
+	t.Run("Store.TruncateRelHistory current rel", func(t *testing.T) {
+		g, ts, cold := newTieredGraphWithClosedColdShard(t)
+		a, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.AddNode([]string{"Case"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.AddRelationship("LINK", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := ts.TruncateRelHistory(r.InternalID().SnowflakeID(), 0); err != nil {
+			t.Fatalf("TruncateRelHistory: %v", err)
+		}
+		assertColdShardStillClosed(t, cold, "TruncateRelHistory for current rel with no history")
+	})
+}
+
+func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *eventShard) {
+	t.Helper()
+	g, ts := newTestTieredGraph(t)
+
+	ts.mu.RLock()
+	originName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+
+	demoteToCold(ts, originName)
+	cold := eventShardByName(t, ts, originName)
+	closeEventShardStore(t, cold)
+	return g, ts, cold
+}
+
+func eventShardByName(t *testing.T, ts *TieredStore, name string) *eventShard {
+	t.Helper()
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	es := ts.eventShards[name]
+	if es == nil {
+		t.Fatalf("event shard %q not found", name)
+	}
+	return es
+}
+
+func closeEventShardStore(t *testing.T, es *eventShard) {
+	t.Helper()
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if es.store == nil {
+		return
+	}
+	if err := es.store.Close(); err != nil {
+		t.Fatalf("close cold shard store: %v", err)
+	}
+	es.store = nil
+}
+
+func assertColdShardStillClosed(t *testing.T, es *eventShard, op string) {
+	t.Helper()
+	es.shardMu.Lock()
+	open := es.store != nil
+	es.shardMu.Unlock()
+	if open {
+		t.Fatalf("%s opened a cold shard that should not be probed", op)
 	}
 }

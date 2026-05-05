@@ -488,7 +488,10 @@ func (ts *TieredStore) shardForNodeVersion(id snowflake.ID, n *types.Node) (*Bad
 // O(1): try ref (hasRelID), miss -> try timestamp extraction -> probe all event shards.
 // Probe is needed because cross-shard relationship entities may be stored in a
 // shard that doesn't match their creation timestamp (e.g., a rel created after
-// rotation whose entity lives in the start node's warm shard).
+// rotation whose entity lives in the start node's warm shard). The probe must
+// include cold shards: a cross-shard rel created while the start-node shard
+// was warm can age to cold without ever being deleted, and the rel still lives
+// there.
 // Returns error if cold shard lazy-open fails.
 func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 	if ts.refShard.hasRelID(id) {
@@ -504,14 +507,12 @@ func (ts *TieredStore) shardForRelID(id snowflake.ID) (*BadgerStore, error) {
 		return candidate, nil
 	}
 
-	// Probe hot+warm event shards only (cold shards are immutable;
-	// cross-shard rels cannot be created on cold shards).
+	// Probe all event shards (hot+warm+cold). Cold shards are included because
+	// a cross-shard rel created post-rotation can have its entity on a warm
+	// shard that subsequently ages to cold.
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	for _, es := range ts.eventShards {
-		if es.tier == TierCold {
-			continue // skip cold — no FD cost
-		}
 		store, err := es.getStore(ts)
 		if err != nil {
 			return nil, err
@@ -566,9 +567,10 @@ func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *eventShard {
 //
 // Cross-shard relationships may live in a shard that does not match their
 // creation timestamp (the entity is stored in the start node's shard). The
-// timestamp candidate is checked first as a fast path, then hot+warm event
-// shards are probed in turn. Cold shards are skipped because cross-shard
-// rels cannot be created on cold (immutable) shards.
+// timestamp candidate is checked first as a fast path, then every other event
+// shard (including cold shards) is probed in turn. Cold shards are included
+// because a cross-shard rel created while the start-node shard was warm can
+// later age to cold — the rel never moves, so the lookup must follow it.
 //
 // The caller MUST invoke the returned checkin function exactly once.
 // refShard checkin is a no-op; event shard checkin decrements activeReqs.
@@ -586,11 +588,13 @@ func (ts *TieredStore) shardForRelIDChecked(id snowflake.ID) (store *BadgerStore
 		return candidate, func() { candidateEntry.checkinStore() }, nil
 	}
 
-	// Probe hot+warm event shards (excluding the candidate we already checked).
+	// Probe every other event shard (excluding the candidate we already
+	// checked). Cold shards are included so a cross-shard rel that aged to
+	// cold is still found.
 	ts.mu.RLock()
 	probe := make([]*eventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
-		if es.tier == TierCold || es == candidateEntry {
+		if es == candidateEntry {
 			continue
 		}
 		probe = append(probe, es)

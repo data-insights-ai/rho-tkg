@@ -4631,53 +4631,51 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	}
 }
 
-// --- Fix 2: shardForRelID — skip cold shards in fallback ---
+// --- Fix 2: shardForRelID — probe cold shards when needed ---
 
-func TestTieredStore_ShardForRelID_SkipsColdShards(t *testing.T) {
-	// Create cold shards, verify the fallback probe doesn't open them.
-	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	_, _ = reg.GetOrCreate("Case")
-	signalTok, _ := reg.GetOrCreate("Signal")
+// A cross-shard relationship written while the start-node shard was warm can
+// later age to cold without ever being deleted. The lookup must follow it,
+// even at the cost of opening the cold shard. The earlier "skip cold shards"
+// fast-path was incorrect — it silently lost live cross-shard rels once the
+// start-node shard aged out.
+func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
 
-	gen := tieredNodeGen(t)
-	n := types.NewNode(gen.Generate(), signalTok, nil)
-	if err := ts.PutNode(n); err != nil {
+	a, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	ts.mu.RLock()
-	hotName := ts.hotShard.name
+	originName := ts.hotShard.name
 	ts.mu.RUnlock()
 
-	// Rotate and demote to cold.
 	time.Sleep(2 * time.Millisecond)
 	ts.mu.Lock()
-	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
-	demoteToCold(ts, hotName)
-
-	// Close the cold shard store to verify it doesn't get opened.
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	coldES.shardMu.Lock()
-	if coldES.store != nil {
-		_ = coldES.store.Close()
-		coldES.store = nil
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
 	}
-	coldES.shardMu.Unlock()
+	ts.mu.Unlock()
 
-	// Query a nonexistent relID — fallback should NOT open cold shard.
-	_, _ = ts.shardForRelID(snowflake.ID(999999999))
+	r, err := g.AddRelationship("OBSERVED", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relID := r.InternalID().SnowflakeID()
 
-	coldES.shardMu.Lock()
-	storeClosed := coldES.store == nil
-	coldES.shardMu.Unlock()
+	demoteToCold(ts, originName)
 
-	if !storeClosed {
-		t.Error("shardForRelID fallback should skip cold shards, but it opened one")
+	shard, err := ts.shardForRelID(relID)
+	if err != nil {
+		t.Fatalf("shardForRelID after cold demotion: %v", err)
+	}
+	if !shard.hasRelID(relID) {
+		t.Errorf("shardForRelID returned a shard that does not own rel %d after cold demotion", relID)
 	}
 }
 

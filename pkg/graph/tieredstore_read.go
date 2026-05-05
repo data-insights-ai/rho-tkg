@@ -31,10 +31,11 @@ func (ts *TieredStore) GetNode(id snowflake.ID) (*types.Node, error) {
 }
 
 func (ts *TieredStore) GetRelationship(id snowflake.ID) (*types.Relationship, error) {
-	shard, err := ts.shardForRelID(id)
+	shard, checkin, err := ts.shardForRelIDChecked(id)
 	if err != nil {
 		return nil, err
 	}
+	defer checkin()
 	return shard.GetRelationship(id)
 }
 
@@ -318,14 +319,16 @@ func (ts *TieredStore) IncomingRelationships(nodeID snowflake.ID, typeToken uint
 		return nil, nil
 	}
 
-	// Fetch each rel entity via shard resolution (relID timestamp -> O(1) per entity).
+	// Fetch each rel entity via checked shard resolution so cross-shard rels
+	// stored on shards that have aged to cold remain reachable.
 	result := make([]*types.Relationship, 0, len(relIDs))
 	for _, relID := range relIDs {
-		relShard, err := ts.shardForRelID(relID)
+		relShard, checkin, err := ts.shardForRelIDChecked(relID)
 		if err != nil {
 			return nil, err
 		}
 		r, err := relShard.GetRelationship(relID)
+		checkin()
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
@@ -377,14 +380,16 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(nodeIDs []snowflake.ID, typ
 		return nil, nil
 	}
 
-	// Phase 2: fetch each rel entity via shard resolution.
+	// Phase 2: fetch each rel entity via checked shard resolution so cross-shard
+	// rels stored on shards that have aged to cold remain reachable.
 	result := make(map[snowflake.ID][]*types.Relationship, len(seen))
 	for _, ref := range refs {
-		relShard, err := ts.shardForRelID(ref.relID)
+		relShard, checkin, err := ts.shardForRelIDChecked(ref.relID)
 		if err != nil {
 			return nil, err
 		}
 		r, err := relShard.GetRelationship(ref.relID)
+		checkin()
 		if errors.Is(err, ErrRelNotFound) {
 			continue // orphan from partial failure
 		}
@@ -670,6 +675,12 @@ func (ts *TieredStore) GetNodeVersion(id snowflake.ID, version uint32) (*types.N
 		return n, err
 	}
 
+	// If the live entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards (incl. cold ones).
+	if shard.hasNodeID(id) {
+		return nil, ErrVersionNotFound
+	}
+
 	var found *types.Node
 	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
 		n, err := candidate.GetNodeVersion(id, version)
@@ -702,6 +713,13 @@ func (ts *TieredStore) GetNodeHistory(id snowflake.ID) ([]*types.Node, error) {
 		return history, err
 	}
 
+	// If the live entity is on this shard, an empty history here is
+	// authoritative — the deleted-entity fan-out is unnecessary and would
+	// needlessly wake cold shards.
+	if store.hasNodeID(id) {
+		return nil, nil
+	}
+
 	var found []*types.Node
 	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetNodeHistory(id)
@@ -729,6 +747,12 @@ func (ts *TieredStore) GetRelVersion(id snowflake.ID, version uint32) (*types.Re
 	r, err := shard.GetRelVersion(id, version)
 	if err == nil || !errors.Is(err, ErrVersionNotFound) {
 		return r, err
+	}
+
+	// If the live rel entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards.
+	if shard.hasRelID(id) {
+		return nil, ErrVersionNotFound
 	}
 
 	var found *types.Relationship
@@ -761,6 +785,13 @@ func (ts *TieredStore) GetRelHistory(id snowflake.ID) ([]*types.Relationship, er
 	history, err := shard.GetRelHistory(id)
 	if err != nil || len(history) > 0 {
 		return history, err
+	}
+
+	// If the live rel entity is on this shard, an empty history here is
+	// authoritative — skip the deleted-rel fan-out so cold shards are not
+	// needlessly opened.
+	if shard.hasRelID(id) {
+		return nil, nil
 	}
 
 	var found []*types.Relationship
