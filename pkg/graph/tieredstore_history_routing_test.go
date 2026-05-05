@@ -844,3 +844,87 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 		t.Fatalf("GetRelationship after delete = %v, want ErrRelNotFound", err)
 	}
 }
+
+// E->E rel created post-rotation lives on the start-node's old (now cold)
+// shard. Update and delete must keep that shard pinned for the entire
+// read-mutate-write cycle: each ReplaceRelWithHistory / DeleteRelWithHistory
+// runs through TieredStore which previously resolved owners via the
+// unchecked shardForRelID/shardForNodeID.
+func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
+	rotateAndDemoteHot := func(t *testing.T, ts *TieredStore) {
+		t.Helper()
+		ts.mu.RLock()
+		originName := ts.hotShard.name
+		ts.mu.RUnlock()
+		time.Sleep(2 * time.Millisecond)
+		ts.mu.Lock()
+		if err := ts.RotateHotShard(); err != nil {
+			ts.mu.Unlock()
+			t.Fatal(err)
+		}
+		ts.mu.Unlock()
+		demoteToCold(ts, originName)
+	}
+
+	t.Run("UpdateRelationship after cold demotion", func(t *testing.T) {
+		g, ts := newTestTieredGraph(t)
+		a, err := g.AddNode([]string{"Signal"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.AddNode([]string{"Signal"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.AddRelationship("OBSERVES", a, b, map[string]any{"w": int64(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		relID := r.InternalID().SnowflakeID()
+
+		rotateAndDemoteHot(t, ts)
+
+		if _, err := g.UpdateRelationship(relID, map[string]any{"w": int64(2)}); err != nil {
+			t.Fatalf("UpdateRelationship after cold demotion: %v", err)
+		}
+		got, err := g.GetRelationship(relID)
+		if err != nil {
+			t.Fatalf("GetRelationship after update: %v", err)
+		}
+		if v, ok := got.GetProperty("w"); !ok || v.(int64) != 2 {
+			t.Fatalf("post-update w = %v (ok=%v), want 2", v, ok)
+		}
+	})
+
+	t.Run("DeleteRelationship full lifecycle after cold demotion", func(t *testing.T) {
+		g, ts := newTestTieredGraph(t)
+		a, err := g.AddNode([]string{"Signal"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.AddNode([]string{"Signal"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.AddRelationship("OBSERVES", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		relID := r.InternalID().SnowflakeID()
+
+		rotateAndDemoteHot(t, ts)
+
+		if err := g.DeleteRelationship(relID); err != nil {
+			t.Fatalf("DeleteRelationship after cold demotion: %v", err)
+		}
+
+		// History is preserved (DeleteRelationship goes through DeleteRelWithHistory).
+		history, err := ts.GetRelHistory(relID)
+		if err != nil {
+			t.Fatalf("GetRelHistory after delete: %v", err)
+		}
+		if len(history) == 0 {
+			t.Fatal("expected at least one history entry (tombstone) after delete, got 0")
+		}
+	})
+}

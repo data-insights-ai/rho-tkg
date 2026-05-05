@@ -210,15 +210,25 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 }
 
 func (ts *TieredStore) DeleteNodesBatch(ids []snowflake.ID) error {
-	// Partition by actual shard using shardForNodeID.
+	// Partition by actual shard. Use the checked variant so a cold owner
+	// stays pinned during the per-shard batch write below.
 	shardBuckets := make(map[*BadgerStore][]snowflake.ID)
+	var checkins []func()
+	releaseAll := func() {
+		for _, fn := range checkins {
+			fn()
+		}
+	}
 	for _, id := range ids {
-		shard, err := ts.shardForNodeID(id)
+		shard, checkin, err := ts.shardForNodeIDChecked(id)
 		if err != nil {
+			releaseAll()
 			return err
 		}
 		shardBuckets[shard] = append(shardBuckets[shard], id)
+		checkins = append(checkins, checkin)
 	}
+	defer releaseAll()
 	for shard, bucket := range shardBuckets {
 		if err := shard.DeleteNodesBatch(bucket); err != nil {
 			return err
@@ -244,14 +254,18 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	relID := r.InternalID().SnowflakeID()
 
 	// Resolve actual shards — not class. Two event entities may be in different shards.
-	startShard, err := ts.shardForNodeID(startID)
+	// Use the checked variants so cold owner shards stay pinned during the
+	// split-write below.
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(startID)
 	if err != nil {
 		return err
 	}
-	endShard, err := ts.shardForNodeID(endID)
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(endID)
 	if err != nil {
 		return err
 	}
+	defer endCheckin()
 
 	if startShard == endShard {
 		// Same shard: delegate entirely.
@@ -340,29 +354,49 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 
 	// Partition: same-shard rels can use batch, cross-shard use individual put.
-	// Group by *BadgerStore pointer for batching.
+	// Group by *BadgerStore pointer for batching. Owner shards are checked
+	// out so cold owners stay pinned for the per-shard batch write below.
 	shardBuckets := make(map[*BadgerStore][]*types.Relationship)
+	var checkins []func()
+	releaseAll := func() {
+		for _, fn := range checkins {
+			fn()
+		}
+	}
 
 	for _, r := range rels {
-		startShard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID().SnowflakeID())
 		if err != nil {
+			releaseAll()
 			return err
 		}
-		endShard, err := ts.shardForNodeID(r.EndNodeID().SnowflakeID())
+		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID().SnowflakeID())
 		if err != nil {
+			startCheckin()
+			releaseAll()
 			return err
 		}
 
 		if startShard != endShard {
-			// Cross-shard: individual put.
+			// Cross-shard: individual put — release these checkins immediately
+			// since PutRelationship pins again internally.
+			startCheckin()
+			endCheckin()
 			if err := ts.PutRelationship(r); err != nil {
+				releaseAll()
 				return err
 			}
 			continue
 		}
 
+		// Same-shard: hold the start-shard pin (covers both endpoints) until
+		// the per-shard batch write below. The endpoint pin is redundant but
+		// cheap; release it now so we don't leak duplicate references.
+		endCheckin()
 		shardBuckets[startShard] = append(shardBuckets[startShard], r)
+		checkins = append(checkins, startCheckin)
 	}
+	defer releaseAll()
 
 	// Write per-shard buckets, tracking committed batches for best-effort rollback.
 	// If a later shard fails, previously committed shards are rolled back to prevent
@@ -406,28 +440,39 @@ func (ts *TieredStore) DeleteRelationshipsBatch(ids []snowflake.ID) error {
 // --- Atomic replace + history ---
 
 func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
-	shard, err := ts.shardForNodeID(current.InternalID().SnowflakeID())
+	shard, checkin, err := ts.shardForNodeIDChecked(current.InternalID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceNodeWithHistory(current, prevVersion, prevState)
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	shard, err := ts.shardForNodeID(current.StartNodeID().SnowflakeID())
+	// Rel entity lives on the start-node's shard. Pin the cold owner for the
+	// duration of the atomic replace+history write.
+	shard, checkin, err := ts.shardForNodeIDChecked(current.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.ReplaceRelWithHistory(current, prevVersion, prevState)
 }
 
 // --- Version history writes ---
 
 func (ts *TieredStore) PutNodeVersion(id snowflake.ID, version uint32, n *types.Node) error {
-	shard, err := ts.shardForNodeVersion(id, n)
+	// Reference snapshots route to refShard regardless of timestamp; otherwise
+	// fall back to id-based resolution with checkout/checkin so a cold owner
+	// stays pinned for the write.
+	if n != nil && ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
+		return ts.refShard.PutNodeVersion(id, version, n)
+	}
+	shard, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.PutNodeVersion(id, version, n)
 }
 
@@ -475,10 +520,13 @@ func (ts *TieredStore) TruncateNodeHistory(id snowflake.ID, keepVersions int) er
 }
 
 func (ts *TieredStore) PutRelVersion(id snowflake.ID, version uint32, r *types.Relationship) error {
-	shard, err := ts.shardForNodeID(r.StartNodeID().SnowflakeID())
+	// Rel history co-locates with the start-node's owner shard; pin it to keep
+	// idle-close from racing the version write.
+	shard, checkin, err := ts.shardForNodeIDChecked(r.StartNodeID().SnowflakeID())
 	if err != nil {
 		return err
 	}
+	defer checkin()
 	return shard.PutRelVersion(id, version, r)
 }
 
@@ -529,10 +577,11 @@ func (ts *TieredStore) TruncateRelHistory(id snowflake.ID, keepVersions int) err
 // --- Cascade operations ---
 
 func (ts *TieredStore) DeleteNodeCascade(id snowflake.ID) error {
-	shard, err := ts.shardForNodeID(id)
+	shard, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 
 	// Collect all connected relIDs from this shard's outIdx + inIdx.
 	outRels := shard.outgoingRelIDs(id)
@@ -622,10 +671,11 @@ func (ts *TieredStore) DeleteRelWithHistory(id snowflake.ID, prevVersion uint32,
 //
 // Cross-shard atomicity is per-shard only (B7 limitation — same as DeleteNodeCascade).
 func (ts *TieredStore) DeleteNodeWithHistory(id snowflake.ID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	shard, err := ts.shardForNodeID(id)
+	shard, checkin, err := ts.shardForNodeIDChecked(id)
 	if err != nil {
 		return err
 	}
+	defer checkin()
 
 	// Build lookup map: relID → RelTombstone.
 	tombMap := make(map[snowflake.ID]RelTombstone, len(relTombstones))
