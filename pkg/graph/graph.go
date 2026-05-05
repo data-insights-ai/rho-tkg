@@ -702,9 +702,22 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if !opts.hasTemporalFilter() {
 		return g.store.NodesByLabel(tok, opts)
 	}
+	// Indexed candidate set: current nodes that carry the label NOW, plus all
+	// node IDs that ever appeared in history (covering the case where the
+	// label was held in a previous version but not the current one). Avoids
+	// a full ForEachNodeID scan.
+	current, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(current))
+	for _, n := range current {
+		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
+	}
+
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id snowflake.ID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -714,8 +727,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 		}
 		result = append(result, n)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -738,9 +750,21 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	if !opts.hasTemporalFilter() {
 		return g.store.RelationshipsByType(tok, opts)
 	}
+	// Indexed candidate set: current rels of this type, plus history IDs.
+	// Type tokens are structurally immutable so the type predicate is only
+	// needed for safety; history IDs cover the deleted-rel case.
+	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(current))
+	for _, r := range current {
+		currentIDs = append(currentIDs, r.InternalID().SnowflakeID())
+	}
+
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
 	var result []*types.Relationship
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	if err := g.forEachRelCandidateID(currentIDs, func(id snowflake.ID) error {
 		r, err := g.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -750,8 +774,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 		}
 		result = append(result, r)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortRelsByID(result)
@@ -839,11 +862,64 @@ func (g *Graph) RelationshipCount() (int, error) {
 }
 
 // AllNodes returns all nodes in the store, with optional pagination.
-func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) { return g.store.AllNodes(opts) }
+//
+// History-aware when opts carries a temporal filter (ValidAt or
+// ValidStart/ValidEnd): merges current and history IDs, resolves each via
+// the version chain, and surfaces deleted entities that were valid at the
+// query time. Without a temporal filter the fast store-side pushdown path
+// is preserved.
+func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+	if !opts.hasTemporalFilter() {
+		return g.store.AllNodes(opts)
+	}
+	var result []*types.Node
+	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+		n, err := g.findNodeVersionForOpts(id, opts, nil)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortNodesByID(result)
+	return paginateNodes(result, opts.After, opts.Limit), nil
+}
 
-// AllRelationships returns all relationships in the store, with optional pagination.
+// AllRelationships returns all relationships in the store, with optional
+// pagination.
+//
+// History-aware when opts carries a temporal filter (ValidAt or
+// ValidStart/ValidEnd): merges current and history IDs, resolves each via
+// the version chain, and surfaces deleted relationships that were valid at
+// the query time. Without a temporal filter the fast store-side pushdown
+// path is preserved.
 func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
-	return g.store.AllRelationships(opts)
+	if !opts.hasTemporalFilter() {
+		return g.store.AllRelationships(opts)
+	}
+	var result []*types.Relationship
+	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+		r, err := g.findRelVersionForOpts(id, opts, nil)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortRelsByID(result)
+	return paginateRels(result, opts.After, opts.Limit), nil
 }
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.
@@ -1051,6 +1127,18 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if targetKey == "" {
 		return nil, nil
 	}
+	// Indexed candidate set: nodes that currently match label+property,
+	// merged with all history IDs (covering deleted/changed nodes whose
+	// historical version matched).
+	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
+	for _, n := range currentByLabel {
+		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
+	}
+
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -1059,7 +1147,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	err = g.forEachNodeCandidateID(currentIDs, func(id snowflake.ID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {

@@ -80,6 +80,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, ErrNoLabels
 	}
 
+	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+
 	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
@@ -124,14 +130,29 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 
 	canonicalLabels := b.g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+	n.SetIntegrity(&types.NodeIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	})
 
-	// Set caller-provided temporal metadata (NOT hashed — set after hash).
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		ntm := &types.TemporalMetadata{
-			ValidFrom: validFrom,
-			ValidTo:   validTo,
-			CreatedAt: createdAt,
+	// Set transaction time + caller-provided temporal metadata (NOT hashed —
+	// set after hash). Mirrors addNodeInternal so batch-created nodes have
+	// the same temporal/provenance shape as standalone-created nodes.
+	{
+		txNow := nowInstant()
+		ntm := &types.TemporalMetadata{TxFrom: txNow}
+		if validFrom != 0 {
+			ntm.ValidFrom = validFrom
+		}
+		if validTo != 0 {
+			ntm.ValidTo = validTo
+		}
+		if createdAt != 0 {
+			ntm.CreatedAt = createdAt
 		}
 		n.SetTemporal(ntm)
 	}
@@ -146,6 +167,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
+	}
+
+	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
@@ -180,14 +207,29 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+	r.SetIntegrity(&types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	})
 
-	// Set caller-provided temporal metadata (NOT hashed — set after hash).
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		rtm := &types.TemporalMetadata{
-			ValidFrom: validFrom,
-			ValidTo:   validTo,
-			CreatedAt: createdAt,
+	// Set transaction time + caller-provided temporal metadata (NOT hashed —
+	// set after hash). Mirrors addRelationshipInternal so batch-created rels
+	// have the same temporal/provenance shape as standalone-created rels.
+	{
+		txNow := nowInstant()
+		rtm := &types.TemporalMetadata{TxFrom: txNow}
+		if validFrom != 0 {
+			rtm.ValidFrom = validFrom
+		}
+		if validTo != 0 {
+			rtm.ValidTo = validTo
+		}
+		if createdAt != 0 {
+			rtm.CreatedAt = createdAt
 		}
 		r.SetTemporal(rtm)
 	}

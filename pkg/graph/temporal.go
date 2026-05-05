@@ -142,8 +142,17 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 	if !ok {
 		return nil, nil
 	}
+	// Indexed candidate set + history IDs — avoids a full ForEachNodeID scan.
+	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
+	for _, n := range currentByLabel {
+		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
+	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id snowflake.ID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -155,8 +164,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 			result = append(result, n)
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -388,6 +396,52 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 
 // --- Private helpers for history-aware queries ---
 
+// forEachNodeCandidateID iterates the union of (currentIDs, history node IDs)
+// without scanning the full current ID set via ForEachNodeID. Use when the
+// caller already has a narrow indexed candidate list (label, property, or
+// adjacency index) — folding only the deleted/historical node IDs on top
+// preserves history-aware semantics without paying for a full table scan.
+func (g *Graph) forEachNodeCandidateID(currentIDs []snowflake.ID, fn func(snowflake.ID) error) error {
+	seen := make(map[snowflake.ID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if err := g.store.ForEachNodeHistoryID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachRelCandidateID is the relationship counterpart of
+// forEachNodeCandidateID — same indexed-candidates + history-IDs union
+// without scanning ForEachRelID.
+func (g *Graph) forEachRelCandidateID(currentIDs []snowflake.ID, fn func(snowflake.ID) error) error {
+	seen := make(map[snowflake.ID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if err := g.store.ForEachRelHistoryID(func(id snowflake.ID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // forEachKnownNodeID collects the union of current + history node IDs
 // via lazy ForEach iteration, then calls fn for each unique ID.
 // Two-phase: collect (under store locks), then process (locks released).
@@ -596,8 +650,27 @@ func (g *Graph) getRelVersionDuring(id snowflake.ID, start, end types.Instant) (
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant.
 func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*types.Node, error) {
+	// Indexed candidate set: current outgoing + incoming adjacency, merged
+	// with all history rel IDs (covering deleted-rel neighbors). Avoids a
+	// full ForEachRelID scan.
+	out, err := g.OutgoingRelationships(nodeID, "")
+	if err != nil {
+		return nil, err
+	}
+	in, err := g.IncomingRelationships(nodeID, "")
+	if err != nil {
+		return nil, err
+	}
+	currentRelIDs := make([]snowflake.ID, 0, len(out)+len(in))
+	for _, r := range out {
+		currentRelIDs = append(currentRelIDs, r.InternalID().SnowflakeID())
+	}
+	for _, r := range in {
+		currentRelIDs = append(currentRelIDs, r.InternalID().SnowflakeID())
+	}
+
 	neighborIDs := make(map[snowflake.ID]struct{})
-	err := g.forEachKnownRelID(func(id snowflake.ID) error {
+	if err := g.forEachRelCandidateID(currentRelIDs, func(id snowflake.ID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -611,8 +684,7 @@ func (g *Graph) GetNeighborsValidAt(nodeID snowflake.ID, t types.Instant) ([]*ty
 			neighborIDs[r.StartNodeID().SnowflakeID()] = struct{}{}
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -807,8 +879,16 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	if targetKey == "" {
 		return nil, nil
 	}
+	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
+	for _, n := range currentByLabel {
+		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
+	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id snowflake.ID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -823,8 +903,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 			result = append(result, n)
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -845,6 +924,14 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if targetKey == "" {
 		return nil, nil
 	}
+	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]snowflake.ID, 0, len(currentByLabel))
+	for _, n := range currentByLabel {
+		currentIDs = append(currentIDs, n.InternalID().SnowflakeID())
+	}
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -853,7 +940,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id snowflake.ID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id snowflake.ID) error {
 		n, err := g.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -863,8 +950,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 		}
 		result = append(result, n)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
