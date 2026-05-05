@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- shardForRelIDChecked ---
@@ -1033,4 +1034,234 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 			t.Fatalf("GetRelationship returned %d, want %d", got.InternalID().SnowflakeID(), relID)
 		}
 	})
+}
+
+// --- Admin repair paths must pin cold shards ---
+
+// allShardStoresWithLazyOpen previously called es.getStore(ts) which opens a
+// cold shard but does not bump activeReqs. closeIdleShards could then race
+// the caller and close the BadgerStore mid-iteration. Verify the new
+// checkout-based contract: while the caller is iterating the returned
+// stores, closeIdleShards must skip every cold shard (activeReqs > 0).
+// After the release callback is invoked, idle close is unblocked.
+func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(gen.Generate(), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	if err := ts.RotateHotShard(); err != nil {
+		ts.mu.Unlock()
+		t.Fatal(err)
+	}
+	ts.mu.Unlock()
+	demoteToCold(ts, hotName)
+
+	ts.mu.RLock()
+	coldES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+	if coldES == nil || coldES.tier != TierCold {
+		t.Fatalf("expected cold shard for %q", hotName)
+	}
+
+	stores, release, err := ts.allShardStoresWithLazyOpen()
+	if err != nil {
+		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
+	}
+	if len(stores) < 2 {
+		t.Fatalf("expected at least reference + 1 event shard, got %d", len(stores))
+	}
+	if coldES.activeReqs.Load() == 0 {
+		t.Fatalf("expected cold shard to be pinned (activeReqs > 0) after lazy-open")
+	}
+
+	// Force idle-close attempt: must be skipped while pinned.
+	ts.idleTimeout = time.Millisecond
+	coldES.lastAccess.Store(0)
+	ts.closeIdleShards()
+	coldES.shardMu.Lock()
+	storeWhilePinned := coldES.store
+	coldES.shardMu.Unlock()
+	if storeWhilePinned == nil {
+		t.Fatal("closeIdleShards closed cold shard while RunRepair-style caller was still iterating")
+	}
+
+	release()
+	if coldES.activeReqs.Load() != 0 {
+		t.Fatalf("activeReqs = %d after release, want 0", coldES.activeReqs.Load())
+	}
+
+	// After release, closeIdleShards must succeed.
+	coldES.lastAccess.Store(0)
+	ts.closeIdleShards()
+	coldES.shardMu.Lock()
+	storeAfterRelease := coldES.store
+	coldES.shardMu.Unlock()
+	if storeAfterRelease != nil {
+		t.Fatal("closeIdleShards did not close cold shard after release")
+	}
+}
+
+// resolveShardStore must pin the cold event shard it returns to mirror the
+// allShardStoresWithLazyOpen contract used by VerifyShard. Reference and
+// archive lookups stay no-op (those stores are never closed by idle-close)
+// but must still return a non-nil release for caller-side defer parity.
+func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := newLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(gen.Generate(), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	_ = ts.RotateHotShard()
+	ts.mu.Unlock()
+	demoteToCold(ts, hotName)
+
+	ts.mu.RLock()
+	coldES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+
+	store, release, err := ts.resolveShardStore(hotName)
+	if err != nil {
+		t.Fatalf("resolveShardStore(%q): %v", hotName, err)
+	}
+	if store == nil {
+		t.Fatal("resolveShardStore returned nil store")
+	}
+	if release == nil {
+		t.Fatal("resolveShardStore returned nil release")
+	}
+	if coldES.activeReqs.Load() != 1 {
+		t.Fatalf("activeReqs = %d after resolve, want 1", coldES.activeReqs.Load())
+	}
+
+	ts.idleTimeout = time.Millisecond
+	coldES.lastAccess.Store(0)
+	ts.closeIdleShards()
+	coldES.shardMu.Lock()
+	storeWhilePinned := coldES.store
+	coldES.shardMu.Unlock()
+	if storeWhilePinned == nil {
+		t.Fatal("closeIdleShards closed cold shard while VerifyShard-style caller held it")
+	}
+
+	release()
+	if coldES.activeReqs.Load() != 0 {
+		t.Fatalf("activeReqs = %d after release, want 0", coldES.activeReqs.Load())
+	}
+
+	// Reference shard never gets pinned (always live), but release must
+	// still be a non-nil callable so admin callers can defer it
+	// unconditionally.
+	_, refRelease, err := ts.resolveShardStore("reference")
+	if err != nil {
+		t.Fatalf("resolveShardStore(reference): %v", err)
+	}
+	if refRelease == nil {
+		t.Fatal("resolveShardStore(reference) returned nil release")
+	}
+	refRelease()
+}
+
+// VerifyShard against a cold shard must pin it for the duration of the
+// verification scan. Without the checkout fix, an idle-close racing the
+// scan would null out es.store and the next AllNodeIDs/AllRelIDs call
+// would either panic or return stale state.
+func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Signal"}, map[string]any{"k": "v"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	_ = ts.RotateHotShard()
+	ts.mu.Unlock()
+	demoteToCold(ts, hotName)
+
+	ts.mu.RLock()
+	coldES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+
+	// Aggressive idle close: every prior call would mark the shard for
+	// close. The test only cares that VerifyShard does not observe a
+	// nil-store state mid-flight.
+	ts.idleTimeout = time.Millisecond
+	coldES.lastAccess.Store(0)
+
+	res, err := ts.VerifyShard(g, hotName)
+	if err != nil {
+		t.Fatalf("VerifyShard(%q): %v", hotName, err)
+	}
+	if res == nil {
+		t.Fatal("VerifyShard returned nil result")
+	}
+}
+
+// RunRepair against a tiered store with a cold event shard must pin every
+// shard for the duration of both phases. Without the checkout fix, an
+// idle-close racing the repair would close the cold store and the next
+// AllNodeIDs/AllRelIDs call would panic.
+func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Signal"}, map[string]any{"k": "v"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a
+
+	ts.mu.RLock()
+	hotName := ts.hotShard.name
+	ts.mu.RUnlock()
+	time.Sleep(2 * time.Millisecond)
+	ts.mu.Lock()
+	_ = ts.RotateHotShard()
+	ts.mu.Unlock()
+	demoteToCold(ts, hotName)
+
+	ts.mu.RLock()
+	coldES := ts.eventShards[hotName]
+	ts.mu.RUnlock()
+
+	ts.idleTimeout = time.Millisecond
+	coldES.lastAccess.Store(0)
+
+	res, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if res == nil {
+		t.Fatal("RunRepair returned nil result")
+	}
 }

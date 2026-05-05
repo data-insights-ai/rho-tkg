@@ -24,10 +24,11 @@ type RepairResult struct {
 // If cross-shard: check that the end shard's inIdx contains the relID. If missing
 // → re-create via putRelIncoming.
 func (ts *TieredStore) RunRepair() (*RepairResult, error) {
-	stores, err := ts.allShardStoresWithLazyOpen()
+	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return nil, err
 	}
+	defer release()
 
 	result := &RepairResult{
 		ShardsScanned: len(stores),
