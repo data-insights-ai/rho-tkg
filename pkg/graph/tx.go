@@ -181,7 +181,17 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 	tx.mu.Unlock()
 
 	if len(updates) == 0 {
-		return tx.g.GetNodeWithContext(context.Background(), id)
+		// Empty-update no-op. Read directly from the store rather than via
+		// the exported wrapper: the tx already holds g.mu.Lock(), and any
+		// future addition of g.mu.RLock() to GetNodeWithContext would
+		// deadlock the tx. The tx convention is: never call exported
+		// methods, always reach the store via *Internal helpers or
+		// tx.g.store directly.
+		n, err := tx.g.store.GetNode(id)
+		if err == nil {
+			tx.g.opNodeReads.Add(1)
+		}
+		return n, err
 	}
 
 	if err := tx.snapshotNode(id.SnowflakeID()); err != nil {
@@ -207,7 +217,13 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 	tx.mu.Unlock()
 
 	if len(updates) == 0 {
-		return tx.g.GetRelationshipWithContext(context.Background(), id)
+		// Empty-update no-op. See UpdateNode for why this avoids the
+		// exported wrapper.
+		r, err := tx.g.store.GetRelationship(id)
+		if err == nil {
+			tx.g.opRelReads.Add(1)
+		}
+		return r, err
 	}
 
 	if err := tx.snapshotRel(id.SnowflakeID()); err != nil {

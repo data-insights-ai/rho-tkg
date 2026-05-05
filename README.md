@@ -31,6 +31,14 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.10
+
+**History-aware indexed candidate planning.** `NodesByLabel`, `NodesByLabelAndProperty`, `RelationshipsByType`, `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`, and `GetNeighborsValidAt` now derive candidates from the appropriate index (label / property / type / adjacency) and merge them with history IDs. Previously they fell back to `Store.ForEachNodeID` over every entity. Performance fix for any temporal query with a narrow predicate.
+
+**`AllNodes` / `AllRelationships` history-aware temporal opts.** Closes a hole in v3.1.7's history-aware sweep: temporal `QueryOpts` on these generic entry points now resolve through the union of current + history IDs.
+
+**Batch hardening.** `BatchBuilder.AddRelationship` now enforces `AllowSelfLoops`; batch metadata is stamped at execute time (not queue time); rels with failed-create endpoints are skipped with diagnostic errors; endpoint integrity hashes captured under endpoint lock; cross-shard rel rollback on batch failure restores `TxFrom`. See `CHANGELOG.md` `[3.1.10]` for the full list.
+
 ### What's new in 3.1.9
 
 **`IndexProvider` extension point.** Out-of-tree indexes can now plug into the graph through a small interface (`Name()`, `OnEvent(ev, g)`, `Close()`). Providers register via `g.RegisterIndexProvider`, receive lifecycle events through the sync `EventBus`, and own their persistence + query routing. First consumer is tkgd's spatial R-tree.

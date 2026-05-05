@@ -44,6 +44,23 @@ type SnapshotDiff struct {
 
 // --- Internal helpers ---
 
+// resolveOpenEndInstant maps an open-ended `end == 0` upper bound to a
+// concrete instant ("now + 1") so a single per-query value is shared
+// across every per-ID overlap predicate. Substituting at the entry
+// point — rather than inside findNodeVersionMatchingDuring per
+// invocation — eliminates time drift on long iterations, where each
+// per-ID call would otherwise observe a different `nowInstant()` and
+// produce inclusion/exclusion that depends on iteration timing.
+//
+// Callers that hand `end` straight to findNodeVersionMatchingDuring /
+// findRelVersionMatchingDuring MUST pass through this helper first.
+func resolveOpenEndInstant(end types.Instant) types.Instant {
+	if end == 0 {
+		return nowInstant() + 1
+	}
+	return end
+}
+
 // nodeValidFrom returns the effective valid-from time for a node.
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
 func (g *Graph) nodeValidFrom(n *types.Node) types.Instant {
@@ -142,8 +159,17 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 	if !ok {
 		return nil, nil
 	}
+	// Indexed candidate set + history IDs — avoids a full ForEachNodeID scan.
+	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(currentByLabel))
+	for _, n := range currentByLabel {
+		currentIDs = append(currentIDs, n.InternalID())
+	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -155,8 +181,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 			result = append(result, n)
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -166,7 +191,14 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 // GetNodesValidDuring returns all nodes whose validity overlaps [start, end).
 // History-aware: includes deleted or updated nodes that had any version valid
 // during the interval.
+//
+// end == 0 is interpreted as "open-ended to now" (mirrors ValidTo == 0).
+// The substitution happens once at this entry point so every per-ID
+// overlap predicate sees the same upper bound — avoids time drift across
+// the iteration that would otherwise let a single call return different
+// results depending on how long it ran.
 func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
+	end = resolveOpenEndInstant(end)
 	var result []*types.Node
 	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.getNodeVersionDuring(id, start, end)
@@ -188,7 +220,10 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 
 // GetRelationshipsValidDuring returns all relationships whose validity overlaps [start, end).
 // History-aware: includes deleted or updated relationships.
+//
+// end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
 func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
+	end = resolveOpenEndInstant(end)
 	var result []*types.Relationship
 	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.getRelVersionDuring(id, start, end)
@@ -388,6 +423,52 @@ func (g *Graph) relVersionBounds(chain []*types.Relationship, i int) (types.Inst
 
 // --- Private helpers for history-aware queries ---
 
+// forEachNodeCandidateID iterates the union of (currentIDs, history node IDs)
+// without scanning the full current ID set via ForEachNodeID. Use when the
+// caller already has a narrow indexed candidate list (label, property, or
+// adjacency index) — folding only the deleted/historical node IDs on top
+// preserves history-aware semantics without paying for a full table scan.
+func (g *Graph) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
+	seen := make(map[types.NodeID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if err := g.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachRelCandidateID is the relationship counterpart of
+// forEachNodeCandidateID — same indexed-candidates + history-IDs union
+// without scanning ForEachRelID.
+func (g *Graph) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
+	seen := make(map[types.RelID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if err := g.store.ForEachRelHistoryID(func(id types.RelID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // forEachKnownNodeID collects the union of current + history node IDs
 // via lazy ForEach iteration, then calls fn for each unique ID.
 // Two-phase: collect (under store locks), then process (locks released).
@@ -457,10 +538,19 @@ func (g *Graph) forEachKnownRelID(fn func(types.RelID) error) error {
 	return nil
 }
 
-// hasTemporalFilter reports whether opts carries a ValidAt or ValidStart/ValidEnd
-// filter that requires history-aware resolution.
+// hasTemporalFilter reports whether opts carries a temporal filter that
+// requires history-aware resolution. Matches the Store-level QueryOpts
+// contract: ValidStart/ValidEnd form an interval filter ONLY when both are
+// set; a single one-sided bound is treated as "no filter" so the call falls
+// through to the non-temporal fast path. Without this guard the interval
+// predicate `vStart < end && (vEnd == 0 || vEnd > start)` collapses
+// (e.g. with end == 0) and rejects every entity, regressing
+// AllNodes(QueryOpts{ValidStart: t}) and similar one-sided callers.
 func (opts QueryOpts) hasTemporalFilter() bool {
-	return opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0
+	if opts.ValidAt != 0 {
+		return true
+	}
+	return opts.ValidStart != 0 && opts.ValidEnd != 0
 }
 
 // findNodeVersionForOpts returns a node version that satisfies pred under the
@@ -512,6 +602,13 @@ func (g *Graph) findRelVersionForOpts(id types.RelID, opts QueryOpts, pred func(
 // version. Scanning all overlapping versions is the only correct semantic for
 // "did this node match the predicate at any point during [start, end)?".
 func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+	// Callers must resolve end == 0 to a concrete bound BEFORE invoking
+	// this function; see resolveOpenEndInstant. Per-call substitution
+	// here would cause time drift across a long iteration: each ID
+	// would see a different `nowInstant()`, so an entity created
+	// between iterations could be included or excluded
+	// non-deterministically. The entry-point resolution gives every
+	// candidate the same upper bound.
 	current, err := g.store.GetNode(id)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -547,6 +644,7 @@ func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.
 
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (g *Graph) findRelVersionMatchingDuring(id types.RelID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	// See findNodeVersionMatchingDuring: callers must pre-resolve end == 0.
 	current, err := g.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -596,8 +694,27 @@ func (g *Graph) getRelVersionDuring(id types.RelID, start, end types.Instant) (*
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant.
 func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
-	neighborIDs := make(map[snowflake.ID]struct{})
-	err := g.forEachKnownRelID(func(id types.RelID) error {
+	// Indexed candidate set: current outgoing + incoming adjacency, merged
+	// with all history rel IDs (covering deleted-rel neighbors). Avoids a
+	// full ForEachRelID scan.
+	out, err := g.OutgoingRelationships(nodeID, "")
+	if err != nil {
+		return nil, err
+	}
+	in, err := g.IncomingRelationships(nodeID, "")
+	if err != nil {
+		return nil, err
+	}
+	currentRelIDs := make([]types.RelID, 0, len(out)+len(in))
+	for _, r := range out {
+		currentRelIDs = append(currentRelIDs, r.InternalID())
+	}
+	for _, r := range in {
+		currentRelIDs = append(currentRelIDs, r.InternalID())
+	}
+
+	neighborIDs := make(map[types.NodeID]struct{})
+	if err := g.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -606,13 +723,12 @@ func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*ty
 			return err
 		}
 		if r.StartNodeID() == nodeID {
-			neighborIDs[r.EndNodeID().SnowflakeID()] = struct{}{}
+			neighborIDs[r.EndNodeID()] = struct{}{}
 		} else if r.EndNodeID() == nodeID {
-			neighborIDs[r.StartNodeID().SnowflakeID()] = struct{}{}
+			neighborIDs[r.StartNodeID()] = struct{}{}
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -622,7 +738,7 @@ func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*ty
 
 	var result []*types.Node
 	for id := range neighborIDs {
-		n, err := g.GetNodeAt(types.NodeID(id), t)
+		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
 				continue
@@ -807,8 +923,18 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	if targetKey == "" {
 		return nil, nil
 	}
+	// Seed candidates from the property index (falls back to a label scan
+	// inside the store when no property index covers (label, key)).
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(currentMatching))
+	for _, n := range currentMatching {
+		currentIDs = append(currentIDs, n.InternalID())
+	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -823,8 +949,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 			result = append(result, n)
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -845,6 +970,19 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if targetKey == "" {
 		return nil, nil
 	}
+	// Resolve open-ended end once for the whole iteration — see
+	// GetNodesValidDuring.
+	end = resolveOpenEndInstant(end)
+	// Seed candidates from the property index (falls back to a label scan
+	// inside the store when no property index covers (label, key)).
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(currentMatching))
+	for _, n := range currentMatching {
+		currentIDs = append(currentIDs, n.InternalID())
+	}
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -853,7 +991,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -863,8 +1001,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 		}
 		result = append(result, n)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)

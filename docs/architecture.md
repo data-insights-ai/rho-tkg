@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.1.9)
+# Architecture — tkg/v3 (v3.1.10)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 

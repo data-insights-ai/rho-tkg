@@ -300,13 +300,28 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 		if err := inShard.putRelIncoming(endID, startID, relType, relID); err != nil {
 			return err
 		}
-		return entityShard.putRelEntityAndOut(r)
+		if err := entityShard.putRelEntityAndOut(r); err != nil {
+			// Roll back the in/ write so the partial state isn't left visible.
+			info := relDeleteInfo{id: relID, relType: relType, startID: startID, endID: endID}
+			if rbErr := inShard.deleteRelIncoming(info); rbErr != nil {
+				return fmt.Errorf("tiered: put cross-shard relationship entity failed after in/ write: %w (rollback in/ failed: %v)", err, rbErr)
+			}
+			return err
+		}
+		return nil
 	}
 	// R→E or E→E(cross-shard): entity shard first.
 	if err := entityShard.putRelEntityAndOut(r); err != nil {
 		return err
 	}
-	return inShard.putRelIncoming(endID, startID, relType, relID)
+	if err := inShard.putRelIncoming(endID, startID, relType, relID); err != nil {
+		// Roll back the entity/out write so the partial state isn't left visible.
+		if _, rbErr := entityShard.deleteRelEntityAndOut(relID); rbErr != nil {
+			return fmt.Errorf("tiered: put cross-shard relationship in/ failed after entity write: %w (rollback entity/out failed: %v)", err, rbErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (ts *TieredStore) ReplaceRelationship(r *types.Relationship) error {

@@ -29,15 +29,31 @@ type BatchBuilder struct {
 	relDeletes  []types.RelID
 }
 
+// pendingNode and pendingRel keep aliased pointers to the entity's integrity
+// and temporal structs. AddNode/AddRelationship call SetIntegrity / construct
+// the temporal struct at queue time; Execute stamps TxFrom (and refreshes
+// rel endpoint hashes) in place. Because the pointers are aliased to the
+// entity's own fields, callers that hold a reference to the entity returned
+// from AddNode/AddRelationship observe the post-Execute state through that
+// entity — no extra SetTemporal/SetIntegrity round-trip is required after
+// the in-place mutation, and that is fine for batch's contract since the
+// entity is documented as "queue-time skeleton, finalised at Execute".
 type pendingNode struct {
-	node   *types.Node
-	labels []string
+	node      *types.Node
+	labels    []string
+	integrity *types.NodeIntegrity    // aliases node.integrity
+	temporal  *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingRel struct {
-	rel     *types.Relationship
-	startID types.NodeID
-	endID   types.NodeID
+	rel       *types.Relationship
+	startID   types.NodeID
+	endID     types.NodeID
+	integrity *types.RelIntegrity // aliases rel.integrity;
+	// FromNodeHash/ToNodeHash mutated under per-rel endpoint locks in Execute
+	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingNodeUpdate struct {
@@ -84,6 +100,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, ErrNoLabels
 	}
 
+	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+
 	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
@@ -128,19 +150,31 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 
 	canonicalLabels := b.g.NodeLabels(n)
 	hash := ComputeNodeHash(n, canonicalLabels)
-	n.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: ""})
+	integrity := &types.NodeIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
+	n.SetIntegrity(integrity)
 
-	// Set caller-provided temporal metadata (NOT hashed — set after hash).
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		ntm := &types.TemporalMetadata{
-			ValidFrom: validFrom,
-			ValidTo:   validTo,
-			CreatedAt: createdAt,
-		}
-		n.SetTemporal(ntm)
+	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
+	// so the recorded transaction time reflects when the batch actually
+	// commits, not when AddNode was queued — see Execute()).
+	temporal := &types.TemporalMetadata{
+		ValidFrom: validFrom,
+		ValidTo:   validTo,
+		CreatedAt: createdAt,
 	}
 
-	b.nodes = append(b.nodes, pendingNode{node: n, labels: canonicalLabels})
+	b.nodes = append(b.nodes, pendingNode{
+		node:      n,
+		labels:    canonicalLabels,
+		integrity: integrity,
+		temporal:  temporal,
+	})
 	return n, nil
 }
 
@@ -150,6 +184,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
+	}
+
+	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
@@ -179,24 +219,50 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	startID := startNode.ID()
 	endID := endNode.ID()
 
+	// Apply the same self-loop policy as the standalone path
+	// (addRelationshipInternal). Without this gate a default graph would
+	// reject g.AddRelationship("R", n, n, nil) but accept the same rel
+	// through batch execution.
+	if startID == endID && !b.g.validation.AllowSelfLoops {
+		return nil, ErrSelfLoop
+	}
+
 	id := b.g.NextRelID()
 	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
 	r.SetProperties(ps)
 
 	hash := ComputeRelHash(r, typeName)
-	r.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: ""})
+	// Build the integrity payload now (Hash and provenance are stable at
+	// queue time). FromNodeHash/ToNodeHash and TxFrom are deferred to
+	// Execute(): endpoint hashes are re-read from the live store after the
+	// per-rel endpoint locks are acquired so the recorded values reflect the
+	// committed endpoint state at relationship creation, not whatever the
+	// caller happened to hold when AddRelationship was queued.
+	ig := &types.RelIntegrity{
+		Hash:               hash,
+		PrevHash:           "",
+		AuthorID:           authorID,
+		Signature:          sig,
+		AuthorizedBy:       authorizedBy,
+		AuthorizationLevel: authLevel,
+	}
+	r.SetIntegrity(ig)
 
-	// Set caller-provided temporal metadata (NOT hashed — set after hash).
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		rtm := &types.TemporalMetadata{
-			ValidFrom: validFrom,
-			ValidTo:   validTo,
-			CreatedAt: createdAt,
-		}
-		r.SetTemporal(rtm)
+	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
+	// — same reasoning as AddNode: TxFrom must reflect commit time).
+	rtm := &types.TemporalMetadata{
+		ValidFrom: validFrom,
+		ValidTo:   validTo,
+		CreatedAt: createdAt,
 	}
 
-	b.rels = append(b.rels, pendingRel{rel: r, startID: startID, endID: endID})
+	b.rels = append(b.rels, pendingRel{
+		rel:       r,
+		startID:   startID,
+		endID:     endID,
+		integrity: ig,
+		temporal:  rtm,
+	})
 	return r, nil
 }
 
@@ -285,37 +351,134 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	result := &BatchResult{}
 
 	// 1. Create nodes via batch store method.
+	//
+	// Track failed node IDs so step 2 can short-circuit rels referencing
+	// them with a clear "endpoint create failed" error rather than letting
+	// the rel write surface a confusing "node not found" downstream.
+	var failedNodeIDs map[types.NodeID]struct{}
 	if len(b.nodes) > 0 {
+		// Stamp TxFrom at execute time so the recorded transaction time
+		// reflects when the batch actually commits, not when AddNode was
+		// queued. Mirrors addNodeInternal which stamps TxFrom inside the
+		// single function call window.
+		txNow := nowInstant()
+		for _, pn := range b.nodes {
+			pn.temporal.TxFrom = txNow
+			pn.node.SetTemporal(pn.temporal)
+		}
+
 		nodes := make([]*types.Node, len(b.nodes))
 		for i, pn := range b.nodes {
 			nodes[i] = pn.node
 		}
 		if err := b.g.store.PutNodesBatch(nodes); err != nil {
-			// All node creates failed.
+			// PutNodesBatch is all-or-nothing — every queued node failed.
+			// The TxFrom stamp above mutates the entity through the aliased
+			// pendingNode.temporal pointer and is observable through the
+			// caller's reference returned from AddNode. Roll the stamp back
+			// on failure so the caller does not see TxFrom != 0 on a node
+			// that was never persisted; this matches addNodeInternal's
+			// failure semantics where a failed write leaves no committed
+			// transaction time on the entity.
 			for _, pn := range b.nodes {
+				pn.temporal.TxFrom = 0
+				pn.node.SetTemporal(pn.temporal)
+			}
+			failedNodeIDs = make(map[types.NodeID]struct{}, len(b.nodes))
+			for _, pn := range b.nodes {
+				id := pn.node.ID()
+				failedNodeIDs[id] = struct{}{}
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
-					ID:  types.EntityID(pn.node.ID()),
+					ID:  types.EntityID(id),
 					Err: err,
 				})
 			}
 		} else {
 			result.Created += len(b.nodes)
-			now := nowInstant()
 			for _, pn := range b.nodes {
-				b.g.publishEvent(EventNodeCreate, types.EntityID(pn.node.ID()), now, PriorityHigh)
+				b.g.publishEvent(EventNodeCreate, types.EntityID(pn.node.ID()), txNow, PriorityHigh)
 			}
 		}
 	}
 
 	// 2. Create relationships — lock endpoints per-rel.
+	//
+	// Inside the per-rel lock window, refresh endpoint hashes from the live
+	// store and stamp TxFrom. Both fields must reflect the committed state
+	// at relationship-creation time: queueing endpoint hashes in
+	// AddRelationship would let an intervening UpdateNode invalidate them
+	// before commit.
 	for _, pr := range b.rels {
+		// Short-circuit when a queued endpoint failed in step 1: surface a
+		// clear dependency error rather than letting PutRelationship report
+		// a generic "endpoint not found" that hides the real cause.
+		if failedNodeIDs != nil {
+			if _, badStart := failedNodeIDs[pr.startID]; badStart {
+				result.Failed++
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddRelationship",
+					ID:  types.EntityID(pr.rel.ID()),
+					Err: fmt.Errorf("graph: batch rel skipped — start node %d failed to create in this batch", pr.startID),
+				})
+				continue
+			}
+			if _, badEnd := failedNodeIDs[pr.endID]; badEnd {
+				result.Failed++
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddRelationship",
+					ID:  types.EntityID(pr.rel.ID()),
+					Err: fmt.Errorf("graph: batch rel skipped — end node %d failed to create in this batch", pr.endID),
+				})
+				continue
+			}
+		}
+
 		b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
+
+		// Self-loop fast path: a single GetNode covers both endpoints.
+		if pr.startID == pr.endID {
+			if n, err := b.g.store.GetNode(pr.startID); err == nil {
+				if ig := n.Integrity(); ig != nil {
+					pr.integrity.FromNodeHash = ig.Hash
+					pr.integrity.ToNodeHash = ig.Hash
+				}
+			}
+		} else {
+			if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
+				if sIg := startNode.Integrity(); sIg != nil {
+					pr.integrity.FromNodeHash = sIg.Hash
+				}
+			}
+			if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
+				if eIg := endNode.Integrity(); eIg != nil {
+					pr.integrity.ToNodeHash = eIg.Hash
+				}
+			}
+		}
+		// SetIntegrity is a no-op against the same pointer the rel already
+		// holds, but keep the call so the queue-time alias is not load-bearing
+		// — a future refactor that copies pendingRel.integrity does not need
+		// to also remember to call SetIntegrity here.
+		pr.rel.SetIntegrity(pr.integrity)
+
+		txNow := nowInstant()
+		pr.temporal.TxFrom = txNow
+		pr.rel.SetTemporal(pr.temporal)
+
 		err := b.g.store.PutRelationship(pr.rel)
 		b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
 		if err != nil {
+			// Roll back the in-memory TxFrom stamp on failure — same
+			// reason as the node path above. The stamp aliases the
+			// relationship's own TemporalMetadata pointer, so the
+			// caller-held *types.Relationship returned from
+			// AddRelationship would otherwise carry a transaction time
+			// for a write that never persisted.
+			pr.temporal.TxFrom = 0
+			pr.rel.SetTemporal(pr.temporal)
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
@@ -324,7 +487,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Created++
-			b.g.publishEvent(EventRelCreate, types.EntityID(pr.rel.ID()), nowInstant(), PriorityHigh)
+			b.g.publishEvent(EventRelCreate, types.EntityID(pr.rel.ID()), txNow, PriorityHigh)
 		}
 	}
 

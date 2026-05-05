@@ -25,6 +25,13 @@ var (
 	ErrInvalidTimeRange = errors.New("graph: invalid time range")
 	ErrLabelNotFound    = errors.New("graph: node does not have the specified label")
 	ErrLastLabel        = errors.New("graph: cannot remove the last label from a node")
+	// ErrDepthTemporalUnsupported is returned when QueryOpts combines a
+	// non-default Depth with a temporal filter. The history-aware
+	// resolution path enumerates IDs through ForEach* iterators that have
+	// no QueryOpts, so the underlying Store cannot honor Depth in that
+	// path — surface the limitation to the caller rather than silently
+	// returning entities the caller asked to exclude.
+	ErrDepthTemporalUnsupported = errors.New("graph: opts.Depth is not supported with a temporal filter")
 )
 
 // Sentinel errors for validation limits.
@@ -712,9 +719,25 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if !opts.hasTemporalFilter() {
 		return g.store.NodesByLabel(tok, opts)
 	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
+	// Indexed candidate set: current nodes that carry the label NOW, plus all
+	// node IDs that ever appeared in history (covering the case where the
+	// label was held in a previous version but not the current one). Avoids
+	// a full ForEachNodeID scan.
+	current, err := g.store.NodesByLabel(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(current))
+	for _, n := range current {
+		currentIDs = append(currentIDs, n.ID())
+	}
+
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
@@ -724,8 +747,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 		}
 		result = append(result, n)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortNodesByID(result)
@@ -748,9 +770,24 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	if !opts.hasTemporalFilter() {
 		return g.store.RelationshipsByType(tok, opts)
 	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
+	// Indexed candidate set: current rels of this type, plus history IDs.
+	// Type tokens are structurally immutable so the type predicate is only
+	// needed for safety; history IDs cover the deleted-rel case.
+	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.RelID, 0, len(current))
+	for _, r := range current {
+		currentIDs = append(currentIDs, r.ID())
+	}
+
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
 	var result []*types.Relationship
-	err := g.forEachKnownRelID(func(id types.RelID) error {
+	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 		r, err := g.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
@@ -760,8 +797,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 		}
 		result = append(result, r)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	sortRelsByID(result)
@@ -849,11 +885,70 @@ func (g *Graph) RelationshipCount() (int, error) {
 }
 
 // AllNodes returns all nodes in the store, with optional pagination.
-func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) { return g.store.AllNodes(opts) }
+//
+// History-aware when opts carries a temporal filter (ValidAt or
+// ValidStart/ValidEnd): merges current and history IDs, resolves each via
+// the version chain, and surfaces deleted entities that were valid at the
+// query time. Without a temporal filter the fast store-side pushdown path
+// is preserved.
+func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+	if !opts.hasTemporalFilter() {
+		return g.store.AllNodes(opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
+	var result []*types.Node
+	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+		n, err := g.findNodeVersionForOpts(id, opts, nil)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortNodesByID(result)
+	return paginateNodes(result, opts.After, opts.Limit), nil
+}
 
-// AllRelationships returns all relationships in the store, with optional pagination.
+// AllRelationships returns all relationships in the store, with optional
+// pagination.
+//
+// History-aware when opts carries a temporal filter (ValidAt or
+// ValidStart/ValidEnd): merges current and history IDs, resolves each via
+// the version chain, and surfaces deleted relationships that were valid at
+// the query time. Without a temporal filter the fast store-side pushdown
+// path is preserved.
 func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
-	return g.store.AllRelationships(opts)
+	if !opts.hasTemporalFilter() {
+		return g.store.AllRelationships(opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
+	var result []*types.Relationship
+	err := g.forEachKnownRelID(func(id types.RelID) error {
+		r, err := g.findRelVersionForOpts(id, opts, nil)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortRelsByID(result)
+	return paginateRels(result, opts.After, opts.Limit), nil
 }
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.
@@ -1045,10 +1140,14 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
 //
-// When opts carries a temporal filter, every known node is scanned: a node is
-// included if any version overlapping the requested time had the label and
-// property value, even if a later version no longer matches. Without a
-// temporal filter, the call falls through to the store-level property index.
+// Without a temporal filter, the call falls through to the store-level
+// property index for O(matches) lookup. When opts carries a temporal filter,
+// the candidate set is the union of (nodes currently matching label+property
+// — seeded via the same property-index lookup) and (every known history ID).
+// Each candidate is then resolved to its version overlapping the requested
+// time and the predicate re-checked against that historical version, so a
+// node whose label and property held at the requested time is included even
+// if a later version no longer matches.
 func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
@@ -1057,10 +1156,26 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if !opts.hasTemporalFilter() {
 		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
 	targetKey := propertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
+	// Indexed candidate set: nodes that currently match label+property via the
+	// store-level property index (when available — falls back internally to a
+	// label scan if no property index is registered), merged with all history
+	// IDs to cover deleted/changed nodes whose historical version matched.
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(currentMatching))
+	for _, n := range currentMatching {
+		currentIDs = append(currentIDs, n.ID())
+	}
+
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -1069,7 +1184,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 		return found && propertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
-	err := g.forEachKnownNodeID(func(id types.NodeID) error {
+	err = g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
