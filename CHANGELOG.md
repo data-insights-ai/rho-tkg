@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.13] - 2026-05-06
+
+### Added
+
+- **`DeepCopier` interface** (`pkg/types/property_registry.go`): custom property struct types registered via `RegisterPropertyStructType` must now implement `DeepCopyValue() any`. Enforced at registration; the interface is dispatched in `deepCopyValue` before the generic type switch so registered types with nested mutable state (slices, maps, pointers) get a proper deep copy at the store boundary instead of a shallow struct copy.
+
+### Changed
+
+- **`RegisterPropertyStructType` now returns `error`** (`pkg/types/property_registry.go`): registration validates that the type implements both `HashableValue` (new: `ErrTypeNotHashable`) and `DeepCopier` (new: `ErrTypeNotDeepCopyable`). The check uses the form actually passed — registering a value form when methods are on the pointer receiver only is rejected, preventing a non-addressable runtime type-assert failure in the hash and deep-copy paths.
+
 ## [3.1.12] - 2026-05-06
 
 ### Fixed

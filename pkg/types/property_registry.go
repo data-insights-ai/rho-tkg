@@ -1,10 +1,26 @@
 package types
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"sync"
 )
+
+// ErrTypeNotHashable is returned by RegisterPropertyStructType when the
+// passed-in type (or its pointer element) does not implement HashableValue.
+// Without HashableValue, ComputeNodeHash / ComputeRelHash would panic the
+// first time a value of this type appears in a node or relationship.
+var ErrTypeNotHashable = errors.New("types: registered property type does not implement HashableValue")
+
+// ErrTypeNotDeepCopyable is returned by RegisterPropertyStructType when the
+// passed-in type (or its pointer element) does not implement DeepCopier.
+// Without DeepCopier, the store boundary cannot reliably isolate caller and
+// cache: nested mutable state inside the registered struct (slices, maps,
+// pointers) would silently survive a Put/Get round-trip and let callers
+// corrupt cached graph state outside locks and index maintenance.
+var ErrTypeNotDeepCopyable = errors.New("types: registered property type does not implement DeepCopier")
 
 // HashableValue is the contract a custom property-value type must satisfy to
 // participate in node/relationship integrity hashing. Registered via
@@ -38,6 +54,31 @@ type HashableValue interface {
 	HashBytes() []byte
 }
 
+// DeepCopier is the contract a custom property-value type must satisfy so
+// that PropertySlice.DeepCopy can produce a fully-independent clone of the
+// value. PropertySlice.DeepCopy underpins the store boundary: PutNode /
+// PutRelationship deep-copy before caching and Get* deep-copy on return,
+// so the in-cache representation is isolated from the caller. A registered
+// struct/pointer type with nested mutable state (slices, maps, embedded
+// pointers) MUST implement DeepCopier; otherwise reflectCopyValue clones
+// only the outer container and the nested state survives the boundary,
+// letting callers silently corrupt cached graph state outside locks and
+// index maintenance.
+//
+// For value types whose fields are all primitives (e.g. a Point with two
+// float64 coordinates), a trivial implementation suffices:
+//
+//	func (p Point) DeepCopyValue() any { return p }
+//
+// For pointer receivers, DeepCopyValue should return the same kind (value
+// or pointer) the caller passed in — the property layer round-trips the
+// returned any directly back into PropertySlice and downstream consumers.
+type DeepCopier interface {
+	// DeepCopyValue returns a deep copy of the receiver. The returned value
+	// MUST share no mutable state with the receiver. Must never panic.
+	DeepCopyValue() any
+}
+
 // propertyStructRegistry holds struct types that external packages have
 // registered as acceptable property values. By default, PropertySlice rejects
 // anything outside primitives, slices, and maps — spatial geometry, custom
@@ -59,22 +100,56 @@ var (
 // Pass either a zero value or a pointer — both forms (value and pointer-to)
 // become acceptable. Registering the same type twice is a no-op.
 //
+// The type MUST implement both HashableValue (so integrity hashing works
+// without panicking) and DeepCopier (so the store boundary remains a true
+// trust boundary). Registration fails loudly with ErrTypeNotHashable or
+// ErrTypeNotDeepCopyable rather than letting the bug reach the data plane.
+//
 // Intended for tkgd-bundled packages like pkg/spatial. Third-party callers
 // are welcome, but review carefully: accepting arbitrary struct types in
 // properties widens the trust surface (serialisation, hashing, deep-copy
 // semantics must all hold).
-func RegisterPropertyStructType(v any) {
+func RegisterPropertyStructType(v any) error {
 	if v == nil {
-		return
+		return nil
 	}
 	t := reflect.TypeOf(v)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
+	elemT := t
+	if elemT.Kind() == reflect.Ptr {
+		elemT = elemT.Elem()
+	}
+	// Verify both contracts against the FORM ACTUALLY PASSED. Including
+	// reflect.PointerTo(elemT).Implements(...) here would silently accept
+	// a value form (T{}) when methods are defined on the pointer receiver
+	// (*T) only — registration succeeds, but values stored via ps.Set(T{})
+	// are not addressable, so the runtime type-assert to HashableValue /
+	// DeepCopier returns ok=false and we fall back to the panic / shallow
+	// copy paths the registration check was supposed to prevent. Callers
+	// who define methods on a pointer receiver MUST register the typed
+	// nil pointer (e.g. RegisterPropertyStructType((*MyType)(nil))).
+	hashable := t.Implements(hashableValueType) ||
+		elemT.Implements(hashableValueType)
+	if !hashable {
+		return fmt.Errorf("%w: %s", ErrTypeNotHashable, elemT.String())
+	}
+	deepCopier := t.Implements(deepCopierType) ||
+		elemT.Implements(deepCopierType)
+	if !deepCopier {
+		return fmt.Errorf("%w: %s", ErrTypeNotDeepCopyable, elemT.String())
 	}
 	propertyStructRegistryMu.Lock()
-	propertyStructRegistry[t] = struct{}{}
+	propertyStructRegistry[elemT] = struct{}{}
 	propertyStructRegistryMu.Unlock()
+	return nil
 }
+
+// hashableValueType and deepCopierType are precomputed reflect.Type values
+// for the two contracts every registered property type must satisfy. Used
+// by RegisterPropertyStructType for the implements check.
+var (
+	hashableValueType = reflect.TypeOf((*HashableValue)(nil)).Elem()
+	deepCopierType    = reflect.TypeOf((*DeepCopier)(nil)).Elem()
+)
 
 // isRegisteredPropertyStructType reports whether rv's type (or the element
 // type if rv is a pointer) has been registered via RegisterPropertyStructType.

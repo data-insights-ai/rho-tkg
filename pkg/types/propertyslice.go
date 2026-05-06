@@ -179,6 +179,15 @@ func deepCopyValue(v any, depth int) any {
 		return v // safety fallback: return as-is
 	}
 
+	// Custom registered types own their own deep-copy semantics — the
+	// registry enforces DeepCopier at registration time, so any registered
+	// struct/pointer reaching this path delegates to its DeepCopyValue.
+	// Probed before the type switch so the slice/map fast paths don't get
+	// invoked with an arbitrary user struct.
+	if dc, ok := v.(DeepCopier); ok {
+		return dc.DeepCopyValue()
+	}
+
 	switch val := v.(type) {
 	// Scalar types — immutable, return as-is without reflect overhead.
 	case bool, string,

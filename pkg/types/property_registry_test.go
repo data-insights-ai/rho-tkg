@@ -2,21 +2,79 @@ package types
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 )
 
+// Modification rationale: spatialStub originally had no HashableValue or
+// DeepCopier methods. Tests registered it via the old void-returning
+// RegisterPropertyStructType, encoding the original buggy behavior where
+// any struct could register without satisfying integrity-hash or
+// deep-copy contracts. The fix requires registration to verify both
+// interfaces; spatialStub now implements both so the same registration-
+// surface tests (idempotency, value-vs-pointer acceptance, nil-pointer
+// rejection) can still run against valid input.
 type spatialStub struct {
 	X, Y float64
 }
 
+// HashBytes provides a deterministic representation suitable for integrity
+// hashing. Trivial (no nested mutable state) — float64 fields shipped as
+// big-endian bits via math.Float64bits.
+func (s spatialStub) HashBytes() []byte {
+	buf := make([]byte, 16)
+	x := math.Float64bits(s.X)
+	y := math.Float64bits(s.Y)
+	for i := 0; i < 8; i++ {
+		buf[i] = byte(x >> (8 * (7 - i)))
+		buf[8+i] = byte(y >> (8 * (7 - i)))
+	}
+	return buf
+}
+
+// DeepCopyValue is trivial because spatialStub holds only primitive fields.
+// Returns the value unchanged — Go copies struct values by assignment.
+func (s spatialStub) DeepCopyValue() any { return s }
+
+// unregisteredStub similarly used to be a bare struct. It now implements
+// both contracts so it remains valid input for the few tests that need a
+// registrable-but-distinct type. The "Unregistered" name still describes
+// its role: it's never actually registered in the affected tests.
 type unregisteredStub struct {
 	A int
 }
 
+func (u unregisteredStub) HashBytes() []byte  { return []byte{byte(u.A)} }
+func (u unregisteredStub) DeepCopyValue() any { return u }
+
+// hashCopyStub is used by TestRegisteredPropertyStructTypes_Sorted to
+// register a third type alongside spatialStub and unregisteredStub. The
+// original test used an anonymous struct{ Z int } literal, which under the
+// new registration contract would be rejected; this named stub satisfies
+// HashableValue + DeepCopier and preserves the test's intent (verifying
+// lexicographic ordering in RegisteredPropertyStructTypes).
+type hashCopyStub struct {
+	Z int
+}
+
+func (h hashCopyStub) HashBytes() []byte  { return []byte{byte(h.Z)} }
+func (h hashCopyStub) DeepCopyValue() any { return h }
+
+// mustRegister is a test-only helper that fails the test if registration
+// returns an error. Tests in this file are happy-path registration tests
+// for known-good stubs; an error here is a regression in the registration
+// contract itself, which other tests cover explicitly.
+func mustRegister(t *testing.T, v any) {
+	t.Helper()
+	if err := RegisterPropertyStructType(v); err != nil {
+		t.Fatalf("RegisterPropertyStructType(%T): unexpected error: %v", v, err)
+	}
+}
+
 func TestRegisterPropertyStructType_AcceptsValue(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType(spatialStub{})
+	mustRegister(t, spatialStub{})
 
 	var ps PropertySlice
 	if err := ps.Set("pt", spatialStub{X: 1, Y: 2}); err != nil {
@@ -26,7 +84,7 @@ func TestRegisterPropertyStructType_AcceptsValue(t *testing.T) {
 
 func TestRegisterPropertyStructType_AcceptsPointer(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType(spatialStub{})
+	mustRegister(t, spatialStub{})
 
 	var ps PropertySlice
 	if err := ps.Set("pt", &spatialStub{X: 1, Y: 2}); err != nil {
@@ -36,7 +94,7 @@ func TestRegisterPropertyStructType_AcceptsPointer(t *testing.T) {
 
 func TestRegisterPropertyStructType_RegisteringPointerAlsoAcceptsValue(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType((*spatialStub)(nil))
+	mustRegister(t, (*spatialStub)(nil))
 
 	var ps PropertySlice
 	if err := ps.Set("pt", spatialStub{X: 1, Y: 2}); err != nil {
@@ -63,7 +121,7 @@ func TestRegisterPropertyStructType_UnregisteredRejected(t *testing.T) {
 
 func TestRegisterPropertyStructType_NilPointerRejected(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType(spatialStub{})
+	mustRegister(t, spatialStub{})
 
 	var ps PropertySlice
 	var nilPtr *spatialStub
@@ -78,8 +136,8 @@ func TestRegisterPropertyStructType_NilPointerRejected(t *testing.T) {
 
 func TestRegisterPropertyStructType_Idempotent(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType(spatialStub{})
-	RegisterPropertyStructType(spatialStub{}) // second call must not panic
+	mustRegister(t, spatialStub{})
+	mustRegister(t, spatialStub{}) // second call must not error or panic
 
 	names := RegisteredPropertyStructTypes()
 	count := 0
@@ -95,9 +153,9 @@ func TestRegisterPropertyStructType_Idempotent(t *testing.T) {
 
 func TestRegisteredPropertyStructTypes_Sorted(t *testing.T) {
 	t.Cleanup(resetRegistry)
-	RegisterPropertyStructType(struct{ Z int }{})
-	RegisterPropertyStructType(spatialStub{})
-	RegisterPropertyStructType(unregisteredStub{})
+	mustRegister(t, hashCopyStub{})
+	mustRegister(t, spatialStub{})
+	mustRegister(t, unregisteredStub{})
 
 	got := RegisteredPropertyStructTypes()
 	if len(got) != 3 {

@@ -31,6 +31,10 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.13
+
+**`DeepCopier` interface enforced at registration.** `RegisterPropertyStructType` now returns `error` and validates both `HashableValue` (prevents runtime panic in hash computation) and the new `DeepCopier` interface (prevents store-boundary violations where nested mutable state in a registered struct survives `PutNode`/`GetNode` round-trips outside locks and index maintenance). Registration checks the exact form passed — value form with pointer-receiver methods is rejected; the correct idiom for pointer-receiver types is `RegisterPropertyStructType((*T)(nil))`.
+
 ### What's new in 3.1.12
 
 **Admin-path event-shard pinning.** `ListShards`, `RebuildCatalog`, `Clear`, and four index admin methods (`CreateTemporalIndex`, `DropTemporalIndex`, `CreateHighFrequencyIndex`, `DropHighFrequencyIndex`) now pin event shards via `checkoutStore`/`checkinStore` before touching their BadgerStores. Pre-fix, a concurrent `Close` could free a shard's DB while an admin call was still reading or writing it. `findRelInAnyShardStore` now consults the caller's pre-pinned snapshot instead of re-resolving, closing a `Close`-race window in `RunRepair`.

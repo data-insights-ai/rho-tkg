@@ -683,6 +683,38 @@ The `checkoutStore` / `checkoutArchive` / `checkinStore` pin discipline that gua
 
 ---
 
+## B37. Custom Property Types Must Enforce Both Contracts at Registration
+
+```
+BAD:  func RegisterPropertyStructType(v any) {
+          // accepts anything — no interface check
+      }
+      // later: AddNode stores Polygon{Rings: [][]Ring{...}}
+      //        ComputeNodeHash calls appendPropertyValue → panic (no HashBytes)
+      //        PutNode deep-copies → shallow copy (no DeepCopyValue)
+      //        Caller mutates Polygon after Put, corrupts cached graph state
+
+GOOD: func RegisterPropertyStructType(v any) error {
+          if !t.Implements(hashableValueType) && !elemT.Implements(hashableValueType) {
+              return ErrTypeNotHashable
+          }
+          if !t.Implements(deepCopierType) && !elemT.Implements(deepCopierType) {
+              return ErrTypeNotDeepCopyable
+          }
+          // only reach the registry if both contracts hold
+      }
+```
+
+Check the form actually passed (`t`), not `reflect.PointerTo(elemT)`. Accepting the value form when methods are on the pointer receiver only stores non-addressable values; the runtime type-assert to `HashableValue` / `DeepCopier` returns `ok=false` and the code falls back to panic / shallow-copy — the same bugs registration was supposed to prevent. Callers with pointer-receiver methods must register `(*T)(nil)`.
+
+**Why:** Registration is the last gate before a type reaches the data plane (hash computation, store boundary). Both interfaces are required: `HashableValue` prevents panic in `ComputeNodeHash`; `DeepCopier` prevents the store boundary from silently sharing mutable state between caller and cache.
+
+**How to apply:** Any `RegisterPropertyStructType` call site outside this module must be updated to check the returned error. Test the rejection cases — value form with pointer-receiver methods is the easy-to-miss adversarial scenario.
+
+**History:** Found during MR review of `codex/property-type-safety`. The original registration silently accepted any struct, deferring both failures to runtime (panic in hash, corruption at store boundary).
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities
