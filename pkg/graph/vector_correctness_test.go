@@ -446,3 +446,145 @@ func TestSearchNearestNodes_TemporalDepthCombo_Rejected(t *testing.T) {
 		t.Errorf("expected ErrDepthTemporalUnsupported for ValidAt + Depth, got %v", err)
 	}
 }
+
+// --- searchNearestFiltered backend coverage ---
+//
+// The temporal path in Graph.SearchNearestNodes routes through
+// store.searchNearestFiltered when the store implements the
+// filteredVectorSearchStore hook. All three concrete stores implement it,
+// but the existing temporal tests all use MemoryStore (newTestGraph).
+// These two tests exercise the same logic via BadgerStore and TieredStore
+// so the hook implementations on those backends are covered.
+
+// TestSearchNearestNodes_BadgerStore_TemporalPath exercises
+// badgerstore.searchNearestFiltered: nodes created after t0 must be
+// excluded by the eligibility filter before the k-cut.
+func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
+	t.Parallel()
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, FlushInterval: 1<<63 - 1})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	g, err := New(Config{SnowflakeNodeID: 0, Store: bs})
+	if err != nil {
+		_ = bs.Close()
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	label, key := "Doc", "v"
+	pre, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+
+	time.Sleep(2 * time.Millisecond)
+	t0 := types.Instant(time.Now().UnixMilli())
+	time.Sleep(2 * time.Millisecond)
+
+	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+
+	if err := g.CreateVectorIndex(label, key, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5, QueryOpts{ValidAt: t0})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 eligible result (pre-t0 node), got %d", len(results))
+	}
+	if results[0].ID() != pre.ID() {
+		t.Errorf("expected pre-t0 node %d, got %d", pre.ID(), results[0].ID())
+	}
+}
+
+// TestSearchNearestNodes_TieredStore_TemporalPath exercises
+// tieredstore_write.searchNearestFiltered: same two-phase scenario on a
+// TieredStore reference label.
+func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
+	t.Parallel()
+	g, _ := newTestTieredGraph(t)
+
+	label, key := "User", "v"
+	pre, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+
+	time.Sleep(2 * time.Millisecond)
+	t0 := types.Instant(time.Now().UnixMilli())
+	time.Sleep(2 * time.Millisecond)
+
+	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+
+	if err := g.CreateVectorIndex(label, key, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5, QueryOpts{ValidAt: t0})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 eligible result (pre-t0 node), got %d", len(results))
+	}
+	if results[0].ID() != pre.ID() {
+		t.Errorf("expected pre-t0 node %d, got %d", pre.ID(), results[0].ID())
+	}
+}
+
+// --- resolveTemporalVectorMatches + paginateNearestNodes edge-case coverage ---
+
+// TestResolveTemporalVectorMatches_FiltersAndPaginates calls the fallback
+// directly, covering the post-filter pagination path including the case
+// where the cursor ID is not present in the result set.
+func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	label, key := "Vec", "v"
+
+	pre1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{2, 0}})
+	pre3, _ := g.AddNode([]string{label}, map[string]any{key: []float32{3, 0}})
+
+	time.Sleep(2 * time.Millisecond)
+	t0 := types.Instant(time.Now().UnixMilli())
+	time.Sleep(2 * time.Millisecond)
+
+	post, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}})
+
+	tok, _ := g.labels.Lookup(label)
+	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
+	opts := QueryOpts{ValidAt: t0}
+
+	// Candidates: all four nodes (simulating what the store returned).
+	all, _ := g.AllNodes(QueryOpts{})
+
+	// No pagination: all three eligible pre-t0 nodes returned, post filtered out.
+	got := resolveTemporalVectorMatches(g, all, opts, pred, 0, 0)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 eligible nodes, got %d", len(got))
+	}
+	for _, n := range got {
+		if n.ID() == post.ID() {
+			t.Errorf("post-t0 node must not appear in ValidAt=t0 result")
+		}
+	}
+
+	// Limit=2: first two eligible results.
+	got2 := resolveTemporalVectorMatches(g, all, opts, pred, 0, 2)
+	if len(got2) != 2 {
+		t.Fatalf("Limit=2: expected 2 results, got %d", len(got2))
+	}
+
+	// After=pre2: cursor is in the eligible set; expect pre3 only.
+	got3 := resolveTemporalVectorMatches(g, all, opts, pred, types.EntityID(pre2.ID()), 0)
+	if len(got3) != 1 || got3[0].ID() != pre3.ID() {
+		t.Errorf("After=pre2: expected [pre3], got %v", got3)
+	}
+
+	// After=post (cursor not in eligible set): paginateNearestNodes must
+	// return nil — the !found path sets start=len(nodes).
+	gotNone := resolveTemporalVectorMatches(g, all, opts, pred, types.EntityID(post.ID()), 0)
+	if len(gotNone) != 0 {
+		t.Errorf("After=post (ineligible cursor): expected empty, got %d results", len(gotNone))
+	}
+
+	_ = pre1
+}
