@@ -338,17 +338,31 @@ data/
 **TieredStore struct (key fields):**
 
 ```
-mu            sync.RWMutex           -- protects hotShard + eventShards during rotation
-refShard      *BadgerStore           -- always open
-refArchive    *BadgerStore           -- nil until first archive/restore
-archiveMu     sync.Mutex             -- protects lazy-open of refArchive
-eventShards   map[string]*eventShard -- name -> shard
-hotShard      *eventShard            -- convenience pointer to current hot shard
-ontology      *OntologyMapping       -- classifies labels (reference vs event)
-catalog       *ShardCatalog          -- persistent shard metadata
-closeCh       chan struct{}           -- signals idle-close goroutine to stop
-closeOnce     sync.Once              -- idempotent Close
+mu                   sync.RWMutex                  -- protects hotShard + eventShards during rotation
+refShard             *BadgerStore                  -- always open
+refArchive           atomic.Pointer[BadgerStore]   -- nil until first archive/restore (atomic.Pointer for race-free Load)
+archiveMu            sync.Mutex                    -- protects lazy-open of refArchive
+archiveActiveReqs    atomic.Int64                  -- outstanding refArchive checkouts; Close drains before close
+closed               atomic.Bool                   -- set by Close; ensureRefArchive / checkout* return ErrStoreClosed
+eventShards          map[string]*eventShard        -- name -> shard
+hotShard             *eventShard                   -- convenience pointer to current hot shard
+ontology             *OntologyMapping              -- classifies labels (reference vs event)
+catalog              *ShardCatalog                 -- persistent shard metadata
+closeCh              chan struct{}                 -- signals idle-close goroutine to stop
+closeOnce            sync.Once                     -- idempotent Close
 ```
+
+**refArchive checkout discipline (v3.1.11):** every refArchive read or write
+goes through `checkoutArchive() (*BadgerStore, func(), error)`, mirroring the
+event-shard `checkoutStore`. Returns nil with a no-op checkin when no archive
+exists in the catalog. Increments `archiveActiveReqs` so a concurrent `Close`
+that drains active requests cannot free the store mid-call. Cold-start safe:
+opens the archive on demand if the catalog has it. Used by every API that
+reads or mutates archive state — point lookups (`shardForNodeIDChecked` /
+`shardForRelIDChecked`), indexed/bulk reads at `DepthAll`, history fan-out
+(`forEachHistoryShard`), `ArchiveNode` / `RestoreNode` cross-store moves, and
+admin paths (`ListShards`, `RebuildCatalog`, `findRelInAnyShardStore`,
+`allShardStoresWithLazyOpen`).
 
 **eventShard struct:**
 

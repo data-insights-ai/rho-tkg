@@ -1,8 +1,10 @@
 # tkg-v3 — open work
 
-Latest release: **v3.1.9** — typed entity IDs (v3.1.8) + TieredStore
-cross-shard hardening (MR !4 in v3.1.8) + IndexProvider/HashableValue
-extension points (MR !1 in v3.1.9). See `CHANGELOG.md` for details.
+Latest release: **v3.1.11** — refArchive parity in indexed/bulk reads +
+Close-race protection (MR !6 + audit fixes). Built on v3.1.10
+(history-aware indexed candidate planning + batch hardening), v3.1.9
+(IndexProvider + HashableValue), v3.1.8 (typed entity IDs + TieredStore
+cross-shard hardening). See `CHANGELOG.md` for details.
 
 ## Optional follow-ups
 
@@ -28,13 +30,23 @@ not blocking. All are Tier D infrastructure refactors.
   `pkg/types/relationship.go`. Currently kept as a deprecated alias for
   downstream source-compat. Schedule for the next minor bump or once
   engram updates off `v3.1.1`.
+- **`findRelInAnyShardStore` API improvement** (`pkg/graph/tieredstore_admin.go`):
+  current contract is "returned pointer is for identity comparison only"
+  — caller MUST NOT dereference. A safer signature would return
+  `(*BadgerStore, func(), error)` with the pin held for the caller's use.
+  Defer until a real second caller exists; today only `tieredstore_repair.go`
+  uses it and only does a nil check.
 
-## MR queue (review pending)
+## MR queue
 
-- **MR !5** "Draft: fix(graph): close history-aware regressions and
-  cross-shard rel rollback" — not yet analysed.
-- **MR !1** ✅ merged in v3.1.9.
-- **MR !4** ✅ merged in v3.1.8.
+All open MRs from the original review backlog have been merged:
+
+- **MR !1** ✅ merged in v3.1.9 (IndexProvider + HashableValue).
+- **MR !2** ✅ closed earlier (regression coverage rolled into v3.1.7).
+- **MR !3** ✅ merged earlier (graph perf baseline benchmarks in v3.1.7).
+- **MR !4** ✅ merged in v3.1.8 (TieredStore cross-shard hardening).
+- **MR !5** ✅ merged in v3.1.10 (history-aware regressions + batch hardening).
+- **MR !6** ✅ merged in v3.1.11 (refArchive parity + Close-race protection).
 
 ## Out of scope
 
@@ -63,12 +75,18 @@ grep -rc '\.SnowflakeID()' pkg/graph/*.go pkg/types/*.go | \
 # chokepoint check — only keys.go + lru.go + entity_locks.go are high:
 grep -c 'snowflake\.ID' pkg/graph/keys.go pkg/graph/wire.go \
   pkg/graph/lru.go pkg/graph/entity_locks.go
+
+# refArchive callsite audit — every refArchive.Load() outside
+# checkoutArchive itself should be either a pointer-comparison-only
+# pattern (shard != ts.refArchive.Load()) or be inside a function that
+# already pinned the archive:
+grep -n 'refArchive\.Load()' pkg/graph/tieredstore*.go | grep -v '_test\.go'
 ```
 
-## Lessons (validated 2026-05-05 — see `tasks/lessons.md` for the full archive)
+## Lessons (validated 2026-05-05 / 2026-05-06 across 8 MR integrations)
 
-Five rounds of parallel-agent work + two single-agent rounds + two
-parallel merge resolutions (MR !4, MR !1) validated this prompt
+Five rounds of parallel-agent work + three single-agent rounds + four
+parallel merge resolutions (MR !1, !4, !5, !6) validated this prompt
 structure for cross-cutting type migrations and substantive merges.
 
 1. **Natural unit of change**, not "one file per agent". Round-1 Agent A
@@ -93,11 +111,18 @@ structure for cross-cutting type migrations and substantive merges.
 7. **Merge boundary mismatches**: when N agents independently resolve
    conflicts in different files of the same package, signature
    assumptions can drift between agents. Post-merge boundary audit is
-   non-optional — the main agent had to fix ~10 boundary mismatches
-   inline after MR !4's joint verification.
+   non-optional.
 8. **Concrete regression tests for race-class bugs**: MR !1's TOCTOU
-   fix in `RegisterIndexProvider` pairs with `TestIndexProvider_
-   ConcurrentRegisterRaceSafe` — 50 goroutines register the same name,
-   assert exactly 1 success and exactly 1 receives events. Pre-fix code
-   would have failed both assertions. Run with `-race -count=10` to
-   surface any residual races.
+   fix in `RegisterIndexProvider` pairs with
+   `TestIndexProvider_ConcurrentRegisterRaceSafe` — 50 goroutines
+   register the same name, assert exactly 1 success and exactly 1
+   receives events. Run with `-race -count=10`.
+9. **Post-MR audit for the same bug class**: when an MR fixes a
+   pattern (e.g. "pin refArchive via checkoutArchive"), grep for the
+   same pattern across the codebase before tagging. MR !6 fixed
+   indexed/bulk reads + point-lookup pinning + history fan-out, but
+   missed `findRelInAnyShardStore` and `ArchiveNode`/`RestoreNode`. The
+   post-merge audit caught both before tagging v3.1.11. Pattern for
+   any "consistency MR": run `grep -n 'refArchive\.Load()'` (or the
+   equivalent) and verify each remaining site is either a pointer-
+   comparison-only optimization or already pinned.

@@ -602,6 +602,56 @@ backend-agnostic.
 
 ---
 
+## B35. Same-Pattern Audit After Merging a "Consistency MR"
+
+```
+BAD:  MR adds checkoutArchive() pin to GetNode/Update/Delete and
+      forEachHistoryShard. Merge it. Tag.
+      ...later: a different code path still uses raw refArchive.Load()
+      without the pin and races Close in production.
+
+GOOD: After merging, grep for every callsite of the pre-fix pattern
+      (refArchive.Load(), or whatever the bug-class is). For each
+      remaining site, classify as either:
+        - already pinned (caller wraps in checkoutArchive),
+        - pointer-comparison only (load result never dereferenced),
+        - or actual Close-race bug — fix before tagging.
+```
+
+When a merged MR fixes a bug class (e.g. "missing pin against Close
+race"), the same pattern likely exists elsewhere in the codebase that
+the MR author didn't audit — especially in adjacent admin/repair paths
+the MR touches indirectly.
+
+**Audit pattern after a consistency MR:**
+
+1. Identify the pre-fix pattern (e.g. `refArchive.Load()` without
+   `checkoutArchive`).
+2. `grep -n` for every callsite of the pattern across the package.
+3. For each, walk one of three paths:
+   - Already correct (pinned upstream or pointer-comparison only).
+   - Pre-fix bug missed by the MR — fix inline before tagging.
+   - Justified raw use — document in-line with a comment.
+4. Tag only when the audit is clean.
+
+**History:** v3.1.11 audit caught two refArchive Close-race sites
+(`findRelInAnyShardStore` and `ArchiveNode`/`RestoreNode`) that MR !6
+fixed elsewhere but missed in admin and write paths. The function's
+own doc comment in `findRelInAnyShardStore` literally said *"Missing
+the archive probe causes ... silent data loss"* — yet the implementation
+used the unsafe raw `Load()` pattern MR !6 fixed elsewhere. Fixed
+inline as part of v3.1.11.
+
+**Tooling:**
+
+```sh
+# After a consistency MR, audit all sites of the pre-fix pattern:
+grep -rn '<pre-fix pattern>' pkg/<pkg>/*.go | grep -v '_test\.go'
+# For each, decide: pinned / pointer-comparison-only / actual bug.
+```
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities
