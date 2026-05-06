@@ -1,6 +1,9 @@
 package graph
 
 import (
+	"errors"
+	"fmt"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
@@ -76,7 +79,16 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 		for _, relID := range relIDs {
 			r, err := ns.store.GetRelationship(relID)
 			if err != nil {
-				continue // can't read — skip
+				// ErrRelNotFound is a legitimate TOCTOU skip — the rel was
+				// deleted between AllRelIDs and GetRelationship. Anything
+				// else (I/O failure, closed shard, routing failure) is an
+				// operational error: silently swallowing it returns
+				// "Repair succeeded" while genuinely needed in/-index
+				// repairs were missed. Surface it.
+				if errors.Is(err, ErrRelNotFound) {
+					continue
+				}
+				return nil, fmt.Errorf("repair: shard %q: read rel %d: %w", ns.name, relID, err)
 			}
 			rawRelID := relID.SnowflakeID()
 
@@ -84,14 +96,17 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 			endID := r.EndNodeID().SnowflakeID()
 			relType := r.TypeToken().Value()
 
-			// Resolve which shard owns each endpoint.
+			// Resolve which shard owns each endpoint. Routing failures
+			// indicate a real problem (corrupt ontology, missing shard
+			// catalog entry); the original code's silent `continue` made
+			// these failures look like "repair clean".
 			startShard, err := ts.shardForNodeID(r.StartNodeID())
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("repair: shard %q: resolve start shard for rel %d: %w", ns.name, relID, err)
 			}
 			endShard, err := ts.shardForNodeID(r.EndNodeID())
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("repair: shard %q: resolve end shard for rel %d: %w", ns.name, relID, err)
 			}
 
 			if startShard == endShard {

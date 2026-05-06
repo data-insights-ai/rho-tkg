@@ -31,6 +31,12 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.14
+
+**`ImportGraph` panic safety.** `wireToNode`/`wireToRel` panic on token 0 (reserved). `ImportGraph` reads from an arbitrary `io.Reader`; a corrupt or malicious export stream became a process crash. New `validateNodeWire`/`validateRelWire` guard all four record types (node, nodeHist, rel, relHist) before construction, returning the typed `ErrCorruptExport` sentinel on token-0 or out-of-uint16-range values.
+
+**`RunRepair` error propagation.** Phase 2's `GetRelationship` and `shardForNodeID` errors were all silently `continue`d — conflating `ErrRelNotFound` (legitimate TOCTOU skip) with I/O failures, routing failures, and closed-shard errors. Repair returned "succeeded" while needed `in/` repairs were missed. Now `errors.Is(err, ErrRelNotFound)` is the only legitimate skip; all operational errors propagate.
+
 ### What's new in 3.1.13
 
 **`DeepCopier` interface enforced at registration.** `RegisterPropertyStructType` now returns `error` and validates both `HashableValue` (prevents runtime panic in hash computation) and the new `DeepCopier` interface (prevents store-boundary violations where nested mutable state in a registered struct survives `PutNode`/`GetNode` round-trips outside locks and index maintenance). Registration checks the exact form passed — value form with pointer-receiver methods is rejected; the correct idiom for pointer-receiver types is `RegisterPropertyStructType((*T)(nil))`.

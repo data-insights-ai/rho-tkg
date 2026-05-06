@@ -252,6 +252,31 @@ func (c *entityLRU[V]) CleanCount() int {
 	return c.cleanCount
 }
 
+// evictForTest removes the entry for key without touching Badger or
+// dirty/tombstone bookkeeping in the surrounding store. Test-only —
+// production code uses Put/MarkDeleted/evictClean. Used by failure-
+// injection tests that need a divergence between the in-memory cache
+// and the underlying store (e.g. simulating a Phase-2 ErrRelNotFound
+// race in RunRepair). No-op if the key is absent.
+//
+// Returns true if an entry was evicted. The cache's clean/dirty
+// invariants are restored: the evicted entry's accounting is removed.
+func (c *entityLRU[V]) evictForTest(key snowflake.ID) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	el, ok := c.items[key]
+	if !ok {
+		return false
+	}
+	entry := el.Value.(*lruEntry[V])
+	if !entry.deleted && entry.dirtyVer == 0 {
+		c.cleanCount--
+	}
+	c.order.Remove(el)
+	delete(c.items, key)
+	return true
+}
+
 // Hits returns the total number of cache hits (cacheHit + cacheDeleted) since creation.
 func (c *entityLRU[V]) Hits() int64 { return c.hits.Load() }
 

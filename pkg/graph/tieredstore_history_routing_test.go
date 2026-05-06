@@ -2535,7 +2535,13 @@ func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
 	ts, relID, _ := mustArchivedRelationshipFixture(t)
 
-	owner := ts.findRelInAnyShardStore(relID.SnowflakeID())
+	stores, release, err := ts.allShardStoresWithLazyOpen()
+	if err != nil {
+		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
+	}
+	defer release()
+
+	owner := ts.findRelInAnyShardStore(relID.SnowflakeID(), stores)
 	if owner == nil {
 		t.Fatal("findRelInAnyShardStore returned nil for archived rel; Phase 1 of RunRepair will treat its in/ entries as orphaned and delete them (data loss)")
 	}

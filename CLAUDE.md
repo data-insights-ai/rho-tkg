@@ -62,7 +62,7 @@ After confirming the implementation is correct and the issue isn't duplicated el
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.13 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11) + admin-path event-shard pinning + ArchiveNode/RestoreNode g.mu.Lock (v3.1.12) + DeepCopier interface + RegisterPropertyStructType safety (v3.1.13). See CHANGELOG.md for version history.
+Status: v3.1.14 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11) + admin-path event-shard pinning + ArchiveNode/RestoreNode g.mu.Lock (v3.1.12) + DeepCopier interface + RegisterPropertyStructType safety (v3.1.13) + ImportGraph panic safety + RunRepair error propagation (v3.1.14). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -140,7 +140,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
 | `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
 | `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `deleteRelationshipInternal` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
-| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible; `ErrIncompatibleExport`, `ErrIncompatibleRegistry` |
+| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible; `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, `ErrCorruptExport`; `validateNodeWire`/`validateRelWire` guard the untrusted `io.Reader` boundary before construction |
 | `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
 | `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |

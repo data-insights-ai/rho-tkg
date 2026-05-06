@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.14] - 2026-05-06
+
+### Fixed
+
+- **`ImportGraph` panic safety** (`pkg/graph/export.go`): `wireToNode`/`wireToRel` panic on token 0 (reserved). `ImportGraph` reads from an untrusted `io.Reader`; a corrupt or malicious export becomes a process crash. New `validateNodeWire`/`validateRelWire` validate all four record types (node, nodeHist, rel, relHist) before constructing, returning the new `ErrCorruptExport` sentinel on token-0 or out-of-uint16-range values.
+- **`RunRepair` silent operational error swallow** (`pkg/graph/tieredstore_repair.go`): Phase 2 conflated `ErrRelNotFound` (legitimate TOCTOU skip) with I/O failures, routing failures, and closed-shard errors — returning "Repair succeeded" while needed `in/` repairs were missed. Now `errors.Is(err, ErrRelNotFound)` continues; all other errors propagate.
+
 ## [3.1.13] - 2026-05-06
 
 ### Added

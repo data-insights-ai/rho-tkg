@@ -49,6 +49,14 @@ var ErrIncompatibleExport = errors.New("graph: incompatible export format versio
 // would assign wrong labels/types to all entities without any visible error.
 var ErrIncompatibleRegistry = errors.New("graph: imported registry conflicts with existing registry")
 
+// ErrCorruptExport is returned by ImportGraph when an export record contains
+// structurally invalid data — e.g. a node with primary-label token 0 (reserved)
+// or a relationship with type token 0. ImportGraph reads from an arbitrary
+// io.Reader (untrusted boundary); validation must surface bad records as
+// typed errors rather than letting types.NewNode / types.NewRelationship panic
+// downstream.
+var ErrCorruptExport = errors.New("graph: corrupt export record")
+
 // maxExportRecordSize caps the per-record allocation in readExportRecord.
 // A node with 1000 max-size properties is ~66 MiB; 128 MiB gives safe headroom.
 const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
@@ -266,6 +274,9 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node: %w", err)
 			}
+			if err := validateNodeWire(&wn); err != nil {
+				return fmt.Errorf("import: node %d: %w", wn.ID, err)
+			}
 			n := wireToNode(wn)
 			if err := g.store.PutNode(n); err != nil && !errors.Is(err, ErrNodeExists) {
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
@@ -275,6 +286,9 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			var wn nodeWire
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
+			}
+			if err := validateNodeWire(&wn); err != nil {
+				return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 			}
 			n := wireToNode(wn)
 			id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
@@ -287,6 +301,9 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel: %w", err)
 			}
+			if err := validateRelWire(&wr); err != nil {
+				return fmt.Errorf("import: rel %d: %w", wr.ID, err)
+			}
 			rel := wireToRel(wr)
 			if err := g.store.PutRelationship(rel); err != nil && !errors.Is(err, ErrRelExists) {
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
@@ -296,6 +313,9 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			var wr relWire
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
+			}
+			if err := validateRelWire(&wr); err != nil {
+				return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 			}
 			rel := wireToRel(wr)
 			id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
@@ -308,6 +328,56 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 		}
 	}
 
+	return nil
+}
+
+// validateNodeWire defends the import boundary against malformed node records.
+// types.NewNode panics on token 0 (primary or extra) — turning a corrupt or
+// malicious export into a process crash. ImportGraph reads from an arbitrary
+// io.Reader (untrusted input), so we validate before constructing.
+//
+// Returns ErrCorruptExport (wrapped with detail) on any structural violation:
+//   - PrimaryLabel == 0 (token 0 is reserved)
+//   - PrimaryLabel outside [1, 65535] (does not fit a uint16 token)
+//   - any ExtraLabels element == 0 or outside [1, 65535]
+//
+// Anything else (id, version, properties, temporal, integrity) is bounded
+// by the wire layer's type system at deserialize time and is NOT
+// re-validated here. The validators only establish *panic safety* — they
+// do not prove semantic correctness of all fields. A negative
+// BaseEntityID, a version with no temporal anchor, or a non-snowflake ID
+// will round-trip without error and may surface as a logical
+// inconsistency later (e.g. failed hash chain verification, lookup
+// misses). Treat ImportGraph as "won't crash on a hostile reader, but
+// post-import audits are still the caller's responsibility."
+func validateNodeWire(w *nodeWire) error {
+	if w.PrimaryLabel == 0 {
+		return fmt.Errorf("%w: primary label token 0 is reserved", ErrCorruptExport)
+	}
+	if w.PrimaryLabel < 0 || w.PrimaryLabel > 65535 {
+		return fmt.Errorf("%w: primary label token %d out of uint16 range", ErrCorruptExport, w.PrimaryLabel)
+	}
+	for i, t := range w.ExtraLabels {
+		if t == 0 {
+			return fmt.Errorf("%w: extra label[%d] token 0 is reserved", ErrCorruptExport, i)
+		}
+		if t < 0 || t > 65535 {
+			return fmt.Errorf("%w: extra label[%d] token %d out of uint16 range", ErrCorruptExport, i, t)
+		}
+	}
+	return nil
+}
+
+// validateRelWire defends the import boundary against malformed relationship
+// records. types.NewRelationship panics on relType 0; surface a typed error
+// instead.
+func validateRelWire(w *relWire) error {
+	if w.RelType == 0 {
+		return fmt.Errorf("%w: rel type token 0 is reserved", ErrCorruptExport)
+	}
+	if w.RelType < 0 || w.RelType > 65535 {
+		return fmt.Errorf("%w: rel type token %d out of uint16 range", ErrCorruptExport, w.RelType)
+	}
 	return nil
 }
 

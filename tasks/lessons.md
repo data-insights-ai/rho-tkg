@@ -715,6 +715,64 @@ Check the form actually passed (`t`), not `reflect.PointerTo(elemT)`. Accepting 
 
 ---
 
+## B38. Trust Boundaries Require Explicit Validation Before Construction
+
+```
+BAD:  func (g *Graph) ImportGraph(r io.Reader) error {
+          ...
+          n := wireToNode(wn)   // wireToNode panics if primaryLabel == 0
+          ...
+      }
+      // a corrupt or hostile io.Reader stream crashes the process
+
+GOOD: func (g *Graph) ImportGraph(r io.Reader) error {
+          ...
+          if err := validateNodeWire(&wn); err != nil {
+              return fmt.Errorf("import: node %d: %w", wn.ID, err)
+          }
+          n := wireToNode(wn)   // safe — token invariants verified
+          ...
+      }
+```
+
+Any function that reads from a caller-supplied `io.Reader`, network socket, or external file is an untrusted boundary. Construction functions that enforce invariants via panics (token 0 reserved, non-zero type required) must be defended at the boundary — not inside the constructor where the panic has already crossed the trust line.
+
+**Why:** Internal reads from Badger (trusted — written by this library, validated at write time) don't need this guard. `io.Reader` paths do: the reader may be corrupted, truncated, or hostile.
+
+**How to apply:** Before any construction call (`wireToNode`, `wireToRel`, `types.NewNode`, `types.NewRelationship`) in an import/deserialize path, add an explicit pre-validation step that returns a typed sentinel error on invalid input. Name the sentinel `Err*` and test it with `errors.Is`.
+
+**History:** Found during `codex/defensive-boundaries` MR review. `ImportGraph` called `wireToNode`/`wireToRel` directly on untrusted bytes — token-0 input panicked the process. Fixed with `validateNodeWire`/`validateRelWire` + `ErrCorruptExport`.
+
+---
+
+## B39. Scan Loops Must Distinguish Legitimate Skips from Operational Failures
+
+```
+BAD:  r, err := ns.store.GetRelationship(relID)
+      if err != nil {
+          continue // swallows I/O failures, routing errors, closed shards
+      }
+      // repair returns "success" while genuinely broken entries are missed
+
+GOOD: r, err := ns.store.GetRelationship(relID)
+      if err != nil {
+          if errors.Is(err, ErrRelNotFound) {
+              continue  // TOCTOU: rel deleted between AllRelIDs and GetRelationship
+          }
+          return nil, fmt.Errorf("repair: shard %q: read rel %d: %w", ns.name, relID, err)
+      }
+```
+
+Repair, migration, and export loops that read entities by ID must distinguish the "entity deleted between snapshot and fetch" TOCTOU case (always legitimate to skip) from operational errors (I/O failure, closed shard, routing failure). Swallowing all errors returns a false "success" result while leaving the work undone.
+
+**Why:** The TOCTOU case is inherently benign — the caller snapshotted IDs, something deleted the entity concurrently, the entity is gone and no repair is needed. Operational errors are different: the repair couldn't determine whether action was needed. Conflating them hides real failures.
+
+**How to apply:** In any scan-loop `if err != nil` block: use `errors.Is(err, ErrXxxNotFound)` for the legitimate-skip class; propagate everything else. Write two tests — one that triggers the legitimate skip and one that injects an operational error — to verify the `errors.Is` gate is exercised independently.
+
+**History:** Found during `codex/defensive-boundaries` MR review. `RunRepair` Phase 2's `GetRelationship` and `shardForNodeID` errors were all silently continued. Repair returned a clean result while needing-repair relationships were skipped.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities
