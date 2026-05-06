@@ -523,6 +523,12 @@ func (ts *TieredStore) Close() error {
 }
 
 // Clear clears all open shards. Cold shards with nil stores are skipped.
+//
+// Concurrency: each open event shard is pinned via checkoutStore for the
+// duration of its Clear() call. Without the pin, Close (which doesn't
+// take ts.mu and only spin-waits on activeReqs) could free the
+// underlying DB while Clear was still touching it — Badger v4 Flush on
+// a closed DB blocks forever.
 func (ts *TieredStore) Clear() error {
 	ts.mu.RLock()
 	shards := make([]*eventShard, 0, len(ts.eventShards))
@@ -535,10 +541,26 @@ func (ts *TieredStore) Clear() error {
 		return fmt.Errorf("graph: clear ref shard: %w", err)
 	}
 	for _, es := range shards {
+		// Best-effort skip for shards observed cold-and-empty under the
+		// snapshot RLock above. This is an OPTIMIZATION, not a strict
+		// guarantee: a concurrent caller could lazy-open this shard via
+		// checkoutStore between our nil-check and the loop below. That's
+		// acceptable — Clear is admin-only (not a concurrent-safe API)
+		// and the worst case is we skip a freshly-opened shard, which
+		// will simply contain post-Clear writes that the next admin
+		// caller can address. The pin discipline below is what protects
+		// us from Close racing the Clear call itself.
 		if es.store == nil {
-			continue // cold shard not open
+			continue
 		}
-		if err := es.store.Clear(); err != nil {
+		store, coErr := es.checkoutStore(ts)
+		if coErr != nil {
+			// Close started after our snapshot — skip rather than crash.
+			continue
+		}
+		err := store.Clear()
+		es.checkinStore()
+		if err != nil {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}

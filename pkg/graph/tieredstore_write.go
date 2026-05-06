@@ -279,8 +279,36 @@ func (ts *TieredStore) PutRelationship(r *types.Relationship) error {
 	defer endCheckin()
 
 	if startShard == endShard {
-		// Same shard: delegate entirely.
+		// Same shard: delegate entirely. Includes the both-on-archive
+		// case (e.g., a self-loop on an archived node) which is the
+		// only archive write the M2 invariant currently permits.
 		return startShard.PutRelationship(r)
+	}
+
+	// Cross-shard with an archived endpoint is the runtime counterpart of
+	// the M2 / ErrCrossShardArchiveRel invariant. Without this check
+	// AddRelationship can sneak past the ArchiveNode pre-scan: after
+	// archiving A, a fresh AddRelationship(A, B) where B lives on
+	// refShard or an event shard would cross the archive boundary and
+	// re-introduce the silent-loss surface RestoreNode would later hit.
+	//
+	// We probe via archive.hasNodeID rather than identity comparison
+	// against the resolved shard pointers because hasNodeID is the
+	// single-source-of-truth for archive residency — independent of any
+	// momentary refArchive pointer state.
+	//
+	// Close-race note: when refArchive.Load() returns nil, ts.closed
+	// is already true (Close stores nil under archiveMu only AFTER
+	// setting closed). shardForNodeIDChecked / checkoutArchive return
+	// ErrStoreClosed in that state, so we never reach this point with
+	// a still-live archive whose Load() yields nil — the guard's
+	// nil-skip branch is unreachable while the archive holds rels.
+	if archive := ts.refArchive.Load(); archive != nil {
+		startOnArchive := archive.hasNodeID(startID)
+		endOnArchive := archive.hasNodeID(endID)
+		if startOnArchive != endOnArchive {
+			return fmt.Errorf("graph: cross-shard relationship endpoint is archived: %w", ErrCrossShardArchiveRel)
+		}
 	}
 
 	// Cross-shard: verify endpoints exist.
@@ -853,16 +881,14 @@ func (ts *TieredStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 // across all shards (reference + all event shards). New hot shards created via
 // rotation will also inherit the index.
 func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
-	ts.mu.RLock()
-	shards, release, err := ts.allActiveShards()
-	ts.mu.RUnlock()
+	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	for _, shard := range shards {
-		if err := shard.CreateTemporalIndex(labelToken); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
+	for _, ns := range stores {
+		if err := ns.store.CreateTemporalIndex(labelToken); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
 			return err
 		}
 	}
@@ -886,9 +912,7 @@ func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
 // DropTemporalIndex removes the temporal index for the given label token
 // from all shards.
 func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
-	ts.mu.RLock()
-	shards, release, err := ts.allActiveShards()
-	ts.mu.RUnlock()
+	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return err
 	}
@@ -896,7 +920,8 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 
 	var lastErr error
 	found := false
-	for _, shard := range shards {
+	for _, ns := range stores {
+		shard := ns.store
 		if err := shard.DropTemporalIndex(labelToken); err != nil {
 			if !errors.Is(err, ErrTemporalIndexNotFound) {
 				lastErr = err
@@ -932,16 +957,14 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 // must re-call CreateHighFrequencyIndex after rotation if needed.
 // Returns ErrTemporalIndexExists if any temporal index already exists for this label.
 func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
-	ts.mu.RLock()
-	shards, release, err := ts.allActiveShards()
-	ts.mu.RUnlock()
+	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	for _, shard := range shards {
-		if err := shard.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
+	for _, ns := range stores {
+		if err := ns.store.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
 			return err
 		}
 	}
@@ -951,9 +974,7 @@ func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize ti
 // DropHighFrequencyIndex removes the high-frequency index for the given label token
 // from all shards. Returns ErrTemporalIndexNotFound if no index exists on any shard.
 func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
-	ts.mu.RLock()
-	shards, release, err := ts.allActiveShards()
-	ts.mu.RUnlock()
+	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return err
 	}
@@ -961,7 +982,8 @@ func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
 
 	var lastErr error
 	found := false
-	for _, shard := range shards {
+	for _, ns := range stores {
+		shard := ns.store
 		if err := shard.DropHighFrequencyIndex(labelToken); err != nil {
 			if !errors.Is(err, ErrTemporalIndexNotFound) {
 				lastErr = err
@@ -1068,35 +1090,6 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, nil
 	}
 	return result, nil
-}
-
-// allActiveShards returns all currently open BadgerStores (refShard +
-// refArchive + open event shards), and a release function the caller MUST
-// invoke when done — it drops the refArchive pin obtained via
-// checkoutArchive. Caller must hold ts.mu.RLock or ts.mu.Lock for the
-// event-shard snapshot.
-//
-// refArchive is included whenever it is open (lazy-opens on first
-// archived entity). Excluding it would silently skip archived reference
-// entities from index/admin operations even though the archive holds
-// indexed reference data with the same shape as refShard.
-func (ts *TieredStore) allActiveShards() ([]*BadgerStore, func(), error) {
-	shards := make([]*BadgerStore, 0, 2+len(ts.eventShards))
-	shards = append(shards, ts.refShard)
-	for _, es := range ts.eventShards {
-		if es.store != nil {
-			shards = append(shards, es.store)
-		}
-	}
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return nil, nil, archiveErr
-	}
-	if archive != nil {
-		shards = append(shards, archive)
-		return shards, archiveCheckin, nil
-	}
-	return shards, func() {}, nil
 }
 
 // --- Reference archive ---

@@ -1205,8 +1205,19 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 // ArchiveNode moves a reference node and its relationships from the reference
 // shard to the reference archive. Only available with TieredStore.
 // Returns ErrNodeNotFound if the node is not in the reference shard.
+//
+// Concurrency: takes g.mu.Lock — same exclusion class as a transaction.
+// ArchiveNode reads adjacency, then runs cascade; without this lock a
+// concurrent AddRelationship between the pre-scan and the cascade can
+// create a cross-shard rel touching the soon-to-be-archived node, which
+// the pre-scan misses and the cascade then partially destroys (the
+// rel's adjacency entries on the partner shard would dangle). Archiving
+// is a rare, batch-style admin operation; serializing against all
+// writers is acceptable and mirrors the tx/batch lock discipline.
 func (g *Graph) ArchiveNode(id types.NodeID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
+		g.mu.Lock()
+		defer g.mu.Unlock()
 		return ts.ArchiveNode(id)
 	}
 	return ErrNotTieredStore
@@ -1215,8 +1226,12 @@ func (g *Graph) ArchiveNode(id types.NodeID) error {
 // RestoreNode moves a reference node and its relationships from the reference
 // archive back to the reference shard. Only available with TieredStore.
 // Returns ErrNodeNotFound if the node is not in the archive.
+//
+// Concurrency: takes g.mu.Lock — see ArchiveNode for the rationale.
 func (g *Graph) RestoreNode(id types.NodeID) error {
 	if ts, ok := g.store.(*TieredStore); ok {
+		g.mu.Lock()
+		defer g.mu.Unlock()
 		return ts.RestoreNode(id)
 	}
 	return ErrNotTieredStore

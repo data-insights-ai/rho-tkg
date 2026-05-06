@@ -11,6 +11,50 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **After corrections**: Update `tasks/lessons.md` with the pattern and a rule to prevent recurrence
 - **Session end**: Update `tasks/lessons.md` with new lessons
 
+## MR Review Protocol
+
+When asked to analyse or review a merge request, execute these three phases in order:
+
+### Phase 1 — Correctness of the MR itself
+
+For each changed or added file:
+
+1. **Read the full diff** with `git diff origin/main...origin/<branch>`.
+2. **Verify the implementation against the spec** — does every new method/test deliver exactly what its name promises? Check edge cases the author may have assumed away.
+3. **Lessons and CHANGELOG hygiene**:
+   - Confirm any new lesson entry has the correct next sequential number (grep `^## B` in `tasks/lessons.md`).
+   - Confirm the lesson body is not a duplicate of an existing entry (same title or same code pattern).
+   - Confirm the CHANGELOG section (`[Unreleased]` or explicit version) is placed above the current latest release, not above an older one — rebase issues leave the context pointing at a stale anchor.
+4. **Test quality** (apply all 17 testing rules from "Testing Rules"):
+   - Two-phase tests for every temporal/history-aware method (rule 15).
+   - Adversarial scenarios with exact-set assertions, not just happy-path (rule 16).
+   - Negative assertions: "must NOT contain Y" and phantom-value returns-empty cases.
+   - For interval queries: the "predicate held during part of interval but not on most-recent version" case must be asserted.
+   - Sentinel errors tested with `errors.Is` at every call layer (rule 4).
+5. **Run the tests**: `make test-race` on the branch. A test suite that fails for one backend is not mergeable.
+
+### Phase 2 — Is the addressed issue also present elsewhere?
+
+After understanding what problem the MR fixes or tests:
+
+1. **Grep for the same pattern** across the whole codebase — the same bug often hides behind multiple doors (see lessons A1, Code Review Lessons section). Use the audit checklists in "Audit Checklists".
+2. **Check symmetric types**: Node and Relationship are structural mirrors; fixes to one without the other are incomplete. Same for `Get*ValidAt` (named temporal) vs `*By*(opts QueryOpts)` (generic temporal) — rule 17.
+3. **Check all Store implementations**: If a fix touches `MemoryStore`, verify `BadgerStore` and `TieredStore` are consistent, and vice versa.
+4. **Check batch paths**: Any fix to standalone mutation paths must be verified against `BatchBuilder` paths (same logic often duplicated — see lesson A1).
+
+### Phase 3 — Are the MR's tests sufficient?
+
+After confirming the implementation is correct and the issue isn't duplicated elsewhere:
+
+1. **Coverage**: Run `make cover`. Every new public method must appear in coverage. No new code below 80%.
+2. **Missing scenarios checklist**:
+   - Cross-shard relationships (for TieredStore) — not just same-shard.
+   - Deleted entities: history must be queryable after deletion (B32).
+   - Concurrent access: if the MR touches shared state, confirm a `test-race` run exists.
+   - Cold→warm shard transitions (for TieredStore): use `demoteToCold` helper, not sub-second `ShardWindow`.
+3. **Confirm tests would have caught the original bug**: For each test, ask "if the implementation silently returned current state instead of historical state, would my assertions fail?" If not, the test is happy-path regardless of coverage (see Code Review Lessons).
+4. **State whether the MR is mergeable**: List blocking issues (tests that fail, wrong numbering, missing parity) and non-blocking issues separately.
+
 ## Project Overview
 
 **Temporal Knowledge Graph v3** — an internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
@@ -18,7 +62,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.11 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11). See CHANGELOG.md for version history.
+Status: v3.1.12 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11) + admin-path event-shard pinning + ArchiveNode/RestoreNode g.mu.Lock (v3.1.12). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -81,7 +125,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` (batch adjacency), `AddNodeLabel`/`RemoveNodeLabel` (mutate label set post-creation with history + hash chain), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel |
+| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` (batch adjacency), `AddNodeLabel`/`RemoveNodeLabel` (mutate label set post-creation with history + hash chain), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel; `ArchiveNode`/`RestoreNode` acquire `g.mu.Lock()` (same exclusion class as tx) |
 | `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods, `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` batch adjacency queries, `AddNodeLabelToken`/`AddNodeLabelTokenWithHistory` label mutation writers |
 | `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
 | `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
@@ -181,7 +225,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Lock ordering**: entity locks -> idxMu. Always.
 - **Two-phase delete with TOCTOU retry**: Phase A reads adjacency under node lock. Phase B locks all entities via `LockMany`, re-verifies adjacency, retries if changed (max 10).
 - **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
-- **Transaction isolation via g.mu**: `Graph.mu` serializes tx/batch (Lock) vs standalone mutations and reads (RLock). All exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()`. Tx/batch call unexported `*Internal` variants directly under `g.mu.Lock()`. Individual temporal query methods do NOT acquire `mu` (avoids reentrancy deadlock).
+- **Transaction isolation via g.mu**: `Graph.mu` serializes tx/batch (Lock) vs standalone mutations and reads (RLock). All exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()`. Tx/batch call unexported `*Internal` variants directly under `g.mu.Lock()`. Admin ops that read adjacency and cascade (`ArchiveNode`, `RestoreNode`) also acquire `g.mu.Lock()` to prevent concurrent writers from interleaving with the pre-scan. Individual temporal query methods do NOT acquire `mu` (avoids reentrancy deadlock).
 - **sync.RWMutex is NOT reentrant**: If A holds RLock and calls B which RLocks, and a writer waits between them, deadlock. Inner methods must be lock-free.
 - **sync.Once for idempotent Close()**: Never nil-guard a function pointer across goroutines.
 

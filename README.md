@@ -31,6 +31,14 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.12
+
+**Admin-path event-shard pinning.** `ListShards`, `RebuildCatalog`, `Clear`, and four index admin methods (`CreateTemporalIndex`, `DropTemporalIndex`, `CreateHighFrequencyIndex`, `DropHighFrequencyIndex`) now pin event shards via `checkoutStore`/`checkinStore` before touching their BadgerStores. Pre-fix, a concurrent `Close` could free a shard's DB while an admin call was still reading or writing it. `findRelInAnyShardStore` now consults the caller's pre-pinned snapshot instead of re-resolving, closing a `Close`-race window in `RunRepair`.
+
+**`ArchiveNode` / `RestoreNode` serialised under `g.mu.Lock()`.** Both admin methods now take the full write lock, the same exclusion class as a transaction. Pre-fix, a concurrent `AddRelationship` could slip between `ArchiveNode`'s adjacency pre-scan and its cascade, creating a cross-shard rel the cascade then partially destroyed.
+
+**`PutRelationship` cross-shard archive guard.** If one endpoint lives on `refArchive` and the other does not, `PutRelationship` returns `ErrCrossShardArchiveRel` before any writes, closing the window where a post-archive `AddRelationship` bypassed the M2 invariant.
+
 ### What's new in 3.1.11
 
 **refArchive parity in indexed and bulk reads.** `NodesByLabel`, `NodesByLabelAndProperty`, `NodeCountByLabel`, `RelationshipsByType`, `RelCountByType`, `AllNodes`, `AllRelationships`, `AllNodeIDs`, `AllRelIDs` now include archived entities at `DepthAll`. Pre-fix, archived nodes stayed `GetNode`-addressable but vanished from indexed/bulk reads. `DepthHot`/`DepthWarm` continue to exclude archive (caller explicitly asked for hotter tiers).

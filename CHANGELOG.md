@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.12] - 2026-05-06
+
+### Fixed
+
+- **Admin-path event-shard pinning** (`tieredstore_admin.go`, `tieredstore.go`, `tieredstore_write.go`): five latent Close-race surfaces closed — `ListShards`, `RebuildCatalog`, and `Clear` called `es.store.NodeCount/RelCount/Clear()` without a `checkoutStore` pin; a concurrent `Close` could free the BadgerStore mid-call. `CreateTemporalIndex`, `DropTemporalIndex`, `CreateHighFrequencyIndex`, `DropHighFrequencyIndex` used `allActiveShards` (unpinned pointers); all four now use `allShardStoresWithLazyOpen`. `findRelInAnyShardStore` changed to accept the caller's pre-pinned snapshot rather than re-resolving via a fresh `checkoutArchive`, closing the window where `Close` nil'd `refArchive` between resolution and scan.
+- **`ArchiveNode` / `RestoreNode` graph-level mutex** (`graph.go`): both now acquire `g.mu.Lock()` — same exclusion class as a transaction — preventing a concurrent `AddRelationship` from sneaking past the adjacency pre-scan between archive and cascade.
+- **Cross-shard archive guard in `PutRelationship`** (`tieredstore_write.go`): if one endpoint is on `refArchive` and the other is not, returns `ErrCrossShardArchiveRel`, closing the window where a post-archive `AddRelationship` bypassed the M2 invariant.
+
 ## [3.1.11] - 2026-05-06
 
 ### Fixed (refArchive parity follow-up — MR !6 + audit)

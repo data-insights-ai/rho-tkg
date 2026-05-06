@@ -652,6 +652,37 @@ grep -rn '<pre-fix pattern>' pkg/<pkg>/*.go | grep -v '_test\.go'
 
 ---
 
+## B36. Admin Paths Need the Same Pinning Discipline as Read Paths
+
+```
+BAD:  func (ts *TieredStore) ListShards() {
+          for _, es := range ts.eventShards {
+              si.Nodes, _ = es.store.NodeCount()   // no pin
+          }
+      }
+      // concurrent Close frees es.store mid-call → use-after-free
+
+GOOD: func (ts *TieredStore) ListShards() {
+          // snapshot under RLock, then release
+          for _, sn := range snaps {
+              store, err := sn.es.checkoutStore(ts)
+              if err != nil { continue }           // Close started — skip
+              si.Nodes, _ = store.NodeCount()
+              sn.es.checkinStore()
+          }
+      }
+```
+
+The `checkoutStore` / `checkoutArchive` / `checkinStore` pin discipline that guards read paths is equally required for admin paths (ListShards, RebuildCatalog, Clear, Create/Drop index). Admin methods are written less frequently under concurrent Close, so the discipline is easier to miss. When adding any admin method that touches a BadgerStore through an `eventShard`, reach for `checkoutStore` first.
+
+**Why:** `Close` doesn't take `ts.mu` — it only spin-waits on `activeReqs`. An admin call that takes `ts.mu.RLock` or `ts.mu.Lock` is still racing `Close` unless every individual DB handle is pinned.
+
+**How to apply:** After writing an admin method, grep for `es.store.<method>` or bare `archive.<method>` calls without a preceding checkout. Any such call is a Close race.
+
+**History:** Found during MR !7 review. `ListShards`, `RebuildCatalog`, `Clear`, and four index methods all had unpinned direct access. Fixed by adding `checkoutStore` with `ErrStoreClosed` skip paths and migrating index callers to `allShardStoresWithLazyOpen`.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

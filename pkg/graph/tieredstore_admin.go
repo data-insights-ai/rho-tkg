@@ -44,9 +44,36 @@ func (ts *TieredStore) ForceRotate() error {
 // with live counts from open stores. Returns an error if the archive shard
 // is recorded in the catalog but cannot be opened — a silent skip would
 // hide a real disk/LSM failure.
+//
+// Concurrency: each open shard is pinned via checkoutStore /
+// checkoutArchive while NodeCount / RelationshipCount run, so a racing
+// Close (which doesn't take ts.mu and only spin-waits on activeReqs)
+// cannot free the underlying DB mid-call. Cold shards report Open=false
+// based on the under-RLock snapshot — we deliberately do NOT lazy-open
+// them just to read counts.
 func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
+	type esSnapshot struct {
+		es        *eventShard
+		name      string
+		tier      ShardTier
+		timeStart time.Time
+		timeEnd   time.Time
+		wasOpen   bool
+	}
+
 	ts.mu.RLock()
-	defer ts.mu.RUnlock()
+	snaps := make([]esSnapshot, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		snaps = append(snaps, esSnapshot{
+			es:        es,
+			name:      es.name,
+			tier:      es.tier,
+			timeStart: es.timeStart,
+			timeEnd:   es.timeEnd,
+			wasOpen:   es.store != nil,
+		})
+	}
+	ts.mu.RUnlock()
 
 	var infos []ShardInfo
 
@@ -99,21 +126,29 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 		})
 	}
 
-	// Event shards.
-	for _, es := range ts.eventShards {
-		entry, _ := ts.catalog.GetShard(es.name)
+	// Event shards. For each shard observed open in the snapshot, take a
+	// short-lived checkoutStore pin around NodeCount/RelationshipCount so
+	// Close cannot free the underlying DB while we read it. checkoutStore
+	// returns ErrStoreClosed if Close started after our snapshot — in
+	// that case we report Open=false rather than crashing.
+	for _, sn := range snaps {
+		entry, _ := ts.catalog.GetShard(sn.name)
 		si := ShardInfo{
-			Name:      es.name,
+			Name:      sn.name,
 			Kind:      ShardEvent,
-			Tier:      es.tier,
-			TimeStart: es.timeStart,
-			TimeEnd:   es.timeEnd,
-			Open:      es.store != nil,
+			Tier:      sn.tier,
+			TimeStart: sn.timeStart,
+			TimeEnd:   sn.timeEnd,
 			Verified:  entry != nil && entry.Verified,
 		}
-		if es.store != nil {
-			si.Nodes, _ = es.store.NodeCount()
-			si.Rels, _ = es.store.RelationshipCount()
+		if sn.wasOpen {
+			store, err := sn.es.checkoutStore(ts)
+			if err == nil {
+				si.Open = true
+				si.Nodes, _ = store.NodeCount()
+				si.Rels, _ = store.RelationshipCount()
+				sn.es.checkinStore()
+			}
 		}
 		infos = append(infos, si)
 	}
@@ -123,6 +158,13 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 
 // RebuildCatalog reconstructs the shard catalog from the live in-memory state.
 // Updates node/rel counts and tier info for all open shards.
+//
+// Concurrency: holds ts.mu.Lock for the duration of the rebuild,
+// blocking every reader path that takes ts.mu.RLock (label/property
+// queries, eventShardSnapshot, etc.) until all NodeCount /
+// RelationshipCount calls complete. This is acceptable for an
+// infrequent admin operation; callers that need to serve reads at the
+// same time should schedule RebuildCatalog during a quiet window.
 func (ts *TieredStore) RebuildCatalog() error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -146,14 +188,28 @@ func (ts *TieredStore) RebuildCatalog() error {
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
-	// Update event shards.
+	// Update event shards. Pin each open shard via checkoutStore so a
+	// racing Close (which doesn't take ts.mu and only spin-waits on
+	// activeReqs) cannot free the underlying DB while we count it.
+	// Cold shards (es.store == nil) are skipped — the catalog already
+	// holds their last persisted counts. checkoutStore returns
+	// ErrStoreClosed if Close started after our snapshot; in that
+	// case we leave the catalog stat untouched rather than crash.
 	for _, es := range ts.eventShards {
 		ts.catalog.UpdateShardTier(es.name, es.tier)
-		if es.store != nil {
-			nc, _ := es.store.NodeCount()
-			rc, _ := es.store.RelationshipCount()
-			ts.catalog.UpdateShardStats(es.name, nc, rc)
+		if es.store == nil {
+			continue
 		}
+		store, coErr := es.checkoutStore(ts)
+		if coErr != nil {
+			// Close started after we observed es.store != nil; skip
+			// the count update rather than crash on a closed DB.
+			continue
+		}
+		nc, _ := store.NodeCount()
+		rc, _ := store.RelationshipCount()
+		es.checkinStore()
+		ts.catalog.UpdateShardStats(es.name, nc, rc)
 	}
 
 	if !ts.inMemory {
@@ -342,32 +398,25 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 	return stores, releaseAll, nil
 }
 
-// findRelInAnyShardStore locates which BadgerStore owns a relationship entity.
-// Probes refShard, refArchive (if open), and all currently open event shards.
-// Missing the archive probe causes RunRepair Phase 1 to treat archived rels'
-// in/ entries on other shards as orphaned and delete them — silent data loss.
+// findRelInAnyShardStore locates which BadgerStore owns a relationship
+// entity by scanning the caller-supplied pinned-store snapshot
+// (typically obtained via allShardStoresWithLazyOpen). Probing through
+// the pinned snapshot — rather than re-resolving via checkoutArchive +
+// a fresh ts.eventShards walk — closes a Close-race window: Close sets
+// closed=true and nil's refArchive BEFORE waiting for archiveActiveReqs
+// to drain, so a fresh checkoutArchive() during that window returns nil
+// even though the archive (kept alive by the caller's outer pin) still
+// owns the rel. Without consulting the pinned snapshot, RunRepair
+// Phase 1 would treat the archived rel's in/ entries as orphaned and
+// delete them — silent data loss.
 //
-// Concurrency: the archive probe is pinned via checkoutArchive so a Close
-// racing with the hasRelID check cannot free the BadgerStore mid-call. The
-// returned *BadgerStore pointer is for identity comparison only — the
-// archive pin is released before return, so callers MUST NOT dereference
-// the returned pointer.
-func (ts *TieredStore) findRelInAnyShardStore(relID snowflake.ID) *BadgerStore {
-	if ts.refShard.hasRelID(relID) {
-		return ts.refShard
-	}
-	if archive, archiveCheckin, archiveErr := ts.checkoutArchive(); archiveErr == nil && archive != nil {
-		found := archive.hasRelID(relID)
-		archiveCheckin()
-		if found {
-			return archive
-		}
-	}
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	for _, es := range ts.eventShards {
-		if es.store != nil && es.store.hasRelID(relID) {
-			return es.store
+// The returned *BadgerStore pointer is owned by the caller's pin and is
+// safe to dereference for as long as the caller holds the snapshot's
+// release function.
+func (ts *TieredStore) findRelInAnyShardStore(relID snowflake.ID, stores []namedStore) *BadgerStore {
+	for _, ns := range stores {
+		if ns.store != nil && ns.store.hasRelID(relID) {
+			return ns.store
 		}
 	}
 	return nil

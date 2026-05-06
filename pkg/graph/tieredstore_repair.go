@@ -47,8 +47,14 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 				if ns.store.hasRelID(relID) {
 					continue // same-shard — entity exists here
 				}
-				// Cross-shard: check all other shards for the entity.
-				entityStore := ts.findRelInAnyShardStore(relID)
+				// Cross-shard: check the already-pinned shard snapshot for
+				// the entity. Re-resolving via a fresh checkoutArchive +
+				// ts.eventShards walk would race a concurrent Close that
+				// has set closed=true / nil'd refArchive but is still
+				// blocked on archiveActiveReqs — the rel exists, but the
+				// fresh resolver returns nil and Phase 1 deletes its
+				// valid in/ entry as orphaned.
+				entityStore := ts.findRelInAnyShardStore(relID, stores)
 				if entityStore != nil {
 					continue // entity exists in another shard — not orphaned
 				}
