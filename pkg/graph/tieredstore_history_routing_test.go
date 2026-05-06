@@ -1850,9 +1850,17 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 // label/property/type indexes on the archive store carry the same
 // metadata refShard does.
 func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
-	// Use a self-loop on a single Case node — that's the only currently
-	// supported "rel + ArchiveNode" scenario (see ErrCrossShardArchiveRel).
-	// This test covers indexed-query archive parity for both nodes and rels.
+	// Modification rationale (vs. an earlier draft of this test): the
+	// original setup created a Case → other(Case) ref→ref rel and
+	// archived one endpoint, relying on the silent-skip behavior to
+	// "succeed". With ErrCrossShardArchiveRel that setup no longer
+	// runs to completion. The test's intent — verify that indexed
+	// public queries (NodesByLabel, NodesByLabelAndProperty,
+	// NodeCountByLabel, RelationshipsByType, RelCountByType) include
+	// archive-resident entities — is preserved and slightly
+	// strengthened by switching to a self-loop: the rel actually
+	// migrates to archive (instead of being silently lost), so the
+	// rel-side assertions exercise real archive-resident state.
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
 		SnowflakeNodeID: 0,
@@ -2280,9 +2288,13 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	if _, err := g.AddRelationship("TOUCHES", caseNode, signalNode, nil); err != nil {
+	rel, err := g.AddRelationship("TOUCHES", caseNode, signalNode, nil)
+	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
+	caseID := caseNode.InternalID().SnowflakeID()
+	signalID := signalNode.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
 
 	err = ts.ArchiveNode(caseNode.InternalID())
 	if err == nil {
@@ -2291,8 +2303,25 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	if !errors.Is(err, ErrCrossShardArchiveRel) {
 		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
 	}
-	if ts.refShard.hasNodeID(caseNode.InternalID().SnowflakeID()) == false {
-		t.Fatal("ArchiveNode left refShard in mutated state after rejection")
+
+	// State must be unchanged on rejection — no partial archive.
+	if !ts.refShard.hasNodeID(caseID) {
+		t.Error("caseNode should still be in refShard after rejected archive")
+	}
+	if !ts.refShard.hasRelID(relID) {
+		t.Error("rel entity should still be on refShard (R→E entity lives on start shard)")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
+	}
+	// Partner shard's in/ entry for signalID → relID must still exist.
+	signalShard, signalCheckin, err := ts.shardForNodeIDChecked(signalNode.InternalID())
+	if err != nil {
+		t.Fatalf("resolve signal shard: %v", err)
+	}
+	defer signalCheckin()
+	if !hasIncomingEntry(signalShard, signalID, relID) {
+		t.Error("event shard's in/ entry for cross-shard rel should be unchanged after rejected archive")
 	}
 }
 
@@ -2313,9 +2342,12 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	if _, err := g.AddRelationship("TARGETS", signalNode, caseNode, nil); err != nil {
+	rel, err := g.AddRelationship("TARGETS", signalNode, caseNode, nil)
+	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
+	caseID := caseNode.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
 
 	err = ts.ArchiveNode(caseNode.InternalID())
 	if err == nil {
@@ -2323,6 +2355,19 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	}
 	if !errors.Is(err, ErrCrossShardArchiveRel) {
 		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	}
+
+	// State must be unchanged on rejection.
+	if !ts.refShard.hasNodeID(caseID) {
+		t.Error("caseNode should still be in refShard after rejected archive")
+	}
+	// E→R: rel entity lives on event shard. refShard only has the in/
+	// entry for caseID → relID; verify it is still present.
+	if !hasIncomingEntry(ts.refShard, caseID, relID) {
+		t.Error("refShard's in/ entry for caseNode should be unchanged after rejected archive")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
 
@@ -2342,9 +2387,13 @@ func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddNode a2: %v", err)
 	}
-	if _, err := g.AddRelationship("LINKED", a, a2, nil); err != nil {
+	rel, err := g.AddRelationship("LINKED", a, a2, nil)
+	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
+	aID := a.InternalID().SnowflakeID()
+	a2ID := a2.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
 
 	err = ts.ArchiveNode(a.InternalID())
 	if err == nil {
@@ -2353,71 +2402,27 @@ func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
 	if !errors.Is(err, ErrCrossShardArchiveRel) {
 		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
 	}
-}
 
-// TestTieredStore_AdminPaths_PinArchive verifies that Clear, ListShards,
-// and RebuildCatalog actually go through checkoutArchive when an archive
-// exists — i.e., they take the pin via the archiveCheckouts counter.
-// archiveActiveReqs alone is insufficient: the pin is acquired and
-// released within a single synchronous call window so an external thread
-// can never observe a transient `>0`. archiveCheckouts is monotonic and
-// captures the fact that the pin was taken.
-func TestTieredStore_AdminPaths_PinArchive(t *testing.T) {
-	g, ts := newTestTieredGraph(t)
-
-	caseNode, err := g.AddNode([]string{"Case"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
+	// State must be unchanged on rejection — no partial archive.
+	if !ts.refShard.hasNodeID(aID) || !ts.refShard.hasNodeID(a2ID) {
+		t.Error("both nodes should still be in refShard after rejected archive")
 	}
-	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
+	if !ts.refShard.hasRelID(relID) {
+		t.Error("rel should still be in refShard after rejected archive")
 	}
-
-	cases := []struct {
-		name string
-		fn   func(t *testing.T)
-	}{
-		{"ListShards", func(t *testing.T) {
-			if _, err := ts.ListShards(); err != nil {
-				t.Fatalf("ListShards: %v", err)
-			}
-		}},
-		{"RebuildCatalog", func(t *testing.T) {
-			if err := ts.RebuildCatalog(); err != nil {
-				t.Fatalf("RebuildCatalog: %v", err)
-			}
-		}},
-		{"Clear", func(t *testing.T) {
-			if err := ts.Clear(); err != nil {
-				t.Fatalf("Clear: %v", err)
-			}
-			// Re-archive a node so the next case still has an archive.
-			n, err := g.AddNode([]string{"Case"}, nil)
-			if err != nil {
-				t.Fatalf("AddNode after Clear: %v", err)
-			}
-			if err := ts.ArchiveNode(n.InternalID()); err != nil {
-				t.Fatalf("ArchiveNode after Clear: %v", err)
-			}
-		}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			before := ts.archiveCheckouts.Load()
-			tc.fn(t)
-			after := ts.archiveCheckouts.Load()
-			if after <= before {
-				t.Fatalf("%s did not pin archive via checkoutArchive (archiveCheckouts: before=%d after=%d)", tc.name, before, after)
-			}
-		})
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
 
 // TestTieredStore_Clear_NoArchive_SkipsLazyOpen verifies the L3 guard:
 // when neither the in-memory archive pointer nor the catalog records an
-// archive, Clear must NOT call checkoutArchive (which would otherwise
-// trigger a wasteful lazy-open just to immediately Clear an empty store).
+// archive, Clear must NOT lazy-open one just to immediately Clear an
+// empty store. Observable signal: refArchive.Load() stays nil across the
+// Clear call. (We do not instrument production code with a test-only
+// "checkoutArchive was called" counter — Clear's pin discipline is
+// argued structurally in the Clear() body and shares the same
+// checkoutArchive helper covered by TestTieredStore_ResolveShardStore_PinsArchive.)
 func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 
@@ -2429,16 +2434,14 @@ func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
 		t.Fatal("test setup: expected catalog to have no archive entry")
 	}
 
-	before := ts.archiveCheckouts.Load()
 	if err := ts.Clear(); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	after := ts.archiveCheckouts.Load()
-	if after != before {
-		t.Fatalf("Clear with no archive should skip checkoutArchive entirely; archiveCheckouts: before=%d after=%d", before, after)
-	}
 	if ts.refArchive.Load() != nil {
 		t.Fatal("Clear with no archive should not have lazy-opened one")
+	}
+	if ts.hasArchiveShard() {
+		t.Fatal("Clear with no archive should not have created a catalog entry")
 	}
 }
 

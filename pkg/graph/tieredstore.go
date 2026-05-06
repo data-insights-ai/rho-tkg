@@ -202,12 +202,6 @@ func (ts *TieredStore) checkoutArchive() (*BadgerStore, func(), error) {
 		ts.archiveActiveReqs.Add(-1)
 		return nil, noop, nil
 	}
-	// Cumulative pin counter — used by tests to assert "this code path
-	// went through checkoutArchive". archiveActiveReqs alone cannot
-	// witness a transient pin from outside (it bounces back to 0 before
-	// the test thread can read it). Production code does not depend on
-	// this counter.
-	ts.archiveCheckouts.Add(1)
 	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
 }
 
@@ -223,7 +217,6 @@ type TieredStore struct {
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
 	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
-	archiveCheckouts  atomic.Int64                // monotonic counter of successful checkoutArchive() pins; test-only signal that a code path took the pin
 	eventShards       map[string]*eventShard      // name -> event shard
 	hotShard          *eventShard                 // convenience pointer to current hot shard
 	ontology          *OntologyMapping

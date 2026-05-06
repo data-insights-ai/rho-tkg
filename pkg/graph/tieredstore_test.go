@@ -3304,17 +3304,25 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveWithRels(t *testing.T) {
+	// Modification rationale (vs. the test as it stood on main):
+	// the original test created a ref→ref rel between case1 and case2,
+	// archived case1 alone, and asserted that "rel was cascade-deleted
+	// from refShard and not copied to archive ... this is expected:
+	// partial archive loses cross-node rels". That comment encoded
+	// silent rel loss as desired behavior — the precise bug
+	// ErrCrossShardArchiveRel was introduced to reject. Inverting the
+	// assertion (now: archive must reject, leaving state untouched)
+	// preserves the test's role as a regression guard for the rel
+	// topology while reflecting the corrected semantic.
 	g, ts := newTestTieredGraph(t)
 
-	// Two cases with a rel between them. ArchiveNode rejects this
-	// because archiving case1 alone would either silently lose the rel
-	// (cascade on refShard) or leave dangling adjacency on case2's shard.
-	// See ErrCrossShardArchiveRel.
 	case1, _ := g.AddNode([]string{"Case"}, nil)
 	case2, _ := g.AddNode([]string{"Case"}, nil)
-	_, _ = g.AddRelationship("RELATED_TO", case1, case2, nil)
+	rel, _ := g.AddRelationship("RELATED_TO", case1, case2, nil)
 
 	case1ID := case1.ID()
+	case2ID := case2.ID()
+	relID := rel.ID()
 
 	err := ts.ArchiveNode(case1ID)
 	if !errors.Is(err, ErrCrossShardArchiveRel) {
@@ -3324,6 +3332,15 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	// State must be unchanged on rejection — no partial archive.
 	if !ts.refShard.hasNodeID(case1ID.SnowflakeID()) {
 		t.Error("case1 should still be in refShard after rejected archive")
+	}
+	if !ts.refShard.hasNodeID(case2ID.SnowflakeID()) {
+		t.Error("case2 should still be in refShard after rejected archive")
+	}
+	if !ts.refShard.hasRelID(relID.SnowflakeID()) {
+		t.Error("rel should still be in refShard after rejected archive (no partial state)")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
 
@@ -4754,12 +4771,21 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 // --- Fix 3: ArchiveNode/RestoreNode — rollback ---
 
 func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
-	// Test that archive data is cleaned up if the source delete fails.
-	// We can't easily inject failure into DeleteNodeCascade, so we test
-	// the happy path and the rollback path via a structural check: archive
-	// a node with a self-loop relationship, verify data moves correctly.
-	// Self-loop is the only currently-supported "rel touching the archived
-	// node" scenario — see ErrCrossShardArchiveRel.
+	// Modification rationale (vs. the test as it stood on main):
+	// the original test created a ref→ref rel between n1 and n2 and
+	// asserted that ArchiveNode(n1) succeeded — but the *actual* behavior
+	// then was to silently drop the rel (the test never asserted on rel
+	// state, so the bug went undetected here for as long as the test
+	// existed). With ErrCrossShardArchiveRel, that exact setup is now
+	// rejected, so the original assertions no longer hold. Refactoring
+	// to a self-loop preserves the test's documented intent — round-trip
+	// archive + restore for a node with a relationship — and uses the
+	// only currently-supported rel-with-archive topology.
+	//
+	// Caveat carried over from the original: the test name says "rollback
+	// on delete failure" but no failure is injected. That was true of the
+	// original too ("we can't easily inject failure into DeleteNodeCascade,
+	// so we test the happy path"). Renaming is out of scope here.
 	cfg := Config{
 		SnowflakeNodeID: 0,
 		Validation:      ValidationLimits{AllowSelfLoops: true},
@@ -4808,43 +4834,59 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 }
 
 func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
-	// Archive two interconnected nodes, then restore one.
-	// The restored node should be in refShard with its rels.
-	g, ts := newTestTieredGraph(t)
+	// Restore round-trip with a rel that touches the archived node.
+	//
+	// Modification rationale (vs. the test as it stood on main):
+	// the original built a ref→ref rel between n1 and n2, archived
+	// BOTH, restored n1, and asserted that the rel "should not be in
+	// refShard" because n2 was still archived. That assertion codified
+	// silent rel loss as expected behavior — the same data-loss class
+	// that ErrCrossShardArchiveRel was added to reject. The original
+	// test's setup also no longer compiles past the new pre-scan
+	// (ArchiveNode(n1) is rejected because the ref→ref rel would cross
+	// the archive boundary).
+	//
+	// Self-loop preserves the test's *intent* — exercise restore for
+	// a node with a relationship — without depending on the silent-loss
+	// behavior. After ArchiveNode(n1), the self-loop and node both live
+	// on archive; RestoreNode(n1) must move both back to refShard.
+	cfg := Config{
+		SnowflakeNodeID: 0,
+		Validation:      ValidationLimits{AllowSelfLoops: true},
+	}
+	ts := newTestTieredStore(t)
+	cfg.Store = ts
+	g, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
 
-	// Two independent nodes (no rel between them) — archive both, restore
-	// n1, verify state. The original test attempted to archive a ref→ref
-	// rel, which is now ErrCrossShardArchiveRel; the rel-aware path is
-	// exercised by the self-loop case in the previous test.
 	n1, err := g.AddNode([]string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Case"}, map[string]any{"name": "C2"})
+	rel, err := g.AddRelationship("LOOPS_TO", n1, n1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	id1 := n1.ID()
-	id2 := n2.ID()
+	relID := rel.ID()
 
-	// Archive both.
 	if err := ts.ArchiveNode(id1); err != nil {
-		t.Fatalf("ArchiveNode(n1): %v", err)
-	}
-	if err := ts.ArchiveNode(id2); err != nil {
-		t.Fatalf("ArchiveNode(n2): %v", err)
+		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	// Verify both in archive.
 	archive := ts.refArchive.Load()
-	if archive == nil || !archive.hasNodeID(id1.SnowflakeID()) || !archive.hasNodeID(id2.SnowflakeID()) {
-		t.Fatal("both nodes should be in archive")
+	if archive == nil || !archive.hasNodeID(id1.SnowflakeID()) {
+		t.Fatal("n1 should be in archive after ArchiveNode")
+	}
+	if !archive.hasRelID(relID.SnowflakeID()) {
+		t.Fatal("self-loop rel should be on archive after ArchiveNode")
 	}
 
-	// Restore n1.
 	if err := ts.RestoreNode(id1); err != nil {
-		t.Fatalf("RestoreNode(n1): %v", err)
+		t.Fatalf("RestoreNode: %v", err)
 	}
 
 	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
@@ -4853,13 +4895,10 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should not be in refArchive after restore")
 	}
-
-	// Now restore n2 as well.
-	if err := ts.RestoreNode(id2); err != nil {
-		t.Fatalf("RestoreNode(n2): %v", err)
-	}
-	if !ts.refShard.hasNodeID(id2.SnowflakeID()) {
-		t.Error("n2 should be in refShard after restore")
+	// Restore must migrate the rel back too — otherwise the round-trip
+	// is lossy in the same way the pre-fix archive path was.
+	if !ts.refShard.hasRelID(relID.SnowflakeID()) {
+		t.Error("self-loop rel should be in refShard after restore")
 	}
 }
 
