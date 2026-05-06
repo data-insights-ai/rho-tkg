@@ -1380,6 +1380,84 @@ func containsRelIDSlice(ids []snowflake.ID, want snowflake.ID) bool {
 	return false
 }
 
+func containsNodeIDValue(ids []types.NodeID, want types.NodeID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRelIDValue(ids []types.RelID, want types.RelID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNodeEntity(nodes []*types.Node, want types.NodeID) bool {
+	for _, n := range nodes {
+		if n.InternalID() == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRelEntity(rels []*types.Relationship, want types.RelID) bool {
+	for _, r := range rels {
+		if r.InternalID() == want {
+			return true
+		}
+	}
+	return false
+}
+
+func mustArchivedRelationshipFixture(t *testing.T) (*TieredStore, types.RelID, uint16) {
+	t.Helper()
+
+	ts := newTestTieredStore(t)
+	g, err := New(Config{
+		SnowflakeNodeID: 0,
+		Store:           ts,
+		Validation:      ValidationLimits{AllowSelfLoops: true},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	node, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	rel, err := g.AddRelationship("KNOWS", node, node, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	relID := rel.InternalID()
+
+	if err := ts.ArchiveNode(node.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	if !archive.hasRelID(relID.SnowflakeID()) {
+		t.Fatal("setup: ArchiveNode did not move self-loop relationship into refArchive")
+	}
+
+	knowsTok, ok := g.LookupRelType("KNOWS")
+	if !ok {
+		t.Fatal("KNOWS reltype not registered")
+	}
+	return ts, relID, knowsTok
+}
+
 // Close() must wait for in-flight checkouts to drain before closing event
 // shard stores. Badger v4 WriteBatch.Flush blocks forever on a closed DB;
 // closing while a long-running RunRepair / VerifyShard still holds a
@@ -1763,4 +1841,785 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 			t.Fatalf("NodeCount = %d post-restart, want >= 1", count)
 		}
 	})
+}
+
+// Indexed public queries (NodesByLabel / NodesByLabelAndProperty /
+// NodeCountByLabel / RelationshipsByType / RelCountByType) must include
+// refArchive entries. Pre-fix, archived reference nodes were
+// GetNode/AllNodes-visible but disappeared from indexed reads — the
+// label/property/type indexes on the archive store carry the same
+// metadata refShard does.
+func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
+	// Modification rationale (vs. an earlier draft of this test): the
+	// original setup created a Case → other(Case) ref→ref rel and
+	// archived one endpoint, relying on the silent-skip behavior to
+	// "succeed". With ErrCrossShardArchiveRel that setup no longer
+	// runs to completion. The test's intent — verify that indexed
+	// public queries (NodesByLabel, NodesByLabelAndProperty,
+	// NodeCountByLabel, RelationshipsByType, RelCountByType) include
+	// archive-resident entities — is preserved and slightly
+	// strengthened by switching to a self-loop: the rel actually
+	// migrates to archive (instead of being silently lost), so the
+	// rel-side assertions exercise real archive-resident state.
+	ts := newTestTieredStore(t)
+	g, err := New(Config{
+		SnowflakeNodeID: 0,
+		Store:           ts,
+		Validation:      ValidationLimits{AllowSelfLoops: true},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	caseNode, err := g.AddNode([]string{"Case"}, map[string]any{"status": "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.AddRelationship("KNOWS", caseNode, caseNode, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := caseNode.InternalID()
+	relID := r.InternalID()
+
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+	knowsTok, ok := g.LookupRelType("KNOWS")
+	if !ok {
+		t.Fatal("KNOWS reltype not registered")
+	}
+
+	t.Run("NodesByLabel surfaces archived", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabel: %v", err)
+		}
+		found := false
+		for _, n := range nodes {
+			if n.InternalID() == caseID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("NodesByLabel missed archived Case")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty surfaces archived", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty: %v", err)
+		}
+		found := false
+		for _, n := range nodes {
+			if n.InternalID() == caseID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("NodesByLabelAndProperty missed archived Case")
+		}
+	})
+
+	t.Run("NodeCountByLabel counts archived", func(t *testing.T) {
+		count, err := ts.NodeCountByLabel(caseTok)
+		if err != nil {
+			t.Fatalf("NodeCountByLabel: %v", err)
+		}
+		if count < 1 {
+			t.Fatalf("NodeCountByLabel(Case) = %d, want >= 1 (archived Case missed)", count)
+		}
+	})
+
+	if archive := ts.refArchive.Load(); archive != nil && archive.hasRelID(relID.SnowflakeID()) {
+		t.Run("RelationshipsByType surfaces archived", func(t *testing.T) {
+			rels, err := ts.RelationshipsByType(knowsTok, QueryOpts{})
+			if err != nil {
+				t.Fatalf("RelationshipsByType: %v", err)
+			}
+			found := false
+			for _, rr := range rels {
+				if rr.InternalID() == relID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatal("RelationshipsByType missed archived rel")
+			}
+		})
+		t.Run("RelCountByType counts archived", func(t *testing.T) {
+			count, err := ts.RelCountByType(knowsTok)
+			if err != nil {
+				t.Fatalf("RelCountByType: %v", err)
+			}
+			if count < 1 {
+				t.Fatalf("RelCountByType(KNOWS) = %d, want >= 1", count)
+			}
+		})
+	}
+}
+
+// AllNodes / AllRelationships gate archive enumeration on Depth ==
+// DepthAll. Archive is the coldest tier of reference data; including
+// it in DepthHot or DepthWarm would surface entities the caller asked
+// to exclude. refShard is queried for all Depth values per existing
+// semantics — reference data is not Depth-tiered.
+func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	containsNodeID := func(nodes []*types.Node, want types.NodeID) bool {
+		for _, n := range nodes {
+			if n.InternalID() == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthHot): %v", err)
+		}
+		if containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthHot) returned archived node — Depth gate did not exclude archive")
+		}
+	})
+
+	t.Run("DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthWarm): %v", err)
+		}
+		if containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthWarm) returned archived node — Depth gate did not exclude archive")
+		}
+	})
+
+	t.Run("DepthAll includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllNodes(DepthAll): %v", err)
+		}
+		if !containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(DepthAll) missed archived node")
+		}
+	})
+
+	t.Run("default opts (Depth=0=DepthAll) includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodes(zero): %v", err)
+		}
+		if !containsNodeID(nodes, caseID) {
+			t.Fatal("AllNodes(zero opts) missed archived node — DepthAll is the zero value")
+		}
+	})
+}
+
+// Public point lookups that resolve to refArchive must pin the archive
+// against a concurrent Close. Pre-fix shardForNodeIDChecked /
+// shardForRelIDChecked returned refArchive with a no-op checkin, so
+// archiveActiveReqs stayed at 0 and Close could close the archive
+// while a goroutine was still using the returned pointer.
+func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := caseNode.InternalID()
+	if err := ts.ArchiveNode(id); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	store, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		t.Fatalf("shardForNodeIDChecked: %v", err)
+	}
+	defer checkin()
+
+	if store != ts.refArchive.Load() {
+		t.Fatal("setup: expected resolver to return refArchive for archived node")
+	}
+	if got := ts.archiveActiveReqs.Load(); got != 1 {
+		t.Fatalf("archiveActiveReqs after archive resolve = %d, want 1 (archive not pinned)", got)
+	}
+}
+
+func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	t.Run("AllNodeIDs default includes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(default): %v", err)
+		}
+		if !containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(default) missed archived node; GetNode/AllNodes see it")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthAll includes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthAll): %v", err)
+		}
+		if !containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthAll) missed archived node")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthHot excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthHot): %v", err)
+		}
+		if containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthHot) returned archived node")
+		}
+	})
+
+	t.Run("AllNodeIDs DepthWarm excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("AllNodeIDs(DepthWarm): %v", err)
+		}
+		if containsNodeIDValue(ids, caseID) {
+			t.Fatal("AllNodeIDs(DepthWarm) returned archived node")
+		}
+	})
+
+	relTS, relID, _ := mustArchivedRelationshipFixture(t)
+
+	t.Run("AllRelIDs default includes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{})
+		if err != nil {
+			t.Fatalf("AllRelIDs(default): %v", err)
+		}
+		if !containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(default) missed archived relationship; GetRelationship can still resolve it")
+		}
+	})
+
+	t.Run("AllRelIDs DepthAll includes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthAll})
+		if err != nil {
+			t.Fatalf("AllRelIDs(DepthAll): %v", err)
+		}
+		if !containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(DepthAll) missed archived relationship")
+		}
+	})
+
+	t.Run("AllRelIDs DepthHot excludes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("AllRelIDs(DepthHot): %v", err)
+		}
+		if containsRelIDValue(ids, relID) {
+			t.Fatal("AllRelIDs(DepthHot) returned archived relationship")
+		}
+	})
+}
+
+func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, map[string]any{"status": "open"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	caseID := caseNode.InternalID()
+	if err := ts.ArchiveNode(caseID); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	t.Run("NodesByLabel default includes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabel(default): %v", err)
+		}
+		if !containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabel(default) missed archived node")
+		}
+	})
+
+	t.Run("NodesByLabel DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("NodesByLabel(DepthHot): %v", err)
+		}
+		if containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabel(DepthHot) returned archived node")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty default includes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty(default): %v", err)
+		}
+		if !containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabelAndProperty(default) missed archived node")
+		}
+	})
+
+	t.Run("NodesByLabelAndProperty DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{Depth: DepthWarm})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty(DepthWarm): %v", err)
+		}
+		if containsNodeEntity(nodes, caseID) {
+			t.Fatal("NodesByLabelAndProperty(DepthWarm) returned archived node")
+		}
+	})
+
+	relTS, relID, knowsTok := mustArchivedRelationshipFixture(t)
+
+	t.Run("RelationshipsByType default includes archive", func(t *testing.T) {
+		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{})
+		if err != nil {
+			t.Fatalf("RelationshipsByType(default): %v", err)
+		}
+		if !containsRelEntity(rels, relID) {
+			t.Fatal("RelationshipsByType(default) missed archived relationship")
+		}
+	})
+
+	t.Run("RelationshipsByType DepthHot excludes archive", func(t *testing.T) {
+		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{Depth: DepthHot})
+		if err != nil {
+			t.Fatalf("RelationshipsByType(DepthHot): %v", err)
+		}
+		if containsRelEntity(rels, relID) {
+			t.Fatal("RelationshipsByType(DepthHot) returned archived relationship")
+		}
+	})
+}
+
+func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+
+	sawArchive := false
+	err = ts.forEachHistoryShard(ts.refShard, func(store *BadgerStore) (bool, error) {
+		if store != archive {
+			return false, nil
+		}
+		sawArchive = true
+		if got := ts.archiveActiveReqs.Load(); got == 0 {
+			t.Fatalf("archiveActiveReqs during history fallback = %d, want archive pinned", got)
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("forEachHistoryShard: %v", err)
+	}
+	if !sawArchive {
+		t.Fatal("forEachHistoryShard did not visit refArchive")
+	}
+}
+
+// TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE verifies that
+// archiving a reference node A which has an outgoing rel R: A -> B
+// where B lives on an event shard does NOT silently lose R. Pre-fix,
+// archive.PutRelationship(R) failed with ErrNodeNotFound (B not in
+// archive) and the error was swallowed via `continue`; refShard.Cascade
+// then deleted R from refShard while leaving the in/ entry on B's
+// event shard dangling — silent data corruption.
+//
+// The fix detects the boundary-crossing rel up front and returns
+// ErrCrossShardArchiveRel, leaving all state untouched. Callers must
+// either delete the rel or archive both endpoints first.
+func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode case: %v", err)
+	}
+	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode signal: %v", err)
+	}
+	rel, err := g.AddRelationship("TOUCHES", caseNode, signalNode, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	caseID := caseNode.InternalID().SnowflakeID()
+	signalID := signalNode.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
+
+	err = ts.ArchiveNode(caseNode.InternalID())
+	if err == nil {
+		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; data loss")
+	}
+	if !errors.Is(err, ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	}
+
+	// State must be unchanged on rejection — no partial archive.
+	if !ts.refShard.hasNodeID(caseID) {
+		t.Error("caseNode should still be in refShard after rejected archive")
+	}
+	if !ts.refShard.hasRelID(relID) {
+		t.Error("rel entity should still be on refShard (R→E entity lives on start shard)")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
+	}
+	// Partner shard's in/ entry for signalID → relID must still exist.
+	signalShard, signalCheckin, err := ts.shardForNodeIDChecked(signalNode.InternalID())
+	if err != nil {
+		t.Fatalf("resolve signal shard: %v", err)
+	}
+	defer signalCheckin()
+	if !hasIncomingEntry(signalShard, signalID, relID) {
+		t.Error("event shard's in/ entry for cross-shard rel should be unchanged after rejected archive")
+	}
+}
+
+// TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR — symmetric to
+// the case above but with rel R: B(event) -> A(ref). The rel entity
+// lives on the event shard and refShard only has the in/ entry. Pre-fix,
+// refShard.GetRelationship(R) returned ErrRelNotFound and the rel was
+// silently skipped, leaving the in/ entry on refShard dangling after
+// cascade.
+func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode case: %v", err)
+	}
+	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode signal: %v", err)
+	}
+	rel, err := g.AddRelationship("TARGETS", signalNode, caseNode, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	caseID := caseNode.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
+
+	err = ts.ArchiveNode(caseNode.InternalID())
+	if err == nil {
+		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; in/ entry would dangle")
+	}
+	if !errors.Is(err, ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	}
+
+	// State must be unchanged on rejection.
+	if !ts.refShard.hasNodeID(caseID) {
+		t.Error("caseNode should still be in refShard after rejected archive")
+	}
+	// E→R: rel entity lives on event shard. refShard only has the in/
+	// entry for caseID → relID; verify it is still present.
+	if !hasIncomingEntry(ts.refShard, caseID, relID) {
+		t.Error("refShard's in/ entry for caseNode should be unchanged after rejected archive")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
+	}
+}
+
+// TestTieredStore_ArchiveNode_RejectsRefRefRel verifies that archiving
+// a reference node A which has a same-shard rel R: A -> A2 to another
+// reference node A2 is rejected. Pre-fix, archive.PutRelationship(R)
+// failed (A2 not on archive) and the rel was silently skipped; cascade
+// then deleted R entirely from refShard — full data loss.
+func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	a, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	a2, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a2: %v", err)
+	}
+	rel, err := g.AddRelationship("LINKED", a, a2, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	aID := a.InternalID().SnowflakeID()
+	a2ID := a2.InternalID().SnowflakeID()
+	relID := rel.InternalID().SnowflakeID()
+
+	err = ts.ArchiveNode(a.InternalID())
+	if err == nil {
+		t.Fatal("ArchiveNode silently succeeded with ref-ref rel where the other endpoint stays on refShard; rel would be silently deleted")
+	}
+	if !errors.Is(err, ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	}
+
+	// State must be unchanged on rejection — no partial archive.
+	if !ts.refShard.hasNodeID(aID) || !ts.refShard.hasNodeID(a2ID) {
+		t.Error("both nodes should still be in refShard after rejected archive")
+	}
+	if !ts.refShard.hasRelID(relID) {
+		t.Error("rel should still be in refShard after rejected archive")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Error("rejected archive must not lazy-open refArchive")
+	}
+}
+
+// TestTieredStore_Clear_NoArchive_SkipsLazyOpen verifies the L3 guard:
+// when neither the in-memory archive pointer nor the catalog records an
+// archive, Clear must NOT lazy-open one just to immediately Clear an
+// empty store. Observable signal: refArchive.Load() stays nil across the
+// Clear call. (We do not instrument production code with a test-only
+// "checkoutArchive was called" counter — Clear's pin discipline is
+// argued structurally in the Clear() body and shares the same
+// checkoutArchive helper covered by TestTieredStore_ResolveShardStore_PinsArchive.)
+func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
+	_, ts := newTestTieredGraph(t)
+
+	// No archive ever created. Confirm baseline.
+	if ts.refArchive.Load() != nil {
+		t.Fatal("test setup: expected no archive yet")
+	}
+	if ts.hasArchiveShard() {
+		t.Fatal("test setup: expected catalog to have no archive entry")
+	}
+
+	if err := ts.Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if ts.refArchive.Load() != nil {
+		t.Fatal("Clear with no archive should not have lazy-opened one")
+	}
+	if ts.hasArchiveShard() {
+		t.Fatal("Clear with no archive should not have created a catalog entry")
+	}
+}
+
+// TestTieredStore_TemporalIndexCreate_CoversArchive verifies
+// CreateTemporalIndex installs the index on refArchive too — otherwise an
+// archived reference node is silently absent from the temporal index even
+// though it remains GetNode-addressable. Also covers DropTemporalIndex
+// reaching the archive (orphan index files would otherwise persist).
+func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	if err := ts.CreateTemporalIndex(caseTok); err != nil {
+		t.Fatalf("CreateTemporalIndex: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.temporalIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if !ok {
+		t.Fatal("CreateTemporalIndex did not install index on refArchive; archived reference nodes will silently fall out of the temporal index")
+	}
+
+	if err := ts.DropTemporalIndex(caseTok); err != nil {
+		t.Fatalf("DropTemporalIndex: %v", err)
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.temporalIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if ok {
+		t.Fatal("DropTemporalIndex left orphan temporal index on refArchive")
+	}
+}
+
+// TestTieredStore_ResolveShardStore_PinsArchive verifies that
+// resolveShardStore("archive") increments archiveActiveReqs and returns
+// a real (non-noop) checkin. Without the pin, a long-running admin
+// operation like VerifyShard("archive") races a concurrent Close: Close
+// drains archiveActiveReqs (sees zero), proceeds to archive.Close(),
+// and the verifier hits Badger v4's Flush-on-closed-DB hang.
+func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	before := ts.archiveActiveReqs.Load()
+	store, release, err := ts.resolveShardStore("archive")
+	if err != nil {
+		t.Fatalf("resolveShardStore(archive): %v", err)
+	}
+	if store == nil {
+		t.Fatal("resolveShardStore(archive) returned nil store")
+	}
+	during := ts.archiveActiveReqs.Load()
+	if during != before+1 {
+		t.Fatalf("archiveActiveReqs = %d during resolve, want %d (archive not pinned — Close race window)", during, before+1)
+	}
+	release()
+	after := ts.archiveActiveReqs.Load()
+	if after != before {
+		t.Fatalf("archiveActiveReqs = %d after release, want %d (release didn't drop the pin)", after, before)
+	}
+}
+
+// TestTieredStore_FindRelInAnyShardStore_ProbesArchive verifies that
+// the helper used by RunRepair Phase 1 to determine "does this rel
+// exist anywhere?" probes refArchive. Pre-fix, an archived rel looked
+// "missing everywhere" so a real in/ entry on another shard pointing
+// to it was treated as orphaned and DELETED — silent data loss.
+func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
+	ts, relID, _ := mustArchivedRelationshipFixture(t)
+
+	owner := ts.findRelInAnyShardStore(relID.SnowflakeID())
+	if owner == nil {
+		t.Fatal("findRelInAnyShardStore returned nil for archived rel; Phase 1 of RunRepair will treat its in/ entries as orphaned and delete them (data loss)")
+	}
+	if owner != ts.refArchive.Load() {
+		t.Fatalf("findRelInAnyShardStore returned wrong store; want refArchive, got %p (refShard=%p)", owner, ts.refShard)
+	}
+}
+
+// TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive verifies
+// the admin-side store enumeration used by RunRepair / repair scans
+// includes refArchive. Otherwise the rel-IDs and in/ entries on the
+// archive are entirely invisible to the repair scanner.
+func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+
+	stores, release, err := ts.allShardStoresWithLazyOpen()
+	if err != nil {
+		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
+	}
+	defer release()
+
+	saw := false
+	for _, ns := range stores {
+		if ns.store == archive {
+			saw = true
+			break
+		}
+	}
+	if !saw {
+		t.Fatal("allShardStoresWithLazyOpen did not include refArchive; RunRepair / repair scanners cannot inspect archived entities")
+	}
+}
+
+// TestTieredStore_HighFrequencyIndexCreate_CoversArchive — same gap as
+// the temporal index test above, for high-frequency time-bucketed indexes.
+func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	caseTok, ok := g.LookupLabel("Case")
+	if !ok {
+		t.Fatal("Case label not registered")
+	}
+
+	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
+		t.Fatalf("CreateHighFrequencyIndex: %v", err)
+	}
+
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.hfIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if !ok {
+		t.Fatal("CreateHighFrequencyIndex did not install HFI on refArchive")
+	}
+
+	if err := ts.DropHighFrequencyIndex(caseTok); err != nil {
+		t.Fatalf("DropHighFrequencyIndex: %v", err)
+	}
+	archive.idxMu.RLock()
+	_, ok = archive.hfIndexes[caseTok]
+	archive.idxMu.RUnlock()
+	if ok {
+		t.Fatal("DropHighFrequencyIndex left orphan HFI on refArchive")
+	}
 }

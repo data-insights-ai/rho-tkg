@@ -854,8 +854,12 @@ func (ts *TieredStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 // rotation will also inherit the index.
 func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	for _, shard := range shards {
 		if err := shard.CreateTemporalIndex(labelToken); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
@@ -883,8 +887,12 @@ func (ts *TieredStore) CreateTemporalIndex(labelToken uint16) error {
 // from all shards.
 func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	var lastErr error
 	found := false
@@ -925,8 +933,12 @@ func (ts *TieredStore) DropTemporalIndex(labelToken uint16) error {
 // Returns ErrTemporalIndexExists if any temporal index already exists for this label.
 func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	for _, shard := range shards {
 		if err := shard.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
@@ -940,8 +952,12 @@ func (ts *TieredStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize ti
 // from all shards. Returns ErrTemporalIndexNotFound if no index exists on any shard.
 func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
 	ts.mu.RLock()
-	shards := ts.allActiveShards()
+	shards, release, err := ts.allActiveShards()
 	ts.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	var lastErr error
 	found := false
@@ -1054,17 +1070,33 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	return result, nil
 }
 
-// allActiveShards returns all currently open BadgerStores (refShard + event shards).
-// Caller must hold ts.mu.RLock or ts.mu.Lock.
-func (ts *TieredStore) allActiveShards() []*BadgerStore {
-	shards := make([]*BadgerStore, 0, 1+len(ts.eventShards))
+// allActiveShards returns all currently open BadgerStores (refShard +
+// refArchive + open event shards), and a release function the caller MUST
+// invoke when done — it drops the refArchive pin obtained via
+// checkoutArchive. Caller must hold ts.mu.RLock or ts.mu.Lock for the
+// event-shard snapshot.
+//
+// refArchive is included whenever it is open (lazy-opens on first
+// archived entity). Excluding it would silently skip archived reference
+// entities from index/admin operations even though the archive holds
+// indexed reference data with the same shape as refShard.
+func (ts *TieredStore) allActiveShards() ([]*BadgerStore, func(), error) {
+	shards := make([]*BadgerStore, 0, 2+len(ts.eventShards))
 	shards = append(shards, ts.refShard)
 	for _, es := range ts.eventShards {
 		if es.store != nil {
 			shards = append(shards, es.store)
 		}
 	}
-	return shards
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, nil, archiveErr
+	}
+	if archive != nil {
+		shards = append(shards, archive)
+		return shards, archiveCheckin, nil
+	}
+	return shards, func() {}, nil
 }
 
 // --- Reference archive ---
@@ -1072,9 +1104,32 @@ func (ts *TieredStore) allActiveShards() []*BadgerStore {
 // ErrNotReferenceEntity is returned when attempting to archive a non-reference entity.
 var ErrNotReferenceEntity = errors.New("graph: entity is not a reference entity")
 
+// ErrCrossShardArchiveRel is returned by ArchiveNode when the node has at
+// least one relationship whose other endpoint will not be on refArchive
+// after the move. Archiving such a node would either drop the rel
+// silently (cascade-on-refShard) or leave dangling adjacency entries on
+// the partner shard. Callers must either delete the rel first or arrange
+// for the partner endpoint to also live on refArchive.
+//
+// Self-loops are exempt: both endpoints are the archived node, so the
+// rel is fully migrated by ArchiveNode.
+var ErrCrossShardArchiveRel = errors.New("graph: cannot archive node with cross-shard relationship; archive both endpoints or delete the rel first")
+
 // ArchiveNode moves a reference node and all its relationships from refShard
 // to refArchive. Only reference entities can be archived.
 // The node must exist in refShard. Event nodes cannot be archived.
+//
+// Cross-shard rel restriction (ErrCrossShardArchiveRel): a node may only
+// be archived when every relationship touching it would be entirely
+// resident on refArchive afterwards. In practice this means self-loops
+// only — any rel to another node that is NOT being archived in the same
+// call (refShard same-shard rel or event-shard cross-shard rel) is
+// rejected up front. Otherwise we either silently lose the rel
+// (cascade-on-refShard wipes both the entity and the partner's adjacency
+// entries) or leave a dangling in/ or out/ entry on the partner shard.
+// Proper cross-shard archival migration is a future feature; until then
+// the caller must either delete the rel or arrange for both endpoints
+// to be co-archived.
 //
 // Atomicity: this operation is NOT transactional across the two BadgerStores.
 // On failure the rollback is best-effort (DeleteNodeCascade on the target).
@@ -1090,23 +1145,15 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 		return fmt.Errorf("graph: archive: %w", ErrNodeNotFound)
 	}
 
-	// 2. Lazy-open refArchive.
-	if err := ts.ensureRefArchive(); err != nil {
-		return err
-	}
-	archive := ts.refArchive.Load()
-
-	// 3. Read node from refShard.
+	// 2. Read node from refShard.
 	node, err := ts.refShard.GetNode(types.NodeID(id))
 	if err != nil {
 		return fmt.Errorf("graph: archive read node: %w", err)
 	}
 
-	// 4. Read all outgoing + incoming rels from refShard.
+	// 3. Collect all unique rel IDs touching the node.
 	outIDs := ts.refShard.outgoingRelIDs(id)
 	inIDs := ts.refShard.incomingRelIDs(id, 0)
-
-	// Deduplicate and collect unique relIDs.
 	seen := make(map[snowflake.ID]struct{}, len(outIDs)+len(inIDs))
 	var relIDs []snowflake.ID
 	for _, rid := range outIDs {
@@ -1122,40 +1169,63 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 		}
 	}
 
-	// Read all relationship entities from refShard.
+	// 4. Pre-scan rels: classify each as self-loop (safe to migrate) or
+	// cross-shard (reject). Doing this BEFORE any mutation keeps the
+	// "fail loud" path side-effect free — no need for rollback paths to
+	// undo a partial archive write.
 	var rels []*types.Relationship
 	for _, rid := range relIDs {
 		r, err := ts.refShard.GetRelationship(types.RelID(rid))
 		if errors.Is(err, ErrRelNotFound) {
-			continue // cross-shard entity, skip
+			// Cross-shard rel where the entity lives on another shard
+			// (refShard only carries the in/ entry). Archiving would
+			// leave the in/ entry dangling on refShard.
+			return fmt.Errorf("%w (rel %d entity lives on another shard)", ErrCrossShardArchiveRel, rid)
 		}
 		if err != nil {
 			return fmt.Errorf("graph: archive read rel %d: %w", rid, err)
 		}
+		// Self-loop is the only safe case: both endpoints are the archived
+		// node, so after the move the rel is fully resident on refArchive.
+		if r.StartNodeID().SnowflakeID() != id || r.EndNodeID().SnowflakeID() != id {
+			return fmt.Errorf("%w (rel %d: %d -> %d)", ErrCrossShardArchiveRel, rid, r.StartNodeID().SnowflakeID(), r.EndNodeID().SnowflakeID())
+		}
 		rels = append(rels, r)
 	}
 
-	// 5. Write node + rels to refArchive.
+	// 5. Lazy-open refArchive (only after pre-scan passes — avoids wasteful
+	// open + immediate close on rejected archive attempts) and pin against
+	// concurrent Close. Without the pin, a Close racing between Load and
+	// the writes below could free the archive BadgerStore under us
+	// (segfault on PutNode / PutRelationship). checkoutArchive's
+	// archiveActiveReqs increment makes Close wait for archiveCheckin().
+	if err := ts.ensureRefArchive(); err != nil {
+		return err
+	}
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return err
+	}
+	defer archiveCheckin()
+	if archive == nil {
+		return fmt.Errorf("graph: archive: refArchive unexpectedly nil after ensureRefArchive")
+	}
+
+	// 6. Write node + rels to refArchive.
 	if err := archive.PutNode(node); err != nil {
 		return fmt.Errorf("graph: archive write node: %w", err)
 	}
 
 	for _, r := range rels {
-		// PutRelationship validates endpoint existence. If the other endpoint
-		// isn't in the archive (partial archive), skip the rel — it will be
-		// deleted by DeleteNodeCascade below.
-		err := archive.PutRelationship(r)
-		if errors.Is(err, ErrNodeNotFound) {
-			continue
-		}
-		if err != nil {
-			// Best-effort rollback: remove partially written data from archive.
+		// All surviving rels are self-loops on the archived node, so both
+		// endpoints exist on archive after the PutNode above.
+		if err := archive.PutRelationship(r); err != nil {
 			_ = archive.DeleteNodeCascade(types.NodeID(id))
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}
 
-	// 6. Delete from refShard (cascade deletes node + all rels in refShard).
+	// 7. Delete from refShard (cascade deletes node + all rels in refShard).
 	if err := ts.refShard.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		// Best-effort rollback: remove data from archive since source delete failed.
 		_ = archive.DeleteNodeCascade(types.NodeID(id))
@@ -1174,11 +1244,20 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 func (ts *TieredStore) RestoreNode(nid types.NodeID) error {
 	id := nid.SnowflakeID()
 
-	// 1. Ensure archive is open.
+	// 1. Ensure archive is open and pin against concurrent Close. Without
+	// the pin, Close racing between Load and the reads/writes below could
+	// free the archive BadgerStore under us.
 	if err := ts.ensureRefArchive(); err != nil {
 		return err
 	}
-	archive := ts.refArchive.Load()
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return err
+	}
+	defer archiveCheckin()
+	if archive == nil {
+		return fmt.Errorf("graph: restore: refArchive unexpectedly nil after ensureRefArchive")
+	}
 
 	// 2. Verify node is in archive.
 	if !archive.hasNodeID(id) {

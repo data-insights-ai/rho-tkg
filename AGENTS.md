@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.10 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10). See CHANGELOG.md for version history.
+Status: v3.1.11 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 

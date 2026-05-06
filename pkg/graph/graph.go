@@ -1239,7 +1239,7 @@ func (g *Graph) ForceRotate() error {
 // ListShards returns information about all shards. Only available with TieredStore.
 func (g *Graph) ListShards() ([]ShardInfo, error) {
 	if ts, ok := g.store.(*TieredStore); ok {
-		return ts.ListShards(), nil
+		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
 }

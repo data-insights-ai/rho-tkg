@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.11] - 2026-05-06
+
+### Fixed (refArchive parity follow-up — MR !6 + audit)
+
+MR !6 (Markus Nissl) closes refArchive parity gaps left over after MR !4. Pre-MR, an archived reference entity stayed `GetNode`-addressable but silently disappeared from indexed/bulk reads, while a concurrent `Close` could free the archive while a query was still using it.
+
+- **Indexed and bulk reads now see archived entities** (`pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore.go`):
+  - `NodesByLabel` (reference label): refShard ∪ refArchive (was refShard only).
+  - `NodesByLabelAndProperty` (reference label): refShard ∪ refArchive.
+  - `NodeCountByLabel` (reference label): refShard + refArchive.
+  - `RelationshipsByType`: refShard ∪ refArchive ∪ events.
+  - `RelCountByType`: refShard + refArchive + events.
+  - `AllNodes` / `AllRelationships`: refShard ∪ refArchive ∪ events at `DepthAll`.
+  - `AllNodeIDs` / `AllRelIDs`: refShard ∪ refArchive ∪ events at `DepthAll`.
+  - Archive merge is gated on `opts.Depth == DepthAll`. `DepthHot` and `DepthWarm` exclude archive — caller explicitly asked to exclude colder tiers. Mirrors event-shard depth handling.
+- **Point-lookup ID routing now pins the archive** (`pkg/graph/tieredstore.go`): `shardForNodeIDChecked` and `shardForRelIDChecked` previously resolved archived IDs via raw `refArchive.Load()` and returned a no-op checkin. A concurrent `Close` could free the archive while a public `GetNode`/`UpdateNode`/`DeleteNode` was still holding it, because `archiveActiveReqs` was never incremented. Both routers now go through `checkoutArchive`, mirroring the `activeReqs` discipline already used for event shards.
+- **`forEachHistoryShard` now pins the archive** (`pkg/graph/tieredstore.go`): same Close-race risk on the history fan-out path. Switched to `checkoutArchive` with a checkin scoped around the callback.
+- **`ArchiveNode` rejects cross-shard relationships** (`pkg/graph/tieredstore_write.go`, new `ErrCrossShardArchiveRel`): a node may only be archived when every relationship touching it would be entirely resident on refArchive afterwards — in practice self-loops only. Pre-MR, archiving a node with cross-shard rels silently fragmented the version chain (the rel's entity stayed on an event shard while the node moved). Now fails loud with `ErrCrossShardArchiveRel`. Caller must delete the rel first or arrange for the partner endpoint to also be archived. Pre-scan happens before any mutation so the failure path is side-effect-free.
+- **Admin & repair paths**: `ListShards`, `RebuildCatalog`, `resolveShardStore`, `allShardStoresWithLazyOpen` all use `checkoutArchive`. `Clear` skips lazy-open when no archive exists in the catalog. `CreateTemporalIndex` and `CreateHighFrequencyIndex` now also propagate the index to refArchive (otherwise archived entities are absent from the temporal index).
+
+### Fixed (audit-found refArchive sites missed by MR !6)
+
+Post-merge audit caught two remaining sites with the same Close-race pattern that MR !6 fixed elsewhere:
+
+- **`findRelInAnyShardStore`** (`pkg/graph/tieredstore_admin.go`): probe used raw `ts.refArchive.Load()` then `archive.hasRelID(relID)` without `checkoutArchive`. Used by `RunRepair` Phase 1 — the function's own doc comment notes that missing the archive probe causes silent data loss, but the implementation didn't pin the probe. Fixed: archive probe now runs under `checkoutArchive`, with a comment that the returned pointer is for identity comparison only (caller must not dereference).
+- **`ArchiveNode`** and **`RestoreNode`** (`pkg/graph/tieredstore_write.go`): both called `ensureRefArchive()` then `ts.refArchive.Load()` and dereferenced the result for `PutNode`/`PutRelationship`/`DeleteNodeCascade` calls. Concurrent `Close` racing between the Load and the writes could free the archive `BadgerStore` under the operation. Fixed: both paths now call `checkoutArchive()` after `ensureRefArchive()` and `defer archiveCheckin()` for the duration of the cross-store moves. `archiveActiveReqs` makes Close wait.
+
+### Tests Added (MR !6)
+
+- **`pkg/graph/tieredstore_history_routing_test.go`**: 15 new regression tests covering each fix above. Notable: pinning tests assert `archiveActiveReqs > 0` *during* the callback / resolve, proving the pin is held across the boundary. Tests:
+  - `TestTieredStore_IndexedPublicQueries_IncludeArchive`
+  - `TestTieredStore_BulkQueries_DepthGatesArchive`
+  - `TestTieredStore_IndexedQueries_DepthGatesArchive`
+  - `TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll`
+  - `TestTieredStore_ShardForNodeIDChecked_PinsArchive`
+  - `TestTieredStore_ForEachHistoryShard_PinsArchive`
+  - `TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE`
+  - `TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR`
+  - `TestTieredStore_ArchiveNode_RejectsRefRefRel`
+  - `TestTieredStore_Clear_NoArchive_SkipsLazyOpen`
+  - `TestTieredStore_TemporalIndexCreate_CoversArchive`
+  - `TestTieredStore_ResolveShardStore_PinsArchive`
+  - `TestTieredStore_FindRelInAnyShardStore_ProbesArchive`
+  - `TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive`
+  - `TestTieredStore_HighFrequencyIndexCreate_CoversArchive`
+
 ## [3.1.10] - 2026-05-05
 
 ### Fixed (history-aware regressions and batch hardening — MR !5)

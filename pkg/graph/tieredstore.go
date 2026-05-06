@@ -542,10 +542,29 @@ func (ts *TieredStore) Clear() error {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}
-	if archive := ts.refArchive.Load(); archive != nil {
+	// Skip the archive checkout entirely when neither the in-memory pointer
+	// nor the catalog has an archive. checkoutArchive would otherwise be a
+	// no-op too, but bailing early makes the intent explicit and avoids the
+	// theoretical lazy-open-then-clear churn if the archive is on disk but
+	// has not been opened this session.
+	if ts.refArchive.Load() == nil && !ts.hasArchiveShard() {
+		return nil
+	}
+
+	// Pin via checkoutArchive — see resolveShardStore("archive") doc.
+	// A raw refArchive.Load() races Close, which drains archiveActiveReqs
+	// (sees 0) and proceeds to archive.Close() while Clear is still
+	// touching the DB → Badger v4 Flush-on-closed-DB hang.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
 		if err := archive.Clear(); err != nil {
+			archiveCheckin()
 			return fmt.Errorf("graph: clear ref archive: %w", err)
 		}
+		archiveCheckin()
 	}
 	return nil
 }
@@ -720,21 +739,19 @@ func (ts *TieredStore) shardForRelIDChecked(id types.RelID) (store *BadgerStore,
 		return ts.refShard, func() {}, nil
 	}
 
-	// Probe refArchive: ArchiveNode migrates a reference node AND its rels
-	// to refArchive, so archived rels live there after archive. refArchive
-	// has no idle-close lifecycle, so checkin is a no-op.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.hasRelID(raw) {
-		return archive, func() {}, nil
+	// Probe refArchive: ArchiveNode migrates a reference node AND its
+	// rels to refArchive, so archived rels live there after archive.
+	// Pin via checkoutArchive (mirrors the node resolver) so a
+	// concurrent Close cannot tear it down mid-use.
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, nil, err
 	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, nil, err
+	if archive != nil {
+		if archive.hasRelID(raw) {
+			return archive, archiveCheckin, nil
 		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.hasRelID(raw) {
-			return archive, func() {}, nil
-		}
+		archiveCheckin()
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
@@ -794,19 +811,22 @@ func (ts *TieredStore) shardForNodeIDChecked(id types.NodeID) (store *BadgerStor
 		return ts.refShard, func() {}, nil // refShard: never closed, no-op checkin
 	}
 
-	// Archive probe.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.hasNodeID(raw) {
-		return archive, func() {}, nil // refArchive: never subject to idle-close
+	// Archive probe — pin via checkoutArchive so a concurrent Close
+	// cannot tear down the underlying DB while the caller is using
+	// the returned pointer for GetNode / Update / etc. The previous
+	// no-op checkin was incorrect: refArchive IS closed by Close, just
+	// not by closeIdleShards. checkoutArchive also handles cold-start
+	// lazy-open via ensureRefArchive when the catalog has the entry but
+	// the in-memory pointer is nil.
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, nil, err
 	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, nil, err
+	if archive != nil {
+		if archive.hasNodeID(raw) {
+			return archive, archiveCheckin, nil
 		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.hasNodeID(raw) {
-			return archive, func() {}, nil
-		}
+		archiveCheckin()
 	}
 
 	// Event shard: resolve via timestamp, then checkout to prevent idle-close race.

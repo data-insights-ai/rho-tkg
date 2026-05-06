@@ -31,6 +31,14 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.11
+
+**refArchive parity in indexed and bulk reads.** `NodesByLabel`, `NodesByLabelAndProperty`, `NodeCountByLabel`, `RelationshipsByType`, `RelCountByType`, `AllNodes`, `AllRelationships`, `AllNodeIDs`, `AllRelIDs` now include archived entities at `DepthAll`. Pre-fix, archived nodes stayed `GetNode`-addressable but vanished from indexed/bulk reads. `DepthHot`/`DepthWarm` continue to exclude archive (caller explicitly asked for hotter tiers).
+
+**Close-race protection on archive paths.** `shardForNodeIDChecked` / `shardForRelIDChecked` / `forEachHistoryShard` / `findRelInAnyShardStore` / `ArchiveNode` / `RestoreNode` now pin the archive via `checkoutArchive`, mirroring the `activeReqs` discipline used for cold event shards.
+
+**`ArchiveNode` rejects cross-shard rels** with new `ErrCrossShardArchiveRel`. Archiving a node with a relationship whose other endpoint is not co-archived would fragment the version chain; the operation now fails loud before any mutation.
+
 ### What's new in 3.1.10
 
 **History-aware indexed candidate planning.** `NodesByLabel`, `NodesByLabelAndProperty`, `RelationshipsByType`, `GetNodesByLabelValidAt`, `NodesByLabelPropertyAndTime`, `NodesByLabelPropertyDuring`, and `GetNeighborsValidAt` now derive candidates from the appropriate index (label / property / type / adjacency) and merge them with history IDs. Previously they fell back to `Store.ForEachNodeID` over every entity. Performance fix for any temporal query with a narrow predicate.
