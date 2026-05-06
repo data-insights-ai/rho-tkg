@@ -103,10 +103,24 @@ func (vi *vectorIndex) remove(id snowflake.ID) {
 // searchNearest returns the IDs of the k nearest entries to query, ordered by
 // ascending distance (closest first).
 // Returns ErrDimensionMismatch if query length differs from the index's dimensions.
-// Returns nil, nil if the index is empty (no entries).
-func (vi *vectorIndex) searchNearest(query []float32, k int) ([]snowflake.ID, error) {
+// Returns nil, nil if the index is empty (no entries) or k <= 0.
+//
+// filter is an optional eligibility predicate. When non-nil, only entries for
+// which filter(id) returns true are considered for inclusion in the heap. This
+// matters for top-k correctness: ineligible candidates that happen to be near
+// the query must NOT crowd out farther but eligible candidates from the
+// k-best set. By filtering BEFORE the heap insertion, the heap always
+// contains the top-k of the eligible-only set.
+func (vi *vectorIndex) searchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if vi.dims > 0 && len(query) != vi.dims {
 		return nil, ErrDimensionMismatch
+	}
+	// Defensive guard: non-positive k yields no results. The public API
+	// (Graph.SearchNearestNodes) also gates k <= 0, but a direct
+	// store-level caller (or Store-interface consumer) might pass it
+	// through. Returning nil here avoids a panic in make/heap[0].
+	if k <= 0 {
+		return nil, nil
 	}
 
 	vi.mu.RLock()
@@ -121,6 +135,9 @@ func (vi *vectorIndex) searchNearest(query []float32, k int) ([]snowflake.ID, er
 	h := make(knnHeap, 0, k)
 	heap.Init(&h)
 	for _, e := range vi.entries {
+		if filter != nil && !filter(e.id) {
+			continue
+		}
 		var d float64
 		switch vi.metric {
 		case DistanceCosine:

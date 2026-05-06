@@ -1235,7 +1235,12 @@ func (ms *MemoryStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
 // Returns nil, nil if the index exists but has no entries.
-func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+//
+// The opts parameter is intentionally unused: MemoryStore is single-tier,
+// so Depth has no meaning, and temporal filtering is applied by the Graph
+// layer via searchNearestFiltered before this path is taken. The parameter
+// is required by the Store interface contract.
+func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, _ QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
 	vi, exists := ms.vectorIndexes[key]
@@ -1245,7 +1250,7 @@ func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, ErrVectorIndexNotFound
 	}
 
-	ids, err := vi.searchNearest(query, k)
+	ids, err := vi.searchNearest(query, k, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,6 +1270,25 @@ func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, nil
 	}
 	return result, nil
+}
+
+// searchNearestFiltered is the package-internal entry point used by the
+// Graph layer to perform vector search with an eligibility filter applied
+// BEFORE the k-cut. The filter is invoked under the vector index read lock,
+// so it must NOT call back into the store (deadlock).
+//
+// Returns raw snowflake.IDs in ascending distance order; the caller is
+// responsible for resolving entities (current or historical version).
+func (ms *MemoryStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := ms.vectorIndexes[key]
+	ms.mu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	return vi.searchNearest(query, k, filter)
 }
 
 // NodesByLabelAndProperty returns nodes matching the label and property value,

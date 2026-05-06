@@ -3086,7 +3086,12 @@ func (bs *BadgerStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
 // Returns nil, nil if the index exists but has no entries.
-func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+//
+// The opts parameter is intentionally unused: BadgerStore is single-tier,
+// so Depth has no meaning, and temporal filtering is applied by the Graph
+// layer via searchNearestFiltered before this path is taken. The parameter
+// is required by the Store interface contract.
+func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, _ QueryOpts) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
 	vi, exists := bs.vectorIndexes[key]
@@ -3096,7 +3101,7 @@ func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, ErrVectorIndexNotFound
 	}
 
-	rawIDs, err := vi.searchNearest(query, k)
+	rawIDs, err := vi.searchNearest(query, k, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3116,6 +3121,25 @@ func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, nil
 	}
 	return result, nil
+}
+
+// searchNearestFiltered is the package-internal entry point used by the
+// Graph layer to perform vector search with an eligibility filter applied
+// BEFORE the k-cut. The filter is invoked under the vector index read lock,
+// so it must NOT call back into the store (deadlock).
+//
+// Returns raw snowflake.IDs in ascending distance order; the caller is
+// responsible for resolving entities (current or historical version).
+func (bs *BadgerStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	bs.idxMu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := bs.vectorIndexes[key]
+	bs.idxMu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	return vi.searchNearest(query, k, filter)
 }
 
 // persistPropertyIndexDefs serializes the current property index definitions to Badger.

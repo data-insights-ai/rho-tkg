@@ -773,6 +773,28 @@ Repair, migration, and export loops that read entities by ID must distinguish th
 
 ---
 
+## B40. Pre-Filter Before k-Cut in Top-k Searches
+
+```
+BAD:  ids, _ := vi.searchNearest(query, k)   // top-k by raw distance
+      // then filter ineligible: result may have < k even if eligible
+      // candidates exist farther out
+
+GOOD: ids, _ := vi.searchNearest(query, k, filter)  // filter INSIDE heap loop
+      // ineligible candidates skipped before heap insertion → top-k is
+      // taken from the eligible-only set
+```
+
+Any "return k nearest" API that also accepts a temporal or access-control filter MUST apply the filter before the heap selection. Post-filtering degrades silently: a near-but-ineligible candidate occupies a heap slot and crowds a farther-but-eligible candidate out of the top-k. The result count drops below k without any error.
+
+**Why:** The heap tracks the best-k-so-far. Every ineligible entry that enters the heap is a wasted slot. Once the heap is full, eligible candidates with distance > the ineligible's distance are discarded. No post-processing step can recover them.
+
+**How to apply:** Thread the eligibility predicate into the innermost loop of the search (before heap insertion). Accept the predicate as a `func(id) bool` parameter on the internal search method so the top-level API can compose depth gating, temporal checks, and access controls without re-implementing the heap.
+
+**History:** Found in `codex/vector-index-correctness` MR review. `SearchNearestNodes` accepted `QueryOpts` but ignored temporal filters and Depth; k ≤ 0 also panicked. Fixed via `filteredVectorSearchStore` hook + `depthFilter` in TieredStore.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

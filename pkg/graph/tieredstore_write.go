@@ -1070,7 +1070,16 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, ErrVectorIndexNotFound
 	}
 
-	ids, err := vi.searchNearest(query, k)
+	// Depth gating: archive is the coldest tier of reference data. For
+	// DepthHot/DepthWarm, archived nodes must be excluded so callers don't
+	// see entities they explicitly asked to skip. Mirrors the gating policy
+	// of NodesByLabel/AllNodes/RelationshipsByType.
+	//
+	// Filtering happens BEFORE the heap selection (passed into searchNearest
+	// as the filter callback): otherwise a near-but-archived candidate
+	// could push a farther-but-eligible candidate out of the top-k.
+	filter := ts.depthFilter(opts.Depth)
+	ids, err := vi.searchNearest(query, k, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1091,6 +1100,60 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	}
 	return result, nil
 }
+
+// searchNearestFiltered is the package-internal entry point used by the
+// Graph layer's TEMPORAL path to perform vector search with an
+// eligibility filter applied BEFORE the k-cut. The filter is invoked
+// under the vector index read lock, so it must NOT call back into the
+// store (deadlock).
+//
+// Depth gating is NOT applied here. Graph.SearchNearestNodes already
+// rejects (temporal + Depth != DepthAll) at the entry point with
+// ErrDepthTemporalUnsupported, so by the time we reach this path the
+// effective Depth is DepthAll and the depthFilter would be a no-op.
+// The caller's filter is the only filter that needs composition.
+// (For the non-temporal path, depthFilter is built inside
+// TieredStore.SearchNearestNodes and passed directly to
+// vi.searchNearest — it does NOT route through this function.)
+//
+// Returns raw snowflake.IDs in ascending distance order; the caller is
+// responsible for resolving entities (current or historical version).
+func (ts *TieredStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	ts.vectorIdxMu.RLock()
+	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	vi, exists := ts.vectorIndexes[key]
+	ts.vectorIdxMu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	return vi.searchNearest(query, k, filter)
+}
+
+// depthFilter returns an eligibility predicate that excludes archive-resident
+// nodes from DepthHot/DepthWarm queries. Returns nil for DepthAll (no filter
+// needed — accept everything). Mirrors the archive-exclusion policy in
+// NodesByLabel/AllNodes/RelationshipsByType for non-temporal reads.
+//
+// Note: this filter only checks refArchive residency. Event-shard nodes are
+// not excluded here because the vector index is populated for all shards
+// (refShard, refArchive, all event shards) and event-shard membership cannot
+// be cheaply derived from an ID alone. In practice, vector indexes target
+// reference labels (the auto-maintenance code path requires a label match),
+// so the archive distinction is the meaningful one for Depth.
+func (ts *TieredStore) depthFilter(depth ShardDepth) func(snowflake.ID) bool {
+	if depth == DepthAll {
+		return nil
+	}
+	archive := ts.refArchive.Load()
+	if archive == nil {
+		return nil // archive not open: nothing to exclude
+	}
+	return func(id snowflake.ID) bool {
+		return !archive.hasNodeID(id)
+	}
+}
+
 
 // --- Reference archive ---
 

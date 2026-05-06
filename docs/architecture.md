@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.1.14)
+# Architecture — tkg/v3 (v3.1.15)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -364,7 +364,7 @@ reads or mutates archive state — point lookups (`shardForNodeIDChecked` /
 admin paths (`ListShards`, `RebuildCatalog`, `findRelInAnyShardStore`,
 `allShardStoresWithLazyOpen`).
 
-**eventShard checkout discipline for admin paths (v3.1.14):** admin methods
+**eventShard checkout discipline for admin paths (v3.1.15):** admin methods
 that iterate event shards (`ListShards`, `RebuildCatalog`, `Clear`,
 `CreateTemporalIndex`, `DropTemporalIndex`, `CreateHighFrequencyIndex`,
 `DropHighFrequencyIndex`) must pin each shard via `checkoutStore` /

@@ -31,6 +31,10 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.15
+
+**`SearchNearestNodes` now fully honours `QueryOpts`.** Previously temporal filters (`ValidAt`, `ValidStart`/`ValidEnd`), cursor pagination (`After`/`Limit`), and depth gating (`Depth`) were silently ignored. Temporal eligibility filtering now happens **before** the k-cut (via `filteredVectorSearchStore`) so near-but-ineligible candidates cannot crowd out farther-but-eligible ones from the top-k. Cursor pagination applied after the cut via `paginateNearestNodes`. `Depth != DepthAll` combined with a temporal filter returns `ErrDepthTemporalUnsupported`. TieredStore's `depthFilter` excludes archive-resident nodes from `DepthHot`/`DepthWarm` queries before heap selection. **k ≤ 0** now returns `nil, nil` instead of panicking.
+
 ### What's new in 3.1.14
 
 **`ImportGraph` panic safety.** `wireToNode`/`wireToRel` panic on token 0 (reserved). `ImportGraph` reads from an arbitrary `io.Reader`; a corrupt or malicious export stream became a process crash. New `validateNodeWire`/`validateRelWire` guard all four record types (node, nodeHist, rel, relHist) before construction, returning the typed `ErrCorruptExport` sentinel on token-0 or out-of-uint16-range values.

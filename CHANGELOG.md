@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.15] - 2026-05-06
+
+### Fixed
+
+- **`SearchNearestNodes` k ≤ 0 panic** (`pkg/graph/vector_index.go`, `pkg/graph/graph.go`): negative or zero k could reach `make(knnHeap, 0, k)` and panic. Both the Graph layer and `vectorIndex.searchNearest` now return `nil, nil` for k ≤ 0.
+- **`SearchNearestNodes` ignores `QueryOpts`** (`pkg/graph/graph.go`, `pkg/graph/tieredstore_write.go`): `ValidAt`/`ValidStart`/`ValidEnd` temporal filters, `After`/`Limit` cursor pagination, and `Depth` gating were silently dropped. Temporal filtering now applies an eligibility predicate **before** the k-cut via `filteredVectorSearchStore`; `paginateNearestNodes` applies cursor pagination after the k-cut; `Depth != DepthAll` + temporal filter returns `ErrDepthTemporalUnsupported`; TieredStore `depthFilter` excludes archive-resident nodes from `DepthHot`/`DepthWarm` before heap selection.
+
 ## [3.1.14] - 2026-05-06
 
 ### Fixed
