@@ -1154,7 +1154,6 @@ func (ts *TieredStore) depthFilter(depth ShardDepth) func(snowflake.ID) bool {
 	}
 }
 
-
 // --- Reference archive ---
 
 // ErrNotReferenceEntity is returned when attempting to archive a non-reference entity.

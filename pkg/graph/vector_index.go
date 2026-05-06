@@ -32,13 +32,9 @@ func (h *knnHeap) Pop() any {
 	return x
 }
 
-// DistanceMetric determines how similarity is measured between two vectors.
-type DistanceMetric uint8
-
-const (
-	DistanceCosine DistanceMetric = iota + 1
-	DistanceEuclidean
-)
+// DistanceMetric, DistanceCosine, and DistanceEuclidean are defined in
+// aliases.go as references to pkg/graph/internal/store after the
+// v3.1.17 restructure. They keep the public API surface unchanged.
 
 // vectorIndexKey uniquely identifies a vector index by label token and property key.
 type vectorIndexKey struct {

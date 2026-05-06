@@ -1,4 +1,4 @@
-package graph
+package store
 
 import (
 	"reflect"
@@ -35,8 +35,8 @@ func TestNodeToWireAndBack(t *testing.T) {
 		PrevHash: "def456",
 	})
 
-	w := nodeToWire(n)
-	got := wireToNode(w)
+	w := NodeToWire(n)
+	got := WireToNode(w)
 
 	if int64(got.ID()) != 1001 {
 		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
@@ -85,8 +85,8 @@ func TestNodeWireNoExtras(t *testing.T) {
 	t.Parallel()
 
 	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
-	w := nodeToWire(n)
-	got := wireToNode(w)
+	w := NodeToWire(n)
+	got := WireToNode(w)
 
 	if got.ExtraLabelTokens() != nil {
 		t.Fatal("expected no extra labels")
@@ -100,13 +100,13 @@ func TestNodeWireNilTemporal(t *testing.T) {
 	t.Parallel()
 
 	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 
 	if w.HasTemporal {
 		t.Fatal("HasTemporal should be false")
 	}
 
-	got := wireToNode(w)
+	got := WireToNode(w)
 	if got.Temporal() != nil {
 		t.Fatal("temporal should be nil")
 	}
@@ -116,13 +116,13 @@ func TestNodeWireNilIntegrity(t *testing.T) {
 	t.Parallel()
 
 	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 
 	if w.Hash != "" || w.PrevHash != "" {
 		t.Fatal("hash fields should be empty")
 	}
 
-	got := wireToNode(w)
+	got := WireToNode(w)
 	if got.Integrity() != nil {
 		t.Fatal("integrity should be nil")
 	}
@@ -144,8 +144,8 @@ func TestRelToWireAndBack(t *testing.T) {
 		Hash: "rel-hash",
 	})
 
-	w := relToWire(r)
-	got := wireToRel(w)
+	w := RelToWire(r)
+	got := WireToRel(w)
 
 	if int64(got.ID()) != 500 {
 		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
@@ -181,8 +181,8 @@ func TestRelWireNoProperties(t *testing.T) {
 	t.Parallel()
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
-	w := relToWire(r)
-	got := wireToRel(w)
+	w := RelToWire(r)
+	got := WireToRel(w)
 
 	if got.Properties().Len() != 0 {
 		t.Fatal("expected no properties")
@@ -193,8 +193,8 @@ func TestRelWireNilTemporalIntegrity(t *testing.T) {
 	t.Parallel()
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
-	w := relToWire(r)
-	got := wireToRel(w)
+	w := RelToWire(r)
+	got := WireToRel(w)
 
 	if got.Temporal() != nil {
 		t.Fatal("temporal should be nil")
@@ -303,18 +303,18 @@ func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
 		"name": "Bob",
 	}))
 
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var w2 nodeWire
+	var w2 NodeWire
 	if err := msgpack.Unmarshal(data, &w2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := wireToNode(w2)
+	got := WireToNode(w2)
 	if int64(got.ID()) != 1001 {
 		t.Fatal("ID mismatch after msgpack round-trip")
 	}
@@ -333,18 +333,18 @@ func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
 	r := types.NewRelationship(types.RelID(snowflake.ID(500)), 3, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
 	r.SetVersion(7)
 
-	w := relToWire(r)
+	w := RelToWire(r)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var w2 relWire
+	var w2 RelWire
 	if err := msgpack.Unmarshal(data, &w2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := wireToRel(w2)
+	got := WireToRel(w2)
 	if int64(got.ID()) != 500 {
 		t.Fatal("ID mismatch")
 	}
@@ -361,10 +361,10 @@ func TestPropertyWireTypeNormalization(t *testing.T) {
 
 	// With type tags, small ints that msgpack encodes as int8 are
 	// reconstructed back to their original Go type.
-	w := nodeWire{
+	w := NodeWire{
 		ID:           1,
 		PrimaryLabel: 1,
-		Properties: []propertyWire{
+		Properties: []PropertyWire{
 			{Key: "count", Value: int(42), Type: ptInt},        // int → int8 after msgpack → reconstructed to int
 			{Key: "big", Value: int64(1 << 40), Type: ptInt64}, // stays int64
 			{Key: "rate", Value: float64(1.5), Type: ptFloat64},
@@ -376,7 +376,7 @@ func TestPropertyWireTypeNormalization(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var w2 nodeWire
+	var w2 NodeWire
 	if err := msgpack.Unmarshal(data, &w2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -434,12 +434,12 @@ func TestPropertyWireTypeFidelityPrimitives(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			pw := []propertyWire{{Key: "k", Value: tc.val, Type: tc.tag}}
+			pw := []PropertyWire{{Key: "k", Value: tc.val, Type: tc.tag}}
 			data, err := msgpack.Marshal(pw)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			var pw2 []propertyWire
+			var pw2 []PropertyWire
 			if err := msgpack.Unmarshal(data, &pw2); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
@@ -463,7 +463,7 @@ func TestPropertyWireTypeFidelityStringSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestPropertyWireTypeFidelityInt64Slice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestPropertyWireTypeFidelityFloat64Slice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestPropertyWireTypeFidelityBoolSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -571,7 +571,7 @@ func TestPropertyWireTypeFidelityByteSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -600,7 +600,7 @@ func TestPropertyWireTypeFidelityMapStringAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -634,7 +634,7 @@ func TestPropertyWireTypeFidelityMapStringString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -663,7 +663,7 @@ func TestPropertyWireTypeFidelitySliceAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -695,7 +695,7 @@ func TestPropertyWireTypeFidelityBackwardCompat(t *testing.T) {
 	t.Parallel()
 
 	// Simulate old data without type tag (Type=0/ptUnknown).
-	pw := []propertyWire{
+	pw := []PropertyWire{
 		{Key: "count", Value: int(42), Type: ptUnknown},
 		{Key: "tags", Value: []string{"a"}, Type: ptUnknown},
 	}
@@ -703,7 +703,7 @@ func TestPropertyWireTypeFidelityBackwardCompat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var pw2 []propertyWire
+	var pw2 []PropertyWire
 	if err := msgpack.Unmarshal(data, &pw2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -726,7 +726,7 @@ func TestPropertyWireTypeFidelityNilValue(t *testing.T) {
 	t.Parallel()
 
 	// Nil values should survive reconstruction.
-	pw := []propertyWire{{Key: "empty", Value: nil, Type: ptString}}
+	pw := []PropertyWire{{Key: "empty", Value: nil, Type: ptString}}
 	ps := wireToProperties(pw)
 	if ps[0].Value != nil {
 		t.Fatalf("expected nil, got %T(%v)", ps[0].Value, ps[0].Value)
@@ -741,12 +741,12 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	n.SetTemporal(&types.TemporalMetadata{})
 	n.Temporal().SetBaseEntityID(types.EntityID(777))
 
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 	if w.BaseEntityID != 777 {
 		t.Fatalf("wire base entity: got %d", w.BaseEntityID)
 	}
 
-	got := wireToNode(w)
+	got := WireToNode(w)
 	if int64(got.Temporal().BaseEntityID().SnowflakeID()) != 777 {
 		t.Fatal("base entity round-trip failed")
 	}
@@ -754,8 +754,8 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	// Zero base entity.
 	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{})
-	w2 := nodeToWire(n2)
-	got2 := wireToNode(w2)
+	w2 := NodeToWire(n2)
+	got2 := WireToNode(w2)
 	if int64(got2.Temporal().BaseEntityID().SnowflakeID()) != 0 {
 		t.Fatal("zero base entity should remain zero")
 	}
@@ -768,12 +768,12 @@ func TestNodeWireTemporalZeroInstants(t *testing.T) {
 	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
 	n.SetTemporal(&types.TemporalMetadata{})
 
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 	if !w.HasTemporal {
 		t.Fatal("HasTemporal should be true")
 	}
 
-	got := wireToNode(w)
+	got := WireToNode(w)
 	tm := got.Temporal()
 	if tm == nil {
 		t.Fatal("temporal should not be nil")
@@ -792,18 +792,18 @@ func TestWireRoundTripIntSlice(t *testing.T) {
 		"counts": []int{1, 2, 3},
 	}))
 
-	w := nodeToWire(n)
+	w := NodeToWire(n)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var w2 nodeWire
+	var w2 NodeWire
 	if err := msgpack.Unmarshal(data, &w2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := wireToNode(w2)
+	got := WireToNode(w2)
 	v, ok := got.GetProperty("counts")
 	if !ok {
 		t.Fatal("missing counts property")
@@ -819,9 +819,9 @@ func TestWireRoundTripIntSlice(t *testing.T) {
 
 // ─── Direct unit tests for low-level helpers ──────────────────────────────────
 
-// TestPropertyTypeTagAllBranches exercises every branch in propertyTypeTag
+// TestPropertyTypeTagAllBranches exercises every branch in PropertyTypeTag
 // directly (without going through msgpack). The function is called by
-// propertiesToWire, but most wire tests construct propertyWire literals and
+// propertiesToWire, but most wire tests construct PropertyWire literals and
 // bypass it; this test provides explicit coverage.
 func TestPropertyTypeTagAllBranches(t *testing.T) {
 	t.Parallel()
@@ -857,9 +857,9 @@ func TestPropertyTypeTagAllBranches(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		got := propertyTypeTag(tc.val)
+		got := PropertyTypeTag(tc.val)
 		if got != tc.want {
-			t.Errorf("propertyTypeTag(%T) = %d, want %d", tc.val, got, tc.want)
+			t.Errorf("PropertyTypeTag(%T) = %d, want %d", tc.val, got, tc.want)
 		}
 	}
 }

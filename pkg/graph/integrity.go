@@ -10,6 +10,7 @@ import (
 	"sort"
 	"sync"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -233,7 +234,7 @@ func appendProperties(buf []byte, props types.PropertySlice) []byte {
 // type-distinct hashing (int(1) vs string("1") produce different hashes).
 // Maps sort keys before hashing for deterministic output. []any recurses.
 func appendPropertyValue(buf []byte, v any) []byte {
-	buf = append(buf, propertyTypeTag(v))
+	buf = append(buf, storepkg.PropertyTypeTag(v))
 
 	// Nil properties hash to their type tag alone. Common case from loaders
 	// that map SQL NULL to Go nil — without this branch, ComputeNodeHash

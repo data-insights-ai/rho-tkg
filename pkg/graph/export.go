@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -114,7 +115,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: fetch nodes: %w", err)
 		}
 		for _, n := range nodes {
-			w2 := nodeToWire(n)
+			w2 := storepkg.NodeToWire(n)
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
 				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
@@ -142,7 +143,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: get node history %d: %w", id, err)
 		}
 		for _, entry := range history {
-			w2 := nodeToWire(entry)
+			w2 := storepkg.NodeToWire(entry)
 			if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
 				return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
 			}
@@ -157,7 +158,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: fetch rels: %w", err)
 		}
 		for _, r := range rels {
-			w2 := relToWire(r)
+			w2 := storepkg.RelToWire(r)
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
 				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
@@ -179,7 +180,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: get rel history %d: %w", id, err)
 		}
 		for _, entry := range history {
-			w2 := relToWire(entry)
+			w2 := storepkg.RelToWire(entry)
 			if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
 				return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
 			}
@@ -270,54 +271,54 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			}
 
 		case exportTagNode:
-			var wn nodeWire
+			var wn storepkg.NodeWire
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
 				return fmt.Errorf("import: node %d: %w", wn.ID, err)
 			}
-			n := wireToNode(wn)
+			n := storepkg.WireToNode(wn)
 			if err := g.store.PutNode(n); err != nil && !errors.Is(err, ErrNodeExists) {
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
 			}
 
 		case exportTagNodeHist:
-			var wn nodeWire
+			var wn storepkg.NodeWire
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
 				return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 			}
-			n := wireToNode(wn)
+			n := storepkg.WireToNode(wn)
 			id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutNodeVersion(id, n.Version(), n); err != nil {
 				return fmt.Errorf("import: put node history %d v%d: %w", wn.ID, n.Version(), err)
 			}
 
 		case exportTagRel:
-			var wr relWire
+			var wr storepkg.RelWire
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {
 				return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 			}
-			rel := wireToRel(wr)
+			rel := storepkg.WireToRel(wr)
 			if err := g.store.PutRelationship(rel); err != nil && !errors.Is(err, ErrRelExists) {
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
 			}
 
 		case exportTagRelHist:
-			var wr relWire
+			var wr storepkg.RelWire
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {
 				return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 			}
-			rel := wireToRel(wr)
+			rel := storepkg.WireToRel(wr)
 			id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutRelVersion(id, rel.Version(), rel); err != nil {
 				return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
@@ -350,7 +351,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 // inconsistency later (e.g. failed hash chain verification, lookup
 // misses). Treat ImportGraph as "won't crash on a hostile reader, but
 // post-import audits are still the caller's responsibility."
-func validateNodeWire(w *nodeWire) error {
+func validateNodeWire(w *storepkg.NodeWire) error {
 	if w.PrimaryLabel == 0 {
 		return fmt.Errorf("%w: primary label token 0 is reserved", ErrCorruptExport)
 	}
@@ -371,7 +372,7 @@ func validateNodeWire(w *nodeWire) error {
 // validateRelWire defends the import boundary against malformed relationship
 // records. types.NewRelationship panics on relType 0; surface a typed error
 // instead.
-func validateRelWire(w *relWire) error {
+func validateRelWire(w *storepkg.RelWire) error {
 	if w.RelType == 0 {
 		return fmt.Errorf("%w: rel type token 0 is reserved", ErrCorruptExport)
 	}

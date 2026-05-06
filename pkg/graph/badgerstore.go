@@ -14,6 +14,7 @@ import (
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/vmihailenco/msgpack/v5"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -160,8 +161,8 @@ type BadgerStore struct {
 }
 
 var (
-	counterNodeCountKey = metaKey("node_count")
-	counterRelCountKey  = metaKey("rel_count")
+	counterNodeCountKey = storepkg.MetaKey("node_count")
+	counterRelCountKey  = storepkg.MetaKey("rel_count")
 )
 
 // NewBadgerStore opens a Badger database with the given configuration and
@@ -282,14 +283,14 @@ func (bs *BadgerStore) loadIndexes() error {
 
 		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B)
 		it := txn.NewIterator(opts)
-		prefix := []byte{keyLabel}
+		prefix := []byte{storepkg.KeyLabel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < sizeLabelIdx {
+			if len(key) < storepkg.SizeLabelIdx {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
-			nid := types.NodeID(parseIDFromKey(key, 3))
+			nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
 			bs.nodeIDs[nid] = struct{}{}
 			if bs.labelIdx[token] == nil {
 				bs.labelIdx[token] = make(map[types.NodeID]struct{})
@@ -301,27 +302,27 @@ func (bs *BadgerStore) loadIndexes() error {
 		// Also scan node entities to catch nodes without label indexes
 		// (shouldn't happen, but defensive).
 		it = txn.NewIterator(opts)
-		prefix = []byte{keyNode}
+		prefix = []byte{storepkg.KeyNode}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < sizeNodeKey {
+			if len(key) < storepkg.SizeNodeKey {
 				continue
 			}
-			nid := types.NodeID(parseIDFromKey(key, 1))
+			nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
 			bs.nodeIDs[nid] = struct{}{}
 		}
 		it.Close()
 
 		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B)
 		it = txn.NewIterator(opts)
-		prefix = []byte{keyRelType}
+		prefix = []byte{storepkg.KeyRelType}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < sizeRelTypeIdx {
+			if len(key) < storepkg.SizeRelTypeIdx {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
-			rid := types.RelID(parseIDFromKey(key, 3))
+			rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
 			bs.relIDs[rid] = struct{}{}
 			if bs.typeIdx[token] == nil {
 				bs.typeIdx[token] = make(map[types.RelID]struct{})
@@ -332,14 +333,14 @@ func (bs *BadgerStore) loadIndexes() error {
 
 		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B)
 		it = txn.NewIterator(opts)
-		prefix = []byte{keyOut}
+		prefix = []byte{storepkg.KeyOut}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < sizeAdjacency {
+			if len(key) < storepkg.SizeAdjacency {
 				continue
 			}
-			startID := types.NodeID(parseIDFromKey(key, 1))
-			relID := types.RelID(parseRelIDFromAdjKey(key))
+			startID := types.NodeID(storepkg.ParseIDFromKey(key, 1))
+			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
 			if bs.outIdx[startID] == nil {
 				bs.outIdx[startID] = make(map[types.RelID]struct{})
 			}
@@ -349,15 +350,15 @@ func (bs *BadgerStore) loadIndexes() error {
 
 		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B)
 		it = txn.NewIterator(opts)
-		prefix = []byte{keyIn}
+		prefix = []byte{storepkg.KeyIn}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < sizeAdjacency {
+			if len(key) < storepkg.SizeAdjacency {
 				continue
 			}
-			endID := types.NodeID(parseIDFromKey(key, 1))
+			endID := types.NodeID(storepkg.ParseIDFromKey(key, 1))
 			relType := binary.BigEndian.Uint16(key[9:])
-			relID := types.RelID(parseRelIDFromAdjKey(key))
+			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
 			if bs.inIdx[endID] == nil {
 				bs.inIdx[endID] = make(map[types.RelID]uint16)
 			}
@@ -393,7 +394,7 @@ func (bs *BadgerStore) loadIndexes() error {
 		}
 
 		// Load property index definitions and rebuild index data.
-		item, err := txn.Get(propIndexDefsKey)
+		item, err := txn.Get(storepkg.PropIndexDefsKey)
 		if err == nil {
 			var defs []propIdxDef
 			if e := item.Value(func(val []byte) error {
@@ -421,7 +422,7 @@ func (bs *BadgerStore) loadIndexes() error {
 		// badger.ErrKeyNotFound is OK — no indexes defined yet.
 
 		// Load temporal index label tokens and rebuild index data.
-		item, err = txn.Get(temporalIndexDefsKey)
+		item, err = txn.Get(storepkg.TemporalIndexDefsKey)
 		if err == nil {
 			var tokens []uint16
 			if e := item.Value(func(val []byte) error {
@@ -493,7 +494,7 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	nid := n.InternalID()
 	id := nid.SnowflakeID() // LRU is keyed by raw snowflake.ID (Tier D — see lru.go).
 
-	w := nodeToWire(n)
+	w := storepkg.NodeToWire(n)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
@@ -512,14 +513,14 @@ func (bs *BadgerStore) PutNode(n *types.Node) error {
 	bs.nodeIDs[nid] = struct{}{}
 
 	// Build write ops.
-	ops := []writeOp{{opType: writeOpSet, key: nodeKey(id), value: data}}
+	ops := []writeOp{{opType: writeOpSet, key: storepkg.NodeKey(id), value: data}}
 	for _, tok := range n.AllLabelTokens() {
 		tv := tok.Value()
 		if bs.labelIdx[tv] == nil {
 			bs.labelIdx[tv] = make(map[types.NodeID]struct{})
 		}
 		bs.labelIdx[tv][nid] = struct{}{}
-		ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tv, id)})
 		bs.getOrCreateLabelCounter(tv).Add(1)
 	}
 
@@ -563,7 +564,7 @@ func (bs *BadgerStore) GetNode(nid types.NodeID) (*types.Node, error) {
 	// Cache miss, node exists — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(id))
+		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -571,11 +572,11 @@ func (bs *BadgerStore) GetNode(nid types.NodeID) (*types.Node, error) {
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w nodeWire
+			var w storepkg.NodeWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = wireToNode(w)
+			n = storepkg.WireToNode(w)
 			return nil
 		})
 	})
@@ -611,12 +612,12 @@ func (bs *BadgerStore) DeleteNode(nid types.NodeID) error {
 	}
 
 	// Build delete ops using pre-fetched node (labels needed for index cleanup).
-	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
+	ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 
 	// Remove label index entries.
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
-		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
+		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 		if set, exists := bs.labelIdx[tok]; exists {
 			delete(set, nid)
 			if len(set) == 0 {
@@ -651,7 +652,7 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	nid := n.InternalID()
 	id := nid.SnowflakeID()
 
-	w := nodeToWire(n)
+	w := storepkg.NodeToWire(n)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
@@ -684,7 +685,7 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 	addNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	addNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	addNodeToVectorIndexes(bs.vectorIndexes, n, id)
-	bs.appendOps(writeOp{opType: writeOpSet, key: nodeKey(id), value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.idxMu.Unlock()
 
 	if bs.syncWrites {
@@ -699,7 +700,7 @@ func (bs *BadgerStore) ReplaceNode(n *types.Node) error {
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
 	id := nid.SnowflakeID()
-	w := nodeToWire(updatedNode)
+	w := storepkg.NodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
@@ -744,8 +745,8 @@ func (bs *BadgerStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, update
 
 	// Queue: set node data + delete label index entry.
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
-		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)},
+		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
+		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -760,13 +761,13 @@ func (bs *BadgerStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, update
 func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
 	id := nid.SnowflakeID()
-	w := nodeToWire(updatedNode)
+	w := storepkg.NodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	hw := nodeToWire(prevState)
+	hw := storepkg.NodeToWire(prevState)
 	histData, err := msgpack.Marshal(hw)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
@@ -808,11 +809,11 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
 
 	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
-	histKey := histNodeKey(id, uint64(prevVersion))
+	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
-		writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)},
+		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -827,7 +828,7 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *BadgerStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
 	id := nid.SnowflakeID()
-	w := nodeToWire(updatedNode)
+	w := storepkg.NodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
@@ -866,8 +867,8 @@ func (bs *BadgerStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
 
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
-		writeOp{opType: writeOpSet, key: labelIndexKey(tok, id)},
+		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -882,13 +883,13 @@ func (bs *BadgerStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 func (bs *BadgerStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
 	id := nid.SnowflakeID()
-	w := nodeToWire(updatedNode)
+	w := storepkg.NodeToWire(updatedNode)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	hw := nodeToWire(prevState)
+	hw := storepkg.NodeToWire(prevState)
 	histData, err := msgpack.Marshal(hw)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
@@ -930,11 +931,11 @@ func (bs *BadgerStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16
 	addNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
 
 	// Single appendOps call — node data + history + label index set — atomic in the pending buffer.
-	histKey := histNodeKey(id, uint64(prevVersion))
+	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
-		writeOp{opType: writeOpSet, key: labelIndexKey(tok, id)},
+		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.idxMu.Unlock()
 
@@ -958,7 +959,7 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 	endID := endNID.SnowflakeID()
 	relType := r.TypeToken().Value()
 
-	w := relToWire(r)
+	w := storepkg.RelToWire(r)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
@@ -1004,10 +1005,10 @@ func (bs *BadgerStore) PutRelationship(r *types.Relationship) error {
 
 	// Build write ops.
 	ops := []writeOp{
-		{opType: writeOpSet, key: relKey(id), value: data},
-		{opType: writeOpSet, key: relTypeIndexKey(relType, id)},
-		{opType: writeOpSet, key: outKey(startID, relType, endID, id)},
-		{opType: writeOpSet, key: inKey(endID, relType, startID, id)},
+		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
+		{opType: writeOpSet, key: storepkg.RelTypeIndexKey(relType, id)},
+		{opType: writeOpSet, key: storepkg.OutKey(startID, relType, endID, id)},
+		{opType: writeOpSet, key: storepkg.InKey(endID, relType, startID, id)},
 	}
 
 	bs.appendOps(ops...)
@@ -1047,7 +1048,7 @@ func (bs *BadgerStore) GetRelationship(rid types.RelID) (*types.Relationship, er
 	// Cache miss, rel exists — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(relKey(id))
+		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrRelNotFound
 		}
@@ -1055,11 +1056,11 @@ func (bs *BadgerStore) GetRelationship(rid types.RelID) (*types.Relationship, er
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w relWire
+			var w storepkg.RelWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			r = wireToRel(w)
+			r = storepkg.WireToRel(w)
 			return nil
 		})
 	})
@@ -1080,14 +1081,14 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	id := nid.SnowflakeID()
 
 	// Serialize current state.
-	w := nodeToWire(current)
+	w := storepkg.NodeToWire(current)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
 	// Serialize history snapshot.
-	hw := nodeToWire(prevState)
+	hw := storepkg.NodeToWire(prevState)
 	histData, err := msgpack.Marshal(hw)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
@@ -1108,9 +1109,9 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	addNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer.
-	histKey := histNodeKey(id, uint64(prevVersion))
+	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: nodeKey(id), value: data},
+		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
 	bs.idxMu.Unlock()
@@ -1128,14 +1129,14 @@ func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 	id := rid.SnowflakeID()
 
 	// Serialize current state.
-	w := relToWire(current)
+	w := storepkg.RelToWire(current)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
 
 	// Serialize history snapshot.
-	hw := relToWire(prevState)
+	hw := storepkg.RelToWire(prevState)
 	histData, err := msgpack.Marshal(hw)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
@@ -1151,9 +1152,9 @@ func (bs *BadgerStore) ReplaceRelWithHistory(current *types.Relationship, prevVe
 	bs.relCache.Put(id, current.DeepCopy())
 
 	// Single appendOps call — atomic in the pending buffer.
-	histKey := histRelKey(id, uint64(prevVersion))
+	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
 	bs.appendOps(
-		writeOp{opType: writeOpSet, key: relKey(id), value: data},
+		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
 	bs.idxMu.Unlock()
@@ -1171,7 +1172,7 @@ func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
 	rid := r.InternalID()
 	id := rid.SnowflakeID()
 
-	w := relToWire(r)
+	w := storepkg.RelToWire(r)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
@@ -1185,7 +1186,7 @@ func (bs *BadgerStore) ReplaceRelationship(r *types.Relationship) error {
 	}
 
 	bs.relCache.Put(id, r.DeepCopy())
-	bs.appendOps(writeOp{opType: writeOpSet, key: relKey(id), value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
 	bs.idxMu.Unlock()
 
 	if bs.syncWrites {
@@ -1277,10 +1278,10 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 	// Build delete ops.
 	ops := []writeOp{
-		{opType: writeOpDelete, key: relKey(info.id)},
-		{opType: writeOpDelete, key: relTypeIndexKey(info.relType, info.id)},
-		{opType: writeOpDelete, key: outKey(info.startID, info.relType, info.endID, info.id)},
-		{opType: writeOpDelete, key: inKey(info.endID, info.relType, info.startID, info.id)},
+		{opType: writeOpDelete, key: storepkg.RelKey(info.id)},
+		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.relType, info.id)},
+		{opType: writeOpDelete, key: storepkg.OutKey(info.startID, info.relType, info.endID, info.id)},
+		{opType: writeOpDelete, key: storepkg.InKey(info.endID, info.relType, info.startID, info.id)},
 	}
 
 	bs.appendOps(ops...)
@@ -1745,14 +1746,14 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, er
 		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
 		// ALL label sets to prevent orphaned index entries (perma-leak).
 		// O(L) where L is total distinct labels — bounded, corruption-only path.
-		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
+		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 		for tok, set := range bs.labelIdx {
 			if _, exists := set[nid]; exists {
 				delete(set, nid)
 				if len(set) == 0 {
 					delete(bs.labelIdx, tok)
 				}
-				ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
+				ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
@@ -1768,12 +1769,12 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, er
 	}
 
 	// Build delete ops for node.
-	ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
+	ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 
 	// Remove label index entries.
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
-		ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
+		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 		if set, exists := bs.labelIdx[tok]; exists {
 			delete(set, nid)
 			if len(set) == 0 {
@@ -1812,12 +1813,12 @@ func (bs *BadgerStore) cascadeDeleteLocked(nid types.NodeID) ([]relDeleteInfo, e
 func (bs *BadgerStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
 	id := rid.SnowflakeID()
 	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
-	w := relToWire(tombstone)
+	w := storepkg.RelToWire(tombstone)
 	tombData, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 	}
-	histKey := histRelKey(id, uint64(prevVersion))
+	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
 
 	bs.idxMu.Lock()
 	r, err := bs.getRelLocked(rid)
@@ -1858,7 +1859,7 @@ func (bs *BadgerStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 	if err != nil {
 		return fmt.Errorf("graph: marshal node tombstone: %w", err)
 	}
-	nodeHistKey := histNodeKey(id, uint64(prevNodeVersion))
+	nodeHistKey := storepkg.HistNodeKey(id, uint64(prevNodeVersion))
 
 	type histEntry struct{ key, data []byte }
 	relEntries := make([]histEntry, 0, len(relTombstones))
@@ -1868,7 +1869,7 @@ func (bs *BadgerStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 			return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 		}
 		relEntries = append(relEntries, histEntry{
-			key:  histRelKey(rt.ID.SnowflakeID(), uint64(rt.PrevVersion)),
+			key:  storepkg.HistRelKey(rt.ID.SnowflakeID(), uint64(rt.PrevVersion)),
 			data: data,
 		})
 	}
@@ -1914,7 +1915,7 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 	}
 	serialized := make([]nodeData, len(nodes))
 	for i, n := range nodes {
-		w := nodeToWire(n)
+		w := storepkg.NodeToWire(n)
 		data, err := msgpack.Marshal(w)
 		if err != nil {
 			return fmt.Errorf("graph: marshal node: %w", err)
@@ -1947,14 +1948,14 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 		bs.nodeCache.Put(nd.id, n.DeepCopy())
 		bs.nodeIDs[nd.nid] = struct{}{}
 
-		ops = append(ops, writeOp{opType: writeOpSet, key: nodeKey(nd.id), value: nd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		for _, tok := range n.AllLabelTokens() {
 			tv := tok.Value()
 			if bs.labelIdx[tv] == nil {
 				bs.labelIdx[tv] = make(map[types.NodeID]struct{})
 			}
 			bs.labelIdx[tv][nd.nid] = struct{}{}
-			ops = append(ops, writeOp{opType: writeOpSet, key: labelIndexKey(tv, nd.id)})
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tv, nd.id)})
 			bs.getOrCreateLabelCounter(tv).Add(1)
 		}
 		addNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
@@ -1993,7 +1994,7 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 	serialized := make([]relData, len(rels))
 	for i, r := range rels {
-		w := relToWire(r)
+		w := storepkg.RelToWire(r)
 		data, err := msgpack.Marshal(w)
 		if err != nil {
 			return fmt.Errorf("graph: marshal relationship: %w", err)
@@ -2060,10 +2061,10 @@ func (bs *BadgerStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		bs.inIdx[rd.endNID][rd.rid] = rd.relType
 
-		ops = append(ops, writeOp{opType: writeOpSet, key: relKey(rd.id), value: rd.data})
-		ops = append(ops, writeOp{opType: writeOpSet, key: relTypeIndexKey(rd.relType, rd.id)})
-		ops = append(ops, writeOp{opType: writeOpSet, key: outKey(rd.startID, rd.relType, rd.endID, rd.id)})
-		ops = append(ops, writeOp{opType: writeOpSet, key: inKey(rd.endID, rd.relType, rd.startID, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.OutKey(rd.startID, rd.relType, rd.endID, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.InKey(rd.endID, rd.relType, rd.startID, rd.id)})
 		bs.getOrCreateTypeCounter(rd.relType).Add(1)
 	}
 
@@ -2108,11 +2109,11 @@ func (bs *BadgerStore) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		n := nodeData[i]
 		id := nid.SnowflakeID()
 
-		ops := []writeOp{{opType: writeOpDelete, key: nodeKey(id)}}
+		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 
 		allTokens := collectNodeLabelTokens(n)
 		for _, tok := range allTokens {
-			ops = append(ops, writeOp{opType: writeOpDelete, key: labelIndexKey(tok, id)})
+			ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 			if set, exists := bs.labelIdx[tok]; exists {
 				delete(set, nid)
 				if len(set) == 0 {
@@ -2185,12 +2186,12 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 
 // marshalNodeToBytes serializes a Node to msgpack bytes via the wire format.
 func marshalNodeToBytes(n *types.Node) ([]byte, error) {
-	return msgpack.Marshal(nodeToWire(n))
+	return msgpack.Marshal(storepkg.NodeToWire(n))
 }
 
 // marshalRelToBytes serializes a Relationship to msgpack bytes via the wire format.
 func marshalRelToBytes(r *types.Relationship) ([]byte, error) {
-	return msgpack.Marshal(relToWire(r))
+	return msgpack.Marshal(storepkg.RelToWire(r))
 }
 
 // --- Version history ---
@@ -2199,12 +2200,12 @@ func marshalRelToBytes(r *types.Relationship) ([]byte, error) {
 // Serializes via nodeToWire (deep copy at serialization boundary).
 func (bs *BadgerStore) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
 	id := nid.SnowflakeID()
-	w := nodeToWire(n)
+	w := storepkg.NodeToWire(n)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
-	key := histNodeKey(id, uint64(version))
+	key := storepkg.HistNodeKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
 	if bs.syncWrites {
 		return bs.flush()
@@ -2217,7 +2218,7 @@ func (bs *BadgerStore) PutNodeVersion(nid types.NodeID, version uint32, n *types
 // Returns ErrVersionNotFound if the version does not exist.
 func (bs *BadgerStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
 	id := nid.SnowflakeID()
-	key := histNodeKey(id, uint64(version))
+	key := storepkg.HistNodeKey(id, uint64(version))
 	keyStr := string(key)
 
 	// Check pending buffer for unflushed writes.
@@ -2229,11 +2230,11 @@ func (bs *BadgerStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
-		var w nodeWire
+		var w storepkg.NodeWire
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n := wireToNode(w)
+		n := storepkg.WireToNode(w)
 		return n.DeepCopy(), nil
 	}
 
@@ -2248,11 +2249,11 @@ func (bs *BadgerStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w nodeWire
+			var w storepkg.NodeWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node version: %w", err)
 			}
-			n = wireToNode(w)
+			n = storepkg.WireToNode(w)
 			return nil
 		})
 	})
@@ -2266,7 +2267,7 @@ func (bs *BadgerStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 // Merges persisted Badger entries with unflushed pending buffer entries.
 func (bs *BadgerStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	id := nid.SnowflakeID()
-	prefix := histNodePrefix(id)
+	prefix := storepkg.HistNodePrefix(id)
 	return bs.getNodeHistoryByPrefix(prefix)
 }
 
@@ -2329,11 +2330,11 @@ func (bs *BadgerStore) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, err
 
 	result := make([]*types.Node, 0, len(keys))
 	for _, k := range keys {
-		var w nodeWire
+		var w storepkg.NodeWire
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n := wireToNode(w)
+		n := storepkg.WireToNode(w)
 		result = append(result, n.DeepCopy())
 	}
 	return result, nil
@@ -2343,7 +2344,7 @@ func (bs *BadgerStore) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, err
 // If keepVersions <= 0, all history is cleared.
 func (bs *BadgerStore) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	id := nid.SnowflakeID()
-	prefix := histNodePrefix(id)
+	prefix := storepkg.HistNodePrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
 }
 
@@ -2351,12 +2352,12 @@ func (bs *BadgerStore) TruncateNodeHistory(nid types.NodeID, keepVersions int) e
 // Serializes via relToWire (deep copy at serialization boundary).
 func (bs *BadgerStore) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
 	id := rid.SnowflakeID()
-	w := relToWire(r)
+	w := storepkg.RelToWire(r)
 	data, err := msgpack.Marshal(w)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
-	key := histRelKey(id, uint64(version))
+	key := storepkg.HistRelKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
 	if bs.syncWrites {
 		return bs.flush()
@@ -2369,7 +2370,7 @@ func (bs *BadgerStore) PutRelVersion(rid types.RelID, version uint32, r *types.R
 // Returns ErrVersionNotFound if the version does not exist.
 func (bs *BadgerStore) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
 	id := rid.SnowflakeID()
-	key := histRelKey(id, uint64(version))
+	key := storepkg.HistRelKey(id, uint64(version))
 	keyStr := string(key)
 
 	// Check pending buffer.
@@ -2381,11 +2382,11 @@ func (bs *BadgerStore) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
-		var w relWire
+		var w storepkg.RelWire
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r := wireToRel(w)
+		r := storepkg.WireToRel(w)
 		return r.DeepCopy(), nil
 	}
 
@@ -2400,11 +2401,11 @@ func (bs *BadgerStore) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w relWire
+			var w storepkg.RelWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal rel version: %w", err)
 			}
-			r = wireToRel(w)
+			r = storepkg.WireToRel(w)
 			return nil
 		})
 	})
@@ -2418,7 +2419,7 @@ func (bs *BadgerStore) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 // Merges persisted Badger entries with unflushed pending buffer entries.
 func (bs *BadgerStore) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	id := rid.SnowflakeID()
-	prefix := histRelPrefix(id)
+	prefix := storepkg.HistRelPrefix(id)
 	return bs.getRelHistoryByPrefix(prefix)
 }
 
@@ -2478,11 +2479,11 @@ func (bs *BadgerStore) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationsh
 
 	result := make([]*types.Relationship, 0, len(keys))
 	for _, k := range keys {
-		var w relWire
+		var w storepkg.RelWire
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r := wireToRel(w)
+		r := storepkg.WireToRel(w)
 		result = append(result, r.DeepCopy())
 	}
 	return result, nil
@@ -2492,7 +2493,7 @@ func (bs *BadgerStore) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationsh
 // If keepVersions <= 0, all history is cleared.
 func (bs *BadgerStore) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	id := rid.SnowflakeID()
-	prefix := histRelPrefix(id)
+	prefix := storepkg.HistRelPrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
 }
 
@@ -3010,7 +3011,7 @@ func (bs *BadgerStore) persistTemporalIndexDefs() {
 		tokens = append(tokens, tok)
 	}
 	if len(tokens) == 0 {
-		bs.appendOps(writeOp{opType: writeOpDelete, key: temporalIndexDefsKey})
+		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.TemporalIndexDefsKey})
 		return
 	}
 	data, err := msgpack.Marshal(tokens)
@@ -3018,7 +3019,7 @@ func (bs *BadgerStore) persistTemporalIndexDefs() {
 		slog.Error("graph: persist temporal index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: temporalIndexDefsKey, value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.TemporalIndexDefsKey, value: data})
 }
 
 // CreateVectorIndex creates a vector similarity index for nodes with the given label token,
@@ -3150,7 +3151,7 @@ func (bs *BadgerStore) persistPropertyIndexDefs() {
 		defs = append(defs, propIdxDef{LabelToken: key.labelToken, PropertyKey: key.propertyKey})
 	}
 	if len(defs) == 0 {
-		bs.appendOps(writeOp{opType: writeOpDelete, key: propIndexDefsKey})
+		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.PropIndexDefsKey})
 		return
 	}
 	data, err := msgpack.Marshal(defs)
@@ -3158,14 +3159,14 @@ func (bs *BadgerStore) persistPropertyIndexDefs() {
 		slog.Error("graph: persist property index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: propIndexDefsKey, value: data})
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.PropIndexDefsKey, value: data})
 }
 
 // loadNodeFromBadger reads and unmarshals a node within an existing Badger transaction.
 // Does not interact with the LRU cache. Used during loadIndexes where the cache is
 // not yet populated and concurrent access has not started.
 func (bs *BadgerStore) loadNodeFromBadger(txn *badger.Txn, id snowflake.ID) (*types.Node, error) {
-	item, err := txn.Get(nodeKey(id))
+	item, err := txn.Get(storepkg.NodeKey(id))
 	if err == badger.ErrKeyNotFound {
 		return nil, ErrNodeNotFound
 	}
@@ -3174,11 +3175,11 @@ func (bs *BadgerStore) loadNodeFromBadger(txn *badger.Txn, id snowflake.ID) (*ty
 	}
 	var n *types.Node
 	err = item.Value(func(val []byte) error {
-		var w nodeWire
+		var w storepkg.NodeWire
 		if err := msgpack.Unmarshal(val, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node: %w", err)
 		}
-		n = wireToNode(w)
+		n = storepkg.WireToNode(w)
 		return nil
 	})
 	return n, err
@@ -3358,8 +3359,8 @@ func (bs *BadgerStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	// Phase 1: pending buffer.
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
-			id := parseIDFromKey([]byte(k), 1)
+		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistNode {
+			id := storepkg.ParseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3378,11 +3379,11 @@ func (bs *BadgerStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{keyHistNode}
+		pfx := []byte{storepkg.KeyHistNode}
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= sizeHistKey {
-				id := parseIDFromKey(key, 1)
+			if len(key) >= storepkg.SizeHistKey {
+				id := storepkg.ParseIDFromKey(key, 1)
 				if _, ok := seen[id]; ok {
 					continue // already emitted
 				}
@@ -3405,8 +3406,8 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	// Phase 1: pending buffer.
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
-			id := parseIDFromKey([]byte(k), 1)
+		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistRel {
+			id := storepkg.ParseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3425,11 +3426,11 @@ func (bs *BadgerStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{keyHistRel}
+		pfx := []byte{storepkg.KeyHistRel}
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= sizeHistKey {
-				id := parseIDFromKey(key, 1)
+			if len(key) >= storepkg.SizeHistKey {
+				id := storepkg.ParseIDFromKey(key, 1)
 				if _, ok := seen[id]; ok {
 					continue // already emitted
 				}
@@ -3456,8 +3457,8 @@ func (bs *BadgerStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	// Check pending buffer for unflushed history writes.
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistNode {
-			id := parseIDFromKey([]byte(k), 1)
+		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistNode {
+			id := storepkg.ParseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3469,11 +3470,11 @@ func (bs *BadgerStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{keyHistNode}
+		pfx := []byte{storepkg.KeyHistNode}
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= sizeHistKey {
-				id := parseIDFromKey(key, 1)
+			if len(key) >= storepkg.SizeHistKey {
+				id := storepkg.ParseIDFromKey(key, 1)
 				seen[id] = struct{}{}
 			}
 		}
@@ -3506,8 +3507,8 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	// Check pending buffer for unflushed history writes.
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= sizeHistKey && k[0] == keyHistRel {
-			id := parseIDFromKey([]byte(k), 1)
+		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistRel {
+			id := storepkg.ParseIDFromKey([]byte(k), 1)
 			seen[id] = struct{}{}
 		}
 	}
@@ -3519,11 +3520,11 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]types.RelID, error) {
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{keyHistRel}
+		pfx := []byte{storepkg.KeyHistRel}
 		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= sizeHistKey {
-				id := parseIDFromKey(key, 1)
+			if len(key) >= storepkg.SizeHistKey {
+				id := storepkg.ParseIDFromKey(key, 1)
 				seen[id] = struct{}{}
 			}
 		}
@@ -3685,7 +3686,7 @@ func (bs *BadgerStore) SaveLabelRegistry(reg *labelRegistry) error {
 		return fmt.Errorf("graph: marshal label registry: %w", err)
 	}
 	return bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(metaKey("label_tokens"), data)
+		return txn.Set(storepkg.MetaKey("label_tokens"), data)
 	})
 }
 
@@ -3694,7 +3695,7 @@ func (bs *BadgerStore) SaveLabelRegistry(reg *labelRegistry) error {
 func (bs *BadgerStore) LoadLabelRegistry(reg *labelRegistry) (bool, error) {
 	var names []string
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(metaKey("label_tokens"))
+		item, err := txn.Get(storepkg.MetaKey("label_tokens"))
 		if err == badger.ErrKeyNotFound {
 			return nil
 		}
@@ -3722,7 +3723,7 @@ func (bs *BadgerStore) SaveRelTypeRegistry(reg *relTypeRegistry) error {
 		return fmt.Errorf("graph: marshal reltype registry: %w", err)
 	}
 	return bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(metaKey("reltype_tokens"), data)
+		return txn.Set(storepkg.MetaKey("reltype_tokens"), data)
 	})
 }
 
@@ -3731,7 +3732,7 @@ func (bs *BadgerStore) SaveRelTypeRegistry(reg *relTypeRegistry) error {
 func (bs *BadgerStore) LoadRelTypeRegistry(reg *relTypeRegistry) (bool, error) {
 	var names []string
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(metaKey("reltype_tokens"))
+		item, err := txn.Get(storepkg.MetaKey("reltype_tokens"))
 		if err == badger.ErrKeyNotFound {
 			return nil
 		}
@@ -3788,7 +3789,7 @@ func (bs *BadgerStore) prefetchNode(nid types.NodeID) (*types.Node, error) {
 	// Read from Badger without holding any lock.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(id))
+		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -3796,11 +3797,11 @@ func (bs *BadgerStore) prefetchNode(nid types.NodeID) (*types.Node, error) {
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w nodeWire
+			var w storepkg.NodeWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = wireToNode(w)
+			n = storepkg.WireToNode(w)
 			return nil
 		})
 	})
@@ -3826,7 +3827,7 @@ func (bs *BadgerStore) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 	// Cache miss — read from Badger.
 	var n *types.Node
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(nodeKey(id))
+		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrNodeNotFound
 		}
@@ -3834,11 +3835,11 @@ func (bs *BadgerStore) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w nodeWire
+			var w storepkg.NodeWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = wireToNode(w)
+			n = storepkg.WireToNode(w)
 			return nil
 		})
 	})
@@ -3864,7 +3865,7 @@ func (bs *BadgerStore) getRelLocked(rid types.RelID) (*types.Relationship, error
 	// Cache miss — read from Badger.
 	var r *types.Relationship
 	err := bs.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(relKey(id))
+		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badger.ErrKeyNotFound {
 			return ErrRelNotFound
 		}
@@ -3872,11 +3873,11 @@ func (bs *BadgerStore) getRelLocked(rid types.RelID) (*types.Relationship, error
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w relWire
+			var w storepkg.RelWire
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			r = wireToRel(w)
+			r = storepkg.WireToRel(w)
 			return nil
 		})
 	})

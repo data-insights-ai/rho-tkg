@@ -65,24 +65,10 @@ type ValidationLimits struct {
 	AllowSelfLoops         bool // Default: false — reject relationships where startNode == endNode
 }
 
-// snowflakeEpoch is the custom epoch for all snowflake ID generation (2026-01-01 UTC).
-var snowflakeEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-// snowflakeLayout is the package-level Layout matching the graph's snowflake
-// generators. Used by standalone functions (entityValidFrom, shardIndex,
-// DecomposeID) that don't have access to a *Node.
-var snowflakeLayout = func() snowflake.Layout {
-	l, err := snowflake.NewLayout(
-		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
-	if err != nil {
-		panic("graph: snowflakeLayout: " + err.Error())
-	}
-	return l
-}()
+// snowflakeEpoch and snowflakeLayout are defined in aliases.go as
+// references to internal/store. They preserve the package-level
+// identifiers used throughout pkg/graph after the v3.1.17 restructure
+// pulled the canonical definitions into pkg/graph/internal/store.
 
 // Config holds configuration for the Graph.
 type Config struct {
@@ -716,7 +702,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if !ok {
 		return nil, nil
 	}
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		return g.store.NodesByLabel(tok, opts)
 	}
 	if opts.Depth != DepthAll {
@@ -767,7 +753,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	if !ok {
 		return nil, nil
 	}
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		return g.store.RelationshipsByType(tok, opts)
 	}
 	if opts.Depth != DepthAll {
@@ -892,7 +878,7 @@ func (g *Graph) RelationshipCount() (int, error) {
 // query time. Without a temporal filter the fast store-side pushdown path
 // is preserved.
 func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		return g.store.AllNodes(opts)
 	}
 	if opts.Depth != DepthAll {
@@ -926,7 +912,7 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 // the query time. Without a temporal filter the fast store-side pushdown
 // path is preserved.
 func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		return g.store.AllRelationships(opts)
 	}
 	if opts.Depth != DepthAll {
@@ -1167,7 +1153,7 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 	if !ok {
 		return nil, nil
 	}
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		nodes, err := g.store.SearchNearestNodes(tok, propertyKey, query, k, opts)
 		if err != nil {
 			return nil, err
@@ -1300,7 +1286,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if !ok {
 		return nil, nil
 	}
-	if !opts.hasTemporalFilter() {
+	if !hasTemporalFilter(opts) {
 		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 	}
 	if opts.Depth != DepthAll {

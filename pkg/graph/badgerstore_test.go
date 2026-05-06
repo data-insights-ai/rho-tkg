@@ -13,6 +13,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -1407,8 +1408,8 @@ func TestBadgerStoreRequeueOpsPreservesNewerWrite(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	oldKey := nodeKey(100)
-	newKey := nodeKey(100)
+	oldKey := storepkg.NodeKey(100)
+	newKey := storepkg.NodeKey(100)
 
 	// Simulate: a newer write for the same key is already pending.
 	bs.wbMu.Lock()
@@ -1434,7 +1435,7 @@ func TestBadgerStoreRequeueOpsAddsWhenNoNewer(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	key := nodeKey(200)
+	key := storepkg.NodeKey(200)
 	failed := map[string]writeOp{
 		string(key): {opType: writeOpSet, key: key, value: []byte("retry")},
 	}
@@ -1466,7 +1467,7 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 
 	// Write corrupt rel data directly to Badger (bypasses cache).
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt-msgpack-data"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt-msgpack-data"))
 	})
 	if err != nil {
 		t.Fatalf("write corrupt data: %v", err)
@@ -1518,7 +1519,7 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	// Inject a third "relationship" with corrupt data directly into Badger and indexes.
 	corruptRelID := snowflake.ID(999)
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(999), []byte("corrupt-data"))
+		return txn.Set(storepkg.RelKey(999), []byte("corrupt-data"))
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1756,7 +1757,7 @@ func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
 
 	// Inject corrupt value into Badger.
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(nodeKey(100), []byte("corrupt"))
+		return txn.Set(storepkg.NodeKey(100), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)
@@ -1792,7 +1793,7 @@ func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
 
 	// Inject corrupt rel value.
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)
@@ -1825,7 +1826,7 @@ func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
 	bs.relCache.mu.Unlock()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)
@@ -1855,7 +1856,7 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 	bs.relCache.mu.Unlock()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)
@@ -4518,7 +4519,7 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	<-bs.gcDone
 
 	// Inject a fresh pending op so flush() has something to write.
-	injectedKey := nodeKey(9999)
+	injectedKey := storepkg.NodeKey(9999)
 	bs.wbMu.Lock()
 	bs.pending[string(injectedKey)] = writeOp{key: injectedKey, value: []byte{0x01}, opType: writeOpSet}
 	bs.wbMu.Unlock()
@@ -5219,7 +5220,7 @@ func TestBadgerStoreOutgoingForNodesCorruptionError(t *testing.T) {
 	bs.relCache.mu.Unlock()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)
@@ -5250,7 +5251,7 @@ func TestBadgerStoreIncomingForNodesCorruptionError(t *testing.T) {
 	bs.relCache.mu.Unlock()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(500), []byte("corrupt"))
+		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
 	})
 	if err != nil {
 		t.Fatalf("corrupt write: %v", err)

@@ -1,10 +1,25 @@
-package graph
+package store
 
 import (
 	"errors"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// DistanceMetric determines how similarity is measured between two vectors
+// stored in a Store-backed vector index.
+//
+// The type and its constants live here (alongside the Store interface that
+// references them) rather than in the package that owns the in-memory
+// brute-force index implementation: the Store interface is the lower
+// dependency, so the metric values must be defined here to avoid an import
+// cycle. The vector-index implementation in pkg/graph re-exports both.
+type DistanceMetric uint8
+
+const (
+	DistanceCosine DistanceMetric = iota + 1
+	DistanceEuclidean
 )
 
 // ShardDepth controls which shard tiers are included in merge queries.

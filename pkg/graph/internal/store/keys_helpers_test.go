@@ -1,4 +1,4 @@
-package graph
+package store
 
 import (
 	"encoding/binary"
@@ -23,50 +23,50 @@ const (
 // labelIndexPrefix returns the 3-byte prefix for scanning all nodes with a label.
 func labelIndexPrefix(token uint16) []byte {
 	b := make([]byte, 3)
-	b[0] = keyLabel
-	putUint16(b, 1, token)
+	b[0] = KeyLabel
+	PutUint16(b, 1, token)
 	return b
 }
 
 // relTypeIndexPrefix returns the 3-byte prefix for scanning all rels of a type.
 func relTypeIndexPrefix(token uint16) []byte {
 	b := make([]byte, 3)
-	b[0] = keyRelType
-	putUint16(b, 1, token)
+	b[0] = KeyRelType
+	PutUint16(b, 1, token)
 	return b
 }
 
 // outPrefix returns the 9-byte prefix for all outgoing rels from a node.
 func outPrefix(startID snowflake.ID) []byte {
 	b := make([]byte, 1+8)
-	b[0] = keyOut
-	putUint64(b, 1, int64(startID))
+	b[0] = KeyOut
+	PutUint64(b, 1, int64(startID))
 	return b
 }
 
 // outTypedPrefix returns the 11-byte prefix for outgoing rels of a specific type.
 func outTypedPrefix(startID snowflake.ID, relType uint16) []byte {
 	b := make([]byte, 1+8+2)
-	b[0] = keyOut
-	putUint64(b, 1, int64(startID))
-	putUint16(b, 9, relType)
+	b[0] = KeyOut
+	PutUint64(b, 1, int64(startID))
+	PutUint16(b, 9, relType)
 	return b
 }
 
 // inPrefix returns the 9-byte prefix for all incoming rels to a node.
 func inPrefix(endID snowflake.ID) []byte {
 	b := make([]byte, 1+8)
-	b[0] = keyIn
-	putUint64(b, 1, int64(endID))
+	b[0] = KeyIn
+	PutUint64(b, 1, int64(endID))
 	return b
 }
 
 // inTypedPrefix returns the 11-byte prefix for incoming rels of a specific type.
 func inTypedPrefix(endID snowflake.ID, relType uint16) []byte {
 	b := make([]byte, 1+8+2)
-	b[0] = keyIn
-	putUint64(b, 1, int64(endID))
-	putUint16(b, 9, relType)
+	b[0] = KeyIn
+	PutUint64(b, 1, int64(endID))
+	PutUint16(b, 9, relType)
 	return b
 }
 
@@ -76,8 +76,8 @@ func inTypedPrefix(endID snowflake.ID, relType uint16) []byte {
 func tempNodeKey(validFrom int64, nodeID snowflake.ID) []byte {
 	b := make([]byte, sizeTempIdx)
 	b[0] = keyTempNode
-	putUint64(b, 1, validFrom)
-	putUint64(b, 9, int64(nodeID))
+	PutUint64(b, 1, validFrom)
+	PutUint64(b, 9, int64(nodeID))
 	return b
 }
 
@@ -85,8 +85,8 @@ func tempNodeKey(validFrom int64, nodeID snowflake.ID) []byte {
 func tempRelKey(validFrom int64, relID snowflake.ID) []byte {
 	b := make([]byte, sizeTempIdx)
 	b[0] = keyTempRel
-	putUint64(b, 1, validFrom)
-	putUint64(b, 9, int64(relID))
+	PutUint64(b, 1, validFrom)
+	PutUint64(b, 9, int64(relID))
 	return b
 }
 
@@ -95,11 +95,11 @@ func tempRelKey(validFrom int64, relID snowflake.ID) []byte {
 // parseNodeIDFromLabelIdx extracts the node ID from the last 8 bytes of
 // an 11-byte label index key.
 func parseNodeIDFromLabelIdx(key []byte) snowflake.ID {
-	return snowflake.ID(binary.BigEndian.Uint64(key[3:])) // #nosec G115 — inverse of putUint64
+	return snowflake.ID(binary.BigEndian.Uint64(key[3:])) // #nosec G115 — inverse of PutUint64
 }
 
 // parseRelIDFromTypeIdx extracts the relationship ID from the last 8 bytes of
 // an 11-byte reltype index key.
 func parseRelIDFromTypeIdx(key []byte) snowflake.ID {
-	return snowflake.ID(binary.BigEndian.Uint64(key[3:])) // #nosec G115 — inverse of putUint64
+	return snowflake.ID(binary.BigEndian.Uint64(key[3:])) // #nosec G115 — inverse of PutUint64
 }

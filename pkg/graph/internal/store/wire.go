@@ -1,10 +1,10 @@
-package graph
+package store
 
 import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// nodeWire is the msgpack wire format for Node entities.
+// NodeWire is the msgpack wire format for Node entities.
 // All token values are stored as int (maps to msgpack integer).
 // Temporal instants are stored as int64 (Unix milliseconds).
 //
@@ -12,13 +12,13 @@ import (
 // this is the on-disk wire format. Existing Badger databases were written with
 // int64 IDs; changing the field type breaks msgpack unmarshalling of every
 // pre-existing file. The Graph layer wraps these int64 values into typed IDs
-// at the deserialization boundary (wireToNode / wireToRel). Tier D — see
+// at the deserialization boundary (WireToNode / WireToRel). Tier D — see
 // keys.go for the chokepoint invariant.
-type nodeWire struct {
+type NodeWire struct {
 	ID                 int64          `msgpack:"id"`
 	PrimaryLabel       int            `msgpack:"pl"`
 	ExtraLabels        []int          `msgpack:"el,omitempty"`
-	Properties         []propertyWire `msgpack:"p,omitempty"`
+	Properties         []PropertyWire `msgpack:"p,omitempty"`
 	Version            int            `msgpack:"v"`
 	HasTemporal        bool           `msgpack:"ht,omitempty"`
 	ValidFrom          int64          `msgpack:"vf,omitempty"`
@@ -39,13 +39,13 @@ type nodeWire struct {
 	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
 }
 
-// relWire is the msgpack wire format for Relationship entities.
-type relWire struct {
+// RelWire is the msgpack wire format for Relationship entities.
+type RelWire struct {
 	ID                 int64          `msgpack:"id"`
 	RelType            int            `msgpack:"rt"`
 	StartID            int64          `msgpack:"s"`
 	EndID              int64          `msgpack:"e"`
-	Properties         []propertyWire `msgpack:"p,omitempty"`
+	Properties         []PropertyWire `msgpack:"p,omitempty"`
 	Version            int            `msgpack:"v"`
 	HasTemporal        bool           `msgpack:"ht,omitempty"`
 	ValidFrom          int64          `msgpack:"vf,omitempty"`
@@ -68,9 +68,9 @@ type relWire struct {
 	AuthorizationLevel uint8          `msgpack:"al,omitempty"`
 }
 
-// propertyWire is the msgpack wire format for a single property key-value pair.
+// PropertyWire is the msgpack wire format for a single property key-value pair.
 // Type carries the original Go type tag so exact types survive msgpack round-trips.
-type propertyWire struct {
+type PropertyWire struct {
 	Key   string `msgpack:"k"`
 	Value any    `msgpack:"v"`
 	Type  byte   `msgpack:"t"` // property type tag for faithful reconstruction
@@ -78,9 +78,9 @@ type propertyWire struct {
 
 // --- Node conversion ---
 
-// nodeToWire converts a Node to its wire format for serialization.
-func nodeToWire(n *types.Node) nodeWire {
-	w := nodeWire{
+// NodeToWire converts a Node to its wire format for serialization.
+func NodeToWire(n *types.Node) NodeWire {
+	w := NodeWire{
 		ID:           int64(n.ID().SnowflakeID()),
 		PrimaryLabel: int(n.PrimaryLabelToken().Value()),
 		Version:      int(n.Version()),
@@ -122,8 +122,8 @@ func nodeToWire(n *types.Node) nodeWire {
 	return w
 }
 
-// wireToNode reconstructs a Node from its wire format.
-func wireToNode(w nodeWire) *types.Node {
+// WireToNode reconstructs a Node from its wire format.
+func WireToNode(w NodeWire) *types.Node {
 	var extras []uint16
 	for _, e := range w.ExtraLabels {
 		extras = append(extras, uint16(e)) // #nosec G115 — token values from our own serialization, always in uint16 range
@@ -167,9 +167,9 @@ func wireToNode(w nodeWire) *types.Node {
 
 // --- Relationship conversion ---
 
-// relToWire converts a Relationship to its wire format for serialization.
-func relToWire(r *types.Relationship) relWire {
-	w := relWire{
+// RelToWire converts a Relationship to its wire format for serialization.
+func RelToWire(r *types.Relationship) RelWire {
+	w := RelWire{
 		ID:      int64(r.ID().SnowflakeID()),
 		RelType: int(r.TypeToken().Value()),
 		StartID: int64(r.StartNodeID().SnowflakeID()),
@@ -207,8 +207,8 @@ func relToWire(r *types.Relationship) relWire {
 	return w
 }
 
-// wireToRel reconstructs a Relationship from its wire format.
-func wireToRel(w relWire) *types.Relationship {
+// WireToRel reconstructs a Relationship from its wire format.
+func WireToRel(w RelWire) *types.Relationship {
 	r := types.NewRelationship(
 		types.RelID(w.ID),
 		uint16(w.RelType), // #nosec G115 — token from our own serialization
@@ -284,8 +284,8 @@ const (
 	ptSliceF32   byte = 24
 )
 
-// propertyTypeTag returns the type tag for a property value.
-func propertyTypeTag(v any) byte {
+// PropertyTypeTag returns the type tag for a property value.
+func PropertyTypeTag(v any) byte {
 	switch v.(type) {
 	case bool:
 		return ptBool
@@ -395,7 +395,7 @@ func reconstructTypedValue(v any, tag byte) any {
 	case ptSliceInt64:
 		return toInt64Slice(v)
 	case ptSliceF32:
-		return toFloat32SliceWire(v)
+		return ToFloat32SliceWire(v)
 	case ptSliceF64:
 		return toFloat64Slice(v)
 	case ptSliceByte:
@@ -532,9 +532,9 @@ func toFloat64Slice(v any) []float64 {
 	return nil
 }
 
-// toFloat32SliceWire reconstructs a []float32 from a msgpack-decoded value.
+// ToFloat32SliceWire reconstructs a []float32 from a msgpack-decoded value.
 // Msgpack encodes float32 elements as float32 in a typed slice.
-func toFloat32SliceWire(v any) []float32 {
+func ToFloat32SliceWire(v any) []float32 {
 	switch s := v.(type) {
 	case []float32:
 		return s
@@ -627,13 +627,13 @@ func normalizeIntegersInMap(m map[string]any) map[string]any {
 
 // propertiesToWire converts a PropertySlice to wire format.
 // Each property's Go type is recorded in the Type tag for faithful reconstruction.
-func propertiesToWire(ps types.PropertySlice) []propertyWire {
+func propertiesToWire(ps types.PropertySlice) []PropertyWire {
 	if len(ps) == 0 {
 		return nil
 	}
-	pw := make([]propertyWire, len(ps))
+	pw := make([]PropertyWire, len(ps))
 	for i, p := range ps {
-		pw[i] = propertyWire{Key: p.Key, Value: p.Value, Type: propertyTypeTag(p.Value)}
+		pw[i] = PropertyWire{Key: p.Key, Value: p.Value, Type: PropertyTypeTag(p.Value)}
 	}
 	return pw
 }
@@ -645,7 +645,7 @@ func propertiesToWire(ps types.PropertySlice) []propertyWire {
 // The Type tag drives faithful reconstruction of the original Go type.
 // Old data without Type (decoded as 0/ptUnknown) falls through to
 // normalizeIntegersRecursive — same behavior as before the type tag was added.
-func wireToProperties(pw []propertyWire) types.PropertySlice {
+func wireToProperties(pw []PropertyWire) types.PropertySlice {
 	if len(pw) == 0 {
 		return nil
 	}

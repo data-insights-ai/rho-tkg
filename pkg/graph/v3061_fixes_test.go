@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -52,7 +53,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 		Signature: []byte{0xAA, 0xBB},
 	})
 
-	w := nodeToWire(n)
+	w := storepkg.NodeToWire(n)
 
 	// Mutate wire signature — must not affect original node.
 	w.Signature[0] = 0xFF
@@ -63,7 +64,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xAA
 
-	decoded := wireToNode(w)
+	decoded := storepkg.WireToNode(w)
 
 	// Mutate wire again — must not affect decoded node.
 	w.Signature[0] = 0xFF
@@ -81,7 +82,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 		Signature: []byte{0xCC, 0xDD},
 	})
 
-	w := relToWire(r)
+	w := storepkg.RelToWire(r)
 
 	// Mutate wire signature — must not affect original rel.
 	w.Signature[0] = 0xFF
@@ -92,7 +93,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xCC
 
-	decoded := wireToRel(w)
+	decoded := storepkg.WireToRel(w)
 
 	// Mutate wire again — must not affect decoded rel.
 	w.Signature[0] = 0xFF
@@ -495,25 +496,25 @@ func TestToFloat32SliceWire(t *testing.T) {
 	t.Parallel()
 
 	// []any{float32, float64} input.
-	got := toFloat32SliceWire([]any{float32(1.5), float64(2.5)})
+	got := storepkg.ToFloat32SliceWire([]any{float32(1.5), float64(2.5)})
 	if len(got) != 2 || got[0] != 1.5 || got[1] != 2.5 {
 		t.Fatalf("[]any input: got %v", got)
 	}
 
 	// []float32 input (passthrough).
-	got2 := toFloat32SliceWire([]float32{3.0, 4.0})
+	got2 := storepkg.ToFloat32SliceWire([]float32{3.0, 4.0})
 	if len(got2) != 2 || got2[0] != 3.0 || got2[1] != 4.0 {
 		t.Fatalf("[]float32 input: got %v", got2)
 	}
 
 	// nil input.
-	got3 := toFloat32SliceWire(nil)
+	got3 := storepkg.ToFloat32SliceWire(nil)
 	if got3 != nil {
 		t.Fatalf("nil input: got %v", got3)
 	}
 
 	// Unsupported type.
-	got4 := toFloat32SliceWire("not a slice")
+	got4 := storepkg.ToFloat32SliceWire("not a slice")
 	if got4 != nil {
 		t.Fatalf("unsupported input: got %v", got4)
 	}

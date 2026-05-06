@@ -9,6 +9,7 @@ import (
 
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -86,7 +87,7 @@ func runImportSafely(t *testing.T, g *Graph, r io.Reader) error {
 func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 0, // CORRUPT — token 0 is reserved
 		Version:      0,
@@ -120,7 +121,7 @@ func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 1,
 		ExtraLabels:  []int{2, 0, 3}, // CORRUPT — extra label token 0
@@ -155,7 +156,7 @@ func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&relWire{
+	body, err := msgpack.Marshal(&storepkg.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 0, // CORRUPT — token 0 is reserved
 		StartID: 100,
@@ -190,7 +191,7 @@ func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 0,
 		Version:      1,
@@ -222,7 +223,7 @@ func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 func TestImportGraph_RejectsZeroRelTypeInHistory(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&relWire{
+	body, err := msgpack.Marshal(&storepkg.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 0,
 		StartID: 100,
@@ -261,7 +262,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 	t.Parallel()
 
 	// Token = 70000 doesn't fit in uint16 (max 65535).
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 70000, // CORRUPT — out of uint16 range
 		Version:      0,
@@ -294,7 +295,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 func TestImportGraph_RejectsNegativeLabelToken(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: -1, // CORRUPT — negative
 		Version:      0,
@@ -337,9 +338,9 @@ func snowflakeIDForTest() int64 {
 func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&nodeWire{
+	body, err := msgpack.Marshal(&storepkg.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
-		PrimaryLabel: 1, // valid primary
+		PrimaryLabel: 1,            // valid primary
 		ExtraLabels:  []int{70000}, // CORRUPT — out of uint16 range
 		Version:      0,
 	})
@@ -372,7 +373,7 @@ func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&relWire{
+	body, err := msgpack.Marshal(&storepkg.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 70000, // CORRUPT — out of uint16 range
 		StartID: int64(snowflakeIDForTest()) + 1,
@@ -569,7 +570,7 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 
 	// 3. Overwrite the Badger value with non-msgpack bytes.
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(relKey(id), []byte{0xFF, 0xFE, 0xFD, 0xFC})
+		return txn.Set(storepkg.RelKey(id), []byte{0xFF, 0xFE, 0xFD, 0xFC})
 	})
 	if err != nil {
 		t.Fatalf("corrupt rel bytes: %v", err)
@@ -600,7 +601,7 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	// key-not-found, which BadgerStore translates to ErrRelNotFound.
 	id := relID.SnowflakeID()
 	err := bs.db.Update(func(txn *badger.Txn) error {
-		return txn.Delete(relKey(id))
+		return txn.Delete(storepkg.RelKey(id))
 	})
 	if err != nil {
 		t.Fatalf("delete rel key for stale-id setup: %v", err)

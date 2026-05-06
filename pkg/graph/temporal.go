@@ -546,7 +546,12 @@ func (g *Graph) forEachKnownRelID(fn func(types.RelID) error) error {
 // predicate `vStart < end && (vEnd == 0 || vEnd > start)` collapses
 // (e.g. with end == 0) and rejects every entity, regressing
 // AllNodes(QueryOpts{ValidStart: t}) and similar one-sided callers.
-func (opts QueryOpts) hasTemporalFilter() bool {
+//
+// Implemented as a free function rather than a method on QueryOpts because
+// QueryOpts is now a type alias to internal/store.QueryOpts after the
+// v3.1.17 restructure, and Go forbids defining methods on a non-local
+// aliased type.
+func hasTemporalFilter(opts QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return true
 	}

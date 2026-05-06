@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.17] - 2026-05-06
+
+### Changed (structural, no behaviour change)
+
+- **Restructure phase 1 — extract `pkg/graph/internal/store`**: the persistence-contract types (`Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, the `Err*` sentinels), the binary key encoding (`keys.go`), the msgpack wire format (`wire.go`), the `id_decompose.go` helpers, and the package-level `snowflakeEpoch`/`snowflakeLayout` are now in `pkg/graph/internal/store`. Identifiers that cross the new package boundary were exported (`nodeKey` → `NodeKey`, `nodeWire` → `NodeWire`, `propertyTypeTag` → `PropertyTypeTag`, etc.); identifiers that stay package-private inside `pkg/graph/internal/store` (e.g. `propertiesToWire`, `toInt64`) keep their original lowercase names. `pkg/graph/aliases.go` re-exports `Store`, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, the depth and metric constants, the sentinel errors, `IDComponents`, and `DecomposeID` so the public API surface (`graph.Store`, `graph.ErrNodeNotFound`, etc.) is unchanged. `(QueryOpts).hasTemporalFilter` became a free function `hasTemporalFilter(opts)` because Go forbids methods on a non-local aliased type. No semantic changes; `go test -race -short ./...` is green.
+- **Phase 2-4 deferred**: the `internal/index`, `internal/locks`, `internal/memorystore`, `internal/badgerstore`, and `internal/tieredstore` extractions described in the restructure plan remain in `pkg/graph` for now and will land in subsequent MRs to keep individual diffs reviewable.
+
 ## [3.1.16] - 2026-05-06
 
 ### Fixed

@@ -835,6 +835,42 @@ Three rules for a correct Clear:
 
 ---
 
+## B42. Restructure in Moves Only — Defer Identifier Renames and File Splits to Follow-up MRs
+
+```
+BAD:  Big-bang restructure that mixes:
+        - moving files between packages
+        - renaming/splitting identifiers
+        - splitting large files
+        - introducing new abstractions
+      Result: thousands of mechanical edits that obscure the
+              one decision the reviewer cares about (the new
+              package boundary), making the diff unreviewable
+              and PR-rejection rate high.
+
+GOOD: Three sequential MRs:
+        1. Move files via `git mv`. Fix only the identifier exports
+           that cross the new package boundary. Leave file contents,
+           function names, and abstractions intact. Add type-alias
+           shims (`type X = subpkg.X`) in the original package to
+           preserve the public API surface.
+        2. Rename/clean up identifiers within each new subpackage
+           on its own (still no logic change).
+        3. Split files where they're too large.
+```
+
+Three rules:
+
+1. **Use `git mv` so renames are detected.** Reviewers can read the diff as `+ package store / + import storepkg` rather than as wholesale file deletion + re-creation.
+
+2. **Aliases in the parent package preserve the public API.** The downstream consumers (`tkgd-v3`) keep importing `graph.Store`, `graph.QueryOpts`, `graph.ErrNodeNotFound` etc. without changes. Aliases are zero-cost at runtime and let an MR be a true structural-only change.
+
+3. **Methods on aliased types are forbidden.** Go rejects `func (opts QueryOpts) M()` when `QueryOpts` is `type QueryOpts = store.QueryOpts`. Either move the method to the canonical package or rewrite as a free function `M(opts QueryOpts)`. Prefer the free-function rewrite when the method is used internally only — moving methods across the boundary breaks the "moves only" contract.
+
+**History:** Found during the v3.1.17 restructure (MR `codex/restructure-pkg-graph`). The original plan moved the entire `pkg/graph/` into seven subpackages in one MR; the actual diff that landed was Phase 1 only (Store contract + key/wire encoding + snowflake layout). Phases 2-4 (indexes, locks, backends, Graph layer) deferred to keep each diff reviewable.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

@@ -215,8 +215,8 @@ type pointerOnlyMethods struct {
 	X int
 }
 
-func (p *pointerOnlyMethods) HashBytes() []byte                  { return []byte{byte(p.X)} }
-func (p *pointerOnlyMethods) DeepCopyValue() any                 { c := *p; return &c }
+func (p *pointerOnlyMethods) HashBytes() []byte  { return []byte{byte(p.X)} }
+func (p *pointerOnlyMethods) DeepCopyValue() any { c := *p; return &c }
 
 // TestF1F2_RegisterRejectsValueFormWithPointerReceiver verifies the
 // post-review fix to the registration check. Pre-fix this test passed
