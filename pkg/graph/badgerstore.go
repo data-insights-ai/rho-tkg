@@ -3550,10 +3550,30 @@ func (bs *BadgerStore) AllRelHistoryIDs() ([]types.RelID, error) {
 
 // --- Clear ---
 
-// Clear removes all entities, indexes, history, counters, and property indexes.
-// After Clear(), the BadgerStore is in the same state as a freshly opened store.
-// Registries are a Graph-layer concern — not cleared here.
+// Clear removes all entities, indexes, history, counters, and secondary
+// indexes. After Clear(), the BadgerStore is in the same state as a freshly
+// opened store. Registries are a Graph-layer concern — not cleared here.
+//
+// flushMu is acquired first to drain any in-flight async flush. Without this
+// barrier, a flush goroutine that has already snapshotted dirty cache
+// versions, pending ops, and counter values (under idxMu.RLock) but has not
+// yet submitted its WriteBatch could race ahead of DropAll() and resurrect
+// pre-Clear entities into Badger after the namespace is wiped — silent
+// post-restart data corruption. Holding flushMu for the duration of Clear
+// also blocks any new flush() from snapshotting state we're about to reset.
+//
+// Cost note (review M3): in SyncWrites mode every concurrent mutation
+// blocks while Clear runs DropAll, which can be slow on large stores.
+// This is an intentional accepted trade-off — Clear is rare and admin-
+// scoped, and the alternative (release flushMu before DropAll) does not
+// actually reduce the blocking window because concurrent flush() also
+// needs idxMu.RLock which Clear holds via idxMu.Lock for the same
+// duration. Releasing flushMu would only save a sync.Mutex acquisition
+// that is already serialised behind idxMu anyway.
 func (bs *BadgerStore) Clear() error {
+	bs.flushMu.Lock()
+	defer bs.flushMu.Unlock()
+
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
@@ -3565,24 +3585,44 @@ func (bs *BadgerStore) Clear() error {
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]uint16)
 
-	// Reset atomic counters.
+	// Reset atomic counters. Clear sync.Map contents via Range+Delete
+	// rather than struct reassignment (review L1): concurrent readers
+	// at NodeCountByLabel / RelCountByType call labelCounts.Load /
+	// typeCounts.Load WITHOUT holding idxMu, and replacing the
+	// sync.Map struct value while a reader is mid-Load races on the
+	// field itself. Deleting individual keys is safe because sync.Map
+	// is concurrency-safe by contract.
 	bs.nodeCount.Store(0)
 	bs.relCount.Store(0)
-	bs.labelCounts = sync.Map{}
-	bs.typeCounts = sync.Map{}
+	bs.labelCounts.Range(func(k, _ any) bool {
+		bs.labelCounts.Delete(k)
+		return true
+	})
+	bs.typeCounts.Range(func(k, _ any) bool {
+		bs.typeCounts.Delete(k)
+		return true
+	})
 
 	// Re-create LRU caches with same capacity.
 	cap := bs.nodeCache.Cap()
 	bs.nodeCache = newEntityLRU[*types.Node](cap)
 	bs.relCache = newEntityLRU[*types.Relationship](cap)
 
-	// Clear pending buffer.
+	// Clear pending buffer. (flushMu serializes us against flush(), so any
+	// snapshot that happens after this point sees an empty buffer.)
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
 	bs.wbMu.Unlock()
 
-	// Clear property indexes.
+	// Clear all secondary index maps. Leaving these populated leaks
+	// pre-Clear state into the post-Clear store: CreateTemporalIndex /
+	// CreateHighFrequencyIndex / CreateVectorIndex would return "already
+	// exists" on a logically empty store, and stale vector entries would
+	// occupy top-k slots in SearchNearestNodes results.
 	bs.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
+	bs.temporalIndexes = make(map[uint16]*temporalIndex)
+	bs.hfIndexes = make(map[uint16]*highFrequencyIndex)
+	bs.vectorIndexes = make(map[vectorIndexKey]*vectorIndex)
 
 	// Drop all data from Badger — atomically removes all KV pairs.
 	return bs.db.DropAll()

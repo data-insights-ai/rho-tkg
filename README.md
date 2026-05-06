@@ -31,6 +31,14 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.16
+
+**`BadgerStore.Clear` flush race closed.** A flush goroutine that snapshotted pending writes under `idxMu.RLock` but had not yet submitted its `WriteBatch` could race past `DropAll()` and resurrect pre-Clear entities after a restart. `Clear` now acquires `flushMu` first (same ordering as `flush()`), serialising both paths end-to-end.
+
+**`sync.Map` field-replacement race fixed.** `bs.labelCounts = sync.Map{}` raced concurrent `NodeCountByLabel` calls that read the field without holding `idxMu`. Fixed with `Range+Delete`.
+
+**All secondary indexes cleared on `Clear`.** `temporalIndexes`, `hfIndexes`, `vectorIndexes`, and (for TieredStore) `tempIdxLabels` are now reset. Previously they were left populated, causing "already exists" errors and stale vector candidates on a logically empty store.
+
 ### What's new in 3.1.15
 
 **`SearchNearestNodes` now fully honours `QueryOpts`.** Previously temporal filters (`ValidAt`, `ValidStart`/`ValidEnd`), cursor pagination (`After`/`Limit`), and depth gating (`Depth`) were silently ignored. Temporal eligibility filtering now happens **before** the k-cut (via `filteredVectorSearchStore`) so near-but-ineligible candidates cannot crowd out farther-but-eligible ones from the top-k. Cursor pagination applied after the cut via `paginateNearestNodes`. `Depth != DepthAll` combined with a temporal filter returns `ErrDepthTemporalUnsupported`. TieredStore's `depthFilter` excludes archive-resident nodes from `DepthHot`/`DepthWarm` queries before heap selection. **k ≤ 0** now returns `nil, nil` instead of panicking.

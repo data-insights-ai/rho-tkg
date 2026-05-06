@@ -795,6 +795,46 @@ Any "return k nearest" API that also accepts a temporal or access-control filter
 
 ---
 
+## B41. Clear Must Serialise Against Flush and Reset All Secondary Indexes
+
+```
+BAD:  func (bs *BadgerStore) Clear() error {
+          bs.idxMu.Lock()
+          defer bs.idxMu.Unlock()
+          // reset maps ...
+          bs.labelCounts = sync.Map{}   // field-replacement races concurrent Load()
+          bs.propertyIndexes = make(...)  // but temporalIndexes, hfIndexes, vectorIndexes left populated
+          return bs.db.DropAll()
+          // flush() may still be mid-WriteBatch → resurrects wiped entities on restart
+      }
+
+GOOD: func (bs *BadgerStore) Clear() error {
+          bs.flushMu.Lock()             // drain any in-flight flush first
+          defer bs.flushMu.Unlock()
+          bs.idxMu.Lock()
+          defer bs.idxMu.Unlock()
+          bs.labelCounts.Range(func(k, _ any) bool { bs.labelCounts.Delete(k); return true })
+          bs.typeCounts.Range(func(k, _ any) bool { bs.typeCounts.Delete(k); return true })
+          bs.temporalIndexes = make(...)  // every secondary index map
+          bs.hfIndexes = make(...)
+          bs.vectorIndexes = make(...)
+          bs.propertyIndexes = make(...)
+          return bs.db.DropAll()
+      }
+```
+
+Three rules for a correct Clear:
+
+1. **Acquire `flushMu` before `idxMu`** (matching `flush()`'s lock order). Without this, a flush goroutine that snapshotted dirty state under `idxMu.RLock` but has not yet submitted its `WriteBatch` can race ahead of `DropAll()` and write pre-Clear data back to Badger — visible after the next restart.
+
+2. **Never replace a `sync.Map` field by struct assignment** while concurrent readers access it without holding the surrounding lock. Use `Range+Delete` instead. Replacing the field causes a data race on the field itself even though `sync.Map` operations are otherwise safe.
+
+3. **Reset every secondary index map** the store owns: `temporalIndexes`, `hfIndexes`, `vectorIndexes`, `propertyIndexes`. A missed map leaves "already exists" errors after Clear and stale candidates in search results. For TieredStore, also reset the store-level `vectorIndexes` and `tempIdxLabels` maps (these live on TieredStore itself, not on individual shards).
+
+**History:** Found during `codex/clear-lifecycle-fix` MR review. All three bugs were present simultaneously in `BadgerStore.Clear`.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

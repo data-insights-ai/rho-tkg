@@ -523,12 +523,23 @@ func (ts *TieredStore) Close() error {
 }
 
 // Clear clears all open shards. Cold shards with nil stores are skipped.
+// Also resets store-level state that lives on the TieredStore itself rather
+// than on individual shards: the vector-index map and the tracked temporal
+// index labels list (which would otherwise re-install temporal indexes for
+// stale labels on the next hot-shard rotation).
 //
 // Concurrency: each open event shard is pinned via checkoutStore for the
 // duration of its Clear() call. Without the pin, Close (which doesn't
 // take ts.mu and only spin-waits on activeReqs) could free the
 // underlying DB while Clear was still touching it — Badger v4 Flush on
 // a closed DB blocks forever.
+//
+// Note: the snapshot-then-clear pattern races a concurrent ForceRotate
+// that could replace the hot shard between the snapshot and its Clear().
+// The new hot shard would survive uncleared. This is pre-existing
+// behaviour shared by all snapshot-based admin paths (ListShards,
+// RebuildCatalog, index-create/drop). Treat Clear as admin-only and
+// serialise externally against rotation.
 func (ts *TieredStore) Clear() error {
 	ts.mu.RLock()
 	shards := make([]*eventShard, 0, len(ts.eventShards))
@@ -564,6 +575,19 @@ func (ts *TieredStore) Clear() error {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}
+
+	// Reset TieredStore-level state. Without this, post-Clear callers see
+	// "already exists" on a logically empty store (vectorIndexes), and the
+	// next rotation re-creates temporal indexes on the new hot shard for
+	// labels that were dropped along with the shard data (tempIdxLabels).
+	ts.vectorIdxMu.Lock()
+	ts.vectorIndexes = make(map[vectorIndexKey]*vectorIndex)
+	ts.vectorIdxMu.Unlock()
+
+	ts.tempIdxMu.Lock()
+	ts.tempIdxLabels = nil
+	ts.tempIdxMu.Unlock()
+
 	// Skip the archive checkout entirely when neither the in-memory pointer
 	// nor the catalog has an archive. checkoutArchive would otherwise be a
 	// no-op too, but bailing early makes the intent explicit and avoids the

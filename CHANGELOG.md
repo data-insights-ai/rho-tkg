@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.16] - 2026-05-06
+
+### Fixed
+
+- **`BadgerStore.Clear` flush race** (`pkg/graph/badgerstore.go`): a flush goroutine that snapshotted pending writes under `idxMu.RLock` but had not yet submitted its `WriteBatch` could race ahead of `DropAll()` and resurrect pre-Clear entities after a restart. `Clear` now acquires `flushMu` first (same ordering as `flush()`), serialising the two paths end-to-end.
+- **`BadgerStore.Clear` `sync.Map` field-replacement race** (`pkg/graph/badgerstore.go`): `bs.labelCounts = sync.Map{}` replaced the struct field while concurrent `NodeCountByLabel` calls read from it without holding `idxMu` — a data race on the field itself. Fixed with `Range+Delete` (concurrency-safe by contract).
+- **Missing secondary-index resets in `Clear`** (all three stores): `BadgerStore`, `MemoryStore`, and `TieredStore.Clear` left `temporalIndexes`, `hfIndexes`, and `vectorIndexes` populated. Subsequent `CreateTemporalIndex`/`CreateHighFrequencyIndex`/`CreateVectorIndex` returned "already exists" on a logically empty store; stale vector entries occupied top-k slots in `SearchNearestNodes`. `TieredStore.Clear` also left `tempIdxLabels` set, causing the next rotation to re-install temporal indexes for already-dropped labels.
+
 ## [3.1.15] - 2026-05-06
 
 ### Fixed

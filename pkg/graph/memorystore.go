@@ -1520,6 +1520,7 @@ func (ms *MemoryStore) Clear() error {
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
 	ms.temporalIndexes = make(map[uint16]*temporalIndex)
+	ms.hfIndexes = make(map[uint16]*highFrequencyIndex)
 	ms.vectorIndexes = make(map[vectorIndexKey]*vectorIndex)
 	return nil
 }
