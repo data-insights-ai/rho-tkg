@@ -526,14 +526,101 @@ func (ts *TieredStore) PutRelationshipsBatch(rels []*types.Relationship) error {
 	return nil
 }
 
+// DeleteRelationshipsBatch partitions same-shard relationships into per-shard
+// buckets and submits each bucket as a single BadgerStore.DeleteRelationshipsBatch
+// call (mirroring the partitioning used by PutRelationshipsBatch). Cross-shard
+// relationships continue down the per-ID DeleteRelationship path so the
+// split-delete + rollback ordering remains intact.
+//
+// Behavioural compatibility with the previous per-ID loop:
+//   - Empty / nil input is a no-op (returns nil).
+//   - Failure semantics are unchanged: this is NOT atomic across shards. A
+//     mid-batch failure leaves earlier per-shard batches and earlier cross-shard
+//     deletes committed. Callers that need all-or-nothing semantics must wrap
+//     the call in a higher-level transaction.
+//
+// Throughput: same-shard rels collapse from N shard lookups + N WriteBatches
+// down to one shard lookup per rel + one WriteBatch per shard, mirroring the
+// PutRelationshipsBatch optimisation.
 func (ts *TieredStore) DeleteRelationshipsBatch(ids []types.RelID) error {
-	// Cross-shard aware: per-ID delete. Each relationship may be cross-shard
-	// (entity+out/ in one shard, in/ in another), so DeleteRelationship handles
-	// the split-delete logic correctly at the cost of one shard-resolution lookup
-	// per ID. A future optimisation could partition same-shard rels and batch them;
-	// for v3 workloads the per-ID path is acceptable.
-	// TODO(v3.1.0): partition by shard for same-shard rels to allow store-level batching.
+	if len(ids) == 0 {
+		return nil
+	}
+
+	// Group same-shard rel IDs by their owning *BadgerStore. Owner shards are
+	// pinned via checkout so cold owners cannot be torn down between resolution
+	// here and the per-shard batch delete below. Cross-shard rels are released
+	// immediately and replayed via the per-ID path which re-pins internally.
+	sameShard := make(map[*BadgerStore][]types.RelID)
+	var crossShard []types.RelID
+	var checkins []func()
+	releaseAll := func() {
+		for _, fn := range checkins {
+			fn()
+		}
+	}
+
 	for _, id := range ids {
+		entityShard, entityCheckin, err := ts.shardForRelIDChecked(id)
+		if err != nil {
+			releaseAll()
+			return err
+		}
+
+		// Read rel metadata to determine endpoint shards. If the entity is
+		// missing, surface ErrRelNotFound — matches per-ID DeleteRelationship.
+		r, err := entityShard.GetRelationship(id)
+		if err != nil {
+			entityCheckin()
+			releaseAll()
+			return err
+		}
+
+		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		if err != nil {
+			entityCheckin()
+			releaseAll()
+			return err
+		}
+		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+		if err != nil {
+			entityCheckin()
+			startCheckin()
+			releaseAll()
+			return err
+		}
+
+		if startShard == endShard && entityShard == startShard {
+			// Same shard: hold the entity-shard pin until the per-shard batch
+			// delete below. Endpoint pins are redundant once we know the rel
+			// is fully co-located, so release them now.
+			startCheckin()
+			endCheckin()
+			sameShard[entityShard] = append(sameShard[entityShard], id)
+			checkins = append(checkins, entityCheckin)
+			continue
+		}
+
+		// Cross-shard: release all pins now and let DeleteRelationship re-pin
+		// internally. There is a brief unpinned window before the re-pin, but
+		// closeIdleShards cannot fire inside it: each owner shard's lastAccess
+		// was just bumped by checkout above, and IdleTimeout >= 5min.
+		entityCheckin()
+		startCheckin()
+		endCheckin()
+		crossShard = append(crossShard, id)
+	}
+	defer releaseAll()
+
+	// Per-shard batch delete for same-shard rels.
+	for shard, bucket := range sameShard {
+		if err := shard.DeleteRelationshipsBatch(bucket); err != nil {
+			return fmt.Errorf("tiered: delete same-shard rels batch: %w", err)
+		}
+	}
+
+	// Cross-shard rels: per-ID via existing split-delete path.
+	for _, id := range crossShard {
 		if err := ts.DeleteRelationship(id); err != nil {
 			return err
 		}
