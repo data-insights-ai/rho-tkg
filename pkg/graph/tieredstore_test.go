@@ -3532,7 +3532,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 
 	shard, err := ts.ShardForRelIDForTest(types.RelID(id))
 	if err != nil {
-		t.Fatalf("shardForRelID should not error: %v", err)
+		t.Fatalf("ShardForRelIDForTest should not error: %v", err)
 	}
 	if shard == nil {
 		t.Error("shard should not be nil")
@@ -4700,10 +4700,10 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 
 	shard, err := ts.ShardForRelIDForTest(relID)
 	if err != nil {
-		t.Fatalf("shardForRelID after cold demotion: %v", err)
+		t.Fatalf("ShardForRelIDForTest after cold demotion: %v", err)
 	}
 	if !shard.HasRelID(relID.SnowflakeID()) {
-		t.Errorf("shardForRelID returned a shard that does not own rel %d after cold demotion", relID)
+		t.Errorf("ShardForRelIDForTest returned a shard that does not own rel %d after cold demotion", relID)
 	}
 }
 
@@ -4746,10 +4746,10 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	_ = ts.RotateHotShard()
 	ts.MuForTest().Unlock()
 
-	// Verify the relationship can still be found via shardForRelID.
+	// Verify the relationship can still be found via ShardForRelIDForTest.
 	shard, err := ts.ShardForRelIDForTest(types.RelID(relID))
 	if err != nil {
-		t.Fatalf("shardForRelID: %v", err)
+		t.Fatalf("ShardForRelIDForTest: %v", err)
 	}
 	if !shard.HasRelID(relID) {
 		t.Error("expected shard to have the rel")
@@ -4771,7 +4771,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	// The ref shard fast path should resolve it.
 	shard, err = ts.ShardForRelIDForTest(types.RelID(relID))
 	if err != nil {
-		t.Fatalf("shardForRelID after cold: %v", err)
+		t.Fatalf("ShardForRelIDForTest after cold: %v", err)
 	}
 	if !shard.HasRelID(relID) {
 		t.Error("expected shard to have the rel after cold demotion")

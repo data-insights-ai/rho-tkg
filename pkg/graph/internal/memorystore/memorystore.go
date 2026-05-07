@@ -500,6 +500,7 @@ func (ms *MemoryStore) DeleteNodeCascade(nid types.NodeID) error {
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	return nil
 }
@@ -581,6 +582,7 @@ func (ms *MemoryStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	return nil
 }
@@ -1054,12 +1056,13 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 	inner[prevVersion] = prevState.DeepCopy()
 
 	rawID := nid.SnowflakeID()
-	// Replace current entity with property and temporal index updates.
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = current.DeepCopy()
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, current, rawID)
 	return nil
 }
 
@@ -1240,7 +1243,7 @@ func (ms *MemoryStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 		if !ok {
 			continue
 		}
-		_ = vi.Add(id.SnowflakeID(), vec)
+		_ = vi.Add(id.SnowflakeID(), vec) // dimension mismatch: skip entry, index is still usable
 	}
 	return nil
 }
@@ -1597,7 +1600,10 @@ func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
 			}
 			ms.labelIdx[tv][id] = struct{}{}
 		}
-		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
+		rawID := id.SnowflakeID()
+		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
+		indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+		indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID)
 	}
 
 	return nil
@@ -1696,7 +1702,10 @@ func (ms *MemoryStore) DeleteNodesBatch(typedIDs []types.NodeID) error {
 				}
 			}
 		}
-		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
+		rawID := id.SnowflakeID()
+		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 		delete(ms.nodes, id)
 	}
 

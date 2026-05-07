@@ -801,6 +801,8 @@ func (bs *BadgerStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
 
+	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
+	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
 	old, _ := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
@@ -862,6 +864,8 @@ func (bs *BadgerStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
+	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
+	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
 	old, _ := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
@@ -923,6 +927,8 @@ func (bs *BadgerStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
 
+	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
+	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
 	old, _ := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
@@ -1129,12 +1135,13 @@ func (bs *BadgerStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 		return ErrNodeNotFound
 	}
 
-	// Update property and temporal indexes: remove old entries based on prevState, add new from current.
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, prevState, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, prevState, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, prevState, id)
 	bs.nodeCache.Put(id, current.DeepCopy())
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, current, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
+	indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
@@ -1785,9 +1792,10 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, er
 				bs.getOrCreateLabelCounter(tok).Add(-1)
 			}
 		}
-		// Property and temporal indexes: node data unavailable, brute-force purge.
+		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
 		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
 
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
@@ -1814,6 +1822,7 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, er
 
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
@@ -1988,6 +1997,7 @@ func (bs *BadgerStore) PutNodesBatch(nodes []*types.Node) error {
 		}
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
+		indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, nd.id)
 	}
 
 	bs.appendOps(ops...)
@@ -2152,6 +2162,8 @@ func (bs *BadgerStore) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		}
 
 		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
 		bs.appendOps(ops...)
@@ -3090,7 +3102,7 @@ func (bs *BadgerStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 		if !ok {
 			continue
 		}
-		_ = vi.Add(nid.SnowflakeID(), vec)
+		_ = vi.Add(nid.SnowflakeID(), vec) // dimension mismatch: skip entry, index is still usable
 	}
 	return nil
 }

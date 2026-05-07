@@ -833,6 +833,64 @@ Three rules for a correct Clear:
 
 **History:** Found during `codex/clear-lifecycle-fix` MR review. All three bugs were present simultaneously in `BadgerStore.Clear`.
 
+## B42. Delete Paths Must Clean Up Vector Indexes
+
+```
+BAD:  func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ... {
+          // ...
+          removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+          removeNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+          // vector indexes silently skipped → phantom results in SearchNearestNodes
+      }
+
+GOOD: removeNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+      removeNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+      removeNodeFromVectorIndexes(bs.vectorIndexes, n, id)   // must always be present
+```
+
+For TieredStore, the store-level `ts.vectorIndexes` map must be updated in addition to the per-shard BadgerStore's `bs.vectorIndexes`. The shard delete only updates its own index; TieredStore-level cleanup is the caller's responsibility (mirrors the pattern in `TieredStore.DeleteNode`).
+
+Audit: **any new delete path** must call `removeNodeFromVectorIndexes` (or the purge variant) on every vector index map in scope — both the store-local one and any enclosing store's map.
+
+**Why:** Five locations had this omission simultaneously (`MemoryStore.DeleteNodeCascade`, `MemoryStore.DeleteNodeWithHistory`, `BadgerStore.cascadeDeleteInner` ×2, `TieredStore.DeleteNodeCascade`, `TieredStore.DeleteNodeWithHistory`). The bug is invisible until a caller creates a vector index and deletes a node — after which the deleted node continues appearing in k-NN results.
+
+**History:** Found by broad bug scan after v3.1.16 integration. Fixed in v3.1.17.
+
+## B43. Every Mutation Path Must Maintain ALL Indexes — Including in Batch and Update Variants
+
+```
+BAD:  func (ms *MemoryStore) ReplaceNodeWithHistory(...) {
+          removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+          removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+          // vector index silently skipped → stale results after UpdateNode
+          addNodeToPropertyIndexes(...)
+          addNodeToTemporalIndexes(...)
+      }
+
+      func (ms *MemoryStore) PutNodesBatch(...) {
+          // adds to label + property indexes only
+          // temporal and vector indexes silently skipped
+      }
+
+GOOD: removeNodeFromPropertyIndexes(...)
+      removeNodeFromTemporalIndexes(...)
+      removeNodeFromVectorIndexes(...)   // always all three
+      // ... update node ...
+      addNodeToPropertyIndexes(...)
+      addNodeToTemporalIndexes(...)
+      addNodeToVectorIndexes(...)        // always all three
+```
+
+The invariant: every path that changes node state must update EVERY in-memory index the node participates in — property, temporal, and vector — in all three variants: singleton, batch (`PutNodesBatch`/`DeleteNodesBatch`), and history-write (`ReplaceNodeWithHistory`).
+
+For TieredStore, the store-level `ts.vectorIndexes` is separate from each shard's `bs.vectorIndexes`. Any TieredStore method that delegates to a shard must also update `ts.vectorIndexes` itself — the shard update alone is not sufficient.
+
+Audit: When adding a new index type, grep for every mutation method across all three stores and all three variants (singleton/batch/history) and verify the new index is maintained in all paths.
+
+**Why:** The same omission appeared in seven locations simultaneously across batch and history paths in all three stores. The pattern is a "copy from nearest method" pitfall: `PutNodesBatch` was written by copying from an older `PutNode` that predated vector indexes; `ReplaceNodeWithHistory` was written separately from `ReplaceNode` and the vector maintenance was missed.
+
+**History:** Found by full codebase bug scan (v3.1.18 session). Fixed in v3.1.18.
+
 ---
 
 ## B42. Restructure in Moves Only — Defer Identifier Renames and File Splits to Follow-up MRs

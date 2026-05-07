@@ -77,8 +77,9 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 
 	var infos []ShardInfo
 
-	// Reference shard.
-	refEntry, _ := ts.catalog.GetShard("reference")
+	// Reference shard. NodeCount/RelationshipCount are informational; a failure
+	// (e.g. closed DB in a test) reports 0 rather than aborting the list.
+	refEntry, _ := ts.catalog.GetShard("reference") // (ShardEntry, bool) — bool discarded
 	refNodes, _ := ts.refShard.NodeCount()
 	refRels, _ := ts.refShard.RelationshipCount()
 	refInfo := ShardInfo{
@@ -103,8 +104,8 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 		return nil, fmt.Errorf("graph: list shards: open archive: %w", archiveErr)
 	}
 	if archive != nil {
-		archiveEntry, _ := ts.catalog.GetShard("archive")
-		archNodes, _ := archive.NodeCount()
+		archiveEntry, _ := ts.catalog.GetShard("archive") // (ShardEntry, bool) — bool discarded
+		archNodes, _ := archive.NodeCount()               // informational; 0 on failure is acceptable
 		archRels, _ := archive.RelationshipCount()
 		archiveCheckin()
 		archiveInfo := ShardInfo{
@@ -132,7 +133,7 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 	// returns ErrStoreClosed if Close started after our snapshot — in
 	// that case we report Open=false rather than crashing.
 	for _, sn := range snaps {
-		entry, _ := ts.catalog.GetShard(sn.name)
+		entry, _ := ts.catalog.GetShard(sn.name) // (ShardEntry, bool) — bool discarded
 		si := ShardInfo{
 			Name:      sn.name,
 			Kind:      ShardEvent,
@@ -145,7 +146,7 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 			store, err := sn.es.checkoutStore(ts)
 			if err == nil {
 				si.Open = true
-				si.Nodes, _ = store.NodeCount()
+				si.Nodes, _ = store.NodeCount()       // informational; 0 on failure is acceptable
 				si.Rels, _ = store.RelationshipCount()
 				sn.es.checkinStore()
 			}
@@ -170,8 +171,14 @@ func (ts *TieredStore) RebuildCatalog() error {
 	defer ts.mu.Unlock()
 
 	// Update reference shard.
-	refNodes, _ := ts.refShard.NodeCount()
-	refRels, _ := ts.refShard.RelationshipCount()
+	refNodes, err := ts.refShard.NodeCount()
+	if err != nil {
+		return fmt.Errorf("graph: rebuild catalog: ref node count: %w", err)
+	}
+	refRels, err := ts.refShard.RelationshipCount()
+	if err != nil {
+		return fmt.Errorf("graph: rebuild catalog: ref rel count: %w", err)
+	}
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
 	// Update archive if open. Pin via checkoutArchive — see ListShards.
@@ -182,8 +189,16 @@ func (ts *TieredStore) RebuildCatalog() error {
 		return fmt.Errorf("graph: rebuild catalog: open archive: %w", archiveErr)
 	}
 	if archive != nil {
-		archNodes, _ := archive.NodeCount()
-		archRels, _ := archive.RelationshipCount()
+		archNodes, err := archive.NodeCount()
+		if err != nil {
+			archiveCheckin()
+			return fmt.Errorf("graph: rebuild catalog: archive node count: %w", err)
+		}
+		archRels, err := archive.RelationshipCount()
+		if err != nil {
+			archiveCheckin()
+			return fmt.Errorf("graph: rebuild catalog: archive rel count: %w", err)
+		}
 		archiveCheckin()
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
@@ -206,8 +221,16 @@ func (ts *TieredStore) RebuildCatalog() error {
 			// the count update rather than crash on a closed DB.
 			continue
 		}
-		nc, _ := store.NodeCount()
-		rc, _ := store.RelationshipCount()
+		nc, err := store.NodeCount()
+		if err != nil {
+			es.checkinStore()
+			return fmt.Errorf("graph: rebuild catalog: shard %s node count: %w", es.name, err)
+		}
+		rc, err := store.RelationshipCount()
+		if err != nil {
+			es.checkinStore()
+			return fmt.Errorf("graph: rebuild catalog: shard %s rel count: %w", es.name, err)
+		}
 		es.checkinStore()
 		ts.catalog.UpdateShardStats(es.name, nc, rc)
 	}

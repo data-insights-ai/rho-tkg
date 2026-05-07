@@ -31,6 +31,26 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
+### What's new in 3.1.20
+
+**Vector index stale after `UpdateNode` fixed.** `ReplaceNodeWithHistory` — called by every `UpdateNode` — never updated vector indexes. The old entry was never removed; the new one was never inserted. After any node update, `SearchNearestNodes` returned pre-update distances. Fixed in all three store backends.
+
+**Batch operations now maintain temporal and vector indexes.** `PutNodesBatch` and `DeleteNodesBatch` silently skipped temporal and vector index maintenance. Batch-inserted nodes were invisible to temporal queries and vector searches; batch-deleted nodes remained as phantom candidates. Fixed in `MemoryStore`, `BadgerStore`, and `TieredStore` (six locations total). `TieredStore.ReplaceNodeWithHistory` was also missing the TieredStore-level vector map update.
+
+**Dead code `shardForRelID` removed.** The unchecked variant was never called (all callers use `shardForRelIDChecked`). It contained a checkout-without-pin bug.
+
+### What's new in 3.1.18
+
+**Vector index stale after `UpdateNode` fixed.** `ReplaceNodeWithHistory` — called by every `UpdateNode` — never updated vector indexes. The old entry was never removed; the new one was never inserted. After any node update, `SearchNearestNodes` returned distances based on the pre-update vector. Fixed in all three store backends.
+
+**Batch operations now maintain temporal and vector indexes.** `PutNodesBatch` and `DeleteNodesBatch` silently skipped temporal and vector index maintenance. Batch-inserted nodes were invisible to temporal queries and vector searches; batch-deleted nodes remained as phantom candidates in both. Fixed in `MemoryStore`, `BadgerStore`, and `TieredStore` (six locations total). `TieredStore.ReplaceNodeWithHistory` also fixed — it delegated to a shard but did not update the TieredStore-level vector index map.
+
+**Dead code `shardForRelID` removed.** The unchecked variant was never called (all callers use `shardForRelIDChecked`). It contained a checkout-without-pin bug in its cold-shard probe loop. Deleted.
+
+### What's new in 3.1.17
+
+**Vector index phantom results after node deletion fixed.** `DeleteNodeCascade` and `DeleteNodeWithHistory` — the two paths used by the public `DeleteNode` API — failed to remove the deleted node from in-memory vector indexes. After deletion the node remained a k-NN candidate. Five locations fixed across all three backends: `MemoryStore.DeleteNodeCascade`, `MemoryStore.DeleteNodeWithHistory`, `BadgerStore.cascadeDeleteInner` (normal and corruption paths), `TieredStore.DeleteNodeCascade`, and `TieredStore.DeleteNodeWithHistory`.
+
 ### What's new in 3.1.16
 
 **`BadgerStore.Clear` flush race closed.** A flush goroutine that snapshotted pending writes under `idxMu.RLock` but had not yet submitted its `WriteBatch` could race past `DropAll()` and resurrect pre-Clear entities after a restart. `Clear` now acquires `flushMu` first (same ordering as `flush()`), serialising both paths end-to-end.

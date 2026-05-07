@@ -217,6 +217,13 @@ func (ts *TieredStore) PutNodesBatch(nodes []*types.Node) error {
 			return fmt.Errorf("tiered: put hot nodes (ref writes rolled back best-effort): %w", err)
 		}
 	}
+	// Update TieredStore-level vector indexes. The shard-level PutNodesBatch updates
+	// the per-shard bs.vectorIndexes; ts.vectorIndexes is separate and must be kept in sync.
+	ts.vectorIdxMu.Lock()
+	for _, n := range nodes {
+		indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, n.ID().SnowflakeID())
+	}
+	ts.vectorIdxMu.Unlock()
 	return nil
 }
 
@@ -240,11 +247,37 @@ func (ts *TieredStore) DeleteNodesBatch(ids []types.NodeID) error {
 		checkins = append(checkins, checkin)
 	}
 	defer releaseAll()
+
+	// Pre-read nodes before deletion for TieredStore-level vector index cleanup.
+	// GetNode failure (shard closed, corruption) is non-fatal: nil triggers purge fallback.
+	type nodeEntry struct {
+		id  snowflake.ID
+		old *types.Node
+	}
+	entries := make([]nodeEntry, 0, len(ids))
+	for shard, bucket := range shardBuckets {
+		for _, id := range bucket {
+			old, _ := shard.GetNode(id)
+			entries = append(entries, nodeEntry{id: id.SnowflakeID(), old: old})
+		}
+	}
+
 	for shard, bucket := range shardBuckets {
 		if err := shard.DeleteNodesBatch(bucket); err != nil {
 			return err
 		}
 	}
+	// Update TieredStore-level vector indexes. The shard-level DeleteNodesBatch updates
+	// per-shard bs.vectorIndexes; ts.vectorIndexes is separate and must be kept in sync.
+	ts.vectorIdxMu.Lock()
+	for _, e := range entries {
+		if e.old != nil {
+			indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, e.old, e.id)
+		} else {
+			indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, e.id)
+		}
+	}
+	ts.vectorIdxMu.Unlock()
 	return nil
 }
 
@@ -516,7 +549,17 @@ func (ts *TieredStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 		return err
 	}
 	defer checkin()
-	return shard.ReplaceNodeWithHistory(current, prevVersion, prevState)
+	if err := shard.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
+		return err
+	}
+	// Update TieredStore-level vector indexes. The shard-level method updates
+	// per-shard bs.vectorIndexes; ts.vectorIndexes is separate and must be kept in sync.
+	id := current.ID().SnowflakeID()
+	ts.vectorIdxMu.Lock()
+	indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, prevState, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, current, id)
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 func (ts *TieredStore) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
@@ -670,6 +713,11 @@ func (ts *TieredStore) DeleteNodeCascade(nid types.NodeID) error {
 	}
 	defer checkin()
 
+	// Read node before deletion for TieredStore-level vector index maintenance.
+	// GetNode failure (shard closed, corruption) is non-fatal: old==nil triggers
+	// the purge fallback below, and the delete still proceeds.
+	old, _ := shard.GetNode(types.NodeID(id))
+
 	// Collect all connected relIDs from this shard's outIdx + inIdx.
 	outRels := shard.OutgoingRelIDs(id)
 	inRels := shard.IncomingRelIDs(id, 0)
@@ -696,7 +744,17 @@ func (ts *TieredStore) DeleteNodeCascade(nid types.NodeID) error {
 	}
 
 	// Delete the node itself.
-	return shard.DeleteNode(types.NodeID(id))
+	if err := shard.DeleteNode(types.NodeID(id)); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry
@@ -831,9 +889,24 @@ func (ts *TieredStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 		}
 	}
 
+	// Read node before deletion for TieredStore-level vector index maintenance.
+	// GetNode failure (shard closed, corruption) is non-fatal: old==nil triggers
+	// the purge fallback below, and the delete still proceeds.
+	old, _ := shard.GetNode(types.NodeID(id))
+
 	// Delete the node itself with its tombstone. relTombstones=nil because
 	// all rels were handled individually above.
-	return shard.DeleteNodeWithHistory(types.NodeID(id), prevNodeVersion, nodeTombstone, nil)
+	if err := shard.DeleteNodeWithHistory(types.NodeID(id), prevNodeVersion, nodeTombstone, nil); err != nil {
+		return err
+	}
+	ts.vectorIdxMu.Lock()
+	if old != nil {
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+	} else {
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+	}
+	ts.vectorIdxMu.Unlock()
+	return nil
 }
 
 // --- Property indexes ---
@@ -1036,7 +1109,7 @@ func (ts *TieredStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 			continue
 		}
 		id := n.ID().SnowflakeID()
-		_ = vi.Add(id, vec)
+		_ = vi.Add(id, vec) // dimension mismatch: skip entry, index is still usable
 	}
 	return nil
 }
@@ -1276,7 +1349,7 @@ func (ts *TieredStore) ArchiveNode(nid types.NodeID) error {
 		// All surviving rels are self-loops on the archived node, so both
 		// endpoints exist on archive after the PutNode above.
 		if err := archive.PutRelationship(r); err != nil {
-			_ = archive.DeleteNodeCascade(types.NodeID(id))
+			_ = archive.DeleteNodeCascade(types.NodeID(id)) // best-effort rollback; returning primary error
 			return fmt.Errorf("graph: archive write rel: %w", err)
 		}
 	}

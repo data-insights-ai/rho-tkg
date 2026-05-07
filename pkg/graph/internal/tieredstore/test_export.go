@@ -94,9 +94,14 @@ func (ts *TieredStore) ShardForNodeIDForTest(nid types.NodeID) (*BadgerStore, er
 	return ts.shardForNodeID(nid)
 }
 
-// ShardForRelIDForTest exposes shardForRelID (the unpinned variant).
+// ShardForRelIDForTest resolves the shard for a rel ID (checked variant; handles checkin internally).
 func (ts *TieredStore) ShardForRelIDForTest(rid types.RelID) (*BadgerStore, error) {
-	return ts.shardForRelID(rid)
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
+	if err != nil {
+		return nil, err
+	}
+	checkin()
+	return shard, nil
 }
 
 // --- EventShard field accessors ---

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.20] - 2026-05-07
+
+### Fixed
+
+- **Vector index stale after `UpdateNode`** (`pkg/graph/internal/memorystore`, `pkg/graph/internal/badgerstore`, `pkg/graph/internal/tieredstore`): `ReplaceNodeWithHistory` — the path called by every `UpdateNode` — did not update in-memory vector indexes. The old vector entry was never removed; the new one was never inserted. After any node update, `SearchNearestNodes` returned pre-update distances for the modified node. Fixed in all three store backends.
+- **Batch operations missing temporal and vector index maintenance** (same packages): `PutNodesBatch` and `DeleteNodesBatch` did not maintain temporal or vector indexes. Batch-inserted nodes were invisible to temporal queries and vector searches; batch-deleted nodes remained as phantom candidates. Fixed in `MemoryStore`, `BadgerStore`, and `TieredStore` (six locations total). `TieredStore.ReplaceNodeWithHistory` also fixed — it delegated to a shard but did not update the TieredStore-level vector index map.
+- **Dead code `shardForRelID` (unchecked variant) removed** (`pkg/graph/internal/tieredstore`): the function was never called — all callers use `shardForRelIDChecked`. It contained a checkout-without-pin bug in its cold-shard probe loop. Deleted.
+
 ## [3.1.19] - 2026-05-07
 
 ### Changed (structural, no behaviour change)

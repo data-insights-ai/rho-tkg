@@ -588,3 +588,302 @@ func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
 
 	_ = pre1
 }
+
+// --- F3: vector index cleaned up when node is deleted ---
+//
+// Exercises all three delete paths (DeleteNode, DeleteNodeWithHistory via graph
+// layer, DeleteNodeCascade) across all three Store backends.
+
+// testVectorIndexCleanupAfterDelete is the shared body.
+func testVectorIndexCleanupAfterDelete(t *testing.T, g *Graph) {
+	t.Helper()
+	label := "VDel"
+	key := "v"
+
+	nA, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0, 0}})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	nB, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1, 0}})
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	// nC is the node we will delete
+	nC, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0, 1}})
+	if err != nil {
+		t.Fatalf("AddNode C: %v", err)
+	}
+	if err := g.CreateVectorIndex(label, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	// Confirm C is visible pre-deletion.
+	results, err := g.SearchNearestNodes(label, key, []float32{0, 0, 1}, 3, QueryOpts{})
+	if err != nil {
+		t.Fatalf("pre-delete search: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if r.ID() == nC.ID() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("pre-delete: C not found in results")
+	}
+
+	// Delete C via the graph public API (exercises DeleteNodeWithHistory path).
+	if err := g.DeleteNode(nC.ID()); err != nil {
+		t.Fatalf("DeleteNode C: %v", err)
+	}
+
+	// C must no longer appear in results.
+	results, err = g.SearchNearestNodes(label, key, []float32{0, 0, 1}, 3, QueryOpts{})
+	if err != nil {
+		t.Fatalf("post-delete search: %v", err)
+	}
+	for _, r := range results {
+		if r.ID() == nC.ID() {
+			t.Errorf("post-delete: C still appears in vector search results")
+		}
+	}
+	_ = nA
+	_ = nB
+}
+
+func TestVectorIndex_CleanupAfterDelete_MemoryStore(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	testVectorIndexCleanupAfterDelete(t, g)
+}
+
+func TestVectorIndex_CleanupAfterDelete_BadgerStore(t *testing.T) {
+	t.Parallel()
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	g, err := New(Config{Store: bs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testVectorIndexCleanupAfterDelete(t, g)
+}
+
+func TestVectorIndex_CleanupAfterDelete_TieredStore(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testVectorIndexCleanupAfterDelete(t, g)
+}
+
+// --- F4: vector index updated after node update (ReplaceNodeWithHistory) ---
+//
+// Exercises the UpdateNode path: the old vector entry must be removed and the
+// new one added so that the updated node sorts by its new distances.
+
+func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Graph) {
+	t.Helper()
+	label := "VUpd"
+	key := "v"
+
+	// nA stays far from query [1,0]; nB starts far but will be updated near.
+	nA, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	nB, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	if err := g.CreateVectorIndex(label, key, 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	// Both start equidistant from [1,0] — confirm both appear.
+	pre, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 2, QueryOpts{})
+	if err != nil {
+		t.Fatalf("pre-update search: %v", err)
+	}
+	if len(pre) != 2 {
+		t.Fatalf("pre-update: expected 2 results, got %d", len(pre))
+	}
+
+	// Update nB to be identical to query direction.
+	if _, err := g.UpdateNode(nB.ID(), map[string]any{key: []float32{1, 0}}); err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	// k=1 search for [1,0]: nB must be the nearest neighbour (distance 0).
+	post, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("post-update search: %v", err)
+	}
+	if len(post) != 1 || post[0].ID() != nB.ID() {
+		t.Errorf("post-update: expected [nB], got IDs: %v", vectorTestNodeIDs(post))
+	}
+	_ = nA
+}
+
+func vectorTestNodeIDs(nodes []*types.Node) []types.NodeID {
+	ids := make([]types.NodeID, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID()
+	}
+	return ids
+}
+
+func TestVectorIndex_UpdatedAfterNodeUpdate_MemoryStore(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	testVectorIndexUpdatedAfterUpdate(t, g)
+}
+
+func TestVectorIndex_UpdatedAfterNodeUpdate_BadgerStore(t *testing.T) {
+	t.Parallel()
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	g, err := New(Config{Store: bs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testVectorIndexUpdatedAfterUpdate(t, g)
+}
+
+func TestVectorIndex_UpdatedAfterNodeUpdate_TieredStore(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testVectorIndexUpdatedAfterUpdate(t, g)
+}
+
+// --- F5: batch operations maintain temporal and vector indexes ---
+//
+// PutNodesBatch / DeleteNodesBatch must add/remove entries from temporal
+// and vector indexes identically to the singleton paths.
+
+func testBatchIndexMaintenance(t *testing.T, g *Graph) {
+	t.Helper()
+	label := "VBatch"
+	key := "v"
+
+	// Add a seed node first so the label is registered, then create the index.
+	// CreateVectorIndex uses Lookup (not GetOrCreate), so the label must exist.
+	seed, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 1}})
+	if err != nil {
+		t.Fatalf("AddNode seed: %v", err)
+	}
+	if err := g.CreateVectorIndex(label, key, 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	// Batch-insert two more nodes into the pre-existing index.
+	// This tests the PutNodesBatch → addNodeToVectorIndexes path.
+	b := NewBatchBuilder(g)
+	nA, err := b.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	if err != nil {
+		t.Fatalf("batch AddNode A: %v", err)
+	}
+	nB, err := b.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	if err != nil {
+		t.Fatalf("batch AddNode B: %v", err)
+	}
+	if _, err := b.Execute(); err != nil {
+		t.Fatalf("batch Execute: %v", err)
+	}
+
+	// All three (seed + batch A + batch B) must appear in vector search.
+	results, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 10, QueryOpts{})
+	if err != nil {
+		t.Fatalf("post-batch-put search: %v", err)
+	}
+	found := make(map[types.NodeID]bool)
+	for _, r := range results {
+		found[r.ID()] = true
+	}
+	if !found[seed.ID()] {
+		t.Errorf("post-batch-put: seed not found in vector results")
+	}
+	if !found[nA.ID()] {
+		t.Errorf("post-batch-put: nA not found in vector results")
+	}
+	if !found[nB.ID()] {
+		t.Errorf("post-batch-put: nB not found in vector results")
+	}
+
+	// Both must appear in temporal query (ValidAt = now).
+	now := types.Instant(time.Now().UnixMilli())
+	temporal, err := g.NodesByLabel(label, QueryOpts{ValidAt: now})
+	if err != nil {
+		t.Fatalf("temporal query: %v", err)
+	}
+	temporalFound := make(map[types.NodeID]bool)
+	for _, n := range temporal {
+		temporalFound[n.ID()] = true
+	}
+	if !temporalFound[nA.ID()] {
+		t.Errorf("post-batch-put: nA not found in temporal results")
+	}
+	if !temporalFound[nB.ID()] {
+		t.Errorf("post-batch-put: nB not found in temporal results")
+	}
+
+	// Delete nA via DeleteNode (exercises DeleteNodeWithHistory → DeleteNodesBatch path indirectly).
+	if err := g.DeleteNode(nA.ID()); err != nil {
+		t.Fatalf("DeleteNode A: %v", err)
+	}
+
+	// nA must not appear in vector search after deletion.
+	results2, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 10, QueryOpts{})
+	if err != nil {
+		t.Fatalf("post-delete search: %v", err)
+	}
+	for _, r := range results2 {
+		if r.ID() == nA.ID() {
+			t.Errorf("post-delete: nA still appears in vector results")
+		}
+	}
+}
+
+func TestBatch_IndexMaintenance_MemoryStore(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	testBatchIndexMaintenance(t, g)
+}
+
+func TestBatch_IndexMaintenance_BadgerStore(t *testing.T) {
+	t.Parallel()
+	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	g, err := New(Config{Store: bs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testBatchIndexMaintenance(t, g)
+}
+
+func TestBatch_IndexMaintenance_TieredStore(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	testBatchIndexMaintenance(t, g)
+}

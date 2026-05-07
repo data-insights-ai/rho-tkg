@@ -356,7 +356,7 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 	}
 	hotStore, err := ts.openBadgerStore(hotDir, false)
 	if err != nil {
-		_ = refStore.Close()
+		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, fmt.Errorf("graph: open hot event shard: %w", err)
 	}
 
@@ -438,8 +438,8 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 	// Persist catalog.
 	if !cfg.InMemory {
 		if err := ts.catalog.Save(); err != nil {
-			_ = hotStore.Close()
-			_ = refStore.Close()
+			_ = hotStore.Close()  // best-effort cleanup; returning primary error
+			_ = refStore.Close()  // best-effort cleanup; returning primary error
 			return nil, fmt.Errorf("graph: save catalog: %w", err)
 		}
 	}
@@ -666,70 +666,6 @@ func (ts *TieredStore) shardForNodeVersion(id snowflake.ID, n *types.Node) (*Bad
 		return ts.refShard, nil
 	}
 	return ts.shardForNodeID(types.NodeID(id))
-}
-
-// shardForRelID resolves which shard owns a relationship ID (entity + out/).
-// O(1): try ref (HasRelID), miss -> probe refArchive when present -> try
-// timestamp extraction -> probe all event shards.
-//
-// The refArchive probe matches the node resolver: ArchiveNode migrates ref
-// entities AND their relationships from refShard to refArchive (no history
-// migration), so an archived rel must be reachable via this resolver.
-//
-// The event-shard probe is needed because cross-shard relationship entities
-// may be stored in a shard that doesn't match their creation timestamp
-// (e.g., a rel created after rotation whose entity lives in the start
-// node's warm shard). The probe must include cold shards: a cross-shard rel
-// created while the start-node shard was warm can age to cold without ever
-// being deleted, and the rel still lives there.
-//
-// Returns error if cold shard lazy-open fails.
-func (ts *TieredStore) shardForRelID(id types.RelID) (*BadgerStore, error) {
-	raw := id.SnowflakeID()
-	if ts.refShard.HasRelID(raw) {
-		return ts.refShard, nil
-	}
-
-	// Probe refArchive when present (open or in catalog). Archived rels live
-	// here after ArchiveNode.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.HasRelID(raw) {
-		return archive, nil
-	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, err
-		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.HasRelID(raw) {
-			return archive, nil
-		}
-	}
-
-	// Try timestamp-based resolution first (fast path).
-	candidate, err := ts.timestampToEventShard(raw)
-	if err != nil {
-		return nil, err
-	}
-	if candidate.HasRelID(raw) {
-		return candidate, nil
-	}
-
-	// Probe all event shards (hot+warm+cold). Cold shards are included because
-	// a cross-shard rel created post-rotation can have its entity on a warm
-	// shard that subsequently ages to cold.
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	for _, es := range ts.eventShards {
-		store, err := es.getStore(ts)
-		if err != nil {
-			return nil, err
-		}
-		if store.HasRelID(raw) {
-			return store, nil
-		}
-	}
-	return candidate, nil // fallback to timestamp-based (will likely return ErrRelNotFound)
 }
 
 // timestampToEventShard extracts the creation timestamp from a snowflake ID
@@ -1044,7 +980,7 @@ func (ts *TieredStore) closeIdleShards() {
 	for _, es := range coldShards {
 		es.shardMu.Lock()
 		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
-			_ = es.store.Close()
+			_ = es.store.Close() // idle eviction; Close error can't be surfaced to any caller
 			es.store = nil
 		}
 		es.shardMu.Unlock()

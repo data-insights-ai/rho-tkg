@@ -264,11 +264,11 @@ func New(config Config) (*Graph, error) {
 	if ts, ok := store.(*TieredStore); ok {
 		ts.SetLabelRegistry(g.labels)
 		if _, err := ts.LoadLabelRegistry(g.labels); err != nil {
-			_ = ts.Close()
+			_ = ts.Close() // best-effort cleanup; returning primary error
 			return nil, fmt.Errorf("graph: load label registry: %w", err)
 		}
 		if _, err := ts.LoadRelTypeRegistry(g.relTypes); err != nil {
-			_ = ts.Close()
+			_ = ts.Close() // best-effort cleanup; returning primary error
 			return nil, fmt.Errorf("graph: load reltype registry: %w", err)
 		}
 	}
