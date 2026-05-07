@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.1.21)
+# Architecture — tkg/v3 (v3.1.22)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -642,7 +642,7 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | `lru.go` | Generic LRU cache with dirty tracking, tombstones, Peek |
 | `entity_locks.go` | 256-shard mutex array, LockTwo, LockMany |
 | `keys.go` | Binary key encoding (9 prefix tags, big-endian IDs) |
-| `integrity.go` | SHA-256 hash chain computation and verification |
+| `integrity.go` | `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain` — hash chain verification. Hash computation primitives (`ComputeNodeHash`, `ComputeRelHash`) live in `pkg/graph/internal/integrity/integrity.go` and are re-exported via `pkg/graph/aliases.go`. |
 | `wire.go` | Type-tagged Msgpack serialization preserving Go type fidelity |
 | `shadow.go` | 21 `tkg_*` virtual property resolvers |
 | `label_registry.go` | Thread-safe label string <-> uint16 token registry |

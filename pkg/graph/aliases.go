@@ -7,6 +7,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/events"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
@@ -317,3 +318,21 @@ func NewEventBus() *EventBus { return events.NewEventBus() }
 func NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus {
 	return events.NewAsyncEventBus(cfg)
 }
+
+// --- Integrity hash re-exports ---
+//
+// The canonical implementations live in pkg/graph/internal/integrity. These
+// aliases preserve the historical public API (`graph.ComputeNodeHash`,
+// `graph.ComputeRelHash`) used by external callers (notably tkgd-v3) and let
+// internal pkg/graph code keep using the unqualified names that existed
+// before the move.
+
+// ComputeNodeHash computes a SHA-256 hash of the node's content.
+// The hash covers: id, version, sorted labels, and sorted properties.
+// Returns the hex-encoded hash string (64 characters).
+var ComputeNodeHash = integrity.ComputeNodeHash
+
+// ComputeRelHash computes a SHA-256 hash of the relationship's content.
+// The hash covers: id, version, type name, start ID, end ID, and sorted properties.
+// Returns the hex-encoded hash string (64 characters).
+var ComputeRelHash = integrity.ComputeRelHash
