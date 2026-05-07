@@ -1,4 +1,4 @@
-package graph
+package tieredstore
 
 import (
 	"os"

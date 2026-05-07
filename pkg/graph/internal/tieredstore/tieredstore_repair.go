@@ -1,4 +1,4 @@
-package graph
+package tieredstore
 
 import (
 	"errors"
@@ -19,13 +19,13 @@ type RepairResult struct {
 // Only scans cross-shard relationships (same-shard are atomic).
 //
 // Phase 1: Find orphaned in/ entries (entity missing)
-// For each shard, for each nodeID, get incomingRelIDs. For each relID, check if
+// For each shard, for each nodeID, get IncomingRelIDs. For each relID, check if
 // the entity exists in any shard. If not → delete the orphaned in/ entry.
 //
 // Phase 2: Find missing in/ entries (entity exists, in/ missing)
 // For each shard, get AllRelIDs. For each rel, read it, resolve start/end shards.
 // If cross-shard: check that the end shard's inIdx contains the relID. If missing
-// → re-create via putRelIncoming.
+// → re-create via PutRelIncoming.
 func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
@@ -45,9 +45,9 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 		}
 		for _, nodeID := range nodeIDs {
 			rawNodeID := nodeID.SnowflakeID()
-			inRelIDs := ns.store.incomingRelIDs(rawNodeID, 0)
+			inRelIDs := ns.store.IncomingRelIDs(rawNodeID, 0)
 			for _, relID := range inRelIDs {
-				if ns.store.hasRelID(relID) {
+				if ns.store.HasRelID(relID) {
 					continue // same-shard — entity exists here
 				}
 				// Cross-shard: check the already-pinned shard snapshot for
@@ -62,7 +62,7 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 					continue // entity exists in another shard — not orphaned
 				}
 				// Orphaned in/ entry: entity doesn't exist anywhere.
-				if err := ns.store.deleteIncomingByRelID(rawNodeID, relID); err != nil {
+				if err := ns.store.DeleteIncomingByRelID(rawNodeID, relID); err != nil {
 					return nil, err
 				}
 				result.OrphanedInEntries++
@@ -121,7 +121,7 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 			}
 
 			// Missing in/ entry — re-create.
-			if err := endShard.putRelIncoming(endID, startID, relType, rawRelID); err != nil {
+			if err := endShard.PutRelIncoming(endID, startID, relType, rawRelID); err != nil {
 				return nil, err
 			}
 			result.MissingInEntries++
@@ -133,7 +133,7 @@ func (ts *TieredStore) RunRepair() (*RepairResult, error) {
 
 // hasIncomingEntry checks whether the shard's inIdx contains relID for the given nodeID.
 func hasIncomingEntry(store *BadgerStore, nodeID, relID snowflake.ID) bool {
-	inIDs := store.incomingRelIDs(nodeID, 0)
+	inIDs := store.IncomingRelIDs(nodeID, 0)
 	for _, id := range inIDs {
 		if id == relID {
 			return true

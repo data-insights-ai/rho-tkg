@@ -1,4 +1,4 @@
-package graph
+package tieredstore
 
 import (
 	"fmt"
@@ -53,7 +53,7 @@ func (ts *TieredStore) ForceRotate() error {
 // them just to read counts.
 func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 	type esSnapshot struct {
-		es        *eventShard
+		es        *EventShard
 		name      string
 		tier      ShardTier
 		timeStart time.Time
@@ -218,11 +218,23 @@ func (ts *TieredStore) RebuildCatalog() error {
 	return nil
 }
 
+// HashChainVerifier is the dependency-inverted interface that VerifyShard uses
+// to run per-entity hash-chain verification. The Graph layer (pkg/graph)
+// satisfies it via Graph.VerifyNodeHashChain / Graph.VerifyRelHashChain.
+//
+// The interface lets TieredStore call into the Graph layer for label/type
+// resolution without taking a hard import dependency on pkg/graph (which would
+// be a circular import).
+type HashChainVerifier interface {
+	VerifyNodeHashChain(id types.NodeID) (bool, error)
+	VerifyRelHashChain(id types.RelID) (bool, error)
+}
+
 // VerifyShard runs hash chain verification on all entities in the named shard.
-// Takes a *Graph because hash chain verification needs label/type resolution.
-// For immutable shards (warm/cold) that have already been verified, returns
-// the cached result without re-scanning.
-func (ts *TieredStore) VerifyShard(g *Graph, shardName string) (*VerifyResult, error) {
+// Takes a HashChainVerifier (the Graph layer) because hash chain verification
+// needs label/type resolution. For immutable shards (warm/cold) that have
+// already been verified, returns the cached result without re-scanning.
+func (ts *TieredStore) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResult, error) {
 	// Look up shard in catalog.
 	entry, ok := ts.catalog.GetShard(shardName)
 	if !ok {
@@ -372,13 +384,13 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 	}
 
 	ts.mu.RLock()
-	eventShards := make([]*eventShard, 0, len(ts.eventShards))
+	eventShards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		eventShards = append(eventShards, es)
 	}
 	ts.mu.RUnlock()
 
-	checkedOut := make([]*eventShard, 0, len(eventShards))
+	checkedOut := make([]*EventShard, 0, len(eventShards))
 	releaseAll := func() {
 		archiveCheckin()
 		for _, es := range checkedOut {
@@ -415,7 +427,7 @@ func (ts *TieredStore) allShardStoresWithLazyOpen() ([]namedStore, func(), error
 // release function.
 func (ts *TieredStore) findRelInAnyShardStore(relID snowflake.ID, stores []namedStore) *BadgerStore {
 	for _, ns := range stores {
-		if ns.store != nil && ns.store.hasRelID(relID) {
+		if ns.store != nil && ns.store.HasRelID(relID) {
 			return ns.store
 		}
 	}

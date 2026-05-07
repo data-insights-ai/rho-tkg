@@ -370,11 +370,11 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	// History lives in refShard (both nA and r are ref-label entities: "User" + KNOWS).
 	// Access the underlying BadgerStore directly — TieredStore high-level GetNodeVersion
 	// uses shardForNodeID which resolves via live presence (unavailable post-delete).
-	if err := ts.refShard.Flush(); err != nil {
+	if err := ts.RefShardForTest().Flush(); err != nil {
 		t.Fatalf("Flush refShard: %v", err)
 	}
 
-	nodeHist, err := ts.refShard.GetNodeVersion(nodeID, nodeVersion)
+	nodeHist, err := ts.RefShardForTest().GetNodeVersion(nodeID, nodeVersion)
 	if err != nil {
 		t.Fatalf("refShard.GetNodeVersion: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 		t.Error("node tombstone DeletedAt not set in TieredStore/refShard history")
 	}
 
-	relHist, err := ts.refShard.GetRelVersion(relID, relVersion)
+	relHist, err := ts.RefShardForTest().GetRelVersion(relID, relVersion)
 	if err != nil {
 		t.Fatalf("refShard.GetRelVersion: %v", err)
 	}

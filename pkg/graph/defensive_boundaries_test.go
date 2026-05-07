@@ -10,6 +10,7 @@ import (
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -49,7 +50,7 @@ func validImportPrelude(t *testing.T) []byte {
 	// non-empty names[0]. Real exports include the reserved slot — match
 	// that shape so the prelude is admitted and the test exercises the
 	// node/rel record validation, not the registry validation.
-	reg := registryFileData{
+	reg := tieredstore.RegistryFileData{
 		Labels:   []string{"", "L1"},
 		RelTypes: []string{"", "R1"},
 	}
@@ -516,14 +517,14 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 	// GetRelationship cache-misses, finds the rel ID in the in-memory index,
 	// reads garbage from Badger, and surfaces the unmarshal error — exactly
 	// the "operational, non-ErrRelNotFound" class the fix must propagate.
-	ts.mu.RLock()
-	hot := ts.hotShard
-	ts.mu.RUnlock()
-	if hot == nil || hot.store == nil {
+	ts.MuForTest().RLock()
+	hot := ts.HotShardForTest()
+	ts.MuForTest().RUnlock()
+	if hot == nil || hot.Store() == nil {
 		t.Fatal("hot shard store missing — cannot inject fault")
 	}
-	originalStore := hot.store
-	if !originalStore.hasRelID(rel.ID().SnowflakeID()) {
+	originalStore := hot.Store()
+	if !originalStore.HasRelID(rel.ID().SnowflakeID()) {
 		// Sanity: the rel entity must be on the hot shard for this test
 		// to exercise the bug. If routing has changed, the test setup
 		// needs updating, not the production code.
@@ -556,7 +557,7 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	t.Helper()
 
 	// 1. Flush pending so the value is in Badger, not just the WriteBatch.
-	if err := bs.flush(); err != nil {
+	if err := bs.Flush(); err != nil {
 		t.Fatalf("flush before corruption: %v", err)
 	}
 
@@ -566,10 +567,10 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	//    is corrupted. Use evictForTest (added by review M5) instead of
 	//    reaching into LRU internals.
 	id := relID.SnowflakeID()
-	bs.relCache.EvictForTest(id)
+	bs.RelCacheForTest().EvictForTest(id)
 
 	// 3. Overwrite the Badger value with non-msgpack bytes.
-	err := bs.db.Update(func(txn *badger.Txn) error {
+	err := bs.DBForTest().Update(func(txn *badger.Txn) error {
 		return txn.Set(storepkg.RelKey(id), []byte{0xFF, 0xFE, 0xFD, 0xFC})
 	})
 	if err != nil {
@@ -590,17 +591,17 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	t.Helper()
 
 	// Flush so the rel is persisted to Badger.
-	if err := bs.flush(); err != nil {
+	if err := bs.Flush(); err != nil {
 		t.Fatalf("flush before stale-id setup: %v", err)
 	}
 
 	// Drop from cache so cacheHit can't return the stale value.
-	bs.relCache.EvictForTest(relID.SnowflakeID())
+	bs.RelCacheForTest().EvictForTest(relID.SnowflakeID())
 
 	// Delete the Badger key so GetRelationship's disk read returns
 	// key-not-found, which BadgerStore translates to ErrRelNotFound.
 	id := relID.SnowflakeID()
-	err := bs.db.Update(func(txn *badger.Txn) error {
+	err := bs.DBForTest().Update(func(txn *badger.Txn) error {
 		return txn.Delete(storepkg.RelKey(id))
 	})
 	if err != nil {
@@ -638,7 +639,7 @@ func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
 	// Engineer the divergence: rel still in AllRelIDs, but
 	// GetRelationship will return ErrRelNotFound. The owner shard for a
 	// cross-shard ref→event rel is refShard.
-	staleRelIDInAllRelIDs(t, ts.refShard, rel.InternalID())
+	staleRelIDInAllRelIDs(t, ts.RefShardForTest(), rel.InternalID())
 
 	// RunRepair must NOT propagate ErrRelNotFound — that's the fix's
 	// legitimate-skip class.

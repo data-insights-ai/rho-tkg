@@ -1190,7 +1190,7 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 		return resolveTemporalVectorMatches(g, nodes, opts, pred, opts.After, opts.Limit), nil
 	}
 
-	ids, err := store.searchNearestFiltered(tok, propertyKey, query, k, filter)
+	ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1212,7 +1212,7 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 // concrete Store impls in this package satisfy it; external Stores can
 // implement it to opt into correct top-k semantics under temporal filters.
 type filteredVectorSearchStore interface {
-	searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error)
+	SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error)
 }
 
 // paginateNearestNodes applies cursor pagination to a distance-ordered slice.

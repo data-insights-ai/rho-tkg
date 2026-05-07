@@ -1189,7 +1189,7 @@ func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
 
 	// Sabotage: close the Badger DB directly so registry saves will fail.
 	bs := g.store.(*BadgerStore)
-	if err := bs.db.Close(); err != nil {
+	if err := bs.DBForTest().Close(); err != nil {
 		t.Fatalf("sabotage close: %v", err)
 	}
 

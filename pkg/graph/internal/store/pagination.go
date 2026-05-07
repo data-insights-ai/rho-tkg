@@ -1,4 +1,4 @@
-package graph
+package store
 
 import (
 	"sort"
@@ -7,7 +7,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// paginateIDs applies cursor-based pagination to a sorted slice of snowflake IDs.
+// PaginateIDs applies cursor-based pagination to a sorted slice of snowflake IDs.
 // The input slice must be sorted in ascending order.
 //
 //   - after == 0: start from the beginning.
@@ -16,7 +16,7 @@ import (
 //   - limit > 0: return at most limit IDs.
 //
 // Returns nil if the result is empty.
-func paginateIDs(ids []snowflake.ID, after types.EntityID, limit int) []snowflake.ID {
+func PaginateIDs(ids []snowflake.ID, after types.EntityID, limit int) []snowflake.ID {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -41,9 +41,9 @@ func paginateIDs(ids []snowflake.ID, after types.EntityID, limit int) []snowflak
 	return remaining
 }
 
-// paginateNodes applies cursor-based pagination to a slice of nodes sorted
-// ascending by snowflake ID. Same semantics as paginateIDs.
-func paginateNodes(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
+// PaginateNodes applies cursor-based pagination to a slice of nodes sorted
+// ascending by snowflake ID. Same semantics as PaginateIDs.
+func PaginateNodes(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -64,9 +64,9 @@ func paginateNodes(nodes []*types.Node, after types.EntityID, limit int) []*type
 	return out
 }
 
-// paginateRels applies cursor-based pagination to a slice of relationships
-// sorted ascending by snowflake ID. Same semantics as paginateIDs.
-func paginateRels(rels []*types.Relationship, after types.EntityID, limit int) []*types.Relationship {
+// PaginateRels applies cursor-based pagination to a slice of relationships
+// sorted ascending by snowflake ID. Same semantics as PaginateIDs.
+func PaginateRels(rels []*types.Relationship, after types.EntityID, limit int) []*types.Relationship {
 	if len(rels) == 0 {
 		return nil
 	}
@@ -87,10 +87,10 @@ func paginateRels(rels []*types.Relationship, after types.EntityID, limit int) [
 	return out
 }
 
-// toNodeIDs wraps a raw snowflake.ID slice into a typed types.NodeID slice.
+// ToNodeIDs wraps a raw snowflake.ID slice into a typed types.NodeID slice.
 // Used at boundaries where storage maps return raw IDs but the downstream API
 // takes typed IDs. New allocation; preserves order.
-func toNodeIDs(ids []snowflake.ID) []types.NodeID {
+func ToNodeIDs(ids []snowflake.ID) []types.NodeID {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -101,8 +101,8 @@ func toNodeIDs(ids []snowflake.ID) []types.NodeID {
 	return out
 }
 
-// toRelIDs wraps a raw snowflake.ID slice into a typed types.RelID slice.
-func toRelIDs(ids []snowflake.ID) []types.RelID {
+// ToRelIDs wraps a raw snowflake.ID slice into a typed types.RelID slice.
+func ToRelIDs(ids []snowflake.ID) []types.RelID {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -113,10 +113,10 @@ func toRelIDs(ids []snowflake.ID) []types.RelID {
 	return out
 }
 
-// paginateNodeIDs is the typed equivalent of paginateIDs for []types.NodeID.
+// PaginateNodeIDs is the typed equivalent of PaginateIDs for []types.NodeID.
 // Same semantics: input must be sorted ascending by underlying snowflake ID;
 // after == 0 starts from the beginning; limit == 0 returns all remaining.
-func paginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []types.NodeID {
+func PaginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []types.NodeID {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -137,8 +137,24 @@ func paginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []type
 	return out
 }
 
-// paginateRelIDs is the typed equivalent of paginateIDs for []types.RelID.
-func paginateRelIDs(ids []types.RelID, after types.EntityID, limit int) []types.RelID {
+// SortNodesByID sorts nodes by snowflake.ID for deterministic output.
+// Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
+func SortNodesByID(nodes []*types.Node) {
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].ID() < nodes[j].ID()
+	})
+}
+
+// SortRelsByID sorts relationships by snowflake.ID for deterministic output.
+// Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
+func SortRelsByID(rels []*types.Relationship) {
+	sort.Slice(rels, func(i, j int) bool {
+		return rels[i].ID() < rels[j].ID()
+	})
+}
+
+// PaginateRelIDs is the typed equivalent of PaginateIDs for []types.RelID.
+func PaginateRelIDs(ids []types.RelID, after types.EntityID, limit int) []types.RelID {
 	if len(ids) == 0 {
 		return nil
 	}

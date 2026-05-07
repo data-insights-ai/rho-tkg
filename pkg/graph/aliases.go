@@ -4,8 +4,12 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // This file aliases the Store-contract types and helpers, plus selected
@@ -122,3 +126,132 @@ var (
 	ErrEmptyName        = indexpkg.ErrEmptyName
 	ErrRegistryNotEmpty = indexpkg.ErrRegistryNotEmpty
 )
+
+// --- Pagination helpers (package-private wrappers) ---
+//
+// The implementations live in internal/store as exported functions; these
+// thin wrappers preserve the original lowercase identifiers used inside
+// pkg/graph so existing call sites and tests don't need to be rewritten.
+
+func paginateIDs(ids []snowflake.ID, after types.EntityID, limit int) []snowflake.ID {
+	return store.PaginateIDs(ids, after, limit)
+}
+
+func paginateNodes(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
+	return store.PaginateNodes(nodes, after, limit)
+}
+
+func paginateRels(rels []*types.Relationship, after types.EntityID, limit int) []*types.Relationship {
+	return store.PaginateRels(rels, after, limit)
+}
+
+func paginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []types.NodeID {
+	return store.PaginateNodeIDs(ids, after, limit)
+}
+
+func paginateRelIDs(ids []types.RelID, after types.EntityID, limit int) []types.RelID {
+	return store.PaginateRelIDs(ids, after, limit)
+}
+
+func toNodeIDs(ids []snowflake.ID) []types.NodeID { return store.ToNodeIDs(ids) }
+
+func toRelIDs(ids []snowflake.ID) []types.RelID { return store.ToRelIDs(ids) }
+
+func sortNodesByID(nodes []*types.Node) { store.SortNodesByID(nodes) }
+
+func sortRelsByID(rels []*types.Relationship) { store.SortRelsByID(rels) }
+
+// --- Concrete Store implementation re-exports ---
+
+// MemoryStore is the thread-safe in-memory Store implementation. The
+// canonical type lives in pkg/graph/internal/memorystore.
+type MemoryStore = memorystore.MemoryStore
+
+// NewMemoryStore constructs an empty MemoryStore.
+func NewMemoryStore() *MemoryStore { return memorystore.NewMemoryStore() }
+
+// BadgerStore is the persistent Store implementation backed by Badger v4.
+// The canonical type lives in pkg/graph/internal/badgerstore.
+type BadgerStore = badgerstore.BadgerStore
+
+// BadgerStoreConfig configures a BadgerStore. The canonical type lives in
+// pkg/graph/internal/badgerstore.
+type BadgerStoreConfig = badgerstore.BadgerStoreConfig
+
+// NewBadgerStore opens a Badger database with the given configuration and
+// rebuilds in-memory indexes from persisted data.
+func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
+	return badgerstore.NewBadgerStore(cfg)
+}
+
+// RelDeleteInfo holds pre-read relationship metadata for two-phase cascade
+// delete inside BadgerStore. Re-exported because TieredStore reaches into the
+// BadgerStore-internal partial-write helpers (`PutRelEntityAndOut`,
+// `DeleteRelIncoming`, etc.) for cross-shard relationship routing.
+type RelDeleteInfo = badgerstore.RelDeleteInfo
+
+// --- TieredStore re-exports ---
+
+// TieredStore is the multi-shard Store implementation that routes entities
+// across a reference shard, time-windowed event shards, and an optional
+// reference archive. The canonical type lives in
+// pkg/graph/internal/tieredstore.
+type TieredStore = tieredstore.TieredStore
+
+// TieredStoreConfig configures a TieredStore.
+type TieredStoreConfig = tieredstore.TieredStoreConfig
+
+// ShardInfo describes a shard in a TieredStore.
+type ShardInfo = tieredstore.ShardInfo
+
+// VerifyResult is the result of TieredStore.VerifyShard.
+type VerifyResult = tieredstore.VerifyResult
+
+// RepairResult is the result of TieredStore.RunRepair.
+type RepairResult = tieredstore.RepairResult
+
+// ShardEntry / ShardCatalog / ShardKind / ShardTier and their constants are
+// part of the TieredStore catalog API.
+type (
+	ShardEntry   = tieredstore.ShardEntry
+	ShardCatalog = tieredstore.ShardCatalog
+	ShardKind    = tieredstore.ShardKind
+	ShardTier    = tieredstore.ShardTier
+)
+
+const (
+	ShardReference = tieredstore.ShardReference
+	ShardEvent     = tieredstore.ShardEvent
+
+	TierHot  = tieredstore.TierHot
+	TierWarm = tieredstore.TierWarm
+	TierCold = tieredstore.TierCold
+)
+
+// NewTieredStore constructs a TieredStore from cfg.
+func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
+	return tieredstore.NewTieredStore(cfg)
+}
+
+// NewShardCatalog constructs an empty ShardCatalog backed by the JSON file at
+// path. Re-exported for tests.
+func NewShardCatalog(path string) *ShardCatalog { return tieredstore.NewShardCatalog(path) }
+
+// TieredStore-specific sentinel errors.
+var (
+	ErrEventPropertyIndex        = tieredstore.ErrEventPropertyIndex
+	ErrPrimaryLabelClassMutation = tieredstore.ErrPrimaryLabelClassMutation
+	ErrNotReferenceEntity        = tieredstore.ErrNotReferenceEntity
+	ErrCrossShardArchiveRel      = tieredstore.ErrCrossShardArchiveRel
+)
+
+// MigrateFromBadger copies all current and historical entities from src to dst.
+// Re-exported for use by the Graph layer's migration helpers.
+func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *indexpkg.LabelRegistry) error {
+	return tieredstore.MigrateFromBadger(src, dst, labels)
+}
+
+// EventShard is the per-shard wrapper TieredStore uses to track its hot,
+// warm, and cold event shards. Re-exported because tests in pkg/graph need
+// to refer to the type by name (e.g., to range over `ts.EventShardsForTest()`).
+type EventShard = tieredstore.EventShard

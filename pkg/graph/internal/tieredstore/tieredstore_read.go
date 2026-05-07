@@ -1,4 +1,4 @@
-package graph
+package tieredstore
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -163,7 +164,7 @@ func (ts *TieredStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -228,7 +229,7 @@ func (ts *TieredStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -307,7 +308,7 @@ func (ts *TieredStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -376,7 +377,7 @@ func (ts *TieredStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -479,7 +480,7 @@ func (ts *TieredStore) IncomingRelationships(nid types.NodeID, typeToken uint16)
 	if err != nil {
 		return nil, err
 	}
-	relIDs := shard.incomingRelIDs(nid.SnowflakeID(), typeToken)
+	relIDs := shard.IncomingRelIDs(nid.SnowflakeID(), typeToken)
 	checkin()
 
 	if len(relIDs) == 0 {
@@ -542,7 +543,7 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 		if err != nil {
 			return nil, err
 		}
-		relIDs := shard.incomingRelIDs(nid, typeToken)
+		relIDs := shard.IncomingRelIDs(nid, typeToken)
 		checkin()
 		for _, rid := range relIDs {
 			refs = append(refs, relRef{nodeID: nid, relID: rid})
@@ -575,7 +576,7 @@ func (ts *TieredStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 
 	// Sort per-node slices for deterministic output.
 	for nid := range result {
-		sortRelsByID(result[nid])
+		storepkg.SortRelsByID(result[nid])
 	}
 
 	if len(result) == 0 {
@@ -791,7 +792,7 @@ func (ts *TieredStore) NodesByLabelAndProperty(labelToken uint16, key string, va
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -859,7 +860,7 @@ func (ts *TieredStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -931,7 +932,7 @@ func (ts *TieredStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -985,7 +986,7 @@ func (ts *TieredStore) GetNodeVersion(nid types.NodeID, version uint32) (*types.
 	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
 	// only migrates the current entity, so pre-archive history versions remain
 	// on refShard and must be discovered via the fan-out below.
-	if shard.hasNodeID(nid.SnowflakeID()) && shard != ts.refArchive.Load() {
+	if shard.HasNodeID(nid.SnowflakeID()) && shard != ts.refArchive.Load() {
 		return nil, ErrVersionNotFound
 	}
 
@@ -1027,7 +1028,7 @@ func (ts *TieredStore) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
 	// only migrates the current entity, so pre-archive history versions remain
 	// on refShard and must be discovered via the fan-out below.
-	if store.hasNodeID(nid.SnowflakeID()) && store != ts.refArchive.Load() {
+	if store.HasNodeID(nid.SnowflakeID()) && store != ts.refArchive.Load() {
 		return nil, nil
 	}
 
@@ -1065,7 +1066,7 @@ func (ts *TieredStore) GetRelVersion(rid types.RelID, version uint32) (*types.Re
 	// Skip the optimisation when the live rel sits on refArchive: ArchiveNode
 	// only migrates the current entity, so pre-archive rel history versions
 	// remain on refShard and must be discovered via the fan-out below.
-	if shard.hasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+	if shard.HasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
 		return nil, ErrVersionNotFound
 	}
 
@@ -1106,7 +1107,7 @@ func (ts *TieredStore) GetRelHistory(rid types.RelID) ([]*types.Relationship, er
 	// needlessly opened.
 	// Skip the optimisation when the live rel sits on refArchive: pre-archive
 	// rel history remains on refShard, so fall through to the fan-out below.
-	if shard.hasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+	if shard.HasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
 		return nil, nil
 	}
 
@@ -1167,7 +1168,7 @@ func (ts *TieredStore) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {
@@ -1235,7 +1236,7 @@ func (ts *TieredStore) AllRelHistoryIDs() ([]types.RelID, error) {
 	var wg sync.WaitGroup
 	for i, es := range eventShards {
 		wg.Add(1)
-		go func(i int, es *eventShard) {
+		go func(i int, es *EventShard) {
 			defer wg.Done()
 			store, err := es.checkoutStore(ts)
 			if err != nil {

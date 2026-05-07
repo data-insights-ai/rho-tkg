@@ -1,4 +1,4 @@
-package graph
+package badgerstore
 
 import (
 	"fmt"
@@ -23,12 +23,12 @@ import (
 // These unexported helpers perform the partial writes/deletes that
 // TieredStore needs for cross-shard relationship routing.
 
-// putRelEntityAndOut writes the relationship entity (0x02), type index (0x04),
+// PutRelEntityAndOut writes the relationship entity (0x02), type index (0x04),
 // and outgoing adjacency (0x05) keys. Does NOT write the incoming adjacency
 // key (0x06) — that belongs to the endpoint's shard for cross-shard rels.
 // Does NOT verify endpoints exist (caller's responsibility).
 // Acquires idxMu.Lock internally.
-func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
+func (bs *BadgerStore) PutRelEntityAndOut(r *types.Relationship) error {
 	rid := r.ID()
 	startNID := r.StartNodeID()
 	id := rid.SnowflakeID()
@@ -79,12 +79,12 @@ func (bs *BadgerStore) putRelEntityAndOut(r *types.Relationship) error {
 	return nil
 }
 
-// putRelIncoming writes only the incoming adjacency key (0x06) for a
+// PutRelIncoming writes only the incoming adjacency key (0x06) for a
 // cross-shard relationship. The relationship entity is NOT stored in this
 // shard — only the in/ index entry, so that IncomingRelationships queries
 // on the endpoint node find the relationship.
 // Acquires idxMu.Lock internally.
-func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
+func (bs *BadgerStore) PutRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
 	endNID := types.NodeID(endID)
 	rid := types.RelID(relID)
 
@@ -104,12 +104,12 @@ func (bs *BadgerStore) putRelIncoming(endID, startID snowflake.ID, relType uint1
 	return nil
 }
 
-// deleteRelEntityAndOut removes the relationship entity (0x02), type index
+// DeleteRelEntityAndOut removes the relationship entity (0x02), type index
 // (0x04), and outgoing adjacency (0x05) keys. Does NOT touch the incoming
-// adjacency key (0x06). Returns relDeleteInfo so the caller can clean up
+// adjacency key (0x06). Returns RelDeleteInfo so the caller can clean up
 // the companion in-shard deletion.
 // Acquires idxMu.Lock internally.
-func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, error) {
+func (bs *BadgerStore) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	rid := types.RelID(id)
 
 	bs.idxMu.Lock()
@@ -117,26 +117,26 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 
 	r, err := bs.getRelLocked(rid)
 	if err != nil {
-		return relDeleteInfo{}, err
+		return RelDeleteInfo{}, err
 	}
 
-	info := relDeleteInfo{
-		id:      id,
-		relType: r.TypeToken().Value(),
-		startID: r.StartNodeID().SnowflakeID(),
-		endID:   r.EndNodeID().SnowflakeID(),
+	info := RelDeleteInfo{
+		ID:      id,
+		RelType: r.TypeToken().Value(),
+		StartID: r.StartNodeID().SnowflakeID(),
+		EndID:   r.EndNodeID().SnowflakeID(),
 	}
-	startNID := types.NodeID(info.startID)
+	startNID := types.NodeID(info.StartID)
 
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, rid)
 
 	// Type index cleanup.
-	if set, exists := bs.typeIdx[info.relType]; exists {
+	if set, exists := bs.typeIdx[info.RelType]; exists {
 		delete(set, rid)
 		if len(set) == 0 {
-			delete(bs.typeIdx, info.relType)
+			delete(bs.typeIdx, info.RelType)
 		}
 	}
 
@@ -152,23 +152,23 @@ func (bs *BadgerStore) deleteRelEntityAndOut(id snowflake.ID) (relDeleteInfo, er
 
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(id)},
-		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.relType, id)},
-		{opType: writeOpDelete, key: storepkg.OutKey(info.startID, info.relType, info.endID, id)},
+		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, id)},
+		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, id)},
 	}
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
-	bs.getOrCreateTypeCounter(info.relType).Add(-1)
+	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
 
 	return info, nil
 }
 
-// deleteRelIncoming removes only the incoming adjacency key (0x06) for a
+// DeleteRelIncoming removes only the incoming adjacency key (0x06) for a
 // cross-shard relationship.
 // Acquires idxMu.Lock internally.
-func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
-	endNID := types.NodeID(info.endID)
-	rid := types.RelID(info.id)
+func (bs *BadgerStore) DeleteRelIncoming(info RelDeleteInfo) error {
+	endNID := types.NodeID(info.EndID)
+	rid := types.RelID(info.ID)
 
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
@@ -182,13 +182,13 @@ func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
 
 	op := writeOp{
 		opType: writeOpDelete,
-		key:    storepkg.InKey(info.endID, info.relType, info.startID, info.id),
+		key:    storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID),
 	}
 	bs.appendOps(op)
 	return nil
 }
 
-// deleteIncomingByRelID removes a specific relationship from the inIdx of
+// DeleteIncomingByRelID removes a specific relationship from the inIdx of
 // a given end node. Used by repair to clean up orphaned in/ entries where
 // the relationship entity no longer exists.
 // Since we don't know the relType/startID (the entity is gone), we scan
@@ -198,7 +198,7 @@ func (bs *BadgerStore) deleteRelIncoming(info relDeleteInfo) error {
 // whose relIDs are still in the pending buffer or DB, and the in-memory
 // inIdx is authoritative during runtime).
 // Acquires idxMu.Lock internally.
-func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.ID) error {
+func (bs *BadgerStore) DeleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.ID) error {
 	endNID := types.NodeID(endNodeID)
 	rid := types.RelID(relID)
 
@@ -236,12 +236,12 @@ func (bs *BadgerStore) deleteIncomingByRelID(endNodeID snowflake.ID, relID snowf
 	bs.wbMu.Unlock()
 
 	// Not in pending buffer — scan Badger for the matching key.
-	return bs.scanAndDeleteIncoming(endNodeID, relID)
+	return bs.ScanAndDeleteIncoming(endNodeID, relID)
 }
 
-// scanAndDeleteIncoming scans Badger for the 0x06 key matching (endNodeID, relID)
+// ScanAndDeleteIncoming scans Badger for the 0x06 key matching (endNodeID, relID)
 // and queues a delete op if found. Repair-only path; not performance critical.
-func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
+func (bs *BadgerStore) ScanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
 	prefix := make([]byte, 1+8)
 	prefix[0] = storepkg.KeyIn
 	storepkg.PutUint64(prefix, 1, int64(endNodeID))
@@ -270,25 +270,25 @@ func (bs *BadgerStore) scanAndDeleteIncoming(endNodeID, relID snowflake.ID) erro
 
 // --- Read helpers for TieredStore shard resolution ---
 
-// hasNodeID checks whether the given node ID exists in this shard. O(1).
-func (bs *BadgerStore) hasNodeID(id snowflake.ID) bool {
+// HasNodeID checks whether the given node ID exists in this shard. O(1).
+func (bs *BadgerStore) HasNodeID(id snowflake.ID) bool {
 	bs.idxMu.RLock()
 	_, exists := bs.nodeIDs[types.NodeID(id)]
 	bs.idxMu.RUnlock()
 	return exists
 }
 
-// hasRelID checks whether the given relationship ID exists in this shard. O(1).
-func (bs *BadgerStore) hasRelID(id snowflake.ID) bool {
+// HasRelID checks whether the given relationship ID exists in this shard. O(1).
+func (bs *BadgerStore) HasRelID(id snowflake.ID) bool {
 	bs.idxMu.RLock()
 	_, exists := bs.relIDs[types.RelID(id)]
 	bs.idxMu.RUnlock()
 	return exists
 }
 
-// incomingRelIDs returns relationship IDs from the inIdx for the given node.
+// IncomingRelIDs returns relationship IDs from the inIdx for the given node.
 // typeToken 0 = all types. Returns a sorted slice. Snapshot under RLock.
-func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowflake.ID {
+func (bs *BadgerStore) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowflake.ID {
 	bs.idxMu.RLock()
 	set := bs.inIdx[types.NodeID(nodeID)]
 	if len(set) == 0 {
@@ -308,9 +308,9 @@ func (bs *BadgerStore) incomingRelIDs(nodeID snowflake.ID, typeToken uint16) []s
 	return ids
 }
 
-// outgoingRelIDs returns relationship IDs from the outIdx for the given node.
+// OutgoingRelIDs returns relationship IDs from the outIdx for the given node.
 // Returns a sorted slice. Snapshot under RLock.
-func (bs *BadgerStore) outgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
+func (bs *BadgerStore) OutgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
 	bs.idxMu.RLock()
 	set := bs.outIdx[types.NodeID(nodeID)]
 	if len(set) == 0 {

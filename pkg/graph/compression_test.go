@@ -168,11 +168,11 @@ func TestCompression_TieredStore_Passthrough(t *testing.T) {
 	}
 	defer ts.Close()
 
-	if ts.compression != options.ZSTD {
-		t.Errorf("expected compression=ZSTD, got %v", ts.compression)
+	if ts.CompressionForTest() != options.ZSTD {
+		t.Errorf("expected compression=ZSTD, got %v", ts.CompressionForTest())
 	}
-	if ts.zstdLevel != 1 {
-		t.Errorf("expected zstdLevel=1, got %d", ts.zstdLevel)
+	if ts.ZSTDLevelForTest() != 1 {
+		t.Errorf("expected zstdLevel=1, got %d", ts.ZSTDLevelForTest())
 	}
 }
 

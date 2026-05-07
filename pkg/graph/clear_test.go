@@ -280,7 +280,7 @@ func TestBadgerStoreClear_AcquiresFlushMu(t *testing.T) {
 	// did not take flushMu and would NOT block here — it would return
 	// immediately and the timeout below would fire. Post-fix Clear
 	// takes flushMu and waits, so the timeout passes silently.
-	bs.flushMu.Lock()
+	bs.LockFlushMuForTest()
 
 	clearReturned := make(chan struct{})
 	go func() {
@@ -290,14 +290,14 @@ func TestBadgerStoreClear_AcquiresFlushMu(t *testing.T) {
 
 	select {
 	case <-clearReturned:
-		bs.flushMu.Unlock() // unblock for cleanup
+		bs.UnlockFlushMuForTest() // unblock for cleanup
 		t.Fatal("Clear returned without waiting on flushMu — fix regressed (production code no longer takes flushMu in Clear)")
 	case <-time.After(50 * time.Millisecond):
 		// Expected: Clear is blocked on flushMu.
 	}
 
 	// Release the simulated flush. Clear should now finish.
-	bs.flushMu.Unlock()
+	bs.UnlockFlushMuForTest()
 	select {
 	case <-clearReturned:
 	case <-time.After(2 * time.Second):
@@ -338,7 +338,7 @@ func TestBadgerStoreClear_NoResurrectionAfterReopen(t *testing.T) {
 		t.Fatalf("seed sentinel: %v", err)
 	}
 	// Force a flush so the sentinel is durable on-disk before the storm.
-	if err := bs1.flush(); err != nil {
+	if err := bs1.Flush(); err != nil {
 		t.Fatalf("flush sentinel: %v", err)
 	}
 
@@ -495,9 +495,7 @@ func TestTieredStoreClear_ClearsTempIdxLabels(t *testing.T) {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
 
-	ts.tempIdxMu.Lock()
-	beforeLen := len(ts.tempIdxLabels)
-	ts.tempIdxMu.Unlock()
+	beforeLen := len(ts.TempIdxLabelsForTest())
 	if beforeLen == 0 {
 		t.Fatalf("tempIdxLabels not populated after CreateTemporalIndex")
 	}
@@ -506,9 +504,7 @@ func TestTieredStoreClear_ClearsTempIdxLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.tempIdxMu.Lock()
-	afterLen := len(ts.tempIdxLabels)
-	ts.tempIdxMu.Unlock()
+	afterLen := len(ts.TempIdxLabelsForTest())
 	if afterLen != 0 {
 		t.Fatalf("tempIdxLabels after Clear = %d, want 0 (rotation would re-install stale labels)", afterLen)
 	}

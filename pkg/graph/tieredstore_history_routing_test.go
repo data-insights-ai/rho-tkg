@@ -7,6 +7,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -29,11 +30,11 @@ func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shard, checkin, err := ts.shardForRelIDChecked(r.ID())
+	shard, checkin, err := ts.ShardForRelIDCheckedForTest(r.ID())
 	if err != nil {
 		t.Fatalf("shardForRelIDChecked: %v", err)
 	}
-	if shard != ts.refShard {
+	if shard != ts.RefShardForTest() {
 		t.Fatalf("expected refShard for ref-to-ref rel, got %p", shard)
 	}
 	checkin() // refShard checkin is a no-op; must not panic
@@ -44,7 +45,7 @@ func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 	const unknownID types.RelID = 0xDEADBEEF
-	shard, checkin, err := ts.shardForRelIDChecked(unknownID)
+	shard, checkin, err := ts.ShardForRelIDCheckedForTest(unknownID)
 	if err != nil {
 		t.Fatalf("shardForRelIDChecked: %v", err)
 	}
@@ -325,19 +326,19 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 
 	// Capture the original hot shard (where the nodes — and later, the rel
 	// entity — will live).
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	// Step 2: rotate. Old hot → warm. New hot shard created with a different
 	// time window.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Step 3: create the rel AFTER rotation. Its snowflake timestamp lands in
 	// the new hot shard's window, but the rel entity routes to the start
@@ -395,17 +396,17 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	startID := a.ID()
 	endID := b.ID()
 
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	time.Sleep(2 * time.Millisecond)
 
 	r, err := g.AddRelationship("OBSERVED", a, b, map[string]any{"w": int64(1)})
@@ -459,17 +460,17 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	time.Sleep(2 * time.Millisecond)
 
 	r, err := g.AddRelationship("OBSERVED", a, b, nil)
@@ -479,36 +480,36 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 	relID := r.ID()
 
 	owner := eventShardByName(t, ts, originName)
-	if err := owner.store.Flush(); err != nil {
+	if err := owner.Store().Flush(); err != nil {
 		t.Fatalf("flush owner shard before cold close: %v", err)
 	}
 	demoteToCold(ts, originName)
 	closeEventShardStore(t, owner)
 
-	shard, checkin, err := ts.shardForRelIDChecked(relID)
+	shard, checkin, err := ts.ShardForRelIDCheckedForTest(relID)
 	if err != nil {
 		t.Fatalf("shardForRelIDChecked: %v", err)
 	}
 
-	owner.shardMu.Lock()
-	openedOwner := owner.store
-	owner.shardMu.Unlock()
+	owner.LockShardMuForTest()
+	openedOwner := owner.Store()
+	owner.UnlockShardMuForTest()
 	if openedOwner == nil {
 		t.Fatal("shardForRelIDChecked did not lazy-open the cold owner shard")
 	}
 	if shard != openedOwner {
 		t.Fatalf("shardForRelIDChecked returned shard %p, want cold owner %p", shard, openedOwner)
 	}
-	if got := owner.activeReqs.Load(); got != 1 {
+	if got := owner.ActiveReqsForTest().Load(); got != 1 {
 		t.Fatalf("owner activeReqs = %d, want 1 while checked out", got)
 	}
 
-	ts.idleTimeout = time.Millisecond
-	owner.lastAccess.Store(0)
-	ts.closeIdleShards()
-	owner.shardMu.Lock()
-	stillOpen := owner.store != nil
-	owner.shardMu.Unlock()
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	owner.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	owner.LockShardMuForTest()
+	stillOpen := owner.Store() != nil
+	owner.UnlockShardMuForTest()
 	if !stillOpen {
 		t.Fatal("closeIdleShards closed the cold owner while shardForRelIDChecked checkout was active")
 	}
@@ -522,15 +523,15 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 	}
 
 	checkin()
-	if got := owner.activeReqs.Load(); got != 0 {
+	if got := owner.ActiveReqsForTest().Load(); got != 0 {
 		t.Fatalf("owner activeReqs = %d after checkin, want 0", got)
 	}
 
-	owner.lastAccess.Store(0)
-	ts.closeIdleShards()
-	owner.shardMu.Lock()
-	closedAfterCheckin := owner.store == nil
-	owner.shardMu.Unlock()
+	owner.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	owner.LockShardMuForTest()
+	closedAfterCheckin := owner.Store() == nil
+	owner.UnlockShardMuForTest()
 	if !closedAfterCheckin {
 		t.Fatal("closeIdleShards did not close the idle cold owner after checkin")
 	}
@@ -672,21 +673,21 @@ func newDiskTieredGraph(t *testing.T) (*Graph, *TieredStore) {
 	return g, ts
 }
 
-func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *eventShard) {
+func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *EventShard) {
 	t.Helper()
 	g, ts := newTestTieredGraph(t)
 
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, originName)
 	cold := eventShardByName(t, ts, originName)
@@ -694,35 +695,35 @@ func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *eve
 	return g, ts, cold
 }
 
-func eventShardByName(t *testing.T, ts *TieredStore, name string) *eventShard {
+func eventShardByName(t *testing.T, ts *TieredStore, name string) *EventShard {
 	t.Helper()
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	es := ts.eventShards[name]
+	ts.MuForTest().RLock()
+	defer ts.MuForTest().RUnlock()
+	es := ts.EventShardsForTest()[name]
 	if es == nil {
 		t.Fatalf("event shard %q not found", name)
 	}
 	return es
 }
 
-func closeEventShardStore(t *testing.T, es *eventShard) {
+func closeEventShardStore(t *testing.T, es *EventShard) {
 	t.Helper()
-	es.shardMu.Lock()
-	defer es.shardMu.Unlock()
-	if es.store == nil {
+	es.LockShardMuForTest()
+	defer es.UnlockShardMuForTest()
+	if es.Store() == nil {
 		return
 	}
-	if err := es.store.Close(); err != nil {
+	if err := es.Store().Close(); err != nil {
 		t.Fatalf("close cold shard store: %v", err)
 	}
-	es.store = nil
+	es.SetStoreForTest(nil)
 }
 
-func assertColdShardStillClosed(t *testing.T, es *eventShard, op string) {
+func assertColdShardStillClosed(t *testing.T, es *EventShard, op string) {
 	t.Helper()
-	es.shardMu.Lock()
-	open := es.store != nil
-	es.shardMu.Unlock()
+	es.LockShardMuForTest()
+	open := es.Store() != nil
+	es.UnlockShardMuForTest()
 	if open {
 		t.Fatalf("%s opened a cold shard that should not be probed", op)
 	}
@@ -732,7 +733,7 @@ func assertColdShardStillClosed(t *testing.T, es *eventShard, op string) {
 // versions remain on refShard. The history-fan-out fast path therefore must
 // NOT short-circuit when the live entity is on refArchive: the empty-history
 // result there is not authoritative. This regression guards the
-// `shard != ts.refArchive.Load()` gate added to the empty-history skip in
+// `shard != ts.RefArchiveForTest().Load()` gate added to the empty-history skip in
 // GetNodeHistory / GetNodeVersion / TruncateNodeHistory.
 func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
@@ -757,12 +758,12 @@ func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 	}
 
 	// shardForNodeIDChecked now resolves the node to refArchive.
-	resolved, checkin, err := ts.shardForNodeIDChecked(id)
+	resolved, checkin, err := ts.ShardForNodeIDCheckedForTest(id)
 	if err != nil {
 		t.Fatalf("shardForNodeIDChecked: %v", err)
 	}
 	checkin()
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil || resolved != archive {
 		t.Fatalf("expected resolved shard to be refArchive, got %p (archive=%p)", resolved, archive)
 	}
@@ -826,16 +827,16 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 
 	// Demote and close the event shard so DeleteRelationship would race
 	// closeIdleShards if the rel-owner checkout were not held.
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, originName)
 
 	if err := g.DeleteRelationship(relID); err != nil {
@@ -855,16 +856,16 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 	rotateAndDemoteHot := func(t *testing.T, ts *TieredStore) {
 		t.Helper()
-		ts.mu.RLock()
-		originName := ts.hotShard.name
-		ts.mu.RUnlock()
+		ts.MuForTest().RLock()
+		originName := ts.HotShardForTest().Name()
+		ts.MuForTest().RUnlock()
 		time.Sleep(2 * time.Millisecond)
-		ts.mu.Lock()
+		ts.MuForTest().Lock()
 		if err := ts.RotateHotShard(); err != nil {
-			ts.mu.Unlock()
+			ts.MuForTest().Unlock()
 			t.Fatal(err)
 		}
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		demoteToCold(ts, originName)
 	}
 
@@ -976,20 +977,20 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 	// Force-open the archive and copy the rel onto it. Mirrors what a
 	// successful ArchiveNode that migrated both endpoints together would
 	// produce.
-	if err := ts.ensureRefArchive(); err != nil {
+	if err := ts.EnsureRefArchiveForTest(); err != nil {
 		t.Fatalf("ensureRefArchive: %v", err)
 	}
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ensureRefArchive returned nil archive")
 	}
 	// Endpoints must exist on the archive before the rel write (PutRelationship
 	// validates endpoint presence).
-	srcCopy, err := ts.refShard.GetNode(src.ID())
+	srcCopy, err := ts.RefShardForTest().GetNode(src.ID())
 	if err != nil {
 		t.Fatalf("GetNode src: %v", err)
 	}
-	dstCopy, err := ts.refShard.GetNode(dst.ID())
+	dstCopy, err := ts.RefShardForTest().GetNode(dst.ID())
 	if err != nil {
 		t.Fatalf("GetNode dst: %v", err)
 	}
@@ -999,7 +1000,7 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 	if err := archive.PutNode(dstCopy); err != nil {
 		t.Fatalf("archive PutNode dst: %v", err)
 	}
-	relCopy, err := ts.refShard.GetRelationship(relID)
+	relCopy, err := ts.RefShardForTest().GetRelationship(relID)
 	if err != nil {
 		t.Fatalf("refShard GetRelationship: %v", err)
 	}
@@ -1011,12 +1012,12 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 	// archive probe, so the resolver should still pick refShard (it is checked
 	// first) — flip refShard's claim by deleting the rel entity from refShard
 	// to leave it only on archive.
-	if err := ts.refShard.DeleteRelationship(relID); err != nil {
+	if err := ts.RefShardForTest().DeleteRelationship(relID); err != nil {
 		t.Fatalf("delete rel from refShard: %v", err)
 	}
 
 	t.Run("shardForRelIDChecked finds rel on archive", func(t *testing.T) {
-		shard, checkin, err := ts.shardForRelIDChecked(relID)
+		shard, checkin, err := ts.ShardForRelIDCheckedForTest(relID)
 		if err != nil {
 			t.Fatalf("shardForRelIDChecked: %v", err)
 		}
@@ -1039,7 +1040,7 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 
 // --- Admin repair paths must pin cold shards ---
 
-// allShardStoresWithLazyOpen previously called es.getStore(ts) which opens a
+// allShardStoresWithLazyOpen previously called es.GetStoreForTest(ts) which opens a
 // cold shard but does not bump activeReqs. closeIdleShards could then race
 // the caller and close the BadgerStore mid-iteration. Verify the new
 // checkout-based contract: while the caller is iterating the returned
@@ -1058,59 +1059,59 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	if coldES == nil || coldES.tier != TierCold {
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
+	if coldES == nil || coldES.Tier() != TierCold {
 		t.Fatalf("expected cold shard for %q", hotName)
 	}
 
-	stores, release, err := ts.allShardStoresWithLazyOpen()
+	stores, release, err := ts.AllShardStoresWithLazyOpenForTest()
 	if err != nil {
 		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
 	}
 	if len(stores) < 2 {
 		t.Fatalf("expected at least reference + 1 event shard, got %d", len(stores))
 	}
-	if coldES.activeReqs.Load() == 0 {
+	if coldES.ActiveReqsForTest().Load() == 0 {
 		t.Fatalf("expected cold shard to be pinned (activeReqs > 0) after lazy-open")
 	}
 
 	// Force idle-close attempt: must be skipped while pinned.
-	ts.idleTimeout = time.Millisecond
-	coldES.lastAccess.Store(0)
-	ts.closeIdleShards()
-	coldES.shardMu.Lock()
-	storeWhilePinned := coldES.store
-	coldES.shardMu.Unlock()
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	storeWhilePinned := coldES.Store()
+	coldES.UnlockShardMuForTest()
 	if storeWhilePinned == nil {
 		t.Fatal("closeIdleShards closed cold shard while RunRepair-style caller was still iterating")
 	}
 
 	release()
-	if coldES.activeReqs.Load() != 0 {
-		t.Fatalf("activeReqs = %d after release, want 0", coldES.activeReqs.Load())
+	if coldES.ActiveReqsForTest().Load() != 0 {
+		t.Fatalf("activeReqs = %d after release, want 0", coldES.ActiveReqsForTest().Load())
 	}
 
 	// After release, closeIdleShards must succeed.
-	coldES.lastAccess.Store(0)
-	ts.closeIdleShards()
-	coldES.shardMu.Lock()
-	storeAfterRelease := coldES.store
-	coldES.shardMu.Unlock()
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	storeAfterRelease := coldES.Store()
+	coldES.UnlockShardMuForTest()
 	if storeAfterRelease != nil {
 		t.Fatal("closeIdleShards did not close cold shard after release")
 	}
@@ -1133,20 +1134,20 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
-	store, release, err := ts.resolveShardStore(hotName)
+	store, release, err := ts.ResolveShardStoreForTest(hotName)
 	if err != nil {
 		t.Fatalf("resolveShardStore(%q): %v", hotName, err)
 	}
@@ -1156,29 +1157,29 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	if release == nil {
 		t.Fatal("resolveShardStore returned nil release")
 	}
-	if coldES.activeReqs.Load() != 1 {
-		t.Fatalf("activeReqs = %d after resolve, want 1", coldES.activeReqs.Load())
+	if coldES.ActiveReqsForTest().Load() != 1 {
+		t.Fatalf("activeReqs = %d after resolve, want 1", coldES.ActiveReqsForTest().Load())
 	}
 
-	ts.idleTimeout = time.Millisecond
-	coldES.lastAccess.Store(0)
-	ts.closeIdleShards()
-	coldES.shardMu.Lock()
-	storeWhilePinned := coldES.store
-	coldES.shardMu.Unlock()
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	storeWhilePinned := coldES.Store()
+	coldES.UnlockShardMuForTest()
 	if storeWhilePinned == nil {
 		t.Fatal("closeIdleShards closed cold shard while VerifyShard-style caller held it")
 	}
 
 	release()
-	if coldES.activeReqs.Load() != 0 {
-		t.Fatalf("activeReqs = %d after release, want 0", coldES.activeReqs.Load())
+	if coldES.ActiveReqsForTest().Load() != 0 {
+		t.Fatalf("activeReqs = %d after release, want 0", coldES.ActiveReqsForTest().Load())
 	}
 
 	// Reference shard never gets pinned (always live), but release must
 	// still be a non-nil callable so admin callers can defer it
 	// unconditionally.
-	_, refRelease, err := ts.resolveShardStore("reference")
+	_, refRelease, err := ts.ResolveShardStoreForTest("reference")
 	if err != nil {
 		t.Fatalf("resolveShardStore(reference): %v", err)
 	}
@@ -1190,7 +1191,7 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 
 // VerifyShard against a cold shard must pin it for the duration of the
 // verification scan. Without the checkout fix, an idle-close racing the
-// scan would null out es.store and the next AllNodeIDs/AllRelIDs call
+// scan would null out es.Store() and the next AllNodeIDs/AllRelIDs call
 // would either panic or return stale state.
 func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
@@ -1201,24 +1202,24 @@ func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
 	}
 	_ = a
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
 	// Aggressive idle close: every prior call would mark the shard for
 	// close. The test only cares that VerifyShard does not observe a
 	// nil-store state mid-flight.
-	ts.idleTimeout = time.Millisecond
-	coldES.lastAccess.Store(0)
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	coldES.SetLastAccessForTest(0)
 
 	res, err := ts.VerifyShard(g, hotName)
 	if err != nil {
@@ -1242,21 +1243,21 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 	}
 	_ = a
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
-	ts.idleTimeout = time.Millisecond
-	coldES.lastAccess.Store(0)
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	coldES.SetLastAccessForTest(0)
 
 	res, err := ts.RunRepair()
 	if err != nil {
@@ -1335,11 +1336,11 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 	rid := r.ID()
 
 	// Capture pre-delete in/ presence on the end-node shard.
-	endShard, endCheckin, err := ts.shardForNodeIDChecked(signalNode.ID())
+	endShard, endCheckin, err := ts.ShardForNodeIDCheckedForTest(signalNode.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	preIDs := endShard.incomingRelIDs(signalNode.ID().SnowflakeID(), 0)
+	preIDs := endShard.IncomingRelIDs(signalNode.ID().SnowflakeID(), 0)
 	endCheckin()
 	if !containsRelIDSlice(preIDs, rid.SnowflakeID()) {
 		t.Fatalf("setup: rel %d not in end-shard inIdx pre-delete", rid)
@@ -1352,11 +1353,11 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 	}
 
 	// Post-delete: end-shard in/ must be gone.
-	endShard2, endCheckin2, err := ts.shardForNodeIDChecked(signalNode.ID())
+	endShard2, endCheckin2, err := ts.ShardForNodeIDCheckedForTest(signalNode.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	postIDs := endShard2.incomingRelIDs(signalNode.ID().SnowflakeID(), 0)
+	postIDs := endShard2.IncomingRelIDs(signalNode.ID().SnowflakeID(), 0)
 	endCheckin2()
 	if containsRelIDSlice(postIDs, rid.SnowflakeID()) {
 		t.Fatalf("rel %d still in end-shard inIdx after cross-shard delete; rollback path order may be wrong", rid)
@@ -1444,11 +1445,11 @@ func mustArchivedRelationshipFixture(t *testing.T) (*TieredStore, types.RelID, u
 	if err := ts.ArchiveNode(node.InternalID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode left refArchive nil")
 	}
-	if !archive.hasRelID(relID.SnowflakeID()) {
+	if !archive.HasRelID(relID.SnowflakeID()) {
 		t.Fatal("setup: ArchiveNode did not move self-loop relationship into refArchive")
 	}
 
@@ -1476,16 +1477,16 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	// Take a checkout on the hot shard and hold it across a Close call
 	// running in a goroutine. Close must block until checkin is observed.
-	ts.mu.RLock()
-	hotES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	store, err := hotES.checkoutStore(ts)
+	ts.MuForTest().RLock()
+	hotES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
+	store, err := hotES.CheckoutStoreForTest(ts)
 	if err != nil {
 		t.Fatalf("checkoutStore: %v", err)
 	}
@@ -1501,7 +1502,7 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	hotES.checkinStore()
+	hotES.CheckinStoreForTest()
 
 	select {
 	case err := <-closed:
@@ -1538,12 +1539,12 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 	// Resolve both shards through the public API. They must agree —
 	// otherwise a future migration that splits the rel from its start node
 	// would silently land version writes on the wrong shard.
-	relShard, relCheckin, err := ts.shardForRelIDChecked(rid)
+	relShard, relCheckin, err := ts.ShardForRelIDCheckedForTest(rid)
 	if err != nil {
 		t.Fatal(err)
 	}
 	relCheckin()
-	startShard, startCheckin, err := ts.shardForNodeIDChecked(a.ID())
+	startShard, startCheckin, err := ts.ShardForNodeIDCheckedForTest(a.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1567,7 +1568,7 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 }
 
 // Verifies the rollback primitive used by cross-shard DeleteRelWithHistory:
-// after deleteRelIncoming removes the in/ entry, putRelIncoming with the
+// after DeleteRelIncoming removes the in/ entry, PutRelIncoming with the
 // same parameters must restore an indistinguishable entry. This is what
 // the rollback path relies on when the entity-shard write fails after
 // the in/ leg has already succeeded — without symmetric restore the
@@ -1591,36 +1592,36 @@ func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *te
 	startID := caseNode.ID().SnowflakeID()
 	relType := r.TypeToken().Value()
 
-	endShard, ec, err := ts.shardForNodeIDChecked(types.NodeID(endID))
+	endShard, ec, err := ts.ShardForNodeIDCheckedForTest(types.NodeID(endID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ec()
 
-	if !containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
+	if !containsRelIDSlice(endShard.IncomingRelIDs(endID, 0), rid) {
 		t.Fatal("setup: in/ not present")
 	}
 
 	// Step 1 of cross-shard delete: remove in/ on end shard.
-	info := relDeleteInfo{id: rid, relType: relType, startID: startID, endID: endID}
-	if err := endShard.deleteRelIncoming(info); err != nil {
-		t.Fatalf("deleteRelIncoming: %v", err)
+	info := RelDeleteInfo{ID: rid, RelType: relType, StartID: startID, EndID: endID}
+	if err := endShard.DeleteRelIncoming(info); err != nil {
+		t.Fatalf("DeleteRelIncoming: %v", err)
 	}
-	if containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
-		t.Fatal("deleteRelIncoming did not remove in/")
+	if containsRelIDSlice(endShard.IncomingRelIDs(endID, 0), rid) {
+		t.Fatal("DeleteRelIncoming did not remove in/")
 	}
 
 	// Step 2 (rollback): restore in/ via the path the entity-shard
 	// failure handler uses.
-	if err := endShard.putRelIncoming(endID, startID, relType, rid); err != nil {
-		t.Fatalf("putRelIncoming rollback: %v", err)
+	if err := endShard.PutRelIncoming(endID, startID, relType, rid); err != nil {
+		t.Fatalf("PutRelIncoming rollback: %v", err)
 	}
-	if !containsRelIDSlice(endShard.incomingRelIDs(endID, 0), rid) {
-		t.Fatal("putRelIncoming did not restore in/ — rollback path is broken")
+	if !containsRelIDSlice(endShard.IncomingRelIDs(endID, 0), rid) {
+		t.Fatal("PutRelIncoming did not restore in/ — rollback path is broken")
 	}
 }
 
-// After Close marks ts.closed, fresh checkoutStore calls must return
+// After Close marks ts.ClosedForTest(), fresh checkoutStore calls must return
 // ErrStoreClosed on every shard tier. Without this, a goroutine racing
 // Close past the activeReqs spin-wait could obtain a checkout on a
 // shard whose store is about to be closed — Badger v4 WriteBatch.Flush
@@ -1638,43 +1639,43 @@ func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	hotES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	hotES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
 	// Hold a checkout so Close blocks at the spin-wait; this lets us
 	// observe the closed flag while Close is mid-flight.
-	if _, err := hotES.checkoutStore(ts); err != nil {
+	if _, err := hotES.CheckoutStoreForTest(ts); err != nil {
 		t.Fatalf("checkout: %v", err)
 	}
 
 	closed := make(chan error, 1)
 	go func() { closed <- ts.Close() }()
 
-	// Wait for ts.closed to be observable. Close sets it before the
+	// Wait for ts.ClosedForTest() to be observable. Close sets it before the
 	// spin-wait begins, so polling here cannot deadlock against the
 	// spin-wait.
 	deadline := time.Now().Add(2 * time.Second)
-	for !ts.closed.Load() {
+	for !ts.ClosedForTest().Load() {
 		if time.Now().After(deadline) {
-			t.Fatal("ts.closed never set within 2s")
+			t.Fatal("ts.ClosedForTest() never set within 2s")
 		}
 		time.Sleep(time.Millisecond)
 	}
 
-	if _, err := hotES.checkoutStore(ts); !errors.Is(err, ErrStoreClosed) {
+	if _, err := hotES.CheckoutStoreForTest(ts); !errors.Is(err, ErrStoreClosed) {
 		t.Errorf("hot checkoutStore after closed=true: got %v, want ErrStoreClosed", err)
 	}
 
-	hotES.checkinStore() // release the original checkout so Close finishes
+	hotES.CheckinStoreForTest() // release the original checkout so Close finishes
 	select {
 	case <-closed:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close did not finish after checkin")
 	}
 
-	if _, err := hotES.checkoutStore(ts); !errors.Is(err, ErrStoreClosed) {
+	if _, err := hotES.CheckoutStoreForTest(ts); !errors.Is(err, ErrStoreClosed) {
 		t.Errorf("hot checkoutStore post-Close: got %v, want ErrStoreClosed", err)
 	}
 }
@@ -1737,7 +1738,7 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 }
 
 // Cold-start archive: after a process restart where the catalog records
-// an archive shard but the in-memory ts.refArchive pointer is nil, the
+// an archive shard but the in-memory ts.RefArchiveForTest() pointer is nil, the
 // slice and ForEach history APIs must lazy-open the archive instead of
 // silently skipping it. This requires disk-backed persistence — the
 // in-memory mode loses archive state on instance teardown.
@@ -1786,16 +1787,16 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 		t.Fatalf("first Close: %v", err)
 	}
 
-	// Phase 2: reopen against the same DataDir. ts.refArchive starts
+	// Phase 2: reopen against the same DataDir. ts.RefArchiveForTest() starts
 	// nil; the catalog has the archive entry. checkoutArchive must
 	// lazy-open via ensureRefArchive.
 	ts = mkStore()
 	t.Cleanup(func() { _ = ts.Close() })
 
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Fatal("setup: refArchive should be nil immediately after fresh open")
 	}
-	if !ts.hasArchiveShard() {
+	if !ts.HasArchiveShardForTest() {
 		t.Fatal("setup: catalog should still have archive entry after restart")
 	}
 
@@ -1941,7 +1942,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 		}
 	})
 
-	if archive := ts.refArchive.Load(); archive != nil && archive.hasRelID(relID.SnowflakeID()) {
+	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasRelID(relID.SnowflakeID()) {
 		t.Run("RelationshipsByType surfaces archived", func(t *testing.T) {
 			rels, err := ts.RelationshipsByType(knowsTok, QueryOpts{})
 			if err != nil {
@@ -2054,16 +2055,16 @@ func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	store, checkin, err := ts.shardForNodeIDChecked(id)
+	store, checkin, err := ts.ShardForNodeIDCheckedForTest(id)
 	if err != nil {
 		t.Fatalf("shardForNodeIDChecked: %v", err)
 	}
 	defer checkin()
 
-	if store != ts.refArchive.Load() {
+	if store != ts.RefArchiveForTest().Load() {
 		t.Fatal("setup: expected resolver to return refArchive for archived node")
 	}
-	if got := ts.archiveActiveReqs.Load(); got != 1 {
+	if got := ts.ArchiveActiveReqsForTest().Load(); got != 1 {
 		t.Fatalf("archiveActiveReqs after archive resolve = %d, want 1 (archive not pinned)", got)
 	}
 }
@@ -2243,18 +2244,18 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode left refArchive nil")
 	}
 
 	sawArchive := false
-	err = ts.forEachHistoryShard(ts.refShard, func(store *BadgerStore) (bool, error) {
+	err = ts.ForEachHistoryShardForTest(ts.RefShardForTest(), func(store *BadgerStore) (bool, error) {
 		if store != archive {
 			return false, nil
 		}
 		sawArchive = true
-		if got := ts.archiveActiveReqs.Load(); got == 0 {
+		if got := ts.ArchiveActiveReqsForTest().Load(); got == 0 {
 			t.Fatalf("archiveActiveReqs during history fallback = %d, want archive pinned", got)
 		}
 		return true, nil
@@ -2306,22 +2307,22 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	}
 
 	// State must be unchanged on rejection — no partial archive.
-	if !ts.refShard.hasNodeID(caseID) {
+	if !ts.RefShardForTest().HasNodeID(caseID) {
 		t.Error("caseNode should still be in refShard after rejected archive")
 	}
-	if !ts.refShard.hasRelID(relID) {
+	if !ts.RefShardForTest().HasRelID(relID) {
 		t.Error("rel entity should still be on refShard (R→E entity lives on start shard)")
 	}
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("rejected archive must not lazy-open refArchive")
 	}
 	// Partner shard's in/ entry for signalID → relID must still exist.
-	signalShard, signalCheckin, err := ts.shardForNodeIDChecked(signalNode.InternalID())
+	signalShard, signalCheckin, err := ts.ShardForNodeIDCheckedForTest(signalNode.InternalID())
 	if err != nil {
 		t.Fatalf("resolve signal shard: %v", err)
 	}
 	defer signalCheckin()
-	if !hasIncomingEntry(signalShard, signalID, relID) {
+	if !tieredstore.HasIncomingEntryForTest(signalShard, signalID, relID) {
 		t.Error("event shard's in/ entry for cross-shard rel should be unchanged after rejected archive")
 	}
 }
@@ -2359,15 +2360,15 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	}
 
 	// State must be unchanged on rejection.
-	if !ts.refShard.hasNodeID(caseID) {
+	if !ts.RefShardForTest().HasNodeID(caseID) {
 		t.Error("caseNode should still be in refShard after rejected archive")
 	}
 	// E→R: rel entity lives on event shard. refShard only has the in/
 	// entry for caseID → relID; verify it is still present.
-	if !hasIncomingEntry(ts.refShard, caseID, relID) {
+	if !tieredstore.HasIncomingEntryForTest(ts.RefShardForTest(), caseID, relID) {
 		t.Error("refShard's in/ entry for caseNode should be unchanged after rejected archive")
 	}
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
@@ -2405,13 +2406,13 @@ func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
 	}
 
 	// State must be unchanged on rejection — no partial archive.
-	if !ts.refShard.hasNodeID(aID) || !ts.refShard.hasNodeID(a2ID) {
+	if !ts.RefShardForTest().HasNodeID(aID) || !ts.RefShardForTest().HasNodeID(a2ID) {
 		t.Error("both nodes should still be in refShard after rejected archive")
 	}
-	if !ts.refShard.hasRelID(relID) {
+	if !ts.RefShardForTest().HasRelID(relID) {
 		t.Error("rel should still be in refShard after rejected archive")
 	}
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
@@ -2428,20 +2429,20 @@ func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 
 	// No archive ever created. Confirm baseline.
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Fatal("test setup: expected no archive yet")
 	}
-	if ts.hasArchiveShard() {
+	if ts.HasArchiveShardForTest() {
 		t.Fatal("test setup: expected catalog to have no archive entry")
 	}
 
 	if err := ts.Clear(); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Fatal("Clear with no archive should not have lazy-opened one")
 	}
-	if ts.hasArchiveShard() {
+	if ts.HasArchiveShardForTest() {
 		t.Fatal("Clear with no archive should not have created a catalog entry")
 	}
 }
@@ -2470,24 +2471,18 @@ func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
 
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode left refArchive nil")
 	}
-	archive.idxMu.RLock()
-	_, ok = archive.temporalIndexes[caseTok]
-	archive.idxMu.RUnlock()
-	if !ok {
+	if !archive.HasTemporalIndexForTest(caseTok) {
 		t.Fatal("CreateTemporalIndex did not install index on refArchive; archived reference nodes will silently fall out of the temporal index")
 	}
 
 	if err := ts.DropTemporalIndex(caseTok); err != nil {
 		t.Fatalf("DropTemporalIndex: %v", err)
 	}
-	archive.idxMu.RLock()
-	_, ok = archive.temporalIndexes[caseTok]
-	archive.idxMu.RUnlock()
-	if ok {
+	if archive.HasTemporalIndexForTest(caseTok) {
 		t.Fatal("DropTemporalIndex left orphan temporal index on refArchive")
 	}
 }
@@ -2509,20 +2504,20 @@ func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	before := ts.archiveActiveReqs.Load()
-	store, release, err := ts.resolveShardStore("archive")
+	before := ts.ArchiveActiveReqsForTest().Load()
+	store, release, err := ts.ResolveShardStoreForTest("archive")
 	if err != nil {
 		t.Fatalf("resolveShardStore(archive): %v", err)
 	}
 	if store == nil {
 		t.Fatal("resolveShardStore(archive) returned nil store")
 	}
-	during := ts.archiveActiveReqs.Load()
+	during := ts.ArchiveActiveReqsForTest().Load()
 	if during != before+1 {
 		t.Fatalf("archiveActiveReqs = %d during resolve, want %d (archive not pinned — Close race window)", during, before+1)
 	}
 	release()
-	after := ts.archiveActiveReqs.Load()
+	after := ts.ArchiveActiveReqsForTest().Load()
 	if after != before {
 		t.Fatalf("archiveActiveReqs = %d after release, want %d (release didn't drop the pin)", after, before)
 	}
@@ -2536,18 +2531,18 @@ func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
 	ts, relID, _ := mustArchivedRelationshipFixture(t)
 
-	stores, release, err := ts.allShardStoresWithLazyOpen()
+	stores, release, err := ts.AllShardStoresWithLazyOpenForTest()
 	if err != nil {
 		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
 	}
 	defer release()
 
-	owner := ts.findRelInAnyShardStore(relID.SnowflakeID(), stores)
+	owner := ts.FindRelInAnyShardStoreForTest(relID.SnowflakeID(), stores)
 	if owner == nil {
 		t.Fatal("findRelInAnyShardStore returned nil for archived rel; Phase 1 of RunRepair will treat its in/ entries as orphaned and delete them (data loss)")
 	}
-	if owner != ts.refArchive.Load() {
-		t.Fatalf("findRelInAnyShardStore returned wrong store; want refArchive, got %p (refShard=%p)", owner, ts.refShard)
+	if owner != ts.RefArchiveForTest().Load() {
+		t.Fatalf("findRelInAnyShardStore returned wrong store; want refArchive, got %p (refShard=%p)", owner, ts.RefShardForTest())
 	}
 }
 
@@ -2565,12 +2560,12 @@ func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode left refArchive nil")
 	}
 
-	stores, release, err := ts.allShardStoresWithLazyOpen()
+	stores, release, err := ts.AllShardStoresWithLazyOpenForTest()
 	if err != nil {
 		t.Fatalf("allShardStoresWithLazyOpen: %v", err)
 	}
@@ -2578,7 +2573,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 
 	saw := false
 	for _, ns := range stores {
-		if ns.store == archive {
+		if ns.StoreForTest() == archive {
 			saw = true
 			break
 		}
@@ -2609,24 +2604,18 @@ func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
 	}
 
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode left refArchive nil")
 	}
-	archive.idxMu.RLock()
-	_, ok = archive.hfIndexes[caseTok]
-	archive.idxMu.RUnlock()
-	if !ok {
+	if !archive.HasHFIndexForTest(caseTok) {
 		t.Fatal("CreateHighFrequencyIndex did not install HFI on refArchive")
 	}
 
 	if err := ts.DropHighFrequencyIndex(caseTok); err != nil {
 		t.Fatalf("DropHighFrequencyIndex: %v", err)
 	}
-	archive.idxMu.RLock()
-	_, ok = archive.hfIndexes[caseTok]
-	archive.idxMu.RUnlock()
-	if ok {
+	if archive.HasHFIndexForTest(caseTok) {
 		t.Fatal("DropHighFrequencyIndex left orphan HFI on refArchive")
 	}
 }
@@ -2679,14 +2668,14 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 		t.Fatalf("g.ArchiveNode: %v", err)
 	}
 
-	archive := ts.refArchive.Load()
+	archive := ts.RefArchiveForTest().Load()
 	if archive == nil {
 		t.Fatal("ArchiveNode did not open refArchive")
 	}
-	if !archive.hasNodeID(node.ID().SnowflakeID()) {
+	if !archive.HasNodeID(node.ID().SnowflakeID()) {
 		t.Fatal("node not found in refArchive after g.ArchiveNode")
 	}
-	if ts.refShard.hasNodeID(node.ID().SnowflakeID()) {
+	if ts.RefShardForTest().HasNodeID(node.ID().SnowflakeID()) {
 		t.Fatal("node still present in refShard after g.ArchiveNode")
 	}
 
@@ -2707,10 +2696,10 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	if err := g.RestoreNode(node.ID()); err != nil {
 		t.Fatalf("g.RestoreNode: %v", err)
 	}
-	if !ts.refShard.hasNodeID(node.ID().SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(node.ID().SnowflakeID()) {
 		t.Fatal("node not found in refShard after g.RestoreNode")
 	}
-	if archive.hasNodeID(node.ID().SnowflakeID()) {
+	if archive.HasNodeID(node.ID().SnowflakeID()) {
 		t.Fatal("node still present in refArchive after g.RestoreNode")
 	}
 }
@@ -2721,7 +2710,7 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 // db.Close(). Uses a standalone store (not newTestTieredGraph) so there is no
 // graph-owned t.Cleanup that would restore closed=false before the test ends.
 // Callers must defer the returned cleanup.
-func mustClosingTieredStore(t *testing.T) (*TieredStore, *eventShard, func()) {
+func mustClosingTieredStore(t *testing.T) (*TieredStore, *EventShard, func()) {
 	t.Helper()
 	ts, err := NewTieredStore(TieredStoreConfig{
 		InMemory:      true,
@@ -2732,9 +2721,9 @@ func mustClosingTieredStore(t *testing.T) (*TieredStore, *eventShard, func()) {
 	if err != nil {
 		t.Fatalf("NewTieredStore: %v", err)
 	}
-	ts.mu.RLock()
-	hot := ts.hotShard
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hot := ts.HotShardForTest()
+	ts.MuForTest().RUnlock()
 
 	// Mark the hot shard's BadgerStore as dbClosed. This makes any real DB
 	// call (e.g. DropAll in Clear) return ErrDBClosed immediately rather than
@@ -2742,13 +2731,13 @@ func mustClosingTieredStore(t *testing.T) (*TieredStore, *eventShard, func()) {
 	// Without the checkoutStore guard the caller would dereference this store
 	// while Close is concurrently calling db.Close(), risking a hang on
 	// WriteBatch.Flush or concurrent DropAll+Close undefined behaviour.
-	hot.store.dbClosed.Store(true)
-	ts.closed.Store(true)
+	hot.Store().SetDBClosedForTest(true)
+	ts.ClosedForTest().Store(true)
 
 	cleanup := func() {
 		// Restore flags so ts.Close() can run its own shutdown cleanly.
-		hot.store.dbClosed.Store(false)
-		ts.closed.Store(false)
+		hot.Store().SetDBClosedForTest(false)
+		ts.ClosedForTest().Store(false)
 		_ = ts.Close()
 	}
 	return ts, hot, cleanup
@@ -2757,9 +2746,9 @@ func mustClosingTieredStore(t *testing.T) (*TieredStore, *eventShard, func()) {
 // TestTieredStore_Clear_DoesNotTouchClosingEventShard verifies that when the
 // TieredStore is in the mid-Close state (closed=true, hot shard's BadgerStore
 // marked dbClosed), Clear skips the event shard without calling db.DropAll.
-// Pre-fix: Clear called es.store.Clear() directly — DropAll on a BadgerStore
+// Pre-fix: Clear called es.Store().Clear() directly — DropAll on a BadgerStore
 // whose db.Close() races concurrently is undefined behaviour and can hang.
-// Post-fix: checkoutStore sees ts.closed=true, returns ErrStoreClosed, Clear
+// Post-fix: checkoutStore sees ts.ClosedForTest()=true, returns ErrStoreClosed, Clear
 // continues without touching the store.
 //
 // The test runs Clear in a goroutine and fails after 3 s to detect hangs that
@@ -2788,15 +2777,15 @@ func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
 // and the per-shard checkoutStore call, the hot event shard is reported as
 // Open=false with zero counts — not Open=true with stale counts read from a
 // closing BadgerStore.
-// Pre-fix: ListShards called es.store.NodeCount() directly — no pin, no
-// check of ts.closed; the shard was counted as open even after Close started.
+// Pre-fix: ListShards called es.Store().NodeCount() directly — no pin, no
+// check of ts.ClosedForTest(); the shard was counted as open even after Close started.
 func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.T) {
 	ts, hot, cleanup := mustClosingTieredStore(t)
 	defer cleanup()
 
 	// Pre-load a count so that without the guard the shard would be reported
 	// as Open=true with Nodes=1 (stale). With the guard it must be Open=false.
-	hot.store.nodeCount.Store(1)
+	hot.Store().SetNodeCountForTest(1)
 
 	infos, err := ts.ListShards()
 	if err != nil {
@@ -2820,7 +2809,7 @@ func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.
 }
 
 // TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard verifies that
-// when ts.closed=true, RebuildCatalog's checkoutStore returns ErrStoreClosed
+// when ts.ClosedForTest()=true, RebuildCatalog's checkoutStore returns ErrStoreClosed
 // and the catalog stat update for the event shard is skipped — rather than
 // calling NodeCount/RelCount on a BadgerStore that Close is concurrently
 // tearing down. Runs in a goroutine with a timeout to catch hangs.

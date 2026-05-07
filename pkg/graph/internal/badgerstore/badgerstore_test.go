@@ -1,4 +1,4 @@
-package graph
+package badgerstore
 
 import (
 	"errors"
@@ -4493,7 +4493,7 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	// Signal DB closed BEFORE calling db.Close(): Badger v4's WriteBatch.Flush()
 	// blocks forever in WaitForMark when the DB is closed (oracle goroutines stopped).
 	// Our flush() checks dbClosed and returns ErrDBClosed immediately instead.
-	bs.dbClosed.Store(true)
+	bs.SetDBClosedForTest(true)
 	if dbErr := bs.db.Close(); dbErr != nil {
 		t.Fatalf("bs.db.Close: %v", dbErr)
 	}

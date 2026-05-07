@@ -160,7 +160,7 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 
 	// After failure, the new ref node should NOT be present (rolled back).
 	newRefID := newRefNode.ID()
-	_, getErr := ts.refShard.GetNode(newRefID)
+	_, getErr := ts.RefShardForTest().GetNode(newRefID)
 	if getErr == nil {
 		t.Errorf("ref node %d still present after hot-shard failure — rollback did not occur", newRefID)
 	}
@@ -185,7 +185,7 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	bs.nodeCache.ResetForTest() // evict all entries (post-Flush, all are clean)
+	bs.NodeCacheForTest().ResetForTest() // evict all entries (post-Flush, all are clean)
 
 	// Hold an RLock concurrently for the duration of DeleteNode.
 	// Before fix #4, DeleteNode held idxMu.Lock() THEN called db.View, which
@@ -196,9 +196,9 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	go func() {
 		defer close(done)
 		start := time.Now()
-		bs.idxMu.RLock()
+		bs.LockIdxMuRForTest()
 		time.Sleep(5 * time.Millisecond) // simulate RLock holder doing work
-		bs.idxMu.RUnlock()
+		bs.UnlockIdxMuRForTest()
 		rLockDuration.Store(time.Since(start).Milliseconds())
 	}()
 

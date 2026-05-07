@@ -85,10 +85,10 @@ func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
 
-	if ts.ontology.ClassifyByToken(caseTok) != ClassReference {
+	if ts.OntologyForTest().ClassifyByToken(caseTok) != ClassReference {
 		t.Error("Case should be ClassReference")
 	}
-	if ts.ontology.ClassifyByToken(signalTok) != ClassEvent {
+	if ts.OntologyForTest().ClassifyByToken(signalTok) != ClassEvent {
 		t.Error("Signal should be ClassEvent")
 	}
 }
@@ -101,10 +101,10 @@ func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
 	caseTok, _ := reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
 
-	if ts.shardForNode(caseTok) != ts.refShard {
+	if ts.ShardForNodeForTest(caseTok) != ts.RefShardForTest() {
 		t.Error("Case node should go to refShard")
 	}
-	if ts.shardForNode(signalTok) != ts.hotShard.store {
+	if ts.ShardForNodeForTest(signalTok) != ts.HotShardForTest().Store() {
 		t.Error("Signal node should go to hotShard")
 	}
 }
@@ -115,7 +115,7 @@ func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
 	ts.SetLabelRegistry(reg)
 
 	unknownTok, _ := reg.GetOrCreate("SomeNewLabel")
-	if ts.shardForNode(unknownTok) != ts.hotShard.store {
+	if ts.ShardForNodeForTest(unknownTok) != ts.HotShardForTest().Store() {
 		t.Error("unknown label should default to event shard")
 	}
 }
@@ -144,7 +144,7 @@ func TestTieredStore_PutGetNode_Ref(t *testing.T) {
 	}
 
 	// Verify it's in the ref shard.
-	if !ts.refShard.hasNodeID(n.ID().SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(n.ID().SnowflakeID()) {
 		t.Error("ref node should be in refShard")
 	}
 }
@@ -174,10 +174,10 @@ func TestTieredStore_PutGetNode_Event(t *testing.T) {
 	}
 
 	// Verify it's in the event shard, not ref.
-	if ts.refShard.hasNodeID(n.ID().SnowflakeID()) {
+	if ts.RefShardForTest().HasNodeID(n.ID().SnowflakeID()) {
 		t.Error("event node should NOT be in refShard")
 	}
-	if !ts.hotShard.store.hasNodeID(n.ID().SnowflakeID()) {
+	if !ts.HotShardForTest().Store().HasNodeID(n.ID().SnowflakeID()) {
 		t.Error("event node should be in hotShard")
 	}
 }
@@ -279,7 +279,7 @@ func TestTieredStore_SameShardRel_RefToRef(t *testing.T) {
 	}
 
 	// Both entity and in/ should be in refShard.
-	if !ts.refShard.hasRelID(r.ID().SnowflakeID()) {
+	if !ts.RefShardForTest().HasRelID(r.ID().SnowflakeID()) {
 		t.Error("R->R rel should be in refShard")
 	}
 }
@@ -308,11 +308,11 @@ func TestTieredStore_CrossShardRel_EventToRef(t *testing.T) {
 	}
 
 	// Entity + out/ in event shard (start node's shard).
-	if !ts.hotShard.store.hasRelID(r.ID().SnowflakeID()) {
+	if !ts.HotShardForTest().Store().HasRelID(r.ID().SnowflakeID()) {
 		t.Error("E->R: entity should be in event shard")
 	}
 	// in/ should be in ref shard (end node's shard).
-	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
+	inIDs := ts.RefShardForTest().IncomingRelIDs(caseNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 || inIDs[0] != r.ID().SnowflakeID() {
 		t.Errorf("E->R: ref shard inIdx should contain rel, got %v", inIDs)
 	}
@@ -349,11 +349,11 @@ func TestTieredStore_CrossShardRel_RefToEvent(t *testing.T) {
 	}
 
 	// Entity + out/ in ref shard (start node's shard).
-	if !ts.refShard.hasRelID(r.ID().SnowflakeID()) {
+	if !ts.RefShardForTest().HasRelID(r.ID().SnowflakeID()) {
 		t.Error("R->E: entity should be in ref shard")
 	}
 	// in/ should be in event shard (end node's shard).
-	inIDs := ts.hotShard.store.incomingRelIDs(signal.ID().SnowflakeID(), 0)
+	inIDs := ts.HotShardForTest().Store().IncomingRelIDs(signal.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 || inIDs[0] != r.ID().SnowflakeID() {
 		t.Errorf("R->E: event shard inIdx should contain rel, got %v", inIDs)
 	}
@@ -446,11 +446,11 @@ func TestTieredStore_CrossShardRel_Delete(t *testing.T) {
 	}
 
 	// Entity should be gone from event shard.
-	if ts.hotShard.store.hasRelID(r.ID().SnowflakeID()) {
+	if ts.HotShardForTest().Store().HasRelID(r.ID().SnowflakeID()) {
 		t.Error("deleted rel should be gone from event shard")
 	}
 	// in/ should be gone from ref shard.
-	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
+	inIDs := ts.RefShardForTest().IncomingRelIDs(caseNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("deleted rel in/ should be gone from ref shard, got %v", inIDs)
 	}
@@ -731,7 +731,7 @@ func TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels(t *testing.T)
 	}
 
 	// in/ in ref shard should be cleaned up.
-	inIDs := ts.refShard.incomingRelIDs(caseNode.ID().SnowflakeID(), 0)
+	inIDs := ts.RefShardForTest().IncomingRelIDs(caseNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("cascade should clean in/ from ref shard, got %v", inIDs)
 	}
@@ -841,10 +841,10 @@ func TestTieredStore_PutNodesBatch_MixedRefEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !ts.refShard.hasNodeID(refNode.ID().SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(refNode.ID().SnowflakeID()) {
 		t.Error("batch ref node should be in refShard")
 	}
-	if !ts.hotShard.store.hasNodeID(evtNode.ID().SnowflakeID()) {
+	if !ts.HotShardForTest().Store().HasNodeID(evtNode.ID().SnowflakeID()) {
 		t.Error("batch event node should be in hotShard")
 	}
 }
@@ -988,16 +988,16 @@ func TestTieredStore_Clear_AllShards(t *testing.T) {
 
 func TestTieredStore_EventShardsMap(t *testing.T) {
 	ts := newTestTieredStore(t)
-	if len(ts.eventShards) != 1 {
-		t.Errorf("eventShards count = %d, want 1", len(ts.eventShards))
+	if len(ts.EventShardsForTest()) != 1 {
+		t.Errorf("eventShards count = %d, want 1", len(ts.EventShardsForTest()))
 	}
-	if ts.hotShard == nil {
+	if ts.HotShardForTest() == nil {
 		t.Fatal("hotShard is nil")
 	}
-	if ts.hotShard.tier != TierHot {
-		t.Errorf("hotShard.tier = %q, want %q", ts.hotShard.tier, TierHot)
+	if ts.HotShardForTest().Tier() != TierHot {
+		t.Errorf("hotShard.tier = %q, want %q", ts.HotShardForTest().Tier(), TierHot)
 	}
-	if ts.hotShard.readOnly {
+	if ts.HotShardForTest().ReadOnlyForTest() {
 		t.Error("hotShard.readOnly should be false")
 	}
 }
@@ -1123,10 +1123,10 @@ func TestTieredStore_DiskBacked_CreateAndReopen(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil) // token 1 = first label
-	if err := ts.refShard.PutNode(n); err != nil {
+	if err := ts.RefShardForTest().PutNode(n); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts.refShard.Flush()
+	_ = ts.RefShardForTest().Flush()
 
 	if err := ts.Close(); err != nil {
 		t.Fatal(err)
@@ -1154,8 +1154,8 @@ func TestTieredStore_DiskBacked_CreateAndReopen(t *testing.T) {
 	}
 	defer ts2.Close()
 
-	if len(ts2.catalog.Shards) < 2 {
-		t.Errorf("catalog shards = %d, want >= 2", len(ts2.catalog.Shards))
+	if len(ts2.CatalogForTest().Shards) < 2 {
+		t.Errorf("catalog shards = %d, want >= 2", len(ts2.CatalogForTest().Shards))
 	}
 }
 
@@ -1171,7 +1171,7 @@ func TestTieredStore_MidWindowRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hotName1 := ts1.hotShard.name
+	hotName1 := ts1.HotShardForTest().Name()
 	if err := ts1.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1187,8 +1187,8 @@ func TestTieredStore_MidWindowRestart(t *testing.T) {
 	}
 	defer ts2.Close()
 
-	if ts2.hotShard.name != hotName1 {
-		t.Errorf("mid-window restart: hot shard name changed from %q to %q", hotName1, ts2.hotShard.name)
+	if ts2.HotShardForTest().Name() != hotName1 {
+		t.Errorf("mid-window restart: hot shard name changed from %q to %q", hotName1, ts2.HotShardForTest().Name())
 	}
 }
 
@@ -1675,10 +1675,10 @@ func TestTieredStore_TruncateRelHistory(t *testing.T) {
 // hot shard's window (snowflake IDs have millisecond resolution).
 func forceRotation(t *testing.T, ts *TieredStore) {
 	t.Helper()
-	ts.mu.Lock()
-	ts.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts.mu.Unlock()
-	if err := ts.checkRotation(); err != nil {
+	ts.MuForTest().Lock()
+	ts.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts.MuForTest().Unlock()
+	if err := ts.CheckRotationForTest(); err != nil {
 		t.Fatalf("forceRotation: %v", err)
 	}
 	time.Sleep(2 * time.Millisecond)
@@ -1703,29 +1703,29 @@ func TestTieredStore_Rotation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldHotName := ts.hotShard.name
+	oldHotName := ts.HotShardForTest().Name()
 	forceRotation(t, ts)
 
 	// Verify new hot shard created.
-	if ts.hotShard.name == oldHotName {
+	if ts.HotShardForTest().Name() == oldHotName {
 		t.Error("hot shard name should change after rotation")
 	}
-	if ts.hotShard.tier != TierHot {
-		t.Errorf("new hot shard tier = %q, want %q", ts.hotShard.tier, TierHot)
+	if ts.HotShardForTest().Tier() != TierHot {
+		t.Errorf("new hot shard tier = %q, want %q", ts.HotShardForTest().Tier(), TierHot)
 	}
-	if len(ts.eventShards) != 2 {
-		t.Errorf("eventShards count = %d, want 2", len(ts.eventShards))
+	if len(ts.EventShardsForTest()) != 2 {
+		t.Errorf("eventShards count = %d, want 2", len(ts.EventShardsForTest()))
 	}
 
 	// Old shard should be warm.
-	oldShard, ok := ts.eventShards[oldHotName]
+	oldShard, ok := ts.EventShardsForTest()[oldHotName]
 	if !ok {
 		t.Fatal("old shard should still be in eventShards map")
 	}
-	if oldShard.tier != TierWarm {
-		t.Errorf("old shard tier = %q, want %q", oldShard.tier, TierWarm)
+	if oldShard.Tier() != TierWarm {
+		t.Errorf("old shard tier = %q, want %q", oldShard.Tier(), TierWarm)
 	}
-	if !oldShard.readOnly {
+	if !oldShard.ReadOnlyForTest() {
 		t.Error("old shard should be readOnly")
 	}
 }
@@ -1734,9 +1734,9 @@ func TestTieredStore_RotationIdempotent(t *testing.T) {
 	ts := newTestTieredStore(t)
 
 	// Expire hot shard.
-	ts.mu.Lock()
-	ts.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts.mu.Unlock()
+	ts.MuForTest().Lock()
+	ts.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts.MuForTest().Unlock()
 
 	// Concurrent checkRotation calls should not double-rotate.
 	var wg sync.WaitGroup
@@ -1745,7 +1745,7 @@ func TestTieredStore_RotationIdempotent(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			errs[idx] = ts.checkRotation()
+			errs[idx] = ts.CheckRotationForTest()
 		}(i)
 	}
 	wg.Wait()
@@ -1757,8 +1757,8 @@ func TestTieredStore_RotationIdempotent(t *testing.T) {
 	}
 
 	// Should have exactly 2 shards: 1 warm + 1 hot.
-	if len(ts.eventShards) != 2 {
-		t.Errorf("eventShards = %d, want 2 (single rotation)", len(ts.eventShards))
+	if len(ts.EventShardsForTest()) != 2 {
+		t.Errorf("eventShards = %d, want 2 (single rotation)", len(ts.EventShardsForTest()))
 	}
 }
 
@@ -1807,7 +1807,7 @@ func TestTieredStore_WriteAfterRotation(t *testing.T) {
 	_ = ts.PutNode(n1)
 
 	forceRotation(t, ts)
-	newHotStore := ts.hotShard.store
+	newHotStore := ts.HotShardForTest().Store()
 
 	// Write after rotation.
 	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
@@ -1816,7 +1816,7 @@ func TestTieredStore_WriteAfterRotation(t *testing.T) {
 	}
 
 	// n2 should be in new hot shard, not the warm shard.
-	if !newHotStore.hasNodeID(n2.ID().SnowflakeID()) {
+	if !newHotStore.HasNodeID(n2.ID().SnowflakeID()) {
 		t.Error("post-rotation node should be in new hot shard")
 	}
 
@@ -1843,11 +1843,11 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n)
 
-	oldHotName := ts.hotShard.name
+	oldHotName := ts.HotShardForTest().Name()
 	forceRotation(t, ts)
 
 	// Warm shard must stay in the eventShards map for snowflake ID → shard resolution.
-	if _, ok := ts.eventShards[oldHotName]; !ok {
+	if _, ok := ts.EventShardsForTest()[oldHotName]; !ok {
 		t.Error("warm shard must stay in eventShards map for snowflake ID resolution")
 	}
 }
@@ -2227,23 +2227,23 @@ func TestTieredStore_RestartWithWarmShards(t *testing.T) {
 	gen := tieredNodeGen(t)
 	// Token 3 = event (after Case=1, User=2 if we had them, but just use 3 directly).
 	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
-	if err := ts1.hotShard.store.PutNode(n1); err != nil {
+	if err := ts1.HotShardForTest().Store().PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	// Force rotation via RotateHotShard.
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	if err := ts1.checkRotation(); err != nil {
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	if err := ts1.CheckRotationForTest(); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	// Verify we have 2 shards now.
-	if len(ts1.eventShards) != 2 {
-		t.Fatalf("eventShards before close = %d, want 2", len(ts1.eventShards))
+	if len(ts1.EventShardsForTest()) != 2 {
+		t.Fatalf("eventShards before close = %d, want 2", len(ts1.EventShardsForTest()))
 	}
 
 	if err := ts1.Close(); err != nil {
@@ -2262,8 +2262,8 @@ func TestTieredStore_RestartWithWarmShards(t *testing.T) {
 	}
 	defer ts2.Close()
 
-	if len(ts2.eventShards) != 2 {
-		t.Errorf("eventShards after reopen = %d, want 2", len(ts2.eventShards))
+	if len(ts2.EventShardsForTest()) != 2 {
+		t.Errorf("eventShards after reopen = %d, want 2", len(ts2.EventShardsForTest()))
 	}
 
 	// Verify warm shard entity is accessible.
@@ -2290,10 +2290,10 @@ func TestTieredStore_RestartWarmShardReadOnly(t *testing.T) {
 	}
 
 	// Force rotation.
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	_ = ts1.checkRotation()
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	_ = ts1.CheckRotationForTest()
 
 	if err := ts1.Close(); err != nil {
 		t.Fatal(err)
@@ -2313,13 +2313,13 @@ func TestTieredStore_RestartWarmShardReadOnly(t *testing.T) {
 
 	// Find the warm shard.
 	var warmCount int
-	for _, es := range ts2.eventShards {
-		if es.tier == TierWarm {
+	for _, es := range ts2.EventShardsForTest() {
+		if es.Tier() == TierWarm {
 			warmCount++
-			if !es.readOnly {
+			if !es.ReadOnlyForTest() {
 				t.Error("warm shard should be readOnly")
 			}
-			if !es.store.readOnly {
+			if !es.Store().ReadOnlyForTest() {
 				t.Error("warm shard BadgerStore should be readOnly")
 			}
 		}
@@ -2341,7 +2341,7 @@ func TestTieredStore_RestartPreservesHotShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hotName := ts1.hotShard.name
+	hotName := ts1.HotShardForTest().Name()
 	if err := ts1.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -2358,11 +2358,11 @@ func TestTieredStore_RestartPreservesHotShard(t *testing.T) {
 	}
 	defer ts2.Close()
 
-	if ts2.hotShard.name != hotName {
-		t.Errorf("hot shard name = %q, want %q (mid-window)", ts2.hotShard.name, hotName)
+	if ts2.HotShardForTest().Name() != hotName {
+		t.Errorf("hot shard name = %q, want %q (mid-window)", ts2.HotShardForTest().Name(), hotName)
 	}
-	if ts2.hotShard.tier != TierHot {
-		t.Errorf("hot shard tier = %q, want %q", ts2.hotShard.tier, TierHot)
+	if ts2.HotShardForTest().Tier() != TierHot {
+		t.Errorf("hot shard tier = %q, want %q", ts2.HotShardForTest().Tier(), TierHot)
 	}
 }
 
@@ -2381,24 +2381,24 @@ func TestTieredStore_RestartSnowflakeResolution(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil) // event node
-	if err := ts1.hotShard.store.PutNode(n1); err != nil {
+	if err := ts1.HotShardForTest().Store().PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	// Rotate to create warm shard. Sleep 2ms for snowflake boundary alignment.
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	_ = ts1.checkRotation()
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	_ = ts1.CheckRotationForTest()
 	time.Sleep(2 * time.Millisecond)
 
 	// Create another node in new hot shard.
 	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
-	if err := ts1.hotShard.store.PutNode(n2); err != nil {
+	if err := ts1.HotShardForTest().Store().PutNode(n2); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 	_ = ts1.Close()
 
 	// Reopen.
@@ -2501,19 +2501,19 @@ func TestBadgerStore_ReadOnlyNoFlushLoop(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	if !bs2.readOnly {
+	if !bs2.ReadOnlyForTest() {
 		t.Error("readOnly should be true")
 	}
 
 	// flushDone and gcDone should already be closed (no goroutines spawned).
 	select {
-	case <-bs2.flushDone:
+	case <-bs2.FlushDoneForTest():
 		// OK: closed immediately.
 	default:
 		t.Error("flushDone should be closed (no flush goroutine)")
 	}
 	select {
-	case <-bs2.gcDone:
+	case <-bs2.GCDoneForTest():
 		// OK: closed immediately.
 	default:
 		t.Error("gcDone should be closed (no GC goroutine)")
@@ -2688,17 +2688,17 @@ func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 //
 // Bypasses the normal warm→cold transition (driven by ColdAfter and the
 // idle-close goroutine) so tests can deterministically observe behaviour
-// against a cold shard without sleeping. Holds ts.mu across the tier flip
+// against a cold shard without sleeping. Holds ts.MuForTest() across the tier flip
 // AND the catalog update so a concurrent rotation cannot read a half-updated
 // state — but does NOT close the underlying BadgerStore. Pair with
 // closeEventShardStore to fully simulate a cold idle-close, or leave the
 // store open to test pure tier-based code paths.
 func demoteToCold(ts *TieredStore, shardName string) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-	if es, ok := ts.eventShards[shardName]; ok {
-		es.tier = TierCold
-		ts.catalog.UpdateShardTier(shardName, TierCold)
+	ts.MuForTest().Lock()
+	defer ts.MuForTest().Unlock()
+	if es, ok := ts.EventShardsForTest()[shardName]; ok {
+		es.SetTierForTest(TierCold)
+		ts.CatalogForTest().UpdateShardTier(shardName, TierCold)
 	}
 }
 
@@ -2720,31 +2720,31 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 	nodeID := n.ID()
 
 	// Remember which shard has the node.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	// Rotate: hot → warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Manually demote the warm shard to cold.
 	demoteToCold(ts, hotName)
 
 	// Find the cold shard — should exist.
 	var coldFound bool
-	ts.mu.RLock()
-	for _, es := range ts.eventShards {
-		if es.tier == TierCold {
+	ts.MuForTest().RLock()
+	for _, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierCold {
 			coldFound = true
 		}
 	}
-	ts.mu.RUnlock()
+	ts.MuForTest().RUnlock()
 	if !coldFound {
 		t.Fatal("no cold shard found after demotion")
 	}
@@ -2786,16 +2786,16 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 	nodeID := n.ID()
 
 	// Flush to disk so data survives close+reopen.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	_ = ts.hotShard.store.Flush()
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	_ = ts.HotShardForTest().Store().Flush()
+	ts.MuForTest().RUnlock()
 
 	// Rotate: hot → warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Manually demote to cold.
 	demoteToCold(ts, hotName)
@@ -2805,20 +2805,20 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 
 	// Wait for idle threshold to pass, then force idle close.
 	time.Sleep(20 * time.Millisecond)
-	ts.closeIdleShards()
+	ts.CloseIdleShardsForTest()
 
 	// Find the cold shard and verify store is nil.
-	ts.mu.RLock()
-	for _, es := range ts.eventShards {
-		if es.tier == TierCold {
-			es.shardMu.Lock()
-			if es.store != nil {
+	ts.MuForTest().RLock()
+	for _, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierCold {
+			es.LockShardMuForTest()
+			if es.Store() != nil {
 				t.Error("cold shard store should be nil after idle close")
 			}
-			es.shardMu.Unlock()
+			es.UnlockShardMuForTest()
 		}
 	}
-	ts.mu.RUnlock()
+	ts.MuForTest().RUnlock()
 
 	// Re-access should lazy-open from disk.
 	got, err := ts.GetNode(nodeID)
@@ -2843,23 +2843,23 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 	_ = ts.PutNode(n)
 
 	// Remember shard name, rotate, then manually demote to cold.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
 	// Resolve shard via shardForNodeID — should find the cold shard.
-	shard, err := ts.shardForNodeID(n.ID())
+	shard, err := ts.ShardForNodeIDForTest(n.ID())
 	if err != nil {
 		t.Fatalf("shardForNodeID: %v", err)
 	}
-	if !shard.hasNodeID(n.ID().SnowflakeID()) {
+	if !shard.HasNodeID(n.ID().SnowflakeID()) {
 		t.Error("shard should have the node")
 	}
 }
@@ -2884,24 +2884,24 @@ func TestTieredStore_ColdShard_DemotionWarmToCold(t *testing.T) {
 
 	// Rotate once: hot→warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// After rotation, the old warm shard should become cold (ColdAfter=1ms).
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	var coldCount int
-	ts.mu.RLock()
-	for _, es := range ts.eventShards {
-		if es.tier == TierCold {
+	ts.MuForTest().RLock()
+	for _, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierCold {
 			coldCount++
 		}
 	}
-	ts.mu.RUnlock()
+	ts.MuForTest().RUnlock()
 
 	if coldCount == 0 {
 		t.Error("expected at least one cold shard after demotion")
@@ -2929,16 +2929,16 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 	// Do 3 rotations.
 	for i := 0; i < 3; i++ {
 		time.Sleep(2 * time.Millisecond)
-		ts.mu.Lock()
+		ts.MuForTest().Lock()
 		_ = ts.RotateHotShard()
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 	}
 
 	// Count tiers.
 	var hotCount, warmCount, coldCount int
-	ts.mu.RLock()
-	for _, es := range ts.eventShards {
-		switch es.tier {
+	ts.MuForTest().RLock()
+	for _, es := range ts.EventShardsForTest() {
+		switch es.Tier() {
 		case TierHot:
 			hotCount++
 		case TierWarm:
@@ -2947,7 +2947,7 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 			coldCount++
 		}
 	}
-	ts.mu.RUnlock()
+	ts.MuForTest().RUnlock()
 
 	if hotCount != 1 {
 		t.Errorf("hot count = %d, want 1", hotCount)
@@ -2982,21 +2982,21 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 	_ = ts.PutNode(n)
 
 	// Flush the hot shard so data is persisted to Badger.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	_ = ts.hotShard.store.Flush()
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	_ = ts.HotShardForTest().Store().Flush()
+	ts.MuForTest().RUnlock()
 
 	// Rotate: hot → warm, then manually demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
 	// Persist catalog with cold tier info.
-	_ = ts.catalog.Save()
+	_ = ts.CatalogForTest().Save()
 	_ = ts.Close()
 
 	// Phase 2: reopen — cold shards should be recovered with store=nil.
@@ -3017,13 +3017,13 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 
 	// Verify cold shards exist and are NOT opened yet.
 	var nilStoreCount int
-	ts2.mu.RLock()
-	for _, es := range ts2.eventShards {
-		if es.tier == TierCold && es.store == nil {
+	ts2.MuForTest().RLock()
+	for _, es := range ts2.EventShardsForTest() {
+		if es.Tier() == TierCold && es.Store() == nil {
 			nilStoreCount++
 		}
 	}
-	ts2.mu.RUnlock()
+	ts2.MuForTest().RUnlock()
 
 	if nilStoreCount == 0 {
 		t.Error("expected at least one cold shard with nil store on restart")
@@ -3045,23 +3045,23 @@ func TestTieredStore_ColdShard_GetStoreFastPath(t *testing.T) {
 	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
-	es := ts.hotShard
-	store, err := es.getStore(ts)
+	es := ts.HotShardForTest()
+	store, err := es.GetStoreForTest(ts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store != es.store {
-		t.Error("getStore on hot shard should return es.store directly")
+	if store != es.Store() {
+		t.Error("getStore on hot shard should return es.Store() directly")
 	}
 
 	// Make it warm.
-	es.tier = TierWarm
-	store, err = es.getStore(ts)
+	es.SetTierForTest(TierWarm)
+	store, err = es.GetStoreForTest(ts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store != es.store {
-		t.Error("getStore on warm shard should return es.store directly")
+	if store != es.Store() {
+		t.Error("getStore on warm shard should return es.Store() directly")
 	}
 }
 
@@ -3078,14 +3078,14 @@ func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 	nodeID := n.ID()
 
 	// Remember shard, rotate, demote to cold.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
@@ -3129,9 +3129,9 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 	_ = ts.PutNode(evtNode1)
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	evtNode2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(evtNode2)
@@ -3165,9 +3165,9 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 
 	// Rotate.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	_, _ = g.AddRelationship("TRIGGERED", sig2, case1, nil)
 
@@ -3196,26 +3196,26 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n1)
 
-	ts.mu.RLock()
-	shard1Name := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	shard1Name := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n2)
 
-	ts.mu.RLock()
-	shard2Name := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	shard2Name := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	n3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n3)
@@ -3249,18 +3249,18 @@ func TestTieredStore_ParallelErrorPropagation(t *testing.T) {
 	_ = ts.PutNode(n)
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Close the warm shard's store to force errors.
-	ts.mu.RLock()
-	for _, es := range ts.eventShards {
-		if es.tier == TierWarm {
-			_ = es.store.Close()
+	ts.MuForTest().RLock()
+	for _, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierWarm {
+			_ = es.Store().Close()
 		}
 	}
-	ts.mu.RUnlock()
+	ts.MuForTest().RUnlock()
 
 	// AllNodes should return an error from the closed shard.
 	_, err := ts.AllNodes(QueryOpts{})
@@ -3285,13 +3285,13 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// Node should no longer be in refShard.
-	if ts.refShard.hasNodeID(caseID.SnowflakeID()) {
+	if ts.RefShardForTest().HasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should not be in refShard after archive")
 	}
 
 	// Node should be in refArchive.
-	archive := ts.refArchive.Load()
-	if archive == nil || !archive.hasNodeID(caseID.SnowflakeID()) {
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil || !archive.HasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -3332,16 +3332,16 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	}
 
 	// State must be unchanged on rejection — no partial archive.
-	if !ts.refShard.hasNodeID(case1ID.SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(case1ID.SnowflakeID()) {
 		t.Error("case1 should still be in refShard after rejected archive")
 	}
-	if !ts.refShard.hasNodeID(case2ID.SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(case2ID.SnowflakeID()) {
 		t.Error("case2 should still be in refShard after rejected archive")
 	}
-	if !ts.refShard.hasRelID(relID.SnowflakeID()) {
+	if !ts.RefShardForTest().HasRelID(relID.SnowflakeID()) {
 		t.Error("rel should still be in refShard after rejected archive (no partial state)")
 	}
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("rejected archive must not lazy-open refArchive")
 	}
 }
@@ -3361,12 +3361,12 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// Node should be back in refShard.
-	if !ts.refShard.hasNodeID(caseID.SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should be in refShard after restore")
 	}
 
 	// Node should NOT be in archive.
-	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(caseID.SnowflakeID()) {
+	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasNodeID(caseID.SnowflakeID()) {
 		t.Error("node should not be in archive after restore")
 	}
 
@@ -3385,14 +3385,14 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 	_ = g
 
-	if ts.refArchive.Load() != nil {
+	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("refArchive should be nil initially")
 	}
 
 	caseNode, _ := g.AddNode([]string{"Case"}, nil)
 	_ = ts.ArchiveNode(caseNode.ID())
 
-	if ts.refArchive.Load() == nil {
+	if ts.RefArchiveForTest().Load() == nil {
 		t.Error("refArchive should be opened after ArchiveNode")
 	}
 }
@@ -3406,11 +3406,11 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 
 	_ = ts.ArchiveNode(caseID)
 
-	shard, err := ts.shardForNodeID(caseID)
+	shard, err := ts.ShardForNodeIDForTest(caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shard != ts.refArchive.Load() {
+	if shard != ts.RefArchiveForTest().Load() {
 		t.Error("shardForNodeID should return refArchive for archived node")
 	}
 }
@@ -3455,10 +3455,10 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	gen := tieredNodeGen(t)
 	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	_ = ts.PutNode(n)
-	_ = ts.refShard.Flush()
+	_ = ts.RefShardForTest().Flush()
 
 	_ = ts.ArchiveNode(n.ID())
-	if archive := ts.refArchive.Load(); archive != nil {
+	if archive := ts.RefArchiveForTest().Load(); archive != nil {
 		_ = archive.Flush()
 	}
 
@@ -3513,7 +3513,7 @@ func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
 	id := gen.Generate()
 
 	// Normal case: no error for non-existent node (falls back to hot shard).
-	shard, err := ts.shardForNodeID(types.NodeID(id))
+	shard, err := ts.ShardForNodeIDForTest(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("shardForNodeID should not error: %v", err)
 	}
@@ -3530,7 +3530,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 	gen := tieredRelGen(t)
 	id := gen.Generate()
 
-	shard, err := ts.shardForRelID(types.RelID(id))
+	shard, err := ts.ShardForRelIDForTest(types.RelID(id))
 	if err != nil {
 		t.Fatalf("shardForRelID should not error: %v", err)
 	}
@@ -3774,19 +3774,19 @@ func TestTieredStore_ForceRotate(t *testing.T) {
 	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
-	oldHotName := ts.hotShard.name
+	oldHotName := ts.HotShardForTest().Name()
 
 	if err := ts.ForceRotate(); err != nil {
 		t.Fatalf("ForceRotate: %v", err)
 	}
 
-	newHotName := ts.hotShard.name
+	newHotName := ts.HotShardForTest().Name()
 	if oldHotName == newHotName {
 		t.Error("hot shard name didn't change after rotation")
 	}
 
 	// Old hot should now be warm.
-	if es, ok := ts.eventShards[oldHotName]; !ok || es.tier != TierWarm {
+	if es, ok := ts.EventShardsForTest()[oldHotName]; !ok || es.Tier() != TierWarm {
 		t.Error("old hot shard should be warm")
 	}
 }
@@ -3872,7 +3872,7 @@ func TestTieredStore_ListShards_WithCold(t *testing.T) {
 	ts.SetLabelRegistry(reg)
 
 	// Rotate and demote to cold.
-	oldHot := ts.hotShard.name
+	oldHot := ts.HotShardForTest().Name()
 	if err := ts.ForceRotate(); err != nil {
 		t.Fatalf("ForceRotate: %v", err)
 	}
@@ -3967,7 +3967,7 @@ func TestTieredStore_RebuildCatalog(t *testing.T) {
 	}
 
 	// Check catalog got updated with counts.
-	entry, ok := ts.catalog.GetShard("reference")
+	entry, ok := ts.CatalogForTest().GetShard("reference")
 	if !ok {
 		t.Fatal("reference shard not in catalog")
 	}
@@ -3975,7 +3975,7 @@ func TestTieredStore_RebuildCatalog(t *testing.T) {
 		t.Errorf("reference ApproxNodes = %d, want 1", entry.ApproxNodes)
 	}
 
-	hotEntry, ok := ts.catalog.GetShard(ts.hotShard.name)
+	hotEntry, ok := ts.CatalogForTest().GetShard(ts.HotShardForTest().Name())
 	if !ok {
 		t.Fatal("hot shard not in catalog")
 	}
@@ -3996,7 +3996,7 @@ func TestTieredStore_VerifyShard_Hot(t *testing.T) {
 	}
 	_ = n
 
-	result, err := g.VerifyShard(ts.hotShard.name)
+	result, err := g.VerifyShard(ts.HotShardForTest().Name())
 	if err != nil {
 		t.Fatalf("VerifyShard: %v", err)
 	}
@@ -4020,7 +4020,7 @@ func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	oldHot := ts.hotShard.name
+	oldHot := ts.HotShardForTest().Name()
 	if err := g.ForceRotate(); err != nil {
 		t.Fatalf("ForceRotate: %v", err)
 	}
@@ -4118,17 +4118,17 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 
 	// Manually create an orphaned in/ entry on refShard pointing to a non-existent rel.
 	fakeRelID := relGen.Generate()
-	if err := ts.refShard.putRelIncoming(
+	if err := ts.RefShardForTest().PutRelIncoming(
 		refNode.ID().SnowflakeID(),
 		evtNode.ID().SnowflakeID(),
 		relTok,
 		fakeRelID,
 	); err != nil {
-		t.Fatalf("putRelIncoming: %v", err)
+		t.Fatalf("PutRelIncoming: %v", err)
 	}
 
 	// Verify the orphaned in/ entry exists.
-	inIDs := ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
+	inIDs := ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Fatalf("expected 1 incoming rel, got %d", len(inIDs))
 	}
@@ -4143,7 +4143,7 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	}
 
 	// Verify the orphaned in/ entry was removed.
-	inIDs = ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
+	inIDs = ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Errorf("expected 0 incoming rels after repair, got %d", len(inIDs))
 	}
@@ -4180,15 +4180,15 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 		refNode.ID())
 
 	// Write only entity+out to the event shard (hotShard).
-	ts.mu.RLock()
-	hotStore := ts.hotShard.store
-	ts.mu.RUnlock()
-	if err := hotStore.putRelEntityAndOut(r); err != nil {
-		t.Fatalf("putRelEntityAndOut: %v", err)
+	ts.MuForTest().RLock()
+	hotStore := ts.HotShardForTest().Store()
+	ts.MuForTest().RUnlock()
+	if err := hotStore.PutRelEntityAndOut(r); err != nil {
+		t.Fatalf("PutRelEntityAndOut: %v", err)
 	}
 
 	// Verify the in/ entry is missing on refShard.
-	inIDs := ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
+	inIDs := ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
 		t.Fatalf("expected 0 incoming rels before repair, got %d", len(inIDs))
 	}
@@ -4203,7 +4203,7 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	}
 
 	// Verify the in/ entry was created.
-	inIDs = ts.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
+	inIDs = ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Errorf("expected 1 incoming rel after repair, got %d", len(inIDs))
 	}
@@ -4275,14 +4275,14 @@ func TestMigrateFromBadger_NodesOnly(t *testing.T) {
 	}
 
 	// Ref node should be in refShard.
-	if !dst.refShard.hasNodeID(refNode.ID().SnowflakeID()) {
+	if !dst.RefShardForTest().HasNodeID(refNode.ID().SnowflakeID()) {
 		t.Error("ref node not in refShard")
 	}
 	// Event node should be in hotShard.
-	dst.mu.RLock()
-	hotStore := dst.hotShard.store
-	dst.mu.RUnlock()
-	if !hotStore.hasNodeID(evtNode.ID().SnowflakeID()) {
+	dst.MuForTest().RLock()
+	hotStore := dst.HotShardForTest().Store()
+	dst.MuForTest().RUnlock()
+	if !hotStore.HasNodeID(evtNode.ID().SnowflakeID()) {
 		t.Error("event node not in hotShard")
 	}
 
@@ -4389,16 +4389,16 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 	}
 
 	// Verify cross-shard: entity+out in hotShard, in/ in refShard.
-	dst.mu.RLock()
-	hotStore := dst.hotShard.store
-	dst.mu.RUnlock()
+	dst.MuForTest().RLock()
+	hotStore := dst.HotShardForTest().Store()
+	dst.MuForTest().RUnlock()
 
-	if !hotStore.hasRelID(r.ID().SnowflakeID()) {
+	if !hotStore.HasRelID(r.ID().SnowflakeID()) {
 		t.Error("rel entity should be in hot shard (event start node)")
 	}
 
 	// The ref shard should have the incoming index entry.
-	inIDs := dst.refShard.incomingRelIDs(refNode.ID().SnowflakeID(), 0)
+	inIDs := dst.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 {
 		t.Errorf("refShard incoming rels = %d, want 1", len(inIDs))
 	}
@@ -4459,65 +4459,65 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	// Rotate hot→warm, demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	// Find the cold shard.
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	if coldES == nil || coldES.tier != TierCold {
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
+	if coldES == nil || coldES.Tier() != TierCold {
 		t.Fatal("expected cold shard")
 	}
 
 	// Checkout: should open the store and increment activeReqs.
-	store, err := coldES.checkoutStore(ts)
+	store, err := coldES.CheckoutStoreForTest(ts)
 	if err != nil {
 		t.Fatalf("checkoutStore: %v", err)
 	}
 	if store == nil {
 		t.Fatal("expected non-nil store from checkoutStore")
 	}
-	if coldES.activeReqs.Load() != 1 {
-		t.Errorf("activeReqs = %d, want 1", coldES.activeReqs.Load())
+	if coldES.ActiveReqsForTest().Load() != 1 {
+		t.Errorf("activeReqs = %d, want 1", coldES.ActiveReqsForTest().Load())
 	}
 
 	// Set idle timeout very low, force close attempt.
-	ts.idleTimeout = time.Millisecond
-	coldES.lastAccess.Store(0) // pretend it was last accessed long ago
-	ts.closeIdleShards()
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	coldES.SetLastAccessForTest(0) // pretend it was last accessed long ago
+	ts.CloseIdleShardsForTest()
 
 	// Store should NOT be closed because activeReqs > 0.
-	coldES.shardMu.Lock()
-	storeAfterClose := coldES.store
-	coldES.shardMu.Unlock()
+	coldES.LockShardMuForTest()
+	storeAfterClose := coldES.Store()
+	coldES.UnlockShardMuForTest()
 	if storeAfterClose == nil {
 		t.Error("closeIdleShards closed a shard with active requests")
 	}
 
 	// Checkin.
-	coldES.checkinStore()
-	if coldES.activeReqs.Load() != 0 {
-		t.Errorf("activeReqs = %d, want 0", coldES.activeReqs.Load())
+	coldES.CheckinStoreForTest()
+	if coldES.ActiveReqsForTest().Load() != 0 {
+		t.Errorf("activeReqs = %d, want 0", coldES.ActiveReqsForTest().Load())
 	}
 
 	// Now close should succeed.
-	coldES.lastAccess.Store(0)
-	ts.closeIdleShards()
-	coldES.shardMu.Lock()
-	storeAfterClose2 := coldES.store
-	coldES.shardMu.Unlock()
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	storeAfterClose2 := coldES.Store()
+	coldES.UnlockShardMuForTest()
 	if storeAfterClose2 != nil {
 		t.Error("closeIdleShards should have closed the shard after checkin")
 	}
@@ -4538,21 +4538,21 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
-	ts.idleTimeout = time.Millisecond
+	ts.SetIdleTimeoutForTest(time.Millisecond)
 	var wg sync.WaitGroup
 
 	// 10 goroutines doing checkout/checkin (long hold simulated by a brief sleep).
@@ -4561,7 +4561,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			store, err := coldES.checkoutStore(ts)
+			store, err := coldES.CheckoutStoreForTest(ts)
 			if err != nil {
 				checkoutErrs[i] = err
 				return
@@ -4569,7 +4569,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 			// Hold the store briefly — idle-close must not close it.
 			_ = store
 			time.Sleep(time.Millisecond)
-			coldES.checkinStore()
+			coldES.CheckinStoreForTest()
 		}(i)
 	}
 
@@ -4578,7 +4578,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ts.closeIdleShards()
+			ts.CloseIdleShardsForTest()
 		}()
 	}
 
@@ -4608,21 +4608,21 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
 
-	ts.idleTimeout = time.Millisecond
+	ts.SetIdleTimeoutForTest(time.Millisecond)
 
 	// Rapid interleave: checkout+checkin vs closeIdleShards, 50 rounds.
 	// With the old code (getStore release shardMu then activeReqs.Add(1)),
@@ -4634,20 +4634,20 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			store, err := coldES.checkoutStore(ts)
+			store, err := coldES.CheckoutStoreForTest(ts)
 			if err != nil {
 				errs[i] = err
 				return
 			}
 			// Verify store is usable — if it were closed, this would panic/error.
 			_, _ = store.NodeCount()
-			coldES.checkinStore()
+			coldES.CheckinStoreForTest()
 		}(i)
 		go func() {
 			defer wg.Done()
 			// Force lastAccess to zero to trigger idle-close aggressively.
-			coldES.lastAccess.Store(0)
-			ts.closeIdleShards()
+			coldES.SetLastAccessForTest(0)
+			ts.CloseIdleShardsForTest()
 		}()
 	}
 	wg.Wait()
@@ -4678,17 +4678,17 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts.mu.RLock()
-	originName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	originName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	r, err := g.AddRelationship("OBSERVED", a, b, nil)
 	if err != nil {
@@ -4698,11 +4698,11 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 
 	demoteToCold(ts, originName)
 
-	shard, err := ts.shardForRelID(relID)
+	shard, err := ts.ShardForRelIDForTest(relID)
 	if err != nil {
 		t.Fatalf("shardForRelID after cold demotion: %v", err)
 	}
-	if !shard.hasRelID(relID.SnowflakeID()) {
+	if !shard.HasRelID(relID.SnowflakeID()) {
 		t.Errorf("shardForRelID returned a shard that does not own rel %d after cold demotion", relID)
 	}
 }
@@ -4737,43 +4737,43 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	}
 
 	// Rotate the event shard to warm.
-	ts.mu.RLock()
-	hotName := ts.hotShard.name
-	ts.mu.RUnlock()
+	ts.MuForTest().RLock()
+	hotName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Verify the relationship can still be found via shardForRelID.
-	shard, err := ts.shardForRelID(types.RelID(relID))
+	shard, err := ts.ShardForRelIDForTest(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("shardForRelID: %v", err)
 	}
-	if !shard.hasRelID(relID) {
+	if !shard.HasRelID(relID) {
 		t.Error("expected shard to have the rel")
 	}
 
 	// Now demote the old shard to cold and close it.
 	demoteToCold(ts, hotName)
-	ts.mu.RLock()
-	coldES := ts.eventShards[hotName]
-	ts.mu.RUnlock()
-	coldES.shardMu.Lock()
-	if coldES.store != nil {
-		_ = coldES.store.Close()
-		coldES.store = nil
+	ts.MuForTest().RLock()
+	coldES := ts.EventShardsForTest()[hotName]
+	ts.MuForTest().RUnlock()
+	coldES.LockShardMuForTest()
+	if coldES.Store() != nil {
+		_ = coldES.Store().Close()
+		coldES.SetStoreForTest(nil)
 	}
-	coldES.shardMu.Unlock()
+	coldES.UnlockShardMuForTest()
 
 	// Entity lives in ref shard (for ref-node rels). It should still be found.
 	// The ref shard fast path should resolve it.
-	shard, err = ts.shardForRelID(types.RelID(relID))
+	shard, err = ts.ShardForRelIDForTest(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("shardForRelID after cold: %v", err)
 	}
-	if !shard.hasRelID(relID) {
+	if !shard.HasRelID(relID) {
 		t.Error("expected shard to have the rel after cold demotion")
 	}
 }
@@ -4823,10 +4823,10 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 
 	// Verify n1 is in archive, not in refShard.
-	if ts.refShard.hasNodeID(id1.SnowflakeID()) {
+	if ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refShard after archive")
 	}
-	if archive := ts.refArchive.Load(); archive == nil || !archive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.RefArchiveForTest().Load(); archive == nil || !archive.HasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refArchive after archive")
 	}
 
@@ -4835,10 +4835,10 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatalf("RestoreNode: %v", err)
 	}
 
-	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
 		t.Error("node should be in refShard after restore")
 	}
-	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasNodeID(id1.SnowflakeID()) {
 		t.Error("node should not be in refArchive after restore")
 	}
 }
@@ -4887,11 +4887,11 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	archive := ts.refArchive.Load()
-	if archive == nil || !archive.hasNodeID(id1.SnowflakeID()) {
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil || !archive.HasNodeID(id1.SnowflakeID()) {
 		t.Fatal("n1 should be in archive after ArchiveNode")
 	}
-	if !archive.hasRelID(relID.SnowflakeID()) {
+	if !archive.HasRelID(relID.SnowflakeID()) {
 		t.Fatal("self-loop rel should be on archive after ArchiveNode")
 	}
 
@@ -4899,15 +4899,15 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 		t.Fatalf("RestoreNode: %v", err)
 	}
 
-	if !ts.refShard.hasNodeID(id1.SnowflakeID()) {
+	if !ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should be in refShard after restore")
 	}
-	if archive := ts.refArchive.Load(); archive != nil && archive.hasNodeID(id1.SnowflakeID()) {
+	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasNodeID(id1.SnowflakeID()) {
 		t.Error("n1 should not be in refArchive after restore")
 	}
 	// Restore must migrate the rel back too — otherwise the round-trip
 	// is lossy in the same way the pre-fix archive path was.
-	if !ts.refShard.hasRelID(relID.SnowflakeID()) {
+	if !ts.RefShardForTest().HasRelID(relID.SnowflakeID()) {
 		t.Error("self-loop rel should be in refShard after restore")
 	}
 }
@@ -4960,9 +4960,9 @@ func injectCorruptMemFile(t *testing.T, badgerDir string) string {
 
 // warmShardDir returns the on-disk directory for a warm shard.
 func warmShardDir(ts *TieredStore, baseDir string) (string, string) {
-	for name, es := range ts.eventShards {
-		if es.tier == TierWarm {
-			return filepath.Join(baseDir, es.path), name
+	for name, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierWarm {
+			return filepath.Join(baseDir, es.Path()), name
 		}
 	}
 	return "", ""
@@ -4987,19 +4987,19 @@ func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
 
 	gen := tieredNodeGen(t)
 	n1 := types.NewNode(types.NodeID(gen.Generate()), 3, nil) // token 3 = event label
-	if err := ts1.hotShard.store.PutNode(n1); err != nil {
+	if err := ts1.HotShardForTest().Store().PutNode(n1); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	// Force rotation: hot→warm.
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	if err := ts1.checkRotation(); err != nil {
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	if err := ts1.CheckRotationForTest(); err != nil {
 		t.Fatalf("checkRotation: %v", err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	// Find the warm shard directory before closing.
 	shardDir, shardName := warmShardDir(ts1, dir)
@@ -5040,13 +5040,13 @@ func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
 
 	// Verify the recovered warm shard is read-only and data survived.
 	var found bool
-	for _, es := range ts2.eventShards {
-		if es.tier == TierWarm {
+	for _, es := range ts2.EventShardsForTest() {
+		if es.Tier() == TierWarm {
 			found = true
-			if !es.readOnly {
+			if !es.ReadOnlyForTest() {
 				t.Error("recovered warm shard should be readOnly")
 			}
-			if !es.store.readOnly {
+			if !es.Store().ReadOnlyForTest() {
 				t.Error("recovered warm shard BadgerStore should be readOnly")
 			}
 		}
@@ -5092,27 +5092,27 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	ts1.mu.RLock()
-	hotName := ts1.hotShard.name
-	_ = ts1.hotShard.store.Flush()
-	ts1.mu.RUnlock()
+	ts1.MuForTest().RLock()
+	hotName := ts1.HotShardForTest().Name()
+	_ = ts1.HotShardForTest().Store().Flush()
+	ts1.MuForTest().RUnlock()
 
 	// Rotate hot→warm, then demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts1.mu.Lock()
+	ts1.MuForTest().Lock()
 	_ = ts1.RotateHotShard()
-	ts1.mu.Unlock()
+	ts1.MuForTest().Unlock()
 
 	demoteToCold(ts1, hotName)
-	_ = ts1.catalog.Save()
+	_ = ts1.CatalogForTest().Save()
 
 	// Find the cold shard directory.
 	var coldDir string
-	ts1.mu.RLock()
-	if es, ok := ts1.eventShards[hotName]; ok {
-		coldDir = filepath.Join(dir, es.path)
+	ts1.MuForTest().RLock()
+	if es, ok := ts1.EventShardsForTest()[hotName]; ok {
+		coldDir = filepath.Join(dir, es.Path())
 	}
-	ts1.mu.RUnlock()
+	ts1.MuForTest().RUnlock()
 	if coldDir == "" {
 		t.Fatal("could not find cold shard directory")
 	}
@@ -5139,13 +5139,13 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 	ts2.SetLabelRegistry(reg)
 
 	// Verify cold shard is nil (not opened yet).
-	ts2.mu.RLock()
-	coldES := ts2.eventShards[hotName]
-	ts2.mu.RUnlock()
+	ts2.MuForTest().RLock()
+	coldES := ts2.EventShardsForTest()[hotName]
+	ts2.MuForTest().RUnlock()
 	if coldES == nil {
 		t.Fatal("cold shard not in eventShards after reopen")
 	}
-	if coldES.store != nil {
+	if coldES.Store() != nil {
 		t.Error("cold shard store should be nil before first access")
 	}
 
@@ -5175,10 +5175,10 @@ func TestTieredStore_WALCorruption_NonTruncateError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	_ = ts1.checkRotation()
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	_ = ts1.CheckRotationForTest()
 
 	shardDir, _ := warmShardDir(ts1, dir)
 	if shardDir == "" {
@@ -5234,21 +5234,21 @@ func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
 	nodeIDs := make([]types.NodeID, nodeCount)
 	for i := range nodeCount {
 		n := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
-		if err := ts1.hotShard.store.PutNode(n); err != nil {
+		if err := ts1.HotShardForTest().Store().PutNode(n); err != nil {
 			t.Fatalf("PutNode[%d]: %v", i, err)
 		}
-		_ = ts1.hotShard.store.Flush()
+		_ = ts1.HotShardForTest().Store().Flush()
 		nodeIDs[i] = n.ID()
 	}
 
 	// Rotate hot→warm.
-	ts1.mu.Lock()
-	ts1.hotShard.timeEnd = time.Now().Add(-time.Second)
-	ts1.mu.Unlock()
-	if err := ts1.checkRotation(); err != nil {
+	ts1.MuForTest().Lock()
+	ts1.HotShardForTest().SetTimeEndForTest(time.Now().Add(-time.Second))
+	ts1.MuForTest().Unlock()
+	if err := ts1.CheckRotationForTest(); err != nil {
 		t.Fatal(err)
 	}
-	_ = ts1.hotShard.store.Flush()
+	_ = ts1.HotShardForTest().Store().Flush()
 
 	shardDir, _ := warmShardDir(ts1, dir)
 	if err := ts1.Close(); err != nil {
@@ -5307,25 +5307,25 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts1.PutNode(n1)
 
-	ts1.mu.RLock()
-	hotName := ts1.hotShard.name
-	_ = ts1.hotShard.store.Flush()
-	ts1.mu.RUnlock()
+	ts1.MuForTest().RLock()
+	hotName := ts1.HotShardForTest().Name()
+	_ = ts1.HotShardForTest().Store().Flush()
+	ts1.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts1.mu.Lock()
+	ts1.MuForTest().Lock()
 	_ = ts1.RotateHotShard()
-	ts1.mu.Unlock()
+	ts1.MuForTest().Unlock()
 
 	demoteToCold(ts1, hotName)
-	_ = ts1.catalog.Save()
+	_ = ts1.CatalogForTest().Save()
 
 	var coldDir string
-	ts1.mu.RLock()
-	if es, ok := ts1.eventShards[hotName]; ok {
-		coldDir = filepath.Join(dir, es.path)
+	ts1.MuForTest().RLock()
+	if es, ok := ts1.EventShardsForTest()[hotName]; ok {
+		coldDir = filepath.Join(dir, es.Path())
 	}
-	ts1.mu.RUnlock()
+	ts1.MuForTest().RUnlock()
 
 	if err := ts1.Close(); err != nil {
 		t.Fatal(err)

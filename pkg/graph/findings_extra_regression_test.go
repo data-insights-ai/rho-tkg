@@ -240,13 +240,13 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 	relID := g.NextRelID()
 	r := types.NewRelationship(relID, relTok, startID, endID)
 
-	ts.mu.RLock()
-	hotStore := ts.hotShard.store
-	ts.mu.RUnlock()
-	if err := hotStore.putRelEntityAndOut(r); err != nil {
+	ts.MuForTest().RLock()
+	hotStore := ts.HotShardForTest().Store()
+	ts.MuForTest().RUnlock()
+	if err := hotStore.PutRelEntityAndOut(r); err != nil {
 		t.Fatalf("seed partial entity/out write: %v", err)
 	}
-	if got := ts.refShard.incomingRelIDs(endID.SnowflakeID(), 0); len(got) != 0 {
+	if got := ts.RefShardForTest().IncomingRelIDs(endID.SnowflakeID(), 0); len(got) != 0 {
 		t.Fatalf("seed state already has %d incoming entries, want 0", len(got))
 	}
 
@@ -254,7 +254,7 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 	if !errors.Is(err, ErrRelExists) {
 		t.Fatalf("PutRelationship duplicate = %v, want ErrRelExists", err)
 	}
-	if got := ts.refShard.incomingRelIDs(endID.SnowflakeID(), 0); len(got) != 0 {
+	if got := ts.RefShardForTest().IncomingRelIDs(endID.SnowflakeID(), 0); len(got) != 0 {
 		t.Fatalf("failed cross-shard PutRelationship left %d incoming entries, want rollback to 0", len(got))
 	}
 }

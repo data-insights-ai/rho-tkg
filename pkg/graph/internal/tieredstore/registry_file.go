@@ -1,4 +1,4 @@
-package graph
+package tieredstore
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// registryFileData is the msgpack wire format for a registry file.
-type registryFileData struct {
+// RegistryFileData is the msgpack wire format for a registry file.
+type RegistryFileData struct {
 	Labels   []string `msgpack:"labels"`
 	RelTypes []string `msgpack:"reltypes"`
 }
@@ -17,7 +17,7 @@ type registryFileData struct {
 // saveRegistryFile writes label and reltype name slices to a flat msgpack file.
 // Uses write-tmp + fsync + atomic rename for crash safety.
 func saveRegistryFile(path string, labels, relTypes []string) error {
-	data, err := msgpack.Marshal(&registryFileData{
+	data, err := msgpack.Marshal(&RegistryFileData{
 		Labels:   labels,
 		RelTypes: relTypes,
 	})
@@ -81,7 +81,7 @@ func loadRegistryFile(path string) (labels, relTypes []string, err error) {
 		return nil, nil, fmt.Errorf("registry file: read: %w", err)
 	}
 
-	var rfd registryFileData
+	var rfd RegistryFileData
 	if err := msgpack.Unmarshal(data, &rfd); err != nil {
 		return nil, nil, fmt.Errorf("registry file: unmarshal: %w", err)
 	}

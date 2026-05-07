@@ -204,7 +204,7 @@ func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
 
 	// Ref node (directly on refShard since no label registry set).
 	refNode := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
-	if err := ts.refShard.PutNode(refNode); err != nil {
+	if err := ts.RefShardForTest().PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
 	}
 
@@ -248,7 +248,7 @@ func TestTieredStore_ForEachNodeID_EarlyStop(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
-		if err := ts.refShard.PutNode(n); err != nil {
+		if err := ts.RefShardForTest().PutNode(n); err != nil {
 			t.Fatalf("PutNode ref: %v", err)
 		}
 	}
@@ -279,12 +279,12 @@ func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
 	}
 
 	// Rotate to create warm shard.
-	ts.mu.Lock()
+	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.mu.Unlock()
+		ts.MuForTest().Unlock()
 		t.Fatalf("RotateHotShard: %v", err)
 	}
-	ts.mu.Unlock()
+	ts.MuForTest().Unlock()
 
 	// Add event node to new hot shard.
 	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
@@ -349,7 +349,7 @@ func TestTieredStore_ForEachNodeHistoryID(t *testing.T) {
 
 	// Ref node with history (directly on refShard).
 	n1 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
-	if err := ts.refShard.PutNode(n1); err != nil {
+	if err := ts.RefShardForTest().PutNode(n1); err != nil {
 		t.Fatal(err)
 	}
 	id1 := n1.ID().SnowflakeID()

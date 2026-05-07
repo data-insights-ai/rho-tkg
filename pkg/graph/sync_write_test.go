@@ -10,7 +10,7 @@ import (
 func TestSyncWrite_ConfigPassthrough(t *testing.T) {
 	// Verify SyncWrites=true flows through Config → BadgerStoreConfig → BadgerStore.
 	// Create a BadgerStore with SyncWrites=true and verify:
-	// 1. The bs.syncWrites field is true
+	// 1. The bs.SyncWritesForTest() field is true
 	// 2. The flushInt is 0 (no background goroutine)
 
 	dir := t.TempDir()
@@ -23,11 +23,11 @@ func TestSyncWrite_ConfigPassthrough(t *testing.T) {
 	}
 	defer bs.Close()
 
-	if !bs.syncWrites {
-		t.Error("expected bs.syncWrites = true")
+	if !bs.SyncWritesForTest() {
+		t.Error("expected bs.SyncWritesForTest() = true")
 	}
-	if bs.flushInt != 0 {
-		t.Errorf("expected flushInt=0, got %v", bs.flushInt)
+	if bs.FlushIntervalForTest() != 0 {
+		t.Errorf("expected flushInt=0, got %v", bs.FlushIntervalForTest())
 	}
 }
 
@@ -65,8 +65,8 @@ func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
 	}
 
 	// Close bs1 properly — set dbClosed before db.Close() per B22.
-	bs1.dbClosed.Store(true)
-	if err := bs1.db.Close(); err != nil {
+	bs1.SetDBClosedForTest(true)
+	if err := bs1.DBForTest().Close(); err != nil {
 		t.Fatalf("Close bs1: %v", err)
 	}
 
@@ -102,8 +102,8 @@ func TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites(t *testing.T) {
 	}
 	defer bs.Close()
 
-	if bs.flushInt != 0 {
-		t.Errorf("SyncWrites should force flushInt=0, got %v", bs.flushInt)
+	if bs.FlushIntervalForTest() != 0 {
+		t.Errorf("SyncWrites should force flushInt=0, got %v", bs.FlushIntervalForTest())
 	}
 }
 
@@ -132,8 +132,8 @@ func TestSyncWrite_ReadOnly_SyncWritesIgnored(t *testing.T) {
 	}
 	defer bs.Close()
 
-	if bs.syncWrites {
-		t.Error("expected bs.syncWrites = false in ReadOnly mode")
+	if bs.SyncWritesForTest() {
+		t.Error("expected bs.SyncWritesForTest() = false in ReadOnly mode")
 	}
 }
 
@@ -153,10 +153,10 @@ func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {
 	if !ok {
 		t.Fatal("expected store to be *BadgerStore")
 	}
-	if !bs.syncWrites {
-		t.Error("expected bs.syncWrites = true when Config.SyncWrites=true")
+	if !bs.SyncWritesForTest() {
+		t.Error("expected bs.SyncWritesForTest() = true when Config.SyncWrites=true")
 	}
-	if bs.flushInt != 0 {
-		t.Errorf("expected flushInt=0, got %v", bs.flushInt)
+	if bs.FlushIntervalForTest() != 0 {
+		t.Errorf("expected flushInt=0, got %v", bs.FlushIntervalForTest())
 	}
 }

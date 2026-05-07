@@ -10,6 +10,7 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -25,7 +26,7 @@ const exportBatchSize = 1024
 // Record type tags for the export stream. Values ≥ 0x80 are reserved for future use.
 const (
 	exportTagHeader   byte = 0x01 // exportHeader record
-	exportTagRegistry byte = 0x02 // registryFileData record
+	exportTagRegistry byte = 0x02 // tieredstore.RegistryFileData record
 	exportTagNode     byte = 0x03 // current node (nodeWire)
 	exportTagNodeHist byte = 0x04 // node history entry (nodeWire)
 	exportTagRel      byte = 0x05 // current relationship (relWire)
@@ -96,7 +97,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	}
 
 	// --- Registry ---
-	reg := registryFileData{
+	reg := tieredstore.RegistryFileData{
 		Labels:   g.labels.ExportNames(),
 		RelTypes: g.relTypes.ExportNames(),
 	}
@@ -247,7 +248,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			}
 
 		case exportTagRegistry:
-			var reg registryFileData
+			var reg tieredstore.RegistryFileData
 			if err := msgpack.Unmarshal(rec.data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
 			}

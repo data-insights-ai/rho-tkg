@@ -1,4 +1,7 @@
-package graph
+// Package badgerstore provides BadgerStore — the persistent Store
+// implementation backed by Badger v4. Used as a backend by pkg/graph
+// directly and as a shard implementation inside internal/tieredstore.
+package badgerstore
 
 import (
 	"encoding/binary"
@@ -19,12 +22,36 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+// Store-contract sentinel error aliases for readability inside this package.
+// The canonical definitions live in pkg/graph/internal/store.
+var (
+	ErrNodeExists            = storepkg.ErrNodeExists
+	ErrNodeNotFound          = storepkg.ErrNodeNotFound
+	ErrRelExists             = storepkg.ErrRelExists
+	ErrRelNotFound           = storepkg.ErrRelNotFound
+	ErrVersionNotFound       = storepkg.ErrVersionNotFound
+	ErrIndexExists           = storepkg.ErrIndexExists
+	ErrIndexNotFound         = storepkg.ErrIndexNotFound
+	ErrTemporalIndexExists   = storepkg.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound = storepkg.ErrTemporalIndexNotFound
+	ErrVectorIndexExists     = indexpkg.ErrVectorIndexExists
+	ErrVectorIndexNotFound   = indexpkg.ErrVectorIndexNotFound
+	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
+)
+
+// Store-contract alias types.
+type (
+	QueryOpts      = storepkg.QueryOpts
+	DistanceMetric = storepkg.DistanceMetric
+	RelTombstone   = storepkg.RelTombstone
+)
+
 // Default configuration values for BadgerStore.
 const (
-	defaultCacheCapacity  = 10_000
-	defaultFlushInterval  = 100 * time.Millisecond
-	defaultGCInterval     = 5 * time.Minute
-	defaultGCDiscardRatio = 0.5
+	DefaultCacheCapacity  = 10_000
+	DefaultFlushInterval  = 100 * time.Millisecond
+	DefaultGCInterval     = 5 * time.Minute
+	DefaultGCDiscardRatio = 0.5
 )
 
 // BadgerStoreConfig configures a BadgerStore instance.
@@ -211,22 +238,22 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 
 	capacity := cfg.CacheCapacity
 	if capacity <= 0 {
-		capacity = defaultCacheCapacity
+		capacity = DefaultCacheCapacity
 	}
 	flushInt := cfg.FlushInterval
 	if flushInt == 0 {
-		flushInt = defaultFlushInterval
+		flushInt = DefaultFlushInterval
 	}
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		flushInt = 0 // disable periodic flush; each write flushes synchronously
 	}
 	gcInt := cfg.GCInterval
 	if gcInt == 0 && !cfg.InMemory {
-		gcInt = defaultGCInterval
+		gcInt = DefaultGCInterval
 	}
 	gcRatio := cfg.GCDiscardRatio
 	if gcRatio == 0 {
-		gcRatio = defaultGCDiscardRatio
+		gcRatio = DefaultGCDiscardRatio
 	}
 
 	bs := &BadgerStore{
@@ -1213,12 +1240,12 @@ func (bs *BadgerStore) DeleteRelationship(rid types.RelID) error {
 	return nil
 }
 
-// relDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.
-type relDeleteInfo struct {
-	id      snowflake.ID
-	relType uint16
-	startID snowflake.ID
-	endID   snowflake.ID
+// RelDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.
+type RelDeleteInfo struct {
+	ID      snowflake.ID
+	RelType uint16
+	StartID snowflake.ID
+	EndID   snowflake.ID
 }
 
 // deleteRelLocked removes a relationship and cleans up indexes.
@@ -1231,11 +1258,11 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 	}
 
 	// Mutation phase.
-	bs.deleteRelByInfo(relDeleteInfo{
-		id:      id,
-		relType: r.TypeToken().Value(),
-		startID: r.StartNodeID().SnowflakeID(),
-		endID:   r.EndNodeID().SnowflakeID(),
+	bs.deleteRelByInfo(RelDeleteInfo{
+		ID:      id,
+		RelType: r.TypeToken().Value(),
+		StartID: r.StartNodeID().SnowflakeID(),
+		EndID:   r.EndNodeID().SnowflakeID(),
 	})
 
 	return nil
@@ -1243,23 +1270,23 @@ func (bs *BadgerStore) deleteRelLocked(id snowflake.ID) error {
 
 // deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
 // Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
-func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
-	// info.id/startID/endID are raw snowflake.ID — relDeleteInfo is shared with
+func (bs *BadgerStore) deleteRelByInfo(info RelDeleteInfo) {
+	// info.ID/startID/endID are raw snowflake.ID — RelDeleteInfo is shared with
 	// off-limits TieredStore code paths and must keep raw fields. Convert at
 	// each map access.
-	rid := types.RelID(info.id)
-	startNID := types.NodeID(info.startID)
-	endNID := types.NodeID(info.endID)
+	rid := types.RelID(info.ID)
+	startNID := types.NodeID(info.StartID)
+	endNID := types.NodeID(info.EndID)
 
 	// Update in-memory state.
-	bs.relCache.MarkDeleted(info.id)
+	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
 
 	// Type index cleanup.
-	if set, exists := bs.typeIdx[info.relType]; exists {
+	if set, exists := bs.typeIdx[info.RelType]; exists {
 		delete(set, rid)
 		if len(set) == 0 {
-			delete(bs.typeIdx, info.relType)
+			delete(bs.typeIdx, info.RelType)
 		}
 	}
 
@@ -1279,15 +1306,15 @@ func (bs *BadgerStore) deleteRelByInfo(info relDeleteInfo) {
 
 	// Build delete ops.
 	ops := []writeOp{
-		{opType: writeOpDelete, key: storepkg.RelKey(info.id)},
-		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.relType, info.id)},
-		{opType: writeOpDelete, key: storepkg.OutKey(info.startID, info.relType, info.endID, info.id)},
-		{opType: writeOpDelete, key: storepkg.InKey(info.endID, info.relType, info.startID, info.id)},
+		{opType: writeOpDelete, key: storepkg.RelKey(info.ID)},
+		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, info.ID)},
+		{opType: writeOpDelete, key: storepkg.OutKey(info.StartID, info.RelType, info.EndID, info.ID)},
+		{opType: writeOpDelete, key: storepkg.InKey(info.EndID, info.RelType, info.StartID, info.ID)},
 	}
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
-	bs.getOrCreateTypeCounter(info.relType).Add(-1)
+	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
 }
 
 // --- Index queries ---
@@ -1315,11 +1342,11 @@ func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 		}
 		if temporalQuery {
 			bs.idxMu.RUnlock()
-			ids = paginateIDs(ids, opts.After, opts.Limit)
+			ids = storepkg.PaginateIDs(ids, opts.After, opts.Limit)
 			if len(ids) == 0 {
 				return nil, nil
 			}
-			return bs.fetchNodesWithTemporalFilter(toNodeIDs(ids), opts)
+			return bs.fetchNodesWithTemporalFilter(storepkg.ToNodeIDs(ids), opts)
 		}
 	}
 
@@ -1339,7 +1366,7 @@ func (bs *BadgerStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	// Temporal pre-filter via Peek (zero allocation for cache hits).
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-	nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
 	if len(nids) == 0 {
 		return nil, nil
 	}
@@ -1367,7 +1394,7 @@ func (bs *BadgerStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	// Temporal pre-filter via Peek.
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 
-	rids = paginateRelIDs(rids, opts.After, opts.Limit)
+	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
 	}
@@ -1407,7 +1434,7 @@ func (bs *BadgerStore) OutgoingRelationships(nid types.NodeID, typeToken uint16)
 		}
 	}
 
-	sortRelsByID(rels)
+	storepkg.SortRelsByID(rels)
 	return rels, nil
 }
 
@@ -1459,7 +1486,7 @@ func (bs *BadgerStore) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID
 			}
 		}
 		if len(rels) > 0 {
-			sortRelsByID(rels)
+			storepkg.SortRelsByID(rels)
 			result[nid] = rels
 		}
 	}
@@ -1500,7 +1527,7 @@ func (bs *BadgerStore) IncomingRelationships(nid types.NodeID, typeToken uint16)
 		rels = append(rels, r)
 	}
 
-	sortRelsByID(rels)
+	storepkg.SortRelsByID(rels)
 	return rels, nil
 }
 
@@ -1556,7 +1583,7 @@ func (bs *BadgerStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 			rels = append(rels, r)
 		}
 		if len(rels) > 0 {
-			sortRelsByID(rels)
+			storepkg.SortRelsByID(rels)
 			result[nid] = rels
 		}
 	}
@@ -1589,7 +1616,7 @@ func (bs *BadgerStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	// Temporal pre-filter via Peek.
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-	nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
 	if len(nids) == 0 {
 		return nil, nil
 	}
@@ -1617,7 +1644,7 @@ func (bs *BadgerStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	// Temporal pre-filter via Peek.
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 
-	rids = paginateRelIDs(rids, opts.After, opts.Limit)
+	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
 	}
@@ -1647,7 +1674,7 @@ func (bs *BadgerStore) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) 
 	if len(nodes) == 0 {
 		return nil, nil
 	}
-	sortNodesByID(nodes)
+	storepkg.SortNodesByID(nodes)
 	return nodes, nil
 }
 
@@ -1673,7 +1700,7 @@ func (bs *BadgerStore) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relati
 	if len(rels) == 0 {
 		return nil, nil
 	}
-	sortRelsByID(rels)
+	storepkg.SortRelsByID(rels)
 	return rels, nil
 }
 
@@ -1701,7 +1728,7 @@ func (bs *BadgerStore) DeleteNodeCascade(nid types.NodeID) error {
 //   - fatalErr != nil: aborted with no mutations applied.
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
 //   - Otherwise: clean success.
-func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, error, error) {
+func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, error) {
 	id := nid.SnowflakeID()
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return nil, nil, ErrNodeNotFound
@@ -1718,7 +1745,7 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, er
 
 	// Phase 1 — Preflight: read all relationship metadata before any mutations.
 	// If any read fails (corruption), we abort without partial state changes.
-	toDelete := make([]relDeleteInfo, 0, len(relIDs))
+	toDelete := make([]RelDeleteInfo, 0, len(relIDs))
 	for relID := range relIDs {
 		r, err := bs.getRelLocked(relID)
 		if err != nil {
@@ -1727,11 +1754,11 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, er
 			}
 			return nil, nil, fmt.Errorf("graph: cascade read relationship: %w", err)
 		}
-		toDelete = append(toDelete, relDeleteInfo{
-			id:      relID.SnowflakeID(),
-			relType: r.TypeToken().Value(),
-			startID: r.StartNodeID().SnowflakeID(),
-			endID:   r.EndNodeID().SnowflakeID(),
+		toDelete = append(toDelete, RelDeleteInfo{
+			ID:      relID.SnowflakeID(),
+			RelType: r.TypeToken().Value(),
+			StartID: r.StartNodeID().SnowflakeID(),
+			EndID:   r.EndNodeID().SnowflakeID(),
 		})
 	}
 
@@ -1799,7 +1826,7 @@ func (bs *BadgerStore) cascadeDeleteInner(nid types.NodeID) ([]relDeleteInfo, er
 
 // cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
 // Used by DeleteNodeCascade — same contract as before the refactor.
-func (bs *BadgerStore) cascadeDeleteLocked(nid types.NodeID) ([]relDeleteInfo, error, error) {
+func (bs *BadgerStore) cascadeDeleteLocked(nid types.NodeID) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	return bs.cascadeDeleteInner(nid)
@@ -1827,11 +1854,11 @@ func (bs *BadgerStore) DeleteRelWithHistory(rid types.RelID, prevVersion uint32,
 		bs.idxMu.Unlock()
 		return err
 	}
-	info := relDeleteInfo{
-		id:      id,
-		relType: r.TypeToken().Value(),
-		startID: r.StartNodeID().SnowflakeID(),
-		endID:   r.EndNodeID().SnowflakeID(),
+	info := RelDeleteInfo{
+		ID:      id,
+		RelType: r.TypeToken().Value(),
+		StartID: r.StartNodeID().SnowflakeID(),
+		EndID:   r.EndNodeID().SnowflakeID(),
 	}
 	bs.deleteRelByInfo(info) // appends delete ops to pending under lock
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
@@ -2151,7 +2178,7 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	bs.idxMu.Lock()
 
 	// Phase 1: validate — all must exist + pre-read metadata.
-	infos := make([]relDeleteInfo, len(typedIDs))
+	infos := make([]RelDeleteInfo, len(typedIDs))
 	for i, rid := range typedIDs {
 		if _, exists := bs.relIDs[rid]; !exists {
 			bs.idxMu.Unlock()
@@ -2162,11 +2189,11 @@ func (bs *BadgerStore) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: batch read relationship %d: %w", rid.SnowflakeID(), err)
 		}
-		infos[i] = relDeleteInfo{
-			id:      rid.SnowflakeID(),
-			relType: r.TypeToken().Value(),
-			startID: r.StartNodeID().SnowflakeID(),
-			endID:   r.EndNodeID().SnowflakeID(),
+		infos[i] = RelDeleteInfo{
+			ID:      rid.SnowflakeID(),
+			RelType: r.TypeToken().Value(),
+			StartID: r.StartNodeID().SnowflakeID(),
+			EndID:   r.EndNodeID().SnowflakeID(),
 		}
 	}
 
@@ -3125,14 +3152,14 @@ func (bs *BadgerStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	return result, nil
 }
 
-// searchNearestFiltered is the package-internal entry point used by the
+// SearchNearestFiltered is the package-internal entry point used by the
 // Graph layer to perform vector search with an eligibility filter applied
 // BEFORE the k-cut. The filter is invoked under the vector index read lock,
 // so it must NOT call back into the store (deadlock).
 //
 // Returns raw snowflake.IDs in ascending distance order; the caller is
 // responsible for resolving entities (current or historical version).
-func (bs *BadgerStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+func (bs *BadgerStore) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	bs.idxMu.RLock()
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := bs.vectorIndexes[key]
@@ -3215,7 +3242,7 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+		nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
 		if len(nids) == 0 {
 			return nil, nil
 		}
@@ -3245,7 +3272,7 @@ func (bs *BadgerStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 
 	// Sort label IDs, apply cursor skip, scan in order for property matches.
 	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
-	nids = paginateNodeIDs(nids, opts.After, 0) // apply cursor, not limit yet
+	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0) // apply cursor, not limit yet
 	if len(nids) == 0 {
 		return nil, nil
 	}
@@ -3295,7 +3322,7 @@ func (bs *BadgerStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		return nil, nil
 	}
 	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
-	nids = paginateNodeIDs(nids, opts.After, opts.Limit)
+	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
 	if len(nids) == 0 {
 		return nil, nil
 	}
@@ -3316,7 +3343,7 @@ func (bs *BadgerStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, nil
 	}
 	sort.Slice(rids, func(i, j int) bool { return rids[i].SnowflakeID() < rids[j].SnowflakeID() })
-	rids = paginateRelIDs(rids, opts.After, opts.Limit)
+	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
 	}

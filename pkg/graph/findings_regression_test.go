@@ -159,9 +159,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		}
 		currentLabels := g.NodeLabels(current) // ["A"]
 
-		ms.mu.RLock()
-		v1Orig := ms.nodeHistory[id][1].DeepCopy()
-		ms.mu.RUnlock()
+		v1Orig := ms.GetNodeHistoryEntry(id, 1)
 
 		// 3. Tamper v1: swap B→C so its labels become {A,C}.
 		v1Tampered := v1Orig.DeepCopy()
@@ -199,10 +197,8 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 
 		// 7. Inject directly under lock — no legitimate API path can
 		//    produce this state.
-		ms.mu.Lock()
-		ms.nodeHistory[id][1] = v1Tampered
-		ms.nodes[id] = v2Relinked
-		ms.mu.Unlock()
+		ms.SetNodeHistoryEntryForTest(id, 1, v1Tampered)
+		ms.SetNodeForTest(id, v2Relinked)
 
 		// Assertion: pre-fix would recompute v1 with ["A"], match preFixV1Hash,
 		// wrongly accept. Post-fix recomputes with NodeLabels(v1Tampered) =

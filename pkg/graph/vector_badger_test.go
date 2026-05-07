@@ -33,12 +33,12 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 	}
 
 	// Verify label index no longer contains id under extra token.
-	bs.idxMu.RLock()
-	set, hasSet := bs.labelIdx[extra]
-	bs.idxMu.RUnlock()
+	set, hasSet := bs.LabelIndexForTest(extra)
 	if hasSet {
-		if _, inSet := set[id]; inSet {
-			t.Error("node still in label index after RemoveNodeLabelToken")
+		for _, sid := range set {
+			if sid == id {
+				t.Error("node still in label index after RemoveNodeLabelToken")
+			}
 		}
 	}
 }

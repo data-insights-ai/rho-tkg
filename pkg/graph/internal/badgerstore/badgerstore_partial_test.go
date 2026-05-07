@@ -1,9 +1,10 @@
-package graph
+package badgerstore
 
 import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -39,13 +40,13 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 	relGen := newTestGen(t, 1)
 	relID := relGen.Generate()
 	r := types.NewRelationship(types.RelID(relID), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
-	if err := bs.putRelEntityAndOut(r); err != nil {
+	if err := bs.PutRelEntityAndOut(r); err != nil {
 		t.Fatal(err)
 	}
 
 	// Entity should exist.
-	if !bs.hasRelID(relID) {
-		t.Error("hasRelID should be true after putRelEntityAndOut")
+	if !bs.HasRelID(relID) {
+		t.Error("HasRelID should be true after PutRelEntityAndOut")
 	}
 
 	// GetRelationship should work.
@@ -58,15 +59,15 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 	}
 
 	// outIdx should contain the rel.
-	outIDs := bs.outgoingRelIDs(n1.ID().SnowflakeID())
+	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 1 || outIDs[0] != relID {
-		t.Errorf("outgoingRelIDs = %v, want [%d]", outIDs, relID)
+		t.Errorf("OutgoingRelIDs = %v, want [%d]", outIDs, relID)
 	}
 
 	// inIdx should NOT contain the rel (partial write skips in/).
-	inIDs := bs.incomingRelIDs(n2.ID().SnowflakeID(), 0)
+	inIDs := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
-		t.Errorf("incomingRelIDs should be empty after putRelEntityAndOut, got %v", inIDs)
+		t.Errorf("IncomingRelIDs should be empty after PutRelEntityAndOut, got %v", inIDs)
 	}
 }
 
@@ -84,19 +85,19 @@ func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 	relID := snowflake.ID(888888)
 	var relType uint16 = 1
 
-	if err := bs.putRelIncoming(endNode.ID().SnowflakeID(), startID, relType, relID); err != nil {
+	if err := bs.PutRelIncoming(endNode.ID().SnowflakeID(), startID, relType, relID); err != nil {
 		t.Fatal(err)
 	}
 
 	// inIdx should contain the rel.
-	inIDs := bs.incomingRelIDs(endNode.ID().SnowflakeID(), 0)
+	inIDs := bs.IncomingRelIDs(endNode.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 || inIDs[0] != relID {
-		t.Errorf("incomingRelIDs = %v, want [%d]", inIDs, relID)
+		t.Errorf("IncomingRelIDs = %v, want [%d]", inIDs, relID)
 	}
 
 	// Rel entity should NOT exist (only the in/ index was written).
-	if bs.hasRelID(relID) {
-		t.Error("hasRelID should be false — putRelIncoming doesn't store entity")
+	if bs.HasRelID(relID) {
+		t.Error("HasRelID should be false — PutRelIncoming doesn't store entity")
 	}
 }
 
@@ -121,37 +122,37 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	info, err := bs.deleteRelEntityAndOut(relID)
+	info, err := bs.DeleteRelEntityAndOut(relID)
 	if err != nil {
-		t.Fatalf("deleteRelEntityAndOut: %v", err)
+		t.Fatalf("DeleteRelEntityAndOut: %v", err)
 	}
 
 	// Entity should be gone.
-	if bs.hasRelID(relID) {
-		t.Error("hasRelID should be false after deleteRelEntityAndOut")
+	if bs.HasRelID(relID) {
+		t.Error("HasRelID should be false after DeleteRelEntityAndOut")
 	}
 
 	// outIdx should be empty.
-	outIDs := bs.outgoingRelIDs(n1.ID().SnowflakeID())
+	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 0 {
-		t.Errorf("outgoingRelIDs should be empty, got %v", outIDs)
+		t.Errorf("OutgoingRelIDs should be empty, got %v", outIDs)
 	}
 
 	// inIdx should STILL contain the rel (partial delete doesn't touch in/).
-	inIDs := bs.incomingRelIDs(n2.ID().SnowflakeID(), 0)
+	inIDs := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 0)
 	if len(inIDs) != 1 || inIDs[0] != relID {
-		t.Errorf("incomingRelIDs should still contain rel, got %v", inIDs)
+		t.Errorf("IncomingRelIDs should still contain rel, got %v", inIDs)
 	}
 
 	// Verify info is populated correctly.
-	if info.id != relID {
-		t.Errorf("info.id = %d, want %d", info.id, relID)
+	if info.ID != relID {
+		t.Errorf("info.ID = %d, want %d", info.ID, relID)
 	}
-	if info.startID != n1.ID().SnowflakeID() {
-		t.Error("info.startID mismatch")
+	if info.StartID != n1.ID().SnowflakeID() {
+		t.Error("info.StartID mismatch")
 	}
-	if info.endID != n2.ID().SnowflakeID() {
-		t.Error("info.endID mismatch")
+	if info.EndID != n2.ID().SnowflakeID() {
+		t.Error("info.EndID mismatch")
 	}
 }
 
@@ -176,31 +177,31 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	info := relDeleteInfo{
-		id:      relID,
-		relType: r.TypeToken().Value(),
-		startID: n1.ID().SnowflakeID(),
-		endID:   n2.ID().SnowflakeID(),
+	info := RelDeleteInfo{
+		ID:      relID,
+		RelType: r.TypeToken().Value(),
+		StartID: n1.ID().SnowflakeID(),
+		EndID:   n2.ID().SnowflakeID(),
 	}
-	if err := bs.deleteRelIncoming(info); err != nil {
+	if err := bs.DeleteRelIncoming(info); err != nil {
 		t.Fatal(err)
 	}
 
 	// inIdx should be empty.
-	inIDs := bs.incomingRelIDs(n2.ID().SnowflakeID(), 0)
+	inIDs := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 0)
 	if len(inIDs) != 0 {
-		t.Errorf("incomingRelIDs should be empty after deleteRelIncoming, got %v", inIDs)
+		t.Errorf("IncomingRelIDs should be empty after DeleteRelIncoming, got %v", inIDs)
 	}
 
 	// Entity should STILL exist.
-	if !bs.hasRelID(relID) {
-		t.Error("hasRelID should be true — deleteRelIncoming doesn't remove entity")
+	if !bs.HasRelID(relID) {
+		t.Error("HasRelID should be true — DeleteRelIncoming doesn't remove entity")
 	}
 
 	// outIdx should still have the rel.
-	outIDs := bs.outgoingRelIDs(n1.ID().SnowflakeID())
+	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 1 || outIDs[0] != relID {
-		t.Errorf("outgoingRelIDs should still contain rel, got %v", outIDs)
+		t.Errorf("OutgoingRelIDs should still contain rel, got %v", outIDs)
 	}
 }
 
@@ -214,14 +215,14 @@ func TestHasNodeID_HasRelID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !bs.hasNodeID(nodeID) {
-		t.Error("hasNodeID should be true")
+	if !bs.HasNodeID(nodeID) {
+		t.Error("HasNodeID should be true")
 	}
-	if bs.hasNodeID(snowflake.ID(999)) {
-		t.Error("hasNodeID should be false for unknown ID")
+	if bs.HasNodeID(snowflake.ID(999)) {
+		t.Error("HasNodeID should be false for unknown ID")
 	}
-	if bs.hasRelID(snowflake.ID(999)) {
-		t.Error("hasRelID should be false for unknown ID")
+	if bs.HasRelID(snowflake.ID(999)) {
+		t.Error("HasRelID should be false for unknown ID")
 	}
 }
 
@@ -249,13 +250,13 @@ func TestOutgoingRelIDs_Sorted(t *testing.T) {
 		}
 	}
 
-	outIDs := bs.outgoingRelIDs(n1.ID().SnowflakeID())
+	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 5 {
-		t.Fatalf("outgoingRelIDs count = %d, want 5", len(outIDs))
+		t.Fatalf("OutgoingRelIDs count = %d, want 5", len(outIDs))
 	}
 	for i := 1; i < len(outIDs); i++ {
 		if outIDs[i] <= outIDs[i-1] {
-			t.Errorf("outgoingRelIDs not sorted: [%d]=%d >= [%d]=%d", i-1, outIDs[i-1], i, outIDs[i])
+			t.Errorf("OutgoingRelIDs not sorted: [%d]=%d >= [%d]=%d", i-1, outIDs[i-1], i, outIDs[i])
 		}
 	}
 }
@@ -288,27 +289,27 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 	}
 
 	// All types.
-	all := bs.incomingRelIDs(n2.ID().SnowflakeID(), 0)
+	all := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 0)
 	if len(all) != 2 {
-		t.Fatalf("incomingRelIDs(0) = %d, want 2", len(all))
+		t.Fatalf("IncomingRelIDs(0) = %d, want 2", len(all))
 	}
 
 	// Filter type 1.
-	type1 := bs.incomingRelIDs(n2.ID().SnowflakeID(), 1)
+	type1 := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 1)
 	if len(type1) != 1 {
-		t.Fatalf("incomingRelIDs(1) = %d, want 1", len(type1))
+		t.Fatalf("IncomingRelIDs(1) = %d, want 1", len(type1))
 	}
 
 	// Filter type 2.
-	type2 := bs.incomingRelIDs(n2.ID().SnowflakeID(), 2)
+	type2 := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 2)
 	if len(type2) != 1 {
-		t.Fatalf("incomingRelIDs(2) = %d, want 1", len(type2))
+		t.Fatalf("IncomingRelIDs(2) = %d, want 1", len(type2))
 	}
 
 	// Filter unknown type.
-	type99 := bs.incomingRelIDs(n2.ID().SnowflakeID(), 99)
+	type99 := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 99)
 	if len(type99) != 0 {
-		t.Errorf("incomingRelIDs(99) = %d, want 0", len(type99))
+		t.Errorf("IncomingRelIDs(99) = %d, want 0", len(type99))
 	}
 }
 
@@ -316,7 +317,7 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {
 	t.Helper()
 	gen, err := snowflake.NewNode(nodeID,
-		snowflake.WithEpoch(snowflakeEpoch),
+		snowflake.WithEpoch(storepkg.SnowflakeEpoch),
 		snowflake.WithMicroseconds(),
 		snowflake.WithNodeBits(5),
 		snowflake.WithStepBits(10),

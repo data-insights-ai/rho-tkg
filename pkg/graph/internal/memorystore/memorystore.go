@@ -1,4 +1,7 @@
-package graph
+// Package memorystore provides MemoryStore — the thread-safe in-memory
+// implementation of the Store interface. Used as the default backend by
+// pkg/graph and also as a building block in tests.
+package memorystore
 
 import (
 	"fmt"
@@ -11,6 +14,31 @@ import (
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// Store-contract sentinel error aliases. Re-exporting them as package-local
+// names keeps the moved file readable while the canonical definitions remain
+// in pkg/graph/internal/store.
+var (
+	ErrNodeExists            = storepkg.ErrNodeExists
+	ErrNodeNotFound          = storepkg.ErrNodeNotFound
+	ErrRelExists             = storepkg.ErrRelExists
+	ErrRelNotFound           = storepkg.ErrRelNotFound
+	ErrVersionNotFound       = storepkg.ErrVersionNotFound
+	ErrIndexExists           = storepkg.ErrIndexExists
+	ErrIndexNotFound         = storepkg.ErrIndexNotFound
+	ErrTemporalIndexExists   = storepkg.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound = storepkg.ErrTemporalIndexNotFound
+	ErrVectorIndexExists     = indexpkg.ErrVectorIndexExists
+	ErrVectorIndexNotFound   = indexpkg.ErrVectorIndexNotFound
+	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
+)
+
+// QueryOpts and DistanceMetric / RelTombstone aliases for readability.
+type (
+	QueryOpts      = storepkg.QueryOpts
+	DistanceMetric = storepkg.DistanceMetric
+	RelTombstone   = storepkg.RelTombstone
 )
 
 // MemoryStore is a thread-safe in-memory Store implementation.
@@ -586,7 +614,7 @@ func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 			temporalQuery = true
 		}
 		if temporalQuery {
-			rawIDs = paginateIDs(rawIDs, opts.After, opts.Limit)
+			rawIDs = storepkg.PaginateIDs(rawIDs, opts.After, opts.Limit)
 			if len(rawIDs) == 0 {
 				return nil, nil
 			}
@@ -610,7 +638,7 @@ func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 	// Temporal pre-filter: read in-memory entity pointer (no deep-copy).
 	ids = ms.filterNodeIDsByTemporal(ids, opts)
 
-	ids = paginateNodeIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -645,7 +673,7 @@ func (ms *MemoryStore) RelationshipsByType(token uint16, opts QueryOpts) ([]*typ
 	// Temporal pre-filter.
 	ids = ms.filterRelIDsByTemporal(ids, opts)
 
-	ids = paginateRelIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -681,7 +709,7 @@ func (ms *MemoryStore) OutgoingRelationships(nid types.NodeID, typeToken uint16)
 			result = append(result, r.DeepCopy())
 		}
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -715,7 +743,7 @@ func (ms *MemoryStore) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID
 			}
 		}
 		if len(rels) > 0 {
-			sortRelsByID(rels)
+			storepkg.SortRelsByID(rels)
 			result[nid] = rels
 		}
 	}
@@ -748,7 +776,7 @@ func (ms *MemoryStore) IncomingRelationships(nid types.NodeID, typeToken uint16)
 			result = append(result, r.DeepCopy())
 		}
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -782,7 +810,7 @@ func (ms *MemoryStore) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID
 			}
 		}
 		if len(rels) > 0 {
-			sortRelsByID(rels)
+			storepkg.SortRelsByID(rels)
 			result[nid] = rels
 		}
 	}
@@ -1274,14 +1302,14 @@ func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	return result, nil
 }
 
-// searchNearestFiltered is the package-internal entry point used by the
+// SearchNearestFiltered is the package-internal entry point used by the
 // Graph layer to perform vector search with an eligibility filter applied
 // BEFORE the k-cut. The filter is invoked under the vector index read lock,
 // so it must NOT call back into the store (deadlock).
 //
 // Returns raw snowflake.IDs in ascending distance order; the caller is
 // responsible for resolving entities (current or historical version).
-func (ms *MemoryStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+func (ms *MemoryStore) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	ms.mu.RLock()
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := ms.vectorIndexes[key]
@@ -1317,7 +1345,7 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 
 		ids = ms.filterNodeIDsByTemporal(ids, opts)
 
-		ids = paginateNodeIDs(ids, opts.After, opts.Limit)
+		ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 		if len(ids) == 0 {
 			return nil, nil
 		}
@@ -1366,7 +1394,7 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	// Temporal pre-filter.
 	matchIDs = ms.filterNodeIDsByTemporal(matchIDs, opts)
 
-	matchIDs = paginateNodeIDs(matchIDs, opts.After, opts.Limit)
+	matchIDs = storepkg.PaginateNodeIDs(matchIDs, opts.After, opts.Limit)
 	if len(matchIDs) == 0 {
 		return nil, nil
 	}
@@ -1394,7 +1422,7 @@ func (ms *MemoryStore) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	ids = paginateNodeIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1415,7 +1443,7 @@ func (ms *MemoryStore) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	ids = paginateRelIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1724,7 +1752,7 @@ func (ms *MemoryStore) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	// Temporal pre-filter.
 	ids = ms.filterNodeIDsByTemporal(ids, opts)
 
-	ids = paginateNodeIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1757,7 +1785,7 @@ func (ms *MemoryStore) AllRelationships(opts QueryOpts) ([]*types.Relationship, 
 	// Temporal pre-filter.
 	ids = ms.filterRelIDsByTemporal(ids, opts)
 
-	ids = paginateRelIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -1790,7 +1818,7 @@ func (ms *MemoryStore) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) 
 	if len(result) == 0 {
 		return nil, nil
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -1813,7 +1841,7 @@ func (ms *MemoryStore) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relati
 	if len(result) == 0 {
 		return nil, nil
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -1857,20 +1885,4 @@ func (ms *MemoryStore) filterRelIDsByTemporal(ids []types.RelID, opts QueryOpts)
 		}
 	}
 	return filtered
-}
-
-// sortNodesByID sorts nodes by snowflake.ID for deterministic output.
-// Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
-func sortNodesByID(nodes []*types.Node) {
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID() < nodes[j].ID()
-	})
-}
-
-// sortRelsByID sorts relationships by snowflake.ID for deterministic output.
-// Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
-func sortRelsByID(rels []*types.Relationship) {
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].ID() < rels[j].ID()
-	})
 }
