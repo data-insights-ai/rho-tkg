@@ -380,3 +380,126 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	sortNodesByID(result)
 	return result, nil
 }
+
+// --- Relationship-side parity (mirrors of the Node methods above) ---
+
+// GetRelationshipsByTypeValidAt returns all relationships of the given type
+// that are valid at the given instant. Returns nil if the type is not
+// registered.
+//
+// Thin wrapper over RelationshipsByType(typeName, QueryOpts{ValidAt: t}) —
+// the named convenience mirror of GetNodesByLabelValidAt. History-aware via
+// the generic-opts path: includes deleted relationships whose type matched
+// at t.
+func (g *Graph) GetRelationshipsByTypeValidAt(relType string, t types.Instant) ([]*types.Relationship, error) {
+	return g.RelationshipsByType(relType, QueryOpts{ValidAt: t})
+}
+
+// RelationshipsByTypePropertyAndTime returns relationships matching the type
+// and property value that are valid at the given instant. History-aware.
+// Returns nil if the type is not registered.
+//
+// Mirrors NodesByLabelPropertyAndTime. There is no store-level
+// type+property index for relationships, so candidates are seeded from the
+// type index only and the property predicate is evaluated on each historical
+// version.
+func (g *Graph) RelationshipsByTypePropertyAndTime(relType, key string, value any, t types.Instant) ([]*types.Relationship, error) {
+	tok, ok := g.relTypes.Lookup(relType)
+	if !ok {
+		return nil, nil
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	// Seed candidates from the type index. No (type, property) index exists
+	// at the store level for relationships, so the property predicate is
+	// evaluated per-version below.
+	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.RelID, 0, len(current))
+	for _, r := range current {
+		currentIDs = append(currentIDs, r.InternalID())
+	}
+	var result []*types.Relationship
+	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+		r, err := g.GetRelAt(id, t)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		if !r.HasTypeTokenRaw(tok) {
+			return nil
+		}
+		if v, found := r.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
+			result = append(result, r)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sortRelsByID(result)
+	return result, nil
+}
+
+// RelationshipsByTypePropertyDuring returns relationships matching the type
+// and property value whose validity overlaps [start, end). History-aware:
+// returns the relationship if any overlapping version had the type and
+// property, even when a later version no longer matches.
+// Returns nil if the type is not registered.
+//
+// Mirrors NodesByLabelPropertyDuring. Like the *AndTime variant, candidates
+// are seeded from the type index and the property predicate is evaluated
+// per-version via findRelVersionMatchingDuring — so a relationship whose
+// property held during part of [start, end) but not on the most-recent
+// overlapping version is still included.
+func (g *Graph) RelationshipsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
+	tok, ok := g.relTypes.Lookup(relType)
+	if !ok {
+		return nil, nil
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	// Resolve open-ended end once for the whole iteration — see
+	// GetNodesValidDuring.
+	end = resolveOpenEndInstant(end)
+	// Seed candidates from the type index. No (type, property) index exists
+	// at the store level for relationships.
+	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.RelID, 0, len(current))
+	for _, r := range current {
+		currentIDs = append(currentIDs, r.InternalID())
+	}
+	pred := func(r *types.Relationship) bool {
+		if !r.HasTypeTokenRaw(tok) {
+			return false
+		}
+		v, found := r.GetProperty(key)
+		return found && indexpkg.PropertyValueKey(v) == targetKey
+	}
+	var result []*types.Relationship
+	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+		r, err := g.findRelVersionMatchingDuring(id, start, end, pred)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sortRelsByID(result)
+	return result, nil
+}
