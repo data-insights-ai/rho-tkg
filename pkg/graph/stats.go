@@ -32,3 +32,26 @@ type StoreStats interface {
 	RelCacheHits() int64
 	RelCacheMisses() int64
 }
+
+// Stats returns a snapshot of graph operation counters and optional cache metrics.
+// Cache metrics are populated only when the underlying store implements StoreStats
+// (currently BadgerStore only); all cache fields are zero for MemoryStore and TieredStore.
+func (g *Graph) Stats() GraphStats {
+	s := GraphStats{
+		NodesAdded:   g.opNodeAdds.Load(),
+		NodesRead:    g.opNodeReads.Load(),
+		NodesUpdated: g.opNodeUpdates.Load(),
+		NodesDeleted: g.opNodeDeletes.Load(),
+		RelsAdded:    g.opRelAdds.Load(),
+		RelsRead:     g.opRelReads.Load(),
+		RelsUpdated:  g.opRelUpdates.Load(),
+		RelsDeleted:  g.opRelDeletes.Load(),
+	}
+	if ss, ok := g.store.(StoreStats); ok {
+		s.NodeCacheHits = ss.NodeCacheHits()
+		s.NodeCacheMisses = ss.NodeCacheMisses()
+		s.RelCacheHits = ss.RelCacheHits()
+		s.RelCacheMisses = ss.RelCacheMisses()
+	}
+	return s
+}

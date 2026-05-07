@@ -1,0 +1,74 @@
+package graph
+
+import (
+	"errors"
+
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// NodesByLabelAndProperty returns nodes matching the label and property value,
+// with optional pagination. Resolves the label name to a token.
+// Returns nil if the label is not registered.
+//
+// Without a temporal filter, the call falls through to the store-level
+// property index for O(matches) lookup. When opts carries a temporal filter,
+// the candidate set is the union of (nodes currently matching label+property
+// — seeded via the same property-index lookup) and (every known history ID).
+// Each candidate is then resolved to its version overlapping the requested
+// time and the predicate re-checked against that historical version, so a
+// node whose label and property held at the requested time is included even
+// if a later version no longer matches.
+func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	if !hasTemporalFilter(opts) {
+		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
+	}
+	if opts.Depth != DepthAll {
+		return nil, ErrDepthTemporalUnsupported
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	// Indexed candidate set: nodes that currently match label+property via the
+	// store-level property index (when available — falls back internally to a
+	// label scan if no property index is registered), merged with all history
+	// IDs to cover deleted/changed nodes whose historical version matched.
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs := make([]types.NodeID, 0, len(currentMatching))
+	for _, n := range currentMatching {
+		currentIDs = append(currentIDs, n.ID())
+	}
+
+	pred := func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		v, found := n.GetProperty(key)
+		return found && indexpkg.PropertyValueKey(v) == targetKey
+	}
+	var result []*types.Node
+	err = g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+		n, err := g.findNodeVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sortNodesByID(result)
+	return paginateNodes(result, opts.After, opts.Limit), nil
+}
