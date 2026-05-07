@@ -7,14 +7,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
-
-// DistanceCosine is re-exported from internal/store so the moved test bodies
-// can reference DistanceCosine without an import-qualified name and remain
-// byte-identical to the original file in pkg/graph.
-const DistanceCosine = storepkg.DistanceCosine
 
 // --- BadgerStore: RemoveNodeLabelToken ---
 
