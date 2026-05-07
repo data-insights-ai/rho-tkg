@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
-
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -357,60 +355,30 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	}
 }
 
-// TestBuildDiff_NilIntegrity verifies that buildDiff handles nodes and
-// relationships without integrity metadata without panicking. Entities with
-// nil integrity are treated as having an empty hash (no change detected when
-// both snapshots have the same node with nil integrity).
-func TestBuildDiff_NilIntegrity(t *testing.T) {
+// TestNodeHash_NilIntegrity verifies that nodeHash returns the empty string
+// when integrity is unset, so DiffSnapshotsCallback treats two such versions
+// as identical (no spurious Updated entry).
+func TestNodeHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
 
-	// "shared" — same node in both snapshots with nil integrity → unchanged.
-	shared, _ := g.AddNode([]string{"Shared"}, nil)
-	shared.SetIntegrity(nil) // exercise nodeHash nil branch
+	n, _ := g.AddNode([]string{"Shared"}, nil)
+	n.SetIntegrity(nil) // exercise nodeHash nil branch
 
-	// "only in snap1" — exercises Deleted path.
-	only1, _ := g.AddNode([]string{"Only1"}, nil)
-	only1.SetIntegrity(nil)
-
-	snap1 := &temporalpkg.GraphSnapshot{
-		Nodes: []*types.Node{shared, only1},
-	}
-	snap2 := &temporalpkg.GraphSnapshot{
-		Nodes: []*types.Node{shared}, // shared appears in both → same empty hash → unchanged
-	}
-
-	diff := buildDiff(1, 2, snap1, snap2)
-	if diff == nil {
-		t.Fatal("buildDiff returned nil")
-	}
-	// shared: same empty hash → unchanged (not in any list).
-	// only1: only in snap1 → Deleted.
-	if len(diff.NodesUpdated) != 0 {
-		t.Fatalf("expected 0 updated (nil integrity = same empty hash), got %d", len(diff.NodesUpdated))
-	}
-	if len(diff.NodesDeleted) != 1 {
-		t.Fatalf("expected 1 deleted, got %d", len(diff.NodesDeleted))
-	}
-	if len(diff.NodesCreated) != 0 {
-		t.Fatalf("expected 0 created, got %d", len(diff.NodesCreated))
+	if got := nodeHash(n); got != "" {
+		t.Fatalf("nodeHash(nil-integrity) = %q, want empty", got)
 	}
 }
 
-// TestBuildDiff_NilIntegrityRel verifies the nil-integrity path for relationships.
-func TestBuildDiff_NilIntegrityRel(t *testing.T) {
+// TestRelHash_NilIntegrity verifies the nil-integrity path for relationships.
+func TestRelHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("E", a, b, nil)
 	r.SetIntegrity(nil) // exercise relHash nil branch
 
-	snap1 := &temporalpkg.GraphSnapshot{Relationships: []*types.Relationship{r}}
-	snap2 := &temporalpkg.GraphSnapshot{Relationships: []*types.Relationship{r}}
-
-	diff := buildDiff(1, 2, snap1, snap2)
-	// Same rel with nil integrity in both → empty hash, unchanged.
-	if len(diff.RelsUpdated)+len(diff.RelsCreated)+len(diff.RelsDeleted) != 0 {
-		t.Fatalf("expected empty rel diff for nil-integrity unchanged rel: %+v", diff)
+	if got := relHash(r); got != "" {
+		t.Fatalf("relHash(nil-integrity) = %q, want empty", got)
 	}
 }
 

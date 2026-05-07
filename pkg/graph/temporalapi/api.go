@@ -36,6 +36,7 @@ type Core interface {
 	// Snapshot/Diff
 	Snapshot(t types.Instant) (*temporalpkg.GraphSnapshot, error)
 	DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error)
+	DiffSnapshotsCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error
 
 	// Allen's interval algebra
 	NodeInterval(n *types.Node) (start, end types.Instant, err error)
@@ -139,6 +140,16 @@ func (a *API) Snapshot(t types.Instant) (*temporalpkg.GraphSnapshot, error) { re
 // Diff compares two snapshots taken at t1 and t2. Forwards to Graph.DiffSnapshots.
 func (a *API) Diff(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
 	return a.c.DiffSnapshots(t1, t2)
+}
+
+// DiffCallback streams entity changes between t1 and t2 via the supplied
+// handlers instead of materialising both snapshots in RAM. RAM is bounded
+// by O(|distinct entity IDs|) — the dedup ID set — plus one entity version
+// pair at a time. nil handler fields are skipped; returning a non-nil
+// error from any handler aborts iteration and propagates the error.
+// Forwards to Graph.DiffSnapshotsCallback.
+func (a *API) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error {
+	return a.c.DiffSnapshotsCallback(t1, t2, h)
 }
 
 // NodeInterval returns the validity interval of a node version. Forwards to Graph.NodeInterval.

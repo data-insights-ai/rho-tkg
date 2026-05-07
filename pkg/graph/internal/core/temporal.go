@@ -518,88 +518,204 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // a spurious Created/Deleted entry. This is an acceptable trade-off against
 // blocking all writes for the full O(N) snapshot duration.
 //
-// TODO(v3.1.0): streaming DiffSnapshots to avoid O(N) RAM materialization.
+// Implementation: delegates to DiffSnapshotsCallback with handlers that
+// accumulate into a SnapshotDiff. The callback path resolves each entity
+// version on demand instead of materialising two full snapshots, so the
+// peak working set is one entity at a time plus the dedup ID set.
 func (c *Core) DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
-	if t1 == 0 || t2 == 0 || t1 >= t2 {
-		return nil, ErrInvalidTimeRange
+	diff := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
+	handlers := temporalpkg.DiffHandlers{
+		OnNodeCreated: func(after *types.Node) error {
+			diff.NodesCreated = append(diff.NodesCreated, after)
+			return nil
+		},
+		OnNodeUpdated: func(before, after *types.Node) error {
+			diff.NodesUpdated = append(diff.NodesUpdated, temporalpkg.NodeUpdate{Before: before, After: after})
+			return nil
+		},
+		OnNodeDeleted: func(before *types.Node) error {
+			diff.NodesDeleted = append(diff.NodesDeleted, before)
+			return nil
+		},
+		OnRelCreated: func(after *types.Relationship) error {
+			diff.RelsCreated = append(diff.RelsCreated, after)
+			return nil
+		},
+		OnRelUpdated: func(before, after *types.Relationship) error {
+			diff.RelsUpdated = append(diff.RelsUpdated, temporalpkg.RelUpdate{Before: before, After: after})
+			return nil
+		},
+		OnRelDeleted: func(before *types.Relationship) error {
+			diff.RelsDeleted = append(diff.RelsDeleted, before)
+			return nil
+		},
 	}
-
-	// No c.mu.RLock — see doc comment above.
-	snap1, err := c.snapshotAt(t1)
-	if err != nil {
+	if err := c.DiffSnapshotsCallback(t1, t2, handlers); err != nil {
 		return nil, err
 	}
-	snap2, err := c.snapshotAt(t2)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildDiff(t1, t2, snap1, snap2), nil
+	return diff, nil
 }
 
-// buildDiff computes the SnapshotDiff between two snapshots.
-func buildDiff(t1, t2 types.Instant, snap1, snap2 *temporalpkg.GraphSnapshot) *temporalpkg.SnapshotDiff {
-	diff := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
+// DiffSnapshotsCallback streams entity changes between t1 (older) and t2
+// (newer) via handler callbacks instead of materialising two full
+// GraphSnapshot values. RAM usage is bounded by O(|distinct entity IDs| × 16B
+// for the dedup set) plus the working memory for one entity version pair at
+// a time, down from O(|entities valid at t1| + |entities valid at t2|).
+//
+// For every node ID known to the store (current ID set ∪ history ID set)
+// the implementation calls GetNodeAt(id, t1) and GetNodeAt(id, t2). The
+// result classifies each entity as Created (only at t2), Deleted (only at
+// t1), Updated (present at both with a different integrity hash), or
+// unchanged (skipped). Relationships follow the same pattern but are
+// additionally subject to endpoint filtering: a relationship is treated as
+// "present at t" only when both its start and end nodes are valid at t.
+// This matches the snapshotAt rel-endpoint filter exactly and preserves
+// behavioural parity with DiffSnapshots.
+//
+// nil handler fields are skipped cleanly. Returning a non-nil error from
+// any handler halts iteration and returns that error. Order of delivery is
+// implementation-defined; do not rely on it.
+//
+// Returns ErrInvalidTimeRange if t1 == 0, t2 == 0, or t1 >= t2.
+func (c *Core) DiffSnapshotsCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error {
+	if t1 == 0 || t2 == 0 || t1 >= t2 {
+		return ErrInvalidTimeRange
+	}
+
+	// No c.mu.RLock: matches DiffSnapshots semantics. A concurrent backdated
+	// write that commits between the per-entity GetNodeAt calls may appear
+	// as a spurious Created/Deleted entry — same trade-off as before.
 
 	// --- Nodes ---
-	nodes1 := make(map[snowflake.ID]*types.Node, len(snap1.Nodes))
-	for _, n := range snap1.Nodes {
-		nodes1[n.ID().SnowflakeID()] = n
-	}
-	nodes2 := make(map[snowflake.ID]*types.Node, len(snap2.Nodes))
-	for _, n := range snap2.Nodes {
-		nodes2[n.ID().SnowflakeID()] = n
-	}
-
-	for id, n2 := range nodes2 {
-		if n1, ok := nodes1[id]; ok {
-			// Present in both: compare hashes.
-			h1 := nodeHash(n1)
-			h2 := nodeHash(n2)
-			if h1 != h2 {
-				diff.NodesUpdated = append(diff.NodesUpdated, temporalpkg.NodeUpdate{Before: n1, After: n2})
+	if err := c.forEachKnownNodeID(func(id types.NodeID) error {
+		n1, err := c.lookupNodeAtForDiff(id, t1)
+		if err != nil {
+			return err
+		}
+		n2, err := c.lookupNodeAtForDiff(id, t2)
+		if err != nil {
+			return err
+		}
+		switch {
+		case n1 == nil && n2 != nil:
+			if h.OnNodeCreated != nil {
+				return h.OnNodeCreated(n2)
 			}
-			// identical hash → unchanged; skip
-		} else {
-			// Only in snap2 → Created.
-			diff.NodesCreated = append(diff.NodesCreated, n2)
+		case n1 != nil && n2 == nil:
+			if h.OnNodeDeleted != nil {
+				return h.OnNodeDeleted(n1)
+			}
+		case n1 != nil && n2 != nil:
+			if nodeHash(n1) != nodeHash(n2) {
+				if h.OnNodeUpdated != nil {
+					return h.OnNodeUpdated(n1, n2)
+				}
+			}
 		}
-	}
-	for id, n1 := range nodes1 {
-		if _, ok := nodes2[id]; !ok {
-			// Only in snap1 → Deleted.
-			diff.NodesDeleted = append(diff.NodesDeleted, n1)
-		}
+		// n1 == nil && n2 == nil: never visible in [t1, t2]; skip.
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// --- Relationships ---
-	rels1 := make(map[snowflake.ID]*types.Relationship, len(snap1.Relationships))
-	for _, r := range snap1.Relationships {
-		rels1[r.ID().SnowflakeID()] = r
-	}
-	rels2 := make(map[snowflake.ID]*types.Relationship, len(snap2.Relationships))
-	for _, r := range snap2.Relationships {
-		rels2[r.ID().SnowflakeID()] = r
-	}
-
-	for id, r2 := range rels2 {
-		if r1, ok := rels1[id]; ok {
-			h1 := relHash(r1)
-			h2 := relHash(r2)
-			if h1 != h2 {
-				diff.RelsUpdated = append(diff.RelsUpdated, temporalpkg.RelUpdate{Before: r1, After: r2})
+	// Endpoint validity is determined per-rel via GetNodeAt on the
+	// resolved start/end at the queried time. We deliberately do NOT cache
+	// node-validity decisions here: the dedup ID set already costs
+	// O(|nodes|), and a second full-graph node-validity map would defeat
+	// the bounded-RAM goal. The extra GetNodeAt calls are amortised into
+	// the same chain reads that will also be needed if the rel itself
+	// changes — Badger / TieredStore caches absorb most of the cost.
+	return c.forEachKnownRelID(func(id types.RelID) error {
+		r1, err := c.lookupRelAtForDiff(id, t1)
+		if err != nil {
+			return err
+		}
+		r2, err := c.lookupRelAtForDiff(id, t2)
+		if err != nil {
+			return err
+		}
+		switch {
+		case r1 == nil && r2 != nil:
+			if h.OnRelCreated != nil {
+				return h.OnRelCreated(r2)
 			}
-		} else {
-			diff.RelsCreated = append(diff.RelsCreated, r2)
+		case r1 != nil && r2 == nil:
+			if h.OnRelDeleted != nil {
+				return h.OnRelDeleted(r1)
+			}
+		case r1 != nil && r2 != nil:
+			if relHash(r1) != relHash(r2) {
+				if h.OnRelUpdated != nil {
+					return h.OnRelUpdated(r1, r2)
+				}
+			}
 		}
-	}
-	for id, r1 := range rels1 {
-		if _, ok := rels2[id]; !ok {
-			diff.RelsDeleted = append(diff.RelsDeleted, r1)
-		}
-	}
+		return nil
+	})
+}
 
-	return diff
+// lookupNodeAtForDiff resolves the version of node id valid at t, returning
+// (nil, nil) when no version covers t (entity not yet created or already
+// deleted at that instant). All other errors are propagated. Used by
+// DiffSnapshotsCallback so a missing-at-this-time signal is distinguishable
+// from a real I/O error without sprinkling errors.Is checks at every call
+// site.
+func (c *Core) lookupNodeAtForDiff(id types.NodeID, t types.Instant) (*types.Node, error) {
+	n, err := c.GetNodeAt(id, t)
+	if err != nil {
+		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return n, nil
+}
+
+// lookupRelAtForDiff resolves the version of relationship id valid at t,
+// applying the same endpoint-validity filter that snapshotAt uses: a
+// relationship is reported as "present at t" only when its start and end
+// nodes are both valid at t. Returns (nil, nil) when the rel itself is
+// absent at t or either endpoint is missing. All other errors are
+// propagated.
+func (c *Core) lookupRelAtForDiff(id types.RelID, t types.Instant) (*types.Relationship, error) {
+	r, err := c.GetRelAt(id, t)
+	if err != nil {
+		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Endpoint filter — mirror snapshotAt's "both endpoints valid" rule.
+	startOK, err := c.nodeExistsAt(r.StartNodeID(), t)
+	if err != nil {
+		return nil, err
+	}
+	if !startOK {
+		return nil, nil
+	}
+	endOK, err := c.nodeExistsAt(r.EndNodeID(), t)
+	if err != nil {
+		return nil, err
+	}
+	if !endOK {
+		return nil, nil
+	}
+	return r, nil
+}
+
+// nodeExistsAt reports whether some version of the node is valid at t.
+// ErrNoVersionValidAt and ErrNodeNotFound both map to false; every other
+// error propagates so a transient backend failure does not silently
+// reclassify entities as "deleted" in the diff stream.
+func (c *Core) nodeExistsAt(id types.NodeID, t types.Instant) (bool, error) {
+	if _, err := c.GetNodeAt(id, t); err != nil {
+		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // nodeHash returns the integrity hash of a node, or empty string if unset.

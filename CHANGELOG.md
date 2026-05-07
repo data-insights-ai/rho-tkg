@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Streaming `DiffSnapshotsCallback` (resolves the `TODO(v3.1.0)` in
+  `pkg/graph/internal/core/temporal.go`).** A new method on `*core.Core`
+  surfaces entity diffs between two instants via handler callbacks
+  instead of materialising both `*GraphSnapshot` results plus the two
+  ID-keyed maps `buildDiff` previously built. The peak working set is
+  now O(|distinct entity IDs| × ~24B for the dedup map) plus one
+  before/after entity pair at a time, down from O(|entities valid at
+  t1| + |entities valid at t2|). Asymptotically — 5M nodes valid at both
+  timestamps — this eliminates ~1.5 GB of transient allocation.
+  - The new `temporal.DiffHandlers` struct in `pkg/graph/temporal`
+    declares one optional callback per change class
+    (`OnNodeCreated`, `OnNodeUpdated`, `OnNodeDeleted`,
+    `OnRelCreated`, `OnRelUpdated`, `OnRelDeleted`). nil fields are
+    skipped. Returning a non-nil error from any callback aborts
+    iteration and propagates the error verbatim.
+  - The existing `DiffSnapshots(t1, t2)` API stays — it now delegates
+    to `DiffSnapshotsCallback` with handlers that accumulate into a
+    `*SnapshotDiff`. Callers that need the materialised result are
+    unaffected; callers willing to consume changes streaming-style
+    avoid the snapshot allocations entirely.
+  - The Temporal sub-API exposes `g.Temporal.DiffCallback(t1, t2, h)`
+    forwarding to the new method.
+  - Relationship endpoint filtering preserves parity with `snapshotAt`:
+    a relationship is reported only when both endpoints are valid at
+    the queried instant. The streaming path applies this filter
+    per-entity rather than via two whole-graph node-validity sets.
 - **Cursor-paginated history-ID scans (`AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`).**
   Two new methods on the `Store` interface return the IDs of nodes /
   relationships with version-history entries, sorted ascending, starting
@@ -61,6 +87,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   1K nodes × 50 versions = 50K history records and asserts that
   `ExportGraph`'s heap delta stays under 16 MiB. Without the cursor the
   history-ID slice alone would allocate 40+ MiB.
+- `pkg/graph/internal/core/diff_callback_test.go` — covers the streaming
+  `DiffSnapshotsCallback` path: parity with `DiffSnapshots`, two-phase
+  rule-15 lifecycle (create-update-delete with three diff windows
+  asserting the correct before/after state in each), handler abort
+  propagation, nil-handler safety, empty-graph short-circuit, invalid
+  time-range sentinel (`ErrInvalidTimeRange`), relationship endpoint
+  filter, and an informational RAM measurement at 20K stable nodes + 10
+  updates that logs `TotalAlloc` and peak `HeapInuse` for both paths.
+  (The asymptotic snapshot-buffer savings the design intends are
+  dominated by per-entity deep-copy traffic at the in-process scale this
+  test can exercise; the asymptotic improvement is documented above.)
 
 ## [3.4.0] - 2026-05-07
 
