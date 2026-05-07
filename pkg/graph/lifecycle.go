@@ -10,6 +10,14 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 )
 
+// registriesPersister is the optional interface implemented by Store
+// backends that can persist both the label and reltype registries atomically.
+// Both BadgerStore (single-txn) and TieredStore (single registry-file write)
+// satisfy this interface; MemoryStore does not need to.
+type registriesPersister interface {
+	SaveRegistries(*indexpkg.LabelRegistry, *indexpkg.RelTypeRegistry) error
+}
+
 // New creates a new Graph with the given configuration.
 // Returns an error if SnowflakeNodeID is out of range (0-15).
 // The ID is mapped to an even/odd pair (ID*2 for nodes, ID*2+1 for rels)
@@ -147,18 +155,13 @@ func (g *Graph) Close() error {
 		// own state. Errors are collected; store close still runs.
 		closeErr = errors.Join(closeErr, g.closeIndexProviders())
 
-		// Save registries if the store supports it.
-		switch s := g.store.(type) {
-		case *BadgerStore:
-			if err := s.SaveLabelRegistry(g.labels); err != nil {
-				closeErr = fmt.Errorf("graph: save label registry: %w", err)
-			}
-			if err := s.SaveRelTypeRegistry(g.relTypes); err != nil {
-				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save reltype registry: %w", err))
-			}
-		case *TieredStore:
-			if err := s.SaveRegistries(g.labels, g.relTypes); err != nil {
-				closeErr = fmt.Errorf("graph: save registries: %w", err)
+		// Save registries if the store supports atomic persistence.
+		// Both BadgerStore and TieredStore satisfy registriesPersister; the
+		// type-assertion lets us go through a single uniform path that writes
+		// label and reltype registries atomically.
+		if rp, ok := g.store.(registriesPersister); ok {
+			if err := rp.SaveRegistries(g.labels, g.relTypes); err != nil {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save registries: %w", err))
 			}
 		}
 		// Always close the store — even if registry saves failed.

@@ -761,6 +761,141 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 	}
 }
 
+// TestBadgerStore_SaveRegistries verifies that SaveRegistries persists both
+// the label and reltype registries in a single atomic operation, and that the
+// data round-trips across a Close/reopen cycle.
+//
+// This complements the per-registry SaveLabelRegistry/SaveRelTypeRegistry
+// methods which remain on the Store for backward compatibility.
+func TestBadgerStore_SaveRegistries(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+
+	labels := indexpkg.NewLabelRegistry()
+	labels.GetOrCreate("Person")
+	labels.GetOrCreate("Movie")
+	labels.GetOrCreate("Genre")
+
+	relTypes := indexpkg.NewRelTypeRegistry()
+	relTypes.GetOrCreate("KNOWS")
+	relTypes.GetOrCreate("ACTED_IN")
+
+	if err := bs1.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Reopen and verify both halves round-trip.
+	bs2, err := NewBadgerStore(BadgerStoreConfig{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	labels2 := indexpkg.NewLabelRegistry()
+	foundL, err := bs2.LoadLabelRegistry(labels2)
+	if err != nil {
+		t.Fatalf("LoadLabelRegistry: %v", err)
+	}
+	if !foundL {
+		t.Fatal("expected label registry to round-trip")
+	}
+	for _, name := range []string{"Person", "Movie", "Genre"} {
+		if _, ok := labels2.Lookup(name); !ok {
+			t.Errorf("missing label %q after reopen", name)
+		}
+	}
+
+	relTypes2 := indexpkg.NewRelTypeRegistry()
+	foundR, err := bs2.LoadRelTypeRegistry(relTypes2)
+	if err != nil {
+		t.Fatalf("LoadRelTypeRegistry: %v", err)
+	}
+	if !foundR {
+		t.Fatal("expected reltype registry to round-trip")
+	}
+	for _, name := range []string{"KNOWS", "ACTED_IN"} {
+		if _, ok := relTypes2.Lookup(name); !ok {
+			t.Errorf("missing reltype %q after reopen", name)
+		}
+	}
+}
+
+// TestBadgerStore_SaveRegistries_OverwritesPriorState verifies that
+// successive SaveRegistries calls fully overwrite the previously persisted
+// registries (no stale residue from earlier SaveLabelRegistry calls).
+func TestBadgerStore_SaveRegistries_OverwritesPriorState(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Seed via the legacy split-write path.
+	first := indexpkg.NewLabelRegistry()
+	first.GetOrCreate("Stale")
+	if err := bs.SaveLabelRegistry(first); err != nil {
+		t.Fatalf("SaveLabelRegistry: %v", err)
+	}
+
+	// Replace via the unified path.
+	labels := indexpkg.NewLabelRegistry()
+	labels.GetOrCreate("Fresh")
+	relTypes := indexpkg.NewRelTypeRegistry()
+	relTypes.GetOrCreate("REL")
+	if err := bs.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries: %v", err)
+	}
+
+	loaded := indexpkg.NewLabelRegistry()
+	if _, err := bs.LoadLabelRegistry(loaded); err != nil {
+		t.Fatalf("LoadLabelRegistry: %v", err)
+	}
+	if _, ok := loaded.Lookup("Fresh"); !ok {
+		t.Error("expected Fresh label after overwrite")
+	}
+	if _, ok := loaded.Lookup("Stale"); ok {
+		t.Error("Stale label should have been overwritten")
+	}
+}
+
+// TestBadgerStore_SaveRegistries_EmptyRegistries verifies that empty registries
+// (only the reserved token 0) round-trip cleanly through SaveRegistries.
+func TestBadgerStore_SaveRegistries_EmptyRegistries(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	labels := indexpkg.NewLabelRegistry()
+	relTypes := indexpkg.NewRelTypeRegistry()
+
+	if err := bs.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries: %v", err)
+	}
+
+	// Loading the persisted (empty) registries should succeed and report found=true.
+	labels2 := indexpkg.NewLabelRegistry()
+	found, err := bs.LoadLabelRegistry(labels2)
+	if err != nil {
+		t.Fatalf("LoadLabelRegistry: %v", err)
+	}
+	if !found {
+		t.Fatal("expected found=true after SaveRegistries even with empty inputs")
+	}
+
+	relTypes2 := indexpkg.NewRelTypeRegistry()
+	found, err = bs.LoadRelTypeRegistry(relTypes2)
+	if err != nil {
+		t.Fatalf("LoadRelTypeRegistry: %v", err)
+	}
+	if !found {
+		t.Fatal("expected found=true after SaveRegistries even with empty inputs")
+	}
+}
+
 // ─── Type fidelity ───────────────────────────────────────────────────────────
 
 func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {

@@ -3725,6 +3725,31 @@ func (bs *BadgerStore) RelCacheMisses() int64 { return bs.relCache.Misses() }
 
 // --- Registry persistence ---
 
+// SaveRegistries persists both the label and relationship-type registries
+// atomically in a single Badger transaction. Either both writes commit or
+// neither does — callers do not need to reason about a partially-applied
+// registry on crash. This mirrors the contract of TieredStore.SaveRegistries
+// so that lifecycle code can persist registries through a single uniform
+// interface regardless of the underlying Store implementation.
+func (bs *BadgerStore) SaveRegistries(labelReg *indexpkg.LabelRegistry, relTypeReg *indexpkg.RelTypeRegistry) error {
+	labelNames := labelReg.ExportNames()
+	labelData, err := msgpack.Marshal(labelNames)
+	if err != nil {
+		return fmt.Errorf("graph: marshal label registry: %w", err)
+	}
+	relTypeNames := relTypeReg.ExportNames()
+	relTypeData, err := msgpack.Marshal(relTypeNames)
+	if err != nil {
+		return fmt.Errorf("graph: marshal reltype registry: %w", err)
+	}
+	return bs.db.Update(func(txn *badger.Txn) error {
+		if err := txn.Set(storepkg.MetaKey("label_tokens"), labelData); err != nil {
+			return err
+		}
+		return txn.Set(storepkg.MetaKey("reltype_tokens"), relTypeData)
+	})
+}
+
 // SaveLabelRegistry persists the label registry to the Badger store.
 func (bs *BadgerStore) SaveLabelRegistry(reg *indexpkg.LabelRegistry) error {
 	names := reg.ExportNames()
