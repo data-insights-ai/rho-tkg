@@ -1,14 +1,12 @@
-package graph_test
+package graph
 
 import (
 	"testing"
-
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 )
 
 func TestGraphStats_InitialState(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	s := g.Stats()
 	if s.NodesAdded != 0 || s.NodesRead != 0 || s.NodesUpdated != 0 || s.NodesDeleted != 0 {
 		t.Errorf("initial node counters non-zero: %+v", s)
@@ -23,7 +21,7 @@ func TestGraphStats_InitialState(t *testing.T) {
 
 func TestGraphStats_NodeCounters(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, err := g.AddNode([]string{"X"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -62,7 +60,7 @@ func TestGraphStats_NodeCounters(t *testing.T) {
 
 func TestGraphStats_RelCounters(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, err := g.AddNode([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
@@ -112,7 +110,7 @@ func TestGraphStats_RelCounters(t *testing.T) {
 // incrementing NodesUpdated.
 func TestGraphStats_EmptyUpdate_NoUpdateIncrement(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, err := g.AddNode([]string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -136,7 +134,7 @@ func TestGraphStats_EmptyUpdate_NoUpdateIncrement(t *testing.T) {
 
 func TestGraphStats_CacheMetrics_MemoryStore_Zero(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{}) // MemoryStore — no cache instrumentation
+	g, _ := New(Config{}) // MemoryStore — no cache instrumentation
 	n, err := g.AddNode([]string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -163,7 +161,7 @@ func TestGraphStats_CacheMetrics_MemoryStore_Zero(t *testing.T) {
 // inserts the node into the LRU cache, so subsequent GetNode calls are cache hits.
 func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
 	t.Parallel()
-	g, err := graph.New(graph.Config{BadgerInMemory: true})
+	g, err := New(Config{BadgerInMemory: true})
 	if err != nil {
 		t.Fatalf("New(BadgerInMemory): %v", err)
 	}
@@ -199,7 +197,7 @@ func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
 
 func TestGraphStats_UpdateNodeInPlace_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, err := g.AddNode([]string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -218,7 +216,7 @@ func TestGraphStats_UpdateNodeInPlace_CountsAsUpdate(t *testing.T) {
 
 func TestGraphStats_UpdateRelInPlace_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, err := g.AddNode([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)

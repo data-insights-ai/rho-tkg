@@ -11,6 +11,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -187,8 +188,8 @@ func demoteToCold(ts *TieredStore, shardName string) {
 	ts.MuForTest().Lock()
 	defer ts.MuForTest().Unlock()
 	if es, ok := ts.EventShardsForTest()[shardName]; ok {
-		es.SetTierForTest(TierCold)
-		ts.CatalogForTest().UpdateShardTier(shardName, TierCold)
+		es.SetTierForTest(tieredstore.TierCold)
+		ts.CatalogForTest().UpdateShardTier(shardName, tieredstore.TierCold)
 	}
 }
 
@@ -729,7 +730,7 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 	ts.MuForTest().RLock()
 	coldES := ts.EventShardsForTest()[hotName]
 	ts.MuForTest().RUnlock()
-	if coldES == nil || coldES.Tier() != TierCold {
+	if coldES == nil || coldES.Tier() != tieredstore.TierCold {
 		t.Fatal("expected cold shard")
 	}
 

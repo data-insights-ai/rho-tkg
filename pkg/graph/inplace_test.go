@@ -1,15 +1,14 @@
-package graph_test
+package graph
 
 import (
 	"context"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"x": int64(1)})
 	id := n.ID()
 
@@ -28,7 +27,7 @@ func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"v": int64(0)})
 	id := n.ID()
 	origVersion := n.Version()
@@ -43,7 +42,7 @@ func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"a": "old"})
 	id := n.ID()
 
@@ -59,7 +58,7 @@ func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_NoOp(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 
@@ -74,15 +73,15 @@ func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 }
 
 func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
-	bus := graph.NewEventBus()
+	g, _ := New(Config{})
+	bus := NewEventBus()
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 
-	var got []graph.Event
-	bus.Subscribe(func(e graph.Event) {
+	var got []Event
+	bus.Subscribe(func(e Event) {
 		got = append(got, e)
 	})
 
@@ -97,13 +96,13 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected EventNodeUpdate, got none")
 	}
-	if got[0].Type != graph.EventNodeUpdate {
+	if got[0].Type != EventNodeUpdate {
 		t.Errorf("event type = %v, want EventNodeUpdate", got[0].Type)
 	}
 }
 
 func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 
@@ -119,7 +118,7 @@ func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
 // --- Relationship mirrors ---
 
 func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": int64(1)})
@@ -140,7 +139,7 @@ func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": int64(0)})
@@ -157,7 +156,7 @@ func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"a": "old"})
@@ -175,7 +174,7 @@ func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_NoOp(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
@@ -191,8 +190,8 @@ func TestUpdateRelInPlace_NoOp(t *testing.T) {
 }
 
 func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
-	bus := graph.NewEventBus()
+	g, _ := New(Config{})
+	bus := NewEventBus()
 	g.SetEventBus(bus)
 
 	a, _ := g.AddNode([]string{"A"}, nil)
@@ -200,8 +199,8 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
 	id := r.ID()
 
-	var got []graph.Event
-	bus.Subscribe(func(e graph.Event) {
+	var got []Event
+	bus.Subscribe(func(e Event) {
 		got = append(got, e)
 	})
 	got = nil // clear AddNode/AddRel events
@@ -214,14 +213,14 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected EventRelUpdate, got none")
 	}
-	if got[0].Type != graph.EventRelUpdate {
+	if got[0].Type != EventRelUpdate {
 		t.Errorf("event type = %v, want EventRelUpdate", got[0].Type)
 	}
 }
 
 // Verify that UpdateNodeInPlace shares the opNodeUpdates counter.
 func TestUpdateNodeInPlace_CountedAsUpdate(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 

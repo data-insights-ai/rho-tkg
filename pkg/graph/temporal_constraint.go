@@ -3,13 +3,47 @@ package graph
 import (
 	"fmt"
 
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// The temporal-constraint data types (TemporalConstraintKind, TemporalConstraint,
-// ConstraintSet, the ConstraintRelWithinEndpoints constant, and the seven
-// sentinel errors) live in pkg/graph/internal/temporal and are re-exported via
-// pkg/graph/aliases.go. The Graph-coupled enforcement methods stay here.
+// The pure-data temporal-constraint types live in `pkg/graph/internal/temporal`
+// to keep the constraint vocabulary independent of the Graph-coupled
+// enforcement code. The aliases below ARE the public API; the Graph-coupled
+// enforcement methods (`checkTemporalConstraints` and helpers) stay in this
+// file.
+
+type (
+	// TemporalConstraintKind identifies the type of temporal constraint enforced at write time.
+	TemporalConstraintKind = temporalpkg.TemporalConstraintKind
+	// TemporalConstraint is a single temporal invariant checked at write time.
+	TemporalConstraint = temporalpkg.TemporalConstraint
+	// ConstraintSet is an immutable-by-convention ordered set of TemporalConstraints.
+	ConstraintSet = temporalpkg.ConstraintSet
+)
+
+// TemporalConstraintKind constants.
+const (
+	// ConstraintRelWithinEndpoints enforces that a relationship's validity window
+	// is contained within the validity intervals of both endpoint nodes.
+	ConstraintRelWithinEndpoints = temporalpkg.ConstraintRelWithinEndpoints
+)
+
+// NewConstraintSet creates a ConstraintSet from the given constraints.
+func NewConstraintSet(cs ...TemporalConstraint) ConstraintSet {
+	return temporalpkg.NewConstraintSet(cs...)
+}
+
+// Temporal-constraint sentinel errors.
+var (
+	ErrTemporalConstraint          = temporalpkg.ErrTemporalConstraint
+	ErrRelBeforeStartNode          = temporalpkg.ErrRelBeforeStartNode
+	ErrRelBeforeEndNode            = temporalpkg.ErrRelBeforeEndNode
+	ErrRelAfterStartNode           = temporalpkg.ErrRelAfterStartNode
+	ErrRelAfterEndNode             = temporalpkg.ErrRelAfterEndNode
+	ErrRelExceedsStartNodeValidity = temporalpkg.ErrRelExceedsStartNodeValidity
+	ErrRelExceedsEndNodeValidity   = temporalpkg.ErrRelExceedsEndNodeValidity
+)
 
 // checkTemporalConstraints validates relationship r against all configured constraints.
 // Returns nil immediately if no constraints are configured (fast path).

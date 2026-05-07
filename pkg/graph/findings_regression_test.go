@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -174,8 +175,8 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		// 4. Compute both candidate hashes:
 		//    preFix  = original entry hashed under current's labels  ["A"]
 		//    postFix = tampered entry hashed under its own labels    ["A","C"]
-		preFixV1Hash := ComputeNodeHash(v1Orig, currentLabels)
-		postFixV1Hash := ComputeNodeHash(v1Tampered, g.NodeLabels(v1Tampered))
+		preFixV1Hash := integrity.ComputeNodeHash(v1Orig, currentLabels)
+		postFixV1Hash := integrity.ComputeNodeHash(v1Tampered, g.NodeLabels(v1Tampered))
 
 		// 5. Sanity guard: if the two hashes coincide, the test can't
 		//    discriminate — fail loudly rather than silently pass.

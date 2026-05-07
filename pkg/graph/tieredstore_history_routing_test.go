@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -672,7 +673,7 @@ func newDiskTieredGraph(t *testing.T) (*Graph, *TieredStore) {
 	return g, ts
 }
 
-func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *EventShard) {
+func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *tieredstore.EventShard) {
 	t.Helper()
 	g, ts := newTestTieredGraph(t)
 
@@ -694,7 +695,7 @@ func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *Eve
 	return g, ts, cold
 }
 
-func eventShardByName(t *testing.T, ts *TieredStore, name string) *EventShard {
+func eventShardByName(t *testing.T, ts *TieredStore, name string) *tieredstore.EventShard {
 	t.Helper()
 	ts.MuForTest().RLock()
 	defer ts.MuForTest().RUnlock()
@@ -705,7 +706,7 @@ func eventShardByName(t *testing.T, ts *TieredStore, name string) *EventShard {
 	return es
 }
 
-func closeEventShardStore(t *testing.T, es *EventShard) {
+func closeEventShardStore(t *testing.T, es *tieredstore.EventShard) {
 	t.Helper()
 	es.LockShardMuForTest()
 	defer es.UnlockShardMuForTest()
@@ -718,7 +719,7 @@ func closeEventShardStore(t *testing.T, es *EventShard) {
 	es.SetStoreForTest(nil)
 }
 
-func assertColdShardStillClosed(t *testing.T, es *EventShard, op string) {
+func assertColdShardStillClosed(t *testing.T, es *tieredstore.EventShard, op string) {
 	t.Helper()
 	es.LockShardMuForTest()
 	open := es.Store() != nil
@@ -1398,7 +1399,7 @@ func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *te
 	}
 
 	// Step 1 of cross-shard delete: remove in/ on end shard.
-	info := RelDeleteInfo{ID: rid, RelType: relType, StartID: startID, EndID: endID}
+	info := badgerstore.RelDeleteInfo{ID: rid, RelType: relType, StartID: startID, EndID: endID}
 	if err := endShard.DeleteRelIncoming(info); err != nil {
 		t.Fatalf("DeleteRelIncoming: %v", err)
 	}

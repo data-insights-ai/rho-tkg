@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.1.23)
+# Architecture — tkg/v3 (v3.2.0)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -633,7 +633,7 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 
 ## File Map (`pkg/graph/`)
 
-After the v3.1.20-v3.1.23 restructure, `pkg/graph/` is a thin orchestration layer; persistence, indexes, registries, and event delivery live entirely under `pkg/graph/internal/`. The Graph struct itself is 48 LOC.
+After the v3.1.20-v3.1.23 restructure and the v3.2.0 public-API consolidation, `pkg/graph/` is a thin orchestration layer; persistence, indexes, registries, and event delivery live entirely under `pkg/graph/internal/`. The Graph struct itself is 48 LOC. The single public `aliases.go` is gone — every public re-export now lives in a themed file (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`, `temporal_constraint.go`).
 
 | File | Purpose |
 |------|---------|
@@ -652,7 +652,12 @@ After the v3.1.20-v3.1.23 restructure, `pkg/graph/` is a thin orchestration laye
 | `events_dispatch.go` | `dispatchEvent`, `publishEvent`, `SetEventBus`, `SetAsyncEventBus`. |
 | `node_label.go` | `AddNodeLabel`, `RemoveNodeLabel`. |
 | `version_chain.go` | `CloseNodeVersion`, `CloseRelVersion`. |
-| `aliases.go` | Re-exports from `internal/*` subpackages (Store, registries, EntityClass, ComputeNodeHash, EventBus, ConstraintSet, DecomposeID, etc.). |
+| `store.go` | Public re-exports: `Store`, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric` + 12 store sentinels + `DepthAll`/`DepthHot`/`DepthWarm` and `DistanceCosine`/`DistanceEuclidean` constants. |
+| `events.go` | Public re-exports: `Event`, `EventType`, `EventPriority`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy` + the EventNode/EventRel/Priority/Backpressure constants + `NewEventBus`/`NewAsyncEventBus`. |
+| `ontology.go` | Public re-exports: `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`/`ClassReference`. |
+| `snowflake.go` | Public re-exports: `IDComponents`, `DecomposeID` + package-private `snowflakeEpoch`/`snowflakeLayout`. |
+| `errors.go` | Vector-index sentinels (`ErrVectorIndex*`, `ErrDimensionMismatch`) + registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`). |
+| `backends.go` | Concrete `Store` impls: `MemoryStore`, `BadgerStore`(`Config`), `TieredStore`(`Config`); admin return types (`ShardInfo`/`VerifyResult`/`RepairResult`); 4 TieredStore sentinels; `MigrateFromBadger(src, dst)`. |
 | `context.go` | `*WithContext` helpers — `checkCtx`, `extractProvenance`, `extractTemporal`, `nowInstant` (145 LOC). |
 | `context_node_add.go` | `AddNodeWithContext`, `addNodeInternal`, `ImportNodeWithID`, `importNodeWithIDInternal`. |
 | `context_node_update.go` | `UpdateNodeWithContext`, `UpdateNodeInPlace*`. |
@@ -667,15 +672,12 @@ After the v3.1.20-v3.1.23 restructure, `pkg/graph/` is a thin orchestration laye
 | `temporal_snapshot.go` | `Snapshot`, `GraphSnapshot`. |
 | `temporal_diff.go` | `Diff`. |
 | `temporal_allen.go` | Allen's-algebra integration. |
-| `temporal_constraint.go` | Graph-coupled `checkTemporalConstraints` enforcement (90 LOC). Pure types live in `internal/temporal`. |
+| `temporal_constraint.go` | Public re-exports for the temporal-constraint vocabulary (`TemporalConstraint`, `ConstraintSet`, `ConstraintRelWithinEndpoints`, `NewConstraintSet`, 7 sentinels) + the Graph-coupled `checkTemporalConstraints` enforcement. Pure types live in `internal/temporal`. |
 | `temporal_index.go` | In-memory interval index (sorted slice, lazy sort). |
 | `txtime.go` | Bitemporality (`*AsOf` family). |
 | `stats.go` | `GraphStats`, `StoreStats` optional. |
-| `ontology.go` | Public `OntologyMapping` factory + `EntityClass` constants. |
 | `shadow.go` | 21 `tkg_*` virtual property resolvers. |
 | `index_provider.go` | Phase-6 `IndexProvider` interface + `Initializable` + `GraphReader` + `LegacyIndexProvider` adapter. |
-| `pagination.go` | Cursor-based pagination wrappers (delegate to `internal/store`). |
-| `tieredstore.go` | Re-exports `TieredStore`, `TieredStoreConfig`, catalog/shard types, sentinel errors. Implementation in `internal/tieredstore`. |
 | `doc.go` | Package documentation. |
 
 ### `pkg/graph/internal/*` subpackages

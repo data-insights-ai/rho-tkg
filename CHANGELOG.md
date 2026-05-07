@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.2.0] - 2026-05-07
+
+### Breaking changes
+
+- **`MigrateFromBadger(src, dst, labels)` → `MigrateFromBadger(src, dst)`**. The `*LabelRegistry` parameter is dropped; the function now loads the registry from the source `*BadgerStore` directly via `LoadLabelRegistry`. Callers no longer have to allocate and populate a registry before invoking the migrator.
+- **`graph.ComputeNodeHash` and `graph.ComputeRelHash` are removed from the public API**. They were thin re-exports of the hash primitives in `pkg/graph/internal/integrity`. Use `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain` for chain verification; the primitives themselves remain available inside `pkg/graph/internal/integrity` for internal use.
+- **`graph.LabelRegistry` and `graph.RelTypeRegistry` are removed from the public API**. The registries live in `pkg/graph/internal/registry/` and are managed entirely through the `*Graph` (creating, resolving, persisting through `Close`/`MigrateFromBadger`). No public function references them after the `MigrateFromBadger` signature change above.
+- **TieredStore catalog types removed from the public API**: `graph.ShardCatalog`, `graph.ShardEntry`, `graph.ShardKind`, `graph.ShardTier`, `graph.NewShardCatalog`, `graph.EventShard`, plus the constants `graph.ShardReference`, `graph.ShardEvent`, `graph.TierHot`, `graph.TierWarm`, `graph.TierCold`. They had been re-exported from `internal/tieredstore` "for tests" but were never customer-facing — `tkgd-v3` does not reference them. Tests that used them now import `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore` directly.
+- **`graph.RelDeleteInfo` removed from the public API**. The struct is a `BadgerStore` cascade-delete payload; tests that need it import `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore` directly.
+
+### API consolidation (no behaviour change)
+
+- `pkg/graph/aliases.go` (382 lines, 50 declarations) is split into themed files at the `pkg/graph/` top level. The public API surface for the kept symbols is unchanged — every alias still resolves to the same canonical `internal/*` declaration as before. The new layout is:
+  - `pkg/graph/store.go` — `Store`, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric` aliases plus the 12 store-layer sentinel errors (`ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`, `ErrNoVersionValidAt`, `ErrIndexExists`, `ErrIndexNotFound`, `ErrTemporalIndexExists`, `ErrTemporalIndexNotFound`, `ErrTxDone`, `ErrStoreClosed`).
+  - `pkg/graph/events.go` — `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `AsyncEventBusConfig`, `BackpressureStrategy`, plus the six `EventNode*`/`EventRel*` constants, the five `Priority*` constants, the three `Backpressure*` constants, and the `NewEventBus` / `NewAsyncEventBus` constructors.
+  - `pkg/graph/ontology.go` — `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, plus the `ClassEvent` / `ClassReference` constants.
+  - `pkg/graph/snowflake.go` — `IDComponents`, `DecomposeID`, plus the package-level `snowflakeEpoch` / `snowflakeLayout` helpers used internally by `lifecycle.go` and ID-decomposition code.
+  - `pkg/graph/errors.go` — vector-index sentinel errors (`ErrVectorIndexExists`, `ErrVectorIndexNotFound`, `ErrDimensionMismatch`) and the registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`).
+  - `pkg/graph/backends.go` — concrete `Store` impls: `MemoryStore` + `NewMemoryStore`, `BadgerStore` + `BadgerStoreConfig` + `NewBadgerStore`, `TieredStore` + `TieredStoreConfig` + `NewTieredStore`, the admin return types `ShardInfo` / `VerifyResult` / `RepairResult`, the four TieredStore-specific sentinels (`ErrEventPropertyIndex`, `ErrPrimaryLabelClassMutation`, `ErrNotReferenceEntity`, `ErrCrossShardArchiveRel`), and the new-signature `MigrateFromBadger(src, dst)`.
+  - `pkg/graph/temporal_constraint.go` — temporal-constraint aliases (`TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, `ConstraintRelWithinEndpoints`, `NewConstraintSet`, the seven sentinel errors) sit alongside the Graph-coupled enforcement methods (`checkTemporalConstraints` and helpers).
+- `pkg/graph/pagination.go` is deleted. The lowercase `paginateNodes` / `paginateRels` / `sortNodesByID` / `sortRelsByID` wrappers were one-line forwarders; the three call sites (`queries.go`, `graph_property_query.go`, `temporal_queries.go`) now invoke `internal/store.PaginateNodes` / `PaginateRels` / `SortNodesByID` / `SortRelsByID` directly. The other wrappers (`paginateIDs`, `paginateNodeIDs`, `paginateRelIDs`, `toNodeIDs`, `toRelIDs`) had no remaining callers and are gone.
+
+### Internal
+
+- `Store`, `QueryOpts`, `RelTombstone`, the 12 store sentinels, and the in-memory index types (`EntityClass`, `OntologyMapping`, vector-index errors, registry errors) keep their canonical declarations inside `pkg/graph/internal/{store,index}` due to the import-cycle constraint with the helpers (`PaginateIDs`, `EntityValidFrom`, `MatchesTemporalFilter`) that depend on them. The public type aliases at `pkg/graph/*.go` preserve the customer-facing names.
+
+### Internal cleanup (Phase 7a follow-up)
+
+- Renamed local `integrity` variables in `pkg/graph/batch.go` to `nodeIntegrity`/`relIntegrity` so the `internal/integrity` package can be imported under its bare name. The `integritypkg` import alias is gone.
+- All `pkg/graph/*_test.go` files unified to `package graph` (no more `package graph_test`). Eliminates the !45 caveat where tests landing in `findings_regression_test.go` should have been in `remove_label_test.go` but couldn't due to package boundary.
+
 ## [3.1.23] - 2026-05-07
 
 ### Added

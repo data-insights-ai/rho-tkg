@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -129,7 +130,7 @@ func (g *Graph) compareAndSetPropertyInternal(ctx context.Context, id types.Node
 	tm.TxFrom = now
 
 	nodeLabels := g.NodeLabels(current)
-	hash := ComputeNodeHash(current, nodeLabels)
+	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:     hash,
 		PrevHash: prevHash,

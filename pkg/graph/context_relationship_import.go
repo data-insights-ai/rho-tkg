@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -84,7 +85,7 @@ func (g *Graph) importRelWithIDInternal(ctx context.Context, id types.RelID, typ
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
-	hash := ComputeRelHash(r, typeName)
+	hash := integrity.ComputeRelHash(r, typeName)
 	ig := &types.RelIntegrity{
 		Hash:               hash,
 		PrevHash:           "",

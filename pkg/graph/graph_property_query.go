@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -69,6 +70,6 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
-	return paginateNodes(result, opts.After, opts.Limit), nil
+	storepkg.SortNodesByID(result)
+	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
 }

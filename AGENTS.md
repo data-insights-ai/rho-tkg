@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.23 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-3.1.22 changes: restructure phase 6 (`internal/snowflake`, `internal/registry`, `internal/temporal`); `pkg/graph/graph.go` split into 14 files (1880L → 48L); `pkg/graph/context.go` and `pkg/graph/temporal.go` split per-entity / per-feature; IndexProvider redesigned (new shape + `Initializable` + `GraphReader` + async-bus support, with `LegacyIndexProvider` adapter for backward compat); Relationship temporal-query parity (`GetRelationshipsByTypeValidAt`, `RelationshipsByTypePropertyAndTime`, `RelationshipsByTypePropertyDuring`); `BadgerStore.SaveRegistries` for atomic single-txn registry persistence.
+Status: v3.2.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-3.1.23 changes: phase 7a public-API consolidation — `aliases.go` split into themed files (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`); `MigrateFromBadger(src, dst, labels)` simplified to `MigrateFromBadger(src, dst)`; `ComputeNodeHash`/`ComputeRelHash`/`LabelRegistry`/`RelTypeRegistry`/TieredStore catalog types/`RelDeleteInfo` demoted from the public surface (breaking).
 
 ## Build & Test Commands
 
@@ -79,7 +79,7 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### `pkg/graph`
 
-After the v3.1.20-v3.1.23 restructure, persistence, indexes, registries, and event delivery live entirely under `pkg/graph/internal/`. The Graph struct itself is 48 LOC. See `CLAUDE.md` for the per-file map; `docs/architecture.md` carries the same map plus the dependency arrows between subpackages.
+After the v3.1.20-v3.1.23 restructure and the v3.2.0 public-API consolidation, persistence, indexes, registries, and event delivery live entirely under `pkg/graph/internal/`. The Graph struct itself is 48 LOC. The single public `aliases.go` is gone; public re-exports now live in themed files (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`, `temporal_constraint.go`). See `CLAUDE.md` for the per-file map; `docs/architecture.md` carries the same map plus the dependency arrows between subpackages.
 
 Top-level concerns:
 

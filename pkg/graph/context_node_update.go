@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -132,7 +133,7 @@ func (g *Graph) updateNodeInternal(ctx context.Context, id types.NodeID, updates
 	tm.TxFrom = now
 
 	nodeLabels := g.NodeLabels(current)
-	hash := ComputeNodeHash(current, nodeLabels)
+	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           prevHash,
@@ -261,7 +262,7 @@ func (g *Graph) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, 
 	tm.UpdatedAt = now
 
 	nodeLabels := g.NodeLabels(current)
-	hash := ComputeNodeHash(current, nodeLabels)
+	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := checkCtx(ctx); err != nil {

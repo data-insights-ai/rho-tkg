@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -39,18 +40,18 @@ type BatchBuilder struct {
 // the in-place mutation, and that is fine for batch's contract since the
 // entity is documented as "queue-time skeleton, finalised at Execute".
 type pendingNode struct {
-	node      *types.Node
-	labels    []string
-	integrity *types.NodeIntegrity    // aliases node.integrity
-	temporal  *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	node          *types.Node
+	labels        []string
+	nodeIntegrity *types.NodeIntegrity    // aliases node.integrity
+	temporal      *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingRel struct {
-	rel       *types.Relationship
-	startID   types.NodeID
-	endID     types.NodeID
-	integrity *types.RelIntegrity // aliases rel.integrity;
+	rel          *types.Relationship
+	startID      types.NodeID
+	endID        types.NodeID
+	relIntegrity *types.RelIntegrity // aliases rel.integrity;
 	// FromNodeHash/ToNodeHash mutated under per-rel endpoint locks in Execute
 	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
@@ -149,8 +150,8 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	n.SetProperties(ps)
 
 	canonicalLabels := b.g.NodeLabels(n)
-	hash := ComputeNodeHash(n, canonicalLabels)
-	integrity := &types.NodeIntegrity{
+	hash := integrity.ComputeNodeHash(n, canonicalLabels)
+	nodeIntegrity := &types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
 		AuthorID:           authorID,
@@ -158,7 +159,7 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	n.SetIntegrity(integrity)
+	n.SetIntegrity(nodeIntegrity)
 
 	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
 	// so the recorded transaction time reflects when the batch actually
@@ -170,10 +171,10 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	}
 
 	b.nodes = append(b.nodes, pendingNode{
-		node:      n,
-		labels:    canonicalLabels,
-		integrity: integrity,
-		temporal:  temporal,
+		node:          n,
+		labels:        canonicalLabels,
+		nodeIntegrity: nodeIntegrity,
+		temporal:      temporal,
 	})
 	return n, nil
 }
@@ -231,7 +232,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
 	r.SetProperties(ps)
 
-	hash := ComputeRelHash(r, typeName)
+	hash := integrity.ComputeRelHash(r, typeName)
 	// Build the integrity payload now (Hash and provenance are stable at
 	// queue time). FromNodeHash/ToNodeHash and TxFrom are deferred to
 	// Execute(): endpoint hashes are re-read from the live store after the
@@ -257,11 +258,11 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	b.rels = append(b.rels, pendingRel{
-		rel:       r,
-		startID:   startID,
-		endID:     endID,
-		integrity: ig,
-		temporal:  rtm,
+		rel:          r,
+		startID:      startID,
+		endID:        endID,
+		relIntegrity: ig,
+		temporal:     rtm,
 	})
 	return r, nil
 }
@@ -441,27 +442,27 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		if pr.startID == pr.endID {
 			if n, err := b.g.store.GetNode(pr.startID); err == nil {
 				if ig := n.Integrity(); ig != nil {
-					pr.integrity.FromNodeHash = ig.Hash
-					pr.integrity.ToNodeHash = ig.Hash
+					pr.relIntegrity.FromNodeHash = ig.Hash
+					pr.relIntegrity.ToNodeHash = ig.Hash
 				}
 			}
 		} else {
 			if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
 				if sIg := startNode.Integrity(); sIg != nil {
-					pr.integrity.FromNodeHash = sIg.Hash
+					pr.relIntegrity.FromNodeHash = sIg.Hash
 				}
 			}
 			if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
 				if eIg := endNode.Integrity(); eIg != nil {
-					pr.integrity.ToNodeHash = eIg.Hash
+					pr.relIntegrity.ToNodeHash = eIg.Hash
 				}
 			}
 		}
 		// SetIntegrity is a no-op against the same pointer the rel already
 		// holds, but keep the call so the queue-time alias is not load-bearing
-		// — a future refactor that copies pendingRel.integrity does not need
+		// — a future refactor that copies pendingRel.relIntegrity does not need
 		// to also remember to call SetIntegrity here.
-		pr.rel.SetIntegrity(pr.integrity)
+		pr.rel.SetIntegrity(pr.relIntegrity)
 
 		txNow := nowInstant()
 		pr.temporal.TxFrom = txNow

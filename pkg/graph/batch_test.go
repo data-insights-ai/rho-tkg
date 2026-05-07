@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -614,7 +615,7 @@ func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 
 	// Recompute with canonical labels — must match the stored hash.
 	canonicalLabels := g.NodeLabels(batchNode)
-	expectedHash := ComputeNodeHash(batchNode, canonicalLabels)
+	expectedHash := integrity.ComputeNodeHash(batchNode, canonicalLabels)
 	if batchHash != expectedHash {
 		t.Errorf("batch hash = %s, recomputed = %s (labels: %v)", batchHash, expectedHash, canonicalLabels)
 	}

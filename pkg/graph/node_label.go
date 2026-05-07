@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -73,7 +74,7 @@ func (g *Graph) addNodeLabelInternal(id types.NodeID, label string) (bool, error
 		prevHash = ig.Hash
 	}
 	nodeLabels := g.NodeLabels(copy)
-	hash := ComputeNodeHash(copy, nodeLabels)
+	hash := integrity.ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	// Set transaction/update time on both sides of the version boundary.
@@ -151,7 +152,7 @@ func (g *Graph) removeNodeLabelInternal(id types.NodeID, label string) error {
 		prevHash = ig.Hash
 	}
 	nodeLabels := g.NodeLabels(copy)
-	hash := ComputeNodeHash(copy, nodeLabels)
+	hash := integrity.ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	// Set transaction/update time on both sides of the version boundary.

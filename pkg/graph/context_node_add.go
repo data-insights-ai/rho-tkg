@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -85,7 +86,7 @@ func (g *Graph) addNodeInternal(ctx context.Context, labels []string, props map[
 	// Hash from canonical (deduplicated) labels, not raw user input.
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
 	canonicalLabels := g.NodeLabels(n)
-	hash := ComputeNodeHash(n, canonicalLabels)
+	hash := integrity.ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -205,7 +206,7 @@ func (g *Graph) importNodeWithIDInternal(ctx context.Context, id types.NodeID, l
 	n.SetProperties(ps)
 
 	canonicalLabels := g.NodeLabels(n)
-	hash := ComputeNodeHash(n, canonicalLabels)
+	hash := integrity.ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",

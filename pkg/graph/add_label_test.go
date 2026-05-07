@@ -1,4 +1,4 @@
-package graph_test
+package graph
 
 // add_label_test.go — failing tests for missing Graph.AddNodeLabel and
 // GraphTx.{AddNodeLabel, RemoveNodeLabel} public APIs.
@@ -34,14 +34,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 )
 
 // --- Graph.AddNodeLabel ---
 
 func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -59,7 +57,7 @@ func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 }
 
 func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person", "Employee"}, nil)
 	id := n.ID()
 
@@ -78,7 +76,7 @@ func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 }
 
 func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -88,37 +86,37 @@ func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 }
 
 func TestAddNodeLabel_NameTooLong(t *testing.T) {
-	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{MaxNameLength: 5}})
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
 	n, _ := g.AddNode([]string{"Short"}, nil)
 	id := n.ID()
 
 	err := g.AddNodeLabel(id, strings.Repeat("a", 6))
-	if !errors.Is(err, graph.ErrNameTooLong) {
+	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("expected ErrNameTooLong, got %v", err)
 	}
 }
 
 func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
-	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{MaxLabelsPerNode: 2}})
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
 	err := g.AddNodeLabel(id, "C")
-	if !errors.Is(err, graph.ErrTooManyLabels) {
+	if !errors.Is(err, ErrTooManyLabels) {
 		t.Fatalf("expected ErrTooManyLabels, got %v", err)
 	}
 }
 
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	err := g.AddNodeLabel(999, "Person")
-	if !errors.Is(err, graph.ErrNodeNotFound) {
+	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
 }
 
 func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -145,7 +143,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 }
 
 func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -173,7 +171,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 }
 
 func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 
@@ -181,7 +179,7 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
-	nodes, _ := g.NodesByLabel("Tag", graph.QueryOpts{})
+	nodes, _ := g.NodesByLabel("Tag", QueryOpts{})
 	found := false
 	for _, node := range nodes {
 		if node.ID() == id {
@@ -195,15 +193,15 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 }
 
 func TestAddNodeLabel_PublishesEvent(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
-	bus := graph.NewEventBus()
+	g, _ := New(Config{})
+	bus := NewEventBus()
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
-	var events []graph.Event
-	bus.Subscribe(func(e graph.Event) {
+	var events []Event
+	bus.Subscribe(func(e Event) {
 		events = append(events, e)
 	})
 	events = nil // clear AddNode event
@@ -215,7 +213,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatal("expected EventNodeUpdate, got none")
 	}
-	if events[0].Type != graph.EventNodeUpdate {
+	if events[0].Type != EventNodeUpdate {
 		t.Errorf("event type = %v, want EventNodeUpdate", events[0].Type)
 	}
 }
@@ -223,7 +221,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 // --- GraphTx.AddNodeLabel ---
 
 func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -243,7 +241,7 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 }
 
 func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -263,7 +261,7 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 }
 
 func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -277,7 +275,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	}
 
 	// Label index must not contain this node under "B" after rollback.
-	nodes, _ := g.NodesByLabel("B", graph.QueryOpts{})
+	nodes, _ := g.NodesByLabel("B", QueryOpts{})
 	for _, nd := range nodes {
 		if nd.ID() == id {
 			t.Fatal("label index still contains node under B after rollback")
@@ -286,7 +284,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
@@ -299,7 +297,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	nodes, _ := g.NodesByLabel("B", graph.QueryOpts{})
+	nodes, _ := g.NodesByLabel("B", QueryOpts{})
 	found := false
 	for _, nd := range nodes {
 		if nd.ID() == id {
@@ -313,7 +311,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 }
 
 func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
@@ -321,7 +319,7 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
-	if err := tx.AddNodeLabel(id, "B"); !errors.Is(err, graph.ErrTxDone) {
+	if err := tx.AddNodeLabel(id, "B"); !errors.Is(err, ErrTxDone) {
 		t.Fatalf("expected ErrTxDone, got %v", err)
 	}
 }
@@ -329,7 +327,7 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 // --- GraphTx.RemoveNodeLabel ---
 
 func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
@@ -349,7 +347,7 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
@@ -369,7 +367,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 }
 
 func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"Solo"}, nil)
 	id := n.ID()
 
@@ -377,13 +375,13 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 	defer tx.Rollback()
 
 	err := tx.RemoveNodeLabel(id, "Solo")
-	if !errors.Is(err, graph.ErrLastLabel) {
+	if !errors.Is(err, ErrLastLabel) {
 		t.Fatalf("expected ErrLastLabel, got %v", err)
 	}
 }
 
 func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
@@ -391,7 +389,7 @@ func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
-	if err := tx.RemoveNodeLabel(id, "B"); !errors.Is(err, graph.ErrTxDone) {
+	if err := tx.RemoveNodeLabel(id, "B"); !errors.Is(err, ErrTxDone) {
 		t.Fatalf("expected ErrTxDone, got %v", err)
 	}
 }

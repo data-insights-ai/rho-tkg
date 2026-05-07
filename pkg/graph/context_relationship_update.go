@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -130,7 +131,7 @@ func (g *Graph) updateRelationshipInternal(ctx context.Context, id types.RelID, 
 	tm.TxFrom = now
 
 	relTypeName := g.RelationshipType(current)
-	hash := ComputeRelHash(current, relTypeName)
+	hash := integrity.ComputeRelHash(current, relTypeName)
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
 	// These are NOT fed into ComputeRelHash to avoid cascading hash invalidation.
@@ -272,7 +273,7 @@ func (g *Graph) updateRelInPlaceInternal(ctx context.Context, id types.RelID, up
 	tm.UpdatedAt = now
 
 	relTypeName := g.RelationshipType(current)
-	hash := ComputeRelHash(current, relTypeName)
+	hash := integrity.ComputeRelHash(current, relTypeName)
 	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := checkCtx(ctx); err != nil {

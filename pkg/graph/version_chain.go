@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -89,7 +90,7 @@ func (g *Graph) closeNodeVersionInternal(id types.NodeID, t types.Instant) error
 		prevHash = ig.PrevHash
 	}
 	nodeLabels := g.NodeLabels(current)
-	hash := ComputeNodeHash(current, nodeLabels)
+	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := g.store.ReplaceNode(current); err != nil {
@@ -179,7 +180,7 @@ func (g *Graph) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		prevHash = ig.PrevHash
 	}
 	relTypeName := g.RelationshipType(current)
-	hash := ComputeRelHash(current, relTypeName)
+	hash := integrity.ComputeRelHash(current, relTypeName)
 	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
 
 	if err := g.store.ReplaceRelationship(current); err != nil {

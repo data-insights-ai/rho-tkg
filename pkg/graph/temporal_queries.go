@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -28,7 +29,7 @@ func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -50,7 +51,7 @@ func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship,
 	if err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -87,7 +88,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 	}); err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -117,7 +118,7 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 	if err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -142,7 +143,7 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 	if err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -278,7 +279,7 @@ func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*ty
 		}
 		result = append(result, n)
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -325,7 +326,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	}); err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -377,7 +378,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	}); err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
+	storepkg.SortNodesByID(result)
 	return result, nil
 }
 
@@ -442,7 +443,7 @@ func (g *Graph) RelationshipsByTypePropertyAndTime(relType, key string, value an
 	}); err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -500,6 +501,6 @@ func (g *Graph) RelationshipsByTypePropertyDuring(relType, key string, value any
 	}); err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
+	storepkg.SortRelsByID(result)
 	return result, nil
 }

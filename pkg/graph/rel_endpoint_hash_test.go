@@ -1,16 +1,15 @@
-package graph_test
+package graph
 
 import (
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TestFromNodeHashStoredOnAdd verifies that FromNodeHash and ToNodeHash are
 // set on the relationship integrity when AddRelationship is called.
 func TestFromNodeHashStoredOnAdd(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, err := g.AddNode([]string{"Start"}, nil)
@@ -58,7 +57,7 @@ func TestFromNodeHashStoredOnAdd(t *testing.T) {
 // TestEndpointHashFromShadow verifies that tkg_from_hash and tkg_to_hash are
 // readable via ResolveRelProperty using the shadow key constants.
 func TestEndpointHashFromShadow(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"A"}, nil)
@@ -96,7 +95,7 @@ func TestEndpointHashFromShadow(t *testing.T) {
 // TestEndpointHashPreservedOnUpdate verifies that UpdateRelationship refreshes
 // FromNodeHash and ToNodeHash to reflect the current endpoint node hashes.
 func TestEndpointHashPreservedOnUpdate(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"S"}, nil)
@@ -134,7 +133,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 
 // TestEndpointHashSelfLoop verifies endpoint hashes for a self-loop relationship.
 func TestEndpointHashSelfLoop(t *testing.T) {
-	g, _ := graph.New(graph.Config{Validation: graph.ValidationLimits{AllowSelfLoops: true}})
+	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"Node"}, nil)
@@ -159,7 +158,7 @@ func TestEndpointHashSelfLoop(t *testing.T) {
 // TestEndpointHashNotOnNode verifies that tkg_from_hash and tkg_to_hash return
 // (nil, false) when resolved on a node (they are rel-only).
 func TestEndpointHashNotOnNode(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"N"}, nil)

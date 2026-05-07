@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -61,7 +62,7 @@ func BenchmarkComputeNodeHash(b *testing.B) {
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
 	for b.Loop() {
-		ComputeNodeHash(n, labels)
+		integrity.ComputeNodeHash(n, labels)
 	}
 }
 
@@ -106,7 +107,7 @@ func BenchmarkComputeRelHash(b *testing.B) {
 	r.SetProperties(ps)
 	b.ResetTimer()
 	for b.Loop() {
-		ComputeRelHash(r, "KNOWS")
+		integrity.ComputeRelHash(r, "KNOWS")
 	}
 }
 

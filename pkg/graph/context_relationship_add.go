@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -82,7 +83,7 @@ func (g *Graph) addRelationshipInternal(ctx context.Context, typeName string, st
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
-	hash := ComputeRelHash(r, typeName)
+	hash := integrity.ComputeRelHash(r, typeName)
 
 	// Capture endpoint hashes at creation time for cross-validation.
 	// FromNodeHash/ToNodeHash are NOT part of ComputeRelHash to avoid cascading
@@ -217,7 +218,7 @@ func (g *Graph) addRelationshipByIDInternal(ctx context.Context, typeName string
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
-	hash := ComputeRelHash(r, typeName)
+	hash := integrity.ComputeRelHash(r, typeName)
 
 	// Integrity metadata — endpoint hashes are left empty because we do not
 	// have the endpoint nodes. This is the documented trade-off of the ByID path.
@@ -357,7 +358,7 @@ func (g *Graph) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeNam
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
-	hash := ComputeRelHash(r, typeName)
+	hash := integrity.ComputeRelHash(r, typeName)
 
 	// Integrity metadata — endpoint hashes left empty (ByID trade-off).
 	ig := &types.RelIntegrity{

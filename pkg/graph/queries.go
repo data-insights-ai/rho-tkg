@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -66,8 +67,8 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	}); err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
-	return paginateNodes(result, opts.After, opts.Limit), nil
+	storepkg.SortNodesByID(result)
+	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // RelationshipsByType returns relationships with the given type (resolved from string),
@@ -116,8 +117,8 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	}); err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
-	return paginateRels(result, opts.After, opts.Limit), nil
+	storepkg.SortRelsByID(result)
+	return storepkg.PaginateRels(result, opts.After, opts.Limit), nil
 }
 
 // OutgoingRelationships returns all outgoing relationships from the given node.
@@ -229,8 +230,8 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	sortNodesByID(result)
-	return paginateNodes(result, opts.After, opts.Limit), nil
+	storepkg.SortNodesByID(result)
+	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // AllRelationships returns all relationships in the store, with optional
@@ -263,8 +264,8 @@ func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 	if err != nil {
 		return nil, err
 	}
-	sortRelsByID(result)
-	return paginateRels(result, opts.After, opts.Limit), nil
+	storepkg.SortRelsByID(result)
+	return storepkg.PaginateRels(result, opts.After, opts.Limit), nil
 }
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.

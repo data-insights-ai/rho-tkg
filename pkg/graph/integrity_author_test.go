@@ -1,16 +1,15 @@
-package graph_test
+package graph
 
 import (
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TestAuthorIDSetOnAdd_Node verifies that tkg_author_id in AddNode props is
 // stored on the node's integrity struct and not in the PropertySlice.
 func TestAuthorIDSetOnAdd_Node(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	n, err := g.AddNode([]string{"Person"}, map[string]any{
@@ -41,7 +40,7 @@ func TestAuthorIDSetOnAdd_Node(t *testing.T) {
 
 // TestAuthorIDSetOnAdd_Rel verifies tkg_author_id on AddRelationship.
 func TestAuthorIDSetOnAdd_Rel(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"A"}, nil)
@@ -68,7 +67,7 @@ func TestAuthorIDSetOnAdd_Rel(t *testing.T) {
 // TestSignatureSetOnAdd_Node verifies that tkg_signature ([]byte) in AddNode props
 // is stored on the node's integrity struct.
 func TestSignatureSetOnAdd_Node(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("fake-sig-bytes")
@@ -93,7 +92,7 @@ func TestSignatureSetOnAdd_Node(t *testing.T) {
 
 // TestSignatureSetOnAdd_Rel verifies tkg_signature on AddRelationship.
 func TestSignatureSetOnAdd_Rel(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"A"}, nil)
@@ -118,7 +117,7 @@ func TestSignatureSetOnAdd_Rel(t *testing.T) {
 // TestAuthorIDPreservedOnUpdate verifies that tkg_author_id in UpdateNode updates
 // is stored on the new version's integrity struct.
 func TestAuthorIDPreservedOnUpdate(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"User"}, nil)
@@ -149,7 +148,7 @@ func TestAuthorIDPreservedOnUpdate(t *testing.T) {
 // TestAuthorIDViaShadow_Node verifies reading AuthorID via ResolveNodeProperty
 // with the ShadowAuthorID shadow key.
 func TestAuthorIDViaShadow_Node(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"X"}, map[string]any{
@@ -167,7 +166,7 @@ func TestAuthorIDViaShadow_Node(t *testing.T) {
 
 // TestSignatureViaShadow_Node verifies reading Signature via ResolveNodeProperty.
 func TestSignatureViaShadow_Node(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("test-sig")
@@ -187,7 +186,7 @@ func TestSignatureViaShadow_Node(t *testing.T) {
 
 // TestAuthorIDViaShadow_Rel verifies reading AuthorID via ResolveRelProperty.
 func TestAuthorIDViaShadow_Rel(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"A"}, nil)
@@ -207,7 +206,7 @@ func TestAuthorIDViaShadow_Rel(t *testing.T) {
 
 // TestSignatureViaShadow_Rel verifies reading Signature via ResolveRelProperty.
 func TestSignatureViaShadow_Rel(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	start, _ := g.AddNode([]string{"A"}, nil)
@@ -230,7 +229,7 @@ func TestSignatureViaShadow_Rel(t *testing.T) {
 // TestNoAuthorID_DefaultsEmpty verifies that nodes/rels created without tkg_author_id
 // have empty AuthorID and nil Signature.
 func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	n, _ := g.AddNode([]string{"Plain"}, map[string]any{"x": 1})
@@ -264,7 +263,7 @@ func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
 // do not appear in the PropertySlice and thus do not alter the integrity hash
 // compared to a node created without them.
 func TestProvenanceDoesNotAffectHash(t *testing.T) {
-	g, _ := graph.New(graph.Config{})
+	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
 	// Two nodes with identical user properties but different AuthorID.
