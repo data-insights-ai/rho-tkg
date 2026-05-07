@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 )
 
 // registriesPersister is the optional interface implemented by Store
@@ -15,7 +15,7 @@ import (
 // Both BadgerStore (single-txn) and TieredStore (single registry-file write)
 // satisfy this interface; MemoryStore does not need to.
 type registriesPersister interface {
-	SaveRegistries(*indexpkg.LabelRegistry, *indexpkg.RelTypeRegistry) error
+	SaveRegistries(*registrypkg.LabelRegistry, *registrypkg.RelTypeRegistry) error
 }
 
 // New creates a new Graph with the given configuration.
@@ -79,8 +79,8 @@ func New(config Config) (*Graph, error) {
 	}
 
 	g := &Graph{
-		labels:         indexpkg.NewLabelRegistry(),
-		relTypes:       indexpkg.NewRelTypeRegistry(),
+		labels:         registrypkg.NewLabelRegistry(),
+		relTypes:       registrypkg.NewRelTypeRegistry(),
 		nodeIDGen:      nodeGen,
 		relIDGen:       relGen,
 		entityLocks:    locks.NewManager(),

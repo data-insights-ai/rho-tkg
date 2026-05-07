@@ -12,13 +12,13 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -34,7 +34,7 @@ func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
 
 func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -50,7 +50,7 @@ func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
 
 func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	unknownTok, _ := reg.GetOrCreate("SomeNewLabel")
@@ -61,7 +61,7 @@ func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
 
 func TestTieredStore_PutGetNode_Ref(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -88,7 +88,7 @@ func TestTieredStore_PutGetNode_Ref(t *testing.T) {
 
 func TestTieredStore_PutGetNode_Event(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")            // tok 1 = ref
@@ -121,7 +121,7 @@ func TestTieredStore_PutGetNode_Event(t *testing.T) {
 
 func TestTieredStore_DeleteNode_Ref(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -141,7 +141,7 @@ func TestTieredStore_DeleteNode_Ref(t *testing.T) {
 
 func TestTieredStore_ReplaceNode(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -164,14 +164,14 @@ func TestTieredStore_ReplaceNode(t *testing.T) {
 
 func TestTieredStore_SameShardRel_EventToEvent(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
 	signalTok, _ := reg.GetOrCreate("Signal")
-	relTypeTok, _ := indexpkg.NewRelTypeRegistry().GetOrCreate("TRIGGERS") // standalone for token
-	_ = relTypeTok                                                         // not used directly
+	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERS") // standalone for token
+	_ = relTypeTok                                                            // not used directly
 
 	gen := tieredNodeGen(t)
 	n1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
@@ -196,7 +196,7 @@ func TestTieredStore_SameShardRel_EventToEvent(t *testing.T) {
 
 func TestTieredStore_SameShardRel_RefToRef(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -221,7 +221,7 @@ func TestTieredStore_SameShardRel_RefToRef(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_EventToRef(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -262,7 +262,7 @@ func TestTieredStore_CrossShardRel_EventToRef(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_RefToEvent(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -294,7 +294,7 @@ func TestTieredStore_CrossShardRel_RefToEvent(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_IncomingRelationships(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -327,7 +327,7 @@ func TestTieredStore_CrossShardRel_IncomingRelationships(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_OutgoingRelationships(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -356,7 +356,7 @@ func TestTieredStore_CrossShardRel_OutgoingRelationships(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_Delete(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -391,7 +391,7 @@ func TestTieredStore_CrossShardRel_Delete(t *testing.T) {
 
 func TestTieredStore_CrossShardRel_EndpointNotFound(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -428,7 +428,7 @@ func TestTieredStore_CrossShardRel_EndpointNotFound(t *testing.T) {
 
 func TestTieredStore_AllNodes_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -456,7 +456,7 @@ func TestTieredStore_AllNodes_MergesShards(t *testing.T) {
 
 func TestTieredStore_AllRelationships_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -490,7 +490,7 @@ func TestTieredStore_AllRelationships_MergesShards(t *testing.T) {
 
 func TestTieredStore_NodeCount(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -513,7 +513,7 @@ func TestTieredStore_NodeCount(t *testing.T) {
 
 func TestTieredStore_RelationshipCount(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -538,7 +538,7 @@ func TestTieredStore_RelationshipCount(t *testing.T) {
 
 func TestTieredStore_NodeCountByLabel(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -569,7 +569,7 @@ func TestTieredStore_NodeCountByLabel(t *testing.T) {
 
 func TestTieredStore_NodesByLabel(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -591,7 +591,7 @@ func TestTieredStore_NodesByLabel(t *testing.T) {
 
 func TestTieredStore_DeleteNodeCascade_RefNodeWithCrossShardRels(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -628,7 +628,7 @@ func TestTieredStore_DeleteNodeCascade_RefNodeWithCrossShardRels(t *testing.T) {
 
 func TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -668,7 +668,7 @@ func TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels(t *testing.T)
 
 func TestTieredStore_VersionHistory_RefNode(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -693,7 +693,7 @@ func TestTieredStore_VersionHistory_RefNode(t *testing.T) {
 
 func TestTieredStore_VersionHistory_EventRel(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -725,7 +725,7 @@ func TestTieredStore_VersionHistory_EventRel(t *testing.T) {
 
 func TestTieredStore_AllNodeHistoryIDs_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -751,7 +751,7 @@ func TestTieredStore_AllNodeHistoryIDs_MergesShards(t *testing.T) {
 
 func TestTieredStore_PutNodesBatch_MixedRefEvent(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -776,7 +776,7 @@ func TestTieredStore_PutNodesBatch_MixedRefEvent(t *testing.T) {
 
 func TestTieredStore_DeleteNodesBatch(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -804,7 +804,7 @@ func TestTieredStore_DeleteNodesBatch(t *testing.T) {
 
 func TestTieredStore_PutRelationshipsBatch_MixedSameAndCross(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -835,7 +835,7 @@ func TestTieredStore_PutRelationshipsBatch_MixedSameAndCross(t *testing.T) {
 
 func TestTieredStore_PropertyIndex_RoutedByLabel(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -884,7 +884,7 @@ func TestTieredStore_Close_Idempotent(t *testing.T) {
 
 func TestTieredStore_Clear_AllShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -923,7 +923,7 @@ func TestTieredStore_EventShardsMap(t *testing.T) {
 
 func TestTieredStore_AllNodeIDs_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -949,7 +949,7 @@ func TestTieredStore_AllNodeIDs_MergesShards(t *testing.T) {
 
 func TestTieredStore_AllRelIDs_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -981,7 +981,7 @@ func TestTieredStore_AllRelIDs_MergesShards(t *testing.T) {
 
 func TestTieredStore_AllNodes_Pagination(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1109,7 +1109,7 @@ func TestTieredStore_MidWindowRestart(t *testing.T) {
 
 func TestTieredStore_GetNodesByIDs(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1137,7 +1137,7 @@ func TestTieredStore_GetNodesByIDs(t *testing.T) {
 
 func TestTieredStore_GetRelationshipsByIDs(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1166,7 +1166,7 @@ func TestTieredStore_GetRelationshipsByIDs(t *testing.T) {
 
 func TestTieredStore_RelationshipsByType_MergesShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1199,7 +1199,7 @@ func TestTieredStore_RelationshipsByType_MergesShards(t *testing.T) {
 
 func TestTieredStore_RelCountByType(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1232,7 +1232,7 @@ func TestTieredStore_RelCountByType(t *testing.T) {
 
 func TestTieredStore_ReplaceRelationship(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1261,7 +1261,7 @@ func TestTieredStore_ReplaceRelationship(t *testing.T) {
 
 func TestTieredStore_TruncateHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1286,7 +1286,7 @@ func TestTieredStore_TruncateHistory(t *testing.T) {
 
 func TestTieredStore_GetNodeVersion(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1306,7 +1306,7 @@ func TestTieredStore_GetNodeVersion(t *testing.T) {
 
 func TestTieredStore_GetRelVersion(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1332,7 +1332,7 @@ func TestTieredStore_GetRelVersion(t *testing.T) {
 
 func TestTieredStore_ReplaceNodeWithHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1361,7 +1361,7 @@ func TestTieredStore_ReplaceNodeWithHistory(t *testing.T) {
 
 func TestTieredStore_ReplaceRelWithHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1391,7 +1391,7 @@ func TestTieredStore_ReplaceRelWithHistory(t *testing.T) {
 
 func TestTieredStore_DeleteRelationshipsBatch(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1420,7 +1420,7 @@ func TestTieredStore_DeleteRelationshipsBatch(t *testing.T) {
 
 func TestTieredStore_AllRelHistoryIDs(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1456,7 +1456,7 @@ func TestTieredStore_AllRelHistoryIDs(t *testing.T) {
 
 func TestTieredStore_TruncateRelHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -1486,7 +1486,7 @@ func TestTieredStore_TruncateRelHistory(t *testing.T) {
 
 func TestTieredStore_Rotation(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1562,7 +1562,7 @@ func TestTieredStore_RotationIdempotent(t *testing.T) {
 
 func TestTieredStore_WarmShardStillReadable(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1591,7 +1591,7 @@ func TestTieredStore_WarmShardStillReadable(t *testing.T) {
 
 func TestTieredStore_WriteAfterRotation(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1630,7 +1630,7 @@ func TestTieredStore_WriteAfterRotation(t *testing.T) {
 
 func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1652,7 +1652,7 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 
 func TestTieredStore_PutRelCrossEventShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1706,7 +1706,7 @@ func TestTieredStore_PutRelCrossEventShards(t *testing.T) {
 
 func TestTieredStore_DeleteRelCrossEventShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1755,7 +1755,7 @@ func TestTieredStore_DeleteRelCrossEventShards(t *testing.T) {
 
 func TestTieredStore_OutgoingRelsCrossEventShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1799,7 +1799,7 @@ func TestTieredStore_OutgoingRelsCrossEventShards(t *testing.T) {
 
 func TestTieredStore_IncomingRelsCrossEventShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1834,7 +1834,7 @@ func TestTieredStore_IncomingRelsCrossEventShards(t *testing.T) {
 
 func TestTieredStore_DepthHot(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1868,7 +1868,7 @@ func TestTieredStore_DepthHot(t *testing.T) {
 
 func TestTieredStore_DepthWarm(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1897,7 +1897,7 @@ func TestTieredStore_DepthWarm(t *testing.T) {
 
 func TestTieredStore_DepthAll(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1926,7 +1926,7 @@ func TestTieredStore_DepthAll(t *testing.T) {
 
 func TestTieredStore_DepthZeroIsAll(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -1955,7 +1955,7 @@ func TestTieredStore_DepthZeroIsAll(t *testing.T) {
 
 func TestTieredStore_DepthCounters(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -2369,7 +2369,7 @@ func TestShardCatalog_UpdateShardTierNotFound(t *testing.T) {
 
 func TestTieredStore_DepthRelationshipsByType(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -2419,7 +2419,7 @@ func TestTieredStore_DepthRelationshipsByType(t *testing.T) {
 
 func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")
@@ -2466,7 +2466,7 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 	// Write data, rotate (hot→warm), manually demote to cold,
 	// then verify the cold shard data is still accessible.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -2534,7 +2534,7 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 	}
 	defer func() { _ = ts.Close() }()
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -2593,7 +2593,7 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 	// Verify snowflake ID timestamp correctly resolves to cold shard.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -2637,7 +2637,7 @@ func TestTieredStore_ColdShard_DemotionWarmToCold(t *testing.T) {
 	}
 	defer func() { _ = ts.Close() }()
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("Signal")
@@ -2682,7 +2682,7 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 	}
 	defer func() { _ = ts.Close() }()
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 
@@ -2732,7 +2732,7 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -2770,7 +2770,7 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 	}
 	defer func() { _ = ts2.Close() }()
 
-	reg2 := indexpkg.NewLabelRegistry()
+	reg2 := registrypkg.NewLabelRegistry()
 	ts2.SetLabelRegistry(reg2)
 	_, _ = reg2.GetOrCreate("Case")
 	_, _ = reg2.GetOrCreate("Signal")
@@ -2802,7 +2802,7 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 func TestTieredStore_ColdShard_GetStoreFastPath(t *testing.T) {
 	// getStore for hot/warm shards should return immediately without lock.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	es := ts.HotShardForTest()
@@ -2827,7 +2827,7 @@ func TestTieredStore_ColdShard_GetStoreFastPath(t *testing.T) {
 
 func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -2870,7 +2870,7 @@ func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 
 func TestTieredStore_ParallelAllNodes(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -2913,7 +2913,7 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 
 func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -2967,7 +2967,7 @@ func TestTieredStore_ParallelErrorPropagation(t *testing.T) {
 	// Verify that errors from event shard queries are propagated.
 	// We close a shard to force an error.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -3013,7 +3013,7 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 
@@ -3040,7 +3040,7 @@ func TestTieredStore_ArchiveRestart(t *testing.T) {
 	}
 	defer func() { _ = ts2.Close() }()
 
-	reg2 := indexpkg.NewLabelRegistry()
+	reg2 := registrypkg.NewLabelRegistry()
 	ts2.SetLabelRegistry(reg2)
 	_, _ = reg2.GetOrCreate("Case")
 
@@ -3058,7 +3058,7 @@ func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
 	// Verify shardForNodeID propagates errors. With in-memory stores,
 	// the only error path is through getStore on cold shards.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	gen := tieredNodeGen(t)
@@ -3076,7 +3076,7 @@ func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
 
 func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	gen := tieredRelGen(t)
@@ -3094,7 +3094,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 func TestTieredStore_RoutingErrorInWrite(t *testing.T) {
 	// Verify that write operations propagate routing errors.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	gen := tieredNodeGen(t)
@@ -3123,7 +3123,7 @@ func TestShardCatalog_ColdEventShards(t *testing.T) {
 
 func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -3145,7 +3145,7 @@ func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
 
 func TestTieredStore_PropertyIndex_EventRejected(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	_, _ = reg.GetOrCreate("Case")         // token 1 = ref
@@ -3214,7 +3214,7 @@ func TestShardCatalog_UpdateStats(t *testing.T) {
 
 func TestTieredStore_ForceRotate(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	oldHotName := ts.HotShardForTest().Name()
@@ -3268,7 +3268,7 @@ func TestTieredStore_ListShards_Initial(t *testing.T) {
 
 func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	if err := ts.ForceRotate(); err != nil {
@@ -3292,7 +3292,7 @@ func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
 
 func TestTieredStore_ListShards_WithCold(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	// Rotate and demote to cold.
@@ -3319,7 +3319,7 @@ func TestTieredStore_ListShards_WithCold(t *testing.T) {
 
 func TestTieredStore_ListShards_LiveStats(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 
@@ -3344,7 +3344,7 @@ func TestTieredStore_ListShards_LiveStats(t *testing.T) {
 
 func TestTieredStore_RebuildCatalog(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
@@ -3386,13 +3386,13 @@ func TestTieredStore_RebuildCatalog(t *testing.T) {
 
 func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
 	sigTok, _ := reg.GetOrCreate("Signal")
-	relTok, _ := indexpkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
+	relTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
 
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -3442,13 +3442,13 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 
 func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
 	sigTok, _ := reg.GetOrCreate("Signal")
-	relTypeTok, _ := indexpkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
+	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
 
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -3508,7 +3508,7 @@ func TestMigrateFromBadger_Empty(t *testing.T) {
 	t.Cleanup(func() { _ = src.Close() })
 
 	dst := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 
 	if err := MigrateFromBadger(src, dst, reg); err != nil {
 		t.Fatalf("MigrateFromBadger: %v", err)
@@ -3528,7 +3528,7 @@ func TestMigrateFromBadger_NodesOnly(t *testing.T) {
 	t.Cleanup(func() { _ = src.Close() })
 
 	// Create label registry and register labels.
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	caseTok, _ := reg.GetOrCreate("Case")
 	sigTok, _ := reg.GetOrCreate("Signal")
 
@@ -3575,7 +3575,7 @@ func TestMigrateFromBadger_WithRels(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = src.Close() })
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	caseTok, _ := reg.GetOrCreate("Case")
 
 	nodeGen := newTestGen(t, 0)
@@ -3591,7 +3591,7 @@ func TestMigrateFromBadger_WithRels(t *testing.T) {
 		t.Fatalf("PutNode n2: %v", err)
 	}
 
-	rtReg := indexpkg.NewRelTypeRegistry()
+	rtReg := registrypkg.NewRelTypeRegistry()
 	relTok, _ := rtReg.GetOrCreate("RELATED")
 
 	r := types.NewRelationship(types.RelID(relGen.Generate()), relTok,
@@ -3631,7 +3631,7 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = src.Close() })
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	caseTok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
 	sigTok, _ := reg.GetOrCreate("Signal")
@@ -3649,7 +3649,7 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 		t.Fatalf("PutNode evt: %v", err)
 	}
 
-	rtReg := indexpkg.NewRelTypeRegistry()
+	rtReg := registrypkg.NewRelTypeRegistry()
 	relTok, _ := rtReg.GetOrCreate("TRIGGERED")
 
 	// E→R relationship in source (single store, no cross-shard concern).
@@ -3695,7 +3695,7 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	// activeReqs — preventing the TOCTOU race where closeIdleShards closes the
 	// store between getStore return and activeReqs increment.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -3760,11 +3760,11 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	// Cross-shard relationship in warm shard should be found without probing cold.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
-	relTypeTok, _ := indexpkg.NewRelTypeRegistry().GetOrCreate("HAS_SIGNAL")
+	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("HAS_SIGNAL")
 
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -3941,7 +3941,7 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts1.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -4158,7 +4158,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts1.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -4238,7 +4238,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 
 func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")
@@ -4314,7 +4314,7 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 
 func TestTieredStore_IncomingRelationshipsForNodes(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")

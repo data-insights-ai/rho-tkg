@@ -3,7 +3,7 @@ package tieredstore
 import (
 	"fmt"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -19,7 +19,7 @@ import (
 //
 // The label registry must be wired to the TieredStore before calling this function
 // (via SetLabelRegistry).
-func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *indexpkg.LabelRegistry) error {
+func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *registrypkg.LabelRegistry) error {
 	// Wire ontology for routing.
 	dst.SetLabelRegistry(labels)
 

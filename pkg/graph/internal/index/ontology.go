@@ -1,6 +1,10 @@
 package index
 
-import "sync"
+import (
+	"sync"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+)
 
 // EntityClass distinguishes reference entities (long-lived, low-churn) from
 // event entities (high-volume, time-windowed). Unknown labels default to
@@ -22,10 +26,10 @@ const (
 // It maintains a name-based map from configuration and a lazily-populated
 // token-based cache for hot-path lookups.
 type OntologyMapping struct {
-	byName   map[string]EntityClass // label name -> class (from config)
-	byToken  map[uint16]EntityClass // cached token -> class (populated lazily)
-	mu       sync.RWMutex           // protects byToken lazy cache
-	labelReg *LabelRegistry         // shared ref, set after Graph.New()
+	byName   map[string]EntityClass  // label name -> class (from config)
+	byToken  map[uint16]EntityClass  // cached token -> class (populated lazily)
+	mu       sync.RWMutex            // protects byToken lazy cache
+	labelReg *registry.LabelRegistry // shared ref, set after Graph.New()
 }
 
 // NewOntologyMapping creates an OntologyMapping that classifies the given
@@ -87,7 +91,7 @@ func (om *OntologyMapping) ClassifyByToken(token uint16) EntityClass {
 
 // SetLabelRegistry wires the ontology to the graph's label registry for
 // token-based classification. Called by Graph.New() after construction.
-func (om *OntologyMapping) SetLabelRegistry(reg *LabelRegistry) {
+func (om *OntologyMapping) SetLabelRegistry(reg *registry.LabelRegistry) {
 	om.labelReg = reg
 }
 

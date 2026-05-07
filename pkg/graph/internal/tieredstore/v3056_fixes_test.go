@@ -3,7 +3,7 @@ package tieredstore
 import (
 	"testing"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -15,7 +15,7 @@ import (
 func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	evtTok, _ := reg.GetOrCreate("Signal") // event label → hot shard
@@ -65,7 +65,7 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")  // reference

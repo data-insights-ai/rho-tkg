@@ -12,7 +12,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -684,7 +684,7 @@ func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	reg.GetOrCreate("Person")
 	reg.GetOrCreate("Movie")
 
@@ -692,7 +692,7 @@ func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
 		t.Fatalf("SaveLabelRegistry: %v", err)
 	}
 
-	reg2 := indexpkg.NewLabelRegistry()
+	reg2 := registrypkg.NewLabelRegistry()
 	found, err := bs.LoadLabelRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -715,7 +715,7 @@ func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := indexpkg.NewRelTypeRegistry()
+	reg := registrypkg.NewRelTypeRegistry()
 	reg.GetOrCreate("KNOWS")
 	reg.GetOrCreate("ACTED_IN")
 
@@ -723,7 +723,7 @@ func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
 		t.Fatalf("SaveRelTypeRegistry: %v", err)
 	}
 
-	reg2 := indexpkg.NewRelTypeRegistry()
+	reg2 := registrypkg.NewRelTypeRegistry()
 	found, err := bs.LoadRelTypeRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -742,7 +742,7 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	found, err := bs.LoadLabelRegistry(reg)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -751,7 +751,7 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 		t.Fatal("expected found=false on fresh DB")
 	}
 
-	reg2 := indexpkg.NewRelTypeRegistry()
+	reg2 := registrypkg.NewRelTypeRegistry()
 	found2, err := bs.LoadRelTypeRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -776,12 +776,12 @@ func TestBadgerStore_SaveRegistries(t *testing.T) {
 		t.Fatalf("open 1: %v", err)
 	}
 
-	labels := indexpkg.NewLabelRegistry()
+	labels := registrypkg.NewLabelRegistry()
 	labels.GetOrCreate("Person")
 	labels.GetOrCreate("Movie")
 	labels.GetOrCreate("Genre")
 
-	relTypes := indexpkg.NewRelTypeRegistry()
+	relTypes := registrypkg.NewRelTypeRegistry()
 	relTypes.GetOrCreate("KNOWS")
 	relTypes.GetOrCreate("ACTED_IN")
 
@@ -799,7 +799,7 @@ func TestBadgerStore_SaveRegistries(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	labels2 := indexpkg.NewLabelRegistry()
+	labels2 := registrypkg.NewLabelRegistry()
 	foundL, err := bs2.LoadLabelRegistry(labels2)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -813,7 +813,7 @@ func TestBadgerStore_SaveRegistries(t *testing.T) {
 		}
 	}
 
-	relTypes2 := indexpkg.NewRelTypeRegistry()
+	relTypes2 := registrypkg.NewRelTypeRegistry()
 	foundR, err := bs2.LoadRelTypeRegistry(relTypes2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -836,22 +836,22 @@ func TestBadgerStore_SaveRegistries_OverwritesPriorState(t *testing.T) {
 	bs := newTestBadgerStore(t)
 
 	// Seed via the legacy split-write path.
-	first := indexpkg.NewLabelRegistry()
+	first := registrypkg.NewLabelRegistry()
 	first.GetOrCreate("Stale")
 	if err := bs.SaveLabelRegistry(first); err != nil {
 		t.Fatalf("SaveLabelRegistry: %v", err)
 	}
 
 	// Replace via the unified path.
-	labels := indexpkg.NewLabelRegistry()
+	labels := registrypkg.NewLabelRegistry()
 	labels.GetOrCreate("Fresh")
-	relTypes := indexpkg.NewRelTypeRegistry()
+	relTypes := registrypkg.NewRelTypeRegistry()
 	relTypes.GetOrCreate("REL")
 	if err := bs.SaveRegistries(labels, relTypes); err != nil {
 		t.Fatalf("SaveRegistries: %v", err)
 	}
 
-	loaded := indexpkg.NewLabelRegistry()
+	loaded := registrypkg.NewLabelRegistry()
 	if _, err := bs.LoadLabelRegistry(loaded); err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
 	}
@@ -869,15 +869,15 @@ func TestBadgerStore_SaveRegistries_EmptyRegistries(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	labels := indexpkg.NewLabelRegistry()
-	relTypes := indexpkg.NewRelTypeRegistry()
+	labels := registrypkg.NewLabelRegistry()
+	relTypes := registrypkg.NewRelTypeRegistry()
 
 	if err := bs.SaveRegistries(labels, relTypes); err != nil {
 		t.Fatalf("SaveRegistries: %v", err)
 	}
 
 	// Loading the persisted (empty) registries should succeed and report found=true.
-	labels2 := indexpkg.NewLabelRegistry()
+	labels2 := registrypkg.NewLabelRegistry()
 	found, err := bs.LoadLabelRegistry(labels2)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -886,7 +886,7 @@ func TestBadgerStore_SaveRegistries_EmptyRegistries(t *testing.T) {
 		t.Fatal("expected found=true after SaveRegistries even with empty inputs")
 	}
 
-	relTypes2 := indexpkg.NewRelTypeRegistry()
+	relTypes2 := registrypkg.NewRelTypeRegistry()
 	found, err = bs.LoadRelTypeRegistry(relTypes2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -4041,8 +4041,8 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 	}
 
 	// Create registries for persistence.
-	labels := indexpkg.NewLabelRegistry()
-	relTypes := indexpkg.NewRelTypeRegistry()
+	labels := registrypkg.NewLabelRegistry()
+	relTypes := registrypkg.NewRelTypeRegistry()
 	labels.GetOrCreate("Person")  // token 1
 	labels.GetOrCreate("Company") // token 2
 	relTypes.GetOrCreate("KNOWS") // token 1

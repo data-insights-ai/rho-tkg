@@ -6,8 +6,8 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 )
 
 // Graph is the central graph layer. It owns the label and relationship type
@@ -18,8 +18,8 @@ import (
 // to prevent write-skew (concurrent AddRelationship(→X) + DeleteNodeCascade(X)
 // producing a dangling edge).
 type Graph struct {
-	labels        *indexpkg.LabelRegistry
-	relTypes      *indexpkg.RelTypeRegistry
+	labels        *registrypkg.LabelRegistry
+	relTypes      *registrypkg.RelTypeRegistry
 	nodeIDGen     *snowflake.Node
 	relIDGen      *snowflake.Node
 	store         Store

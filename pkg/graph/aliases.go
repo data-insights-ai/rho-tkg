@@ -9,6 +9,7 @@ import (
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/temporal"
@@ -127,8 +128,8 @@ var (
 // --- Registry sentinel errors (public API surface) ---
 
 var (
-	ErrEmptyName        = indexpkg.ErrEmptyName
-	ErrRegistryNotEmpty = indexpkg.ErrRegistryNotEmpty
+	ErrEmptyName        = registrypkg.ErrEmptyName
+	ErrRegistryNotEmpty = registrypkg.ErrRegistryNotEmpty
 )
 
 // --- Pagination helpers (package-private wrappers) ---
@@ -251,7 +252,7 @@ var (
 
 // MigrateFromBadger copies all current and historical entities from src to dst.
 // Re-exported for use by the Graph layer's migration helpers.
-func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *indexpkg.LabelRegistry) error {
+func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *registrypkg.LabelRegistry) error {
 	return tieredstore.MigrateFromBadger(src, dst, labels)
 }
 

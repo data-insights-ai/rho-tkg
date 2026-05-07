@@ -1,6 +1,10 @@
 package index
 
-import "testing"
+import (
+	"testing"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+)
 
 func TestOntologyMapping_ClassifyByName(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case", "Organization", "User"})
@@ -40,7 +44,7 @@ func TestOntologyMapping_ClassifyByToken_NoRegistry(t *testing.T) {
 
 func TestOntologyMapping_ClassifyByToken_WithRegistry(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case", "User"})
-	reg := NewLabelRegistry()
+	reg := registry.NewLabelRegistry()
 	om.SetLabelRegistry(reg)
 
 	// Register labels.
@@ -78,7 +82,7 @@ func TestOntologyMapping_ClassifyByToken_WithRegistry(t *testing.T) {
 
 func TestOntologyMapping_ClassifyByToken_UnknownToken(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case"})
-	reg := NewLabelRegistry()
+	reg := registry.NewLabelRegistry()
 	om.SetLabelRegistry(reg)
 
 	// Token 999 doesn't exist in the registry.

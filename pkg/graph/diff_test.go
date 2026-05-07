@@ -2,6 +2,7 @@ package graph
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -463,5 +464,64 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	}
 	if len(diff.NodesDeleted) != 0 {
 		t.Fatalf("expected 0 deleted, got %d", len(diff.NodesDeleted))
+	}
+}
+
+// --- Fix C: DiffSnapshots does not block BeginTx ---
+
+func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Seed a node with explicit ValidFrom so temporal queries have real work to do.
+	n, err := g.AddNode([]string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	setNodeTemporal(t, g, n.ID(), 1000, 0)
+
+	t1 := types.Instant(500)
+	t2 := types.Instant(2000)
+
+	const goroutines = 8
+	var wg sync.WaitGroup
+
+	// Launch goroutines that call DiffSnapshots concurrently.
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = g.DiffSnapshots(t1, t2)
+		}()
+	}
+
+	// Launch goroutines that call BeginTx (requires g.mu.Lock) concurrently.
+	// With the old code (g.mu.RLock held by DiffSnapshots), these would all
+	// queue behind DiffSnapshots. With the fix, they run freely.
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tx := g.BeginTx()
+			_, _ = tx.AddNode([]string{"Concurrent"}, nil)
+			_ = tx.Commit()
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All goroutines completed — no deadlock.
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent DiffSnapshots + BeginTx goroutines did not complete within 10s")
 	}
 }

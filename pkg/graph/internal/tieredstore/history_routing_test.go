@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -17,7 +17,7 @@ import (
 // After the release callback is invoked, idle close is unblocked.
 func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -92,7 +92,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 // but must still return a non-nil release for caller-side defer parity.
 func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -164,7 +164,7 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 // checkout would deadlock that caller.
 func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -220,7 +220,7 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 // wait, which is necessary but not sufficient.
 func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -21,7 +21,7 @@ import (
 func setupBatchDelete(t *testing.T) (*TieredStore, uint16, uint16) {
 	t.Helper()
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")

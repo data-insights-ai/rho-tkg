@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -977,4 +978,137 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("Phantom@t0 returned %d rels, want 0", len(got))
 	}
+}
+
+// --- Fix B: RemoveNodeLabel preserves version history ---
+
+func TestRemoveNodeLabel_PreservesHistory(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, err := g.AddNode([]string{"Person", "Admin"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := n.ID()
+
+	// Version 0 exists (genesis); no history yet.
+	history0, err := g.store.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory before RemoveNodeLabel: %v", err)
+	}
+	if len(history0) != 0 {
+		t.Fatalf("expected 0 history entries before label removal, got %d", len(history0))
+	}
+
+	// Remove a label — should write version 0 to history and bump current to version 1.
+	if err := g.RemoveNodeLabel(id, "Admin"); err != nil {
+		t.Fatalf("RemoveNodeLabel: %v", err)
+	}
+
+	// One history entry must now exist (the pre-removal state at version 0).
+	history1, err := g.store.GetNodeHistory(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory after RemoveNodeLabel: %v", err)
+	}
+	if len(history1) != 1 {
+		t.Fatalf("expected 1 history entry after label removal, got %d", len(history1))
+	}
+
+	// The history entry must be version 0 and must have the "Admin" label.
+	entry := history1[0]
+	if entry.Version() != 0 {
+		t.Errorf("history[0].Version() = %d, want 0", entry.Version())
+	}
+
+	adminTok, ok := g.labels.Lookup("Admin")
+	if !ok {
+		t.Fatal("Admin label token not found in registry")
+	}
+	if !entry.HasLabelTokenRaw(adminTok) {
+		t.Error("history[0] should still have the Admin label token (pre-removal snapshot)")
+	}
+
+	// Current node must be version 1 and must NOT have Admin label.
+	current, err := g.store.GetNode(id)
+	if err != nil {
+		t.Fatalf("GetNode after RemoveNodeLabel: %v", err)
+	}
+	if current.Version() != 1 {
+		t.Errorf("current.Version() = %d, want 1", current.Version())
+	}
+	if current.HasLabelTokenRaw(adminTok) {
+		t.Error("current node must not have Admin label after removal")
+	}
+}
+
+// Note: the temporalIndex lazy-sort regression tests (Fix G) now live
+// alongside the implementation in pkg/graph/internal/index/temporal_index_test.go.
+// This file retains the unrelated Node-label tests originally bundled here.
+
+// --- Fix H: RemoveLabelTokenRaw nil extraLabels ---
+
+// TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval verifies that after all
+// extra labels are removed, ExtraLabelTokens() returns nil (not an empty slice).
+func TestRemoveLabelTokenRaw_ExtraLabelsNilAfterLastRemoval(t *testing.T) {
+	t.Parallel()
+
+	const primary uint16 = 1
+	const extra1 uint16 = 2
+	const extra2 uint16 = 3
+
+	t.Run("remove_only_extra", func(t *testing.T) {
+		t.Parallel()
+		n := types.NewNode(types.NodeID(snowflake.ID(1)), primary, []uint16{extra1})
+		// Sanity: one extra label present.
+		if extras := n.ExtraLabelTokens(); len(extras) != 1 {
+			t.Fatalf("pre-condition: ExtraLabelTokens = %v, want [2]", extras)
+		}
+		ok := n.RemoveLabelTokenRaw(extra1)
+		if !ok {
+			t.Fatal("RemoveLabelTokenRaw returned false, want true")
+		}
+		// After removal, ExtraLabelTokens must return nil.
+		if extras := n.ExtraLabelTokens(); extras != nil {
+			t.Errorf("ExtraLabelTokens = %v (len=%d), want nil", extras, len(extras))
+		}
+	})
+
+	t.Run("promote_only_extra_to_primary", func(t *testing.T) {
+		t.Parallel()
+		// Node with primary=1, extra=2. Remove primary → extra2 becomes primary.
+		n := types.NewNode(types.NodeID(snowflake.ID(2)), primary, []uint16{extra1})
+		ok := n.RemoveLabelTokenRaw(primary)
+		if !ok {
+			t.Fatal("RemoveLabelTokenRaw(primary) returned false, want true")
+		}
+		// primary is now extra1; extraLabels must be nil.
+		if uint16(n.PrimaryLabelToken()) != extra1 {
+			t.Errorf("primary = %d, want %d", n.PrimaryLabelToken(), extra1)
+		}
+		if extras := n.ExtraLabelTokens(); extras != nil {
+			t.Errorf("ExtraLabelTokens = %v, want nil after promotion", extras)
+		}
+	})
+
+	t.Run("remove_one_of_two_extras_leaves_non_nil", func(t *testing.T) {
+		t.Parallel()
+		n := types.NewNode(types.NodeID(snowflake.ID(3)), primary, []uint16{extra1, extra2})
+		ok := n.RemoveLabelTokenRaw(extra1)
+		if !ok {
+			t.Fatal("RemoveLabelTokenRaw returned false")
+		}
+		// One extra remains — slice must NOT be nil.
+		extras := n.ExtraLabelTokens()
+		if extras == nil {
+			t.Fatal("ExtraLabelTokens = nil, want non-nil (one extra remains)")
+		}
+		if len(extras) != 1 || uint16(extras[0]) != extra2 {
+			t.Errorf("ExtraLabelTokens = %v, want [%d]", extras, extra2)
+		}
+	})
 }

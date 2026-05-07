@@ -16,6 +16,8 @@ package graph
 
 import (
 	"errors"
+	"math"
+	"sort"
 	"testing"
 	"time"
 
@@ -886,4 +888,149 @@ func TestBatch_IndexMaintenance_TieredStore(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 	testBatchIndexMaintenance(t, g)
+}
+
+// --- Fix D: heap-based searchNearest produces same result as brute-force sort ---
+
+// euclideanDist64 computes Euclidean distance for test comparison.
+func euclideanDist64(a, b []float32) float64 {
+	var sum float64
+	for i := range a {
+		d := float64(a[i]) - float64(b[i])
+		sum += d * d
+	}
+	return math.Sqrt(sum)
+}
+
+func TestSearchNearest_HeapCorrectness(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	label := "Vec"
+	key := "emb"
+
+	// 7 distinct 3-D vectors.
+	vectors := [][]float32{
+		{1, 0, 0},
+		{0, 1, 0},
+		{0, 0, 1},
+		{1, 1, 0},
+		{1, 0, 1},
+		{0, 1, 1},
+		{1, 1, 1},
+	}
+
+	ids := make([]types.NodeID, len(vectors))
+	for i, vec := range vectors {
+		n, nerr := g.AddNode([]string{label}, map[string]any{key: vec})
+		if nerr != nil {
+			t.Fatalf("AddNode[%d]: %v", i, nerr)
+		}
+		ids[i] = n.ID()
+	}
+
+	const vecDims = 3 // each vector is 3-dimensional
+	if err := g.CreateVectorIndex(label, key, vecDims, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	query := []float32{1, 0, 0}
+
+	// Brute-force: compute distances and sort ascending.
+	type scoredID struct {
+		id   types.NodeID
+		dist float64
+	}
+	bf := make([]scoredID, len(vectors))
+	for i, id := range ids {
+		bf[i] = scoredID{id: id, dist: euclideanDist64(query, vectors[i])}
+	}
+	sort.Slice(bf, func(i, j int) bool { return bf[i].dist < bf[j].dist })
+
+	// k=1 — closest node must match brute-force top-1.
+	results1, err := g.SearchNearestNodes(label, key, query, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes k=1: %v", err)
+	}
+	if len(results1) != 1 {
+		t.Fatalf("k=1: got %d results, want 1", len(results1))
+	}
+	if results1[0].ID() != bf[0].id {
+		t.Errorf("k=1: got ID %d, want %d (brute-force nearest)", results1[0].ID(), bf[0].id)
+	}
+
+	// k=3 — top-3 IDs must match brute-force top-3 (same set, ascending order).
+	k3 := 3
+	results3, err := g.SearchNearestNodes(label, key, query, k3, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes k=3: %v", err)
+	}
+	if len(results3) != k3 {
+		t.Fatalf("k=3: got %d results, want %d", len(results3), k3)
+	}
+	// Verify the returned IDs form the same set as brute-force top-3.
+	bfTop3 := make(map[types.NodeID]struct{}, k3)
+	for i := range k3 {
+		bfTop3[bf[i].id] = struct{}{}
+	}
+	for i, node := range results3 {
+		nid := node.ID()
+		if _, ok := bfTop3[nid]; !ok {
+			t.Errorf("k=3 result[%d] ID %d not in brute-force top-3", i, nid)
+		}
+	}
+	// Verify ascending distance order.
+	for i := 1; i < len(results3); i++ {
+		dPrev := euclideanDist64(query, vectors[indexOfID(ids, results3[i-1].ID())])
+		dCurr := euclideanDist64(query, vectors[indexOfID(ids, results3[i].ID())])
+		if dPrev > dCurr+1e-9 {
+			t.Errorf("k=3: results not in ascending distance order at index %d", i)
+		}
+	}
+
+	// k=N — must return all N vectors.
+	// Verify: correct count, correct set of IDs, distances in non-decreasing order.
+	// Ties (equal distances) may appear in any order within the tied group, so we
+	// do NOT require an exact rank match — only set equality and monotonicity.
+	kN := len(vectors)
+	resultsN, err := g.SearchNearestNodes(label, key, query, kN, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes k=N: %v", err)
+	}
+	if len(resultsN) != kN {
+		t.Fatalf("k=N: got %d results, want %d", len(resultsN), kN)
+	}
+	// Verify set equality with brute-force.
+	bfAll := make(map[types.NodeID]struct{}, kN)
+	for _, s := range bf {
+		bfAll[s.id] = struct{}{}
+	}
+	for i, node := range resultsN {
+		nid := node.ID()
+		if _, ok := bfAll[nid]; !ok {
+			t.Errorf("k=N: result[%d] ID %d not in brute-force set", i, nid)
+		}
+	}
+	// Verify non-decreasing distance order.
+	for i := 1; i < len(resultsN); i++ {
+		dPrev := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i-1].ID())])
+		dCurr := euclideanDist64(query, vectors[indexOfID(ids, resultsN[i].ID())])
+		if dPrev > dCurr+1e-9 {
+			t.Errorf("k=N: distances not in non-decreasing order at index %d (prev=%.4f curr=%.4f)", i, dPrev, dCurr)
+		}
+	}
+}
+
+// indexOfID returns the position of id in ids, or -1 if not found.
+func indexOfID(ids []types.NodeID, id types.NodeID) int {
+	for i, v := range ids {
+		if v == id {
+			return i
+		}
+	}
+	return -1
 }

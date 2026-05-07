@@ -16,6 +16,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -1014,7 +1015,7 @@ func (ts *TieredStore) eventShardSnapshot(depth ShardDepth) []*EventShard {
 // SaveRegistries persists both registries atomically to the registry file.
 // Writing both halves in a single call eliminates the read-modify-write race
 // that existed when SaveLabelRegistry and SaveRelTypeRegistry were separate.
-func (ts *TieredStore) SaveRegistries(labelReg *indexpkg.LabelRegistry, relTypeReg *indexpkg.RelTypeRegistry) error {
+func (ts *TieredStore) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
 	if ts.inMemory {
 		return nil
 	}
@@ -1024,7 +1025,7 @@ func (ts *TieredStore) SaveRegistries(labelReg *indexpkg.LabelRegistry, relTypeR
 // SaveLabelRegistry persists the label registry to the registry file.
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
 // Kept for backward compatibility with single-registry callers.
-func (ts *TieredStore) SaveLabelRegistry(reg *indexpkg.LabelRegistry) error {
+func (ts *TieredStore) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 	if ts.inMemory {
 		return nil
 	}
@@ -1039,7 +1040,7 @@ func (ts *TieredStore) SaveLabelRegistry(reg *indexpkg.LabelRegistry) error {
 
 // LoadLabelRegistry restores the label registry from the registry file.
 // Returns the number of labels imported (excluding reserved token 0).
-func (ts *TieredStore) LoadLabelRegistry(reg *indexpkg.LabelRegistry) (int, error) {
+func (ts *TieredStore) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) {
 	if ts.inMemory {
 		return 0, nil
 	}
@@ -1059,7 +1060,7 @@ func (ts *TieredStore) LoadLabelRegistry(reg *indexpkg.LabelRegistry) (int, erro
 // SaveRelTypeRegistry persists the reltype registry to the registry file.
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
 // Kept for backward compatibility with single-registry callers.
-func (ts *TieredStore) SaveRelTypeRegistry(reg *indexpkg.RelTypeRegistry) error {
+func (ts *TieredStore) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 	if ts.inMemory {
 		return nil
 	}
@@ -1074,7 +1075,7 @@ func (ts *TieredStore) SaveRelTypeRegistry(reg *indexpkg.RelTypeRegistry) error 
 
 // LoadRelTypeRegistry restores the reltype registry from the registry file.
 // Returns the number of relTypes imported (excluding reserved token 0).
-func (ts *TieredStore) LoadRelTypeRegistry(reg *indexpkg.RelTypeRegistry) (int, error) {
+func (ts *TieredStore) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (int, error) {
 	if ts.inMemory {
 		return 0, nil
 	}
@@ -1092,7 +1093,7 @@ func (ts *TieredStore) LoadRelTypeRegistry(reg *indexpkg.RelTypeRegistry) (int, 
 }
 
 // SetLabelRegistry wires the ontology to the label registry for token resolution.
-func (ts *TieredStore) SetLabelRegistry(reg *indexpkg.LabelRegistry) {
+func (ts *TieredStore) SetLabelRegistry(reg *registrypkg.LabelRegistry) {
 	ts.ontology.SetLabelRegistry(reg)
 }
 

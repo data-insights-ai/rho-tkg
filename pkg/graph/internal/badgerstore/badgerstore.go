@@ -18,6 +18,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/vmihailenco/msgpack/v5"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -3731,7 +3732,7 @@ func (bs *BadgerStore) RelCacheMisses() int64 { return bs.relCache.Misses() }
 // registry on crash. This mirrors the contract of TieredStore.SaveRegistries
 // so that lifecycle code can persist registries through a single uniform
 // interface regardless of the underlying Store implementation.
-func (bs *BadgerStore) SaveRegistries(labelReg *indexpkg.LabelRegistry, relTypeReg *indexpkg.RelTypeRegistry) error {
+func (bs *BadgerStore) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
 	labelNames := labelReg.ExportNames()
 	labelData, err := msgpack.Marshal(labelNames)
 	if err != nil {
@@ -3751,7 +3752,7 @@ func (bs *BadgerStore) SaveRegistries(labelReg *indexpkg.LabelRegistry, relTypeR
 }
 
 // SaveLabelRegistry persists the label registry to the Badger store.
-func (bs *BadgerStore) SaveLabelRegistry(reg *indexpkg.LabelRegistry) error {
+func (bs *BadgerStore) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 	names := reg.ExportNames()
 	data, err := msgpack.Marshal(names)
 	if err != nil {
@@ -3764,7 +3765,7 @@ func (bs *BadgerStore) SaveLabelRegistry(reg *indexpkg.LabelRegistry) error {
 
 // LoadLabelRegistry loads the label registry from the Badger store.
 // Returns false if no saved data exists (fresh database).
-func (bs *BadgerStore) LoadLabelRegistry(reg *indexpkg.LabelRegistry) (bool, error) {
+func (bs *BadgerStore) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error) {
 	var names []string
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("label_tokens"))
@@ -3788,7 +3789,7 @@ func (bs *BadgerStore) LoadLabelRegistry(reg *indexpkg.LabelRegistry) (bool, err
 }
 
 // SaveRelTypeRegistry persists the relationship type registry to the Badger store.
-func (bs *BadgerStore) SaveRelTypeRegistry(reg *indexpkg.RelTypeRegistry) error {
+func (bs *BadgerStore) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 	names := reg.ExportNames()
 	data, err := msgpack.Marshal(names)
 	if err != nil {
@@ -3801,7 +3802,7 @@ func (bs *BadgerStore) SaveRelTypeRegistry(reg *indexpkg.RelTypeRegistry) error 
 
 // LoadRelTypeRegistry loads the relationship type registry from the Badger store.
 // Returns false if no saved data exists (fresh database).
-func (bs *BadgerStore) LoadRelTypeRegistry(reg *indexpkg.RelTypeRegistry) (bool, error) {
+func (bs *BadgerStore) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, error) {
 	var names []string
 	err := bs.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("reltype_tokens"))

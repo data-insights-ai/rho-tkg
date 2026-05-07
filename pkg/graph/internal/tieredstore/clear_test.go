@@ -3,7 +3,7 @@ package tieredstore
 import (
 	"testing"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 )
 
 // --- F3: TieredStore.Clear must wipe store-level indexes ---
@@ -14,7 +14,7 @@ import (
 func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 
@@ -35,7 +35,7 @@ func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 func TestTieredStoreClear_ClearsTempIdxLabels(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 

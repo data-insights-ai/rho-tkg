@@ -9,7 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -700,7 +700,7 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 	// Checkout a cold shard store. Verify closeIdleShards skips it while
 	// activeReqs > 0, then succeeds after checkin.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -779,7 +779,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 	// Spawn goroutines doing checkoutStore/checkinStore from a cold shard
 	// while idle-close runs. No panics, no data corruption.
 	ts := newTestTieredStore(t)
-	reg := indexpkg.NewLabelRegistry()
+	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
