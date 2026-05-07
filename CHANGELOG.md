@@ -4,6 +4,128 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.4.0] - 2026-05-07
+
+### Sub-API accessors on Graph (Option 3) — BREAKING
+
+The 130+ public methods that previously lived directly on `*Graph` have been
+**removed** and reorganized into 13 discoverable sub-API accessors. Customers
+MUST migrate every call site to the sub-API form — see the migration table
+below. The implementation has been extracted into `pkg/graph/internal/core`;
+`*Graph` is now a thin façade with the sub-API field accessors plus `New`,
+`Close`, and `Core` (escape hatch).
+
+#### Migration
+
+```go
+// REMOVED in v3.4.0                            // Replacement
+g.AddNode(labels, props)                        g.Nodes.Add(labels, props)
+g.GetNode(id)                                   g.Nodes.Get(id)
+g.NodesByLabel("Person", opts)                  g.Nodes.ByLabel("Person", opts)
+g.UpdateNode(id, updates)                       g.Nodes.Update(id, updates)
+g.DeleteNode(id)                                g.Nodes.Delete(id)
+g.AddRelationship(typ, a, b, props)             g.Rels.Add(typ, a, b, props)
+g.OutgoingRelationships(id, "")                 g.Rels.Outgoing(id, "")
+g.GetNodesValidAt(t)                            g.Temporal.NodesAt(t)
+g.GetNodesByLabelValidAt(label, t)              g.Temporal.NodesByLabelAt(label, t)
+g.Snapshot(t)                                   g.Temporal.Snapshot(t)
+g.DiffSnapshots(t1, t2)                         g.Temporal.Diff(t1, t2)
+g.CreatePropertyIndex(label, key)               g.Index.CreateProperty(label, key)
+g.SearchNearestNodes(label, key, vec, k, opts)  g.Index.SearchNearest(label, key, vec, k, opts)
+g.RegisterIndexProvider(p)                      g.Index.RegisterProvider(p)
+g.SetEventBus(eb)                               g.Events.SetSync(eb)
+g.SetAsyncEventBus(b)                           g.Events.SetAsync(b)
+g.RunRepair()                                   g.Admin.Repair()
+g.ListShards()                                  g.Admin.ListShards()
+g.ExportGraph(w)                                g.IO.Export(w)
+g.ImportGraph(r)                                g.IO.Import(r)
+g.VerifyNodeHashChain(id)                       g.Hash.VerifyNodeChain(id)
+g.VerifyRelHashChain(id)                        g.Hash.VerifyRelChain(id)
+g.SetTemporalConstraints(cs)                    g.Constraints.Set(cs)
+g.AddTemporalConstraint(c)                      g.Constraints.Add(c)
+g.TemporalConstraints()                         g.Constraints.Get()
+g.NodeCount()                                   g.Statistics.NodeCount()
+g.RelationshipCount()                           g.Statistics.RelCount()
+g.NodeCountByLabel("Person")                    g.Statistics.NodeCountByLabel("Person")
+g.AllLabelCounts()                              g.Statistics.AllLabelCounts()
+g.ResolveNodeProperty(n, "tkg_hash")            g.Resolve.NodeProperty(n, "tkg_hash")
+g.GetOrCreateLabel("Person")                    g.Resolve.LabelToken("Person")
+g.LookupLabel("Person")                         g.Resolve.LookupLabel("Person")
+g.BeginTx()                                     g.Tx.Begin()
+                                                g.Tx.Run(func(tx) error { ... })
+NewBatchBuilder(g)                              g.Batch.New()
+```
+
+The 13 sub-API accessors:
+
+| Field          | Package                              | Methods | Purpose                                                                |
+|----------------|--------------------------------------|---------|------------------------------------------------------------------------|
+| `g.Nodes`      | `pkg/graph/nodes`                    | 31      | Node CRUD, label, property, version chain                              |
+| `g.Rels`       | `pkg/graph/rels`                     | 30      | Relationship CRUD, adjacency, property, version chain                  |
+| `g.Temporal`   | `pkg/graph/temporalapi`              | 24      | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations    |
+| `g.Index`      | `pkg/graph/indexapi`                 | 13      | Property/vector/high-frequency index management + IndexProvider        |
+| `g.Events`     | `pkg/graph/eventsapi`                | 3       | Sync/async EventBus management                                         |
+| `g.Constraints`| `pkg/graph/constraintsapi`           | 3       | Temporal-constraint set management                                     |
+| `g.IO`         | `pkg/graph/ioapi`                    | 2       | Export / Import                                                        |
+| `g.Admin`      | `pkg/graph/adminapi`                 | 9       | Tiered-store admin (archive, repair, shards, rotate, reset)            |
+| `g.Statistics` | `pkg/graph/statsapi`                 | 6       | Count helpers (wired as `g.Statistics` to avoid colliding with the existing `g.Stats()` method that returns `GraphStats`) |
+| `g.Hash`       | `pkg/graph/hashapi`                  | 2       | Hash-chain verification                                                |
+| `g.Resolve`    | `pkg/graph/resolveapi`               | 6       | Shadow-property + registry resolution                                  |
+| `g.Tx`         | `pkg/graph` (TxAPI in subapi.go)     | 3       | Transaction begin / Run / RunContext                                   |
+| `g.Batch`      | `pkg/graph` (BatchAPI in subapi.go)  | 1       | New BatchBuilder                                                       |
+
+#### Why
+
+Discoverability for 130+ methods on a single type was poor. After tab-completing
+`g.` in any LSP-aware editor, customers saw an alphabetic dump of every method.
+Now customers see 13 categories. The pattern matches Kubernetes client-go
+(`clientset.CoreV1()`), GitHub Go SDK (`client.Issues`), and AWS SDK v2 service
+clients.
+
+#### Implementation note
+
+Each sub-API package declares a local `Core` interface listing only the methods
+its wrappers forward to. The interface is satisfied implicitly by
+`*core.Core` (the new internal type holding all state and method bodies).
+Sub-API constructors take a `*core.Core` directly. Wrappers are 1-2 lines
+each, single indirect dispatch — no devirtualization, but the benchmark
+gate measured no regression vs v3.3.0.
+
+#### Performance
+
+`benchstat` over n=3 iterations on every Reads/Writes sub-benchmark
+(MemoryStore, Apple M4 Max). Geomean Δ +0.44% on time, +0.01% on bytes/op,
++0.00% on allocs/op — well within the 2% tolerance gate. Allocations per op
+are byte-for-byte identical for every existing-method benchmark. The sub-API
+additions are effectively free at runtime — only customers who actually call
+`g.Nodes.X(...)` pay the indirect-dispatch cost, and only once per call.
+
+#### Public surface on `*Graph` after this MR
+
+- `New(cfg Config) (*Graph, error)`
+- `(*Graph).Close() error`
+- `(*Graph).Core() *core.Core` (escape-hatch, not part of the stable customer surface)
+- The 13 sub-API fields listed in the table above
+- `NewBatchBuilder(g *Graph) *BatchBuilder` (free function, equivalent to `g.Batch.New()`)
+- The type aliases re-exported for convenience: `Config`, `ValidationLimits`,
+  `GraphTx`, `BatchBuilder`, `BatchResult`, `BatchError`, `GraphStats`,
+  `StoreStats`, `IDComponents`, `ConstraintSet`.
+
+The implementation moved into a new internal package
+`pkg/graph/internal/core` (the `Core` type holds all the heavy state, locks,
+generators, and method bodies). `*Graph` is now a thin façade that holds a
+`*core.Core` and the 13 sub-API field accessors. The package layout reflects
+this — `pkg/graph/graph.go` is 118 LOC (from 380), and the entire
+implementation lives in `pkg/graph/internal/core/` (≈7.5K LOC across the
+27 implementation files plus the 53 test files).
+
+### Documentation
+
+- `CLAUDE.md`, `AGENTS.md`, `docs/architecture.md` — file map updated to list
+  the 11 new sub-API package directories under `pkg/graph/` plus the two
+  in-package sub-API types (`TxAPI`, `BatchAPI`) in `pkg/graph/subapi.go`.
+- Status lines bumped to v3.4.0.
+
 ## [3.3.0] - 2026-05-07
 
 ### Public API reorganization (Option A — audience-based sub-packages)

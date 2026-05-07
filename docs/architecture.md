@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.3.0)
+# Architecture — tkg/v3 (v3.4.0)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -126,6 +126,32 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `GetNode(id)` | none (read-only via store) | Retrieve a single node by snowflake ID |
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Context-aware variants (`*WithContext`) add cancellation checks at critical points. Non-context methods delegate with `context.Background()`.
+
+### Sub-API Accessors (v3.4.0)
+
+The 130+ methods on `*Graph` are also reachable through 13 sub-API field accessors. Customers can use either form; the sub-API form gives discoverable tab-completion (`g.Nodes.`, `g.Rels.`, etc. instead of an alphabetic dump of every method on `g.`).
+
+| Field | Package | Wraps |
+|-------|---------|-------|
+| `g.Nodes` | `pkg/graph/nodes` | Node CRUD + label/property/version helpers |
+| `g.Rels` | `pkg/graph/rels` | Relationship CRUD + adjacency/property/version helpers |
+| `g.Temporal` | `pkg/graph/temporalapi` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations |
+| `g.Index` | `pkg/graph/indexapi` | Property/vector/high-frequency index management + IndexProvider |
+| `g.Events` | `pkg/graph/eventsapi` | Sync/async EventBus install + retrieval |
+| `g.Constraints` | `pkg/graph/constraintsapi` | Temporal-constraint set management |
+| `g.IO` | `pkg/graph/ioapi` | Export / Import |
+| `g.Admin` | `pkg/graph/adminapi` | Tiered-store admin (archive, repair, shards, rotate, reset, decompose-id) |
+| `g.Statistics` | `pkg/graph/statsapi` | Count helpers (named `Statistics` because `g.Stats()` already exists) |
+| `g.Hash` | `pkg/graph/hashapi` | Hash-chain verification |
+| `g.Resolve` | `pkg/graph/resolveapi` | Shadow-property + registry resolution |
+| `g.Tx` | `pkg/graph/subapi.go` (in-package `TxAPI`) | `Begin()` / `Run(fn)` / `RunContext(ctx, fn)` |
+| `g.Batch` | `pkg/graph/subapi.go` (in-package `BatchAPI`) | `New()` returns a `*BatchBuilder` |
+
+Each sub-API package declares its own local `Core` interface listing only the methods it forwards to. `*Graph` satisfies each `Core` implicitly (no explicit declaration required), which lets sub-API packages stay independent of `pkg/graph` and avoids the import cycle that would otherwise be needed to wire `*nodes.API` (etc.) as fields on `Graph`. Wrappers are 1-2 lines, single indirect dispatch each. The benchmark gate measured no regression vs v3.3.0 (geomean +0.4% sec/op, +0.0% allocs/op, well within the 2% tolerance).
+
+`g.Tx` and `g.Batch` are in-package types because their wrapped values (`*GraphTx`, `*BatchBuilder`) live in `pkg/graph` and can't be moved into a sibling package without either re-homing the underlying types or accepting an import cycle.
+
+The sub-APIs are additive: every existing `*Graph` method continues to work unchanged. Customers can migrate at their own pace.
 
 ### Temporal Queries
 
@@ -633,65 +659,57 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 
 ## File Map (`pkg/graph/`)
 
-After the v3.1.20-v3.1.23 restructure and the v3.2.0 public-API consolidation, `pkg/graph/` is a thin orchestration layer; persistence, indexes, registries, and event delivery live entirely under `pkg/graph/internal/`. The Graph struct itself is 48 LOC. The single public `aliases.go` is gone — every public re-export now lives in a themed file (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`, `temporal_constraint.go`).
+After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 13 sub-API field accessors. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes.Add`, `g.Temporal.NodesAt`, etc.).
+
+#### `pkg/graph/` (4 production files + 1 smoke test)
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | `Graph` struct only (48 LOC) — generators, registry pointers, lock manager, validation, event bus, tx event buffer. |
-| `config.go` | `Config`, `ValidationLimits`. |
-| `lifecycle.go` | `New`, `Close`, registry persistence wiring (unified `registriesPersister` interface for both backends). |
-| `validation.go` | Name + property validation helpers. |
-| `resolution.go` | `NodeLabels`, `RelationshipType`, label/reltype string resolution. |
-| `crud.go` | Exported short-form mutators (`AddNode`/`UpdateNode`/`DeleteNode`/...) — delegate to `*WithContext`. |
-| `property_cas.go` | `CompareAndSetProperty` — atomic CAS on a node property. |
-| `queries.go` | Adjacency + bulk reads (`OutgoingRelationshipsForNodes`, `AllNodes`, `NodesByLabel`, `RelationshipsByType`). |
-| `graph_indexes.go` | Public index management (`CreatePropertyIndex`, `DropPropertyIndex`, HF index lifecycle). |
-| `vector_search.go` | `CreateVectorIndex`, `DropVectorIndex`, `SearchNearestNodes`. |
-| `graph_property_query.go` | Property-indexed reads with temporal opts. |
-| `admin.go` | TieredStore admin pass-throughs (`ListShards`, `ForceRotate`, `ArchiveNode`, `RestoreNode`, `RunRepair`, `VerifyShard`, `MigrateFromBadger`, `DecomposeID`). |
-| `events_dispatch.go` | `dispatchEvent`, `publishEvent`, `SetEventBus`, `SetAsyncEventBus`. |
-| `node_label.go` | `AddNodeLabel`, `RemoveNodeLabel`. |
-| `version_chain.go` | `CloseNodeVersion`, `CloseRelVersion`. |
-| `store.go` | Public re-exports: `Store`, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric` + 12 store sentinels + `DepthAll`/`DepthHot`/`DepthWarm` and `DistanceCosine`/`DistanceEuclidean` constants. |
-| `events.go` | Public re-exports: `Event`, `EventType`, `EventPriority`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy` + the EventNode/EventRel/Priority/Backpressure constants + `NewEventBus`/`NewAsyncEventBus`. |
-| `ontology.go` | Public re-exports: `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`/`ClassReference`. |
-| `snowflake.go` | Public re-exports: `IDComponents`, `DecomposeID` + package-private `snowflakeEpoch`/`snowflakeLayout`. |
-| `errors.go` | Vector-index sentinels (`ErrVectorIndex*`, `ErrDimensionMismatch`) + registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`). |
-| `backends.go` | Concrete `Store` impls: `MemoryStore`, `BadgerStore`(`Config`), `TieredStore`(`Config`); admin return types (`ShardInfo`/`VerifyResult`/`RepairResult`); 4 TieredStore sentinels; `MigrateFromBadger(src, dst)`. |
-| `context.go` | `*WithContext` helpers — `checkCtx`, `extractProvenance`, `extractTemporal`, `nowInstant` (145 LOC). |
-| `context_node_add.go` | `AddNodeWithContext`, `addNodeInternal`, `ImportNodeWithID`, `importNodeWithIDInternal`. |
-| `context_node_update.go` | `UpdateNodeWithContext`, `UpdateNodeInPlace*`. |
-| `context_node_read_delete.go` | `GetNodeWithContext`, `DeleteNodeWithContext`, `deleteNodeInternal`, `deleteNodeLocked`. |
-| `context_relationship_*.go` | Relationship side: `add`, `read_delete`, `update`, `import`. |
-| `batch.go` | `BatchBuilder` — fluent eager-validation deferred-persistence API. |
-| `tx.go` | `GraphTx` — full CRUD tx holding graph write lock, snapshot rollback, label-deltas tracker. |
-| `export.go` | `ExportGraph`/`ImportGraph` — msgpack record stream with `validate*Wire` boundary checks. |
-| `integrity.go` | `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain`. Pure hash primitives live in `internal/integrity`. |
-| `temporal.go` | Internal temporal-query helpers (446 LOC). |
-| `temporal_queries.go` | `Get*ValidAt`, `*During`, `*ValidAt` query methods. |
-| `temporal_snapshot.go` | `Snapshot`, `GraphSnapshot`. |
-| `temporal_diff.go` | `Diff`. |
-| `temporal_allen.go` | Allen's-algebra integration. |
-| `temporal_constraint.go` | Public re-exports for the temporal-constraint vocabulary (`TemporalConstraint`, `ConstraintSet`, `ConstraintRelWithinEndpoints`, `NewConstraintSet`, 7 sentinels) + the Graph-coupled `checkTemporalConstraints` enforcement. Pure types live in `internal/temporal`. |
-| `temporal_index.go` | In-memory interval index (sorted slice, lazy sort). |
-| `txtime.go` | Bitemporality (`*AsOf` family). |
-| `stats.go` | `GraphStats`, `StoreStats` optional. |
-| `shadow.go` | 21 `tkg_*` virtual property resolvers. |
-| `index_provider.go` | Phase-6 `IndexProvider` interface + `Initializable` + `GraphReader` + `LegacyIndexProvider` adapter. |
+| `graph.go` | `Graph` thin façade (118 LOC): `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`, `Core` (escape hatch). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
+| `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`, kept in-package because they wrap `*GraphTx` / `*BatchBuilder` declared in `internal/core`. |
+| `errors.go` | Public sentinel re-exports: 12 store sentinels, vector-index sentinels, registry sentinels, IndexProvider sentinels. Canonical declarations in `internal/core/core.go`. |
+| `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end. |
 | `doc.go` | Package documentation. |
+
+#### `pkg/graph/<types-package>/` (types-only public packages, v3.3.0)
+
+| Package | Purpose |
+|---------|---------|
+| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, 12 store sentinels. |
+| `pkg/graph/store/memory` | `memory.Store`, `memory.New()`. |
+| `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()`. |
+| `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`. |
+| `pkg/graph/events` | `Event`, `EventType`, `EventPriority`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, constructors, constants. |
+| `pkg/graph/index` | `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, sentinels. |
+| `pkg/graph/temporal` | `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, sentinels. |
+| `pkg/graph/ontology` | `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, class constants. |
 
 ### `pkg/graph/internal/*` subpackages
 
 | Package | Purpose |
 |---|---|
-| `internal/snowflake` | Package-level snowflake `Epoch` + `Layout` + `IDComponents` + `DecomposeID`. Avoids import cycles for any subpackage that needs to decompose IDs. |
-| `internal/store` | `Store` interface, sentinels, `QueryOpts`/`ShardDepth`/`RelTombstone`, key encoding, msgpack wire types, pagination helpers, temporal-filter push-down. |
-| `internal/locks` | 256-shard `Manager`, `LockEntity`/`LockTwo`/`LockMany`. |
-| `internal/registry` | `LabelRegistry`, `RelTypeRegistry`. Re-exported by `internal/index/aliases.go` for backward compat. |
-| `internal/index` | In-memory indexes: property, vector, high-frequency temporal; `OntologyMapping`. |
+| `internal/core` | (v3.4.0) `Core` type holding all unexported state and ~130 method bodies that previously lived on `*Graph`. ~7.5K LOC of implementation across 27 files; ~28K LOC of internal tests across 53 test files. |
+| `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. |
+| `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down. The public Store contract lives in `pkg/graph/store`. |
+| `internal/locks` | 256-shard entity-lock `Manager`, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
+| `internal/registry` | `LabelRegistry`, `RelTypeRegistry`. Internal types — not part of public API. |
+| `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. |
 | `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`. Five fixed-vector anchors lock the on-disk hash format. |
-| `internal/events` | Sync `EventBus` + async `AsyncEventBus` (worker pool, per-priority queues, backpressure). |
-| `internal/temporal` | Pure temporal-constraint types (no Graph coupling). |
-| `internal/memorystore` | In-memory `Store` implementation. |
-| `internal/badgerstore` | Badger v4 `Store` implementation with LRU caches, async batch flush, atomic `SaveRegistries`. |
-| `internal/tieredstore` | Multi-shard `Store` implementation (ref shard + event shards + optional ref archive), `checkoutStore`/`checkinStore` cold-shard ref-counting, sequential ForEach, cross-shard split-write ordering, archive/restore, repair, migration. |
+
+### `pkg/graph/<sub-api>/` packages (v3.4.0)
+
+| Package | Field on Graph | Methods |
+|---------|----------------|---------|
+| `pkg/graph/nodes` | `g.Nodes` | ~31 wrappers — node CRUD, label, property, version chain. |
+| `pkg/graph/rels` | `g.Rels` | ~30 wrappers — relationship CRUD, adjacency, property, version chain. |
+| `pkg/graph/temporalapi` | `g.Temporal` | ~24 wrappers — point-in-time, interval, bitemporal, snapshot/diff, Allen relations. |
+| `pkg/graph/indexapi` | `g.Index` | ~13 wrappers — property/vector/high-frequency index management + IndexProvider. |
+| `pkg/graph/eventsapi` | `g.Events` | ~3 wrappers — sync/async EventBus management. |
+| `pkg/graph/constraintsapi` | `g.Constraints` | ~3 wrappers — temporal-constraint set management. |
+| `pkg/graph/ioapi` | `g.IO` | ~2 wrappers — Export / Import. |
+| `pkg/graph/adminapi` | `g.Admin` | ~9 wrappers — tiered-store admin (archive, repair, shards, rotate, reset). |
+| `pkg/graph/statsapi` | `g.Statistics` | ~6 wrappers — count helpers. |
+| `pkg/graph/hashapi` | `g.Hash` | ~2 wrappers — hash-chain verification. |
+| `pkg/graph/resolveapi` | `g.Resolve` | ~6 wrappers — shadow-property + registry resolution. |
+
+`g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.

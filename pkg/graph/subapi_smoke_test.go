@@ -1,0 +1,165 @@
+package graph_test
+
+import (
+	"context"
+	"testing"
+
+	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+)
+
+// TestSubAPISmoke exercises every sub-API accessor at least once to verify
+// (a) the field is wired in Graph.New, (b) the wrapper forwards correctly to
+// the underlying *Graph method. This is a compile-and-run sanity test, not a
+// substitute for the per-feature test files.
+func TestSubAPISmoke(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	// Nodes
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("Nodes.Add: %v", err)
+	}
+	b, err := g.Nodes.AddWithContext(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("Nodes.AddWithContext: %v", err)
+	}
+	if got, _ := g.Nodes.Get(a.ID()); got == nil || got.ID() != a.ID() {
+		t.Fatalf("Nodes.Get returned %v", got)
+	}
+	if cnt, _ := g.Nodes.Count(); cnt != 2 {
+		t.Fatalf("Nodes.Count = %d, want 2", cnt)
+	}
+	if cnt, _ := g.Nodes.CountByLabel("Person"); cnt != 2 {
+		t.Fatalf("Nodes.CountByLabel(Person) = %d, want 2", cnt)
+	}
+	if !g.Nodes.HasLabel(a, "Person") {
+		t.Fatalf("Nodes.HasLabel returned false")
+	}
+	if labels := g.Nodes.Labels(a); len(labels) != 1 || labels[0] != "Person" {
+		t.Fatalf("Nodes.Labels = %v", labels)
+	}
+	if pl := g.Nodes.PrimaryLabel(a); pl != "Person" {
+		t.Fatalf("Nodes.PrimaryLabel = %q", pl)
+	}
+	persons, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
+	if err != nil || len(persons) != 2 {
+		t.Fatalf("Nodes.ByLabel: %v len=%d", err, len(persons))
+	}
+
+	// Rels
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	if err != nil {
+		t.Fatalf("Rels.Add: %v", err)
+	}
+	if got, _ := g.Rels.Get(r.ID()); got == nil || got.ID() != r.ID() {
+		t.Fatalf("Rels.Get returned %v", got)
+	}
+	if cnt, _ := g.Rels.Count(); cnt != 1 {
+		t.Fatalf("Rels.Count = %d, want 1", cnt)
+	}
+	if !g.Rels.HasType(r, "KNOWS") {
+		t.Fatalf("Rels.HasType returned false")
+	}
+	if typ := g.Rels.Type(r); typ != "KNOWS" {
+		t.Fatalf("Rels.Type = %q", typ)
+	}
+	out, err := g.Rels.Outgoing(a.ID(), "KNOWS")
+	if err != nil || len(out) != 1 {
+		t.Fatalf("Rels.Outgoing: %v len=%d", err, len(out))
+	}
+
+	// Stats / Statistics
+	if cnt, _ := g.Statistics.NodeCount(); cnt != 2 {
+		t.Fatalf("Statistics.NodeCount = %d", cnt)
+	}
+	if cnt, _ := g.Statistics.RelCount(); cnt != 1 {
+		t.Fatalf("Statistics.RelCount = %d", cnt)
+	}
+
+	// Hash
+	ok, err := g.Hash.VerifyNodeChain(a.ID())
+	if err != nil || !ok {
+		t.Fatalf("Hash.VerifyNodeChain: %v ok=%v", err, ok)
+	}
+	ok, err = g.Hash.VerifyRelChain(r.ID())
+	if err != nil || !ok {
+		t.Fatalf("Hash.VerifyRelChain: %v ok=%v", err, ok)
+	}
+
+	// Resolve
+	if v, ok := g.Resolve.NodeProperty(a, "name"); !ok || v != "Alice" {
+		t.Fatalf("Resolve.NodeProperty: ok=%v v=%v", ok, v)
+	}
+	if _, ok := g.Resolve.LookupLabel("Person"); !ok {
+		t.Fatalf("Resolve.LookupLabel(Person) missing")
+	}
+
+	// Index — create + drop
+	if err := g.Index.CreateProperty("Person", "name"); err != nil {
+		t.Fatalf("Index.CreateProperty: %v", err)
+	}
+	if err := g.Index.DropProperty("Person", "name"); err != nil {
+		t.Fatalf("Index.DropProperty: %v", err)
+	}
+
+	// Tx — round trip
+	if err := g.Tx.Run(func(tx *graphpkg.GraphTx) error {
+		_, err := tx.AddNode([]string{"Place"}, map[string]any{"name": "Vienna"})
+		return err
+	}); err != nil {
+		t.Fatalf("Tx.Run: %v", err)
+	}
+	if cnt, _ := g.Statistics.NodeCount(); cnt != 3 {
+		t.Fatalf("after Tx.Run, NodeCount = %d, want 3", cnt)
+	}
+
+	// Batch
+	bb := g.Batch.New()
+	if _, err := bb.AddNode([]string{"Org"}, map[string]any{"name": "BDS"}); err != nil {
+		t.Fatalf("Batch.AddNode: %v", err)
+	}
+	if _, err := bb.Execute(); err != nil {
+		t.Fatalf("Batch.Execute: %v", err)
+	}
+	if cnt, _ := g.Statistics.NodeCount(); cnt != 4 {
+		t.Fatalf("after Batch.Execute, NodeCount = %d, want 4", cnt)
+	}
+
+	// Admin: DecomposeID — works on any store
+	comp := g.Admin.DecomposeID(a.ID().SnowflakeID())
+	if comp.CreatedAt.IsZero() {
+		t.Fatalf("Admin.DecomposeID returned zero CreatedAt")
+	}
+
+	// Events: install/get sync bus
+	g.Events.SetSync(nil) // tolerated; clears
+	_ = g.Events.GetSync()
+
+	// Constraints
+	cs := g.Constraints.Get()
+	g.Constraints.Set(cs)
+
+	// Temporal — point-in-time read
+	persons2, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("Nodes.ByLabel: %v", err)
+	}
+	if len(persons2) != 2 {
+		t.Fatalf("ByLabel(Person) = %d", len(persons2))
+	}
+	// Snapshot now
+	now := persons2[0].Temporal().ValidFrom
+	snap, err := g.Temporal.Snapshot(now)
+	if err != nil {
+		t.Fatalf("Temporal.Snapshot: %v", err)
+	}
+	if snap == nil {
+		t.Fatalf("Temporal.Snapshot returned nil")
+	}
+}

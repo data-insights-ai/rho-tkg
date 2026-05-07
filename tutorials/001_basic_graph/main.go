@@ -68,7 +68,7 @@ func main() {
 	fmt.Println("=== 1. Adding Nodes ===")
 
 	// Single-label node with properties.
-	alice, err := g.AddNode([]string{"Person"}, map[string]any{
+	alice, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 		"name": "Alice",
 		"age":  int64(30),
 	})
@@ -76,10 +76,10 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice ID: %s, labels: %v\n",
-		commas(int64(alice.ID())), g.NodeLabels(alice))
+		commas(int64(alice.ID())), g.Nodes.Labels(alice))
 
 	// Multi-label node.
-	bob, err := g.AddNode([]string{"Person", "Employee"}, map[string]any{
+	bob, err := g.Nodes.Add([]string{"Person", "Employee"}, map[string]any{
 		"name": "Bob",
 		"age":  int64(25),
 	})
@@ -87,9 +87,9 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Bob   ID: %s, labels: %v\n",
-		commas(int64(bob.ID())), g.NodeLabels(bob))
+		commas(int64(bob.ID())), g.Nodes.Labels(bob))
 
-	charlie, err := g.AddNode([]string{"Person"}, map[string]any{
+	charlie, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 		"name":   "Charlie",
 		"age":    int64(35),
 		"active": true,
@@ -98,42 +98,42 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Charlie ID: %s, labels: %v\n",
-		commas(int64(charlie.ID())), g.NodeLabels(charlie))
+		commas(int64(charlie.ID())), g.Nodes.Labels(charlie))
 
 	fmt.Println("\n=== 2. Adding Relationships ===")
 
-	knows, err := g.AddRelationship("KNOWS", alice, bob, map[string]any{
+	knows, err := g.Rels.Add("KNOWS", alice, bob, map[string]any{
 		"since": int64(2020),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice -[%s]-> Bob  (ID: %s)\n",
-		g.RelationshipType(knows), commas(int64(knows.ID())))
+		g.Rels.Type(knows), commas(int64(knows.ID())))
 
-	worksWith, err := g.AddRelationship("WORKS_WITH", bob, charlie, map[string]any{
+	worksWith, err := g.Rels.Add("WORKS_WITH", bob, charlie, map[string]any{
 		"project": "Atlas",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Bob -[%s]-> Charlie  (ID: %s)\n",
-		g.RelationshipType(worksWith), commas(int64(worksWith.ID())))
+		g.Rels.Type(worksWith), commas(int64(worksWith.ID())))
 
-	knows2, err := g.AddRelationship("KNOWS", alice, charlie, nil)
+	knows2, err := g.Rels.Add("KNOWS", alice, charlie, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice -[%s]-> Charlie  (ID: %s)\n",
-		g.RelationshipType(knows2), commas(int64(knows2.ID())))
+		g.Rels.Type(knows2), commas(int64(knows2.ID())))
 
 	fmt.Println("\n=== 3. Entity Counts ===")
 
-	nc, err := g.NodeCount()
+	nc, err := g.Nodes.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
-	rc, err := g.RelationshipCount()
+	rc, err := g.Rels.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -141,17 +141,17 @@ func main() {
 
 	fmt.Println("\n=== 4. Query Nodes by Label ===")
 
-	persons, err := g.NodesByLabel("Person", store.QueryOpts{})
+	persons, err := g.Nodes.ByLabel("Person", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Person nodes: %d\n", len(persons))
 	for _, n := range persons {
 		name, _ := n.GetProperty("name")
-		fmt.Printf("  - %s (primary: %s)\n", name, g.NodePrimaryLabel(n))
+		fmt.Printf("  - %s (primary: %s)\n", name, g.Nodes.PrimaryLabel(n))
 	}
 
-	employees, err := g.NodesByLabel("Employee", store.QueryOpts{})
+	employees, err := g.Nodes.ByLabel("Employee", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -163,13 +163,13 @@ func main() {
 
 	fmt.Println("\n=== 5. Query Relationships by Type ===")
 
-	knowsRels, err := g.RelationshipsByType("KNOWS", store.QueryOpts{})
+	knowsRels, err := g.Rels.ByType("KNOWS", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
-	worksRels, err := g.RelationshipsByType("WORKS_WITH", store.QueryOpts{})
+	worksRels, err := g.Rels.ByType("WORKS_WITH", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -177,14 +177,14 @@ func main() {
 
 	fmt.Println("\n=== 6. Retrieve by ID ===")
 
-	fetched, err := g.GetNode(alice.ID())
+	fetched, err := g.Nodes.Get(alice.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
 	name, _ := fetched.GetProperty("name")
 	fmt.Printf("GetNode(Alice): name=%s\n", name)
 
-	fetchedRel, err := g.GetRelationship(knows.ID())
+	fetchedRel, err := g.Rels.Get(knows.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -193,11 +193,11 @@ func main() {
 
 	fmt.Println("\n=== 7. Label and Type Checks ===")
 
-	fmt.Printf("Alice has 'Person': %v\n", g.NodeHasLabel(alice, "Person"))
-	fmt.Printf("Alice has 'Employee': %v\n", g.NodeHasLabel(alice, "Employee"))
-	fmt.Printf("Bob has 'Employee': %v\n", g.NodeHasLabel(bob, "Employee"))
-	fmt.Printf("knows is 'KNOWS': %v\n", g.RelationshipHasType(knows, "KNOWS"))
-	fmt.Printf("knows is 'WORKS_WITH': %v\n", g.RelationshipHasType(knows, "WORKS_WITH"))
+	fmt.Printf("Alice has 'Person': %v\n", g.Nodes.HasLabel(alice, "Person"))
+	fmt.Printf("Alice has 'Employee': %v\n", g.Nodes.HasLabel(alice, "Employee"))
+	fmt.Printf("Bob has 'Employee': %v\n", g.Nodes.HasLabel(bob, "Employee"))
+	fmt.Printf("knows is 'KNOWS': %v\n", g.Rels.HasType(knows, "KNOWS"))
+	fmt.Printf("knows is 'WORKS_WITH': %v\n", g.Rels.HasType(knows, "WORKS_WITH"))
 
 	fmt.Println("\n=== 8. Properties ===")
 
@@ -210,24 +210,24 @@ func main() {
 	fmt.Println("\n=== 9. Adjacency Queries ===")
 
 	// All outgoing from Alice.
-	outAll, err := g.OutgoingRelationships(alice.ID(), "")
+	outAll, err := g.Rels.Outgoing(alice.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice outgoing (all): %d\n", len(outAll))
 	for _, r := range outAll {
-		fmt.Printf("  -[%s]-> %s\n", g.RelationshipType(r), commas(int64(r.EndNodeID().SnowflakeID())))
+		fmt.Printf("  -[%s]-> %s\n", g.Rels.Type(r), commas(int64(r.EndNodeID().SnowflakeID())))
 	}
 
 	// Filtered: only KNOWS.
-	outKnows, err := g.OutgoingRelationships(alice.ID(), "KNOWS")
+	outKnows, err := g.Rels.Outgoing(alice.ID(), "KNOWS")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice outgoing KNOWS: %d\n", len(outKnows))
 
 	// Incoming to Charlie.
-	inCharlie, err := g.IncomingRelationships(charlie.ID(), "")
+	inCharlie, err := g.Rels.Incoming(charlie.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -235,16 +235,16 @@ func main() {
 
 	fmt.Println("\n=== 10. Delete a Relationship ===")
 
-	if err := g.DeleteRelationship(worksWith.ID()); err != nil {
+	if err := g.Rels.Delete(worksWith.ID()); err != nil {
 		log.Fatal(err)
 	}
-	rc, err = g.RelationshipCount()
+	rc, err = g.Rels.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("After deleting WORKS_WITH: relationships=%d\n", rc)
 
-	_, err = g.GetRelationship(worksWith.ID())
+	_, err = g.Rels.Get(worksWith.ID())
 	if errors.Is(err, store.ErrRelNotFound) {
 		fmt.Println("WORKS_WITH correctly not found after deletion")
 	}
@@ -252,20 +252,20 @@ func main() {
 	fmt.Println("\n=== 11. Delete a Node (Cascade) ===")
 
 	// Alice has two KNOWS relationships. Deleting Alice removes them.
-	if err := g.DeleteNode(alice.ID()); err != nil {
+	if err := g.Nodes.Delete(alice.ID()); err != nil {
 		log.Fatal(err)
 	}
-	nc, err = g.NodeCount()
+	nc, err = g.Nodes.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
-	rc, err = g.RelationshipCount()
+	rc, err = g.Rels.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("After deleting Alice: nodes=%d, relationships=%d\n", nc, rc)
 
-	_, err = g.GetNode(alice.ID())
+	_, err = g.Nodes.Get(alice.ID())
 	if errors.Is(err, store.ErrNodeNotFound) {
 		fmt.Println("Alice correctly not found after deletion")
 	}

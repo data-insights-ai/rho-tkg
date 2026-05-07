@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.3.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.2.0 change: audience-based public sub-package layout — `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. External callers must update import paths; see CHANGELOG.md for the migration guide.
+Status: v3.4.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.3.0 change: 13 sub-API accessors on `*Graph` — `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Statistics`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Additive: every existing `*Graph` method continues to work unchanged. v3.3.0 baseline (audience-based public sub-package layout) still applies: `pkg/graph/store`, `pkg/graph/store/{memory,badger,tiered}`, `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for migration details.
 
 ## Build & Test Commands
 

@@ -68,7 +68,7 @@ func main() {
 			}
 		}()
 
-		alice, err := g.AddNode([]string{"Person"}, map[string]any{
+		alice, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 			"name": "Alice",
 			"age":  int64(30),
 		})
@@ -77,7 +77,7 @@ func main() {
 		}
 		aliceID = int64(alice.ID())
 
-		bob, err := g.AddNode([]string{"Person", "Developer"}, map[string]any{
+		bob, err := g.Nodes.Add([]string{"Person", "Developer"}, map[string]any{
 			"name": "Bob",
 			"age":  int64(28),
 		})
@@ -86,14 +86,14 @@ func main() {
 		}
 		bobID = int64(bob.ID())
 
-		charlie, err := g.AddNode([]string{"Person"}, map[string]any{
+		charlie, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 			"name": "Charlie",
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		knows, err := g.AddRelationship("KNOWS", alice, bob, map[string]any{
+		knows, err := g.Rels.Add("KNOWS", alice, bob, map[string]any{
 			"since": int64(2023),
 		})
 		if err != nil {
@@ -101,16 +101,16 @@ func main() {
 		}
 		knowsID = int64(knows.ID())
 
-		_, err = g.AddRelationship("WORKS_WITH", bob, charlie, nil)
+		_, err = g.Rels.Add("WORKS_WITH", bob, charlie, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		nc, err := g.NodeCount()
+		nc, err := g.Nodes.Count()
 		if err != nil {
 			log.Fatal(err)
 		}
-		rc, err := g.RelationshipCount()
+		rc, err := g.Rels.Count()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -135,18 +135,18 @@ func main() {
 			}
 		}()
 
-		nc, err := g.NodeCount()
+		nc, err := g.Nodes.Count()
 		if err != nil {
 			log.Fatal(err)
 		}
-		rc, err := g.RelationshipCount()
+		rc, err := g.Rels.Count()
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Counts after reopen: %d nodes, %d relationships\n", nc, rc)
 
 		// Retrieve by ID.
-		alice, err := g.GetNode(types.NodeID(aliceID))
+		alice, err := g.Nodes.Get(types.NodeID(aliceID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func main() {
 		age, _ := alice.GetProperty("age")
 		fmt.Printf("GetNode(Alice): name=%s, age=%d\n", name, age)
 
-		bob, err := g.GetNode(types.NodeID(bobID))
+		bob, err := g.Nodes.Get(types.NodeID(bobID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -162,42 +162,42 @@ func main() {
 		fmt.Printf("GetNode(Bob): name=%s\n", bobName)
 
 		// Label resolution — registries are reloaded from Badger.
-		fmt.Printf("Alice labels: %v\n", g.NodeLabels(alice))
-		fmt.Printf("Bob labels:   %v\n", g.NodeLabels(bob))
-		fmt.Printf("Alice primary: %s\n", g.NodePrimaryLabel(alice))
+		fmt.Printf("Alice labels: %v\n", g.Nodes.Labels(alice))
+		fmt.Printf("Bob labels:   %v\n", g.Nodes.Labels(bob))
+		fmt.Printf("Alice primary: %s\n", g.Nodes.PrimaryLabel(alice))
 
 		// Query by label.
-		persons, err := g.NodesByLabel("Person", store.QueryOpts{})
+		persons, err := g.Nodes.ByLabel("Person", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Person nodes: %d\n", len(persons))
 
-		developers, err := g.NodesByLabel("Developer", store.QueryOpts{})
+		developers, err := g.Nodes.ByLabel("Developer", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Developer nodes: %d\n", len(developers))
 
 		// Query by relationship type.
-		knowsRels, err := g.RelationshipsByType("KNOWS", store.QueryOpts{})
+		knowsRels, err := g.Rels.ByType("KNOWS", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
 		// Retrieve relationship by ID.
-		rel, err := g.GetRelationship(types.RelID(knowsID))
+		rel, err := g.Rels.Get(types.RelID(knowsID))
 		if err != nil {
 			log.Fatal(err)
 		}
 		since, _ := rel.GetProperty("since")
 		fmt.Printf("GetRelationship: type=%s, since=%d\n",
-			g.RelationshipType(rel), since)
+			g.Rels.Type(rel), since)
 
 		// Add more data to the reopened graph.
 		fmt.Println("\nAdding more data to reopened graph...")
-		dave, err := g.AddNode([]string{"Person"}, map[string]any{
+		dave, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 			"name": "Dave",
 		})
 		if err != nil {
@@ -205,16 +205,16 @@ func main() {
 		}
 		fmt.Printf("Dave ID: %s\n", commas(int64(dave.ID())))
 
-		_, err = g.AddRelationship("KNOWS", alice, dave, nil)
+		_, err = g.Rels.Add("KNOWS", alice, dave, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		nc, err = g.NodeCount()
+		nc, err = g.Nodes.Count()
 		if err != nil {
 			log.Fatal(err)
 		}
-		rc, err = g.RelationshipCount()
+		rc, err = g.Rels.Count()
 		if err != nil {
 			log.Fatal(err)
 		}

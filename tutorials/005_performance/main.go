@@ -180,7 +180,7 @@ func main() {
 	qNodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		n, err := gQuery.AddNode([]string{label}, nil)
+		n, err := gQuery.Nodes.Add([]string{label}, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -193,7 +193,7 @@ func main() {
 		if sIdx == eIdx {
 			eIdx = (eIdx + 1) % nodeCount
 		}
-		r, err := gQuery.AddRelationship("EDGE", qNodes[sIdx], qNodes[eIdx], nil)
+		r, err := gQuery.Rels.Add("EDGE", qNodes[sIdx], qNodes[eIdx], nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -204,7 +204,7 @@ func main() {
 	start := time.Now()
 	for i := range lookupCount {
 		id := qNodes[i%nodeCount].ID()
-		if _, err := gQuery.GetNode(id); err != nil {
+		if _, err := gQuery.Nodes.Get(id); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -215,7 +215,7 @@ func main() {
 	start = time.Now()
 	for i := range lookupCount {
 		id := qRels[i%relCount].ID()
-		if _, err := gQuery.GetRelationship(id); err != nil {
+		if _, err := gQuery.Rels.Get(id); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -236,7 +236,7 @@ func main() {
 	start = time.Now()
 	for i := range outQueryCount {
 		id := qNodes[i%nodeCount].ID()
-		rels, err := gQuery.OutgoingRelationships(id, "")
+		rels, err := gQuery.Rels.Outgoing(id, "")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -253,7 +253,7 @@ func main() {
 	start = time.Now()
 	for i := range labelQueryCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		nodes, err := gQuery.NodesByLabel(label, store.QueryOpts{})
+		nodes, err := gQuery.Nodes.ByLabel(label, store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -286,7 +286,7 @@ func main() {
 	// Baseline: N standalone AddNode calls.
 	singleStart := time.Now()
 	for i := range batchBenchN {
-		if _, err := gSingle.AddNode([]string{"Single"}, map[string]any{"idx": i}); err != nil {
+		if _, err := gSingle.Nodes.Add([]string{"Single"}, map[string]any{"idx": i}); err != nil {
 			log.Fatalf("AddNode: %v", err)
 		}
 	}
@@ -339,7 +339,7 @@ func main() {
 		log.Fatal(err)
 	}
 	for i := range propN {
-		if _, err := gProp.AddNode([]string{"Product"}, map[string]any{"score": i % propValues}); err != nil {
+		if _, err := gProp.Nodes.Add([]string{"Product"}, map[string]any{"score": i % propValues}); err != nil {
 			log.Fatalf("AddNode: %v", err)
 		}
 	}
@@ -347,7 +347,7 @@ func main() {
 	// Without property index: falls back to label scan + property filter.
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
+		if _, err := gProp.Nodes.ByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
 			log.Fatalf("NodesByLabelAndProperty: %v", err)
 		}
 	}
@@ -355,14 +355,14 @@ func main() {
 	propNoIdxOps := int64(float64(propQ) / propNoIdxDur.Seconds())
 
 	// Create property index — backfills from all existing 10K nodes.
-	if err := gProp.CreatePropertyIndex("Product", "score"); err != nil {
+	if err := gProp.Index.CreateProperty("Product", "score"); err != nil {
 		log.Fatalf("CreatePropertyIndex: %v", err)
 	}
 
 	// With property index: O(1) hash lookup.
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
+		if _, err := gProp.Nodes.ByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
 			log.Fatalf("NodesByLabelAndProperty: %v", err)
 		}
 	}
@@ -405,7 +405,7 @@ func main() {
 	closeTime := types.Instant(time.Now().Add(-time.Hour).UnixMilli())
 	tempNodes := make([]*types.Node, tempN)
 	for i := range tempN {
-		n, err := gTemp.AddNode([]string{"Event"}, nil)
+		n, err := gTemp.Nodes.Add([]string{"Event"}, nil)
 		if err != nil {
 			log.Fatalf("AddNode: %v", err)
 		}
@@ -413,7 +413,7 @@ func main() {
 	}
 	for i := range tempClosed {
 		id := tempNodes[i].ID()
-		if err := gTemp.CloseNodeVersion(id, closeTime); err != nil {
+		if err := gTemp.Nodes.CloseVersion(id, closeTime); err != nil {
 			log.Fatalf("CloseNodeVersion: %v", err)
 		}
 	}
@@ -424,7 +424,7 @@ func main() {
 	// Without temporal index: full label scan + per-node ValidTo check.
 	start = time.Now()
 	for range tempQ {
-		if _, err := gTemp.GetNodesByLabelValidAt("Event", nowQuery); err != nil {
+		if _, err := gTemp.Temporal.NodesByLabelAt("Event", nowQuery); err != nil {
 			log.Fatalf("GetNodesByLabelValidAt: %v", err)
 		}
 	}
@@ -432,14 +432,14 @@ func main() {
 	tempNoIdxOps := int64(float64(tempQ) / tempNoIdxDur.Seconds())
 
 	// Create temporal index — backfills from all 50K existing nodes.
-	if err := gTemp.CreateTemporalIndex("Event"); err != nil {
+	if err := gTemp.Index.CreateTemporal("Event"); err != nil {
 		log.Fatalf("CreateTemporalIndex: %v", err)
 	}
 
 	// With temporal index: sequential scan of index entries, deep-copy only matching.
 	start = time.Now()
 	for range tempQ {
-		if _, err := gTemp.GetNodesByLabelValidAt("Event", nowQuery); err != nil {
+		if _, err := gTemp.Temporal.NodesByLabelAt("Event", nowQuery); err != nil {
 			log.Fatalf("GetNodesByLabelValidAt: %v", err)
 		}
 	}
@@ -480,19 +480,19 @@ func main() {
 	}
 	for range vecN {
 		emb := randomVec(vecDims, rng)
-		if _, err := gVec.AddNode([]string{"Doc"}, map[string]any{"embedding": emb}); err != nil {
+		if _, err := gVec.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": emb}); err != nil {
 			log.Fatalf("AddNode: %v", err)
 		}
 	}
 
-	if err := gVec.CreateVectorIndex("Doc", "embedding", vecDims, store.DistanceCosine); err != nil {
+	if err := gVec.Index.CreateVector("Doc", "embedding", vecDims, store.DistanceCosine); err != nil {
 		log.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	query := randomVec(vecDims, rng)
 	start = time.Now()
 	for range vecQ {
-		results, err := gVec.SearchNearestNodes("Doc", "embedding", query, vecK, store.QueryOpts{})
+		results, err := gVec.Index.SearchNearest("Doc", "embedding", query, vecK, store.QueryOpts{})
 		if err != nil {
 			log.Fatalf("SearchNearestNodes: %v", err)
 		}
@@ -557,7 +557,7 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		n, err := g.AddNode([]string{label}, nil)
+		n, err := g.Nodes.Add([]string{label}, nil)
 		if err != nil {
 			log.Fatalf("[%s] AddNode %d: %v", name, i, err)
 		}
@@ -572,7 +572,7 @@ func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (tim
 		if sIdx == eIdx {
 			eIdx = (eIdx + 1) % nodeCount
 		}
-		if _, err := g.AddRelationship("EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
+		if _, err := g.Rels.Add("EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
 			log.Fatalf("[%s] AddRelationship %d: %v", name, i, err)
 		}
 	}
@@ -603,7 +603,7 @@ func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) u
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		n, err := g.AddNode([]string{label}, nil)
+		n, err := g.Nodes.Add([]string{label}, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -615,7 +615,7 @@ func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) u
 		if sIdx == eIdx {
 			eIdx = (eIdx + 1) % nodeCount
 		}
-		if _, err := g.AddRelationship("EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
+		if _, err := g.Rels.Add("EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
 			log.Fatal(err)
 		}
 	}

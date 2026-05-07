@@ -61,34 +61,34 @@ func main() {
 	fmt.Println("=== 1. Multi-label Nodes ===")
 	// ----------------------------------------------------------------
 
-	eng, err := g.AddNode([]string{"Department"}, map[string]any{
+	eng, err := g.Nodes.Add([]string{"Department"}, map[string]any{
 		"name":   "Engineering",
 		"budget": float64(2_500_000),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Department: %v\n", g.NodeLabels(eng))
+	fmt.Printf("Department: %v\n", g.Nodes.Labels(eng))
 
-	atlas, err := g.AddNode([]string{"Project", "Internal"}, map[string]any{
+	atlas, err := g.Nodes.Add([]string{"Project", "Internal"}, map[string]any{
 		"name":     "Atlas",
 		"priority": int64(1),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Project: %v (2 labels)\n", g.NodeLabels(atlas))
+	fmt.Printf("Project: %v (2 labels)\n", g.Nodes.Labels(atlas))
 
-	alice, err := g.AddNode([]string{"Person", "Employee", "Engineer"}, map[string]any{
+	alice, err := g.Nodes.Add([]string{"Person", "Employee", "Engineer"}, map[string]any{
 		"name":  "Alice",
 		"email": "alice@example.com",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Person: %v (3 labels)\n", g.NodeLabels(alice))
+	fmt.Printf("Person: %v (3 labels)\n", g.Nodes.Labels(alice))
 
-	bob, err := g.AddNode([]string{"Person", "Employee"}, map[string]any{
+	bob, err := g.Nodes.Add([]string{"Person", "Employee"}, map[string]any{
 		"name": "Bob",
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func main() {
 	fmt.Println("\n=== 2. Rich Properties ===")
 	// ----------------------------------------------------------------
 
-	richNode, err := g.AddNode([]string{"Config"}, map[string]any{
+	richNode, err := g.Nodes.Add([]string{"Config"}, map[string]any{
 		"name":    "app-config",
 		"enabled": true,
 		"count":   int64(42),
@@ -122,39 +122,39 @@ func main() {
 	fmt.Println("\n=== 3. Relationships ===")
 	// ----------------------------------------------------------------
 
-	worksIn, err := g.AddRelationship("WORKS_IN", alice, eng, map[string]any{
+	worksIn, err := g.Rels.Add("WORKS_IN", alice, eng, map[string]any{
 		"since": int64(2022),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = g.AddRelationship("WORKS_IN", bob, eng, nil)
+	_, err = g.Rels.Add("WORKS_IN", bob, eng, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	assignedTo, err := g.AddRelationship("ASSIGNED_TO", alice, atlas, map[string]any{
+	assignedTo, err := g.Rels.Add("ASSIGNED_TO", alice, atlas, map[string]any{
 		"role": "lead",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = g.AddRelationship("ASSIGNED_TO", bob, atlas, map[string]any{
+	_, err = g.Rels.Add("ASSIGNED_TO", bob, atlas, map[string]any{
 		"role": "contributor",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	manages, err := g.AddRelationship("MANAGES", alice, bob, nil)
+	manages, err := g.Rels.Add("MANAGES", alice, bob, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Self-loop: Alice reviews her own code.
-	selfLoop, err := g.AddRelationship("REVIEWS", alice, alice, map[string]any{
+	selfLoop, err := g.Rels.Add("REVIEWS", alice, alice, map[string]any{
 		"type": "self-review",
 	})
 	if err != nil {
@@ -163,11 +163,11 @@ func main() {
 	fmt.Printf("Self-loop: Alice -[REVIEWS]-> Alice (ID: %s)\n",
 		commas(int64(selfLoop.ID())))
 
-	nc, err := g.NodeCount()
+	nc, err := g.Nodes.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
-	rc, err := g.RelationshipCount()
+	rc, err := g.Rels.Count()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func main() {
 		CreatedBy: "system",
 	})
 
-	deletedAt, _ := g.ResolveRelProperty(worksIn, types.ShadowDeletedAt)
+	deletedAt, _ := g.Resolve.RelProperty(worksIn, types.ShadowDeletedAt)
 	fmt.Printf("worksIn soft-deleted at: %v\n", deletedAt)
 
 	// ----------------------------------------------------------------
@@ -220,8 +220,8 @@ func main() {
 		Hash:     "sha256:v1-abc123",
 		PrevHash: "",
 	})
-	hash, _ := g.ResolveNodeProperty(alice, types.ShadowHash)
-	prev, _ := g.ResolveNodeProperty(alice, types.ShadowPrevHash)
+	hash, _ := g.Resolve.NodeProperty(alice, types.ShadowHash)
+	prev, _ := g.Resolve.NodeProperty(alice, types.ShadowPrevHash)
 	fmt.Printf("Alice v1: hash=%s, prevHash=%q\n", hash, prev)
 
 	// Version 2 hash chain.
@@ -229,14 +229,14 @@ func main() {
 		Hash:     "sha256:v2-def456",
 		PrevHash: "sha256:v1-abc123",
 	})
-	hash2, _ := g.ResolveNodeProperty(alice, types.ShadowHash)
-	prev2, _ := g.ResolveNodeProperty(alice, types.ShadowPrevHash)
+	hash2, _ := g.Resolve.NodeProperty(alice, types.ShadowHash)
+	prev2, _ := g.Resolve.NodeProperty(alice, types.ShadowPrevHash)
 	fmt.Printf("Alice v2: hash=%s, prevHash=%s\n", hash2, prev2)
 
 	manages.SetIntegrity(&types.RelIntegrity{
 		Hash: "sha256:rel-001",
 	})
-	rh, _ := g.ResolveRelProperty(manages, types.ShadowHash)
+	rh, _ := g.Resolve.RelProperty(manages, types.ShadowHash)
 	fmt.Printf("MANAGES hash: %s\n", rh)
 
 	// ----------------------------------------------------------------
@@ -256,7 +256,7 @@ func main() {
 
 	fmt.Println("Node (Alice):")
 	for _, key := range shadowKeys {
-		val, ok := g.ResolveNodeProperty(alice, key)
+		val, ok := g.Resolve.NodeProperty(alice, key)
 		if ok {
 			fmt.Printf("  %-20s = %v\n", key, val)
 		} else {
@@ -271,7 +271,7 @@ func main() {
 	})
 	assignedTo.SetVersion(1)
 	for _, key := range shadowKeys {
-		val, ok := g.ResolveRelProperty(assignedTo, key)
+		val, ok := g.Resolve.RelProperty(assignedTo, key)
 		if ok {
 			fmt.Printf("  %-20s = %v\n", key, val)
 		} else {
@@ -284,25 +284,25 @@ func main() {
 	// ----------------------------------------------------------------
 
 	// All outgoing from Alice.
-	outAll, err := g.OutgoingRelationships(alice.ID(), "")
+	outAll, err := g.Rels.Outgoing(alice.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Alice outgoing (all types): %d relationships\n", len(outAll))
 	for _, r := range outAll {
 		fmt.Printf("  -[%s]-> %s\n",
-			g.RelationshipType(r), commas(int64(r.EndNodeID().SnowflakeID())))
+			g.Rels.Type(r), commas(int64(r.EndNodeID().SnowflakeID())))
 	}
 
 	// All incoming to Bob.
-	inBob, err := g.IncomingRelationships(bob.ID(), "")
+	inBob, err := g.Rels.Incoming(bob.ID(), "")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Bob incoming (all types): %d relationships\n", len(inBob))
 
 	// Filtered by type.
-	assignedOnly, err := g.OutgoingRelationships(
+	assignedOnly, err := g.Rels.Outgoing(
 		alice.ID(), "ASSIGNED_TO")
 	if err != nil {
 		log.Fatal(err)
@@ -345,30 +345,30 @@ func main() {
 	fmt.Println("\n=== 10. Cascade Delete ===")
 	// ----------------------------------------------------------------
 
-	nc, _ = g.NodeCount()
-	rc, _ = g.RelationshipCount()
+	nc, _ = g.Nodes.Count()
+	rc, _ = g.Rels.Count()
 	fmt.Printf("Before delete: %d nodes, %d rels\n", nc, rc)
 
 	// Delete Alice — cascade removes all her relationships.
 	aliceID := alice.ID()
-	if err := g.DeleteNode(aliceID); err != nil {
+	if err := g.Nodes.Delete(aliceID); err != nil {
 		log.Fatal(err)
 	}
 
-	nc, _ = g.NodeCount()
-	rc, _ = g.RelationshipCount()
+	nc, _ = g.Nodes.Count()
+	rc, _ = g.Rels.Count()
 	fmt.Printf("After deleting Alice: %d nodes, %d rels\n", nc, rc)
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 11. Error Handling ===")
 	// ----------------------------------------------------------------
 
-	_, err = g.GetNode(aliceID)
+	_, err = g.Nodes.Get(aliceID)
 	if errors.Is(err, store.ErrNodeNotFound) {
 		fmt.Println("GetNode(deleted Alice): ErrNodeNotFound")
 	}
 
-	_, err = g.GetRelationship(worksIn.ID())
+	_, err = g.Rels.Get(worksIn.ID())
 	if errors.Is(err, store.ErrRelNotFound) {
 		fmt.Println("GetRelationship(cascaded rel): ErrRelNotFound")
 	}
@@ -378,7 +378,7 @@ func main() {
 	// ----------------------------------------------------------------
 
 	bob.SetVersion(3)
-	ver, _ := g.ResolveNodeProperty(bob, types.ShadowVersion)
+	ver, _ := g.Resolve.NodeProperty(bob, types.ShadowVersion)
 	fmt.Printf("Bob version via shadow: %v\n", ver)
 
 	// ----------------------------------------------------------------

@@ -62,7 +62,7 @@ After confirming the implementation is correct and the issue isn't duplicated el
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.3.0 | Audience-based public sub-packages: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends with renames `MemoryStore→memory.Store`/`NewMemoryStore→memory.New`, `BadgerStore→badger.Store`/`BadgerStoreConfig→badger.Config`/`NewBadgerStore→badger.New`, `TieredStore→tiered.Store`/`TieredStoreConfig→tiered.Config`/`NewTieredStore→tiered.New`), `pkg/graph/events` (Event/EventBus/AsyncEventBus/Priority*), `pkg/graph/index` (IndexProvider/Initializable/GraphReader/LegacyIndexProvider — the legacy variant's OnEvent now takes a GraphReader, not *Graph), `pkg/graph/temporal` (GraphSnapshot/SnapshotDiff/ConstraintSet), `pkg/graph/ontology` (EntityClass/OntologyMapping). The deleted internal packages — `internal/events`, `internal/temporal`, `internal/memorystore`, `internal/badgerstore`, `internal/tieredstore` — are promoted to public sub-packages; `internal/store` is renamed to `internal/storeutil` (helpers only). See CHANGELOG.md for the full migration guide.
+Status: v3.4.0 | Sub-API accessors on `*Graph` (Option 3, additive): the 130+ public methods are now grouped under 13 sub-API fields — `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Statistics`, `g.Hash`, `g.Resolve` (each in its own `pkg/graph/<name>api/` package), plus `g.Tx` and `g.Batch` (in-package `TxAPI` / `BatchAPI` types in `pkg/graph/subapi.go`, because they wrap pkg/graph-private `*GraphTx` / `*BatchBuilder`). Every existing `*Graph` method continues to work unchanged — sub-APIs are a strict superset of the surface. v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends with renames `MemoryStore→memory.Store`/`NewMemoryStore→memory.New`, `BadgerStore→badger.Store`/`BadgerStoreConfig→badger.Config`/`NewBadgerStore→badger.New`, `TieredStore→tiered.Store`/`TieredStoreConfig→tiered.Config`/`NewTieredStore→tiered.New`), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for the full migration guide.
 
 ## Build & Test Commands
 
@@ -124,71 +124,64 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### `pkg/graph`
 
-After the v3.1.22-v3.1.23 restructure and the v3.2.0 public-API consolidation, `pkg/graph/` is a thin orchestration layer on top of the `internal/*` subpackages. The Graph struct lives in a 48-line file; the rest is split by concern. Persistence, indexes, and registries live entirely under `pkg/graph/internal/`. The single public `aliases.go` is gone — every public re-export now lives in a themed file (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`, `temporal_constraint.go`).
+After v3.4.0 (Option 3), `pkg/graph/` is a thin façade. The `Graph` type holds a `*core.Core` plus the 13 sub-API field accessors. All ~130 implementation methods live on `*core.Core` in `pkg/graph/internal/core/`. Customers interact via the sub-APIs (`g.Nodes.Add(...)`, `g.Temporal.NodesAt(...)`, etc.); the old direct `g.AddNode(...)` form was removed.
 
 | File | Purpose |
 |---|---|
-| `graph.go` | `Graph` struct only (48 LOC). The struct holds dual snowflake generators, registry pointers, entity-lock manager, validation limits, async/sync event bus, and the package-private `txEventBuffer`. |
-| `config.go` | `Config` and `ValidationLimits` types. |
-| `lifecycle.go` | `New`, `Close`, registry persistence wiring (`registriesPersister` interface for both `BadgerStore` and `TieredStore`). |
-| `validation.go` | Name + property validation helpers (`validateName`, `validateProperties`, `validatePropertyEntry`). |
-| `resolution.go` | `NodeLabels`, `RelationshipType`, label/reltype string resolution helpers. |
-| `crud.go` | Exported short-form `AddNode`/`AddRelationship`/`UpdateNode`/`DeleteNode`/`GetNode`/`GetRelationship` wrappers (delegate to `*WithContext`). |
-| `property_cas.go` | `CompareAndSetProperty` — atomic CAS on a node property using `reflect.DeepEqual`. |
-| `queries.go` | `Outgoing*`/`Incoming*` adjacency queries; `AllNodes`, `AllRelationships`, `NodesByLabel`, `RelationshipsByType`. |
-| `graph_indexes.go` | Public index management — `CreatePropertyIndex`, `DropPropertyIndex`, `ListPropertyIndexes`, `CreateHighFrequencyIndex`, `DropHighFrequencyIndex`. |
-| `vector_search.go` | `CreateVectorIndex`, `DropVectorIndex`, `SearchNearestNodes`. |
-| `graph_property_query.go` | Property-indexed reads (`NodesByLabelAndProperty` and time variants). |
-| `admin.go` | Tiered admin pass-throughs: `ListShards`, `ForceRotate`, `ArchiveNode`, `RestoreNode`, `RunRepair`, `VerifyShard`, `MigrateFromBadger`, `DecomposeID`. `ArchiveNode`/`RestoreNode` acquire `g.mu.Lock()` for tx-class exclusion. |
-| `events_dispatch.go` | `dispatchEvent`, `publishEvent`, `SetEventBus`, `SetAsyncEventBus`. |
-| `node_label.go` | `AddNodeLabel`, `RemoveNodeLabel` — post-creation label-set mutation with history + hash chain. |
-| `version_chain.go` | `CloseNodeVersion`, `CloseRelVersion` — close the open-ended `ValidTo` of the current version without writing a new version. |
-| `store.go` | Public re-exports for the persistence contract: `Store`, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric` plus the 12 store-layer sentinel errors and the `DepthAll`/`DepthHot`/`DepthWarm` + `DistanceCosine`/`DistanceEuclidean` constants. |
-| `events.go` | Public re-exports for the lifecycle bus: `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `AsyncEventBusConfig`, `BackpressureStrategy` + the six `EventNode*`/`EventRel*`, five `Priority*`, three `Backpressure*` constants, and the `NewEventBus`/`NewAsyncEventBus` constructors. |
-| `ontology.go` | Public re-exports for the label-class taxonomy: `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`/`ClassReference`. |
-| `snowflake.go` | Public re-export `IDComponents`/`DecomposeID` plus the package-level `snowflakeEpoch`/`snowflakeLayout` helpers used inside `pkg/graph/`. |
-| `errors.go` | Vector-index sentinels (`ErrVectorIndexExists`, `ErrVectorIndexNotFound`, `ErrDimensionMismatch`) and registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`). |
-| `backends.go` | Concrete `Store` implementations: `MemoryStore`/`NewMemoryStore`, `BadgerStore`/`BadgerStoreConfig`/`NewBadgerStore`, `TieredStore`/`TieredStoreConfig`/`NewTieredStore`, the admin return types `ShardInfo`/`VerifyResult`/`RepairResult`, the four TieredStore-specific sentinels, and the `MigrateFromBadger(src, dst)` helper. |
-| `context.go` | `*WithContext` helpers (`checkCtx`, `extractProvenance`, `extractTemporal`, `nowInstant`, etc.). 145 LOC; entity-mutation methods live in the eight `context_node_*.go` / `context_relationship_*.go` files. |
-| `context_node_add.go` | `AddNodeWithContext`, `addNodeInternal`, `ImportNodeWithID`, `importNodeWithIDInternal`. |
-| `context_node_update.go` | `UpdateNodeWithContext`, `updateNodeInternal`, `UpdateNodeInPlace`, `UpdateNodeInPlaceWithContext`, `updateNodeInPlaceInternal`. |
-| `context_node_read_delete.go` | `GetNodeWithContext`, `DeleteNodeWithContext`, `deleteNodeInternal`, `collectDeleteIDs`, `sameIDSet`, `deleteNodeLocked`. |
-| `context_relationship_add.go` | `AddRelationshipWithContext`, `addRelationshipInternal`. |
-| `context_relationship_read_delete.go` | `GetRelationshipWithContext`, `DeleteRelationshipWithContext`, `deleteRelationshipInternal`. |
-| `context_relationship_update.go` | `UpdateRelationshipWithContext`, `updateRelationshipInternal`. |
-| `context_relationship_import.go` | `ImportRelationshipWithID`, `importRelWithIDInternal`. |
-| `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence. |
-| `tx.go` | `GraphTx` — full CRUD transaction holding the graph write lock; snapshot-based rollback; `labelDeltas` tracker for label-index rollback consistency. |
-| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream; `validateNodeWire`/`validateRelWire` guard the untrusted boundary. |
-| `integrity.go` | `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain` — hash chain verification. Pure hash primitives live in `pkg/graph/internal/integrity/`. |
-| `temporal.go` | Internal helpers shared by the temporal-query files (`mergeIDs`, history-aware merging). 446 LOC. |
-| `temporal_queries.go` | Temporal point-in-time and interval query methods (`GetNode*ValidAt`, `Nodes*During`, etc.). |
-| `temporal_snapshot.go` | `Snapshot`, `GraphSnapshot`, snapshot helpers. |
-| `temporal_diff.go` | `Diff`, snapshot diffing. |
-| `temporal_allen.go` | Allen's-algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels`. |
-| `temporal_constraint.go` | Public re-exports for the temporal-constraint vocabulary (`TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, `ConstraintRelWithinEndpoints`, `NewConstraintSet`, the seven sentinel errors) plus the Graph-coupled enforcement methods (`checkTemporalConstraints`, `checkRelWithinEndpoints`, `checkRelAgainstEndpoint`). The pure types' canonical declaration lives in `internal/temporal/`. |
-| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice with lazy sort), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`. |
-| `txtime.go` | Bitemporality — `GetNodeAsOf`, `GetRelAsOf`, `Get*sAsOf`, `ErrNoVersionAsOf`. |
-| `stats.go` | `GraphStats` (8 atomic operation counters + 4 cache metrics), `StoreStats` optional interface. |
-| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 21 `tkg_*` shadow keys. |
-| `index_provider.go` | Public `IndexProvider` interface (Phase 6 redesign) + optional `Initializable` hook + narrow `GraphReader` read surface; `LegacyIndexProvider` adapter for backward compat. |
+| `graph.go` | `Graph` thin façade (118 LOC): holds `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`, `Core` (escape hatch). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
+| `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`. They live in `pkg/graph` itself (not a sibling package) because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types defined inside `pkg/graph/internal/core`. `TxAPI.Run` / `TxAPI.RunContext` add closure-style helpers. |
+| `errors.go` | Public sentinel re-exports — store sentinels (`ErrNodeNotFound`, …, 12 entries), vector-index sentinels (`ErrVectorIndexExists`, …), registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`), index-provider sentinels (`ErrIndexProviderExists`, …). Canonical declarations in `internal/core/core.go`. |
+| `subapi_smoke_test.go` | `TestSubAPISmoke` — compile-and-run smoke test exercising every sub-API accessor end-to-end. |
 | `doc.go` | Package documentation. |
+
+That's it — 4 production files + 1 smoke test in `pkg/graph/` itself.
+
+### `pkg/graph/<sub-api>/` sub-API accessor packages (v3.4.0)
+
+Each package declares a local `Core` interface listing only the methods its wrappers forward to. `*core.Core` (in `internal/core`) satisfies each interface implicitly. Sub-API constructors take `*core.Core` directly. Wrappers are 1-2 lines, single indirect dispatch each. Customer-facing names use the field on Graph (column 2), not the import path.
+
+| Package | Field on Graph | Purpose |
+|---------|----------------|---------|
+| `pkg/graph/nodes` | `g.Nodes` | Node CRUD, label, property, version chain (~31 wrappers). |
+| `pkg/graph/rels` | `g.Rels` | Relationship CRUD, adjacency, property, version chain (~30 wrappers). |
+| `pkg/graph/temporalapi` | `g.Temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations (~24 wrappers). Named `temporalapi` to coexist with the `pkg/graph/temporal` types package (Option A — holds `GraphSnapshot`, `SnapshotDiff`, constraint types). |
+| `pkg/graph/indexapi` | `g.Index` | Property / vector / high-frequency index management + `SearchNearest` + IndexProvider registration (~13 wrappers). Named `indexapi` to coexist with the `pkg/graph/index` types package (Option A — holds `IndexProvider`, `Initializable`, `GraphReader`). |
+| `pkg/graph/eventsapi` | `g.Events` | Sync / async EventBus management (~3 wrappers). |
+| `pkg/graph/constraintsapi` | `g.Constraints` | Temporal-constraint set management (~3 wrappers). |
+| `pkg/graph/ioapi` | `g.IO` | Export / Import (~2 wrappers). |
+| `pkg/graph/adminapi` | `g.Admin` | Tiered-store admin: archive, repair, shards, rotate, reset, decompose-id (~9 wrappers). |
+| `pkg/graph/statsapi` | `g.Statistics` | Count helpers (~6 wrappers). Field name `Statistics` to avoid colliding with the (now-removed) `Graph.Stats() GraphStats` method. |
+| `pkg/graph/hashapi` | `g.Hash` | Hash-chain verification (~2 wrappers). |
+| `pkg/graph/resolveapi` | `g.Resolve` | Shadow-property + registry resolution (~6 wrappers). |
+
+In addition: `g.Tx` (`*TxAPI`) and `g.Batch` (`*BatchAPI`) are in-package types in `pkg/graph/subapi.go` (they wrap `*GraphTx` / `*BatchBuilder` types declared in `internal/core`).
+
+### `pkg/graph/<types-package>/` types-only public packages (v3.3.0)
+
+These are sibling public packages from Option A — they hold types customers need to reference (return types from sub-API methods, parameter types, sentinels). They do NOT have methods on Graph; they're pure type declarations.
+
+| Package | Purpose |
+|---|---|
+| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, 12 store sentinels. |
+| `pkg/graph/store/memory` | `memory.Store`, `memory.New()` — in-memory backend. |
+| `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()` — Badger v4 backend. |
+| `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`, 4 sentinels. |
+| `pkg/graph/events` | `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, `NewEventBus`, `NewAsyncEventBus`. |
+| `pkg/graph/index` | `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, IndexProvider sentinels. |
+| `pkg/graph/temporal` | `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, 7 constraint sentinels. |
+| `pkg/graph/ontology` | `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`, `ClassReference`. |
 
 ### `pkg/graph/internal/*` subpackages
 
 | Package | Purpose |
 |---|---|
-| `internal/snowflake` | Package-level snowflake `Epoch` + `Layout` + `IDComponents` + `DecomposeID`. Imported by `internal/locks`, `internal/store`, `internal/tieredstore`, `internal/badgerstore` (via test fixtures). Avoids `pkg/graph` import cycles. |
-| `internal/store` | `Store` interface contract, sentinel errors, `QueryOpts`, `ShardDepth`, `RelTombstone`, key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). |
+| `internal/core` | (v3.4.0) `Core` type holding all unexported state (mu, store, registries, locks, generators, indexProviders, etc.) plus all 130+ method bodies that previously lived on `*Graph`. The thin `*Graph` façade in pkg/graph/ wraps a `*core.Core`. ~7.5K LOC of implementation across 27 files; ~28K LOC of internal tests across 53 test files. |
+| `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. Imported by `internal/locks`, `internal/storeutil`, `internal/core`, `pkg/graph/store/{badger,tiered}`. |
+| `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | `Manager` — 256-shard entity-lock manager, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
-| `internal/registry` | `LabelRegistry` and `RelTypeRegistry` — thread-safe string-to-uint16 token registries. `ErrEmptyName`, `ErrRegistryNotEmpty`, `TokenCapacityMax`. Re-exported from `internal/index` for backward compat. |
-| `internal/index` | In-memory indexes: property index, vector index, high-frequency temporal index, `OntologyMapping` (label-class classification). Re-exports `LabelRegistry` and `RelTypeRegistry` from `internal/registry`. |
-| `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue`, `hashBufPool`. Five fixed-vector hash anchors lock the on-disk hash format. |
-| `internal/events` | Lifecycle event delivery — `EventType`/`Event`/`EventPriority`, sync `EventBus`, async `AsyncEventBus` (worker pool, per-priority queues, `BackpressureStrategy`), `Publisher` interface. |
-| `internal/temporal` | Pure constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, seven sentinel errors, `NewConstraintSet`. |
-| `internal/memorystore` | Thread-safe in-memory `Store` implementation with hash-set indexes. |
-| `internal/badgerstore` | Persistent `Store` implementation backed by Badger v4. LRU caches with dirty tracking, async `WriteBatch` flush, background GC, `SaveRegistries` for atomic single-txn registry persistence. |
-| `internal/tieredstore` | Multi-shard `Store` implementation routing across reference shard + time-windowed event shards + optional reference archive. `checkoutStore`/`checkinStore` for cold-shard ref-counting, sequential ForEach, cross-shard split-write ordering, archive/restore, repair, migration. |
+| `internal/registry` | `LabelRegistry` and `RelTypeRegistry` — thread-safe string-to-uint16 token registries. Internal types — not part of public API. |
+| `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. The label/reltype registries live in `internal/registry`. |
+| `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue`. Five fixed-vector hash anchors lock the on-disk hash format. |
 
 ### Configuration
 

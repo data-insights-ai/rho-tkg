@@ -1,332 +1,118 @@
+// Package graph is the public façade over pkg/graph/internal/core.
+//
+// As of v3.4.0 the 130+ public methods that historically lived directly on
+// *Graph have been removed. Customers must reach the implementation through
+// the sub-API accessors: g.Nodes.Add(...), g.Rels.Add(...), g.Temporal.NodesAt(...),
+// etc. The list below is the complete public surface on *Graph itself:
+//
+//	New(cfg Config) (*Graph, error)
+//	(*Graph).Close() error
+//
+// Plus the sub-API field set declared on Graph itself.
 package graph
 
 import (
-	"errors"
-	"fmt"
-	"strings"
-	"sync"
-	"sync/atomic"
-
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
-
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-
-	snowflake "github.com/bds421/rho-snowflake-2026"
-	"github.com/dgraph-io/badger/v4/options"
-
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/adminapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraintsapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/eventsapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hashapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/indexapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/core"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/ioapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/nodes"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/rels"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolveapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/statsapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporalapi"
 )
 
-// =============================================================================
-// Graph struct
-// =============================================================================
-
-// Graph is the central graph layer. It owns the label and relationship type
-// registries, snowflake ID generators, store, and provides string resolution
-// for token-based entities.
-//
-// Entity locks serialize AddRelationship and DeleteNode on overlapping entities
-// to prevent write-skew (concurrent AddRelationship(→X) + DeleteNodeCascade(X)
-// producing a dangling edge).
+// Graph is the thin façade providing sub-API accessors over an internal Core.
+// All methods that historically lived on *Graph have been moved to *core.Core
+// and are reachable through the sub-API fields below.
 type Graph struct {
-	labels        *registrypkg.LabelRegistry
-	relTypes      *registrypkg.RelTypeRegistry
-	nodeIDGen     *snowflake.Node
-	relIDGen      *snowflake.Node
-	store         storepkg.Store
-	entityLocks   *locks.Manager
-	validation    ValidationLimits
-	constraints   ConstraintSet       // temporal constraints checked at relationship write time
-	events        eventspkg.Publisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
-	txEventBuffer *[]eventspkg.Event  // non-nil while a tx holds g.mu.Lock — events buffered, not dispatched
-	mu            sync.RWMutex        // serializes batch/tx writes vs standalone mutations and reads
-	closeOnce     sync.Once
+	core *core.Core
 
-	// Index providers registered via RegisterIndexProvider. Keyed by Name().
-	// Each entry holds an unsubscribe closure so UnregisterIndexProvider can
-	// detach cleanly. See index_provider.go for semantics.
-	indexProviders map[string]*indexProviderEntry
-
-	// Operation counters — incremented atomically on every successful operation.
-	opNodeAdds    atomic.Int64
-	opNodeReads   atomic.Int64
-	opNodeUpdates atomic.Int64
-	opNodeDeletes atomic.Int64
-	opRelAdds     atomic.Int64
-	opRelReads    atomic.Int64
-	opRelUpdates  atomic.Int64
-	opRelDeletes  atomic.Int64
+	Nodes       *nodes.API
+	Rels        *rels.API
+	Temporal    *temporalapi.API
+	Index       *indexapi.API
+	Events      *eventsapi.API
+	Constraints *constraintsapi.API
+	IO          *ioapi.API
+	Admin       *adminapi.API
+	Statistics  *statsapi.API
+	Hash        *hashapi.API
+	Resolve     *resolveapi.API
+	Tx          *TxAPI
+	Batch       *BatchAPI
 }
 
-// =============================================================================
-// Errors
-// =============================================================================
+// Config aliases core.Config for the public API.
+type Config = core.Config
 
-// Sentinel errors for entity management.
-var (
-	ErrNoLabels         = errors.New("graph: node requires at least one label")
-	ErrNilNode          = errors.New("graph: node must not be nil")
-	ErrZeroID           = errors.New("graph: zero ID is not valid for import")
-	ErrNotTieredStore   = errors.New("graph: operation requires tiered.Store")
-	ErrAlreadyClosed    = errors.New("graph: entity already closed")
-	ErrInvalidTimeRange = errors.New("graph: invalid time range")
-	ErrLabelNotFound    = errors.New("graph: node does not have the specified label")
-	ErrLastLabel        = errors.New("graph: cannot remove the last label from a node")
-	// ErrDepthTemporalUnsupported is returned when storepkg.QueryOpts combines a
-	// non-default Depth with a temporal filter. The history-aware
-	// resolution path enumerates IDs through ForEach* iterators that have
-	// no storepkg.QueryOpts, so the underlying Store cannot honor Depth in that
-	// path — surface the limitation to the caller rather than silently
-	// returning entities the caller asked to exclude.
-	ErrDepthTemporalUnsupported = errors.New("graph: opts.Depth is not supported with a temporal filter")
-)
+// ValidationLimits aliases core.ValidationLimits for the public API.
+type ValidationLimits = core.ValidationLimits
 
-// Sentinel errors for validation limits.
-var (
-	ErrTooManyLabels     = errors.New("graph: too many labels")
-	ErrTooManyProperties = errors.New("graph: too many properties")
-	ErrKeyTooLong        = errors.New("graph: property key too long")
-	ErrValueTooLarge     = errors.New("graph: property value too large")
-	ErrNameTooLong       = errors.New("graph: name too long")
-	ErrSelfLoop          = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
-)
+// GraphStats aliases core.GraphStats for the public API.
+type GraphStats = core.GraphStats
 
-// =============================================================================
-// Config & ValidationLimits
-// =============================================================================
+// StoreStats aliases core.StoreStats for the public API.
+type StoreStats = core.StoreStats
 
-// Default validation limits — generous enough for normal use, restrictive enough
-// to catch runaway callers.
-const (
-	defaultMaxLabelsPerNode       = 50
-	defaultMaxPropertiesPerEntity = 1000
-	defaultMaxPropertyKeyLength   = 256
-	defaultMaxPropertyValueSize   = 65536 // 64 KiB, string values only
-	defaultMaxNameLength          = 256   // label and reltype names
-)
+// GraphTx aliases core.GraphTx for the public API. It is the value returned
+// by g.Tx.Begin().
+type GraphTx = core.GraphTx
 
-// ValidationLimits configures limits on entity structure.
-// Zero values are resolved to defaults in New().
-type ValidationLimits struct {
-	MaxLabelsPerNode       int  // Default: 50
-	MaxPropertiesPerEntity int  // Default: 1000
-	MaxPropertyKeyLength   int  // Default: 256
-	MaxPropertyValueSize   int  // Default: 65536 (string values only)
-	MaxNameLength          int  // Default: 256 (label and reltype names)
-	AllowSelfLoops         bool // Default: false — reject relationships where startNode == endNode
-}
+// BatchBuilder aliases core.BatchBuilder for the public API. It is the value
+// returned by NewBatchBuilder(g) and g.Batch.New().
+type BatchBuilder = core.BatchBuilder
 
-// Config holds configuration for the Graph.
-type Config struct {
-	// SnowflakeNodeID identifies this graph instance (0-15).
-	// Internally mapped to even/odd generator pair (nodeGen=ID*2, relGen=ID*2+1)
-	// to guarantee value-level uniqueness across node and relationship IDs.
-	// Each concurrent instance must use a different value.
-	SnowflakeNodeID int64
+// BatchResult aliases core.BatchResult.
+type BatchResult = core.BatchResult
 
-	// Store is the persistence backend. If nil, memory.New() is used
-	// unless BadgerDir or BadgerInMemory is set.
-	Store storepkg.Store
+// BatchError aliases core.BatchError.
+type BatchError = core.BatchError
 
-	// BadgerDir is the Badger data directory. If set and Store is nil,
-	// a BadgerStore is created. Ignored if Store is non-nil.
-	BadgerDir string
+// IDComponents aliases core.IDComponents.
+type IDComponents = core.IDComponents
 
-	// BadgerInMemory enables in-memory Badger mode (useful for testing).
-	// If true and Store is nil, a BadgerStore with InMemory=true is created.
-	BadgerInMemory bool
+// ConstraintSet aliases core.ConstraintSet.
+type ConstraintSet = core.ConstraintSet
 
-	// Validation configures limits on entity structure.
-	// Zero fields use defaults.
-	Validation ValidationLimits
-
-	// SyncWrites enables synchronous disk writes for every mutation.
-	// When true, each write is flushed to stable storage before returning.
-	// Ignored for MemoryStore or when Store is explicitly provided.
-	// Default false (async background flush via FlushInterval).
-	SyncWrites bool
-
-	// Compression sets the SSTable compression algorithm for the convenience
-	// BadgerStore path (BadgerDir / BadgerInMemory). Ignored when Store is set.
-	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
-	// Zero keeps the Badger default (Snappy).
-	Compression options.CompressionType
-	// ZSTDCompressionLevel sets the ZSTD compression level (1-15) for the
-	// convenience BadgerStore path. Ignored when Store is set.
-	// Only effective when Compression is options.ZSTD.
-	// Zero keeps the Badger default (1).
-	ZSTDCompressionLevel int
-}
-
-// ValidationDefaults returns the resolved validation limits (for testing).
-func (g *Graph) ValidationDefaults() ValidationLimits {
-	return g.validation
-}
-
-// =============================================================================
-// Lifecycle
-// =============================================================================
-
-// registriesPersister is the optional interface implemented by Store
-// backends that can persist both the label and reltype registries atomically.
-// Both BadgerStore (single-txn) and tiered.Store (single registry-file write)
-// satisfy this interface; MemoryStore does not need to.
-type registriesPersister interface {
-	SaveRegistries(*registrypkg.LabelRegistry, *registrypkg.RelTypeRegistry) error
-}
-
-// New creates a new Graph with the given configuration.
-// Returns an error if SnowflakeNodeID is out of range (0-15).
-// The ID is mapped to an even/odd pair (ID*2 for nodes, ID*2+1 for rels)
-// to guarantee value-level uniqueness across entity types.
-//
-// Store selection priority:
-//  1. config.Store (explicit injection)
-//  2. BadgerStore (if BadgerDir or BadgerInMemory is set)
-//  3. MemoryStore (default)
-//
-// When a BadgerStore is created, registries are loaded from persisted data.
-// Call Close() when done to save registries and close the store.
-func New(config Config) (*Graph, error) {
-	if config.SnowflakeNodeID < 0 || config.SnowflakeNodeID > 15 {
-		return nil, fmt.Errorf("graph: SnowflakeNodeID must be 0-15, got %d", config.SnowflakeNodeID)
-	}
-
-	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
-		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
+// New creates a new Graph with the given configuration. Delegates to core.New
+// and wires every sub-API accessor to the same *Core instance.
+func New(cfg Config) (*Graph, error) {
+	c, err := core.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("graph: node ID generator: %w", err)
+		return nil, err
 	}
-	relGen, err := snowflake.NewNode(config.SnowflakeNodeID*2+1,
-		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
-	}
-
-	// Resolve zero validation limits to defaults.
-	v := config.Validation
-	if v.MaxLabelsPerNode == 0 {
-		v.MaxLabelsPerNode = defaultMaxLabelsPerNode
-	}
-	if v.MaxPropertiesPerEntity == 0 {
-		v.MaxPropertiesPerEntity = defaultMaxPropertiesPerEntity
-	}
-	if v.MaxPropertyKeyLength == 0 {
-		v.MaxPropertyKeyLength = defaultMaxPropertyKeyLength
-	}
-	if v.MaxPropertyValueSize == 0 {
-		v.MaxPropertyValueSize = defaultMaxPropertyValueSize
-	}
-	if v.MaxNameLength == 0 {
-		v.MaxNameLength = defaultMaxNameLength
-	}
-
-	if v.MaxLabelsPerNode < 0 || v.MaxPropertiesPerEntity < 0 ||
-		v.MaxPropertyKeyLength < 0 || v.MaxPropertyValueSize < 0 ||
-		v.MaxNameLength < 0 {
-		return nil, fmt.Errorf("graph: validation limits must not be negative")
-	}
-
-	g := &Graph{
-		labels:         registrypkg.NewLabelRegistry(),
-		relTypes:       registrypkg.NewRelTypeRegistry(),
-		nodeIDGen:      nodeGen,
-		relIDGen:       relGen,
-		entityLocks:    locks.NewManager(),
-		validation:     v,
-		indexProviders: make(map[string]*indexProviderEntry),
-	}
-
-	// Validate BadgerDir: reject whitespace-only strings (silent fallback hazard).
-	if config.Store == nil && config.BadgerDir != "" {
-		if strings.TrimSpace(config.BadgerDir) == "" {
-			return nil, fmt.Errorf("graph: BadgerDir is whitespace-only; use a valid path or omit for MemoryStore")
-		}
-	}
-
-	store := config.Store
-	if store == nil {
-		if config.BadgerDir != "" || config.BadgerInMemory {
-			bs, err := badger.New(badger.Config{
-				Dir:                  config.BadgerDir,
-				InMemory:             config.BadgerInMemory,
-				SyncWrites:           config.SyncWrites,
-				Compression:          config.Compression,
-				ZSTDCompressionLevel: config.ZSTDCompressionLevel,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("graph: badger store: %w", err)
-			}
-
-			// Load persisted registries. Fail fast if the saved data is corrupt.
-			if _, err := bs.LoadLabelRegistry(g.labels); err != nil {
-				_ = bs.Close() // best-effort cleanup; returning primary error
-				return nil, fmt.Errorf("graph: load label registry: %w", err)
-			}
-			if _, err := bs.LoadRelTypeRegistry(g.relTypes); err != nil {
-				_ = bs.Close() // best-effort cleanup; returning primary error
-				return nil, fmt.Errorf("graph: load reltype registry: %w", err)
-			}
-
-			store = bs
-		} else {
-			store = memory.New()
-		}
-	}
-
-	g.store = store
-
-	// Wire tiered.Store to the label registry for ontology token resolution.
-	if ts, ok := store.(*tiered.Store); ok {
-		ts.SetLabelRegistry(g.labels)
-		if _, err := ts.LoadLabelRegistry(g.labels); err != nil {
-			_ = ts.Close() // best-effort cleanup; returning primary error
-			return nil, fmt.Errorf("graph: load label registry: %w", err)
-		}
-		if _, err := ts.LoadRelTypeRegistry(g.relTypes); err != nil {
-			_ = ts.Close() // best-effort cleanup; returning primary error
-			return nil, fmt.Errorf("graph: load reltype registry: %w", err)
-		}
-	}
-
+	g := &Graph{core: c}
+	g.Nodes = nodes.New(c)
+	g.Rels = rels.New(c)
+	g.Temporal = temporalapi.New(c)
+	g.Index = indexapi.New(c)
+	g.Events = eventsapi.New(c)
+	g.Constraints = constraintsapi.New(c)
+	g.IO = ioapi.New(c)
+	g.Admin = adminapi.New(c)
+	g.Statistics = statsapi.New(c)
+	g.Hash = hashapi.New(c)
+	g.Resolve = resolveapi.New(c)
+	g.Tx = &TxAPI{c: c}
+	g.Batch = &BatchAPI{c: c}
 	return g, nil
 }
 
-// Close saves registries (if Badger) and closes the underlying store.
-// Safe to call concurrently and multiple times.
-//
-// store.Close() always runs even if registry saves fail — prevents resource leaks.
-// Returns all errors joined; subsequent calls return nil.
-func (g *Graph) Close() error {
-	var closeErr error
-	g.closeOnce.Do(func() {
-		// Close index providers before the store so they can flush their
-		// own state. Errors are collected; store close still runs.
-		closeErr = errors.Join(closeErr, g.closeIndexProviders())
+// Close flushes registries (when applicable) and closes the underlying store.
+func (g *Graph) Close() error { return g.core.Close() }
 
-		// Save registries if the store supports atomic persistence.
-		// Both BadgerStore and tiered.Store satisfy registriesPersister; the
-		// type-assertion lets us go through a single uniform path that writes
-		// label and reltype registries atomically.
-		if rp, ok := g.store.(registriesPersister); ok {
-			if err := rp.SaveRegistries(g.labels, g.relTypes); err != nil {
-				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save registries: %w", err))
-			}
-		}
-		// Always close the store — even if registry saves failed.
-		closeErr = errors.Join(closeErr, g.store.Close())
-	})
-	return closeErr
-}
+// Core returns the internal *core.Core. Used by package-internal helpers and
+// transitionally by tests; not part of the stable customer surface.
+func (g *Graph) Core() *core.Core { return g.core }
+
+// NewBatchBuilder constructs a BatchBuilder bound to g. Equivalent to g.Batch.New().
+func NewBatchBuilder(g *Graph) *BatchBuilder { return core.NewBatchBuilder(g.core) }
+
+// DecomposeID extracts creation time, node ID, sequence number from a
+// snowflake ID. Pure helper; does not touch any graph instance.
+var DecomposeID = core.DecomposeID
