@@ -12,6 +12,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/events"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -129,10 +130,10 @@ type Graph struct {
 	store         Store
 	entityLocks   *locks.Manager
 	validation    ValidationLimits
-	constraints   ConstraintSet  // temporal constraints checked at relationship write time
-	events        eventPublisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
-	txEventBuffer *[]Event       // non-nil while a tx holds g.mu.Lock — events buffered, not dispatched
-	mu            sync.RWMutex   // serializes batch/tx writes vs standalone mutations and reads
+	constraints   ConstraintSet       // temporal constraints checked at relationship write time
+	events        eventspkg.Publisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
+	txEventBuffer *[]Event            // non-nil while a tx holds g.mu.Lock — events buffered, not dispatched
+	mu            sync.RWMutex        // serializes batch/tx writes vs standalone mutations and reads
 	closeOnce     sync.Once
 
 	// Index providers registered via RegisterIndexProvider. Keyed by Name().
@@ -1488,17 +1489,17 @@ func (g *Graph) publishEvent(typ EventType, id types.EntityID, t types.Instant, 
 		*g.txEventBuffer = append(*g.txEventBuffer, e)
 		return
 	}
-	g.events.publish(e)
+	g.events.Publish(e)
 }
 
 // dispatchEvent delivers an event to the given publisher. No-op if ep is nil.
 // Use this for event dispatch after releasing g.mu — the caller captures g.events
 // while the lock is held, then calls dispatchEvent with the captured reference.
-func dispatchEvent(ep eventPublisher, e Event) {
+func dispatchEvent(ep eventspkg.Publisher, e Event) {
 	if ep == nil {
 		return
 	}
-	ep.publish(e)
+	ep.Publish(e)
 }
 
 // Stats returns a snapshot of graph operation counters and optional cache metrics.

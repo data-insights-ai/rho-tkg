@@ -40,12 +40,12 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 	tmpName := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()                                    // best-effort cleanup; returning primary error
+		_ = tmp.Close()        // best-effort cleanup; returning primary error
 		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: write temp: %w", prefix, err)
 	}
 	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()                                    // best-effort cleanup; returning primary error
+		_ = tmp.Close()        // best-effort cleanup; returning primary error
 		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: sync temp: %w", prefix, err)
 	}

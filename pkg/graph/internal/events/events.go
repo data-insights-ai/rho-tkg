@@ -1,4 +1,9 @@
-package graph
+// Package events provides the graph lifecycle event types and the two
+// publisher implementations (sync EventBus, async AsyncEventBus) used by
+// pkg/graph. Pulled out as part of the structural restructure so the
+// Graph layer can depend on a focused package; pkg/graph re-exports the
+// public types via aliases to preserve the historical API surface.
+package events
 
 import (
 	"log/slog"
@@ -87,14 +92,14 @@ func (eb *EventBus) Subscribe(h EventHandler) func() {
 	}
 }
 
-// publish delivers e to all registered handlers.
+// Publish delivers e to all registered handlers.
 // Copies the handler slice under RLock, then invokes each handler outside
 // the lock to prevent deadlocks when handlers re-enter the Graph.
 //
 // Each handler is invoked via safeInvoke so that a panic inside a handler
 // cannot crash the graph mutation that triggered the event. Panics are
 // logged at Error level and do not prevent subsequent handlers from running.
-func (eb *EventBus) publish(e Event) {
+func (eb *EventBus) Publish(e Event) {
 	eb.mu.RLock()
 	if len(eb.handlers) == 0 {
 		eb.mu.RUnlock()
@@ -123,10 +128,12 @@ func safeInvoke(h EventHandler, e Event) {
 	h(e)
 }
 
-// eventPublisher is the internal interface for event dispatch.
-// Both *EventBus (sync) and *AsyncEventBus (async) implement this.
-type eventPublisher interface {
-	publish(Event)
+// Publisher is the cross-package interface for event dispatch.
+// Both *EventBus (sync) and *AsyncEventBus (async) implement this. The Graph
+// layer holds an instance of this interface and never depends on the concrete
+// bus type at the call site.
+type Publisher interface {
+	Publish(Event)
 }
 
 // BackpressureStrategy controls AsyncEventBus behavior when the queue is full.
@@ -214,9 +221,9 @@ func (ab *AsyncEventBus) Subscribe(h EventHandler) func() {
 	}
 }
 
-// publish enqueues an event for async delivery into the per-priority queue.
+// Publish enqueues an event for async delivery into the per-priority queue.
 // Behavior when the target queue is full is determined by BackpressureStrategy.
-func (ab *AsyncEventBus) publish(e Event) {
+func (ab *AsyncEventBus) Publish(e Event) {
 	p := e.Priority
 	if int(p) >= numPriorityLevels {
 		p = PriorityNormal

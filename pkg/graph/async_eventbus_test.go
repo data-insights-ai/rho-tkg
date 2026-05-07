@@ -16,7 +16,7 @@ func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
 		received.Add(1)
 	})
 
-	bus.publish(Event{Type: EventNodeCreate})
+	bus.Publish(Event{Type: EventNodeCreate})
 
 	// Wait for delivery (workers are async)
 	deadline := time.Now().Add(2 * time.Second)
@@ -43,7 +43,7 @@ func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
 	// Publish many events quickly — should not block even with slow handler
 	start := time.Now()
 	for i := 0; i < 10; i++ {
-		bus.publish(Event{Type: EventNodeCreate})
+		bus.Publish(Event{Type: EventNodeCreate})
 	}
 	elapsed := time.Since(start)
 	close(blockCh)
@@ -68,14 +68,14 @@ func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
 	})
 
 	// Fill the queue
-	bus.publish(Event{Type: EventNodeCreate})
-	bus.publish(Event{Type: EventNodeCreate})
+	bus.Publish(Event{Type: EventNodeCreate})
+	bus.Publish(Event{Type: EventNodeCreate})
 
 	// Publish in a goroutine (would block)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		bus.publish(Event{Type: EventNodeCreate})
+		bus.Publish(Event{Type: EventNodeCreate})
 	}()
 
 	// Unblock the handler — queue drains and goroutine can proceed
@@ -108,7 +108,7 @@ func TestAsyncEventBus_BackpressureDropOldest(t *testing.T) {
 	// This just tests that publish does NOT block with DropOldest
 	start := time.Now()
 	for i := 0; i < 5; i++ {
-		bus.publish(Event{Type: EventNodeCreate})
+		bus.Publish(Event{Type: EventNodeCreate})
 	}
 	if time.Since(start) > 100*time.Millisecond {
 		t.Error("DropOldest: publish should not block")
@@ -126,7 +126,7 @@ func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
 	// Test that publish does NOT block when queue is full
 	start := time.Now()
 	for i := 0; i < 5; i++ {
-		bus.publish(Event{Type: EventNodeCreate})
+		bus.Publish(Event{Type: EventNodeCreate})
 	}
 	if time.Since(start) > 100*time.Millisecond {
 		t.Error("DropLatest: publish should not block")
@@ -143,7 +143,7 @@ func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
 
 	const n = 20
 	for i := 0; i < n; i++ {
-		bus.publish(Event{Type: EventNodeCreate})
+		bus.Publish(Event{Type: EventNodeCreate})
 	}
 
 	bus.Close() // should drain all pending events before returning
@@ -171,7 +171,7 @@ func TestAsyncEventBus_MultipleWorkers(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < eventsPerGoroutine; j++ {
-				bus.publish(Event{Type: EventNodeCreate})
+				bus.Publish(Event{Type: EventNodeCreate})
 			}
 		}()
 	}
@@ -306,8 +306,8 @@ func TestPriority_CriticalBeforeNormal(t *testing.T) {
 		mu.Unlock()
 	})
 
-	bus.publish(Event{Type: EventNodeUpdate, Priority: PriorityNormal})
-	bus.publish(Event{Type: EventNodeDelete, Priority: PriorityCritical})
+	bus.Publish(Event{Type: EventNodeUpdate, Priority: PriorityNormal})
+	bus.Publish(Event{Type: EventNodeDelete, Priority: PriorityCritical})
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

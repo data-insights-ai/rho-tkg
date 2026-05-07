@@ -99,7 +99,7 @@ func (g *Graph) RegisterIndexProvider(p IndexProvider) error {
 	}
 	bus, ok := g.events.(*EventBus)
 	if !ok {
-		// An AsyncEventBus (or other eventPublisher) is attached. Index
+		// An AsyncEventBus (or other events.Publisher) is attached. Index
 		// providers need Subscribe, which only the sync EventBus currently
 		// exposes. Surface this rather than silently missing events.
 		return fmt.Errorf(

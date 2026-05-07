@@ -5,6 +5,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/events"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
@@ -255,3 +256,64 @@ func MigrateFromBadger(src *BadgerStore, dst *TieredStore, labels *indexpkg.Labe
 // warm, and cold event shards. Re-exported because tests in pkg/graph need
 // to refer to the type by name (e.g., to range over `ts.EventShardsForTest()`).
 type EventShard = tieredstore.EventShard
+
+// --- Lifecycle event re-exports ---
+//
+// The canonical types live in pkg/graph/internal/events. These aliases keep
+// the historical public API (`graph.EventBus`, `graph.AsyncEventBus`,
+// `graph.Event`, the `EventNode*`/`EventRel*` constants, `EventPriority`
+// constants, and the `BackpressureStrategy` constants) usable by external
+// callers (notably tkgd-v3) without import-path churn.
+
+type (
+	// Event is a lifecycle notification emitted after a successful graph mutation.
+	Event = events.Event
+	// EventType classifies a graph lifecycle event.
+	EventType = events.EventType
+	// EventPriority controls the delivery queue for AsyncEventBus.
+	EventPriority = events.EventPriority
+	// EventHandler is a callback invoked for each published event.
+	EventHandler = events.EventHandler
+	// EventBus dispatches graph lifecycle events to registered subscribers synchronously.
+	EventBus = events.EventBus
+	// AsyncEventBus delivers graph lifecycle events asynchronously via a worker pool.
+	AsyncEventBus = events.AsyncEventBus
+	// AsyncEventBusConfig configures an AsyncEventBus.
+	AsyncEventBusConfig = events.AsyncEventBusConfig
+	// BackpressureStrategy controls AsyncEventBus behaviour when the queue is full.
+	BackpressureStrategy = events.BackpressureStrategy
+)
+
+// EventType constants.
+const (
+	EventNodeCreate = events.EventNodeCreate
+	EventNodeUpdate = events.EventNodeUpdate
+	EventNodeDelete = events.EventNodeDelete
+	EventRelCreate  = events.EventRelCreate
+	EventRelUpdate  = events.EventRelUpdate
+	EventRelDelete  = events.EventRelDelete
+)
+
+// EventPriority constants.
+const (
+	PriorityNormal   = events.PriorityNormal
+	PriorityHigh     = events.PriorityHigh
+	PriorityCritical = events.PriorityCritical
+	PriorityLow      = events.PriorityLow
+	PriorityDeferred = events.PriorityDeferred
+)
+
+// BackpressureStrategy constants.
+const (
+	BackpressureBlock      = events.BackpressureBlock
+	BackpressureDropOldest = events.BackpressureDropOldest
+	BackpressureDropLatest = events.BackpressureDropLatest
+)
+
+// NewEventBus creates an EventBus ready for use.
+func NewEventBus() *EventBus { return events.NewEventBus() }
+
+// NewAsyncEventBus creates and starts an AsyncEventBus with the given configuration.
+func NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus {
+	return events.NewAsyncEventBus(cfg)
+}

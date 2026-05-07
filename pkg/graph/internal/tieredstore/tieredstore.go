@@ -438,8 +438,8 @@ func NewTieredStore(cfg TieredStoreConfig) (*TieredStore, error) {
 	// Persist catalog.
 	if !cfg.InMemory {
 		if err := ts.catalog.Save(); err != nil {
-			_ = hotStore.Close()  // best-effort cleanup; returning primary error
-			_ = refStore.Close()  // best-effort cleanup; returning primary error
+			_ = hotStore.Close() // best-effort cleanup; returning primary error
+			_ = refStore.Close() // best-effort cleanup; returning primary error
 			return nil, fmt.Errorf("graph: save catalog: %w", err)
 		}
 	}

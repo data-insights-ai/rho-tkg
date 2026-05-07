@@ -507,7 +507,7 @@ func (tx *GraphTx) Commit() error {
 	// Publish buffered events outside all locks.
 	if ep != nil {
 		for _, e := range events {
-			ep.publish(e)
+			ep.Publish(e)
 		}
 	}
 	return nil

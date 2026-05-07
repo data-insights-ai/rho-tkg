@@ -146,7 +146,7 @@ func (ts *TieredStore) ListShards() ([]ShardInfo, error) {
 			store, err := sn.es.checkoutStore(ts)
 			if err == nil {
 				si.Open = true
-				si.Nodes, _ = store.NodeCount()       // informational; 0 on failure is acceptable
+				si.Nodes, _ = store.NodeCount() // informational; 0 on failure is acceptable
 				si.Rels, _ = store.RelationshipCount()
 				sn.es.checkinStore()
 			}

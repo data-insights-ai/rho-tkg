@@ -1,4 +1,4 @@
-# Architecture — tkg/v3 (v3.1.20)
+# Architecture — tkg/v3 (v3.1.21)
 
 Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -650,7 +650,7 @@ To reverse MsgPack's type-destructive behavior (e.g., `int64` downcast to `int8`
 | `batch.go` | BatchBuilder fluent API |
 | `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop`), two-phase delete with TOCTOU retry |
 | `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible |
-| `events.go` | `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `eventPublisher` interface, tx event buffering |
+| `events.go` | Re-exported via `pkg/graph/aliases.go`. Canonical implementation lives in `pkg/graph/internal/events/events.go`: `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `events.Publisher` interface. tx event buffering still lives in `graph.go`/`tx.go`/`batch.go`. |
 | `temporal.go` | Temporal queries, GraphSnapshot, forEachKnownNodeID/forEachKnownRelID |
 | `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
 | `temporal_constraint.go` | Write-time temporal boundary enforcement (e.g., endpoints must outlive relationships) |

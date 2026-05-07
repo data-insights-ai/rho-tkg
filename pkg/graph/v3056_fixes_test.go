@@ -89,7 +89,7 @@ func TestAsyncEventBus_DropOldest_TerminatesQuickly(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < eventsEach; j++ {
-				bus.publish(Event{Type: EventNodeCreate})
+				bus.Publish(Event{Type: EventNodeCreate})
 			}
 		}()
 	}

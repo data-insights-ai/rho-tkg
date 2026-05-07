@@ -20,7 +20,7 @@ func TestEventBus_Subscribe_Unsubscribe(t *testing.T) {
 	// Unsubscribe first handler.
 	unsub1()
 
-	bus.publish(Event{Type: EventNodeCreate})
+	bus.Publish(Event{Type: EventNodeCreate})
 
 	if len(got1) != 0 {
 		t.Fatalf("unsubscribed handler received %d events", len(got1))
@@ -49,8 +49,8 @@ func TestEventBus_MultipleHandlers(t *testing.T) {
 		bus.Subscribe(func(e Event) { counts[i]++ })
 	}
 
-	bus.publish(Event{Type: EventRelCreate})
-	bus.publish(Event{Type: EventRelDelete})
+	bus.Publish(Event{Type: EventRelCreate})
+	bus.Publish(Event{Type: EventRelDelete})
 
 	for i, c := range counts {
 		if c != 2 {
@@ -332,7 +332,7 @@ func TestEventBus_PanicHandler(t *testing.T) {
 	bus.Subscribe(func(e Event) { got = append(got, e.Type) })
 
 	// publish must not panic.
-	bus.publish(Event{Type: EventNodeCreate})
+	bus.Publish(Event{Type: EventNodeCreate})
 
 	if len(got) != 1 || got[0] != EventNodeCreate {
 		t.Fatalf("expected surviving handler to receive EventNodeCreate, got %v", got)

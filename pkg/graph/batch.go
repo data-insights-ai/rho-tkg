@@ -564,7 +564,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// Dispatch buffered events outside all locks.
 	if ep != nil {
 		for _, e := range batchEvents {
-			ep.publish(e)
+			ep.Publish(e)
 		}
 	}
 
