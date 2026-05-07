@@ -274,6 +274,27 @@ GOOD: // Single SaveRegistries(labels, relTypes) call writes both atomically
 
 **History:** Found in v3.0.33 review. Read-modify-write race between two independent save calls.
 
+## B22. Badger WriteBatch.Flush() Blocks Forever on Closed DB
+
+```
+BAD:  bs.db.Close()
+      bs.flush()   // hangs: WaitForMark blocks (oracle goroutines stopped)
+
+GOOD: bs.dbClosed.Store(true)  // set BEFORE db.Close()
+      bs.db.Close()
+      // flush() checks dbClosed and returns ErrDBClosed immediately
+```
+
+Badger v4's `WriteBatch.Flush()` → `commit()` → `oracle.readTs()` →
+`WaitForMark(context.Background(), ...)` uses a Background context, so it
+blocks forever once DB goroutines stop. Fix: add `dbClosed atomic.Bool` to
+`BadgerStore`, check it in `flush()` before calling `wb.Flush()`, set it in
+`Close()` and in any test that directly closes `bs.db`.
+
+Tests that close `bs.db` directly MUST set `bs.dbClosed.Store(true)` first.
+
+**History:** Found in v3.0.36 as B22 fix.
+
 ## B23. Never Mutate the Caller's Input Props Map
 
 When extracting reserved keys (e.g. `tkg_*` shadow props) from a caller-supplied `map[string]any`, always produce a filtered copy — never `delete()` from the original map. The caller may reuse or introspect the map after the call.
@@ -302,27 +323,6 @@ Use the fast path (return original map) when no reserved key is present — zero
 
 **History:** Applied in v3.0.45 (`extractProvenance` in context.go) for `tkg_author_id` / `tkg_signature` extraction before PropertySlice construction.
 
-## B22. Badger WriteBatch.Flush() Blocks Forever on Closed DB
-
-```
-BAD:  bs.db.Close()
-      bs.flush()   // hangs: WaitForMark blocks (oracle goroutines stopped)
-
-GOOD: bs.dbClosed.Store(true)  // set BEFORE db.Close()
-      bs.db.Close()
-      // flush() checks dbClosed and returns ErrDBClosed immediately
-```
-
-Badger v4's `WriteBatch.Flush()` → `commit()` → `oracle.readTs()` →
-`WaitForMark(context.Background(), ...)` uses a Background context, so it
-blocks forever once DB goroutines stop. Fix: add `dbClosed atomic.Bool` to
-`BadgerStore`, check it in `flush()` before calling `wb.Flush()`, set it in
-`Close()` and in any test that directly closes `bs.db`.
-
-Tests that close `bs.db` directly MUST set `bs.dbClosed.Store(true)` first.
-
-**History:** Found in v3.0.36 as B22 fix.
-
 ## B24. Transaction Isolation: Internal/External Method Split
 
 ```
@@ -342,28 +342,19 @@ Audit: `grep -rn 'func (g \*Graph).*Internal' pkg/graph/` — every internal mus
 
 **History:** Found in v3.0.59 external audit. Standalone mutations could bypass tx isolation.
 
-## B29. Transaction Rollback Must Reverse Every Side Effect, Including Indexes
+## B25. Tx Event Buffering: Publish After Unlock
 
 ```
-BAD:  tx.RemoveNodeLabel(id, "B")
-      tx.Rollback()
-      // ReplaceNode(prev) restores the node's own label set, but the
-      // store-level label index still has the old entry → NodesByLabel
-      // returns a node that no longer has the label.
+BAD:  // Events published during tx mutations — on Rollback, subscribers have stale state
 
-GOOD: track label deltas per tx
-      tx.labelDeltas = append(tx.labelDeltas, labelDelta{id, tok, added})
-      // in Rollback, after ReplaceNode has restored node state:
-      if d.added {
-          store.RemoveNodeLabelToken(id, tok, restoredNode)
-      } else {
-          store.AddNodeLabelToken(id, tok, restoredNode)
-      }
+GOOD: // publishEvent buffers to txEventBuffer during tx
+      // Commit: clear buffer, unlock g.mu, THEN publish events
+      // Rollback: discard buffer (subscribers never see rolled-back mutations)
 ```
 
-When a tx path mutates BOTH entity state AND a separate index, the rollback path must reverse BOTH. `ReplaceNode` deliberately skips the label index (labels were "immutable"), so any label-mutating tx needs a dedicated tracker. Audit: any tx operation that touches an auxiliary index (label, type, adjacency, property, temporal) needs a delta tracker whose reverse runs during `Rollback`.
+Event handlers may call Graph read methods — publishing must happen after `g.mu.Unlock()`.
 
-**History:** Found in v3.1.6 while adding `GraphTx.AddNodeLabel`/`RemoveNodeLabel`. The naive path compiled and passed the obvious "is the label gone?" test because `NodeHasLabel` checks the node state, not the index. Only a second test querying `NodesByLabel` after rollback exposed the corruption. Two regression tests now cover both directions.
+**History:** Found in v3.0.59 external audit. Rollback left EventBus subscribers inconsistent.
 
 ## B26. Lock Acquisition Without Defer Leaks on Panic
 
@@ -416,19 +407,28 @@ JSON `number` values arrive as `float64` in Go. `5.0` → `uint8(5)` is safe. `5
 
 **History:** Found in v3.0.62 review. `extractProvenance` silently truncated fractional auth levels.
 
-## B25. Tx Event Buffering: Publish After Unlock
+## B29. Transaction Rollback Must Reverse Every Side Effect, Including Indexes
 
 ```
-BAD:  // Events published during tx mutations — on Rollback, subscribers have stale state
+BAD:  tx.RemoveNodeLabel(id, "B")
+      tx.Rollback()
+      // ReplaceNode(prev) restores the node's own label set, but the
+      // store-level label index still has the old entry → NodesByLabel
+      // returns a node that no longer has the label.
 
-GOOD: // publishEvent buffers to txEventBuffer during tx
-      // Commit: clear buffer, unlock g.mu, THEN publish events
-      // Rollback: discard buffer (subscribers never see rolled-back mutations)
+GOOD: track label deltas per tx
+      tx.labelDeltas = append(tx.labelDeltas, labelDelta{id, tok, added})
+      // in Rollback, after ReplaceNode has restored node state:
+      if d.added {
+          store.RemoveNodeLabelToken(id, tok, restoredNode)
+      } else {
+          store.AddNodeLabelToken(id, tok, restoredNode)
+      }
 ```
 
-Event handlers may call Graph read methods — publishing must happen after `g.mu.Unlock()`.
+When a tx path mutates BOTH entity state AND a separate index, the rollback path must reverse BOTH. `ReplaceNode` deliberately skips the label index (labels were "immutable"), so any label-mutating tx needs a dedicated tracker. Audit: any tx operation that touches an auxiliary index (label, type, adjacency, property, temporal) needs a delta tracker whose reverse runs during `Rollback`.
 
-**History:** Found in v3.0.59 external audit. Rollback left EventBus subscribers inconsistent.
+**History:** Found in v3.1.6 while adding `GraphTx.AddNodeLabel`/`RemoveNodeLabel`. The naive path compiled and passed the obvious "is the label gone?" test because `NodeHasLabel` checks the node state, not the index. Only a second test querying `NodesByLabel` after rollback exposed the corruption. Two regression tests now cover both directions.
 
 ## B30. Versioned Metadata Must Be Verified Per Version
 
@@ -893,7 +893,7 @@ Audit: When adding a new index type, grep for every mutation method across all t
 
 ---
 
-## B42. Restructure in Moves Only — Defer Identifier Renames and File Splits to Follow-up MRs
+## B44. Restructure in Moves Only — Defer Identifier Renames and File Splits to Follow-up MRs
 
 ```
 BAD:  Big-bang restructure that mixes:
