@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 )
 
 // newTestGen creates a snowflake generator for testing.
@@ -13,7 +13,7 @@ import (
 func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {
 	t.Helper()
 	gen, err := snowflake.NewNode(nodeID,
-		snowflake.WithEpoch(storepkg.SnowflakeEpoch),
+		snowflake.WithEpoch(snowflakepkg.Epoch),
 		snowflake.WithMicroseconds(),
 		snowflake.WithNodeBits(5),
 		snowflake.WithStepBits(10),

@@ -9,6 +9,7 @@ import (
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
@@ -43,7 +44,7 @@ type (
 	// DistanceMetric determines how similarity is measured between two vectors.
 	DistanceMetric = store.DistanceMetric
 	// IDComponents holds the decomposed fields of a snowflake ID.
-	IDComponents = store.IDComponents
+	IDComponents = snowflakepkg.IDComponents
 )
 
 // --- ShardDepth constants ---
@@ -81,17 +82,17 @@ var (
 // --- Snowflake helpers ---
 
 // DecomposeID extracts the creation time, node ID, and sequence number
-// from a snowflake ID. Re-exported from pkg/graph/internal/store.
+// from a snowflake ID. Re-exported from pkg/graph/internal/snowflake.
 func DecomposeID(id snowflake.ID) IDComponents {
-	return store.DecomposeID(id)
+	return snowflakepkg.DecomposeID(id)
 }
 
 // snowflakeEpoch and snowflakeLayout remain available to legacy
 // pkg/graph code that referenced them as package-level identifiers.
-// Both now forward to the canonical definition in internal/store.
+// Both now forward to the canonical definition in internal/snowflake.
 var (
-	snowflakeEpoch  time.Time        = store.SnowflakeEpoch
-	snowflakeLayout snowflake.Layout = store.SnowflakeLayout
+	snowflakeEpoch  time.Time        = snowflakepkg.Epoch
+	snowflakeLayout snowflake.Layout = snowflakepkg.Layout
 )
 
 // --- In-memory index types (re-exported public API) ---

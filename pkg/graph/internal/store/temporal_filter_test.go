@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -23,7 +24,7 @@ func TestEntityValidFrom_DerivedFromSnowflake(t *testing.T) {
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
 	got := EntityValidFrom(id, nil)
-	want := types.Instant(SnowflakeLayout.CreatedAt(id).UnixMilli())
+	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom derived: got %d, want %d", got, want)
 	}
@@ -34,7 +35,7 @@ func TestEntityValidFrom_NilTemporal(t *testing.T) {
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
 	got := EntityValidFrom(id, nil)
-	want := types.Instant(SnowflakeLayout.CreatedAt(id).UnixMilli())
+	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom nil tm: got %d, want %d", got, want)
 	}
@@ -46,7 +47,7 @@ func TestEntityValidFrom_ZeroValidFrom(t *testing.T) {
 	id := gen.Generate()
 	tm := &types.TemporalMetadata{ValidFrom: 0} // zero = derive from ID
 	got := EntityValidFrom(id, tm)
-	want := types.Instant(SnowflakeLayout.CreatedAt(id).UnixMilli())
+	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom zero ValidFrom: got %d, want %d", got, want)
 	}

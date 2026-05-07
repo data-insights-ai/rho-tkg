@@ -62,7 +62,7 @@ After confirming the implementation is correct and the issue isn't duplicated el
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.1.22 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11) + admin-path event-shard pinning + ArchiveNode/RestoreNode g.mu.Lock (v3.1.12) + DeepCopier interface + RegisterPropertyStructType safety (v3.1.13) + ImportGraph panic safety + RunRepair error propagation (v3.1.14) + SearchNearestNodes QueryOpts + k≤0 panic (v3.1.15) + Clear flush race + sync.Map race + missing index resets (v3.1.16) + restructure phase 1 (Store contract / keys / wire / snowflake layout in `pkg/graph/internal/store`) (v3.1.17) + restructure phase 2 (`internal/locks`, `internal/index`, temporal-filter helpers in `internal/store`) (v3.1.18) + restructure phase 3 (`internal/memorystore`, `internal/badgerstore`, `internal/tieredstore`) (v3.1.19) + vector index stale after UpdateNode + batch index maintenance + dead code removal (v3.1.20) + restructure phase 4 (`internal/events`) (v3.1.21) + restructure phase 5 (split integrity.go: helpers in internal/integrity, methods on Graph) (v3.1.22). See CHANGELOG.md for version history.
+Status: v3.1.23 | Phases: 1a-1g, 2a-2i, 3a-3e, 4.1-4.23 (complete) + typed entity IDs (v3.1.8) + IndexProvider/HashableValue extension points (v3.1.9) + history-aware indexed candidate planning + batch hardening (v3.1.10) + refArchive parity in indexed/bulk reads + Close-race protection (v3.1.11) + admin-path event-shard pinning + ArchiveNode/RestoreNode g.mu.Lock (v3.1.12) + DeepCopier interface + RegisterPropertyStructType safety (v3.1.13) + ImportGraph panic safety + RunRepair error propagation (v3.1.14) + SearchNearestNodes QueryOpts + k≤0 panic (v3.1.15) + Clear flush race + sync.Map race + missing index resets (v3.1.16) + restructure phase 1 (Store contract / keys / wire / snowflake layout in `pkg/graph/internal/store`) (v3.1.17) + restructure phase 2 (`internal/locks`, `internal/index`, temporal-filter helpers in `internal/store`) (v3.1.18) + restructure phase 3 (`internal/memorystore`, `internal/badgerstore`, `internal/tieredstore`) (v3.1.19) + vector index stale after UpdateNode + batch index maintenance + dead code removal (v3.1.20) + restructure phase 4 (`internal/events`) (v3.1.21) + restructure phase 5 (split integrity.go: helpers in internal/integrity, methods on Graph) (v3.1.22) + restructure phase 6 (`internal/snowflake`, `internal/registry`, `internal/temporal`) + graph.go/context.go/temporal.go file-splits + IndexProvider redesign + Relationship temporal-query parity + BadgerStore.SaveRegistries (v3.1.23). See CHANGELOG.md for version history.
 
 ## Build & Test Commands
 
@@ -124,48 +124,69 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### `pkg/graph`
 
+After the v3.1.22-v3.1.23 restructure, `pkg/graph/` is a thin orchestration layer on top of the `internal/*` subpackages. The Graph struct lives in a 48-line file; the rest is split by concern. Persistence, indexes, and registries live entirely under `pkg/graph/internal/`.
+
 | File | Purpose |
 |---|---|
-| `graph.go` | Graph struct, Config, dual snowflake generators, registries, entity locks, `ValidationLimits`, CRUD operations (exported wrappers acquire `g.mu.RLock`), `CompareAndSetProperty` (atomic CAS on node property with `reflect.DeepEqual`), `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` (batch adjacency), `AddNodeLabel`/`RemoveNodeLabel` (mutate label set post-creation with history + hash chain), `txEventBuffer` for tx event buffering, string resolution, `Close()` lifecycle, `ErrNotTieredStore` sentinel; `ArchiveNode`/`RestoreNode` acquire `g.mu.Lock()` (same exclusion class as tx) |
-| `store.go` | `Store` interface (persistence contract), `QueryOpts`, `ShardDepth`, sentinel errors, `RelTombstone` struct, `DeleteNodeWithHistory`/`DeleteRelWithHistory` atomic compound delete methods, `OutgoingRelationshipsForNodes`/`IncomingRelationshipsForNodes` batch adjacency queries, `AddNodeLabelToken`/`AddNodeLabelTokenWithHistory` label mutation writers |
-| `memorystore.go` | Thread-safe in-memory Store with hash-set indexes, O(1) counts, temporal push-down |
-| `badgerstore.go` | Persistent Store — Badger v4, LRU caches with dirty tracking, async WriteBatch flush, background GC |
-| `lru.go` | Generic LRU cache with dirty tracking, tombstones, soft capacity, `Peek()` for zero-alloc lookups |
-| `entity_locks.go` | 256-shard mutex array for write-skew prevention; `LockTwo`/`LockMany` in ascending order |
-| `keys.go` | Binary key encoding — single-byte prefix tags, big-endian IDs, `snowflake.ID`-typed entity parameters |
-| `integrity.go` | `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain` — hash chain verification. Hash computation primitives (`ComputeNodeHash`, `ComputeRelHash`) live in `pkg/graph/internal/integrity/integrity.go` and are re-exported via `pkg/graph/aliases.go`. |
-| `wire.go` | Msgpack wire format types for serialization boundary |
-| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 21 `tkg_*` shadow keys |
-| `label_registry.go` | Thread-safe label string <-> uint16 token registry |
-| `reltype_registry.go` | Thread-safe relationship type string <-> uint16 token registry |
-| `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence |
-| `context.go` | `*WithContext` exported wrappers (acquire `g.mu.RLock`) + `*Internal` unexported implementations (lock-free), `ValidationLimits` enforcement (incl. `ErrSelfLoop` check), two-phase delete with TOCTOU retry; `deleteNodeLocked` and `deleteRelationshipInternal` use atomic store calls (`DeleteNodeWithHistory`/`DeleteRelWithHistory`) |
-| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream with 1-byte type tags; format-versioned, forward-compatible; `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, `ErrCorruptExport`; `validateNodeWire`/`validateRelWire` guard the untrusted `io.Reader` boundary before construction |
-| `temporal.go` | `GraphSnapshot`, temporal queries, history-aware ID merging via ForEach iterators |
-| `temporal_filter.go` | Store-level temporal push-down helpers (`entityValidFrom`, `matchesTemporalFilter`) |
-| `temporal_allen.go` | Allen's interval algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels` |
-| `temporal_constraint.go` | Temporal constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, 6 sentinel errors, `checkTemporalConstraints` enforcement |
-| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice, lazy sort via `sortIfDirty` + `sortMu sync.Mutex`), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`, `purgeNodeFromAllTemporalIndexes`, `nodeTemporalBounds` |
-| `tx.go` | `GraphTx` — full CRUD transaction holding graph write lock, snapshot-based rollback, `AddNodeLabel`/`RemoveNodeLabel` with `labelDeltas` tracker for label index rollback consistency |
-| `property_index.go` | In-memory property indexes with auto-maintenance across all mutation paths |
-| `pagination.go` | Cursor-based pagination via binary search on sorted ID slices |
-| `events.go` | Re-exported via `pkg/graph/aliases.go`. Canonical implementation lives in `pkg/graph/internal/events/events.go`: `EventType` (6 constants), `Event` (with `Priority EventPriority`), `EventBus` (sync), `AsyncEventBus` (worker pool + `BackpressureStrategy`), `EventPriority` (5 levels), `events.Publisher` interface |
-| `txtime.go` | Bitemporality — `GetNodeAsOf`, `GetRelAsOf`, `GetNodesAsOf`, `GetRelsAsOf`, `ErrNoVersionAsOf`; TxFrom/TxTo populated on all mutation paths |
-| `hf_index.go` | High-frequency temporal index — time-bucketed `highFrequencyIndex`, O(1) amortized insertion, `CreateHighFrequencyIndex`/`DropHighFrequencyIndex` |
-| `stats.go` | `GraphStats` (8 operation counters + 4 cache metrics), `StoreStats` optional interface |
-| `vector_index.go` | In-memory brute-force k-NN `vectorIndex` — `DistanceMetric` (Cosine/Euclidean), `CreateVectorIndex`/`DropVectorIndex`/`SearchNearestNodes` |
-| `ontology.go` | `EntityClass` — classifies labels as reference or event for shard routing |
-| `shard_catalog.go` | JSON-persisted catalog of all shards with `sync.RWMutex`, atomic write via `atomicWriteFile` |
-| `registry_file.go` | Flat msgpack registry file save/load with `atomicWriteFile` (fsync before rename) |
-| `badgerstore_partial.go` | Unexported helpers for TieredStore cross-shard relationship routing |
-| `tieredstore.go` | Routes entities across ref shard + time-windowed event shards; atomic `checkoutStore` for cold shards; `SaveRegistries` for atomic label+reltype persistence |
-| `tieredstore_write.go` | TieredStore writes — cross-shard split-write, archive/restore, batch partitioning |
-| `tieredstore_read.go` | TieredStore reads — ref probe + timestamp fallback, parallel merge queries, event label fan-out for NodesByLabel, sequential ForEach |
-| `tieredstore_admin.go` | Admin API: `ForceRotate`, `ListShards`, `RebuildCatalog`, `VerifyShard` |
-| `tieredstore_repair.go` | Cross-shard split-write consistency repair (orphaned/missing in/ entries) |
-| `tieredstore_migrate.go` | `MigrateFromBadger` — copy from single BadgerStore to TieredStore |
-| `id_decompose.go` | Extract creation time, node ID, sequence from snowflake ID bits |
-| `doc.go` | Package documentation |
+| `graph.go` | `Graph` struct only (48 LOC). The struct holds dual snowflake generators, registry pointers, entity-lock manager, validation limits, async/sync event bus, and the package-private `txEventBuffer`. |
+| `config.go` | `Config` and `ValidationLimits` types. |
+| `lifecycle.go` | `New`, `Close`, registry persistence wiring (`registriesPersister` interface for both `BadgerStore` and `TieredStore`). |
+| `validation.go` | Name + property validation helpers (`validateName`, `validateProperties`, `validatePropertyEntry`). |
+| `resolution.go` | `NodeLabels`, `RelationshipType`, label/reltype string resolution helpers. |
+| `crud.go` | Exported short-form `AddNode`/`AddRelationship`/`UpdateNode`/`DeleteNode`/`GetNode`/`GetRelationship` wrappers (delegate to `*WithContext`). |
+| `property_cas.go` | `CompareAndSetProperty` — atomic CAS on a node property using `reflect.DeepEqual`. |
+| `queries.go` | `Outgoing*`/`Incoming*` adjacency queries; `AllNodes`, `AllRelationships`, `NodesByLabel`, `RelationshipsByType`. |
+| `graph_indexes.go` | Public index management — `CreatePropertyIndex`, `DropPropertyIndex`, `ListPropertyIndexes`, `CreateHighFrequencyIndex`, `DropHighFrequencyIndex`. |
+| `vector_search.go` | `CreateVectorIndex`, `DropVectorIndex`, `SearchNearestNodes`. |
+| `graph_property_query.go` | Property-indexed reads (`NodesByLabelAndProperty` and time variants). |
+| `admin.go` | Tiered admin pass-throughs: `ListShards`, `ForceRotate`, `ArchiveNode`, `RestoreNode`, `RunRepair`, `VerifyShard`, `MigrateFromBadger`, `DecomposeID`. `ArchiveNode`/`RestoreNode` acquire `g.mu.Lock()` for tx-class exclusion. |
+| `events_dispatch.go` | `dispatchEvent`, `publishEvent`, `SetEventBus`, `SetAsyncEventBus`. |
+| `node_label.go` | `AddNodeLabel`, `RemoveNodeLabel` — post-creation label-set mutation with history + hash chain. |
+| `version_chain.go` | `CloseNodeVersion`, `CloseRelVersion` — close the open-ended `ValidTo` of the current version without writing a new version. |
+| `aliases.go` | Public re-exports from internal subpackages: `Store`, `QueryOpts`, `RelTombstone`, sentinel errors, `MemoryStore`, `BadgerStore`/`BadgerStoreConfig`, `TieredStore`/`TieredStoreConfig`, `ShardCatalog`/`ShardEntry`, `EntityClass`, `OntologyMapping`, `ComputeNodeHash`/`ComputeRelHash`, `EventBus`/`AsyncEventBus`/`Event`/`EventType`/`EventPriority`/`BackpressureStrategy`, `TemporalConstraintKind`/`ConstraintSet` + sentinels, `DecomposeID`/`IDComponents`. |
+| `context.go` | `*WithContext` helpers (`checkCtx`, `extractProvenance`, `extractTemporal`, `nowInstant`, etc.). 145 LOC; entity-mutation methods live in the eight `context_node_*.go` / `context_relationship_*.go` files. |
+| `context_node_add.go` | `AddNodeWithContext`, `addNodeInternal`, `ImportNodeWithID`, `importNodeWithIDInternal`. |
+| `context_node_update.go` | `UpdateNodeWithContext`, `updateNodeInternal`, `UpdateNodeInPlace`, `UpdateNodeInPlaceWithContext`, `updateNodeInPlaceInternal`. |
+| `context_node_read_delete.go` | `GetNodeWithContext`, `DeleteNodeWithContext`, `deleteNodeInternal`, `collectDeleteIDs`, `sameIDSet`, `deleteNodeLocked`. |
+| `context_relationship_add.go` | `AddRelationshipWithContext`, `addRelationshipInternal`. |
+| `context_relationship_read_delete.go` | `GetRelationshipWithContext`, `DeleteRelationshipWithContext`, `deleteRelationshipInternal`. |
+| `context_relationship_update.go` | `UpdateRelationshipWithContext`, `updateRelationshipInternal`. |
+| `context_relationship_import.go` | `ImportRelationshipWithID`, `importRelWithIDInternal`. |
+| `batch.go` | `BatchBuilder` — fluent API with eager validation and deferred persistence. |
+| `tx.go` | `GraphTx` — full CRUD transaction holding the graph write lock; snapshot-based rollback; `labelDeltas` tracker for label-index rollback consistency. |
+| `export.go` | `ExportGraph`/`ImportGraph` — length-prefixed msgpack record stream; `validateNodeWire`/`validateRelWire` guard the untrusted boundary. |
+| `integrity.go` | `Graph.VerifyNodeHashChain` / `Graph.VerifyRelHashChain` — hash chain verification. Pure hash primitives live in `pkg/graph/internal/integrity/`. |
+| `temporal.go` | Internal helpers shared by the temporal-query files (`mergeIDs`, history-aware merging). 446 LOC. |
+| `temporal_queries.go` | Temporal point-in-time and interval query methods (`GetNode*ValidAt`, `Nodes*During`, etc.). |
+| `temporal_snapshot.go` | `Snapshot`, `GraphSnapshot`, snapshot helpers. |
+| `temporal_diff.go` | `Diff`, snapshot diffing. |
+| `temporal_allen.go` | Allen's-algebra graph integration — `NodeInterval`, `RelInterval`, `RelateNodes`, `RelateRels`. |
+| `temporal_constraint.go` | Graph-coupled `checkTemporalConstraints` enforcement (90 LOC). The pure types (`TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, sentinel errors, `NewConstraintSet`) live in `internal/temporal/`. |
+| `temporal_index.go` | In-memory interval index — `temporalIndex` (sorted slice with lazy sort), `addNodeToTemporalIndexes`, `removeNodeFromTemporalIndexes`. |
+| `txtime.go` | Bitemporality — `GetNodeAsOf`, `GetRelAsOf`, `Get*sAsOf`, `ErrNoVersionAsOf`. |
+| `stats.go` | `GraphStats` (8 atomic operation counters + 4 cache metrics), `StoreStats` optional interface. |
+| `ontology.go` | Public `OntologyMapping` factory + the `EntityClass` constants used by sharded backends. |
+| `shadow.go` | `ResolveNodeProperty` / `ResolveRelProperty` — dispatches 21 `tkg_*` shadow keys. |
+| `index_provider.go` | Public `IndexProvider` interface (Phase 6 redesign) + optional `Initializable` hook + narrow `GraphReader` read surface; `LegacyIndexProvider` adapter for backward compat. |
+| `pagination.go` | Cursor-based pagination wrappers (delegate to `internal/store.PaginateIDs` / `PaginateNodes` / `PaginateRels`). |
+| `tieredstore.go` | Re-exports `TieredStore`, `TieredStoreConfig`, `MigrateFromBadger`, the catalog/shard types, and the four TieredStore-specific sentinel errors. The implementation lives in `internal/tieredstore/`. |
+| `doc.go` | Package documentation. |
+
+### `pkg/graph/internal/*` subpackages
+
+| Package | Purpose |
+|---|---|
+| `internal/snowflake` | Package-level snowflake `Epoch` + `Layout` + `IDComponents` + `DecomposeID`. Imported by `internal/locks`, `internal/store`, `internal/tieredstore`, `internal/badgerstore` (via test fixtures). Avoids `pkg/graph` import cycles. |
+| `internal/store` | `Store` interface contract, sentinel errors, `QueryOpts`, `ShardDepth`, `RelTombstone`, key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). |
+| `internal/locks` | `Manager` — 256-shard entity-lock manager, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
+| `internal/registry` | `LabelRegistry` and `RelTypeRegistry` — thread-safe string-to-uint16 token registries. `ErrEmptyName`, `ErrRegistryNotEmpty`, `TokenCapacityMax`. Re-exported from `internal/index` for backward compat. |
+| `internal/index` | In-memory indexes: property index, vector index, high-frequency temporal index, `OntologyMapping` (label-class classification). Re-exports `LabelRegistry` and `RelTypeRegistry` from `internal/registry`. |
+| `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue`, `hashBufPool`. Five fixed-vector hash anchors lock the on-disk hash format. |
+| `internal/events` | Lifecycle event delivery — `EventType`/`Event`/`EventPriority`, sync `EventBus`, async `AsyncEventBus` (worker pool, per-priority queues, `BackpressureStrategy`), `Publisher` interface. |
+| `internal/temporal` | Pure constraint types — `TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, seven sentinel errors, `NewConstraintSet`. |
+| `internal/memorystore` | Thread-safe in-memory `Store` implementation with hash-set indexes. |
+| `internal/badgerstore` | Persistent `Store` implementation backed by Badger v4. LRU caches with dirty tracking, async `WriteBatch` flush, background GC, `SaveRegistries` for atomic single-txn registry persistence. |
+| `internal/tieredstore` | Multi-shard `Store` implementation routing across reference shard + time-windowed event shards + optional reference archive. `checkoutStore`/`checkinStore` for cold-shard ref-counting, sequential ForEach, cross-shard split-write ordering, archive/restore, repair, migration. |
 
 ### Configuration
 

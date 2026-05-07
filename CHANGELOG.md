@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.23] - 2026-05-07
+
+### Added
+
+- `Graph.GetRelationshipsByTypeValidAt(relType, at)` — point-in-time relationship convenience query (parity with the Node side's `GetNodesByLabelValidAt`).
+- `Graph.RelationshipsByTypePropertyAndTime(relType, key, value, at)` — point-in-time predicate query for relationships.
+- `Graph.RelationshipsByTypePropertyDuring(relType, key, value, start, end)` — interval predicate query with predicate-during-interval semantics (matches any version whose property held during any portion of the requested interval, not just the most-recent overlap).
+- `BadgerStore.SaveRegistries(labelReg, relTypeReg)` — atomic single-transaction registry persistence (parity with `TieredStore.SaveRegistries`); the previous `SaveLabelRegistry` + `SaveRelTypeRegistry` pair persisted across two separate transactions and could leave the on-disk state inconsistent on crash.
+- IndexProvider redesign (Phase 6): the `IndexProvider` interface no longer takes a `*Graph` parameter and now returns `error`; new optional `Initializable` interface lets providers participate in bulk-load on startup; new narrow `GraphReader` interface gives providers a stable read surface without coupling to the full `*Graph`; AsyncEventBus subscription is now supported. Direct test coverage added in `index_provider_test.go`.
+
+### Changed (backward-compatible)
+
+- IndexProvider migration: the pre-Phase-6 interface shape is preserved as `LegacyIndexProvider`. Existing customers must change their registration call from `RegisterIndexProvider` to `RegisterLegacyIndexProvider`. The provider implementation itself is identical — only the registration call site changes.
+
+### Changed (structural, no behaviour change)
+
+- **Restructure phase 6 — `internal/snowflake` extracted from `internal/store`** (`pkg/graph/internal/store/id_decompose.go` → `pkg/graph/internal/snowflake/id_decompose.go`, package `snowflake`). The shared `SnowflakeEpoch`, `SnowflakeLayout`, `IDComponents`, and `DecomposeID` symbols moved to a new dedicated package so locks, tieredstore, and badgerstore stop depending on `internal/store` purely for layout decoding. Public surface unchanged — `pkg/graph/aliases.go` still re-exports `DecomposeID`, `IDComponents`, `snowflakeEpoch`, `snowflakeLayout`. The `internal/store` symbols `SnowflakeLayout` and `SnowflakeEpoch` are gone (no caller outside the same package referenced them after the move).
+- **`internal/registry` extracted from `internal/index`** (`label_registry.go`, `label_registry_test.go`, `reltype_registry.go`, `reltype_registry_test.go` → `pkg/graph/internal/registry/`, package `registry`). `internal/index/aliases.go` re-exports `LabelRegistry`, `RelTypeRegistry`, `NewLabelRegistry`, `NewRelTypeRegistry`, `ErrEmptyName`, `ErrRegistryNotEmpty`, and `TokenCapacityMax` so existing callers (graph layer, badgerstore, tieredstore, tests) keep compiling unchanged.
+- **`internal/temporal` package**: pure constraint types (`TemporalConstraintKind`, `TemporalConstraint`, `ConstraintSet`, the seven sentinel errors, `NewConstraintSet`) extracted from `pkg/graph/temporal_constraint.go` into a dedicated subpackage; the Graph-coupled enforcement method `checkTemporalConstraints` stays in `pkg/graph/temporal_constraint.go`. Direct unit tests added — `internal/temporal/` is now at 100% direct coverage (was 0% direct, only exercised through Graph integration tests).
+- **`pkg/graph/graph.go` split into 14 files** (graph.go 1880L → 48L). Concerns split into `config.go`, `lifecycle.go`, `validation.go`, `resolution.go`, `crud.go`, `property_cas.go`, `queries.go`, `graph_indexes.go`, `vector_search.go`, `graph_property_query.go`, `admin.go`, `events_dispatch.go`, `node_label.go`, `version_chain.go`. Function bodies are byte-identical.
+- **`pkg/graph/context.go` split per entity**: `context.go` (helpers) + `context_node_add.go`, `context_node_update.go`, `context_node_read_delete.go`, `context_relationship_add.go`, `context_relationship_read_delete.go`, `context_relationship_update.go`, `context_relationship_import.go`. Function bodies are byte-identical.
+- **`pkg/graph/temporal.go` split by feature**: `temporal.go` (internal helpers, 446L) + `temporal_queries.go`, `temporal_snapshot.go`, `temporal_diff.go`. Function bodies are byte-identical.
+- **Test relocation across the restructure**: 11 test-relocation MRs and the Phase-6 follow-ups moved tests next to their backend code in `internal/{memorystore, badgerstore, tieredstore, events, store, index, integrity}`. Some Graph-integration tests were intentionally kept in `pkg/graph/` where they thread `New(Config{})` through their scenarios — splitting along that seam would have required pulling Graph machinery into the internal test fixtures (B42 moves-only contract). `tieredstore_test.go` and `tieredstore_history_routing_test.go` remain in `pkg/graph/` for the same reason; deferred to a follow-up MR per the project's "if unsure, defer" convention.
+- `pkg/graph/lifecycle.go` uses a unified `registriesPersister` interface for both `BadgerStore` and `TieredStore` — neither backend's atomic registry-persistence call is referenced by name, so adding a third backend in the future requires only implementing `SaveRegistries(labelReg, relTypeReg)`.
+
+### Test coverage
+
+- `internal/temporal/` — 100% direct coverage (was 0% direct).
+- `internal/integrity/` — 100% direct coverage with five SHA-256 fixed-vector anchors locking the on-disk hash format (was 32.9% direct, only exercised through Graph integration tests).
+
+### Documentation
+
+- `tasks/lessons.md` — B42 deduped (renamed to B44), B22-B29 reordered ascending, B31-B35 reordered ascending. Block bodies are byte-identical; only their position changed.
+- File-map sync in `CLAUDE.md` and `docs/architecture.md` reflects the post-restructure `pkg/graph/` layout (graph.go split + internal-package extractions).
+- This MR adds the Phase-6 entry above to the long-running restructure narrative; previous restructure phases are described in their own version sections (3.1.17 — phase 1, 3.1.18 — phase 2, 3.1.19 — phase 3, 3.1.21 — phase 4, 3.1.22 — phase 5).
+
 ## [3.1.22] - 2026-05-07
 
 ### Changed (structural, no behaviour change)

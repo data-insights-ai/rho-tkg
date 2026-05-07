@@ -16,7 +16,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -673,7 +673,7 @@ func (ts *TieredStore) shardForNodeVersion(id snowflake.ID, n *types.Node) (*Bad
 // shard window matches (entity from before the oldest shard).
 // Returns error if cold shard lazy-open fails.
 func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, error) {
-	created := storepkg.SnowflakeLayout.CreatedAt(id)
+	created := snowflakepkg.Layout.CreatedAt(id)
 
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
@@ -692,7 +692,7 @@ func (ts *TieredStore) timestampToEventShard(id snowflake.ID) (*BadgerStore, err
 // checkoutStore/checkinStore for safe concurrent access.
 // Falls back to hotShard if no window matches.
 func (ts *TieredStore) timestampToEventShardEntry(id snowflake.ID) *EventShard {
-	created := storepkg.SnowflakeLayout.CreatedAt(id)
+	created := snowflakepkg.Layout.CreatedAt(id)
 
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()

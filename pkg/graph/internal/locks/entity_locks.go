@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 )
 
 // ShardCount is the number of mutex shards held by Manager.
@@ -34,7 +34,7 @@ func NewManager() *Manager {
 // Uses the low 8 bits of the snowflake timestamp field. Entities created
 // >256 time ticks apart land in different shards.
 func ShardIndex(id snowflake.ID) uint8 {
-	return uint8(storepkg.SnowflakeLayout.Decompose(id).Time) & (ShardCount - 1) // #nosec G115 — masked to 8 bits
+	return uint8(snowflakepkg.Layout.Decompose(id).Time) & (ShardCount - 1) // #nosec G115 — masked to 8 bits
 }
 
 // LockEntity acquires the lock for a single entity.

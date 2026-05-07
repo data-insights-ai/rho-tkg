@@ -1,4 +1,9 @@
-package index
+// Package registry provides string-to-uint16 token registries shared by the
+// label and relationship-type indexes. Hosting these registries in a
+// dedicated package (instead of in internal/index) avoids forcing
+// store-level packages — which need only the token mapping — to depend on
+// the broader index package.
+package registry
 
 import (
 	"errors"

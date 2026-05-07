@@ -506,31 +506,6 @@ single-mutation. The MR author (Markus Nissl) added the missing two-phase
 tests; the original buggy code shipped across multiple Claude-co-authored
 commits, all with high test counts but only single-mutation coverage.
 
-## B34. Performance Tests Need Production Shape
-
-```
-BAD:  BenchmarkGetNode on 2K nodes and call it a performance gate
-
-GOOD: Benchmark public Graph APIs on large graphs, high-degree nodes, dense
-      edge sets, deep version chains, export/import, events, and TieredStore
-      multi-shard reads
-```
-
-Microbenchmarks are useful for localizing costs, but they do not prove production
-performance. A regression gate must include realistic fixture shape: many nodes,
-many relationships, fan-out hotspots, indexed reads, temporal/history queries,
-batch/transaction writes, persistence backends, and event delivery.
-
-Use profile sizes intentionally. Small production benchmarks are for routine
-branch-to-main comparison. Large stress benchmarks must include deep history
-chains, such as 3,000 daily node and relationship updates, and larger fixtures
-for the same public interfaces so they expose algorithmic regressions that a
-30-version smoke shape can hide.
-
-**Rule:** Before claiming "no performance regression", compare the feature branch
-against `main` with both a routine API baseline and small/large production-shaped
-benchmark suites using `benchstat`.
-
 ## B32. Deleted Entity History Needs History-Aware Routing
 
 ```
@@ -601,6 +576,31 @@ Closed at the TieredStore boundary because the graph layer is
 backend-agnostic.
 
 ---
+
+## B34. Performance Tests Need Production Shape
+
+```
+BAD:  BenchmarkGetNode on 2K nodes and call it a performance gate
+
+GOOD: Benchmark public Graph APIs on large graphs, high-degree nodes, dense
+      edge sets, deep version chains, export/import, events, and TieredStore
+      multi-shard reads
+```
+
+Microbenchmarks are useful for localizing costs, but they do not prove production
+performance. A regression gate must include realistic fixture shape: many nodes,
+many relationships, fan-out hotspots, indexed reads, temporal/history queries,
+batch/transaction writes, persistence backends, and event delivery.
+
+Use profile sizes intentionally. Small production benchmarks are for routine
+branch-to-main comparison. Large stress benchmarks must include deep history
+chains, such as 3,000 daily node and relationship updates, and larger fixtures
+for the same public interfaces so they expose algorithmic regressions that a
+30-version smoke shape can hide.
+
+**Rule:** Before claiming "no performance regression", compare the feature branch
+against `main` with both a routine API baseline and small/large production-shaped
+benchmark suites using `benchstat`.
 
 ## B35. Same-Pattern Audit After Merging a "Consistency MR"
 

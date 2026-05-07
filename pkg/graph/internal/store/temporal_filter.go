@@ -2,17 +2,18 @@ package store
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // EntityValidFrom derives the effective valid-from time for an entity.
 // Uses explicit ValidFrom if set on TemporalMetadata, otherwise derives
-// from the snowflake ID via the package-level SnowflakeLayout.
+// from the snowflake ID via the package-level snowflake.Layout.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	return types.Instant(SnowflakeLayout.CreatedAt(id).UnixMilli())
+	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 }
 
 // MatchesTemporalFilter evaluates whether an entity passes the temporal
