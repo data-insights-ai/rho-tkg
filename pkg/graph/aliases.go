@@ -4,16 +4,19 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 )
 
-// This file aliases the Store-contract types and helpers back into the
-// pkg/graph namespace. The implementations live in
-// pkg/graph/internal/store after the v3.1.17 structural restructure;
-// these aliases preserve the public API surface (`graph.Store`,
-// `graph.QueryOpts`, the sentinel errors callers compare against, etc.)
-// and let internal pkg/graph code keep using the unqualified names that
-// existed before the move.
+// This file aliases the Store-contract types and helpers, plus selected
+// in-memory index types, back into the pkg/graph namespace. The
+// implementations live in pkg/graph/internal/store and
+// pkg/graph/internal/index after the structural restructure; these
+// aliases preserve the public API surface (`graph.Store`,
+// `graph.QueryOpts`, the sentinel errors callers compare against,
+// `graph.OntologyMapping`, `graph.EntityClass`, etc.) and let internal
+// pkg/graph code keep using the unqualified names that existed before
+// the move.
 //
 // No new symbols are added here. Anything not aliased was already
 // either internal to pkg/graph (and stays so) or already exported via a
@@ -82,4 +85,40 @@ func DecomposeID(id snowflake.ID) IDComponents {
 var (
 	snowflakeEpoch  time.Time        = store.SnowflakeEpoch
 	snowflakeLayout snowflake.Layout = store.SnowflakeLayout
+)
+
+// --- In-memory index types (re-exported public API) ---
+
+type (
+	// EntityClass distinguishes reference entities from event entities.
+	EntityClass = indexpkg.EntityClass
+	// OntologyMapping classifies entity labels as reference or event.
+	OntologyMapping = indexpkg.OntologyMapping
+)
+
+// EntityClass constants.
+const (
+	ClassEvent     = indexpkg.ClassEvent
+	ClassReference = indexpkg.ClassReference
+)
+
+// NewOntologyMapping creates an OntologyMapping that classifies the given
+// label names as ClassReference. All other labels default to ClassEvent.
+func NewOntologyMapping(refLabels []string) *OntologyMapping {
+	return indexpkg.NewOntologyMapping(refLabels)
+}
+
+// --- Vector-index sentinel errors (public API surface) ---
+
+var (
+	ErrVectorIndexExists   = indexpkg.ErrVectorIndexExists
+	ErrVectorIndexNotFound = indexpkg.ErrVectorIndexNotFound
+	ErrDimensionMismatch   = indexpkg.ErrDimensionMismatch
+)
+
+// --- Registry sentinel errors (public API surface) ---
+
+var (
+	ErrEmptyName        = indexpkg.ErrEmptyName
+	ErrRegistryNotEmpty = indexpkg.ErrRegistryNotEmpty
 )

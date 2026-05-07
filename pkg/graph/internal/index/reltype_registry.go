@@ -1,4 +1,4 @@
-package graph
+package index
 
 import (
 	"errors"
@@ -8,10 +8,10 @@ import (
 	"sync"
 )
 
-// relTypeRegistry maps relationship type strings to uint16 tokens and back.
+// RelTypeRegistry maps relationship type strings to uint16 tokens and back.
 // Token 0 is reserved as the zero/invalid value and is never assigned.
 // Thread-safe via RWMutex with double-check on write miss.
-type relTypeRegistry struct {
+type RelTypeRegistry struct {
 	mu        sync.RWMutex
 	toToken   map[string]uint16
 	toName    []string // index 0 = "" (reserved)
@@ -19,9 +19,9 @@ type relTypeRegistry struct {
 	warnOnce  sync.Once
 }
 
-// newRelTypeRegistry creates a relationship type registry with token 0 reserved.
-func newRelTypeRegistry() *relTypeRegistry {
-	return &relTypeRegistry{
+// NewRelTypeRegistry creates a relationship type registry with token 0 reserved.
+func NewRelTypeRegistry() *RelTypeRegistry {
+	return &RelTypeRegistry{
 		toToken:   make(map[string]uint16),
 		toName:    []string{""}, // index 0 reserved
 		nextToken: 1,
@@ -31,7 +31,7 @@ func newRelTypeRegistry() *relTypeRegistry {
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
 // Returns ErrEmptyName if name is empty or whitespace-only.
 // Returns an error if the registry is full (65535 tokens).
-func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
+func (r *RelTypeRegistry) GetOrCreate(name string) (uint16, error) {
 	if strings.TrimSpace(name) == "" {
 		return 0, ErrEmptyName
 	}
@@ -52,8 +52,8 @@ func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
 		return tok, nil
 	}
 
-	if len(r.toName) > int(tokenCapacityMax) {
-		return 0, fmt.Errorf("graph: reltype registry full (%d tokens)", tokenCapacityMax)
+	if len(r.toName) > int(TokenCapacityMax) {
+		return 0, fmt.Errorf("graph: reltype registry full (%d tokens)", TokenCapacityMax)
 	}
 
 	tok = r.nextToken
@@ -66,7 +66,7 @@ func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
 		r.warnOnce.Do(func() {
 			slog.Warn("reltype registry approaching capacity",
 				"count", tok,
-				"max", tokenCapacityMax,
+				"max", TokenCapacityMax,
 			)
 		})
 	}
@@ -76,7 +76,7 @@ func (r *relTypeRegistry) GetOrCreate(name string) (uint16, error) {
 
 // Resolve returns the relationship type string for the given token.
 // Returns "" for token 0 or out-of-range tokens.
-func (r *relTypeRegistry) Resolve(token uint16) string {
+func (r *RelTypeRegistry) Resolve(token uint16) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -87,7 +87,7 @@ func (r *relTypeRegistry) Resolve(token uint16) string {
 }
 
 // ResolveAll resolves a batch of tokens to relationship type strings.
-func (r *relTypeRegistry) ResolveAll(tokens []uint16) []string {
+func (r *RelTypeRegistry) ResolveAll(tokens []uint16) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -102,7 +102,7 @@ func (r *relTypeRegistry) ResolveAll(tokens []uint16) []string {
 
 // Lookup returns the token for name without creating it.
 // Returns false if the name is not registered.
-func (r *relTypeRegistry) Lookup(name string) (uint16, bool) {
+func (r *RelTypeRegistry) Lookup(name string) (uint16, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -111,7 +111,7 @@ func (r *relTypeRegistry) Lookup(name string) (uint16, bool) {
 }
 
 // Len returns the number of registered relationship types (excluding reserved token 0).
-func (r *relTypeRegistry) Len() int {
+func (r *RelTypeRegistry) Len() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -120,7 +120,7 @@ func (r *relTypeRegistry) Len() int {
 
 // ExportNames returns a copy of the registered names slice for persistence.
 // Index 0 is always "" (reserved). Read-locked.
-func (r *relTypeRegistry) ExportNames() []string {
+func (r *RelTypeRegistry) ExportNames() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -131,16 +131,16 @@ func (r *relTypeRegistry) ExportNames() []string {
 
 // ImportNames restores the registry from persisted data. Write-locked.
 // The registry must be empty (freshly constructed). names[0] must be "".
-func (r *relTypeRegistry) ImportNames(names []string) error {
+func (r *RelTypeRegistry) ImportNames(names []string) error {
 	if len(names) == 0 {
 		return errors.New("graph: import: names slice must not be empty")
 	}
 	if names[0] != "" {
 		return errors.New("graph: import: names[0] must be empty (reserved)")
 	}
-	if len(names)-1 > int(tokenCapacityMax) {
+	if len(names)-1 > int(TokenCapacityMax) {
 		return fmt.Errorf("graph: reltype import: %d entries exceeds registry capacity (%d)",
-			len(names)-1, tokenCapacityMax)
+			len(names)-1, TokenCapacityMax)
 	}
 
 	// Validate entries before acquiring lock: reject empty or duplicate names.
@@ -170,6 +170,6 @@ func (r *relTypeRegistry) ImportNames(names []string) error {
 		r.toToken[names[i]] = uint16(i)
 	}
 
-	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against tokenCapacityMax
+	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against TokenCapacityMax
 	return nil
 }

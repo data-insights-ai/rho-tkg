@@ -9,6 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -20,7 +21,7 @@ import (
 func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	evtTok, _ := reg.GetOrCreate("Signal") // event label → hot shard
@@ -116,7 +117,7 @@ func TestAsyncEventBus_DropOldest_TerminatesQuickly(t *testing.T) {
 func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 
 	caseTok, _ := reg.GetOrCreate("Case")  // reference
@@ -184,7 +185,7 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	bs.nodeCache.evictClean() // evict all clean entries
+	bs.nodeCache.ResetForTest() // evict all entries (post-Flush, all are clean)
 
 	// Hold an RLock concurrently for the duration of DeleteNode.
 	// Before fix #4, DeleteNode held idxMu.Lock() THEN called db.View, which

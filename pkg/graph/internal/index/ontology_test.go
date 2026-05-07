@@ -1,4 +1,4 @@
-package graph
+package index
 
 import "testing"
 
@@ -40,7 +40,7 @@ func TestOntologyMapping_ClassifyByToken_NoRegistry(t *testing.T) {
 
 func TestOntologyMapping_ClassifyByToken_WithRegistry(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case", "User"})
-	reg := newLabelRegistry()
+	reg := NewLabelRegistry()
 	om.SetLabelRegistry(reg)
 
 	// Register labels.
@@ -78,7 +78,7 @@ func TestOntologyMapping_ClassifyByToken_WithRegistry(t *testing.T) {
 
 func TestOntologyMapping_ClassifyByToken_UnknownToken(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case"})
-	reg := newLabelRegistry()
+	reg := NewLabelRegistry()
 	om.SetLabelRegistry(reg)
 
 	// Token 999 doesn't exist in the registry.

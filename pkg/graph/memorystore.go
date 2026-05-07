@@ -8,6 +8,8 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -33,17 +35,17 @@ type MemoryStore struct {
 	relHistory  map[types.RelID]map[uint32]*types.Relationship
 
 	// Property indexes — label+property → value → set of node IDs.
-	propertyIndexes map[propertyIndexKey]*propertyIndex
+	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
 	// Temporal indexes — labelToken → interval index for temporal push-down.
-	temporalIndexes map[uint16]*temporalIndex
+	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
 	// High-frequency indexes — labelToken → time-bucketed index for O(1) insertion.
 	// Separate map from temporalIndexes; only one type can exist per label at a time.
-	hfIndexes map[uint16]*highFrequencyIndex
+	hfIndexes map[uint16]*indexpkg.HighFrequencyIndex
 
 	// Vector indexes — in-memory brute-force k-NN index on node properties.
-	vectorIndexes map[vectorIndexKey]*vectorIndex
+	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
 }
 
 // NewMemoryStore creates an empty MemoryStore with all indexes initialized.
@@ -57,10 +59,10 @@ func NewMemoryStore() *MemoryStore {
 		inIdx:           make(map[types.NodeID]map[types.RelID]struct{}),
 		nodeHistory:     make(map[types.NodeID]map[uint32]*types.Node),
 		relHistory:      make(map[types.RelID]map[uint32]*types.Relationship),
-		propertyIndexes: make(map[propertyIndexKey]*propertyIndex),
-		temporalIndexes: make(map[uint16]*temporalIndex),
-		hfIndexes:       make(map[uint16]*highFrequencyIndex),
-		vectorIndexes:   make(map[vectorIndexKey]*vectorIndex),
+		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
+		temporalIndexes: make(map[uint16]*indexpkg.TemporalIndex),
+		hfIndexes:       make(map[uint16]*indexpkg.HighFrequencyIndex),
+		vectorIndexes:   make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 	}
 }
 
@@ -88,9 +90,9 @@ func (ms *MemoryStore) PutNode(n *types.Node) error {
 	}
 
 	rawID := nid.SnowflakeID()
-	addNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, n, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID)
 	return nil
 }
 
@@ -131,9 +133,9 @@ func (ms *MemoryStore) DeleteNode(nid types.NodeID) error {
 	}
 
 	rawID := nid.SnowflakeID()
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	return nil
 }
@@ -160,13 +162,13 @@ func (ms *MemoryStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, update
 
 	rawID := nid.SnowflakeID()
 	// Update property, temporal, and vector indexes (properties may have changed due to hash update).
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = updatedNode.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
 	return nil
 }
 
@@ -200,13 +202,13 @@ func (ms *MemoryStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 
 	rawID := nid.SnowflakeID()
 	// Update property, temporal, and vector indexes.
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = updatedNode.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
 	return nil
 }
 
@@ -230,13 +232,13 @@ func (ms *MemoryStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 	set[nid] = struct{}{}
 
 	rawID := nid.SnowflakeID()
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = updatedNode.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
 	return nil
 }
 
@@ -270,13 +272,13 @@ func (ms *MemoryStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16
 
 	rawID := nid.SnowflakeID()
 	// Update property, temporal, and vector indexes.
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = updatedNode.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID)
 	return nil
 }
 
@@ -295,13 +297,13 @@ func (ms *MemoryStore) ReplaceNode(n *types.Node) error {
 		return ErrNodeNotFound
 	}
 	rawID := nid.SnowflakeID()
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	removeNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = n.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
-	addNodeToVectorIndexes(ms.vectorIndexes, n, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID)
 	return nil
 }
 
@@ -468,8 +470,8 @@ func (ms *MemoryStore) DeleteNodeCascade(nid types.NodeID) error {
 	}
 
 	rawID := nid.SnowflakeID()
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	return nil
 }
@@ -549,8 +551,8 @@ func (ms *MemoryStore) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion u
 	}
 
 	rawID := nid.SnowflakeID()
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	return nil
 }
@@ -577,10 +579,10 @@ func (ms *MemoryStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node
 		var rawIDs []snowflake.ID
 		temporalQuery := false
 		if opts.ValidAt != 0 {
-			rawIDs = ti.queryAt(opts.ValidAt)
+			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
 		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
-			rawIDs = ti.queryOverlap(opts.ValidStart, opts.ValidEnd)
+			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
 		if temporalQuery {
@@ -1025,11 +1027,11 @@ func (ms *MemoryStore) ReplaceNodeWithHistory(current *types.Node, prevVersion u
 
 	rawID := nid.SnowflakeID()
 	// Replace current entity with property and temporal index updates.
-	removeNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
-	removeNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
+	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	ms.nodes[nid] = current.DeepCopy()
-	addNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
-	addNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
+	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
+	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
 	return nil
 }
 
@@ -1067,12 +1069,12 @@ func (ms *MemoryStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.propertyIndexes[key]; exists {
 		return ErrIndexExists
 	}
 
-	idx := newPropertyIndex()
+	idx := indexpkg.NewPropertyIndex()
 
 	// Populate from existing nodes with this label.
 	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
@@ -1082,7 +1084,7 @@ func (ms *MemoryStore) CreatePropertyIndex(labelToken uint16, propertyKey string
 				continue
 			}
 			if val, found := n.GetProperty(propertyKey); found {
-				idx.add(nodeID.SnowflakeID(), val)
+				idx.Add(nodeID.SnowflakeID(), val)
 			}
 		}
 	}
@@ -1097,7 +1099,7 @@ func (ms *MemoryStore) DropPropertyIndex(labelToken uint16, propertyKey string) 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	key := propertyIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.propertyIndexes[key]; !exists {
 		return ErrIndexNotFound
 	}
@@ -1119,7 +1121,7 @@ func (ms *MemoryStore) CreateTemporalIndex(labelToken uint16) error {
 		return ErrTemporalIndexExists
 	}
 
-	ti := newTemporalIndex()
+	ti := indexpkg.NewTemporalIndex()
 	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
 		for nodeID := range nodeIDs {
 			n := ms.nodes[nodeID]
@@ -1127,8 +1129,8 @@ func (ms *MemoryStore) CreateTemporalIndex(labelToken uint16) error {
 				continue
 			}
 			rawID := nodeID.SnowflakeID()
-			from, to := nodeTemporalBounds(rawID, n.Temporal())
-			ti.add(rawID, from, to)
+			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+			ti.Add(rawID, from, to)
 		}
 	}
 
@@ -1166,7 +1168,7 @@ func (ms *MemoryStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize ti
 		return ErrTemporalIndexExists
 	}
 
-	ms.hfIndexes[labelToken] = newHighFrequencyIndex(bucketSize, 0)
+	ms.hfIndexes[labelToken] = indexpkg.NewHighFrequencyIndex(bucketSize, 0)
 	return nil
 }
 
@@ -1190,11 +1192,11 @@ func (ms *MemoryStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.vectorIndexes[key]; exists {
 		return ErrVectorIndexExists
 	}
-	vi := &vectorIndex{dims: dims, metric: metric}
+	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric}
 	ms.vectorIndexes[key] = vi
 
 	// Populate from existing nodes.
@@ -1206,11 +1208,11 @@ func (ms *MemoryStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 		if !ok {
 			continue
 		}
-		vec, ok := toFloat32Slice(val)
+		vec, ok := indexpkg.ToFloat32Slice(val)
 		if !ok {
 			continue
 		}
-		_ = vi.add(id.SnowflakeID(), vec)
+		_ = vi.Add(id.SnowflakeID(), vec)
 	}
 	return nil
 }
@@ -1221,7 +1223,7 @@ func (ms *MemoryStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.vectorIndexes[key]; !exists {
 		return ErrVectorIndexNotFound
 	}
@@ -1242,7 +1244,7 @@ func (ms *MemoryStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 // is required by the Store interface contract.
 func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, _ QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := ms.vectorIndexes[key]
 	ms.mu.RUnlock()
 
@@ -1250,7 +1252,7 @@ func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 		return nil, ErrVectorIndexNotFound
 	}
 
-	ids, err := vi.searchNearest(query, k, nil)
+	ids, err := vi.SearchNearest(query, k, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1281,14 +1283,14 @@ func (ms *MemoryStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 // responsible for resolving entities (current or historical version).
 func (ms *MemoryStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	ms.mu.RLock()
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := ms.vectorIndexes[key]
 	ms.mu.RUnlock()
 
 	if !exists {
 		return nil, ErrVectorIndexNotFound
 	}
-	return vi.searchNearest(query, k, filter)
+	return vi.SearchNearest(query, k, filter)
 }
 
 // NodesByLabelAndProperty returns nodes matching the label and property value,
@@ -1299,11 +1301,11 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
-	key := propertyIndexKey{labelToken: labelToken, propertyKey: propKey}
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 	if idx, ok := ms.propertyIndexes[key]; ok {
 		// Indexed path: collect matching IDs, sort, temporal filter, paginate, then fetch.
 		// propertyIndex returns raw snowflake.IDs (Tier D handoff).
-		matchSet := idx.lookup(value)
+		matchSet := idx.Lookup(value)
 		if len(matchSet) == 0 {
 			return nil, nil
 		}
@@ -1337,7 +1339,7 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 		return nil, nil
 	}
 
-	targetKey := propertyValueKey(value)
+	targetKey := indexpkg.PropertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
@@ -1350,7 +1352,7 @@ func (ms *MemoryStore) NodesByLabelAndProperty(labelToken uint16, propKey string
 			continue
 		}
 		if v, found := n.GetProperty(propKey); found {
-			if propertyValueKey(v) == targetKey {
+			if indexpkg.PropertyValueKey(v) == targetKey {
 				matchIDs = append(matchIDs, id)
 			}
 		}
@@ -1518,10 +1520,10 @@ func (ms *MemoryStore) Clear() error {
 	ms.inIdx = make(map[types.NodeID]map[types.RelID]struct{})
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
-	ms.propertyIndexes = make(map[propertyIndexKey]*propertyIndex)
-	ms.temporalIndexes = make(map[uint16]*temporalIndex)
-	ms.hfIndexes = make(map[uint16]*highFrequencyIndex)
-	ms.vectorIndexes = make(map[vectorIndexKey]*vectorIndex)
+	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
+	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
+	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	return nil
 }
 
@@ -1567,7 +1569,7 @@ func (ms *MemoryStore) PutNodesBatch(nodes []*types.Node) error {
 			}
 			ms.labelIdx[tv][id] = struct{}{}
 		}
-		addNodeToPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
+		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
 	}
 
 	return nil
@@ -1666,7 +1668,7 @@ func (ms *MemoryStore) DeleteNodesBatch(typedIDs []types.NodeID) error {
 				}
 			}
 		}
-		removeNodeFromPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
+		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, id.SnowflakeID())
 		delete(ms.nodes, id)
 	}
 
@@ -1830,7 +1832,7 @@ func (ms *MemoryStore) filterNodeIDsByTemporal(ids []types.NodeID, opts QueryOpt
 		if !ok {
 			continue
 		}
-		if matchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+		if storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
 			filtered = append(filtered, id)
 		}
 	}
@@ -1850,7 +1852,7 @@ func (ms *MemoryStore) filterRelIDsByTemporal(ids []types.RelID, opts QueryOpts)
 		if !ok {
 			continue
 		}
-		if matchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+		if storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
 			filtered = append(filtered, id)
 		}
 	}

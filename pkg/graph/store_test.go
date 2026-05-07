@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -2221,67 +2222,67 @@ func TestMemoryStoreAllRelIDs_Pagination(t *testing.T) {
 
 func TestPurgeNodeFromAllPropertyIndexes_Empty(t *testing.T) {
 	t.Parallel()
-	indexes := make(map[propertyIndexKey]*propertyIndex)
+	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	// Should not panic.
-	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(42))
+	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(42))
 }
 
 func TestPurgeNodeFromAllPropertyIndexes_RemovesFromAll(t *testing.T) {
 	t.Parallel()
-	indexes := make(map[propertyIndexKey]*propertyIndex)
+	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 
-	idx1 := newPropertyIndex()
-	idx1.add(snowflake.ID(1), "Alice")
-	idx1.add(snowflake.ID(2), "Bob")
-	indexes[propertyIndexKey{labelToken: 1, propertyKey: "name"}] = idx1
+	idx1 := indexpkg.NewPropertyIndex()
+	idx1.Add(snowflake.ID(1), "Alice")
+	idx1.Add(snowflake.ID(2), "Bob")
+	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "name"}] = idx1
 
-	idx2 := newPropertyIndex()
-	idx2.add(snowflake.ID(1), 30)
-	idx2.add(snowflake.ID(3), 25)
-	indexes[propertyIndexKey{labelToken: 1, propertyKey: "age"}] = idx2
+	idx2 := indexpkg.NewPropertyIndex()
+	idx2.Add(snowflake.ID(1), 30)
+	idx2.Add(snowflake.ID(3), 25)
+	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "age"}] = idx2
 
-	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(1))
+	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(1))
 
 	// ID 1 should be gone from both indexes.
-	if s := idx1.lookup("Alice"); s != nil {
+	if s := idx1.Lookup("Alice"); s != nil {
 		if _, ok := s[snowflake.ID(1)]; ok {
 			t.Error("ID 1 should be removed from name index")
 		}
 	}
-	if s := idx2.lookup(30); s != nil {
+	if s := idx2.Lookup(30); s != nil {
 		if _, ok := s[snowflake.ID(1)]; ok {
 			t.Error("ID 1 should be removed from age index")
 		}
 	}
 
 	// Other IDs should remain.
-	if s := idx1.lookup("Bob"); len(s) != 1 {
+	if s := idx1.Lookup("Bob"); len(s) != 1 {
 		t.Errorf("Bob should still have 1 entry, got %d", len(s))
 	}
-	if s := idx2.lookup(25); len(s) != 1 {
+	if s := idx2.Lookup(25); len(s) != 1 {
 		t.Errorf("age 25 should still have 1 entry, got %d", len(s))
 	}
 }
 
 func TestPurgeNodeFromAllPropertyIndexes_OtherNodesUnaffected(t *testing.T) {
 	t.Parallel()
-	indexes := make(map[propertyIndexKey]*propertyIndex)
+	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 
-	idx := newPropertyIndex()
-	idx.add(snowflake.ID(10), "val")
-	idx.add(snowflake.ID(20), "val")
-	idx.add(snowflake.ID(30), "other")
-	indexes[propertyIndexKey{labelToken: 1, propertyKey: "key"}] = idx
+	idx := indexpkg.NewPropertyIndex()
+	idx.Add(snowflake.ID(10), "val")
+	idx.Add(snowflake.ID(20), "val")
+	idx.Add(snowflake.ID(30), "other")
+	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "key"}] = idx
 
 	// Purge ID 10.
-	purgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(10))
+	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(10))
 
 	// ID 20 and 30 should be unaffected.
-	s := idx.lookup("val")
+	s := idx.Lookup("val")
 	if _, ok := s[snowflake.ID(20)]; !ok {
 		t.Error("ID 20 should still be in index")
 	}
-	s2 := idx.lookup("other")
+	s2 := idx.Lookup("other")
 	if _, ok := s2[snowflake.ID(30)]; !ok {
 		t.Error("ID 30 should still be in index")
 	}

@@ -1,4 +1,4 @@
-package graph
+package index
 
 import (
 	"container/list"
@@ -8,24 +8,24 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// cacheStatus indicates the result of an LRU cache lookup.
-type cacheStatus int
+// CacheStatus indicates the result of an LRU cache lookup.
+type CacheStatus int
 
 const (
-	cacheMiss    cacheStatus = iota // key not in cache
-	cacheHit                        // key found, value valid
-	cacheDeleted                    // key tombstoned (deleted but not yet flushed)
+	CacheMiss    CacheStatus = iota // key not in cache
+	CacheHit                        // key found, value valid
+	CacheDeleted                    // key tombstoned (deleted but not yet flushed)
 )
 
-// lruEntry is a single cached entity with dirty/tombstone tracking.
-type lruEntry[V any] struct {
-	key      snowflake.ID
-	value    V
-	dirtyVer uint64 // 0 = clean; >0 = dirty (monotonic mutation version)
-	deleted  bool   // tombstone — entity has been deleted
+// Entry is a single cached entity with dirty/tombstone tracking.
+type Entry[V any] struct {
+	Key      snowflake.ID
+	Value    V
+	DirtyVer uint64 // 0 = clean; >0 = dirty (monotonic mutation version)
+	Deleted  bool   // tombstone — entity has been deleted
 }
 
-// entityLRU is a generic LRU cache with dirty tracking and tombstone support.
+// Cache is a generic LRU cache with dirty tracking and tombstone support.
 // Clean entries are evicted when capacity is exceeded; dirty entries are never
 // evicted until they are flushed to durable storage.
 //
@@ -36,25 +36,25 @@ type lruEntry[V any] struct {
 // affected.
 //
 // All methods are thread-safe via internal mutex.
-type entityLRU[V any] struct {
+type Cache[V any] struct {
 	mu         sync.Mutex
 	capacity   int // soft limit — dirty entries can exceed
-	cleanCount int // number of evictable entries (dirtyVer == 0, !deleted)
+	cleanCount int // number of evictable entries (DirtyVer == 0, !Deleted)
 	items      map[snowflake.ID]*list.Element
 	order      *list.List   // front = most recent, back = LRU
 	nextVer    uint64       // monotonic dirty version counter
-	hits       atomic.Int64 // total cache hits (cacheHit + cacheDeleted)
-	misses     atomic.Int64 // total cache misses (cacheMiss)
+	hits       atomic.Int64 // total cache hits (CacheHit + CacheDeleted)
+	misses     atomic.Int64 // total cache misses (CacheMiss)
 }
 
-// newEntityLRU creates an LRU cache with the given capacity.
+// NewCache creates an LRU cache with the given capacity.
 // Capacity is a soft limit: dirty entries are never evicted, so the cache
 // may temporarily exceed this size under write pressure.
-func newEntityLRU[V any](capacity int) *entityLRU[V] {
+func NewCache[V any](capacity int) *Cache[V] {
 	if capacity < 1 {
 		capacity = 1
 	}
-	return &entityLRU[V]{
+	return &Cache[V]{
 		capacity: capacity,
 		items:    make(map[snowflake.ID]*list.Element, capacity),
 		order:    list.New(),
@@ -62,9 +62,9 @@ func newEntityLRU[V any](capacity int) *entityLRU[V] {
 }
 
 // Get looks up a key in the cache.
-// Returns the value and cache status (cacheMiss, cacheHit, or cacheDeleted).
+// Returns the value and cache status (CacheMiss, CacheHit, or CacheDeleted).
 // Moves the entry to the front (most recently used) on hit.
-func (c *entityLRU[V]) Get(key snowflake.ID) (V, cacheStatus) {
+func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -72,44 +72,44 @@ func (c *entityLRU[V]) Get(key snowflake.ID) (V, cacheStatus) {
 	if !ok {
 		var zero V
 		c.misses.Add(1)
-		return zero, cacheMiss
+		return zero, CacheMiss
 	}
 
-	entry := el.Value.(*lruEntry[V])
+	entry := el.Value.(*Entry[V])
 	c.order.MoveToFront(el)
 
-	if entry.deleted {
+	if entry.Deleted {
 		var zero V
 		c.hits.Add(1)
-		return zero, cacheDeleted
+		return zero, CacheDeleted
 	}
 
 	c.hits.Add(1)
-	return entry.value, cacheHit
+	return entry.Value, CacheHit
 }
 
 // Put inserts or updates a value in the cache, marking it dirty.
 // Moves the entry to the front. Triggers eviction of LRU clean entries
 // if the cache exceeds capacity.
-func (c *entityLRU[V]) Put(key snowflake.ID, value V) {
+func (c *Cache[V]) Put(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.nextVer++
 
 	if el, ok := c.items[key]; ok {
-		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer == 0 && !entry.deleted {
+		entry := el.Value.(*Entry[V])
+		if entry.DirtyVer == 0 && !entry.Deleted {
 			c.cleanCount-- // was clean, now dirty
 		}
-		entry.value = value
-		entry.dirtyVer = c.nextVer
-		entry.deleted = false
+		entry.Value = value
+		entry.DirtyVer = c.nextVer
+		entry.Deleted = false
 		c.order.MoveToFront(el)
 		return
 	}
 
-	entry := &lruEntry[V]{key: key, value: value, dirtyVer: c.nextVer}
+	entry := &Entry[V]{Key: key, Value: value, DirtyVer: c.nextVer}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 
@@ -120,26 +120,26 @@ func (c *entityLRU[V]) Put(key snowflake.ID, value V) {
 // The tombstone prevents cache misses from falling through to Badger for
 // entities that have been deleted but not yet flushed.
 // If the key is not in the cache, a tombstone entry is inserted.
-func (c *entityLRU[V]) MarkDeleted(key snowflake.ID) {
+func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.nextVer++
 
 	if el, ok := c.items[key]; ok {
-		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer == 0 && !entry.deleted {
+		entry := el.Value.(*Entry[V])
+		if entry.DirtyVer == 0 && !entry.Deleted {
 			c.cleanCount-- // was clean, now dirty tombstone
 		}
-		entry.deleted = true
-		entry.dirtyVer = c.nextVer
+		entry.Deleted = true
+		entry.DirtyVer = c.nextVer
 		c.order.MoveToFront(el)
 		return
 	}
 
 	// Insert tombstone for a key not currently cached.
 	var zero V
-	entry := &lruEntry[V]{key: key, deleted: true, dirtyVer: c.nextVer, value: zero}
+	entry := &Entry[V]{Key: key, Deleted: true, DirtyVer: c.nextVer, Value: zero}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 	// No eviction — this is a dirty entry.
@@ -147,7 +147,7 @@ func (c *entityLRU[V]) MarkDeleted(key snowflake.ID) {
 
 // LoadClean inserts an entry loaded from Badger (not dirty, immediately evictable).
 // If the key already exists, this is a no-op (in-memory state takes precedence).
-func (c *entityLRU[V]) LoadClean(key snowflake.ID, value V) {
+func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -155,7 +155,7 @@ func (c *entityLRU[V]) LoadClean(key snowflake.ID, value V) {
 		return // in-memory state takes precedence
 	}
 
-	entry := &lruEntry[V]{key: key, value: value} // dirtyVer 0 = clean
+	entry := &Entry[V]{Key: key, Value: value} // DirtyVer 0 = clean
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 	c.cleanCount++
@@ -164,31 +164,31 @@ func (c *entityLRU[V]) LoadClean(key snowflake.ID, value V) {
 }
 
 // CollectDirty returns a snapshot of all dirty entries without modifying state.
-// The returned entries include their dirtyVer, which must be passed to MarkFlushed
+// The returned entries include their DirtyVer, which must be passed to MarkFlushed
 // after a successful write to durable storage. Calling CollectDirty multiple times
 // without MarkFlushed returns the same (or superset of) entries.
-func (c *entityLRU[V]) CollectDirty() []lruEntry[V] {
+func (c *Cache[V]) CollectDirty() []Entry[V] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var dirty []lruEntry[V]
+	var dirty []Entry[V]
 	for el := c.order.Front(); el != nil; el = el.Next() {
-		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer > 0 {
-			dirty = append(dirty, *entry) // copy with dirtyVer snapshot
+		entry := el.Value.(*Entry[V])
+		if entry.DirtyVer > 0 {
+			dirty = append(dirty, *entry) // copy with DirtyVer snapshot
 		}
 	}
 	return dirty
 }
 
-// MarkFlushed clears the dirty flag on entries whose dirtyVer matches the given
-// version. Entries that were re-dirtied since collection (higher dirtyVer) retain
+// MarkFlushed clears the dirty flag on entries whose DirtyVer matches the given
+// version. Entries that were re-dirtied since collection (higher DirtyVer) retain
 // their dirty status — they will be included in the next CollectDirty cycle.
-// Clean tombstones (deleted + dirtyVer cleared) are removed from the cache.
+// Clean tombstones (Deleted + DirtyVer cleared) are removed from the cache.
 //
 // This must only be called after the data for these entries has been successfully
 // persisted to durable storage.
-func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
+func (c *Cache[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -197,13 +197,13 @@ func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 		if !ok {
 			continue
 		}
-		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer != ver {
+		entry := el.Value.(*Entry[V])
+		if entry.DirtyVer != ver {
 			continue // re-dirtied since collection; leave dirty
 		}
-		entry.dirtyVer = 0 // mark clean
+		entry.DirtyVer = 0 // mark clean
 		// Clean tombstones can be removed — the delete has been persisted.
-		if entry.deleted {
+		if entry.Deleted {
 			c.order.Remove(el)
 			delete(c.items, id)
 		} else {
@@ -214,45 +214,57 @@ func (c *entityLRU[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 
 // Peek returns a cached value WITHOUT deep-copy or MRU promotion.
 // Useful for checking metadata on cached entities without allocation.
-func (c *entityLRU[V]) Peek(key snowflake.ID) (V, cacheStatus) {
+func (c *Cache[V]) Peek(key snowflake.ID) (V, CacheStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	el, ok := c.items[key]
 	if !ok {
 		var zero V
-		return zero, cacheMiss
+		return zero, CacheMiss
 	}
 
-	entry := el.Value.(*lruEntry[V])
-	if entry.deleted {
+	entry := el.Value.(*Entry[V])
+	if entry.Deleted {
 		var zero V
-		return zero, cacheDeleted
+		return zero, CacheDeleted
 	}
 
-	return entry.value, cacheHit
+	return entry.Value, CacheHit
 }
 
 // Cap returns the configured capacity of the cache.
-func (c *entityLRU[V]) Cap() int {
+func (c *Cache[V]) Cap() int {
 	return c.capacity
 }
 
 // Len returns the number of entries in the cache (including tombstones).
-func (c *entityLRU[V]) Len() int {
+func (c *Cache[V]) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.items)
 }
 
 // CleanCount returns the number of clean (evictable) entries in the cache.
-func (c *entityLRU[V]) CleanCount() int {
+func (c *Cache[V]) CleanCount() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.cleanCount
 }
 
-// evictForTest removes the entry for key without touching Badger or
+// ResetForTest clears every entry from the cache without touching the
+// underlying Store. Test-only — equivalent to dropping the in-memory
+// cache view and forcing subsequent reads to fall through to Badger.
+// Used by failure-injection tests that need to simulate a cold cache.
+func (c *Cache[V]) ResetForTest() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = make(map[snowflake.ID]*list.Element)
+	c.order.Init()
+	c.cleanCount = 0
+}
+
+// EvictForTest removes the entry for key without touching Badger or
 // dirty/tombstone bookkeeping in the surrounding store. Test-only —
 // production code uses Put/MarkDeleted/evictClean. Used by failure-
 // injection tests that need a divergence between the in-memory cache
@@ -261,15 +273,15 @@ func (c *entityLRU[V]) CleanCount() int {
 //
 // Returns true if an entry was evicted. The cache's clean/dirty
 // invariants are restored: the evicted entry's accounting is removed.
-func (c *entityLRU[V]) evictForTest(key snowflake.ID) bool {
+func (c *Cache[V]) EvictForTest(key snowflake.ID) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	el, ok := c.items[key]
 	if !ok {
 		return false
 	}
-	entry := el.Value.(*lruEntry[V])
-	if !entry.deleted && entry.dirtyVer == 0 {
+	entry := el.Value.(*Entry[V])
+	if !entry.Deleted && entry.DirtyVer == 0 {
 		c.cleanCount--
 	}
 	c.order.Remove(el)
@@ -277,28 +289,28 @@ func (c *entityLRU[V]) evictForTest(key snowflake.ID) bool {
 	return true
 }
 
-// Hits returns the total number of cache hits (cacheHit + cacheDeleted) since creation.
-func (c *entityLRU[V]) Hits() int64 { return c.hits.Load() }
+// Hits returns the total number of cache hits (CacheHit + CacheDeleted) since creation.
+func (c *Cache[V]) Hits() int64 { return c.hits.Load() }
 
-// Misses returns the total number of cache misses (cacheMiss) since creation.
-func (c *entityLRU[V]) Misses() int64 { return c.misses.Load() }
+// Misses returns the total number of cache misses (CacheMiss) since creation.
+func (c *Cache[V]) Misses() int64 { return c.misses.Load() }
 
 // evictClean removes LRU clean entries until the cache is at capacity.
-// Only clean (dirtyVer == 0, !deleted) entries are candidates for eviction.
+// Only clean (DirtyVer == 0, !Deleted) entries are candidates for eviction.
 // Maintains cleanCount for O(1) early exit when no clean entries exist;
 // otherwise O(N) single-pass backward scan.
 // Must be called with c.mu held.
-func (c *entityLRU[V]) evictClean() {
+func (c *Cache[V]) evictClean() {
 	if c.cleanCount == 0 || len(c.items) <= c.capacity {
 		return
 	}
 	el := c.order.Back()
 	for len(c.items) > c.capacity && el != nil && c.cleanCount > 0 {
 		prev := el.Prev() // save before potential removal
-		entry := el.Value.(*lruEntry[V])
-		if entry.dirtyVer == 0 && !entry.deleted {
+		entry := el.Value.(*Entry[V])
+		if entry.DirtyVer == 0 && !entry.Deleted {
 			c.order.Remove(el)
-			delete(c.items, entry.key)
+			delete(c.items, entry.Key)
 			c.cleanCount--
 		}
 		el = prev

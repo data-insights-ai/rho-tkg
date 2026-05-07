@@ -566,7 +566,7 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	//    is corrupted. Use evictForTest (added by review M5) instead of
 	//    reaching into LRU internals.
 	id := relID.SnowflakeID()
-	bs.relCache.evictForTest(id)
+	bs.relCache.EvictForTest(id)
 
 	// 3. Overwrite the Badger value with non-msgpack bytes.
 	err := bs.db.Update(func(txn *badger.Txn) error {
@@ -595,7 +595,7 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	}
 
 	// Drop from cache so cacheHit can't return the stale value.
-	bs.relCache.evictForTest(relID.SnowflakeID())
+	bs.relCache.EvictForTest(relID.SnowflakeID())
 
 	// Delete the Badger key so GetRelationship's disk read returns
 	// key-not-found, which BadgerStore translates to ErrRelNotFound.

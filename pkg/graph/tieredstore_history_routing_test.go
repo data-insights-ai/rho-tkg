@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -1046,7 +1047,7 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 // After the release callback is invoked, idle close is unblocked.
 func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -1121,7 +1122,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 // but must still return a non-nil release for caller-side defer parity.
 func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -1464,7 +1465,7 @@ func mustArchivedRelationshipFixture(t *testing.T) (*TieredStore, types.RelID, u
 // checkout would deadlock that caller.
 func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")
@@ -1627,7 +1628,7 @@ func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *te
 // wait, which is necessary but not sufficient.
 func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	signalTok, _ := reg.GetOrCreate("Signal")

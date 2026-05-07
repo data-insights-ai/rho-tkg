@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -22,7 +23,7 @@ func (ts *TieredStore) PutNode(n *types.Node) error {
 	}
 	id := n.ID().SnowflakeID()
 	ts.vectorIdxMu.Lock()
-	addNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -41,11 +42,11 @@ func (ts *TieredStore) ReplaceNode(n *types.Node) error {
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	addNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -65,9 +66,9 @@ func (ts *TieredStore) DeleteNode(nid types.NodeID) error {
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
 	ts.vectorIdxMu.Unlock()
 	return nil
@@ -91,11 +92,11 @@ func (ts *TieredStore) RemoveNodeLabelToken(nid types.NodeID, tok uint16, update
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -119,11 +120,11 @@ func (ts *TieredStore) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uin
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -145,11 +146,11 @@ func (ts *TieredStore) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNo
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -173,11 +174,11 @@ func (ts *TieredStore) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16
 	}
 	ts.vectorIdxMu.Lock()
 	if old != nil {
-		removeNodeFromVectorIndexes(ts.vectorIndexes, old, id)
+		indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
 	} else {
-		purgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	addNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
 	ts.vectorIdxMu.Unlock()
 	return nil
 }
@@ -1006,14 +1007,14 @@ func (ts *TieredStore) DropHighFrequencyIndex(labelToken uint16) error {
 // Scans existing nodes across all shards to populate the index.
 // Returns ErrVectorIndexExists on duplicate.
 func (ts *TieredStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 
 	ts.vectorIdxMu.Lock()
 	if _, exists := ts.vectorIndexes[key]; exists {
 		ts.vectorIdxMu.Unlock()
 		return ErrVectorIndexExists
 	}
-	vi := &vectorIndex{dims: dims, metric: metric}
+	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric}
 	ts.vectorIndexes[key] = vi
 	ts.vectorIdxMu.Unlock()
 
@@ -1030,12 +1031,12 @@ func (ts *TieredStore) CreateVectorIndex(labelToken uint16, propertyKey string, 
 		if !ok {
 			continue
 		}
-		vec, ok := toFloat32Slice(val)
+		vec, ok := indexpkg.ToFloat32Slice(val)
 		if !ok {
 			continue
 		}
 		id := n.ID().SnowflakeID()
-		_ = vi.add(id, vec)
+		_ = vi.Add(id, vec)
 	}
 	return nil
 }
@@ -1046,7 +1047,7 @@ func (ts *TieredStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
 
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ts.vectorIndexes[key]; !exists {
 		return ErrVectorIndexNotFound
 	}
@@ -1062,7 +1063,7 @@ func (ts *TieredStore) DropVectorIndex(labelToken uint16, propertyKey string) er
 // Returns nil, nil if the index exists but has no entries.
 func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
 	ts.vectorIdxMu.RLock()
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := ts.vectorIndexes[key]
 	ts.vectorIdxMu.RUnlock()
 
@@ -1079,7 +1080,7 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 	// as the filter callback): otherwise a near-but-archived candidate
 	// could push a farther-but-eligible candidate out of the top-k.
 	filter := ts.depthFilter(opts.Depth)
-	ids, err := vi.searchNearest(query, k, filter)
+	ids, err := vi.SearchNearest(query, k, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1120,14 +1121,14 @@ func (ts *TieredStore) SearchNearestNodes(labelToken uint16, propertyKey string,
 // responsible for resolving entities (current or historical version).
 func (ts *TieredStore) searchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	ts.vectorIdxMu.RLock()
-	key := vectorIndexKey{labelToken: labelToken, propertyKey: propertyKey}
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := ts.vectorIndexes[key]
 	ts.vectorIdxMu.RUnlock()
 
 	if !exists {
 		return nil, ErrVectorIndexNotFound
 	}
-	return vi.searchNearest(query, k, filter)
+	return vi.SearchNearest(query, k, filter)
 }
 
 // depthFilter returns an eligibility predicate that excludes archive-resident

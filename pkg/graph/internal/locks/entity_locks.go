@@ -1,15 +1,18 @@
-package graph
+package locks
 
 import (
 	"sort"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 )
 
-const entityLockShards = 256
+// ShardCount is the number of mutex shards held by Manager.
+// Exported so tests in this package can assert range invariants.
+const ShardCount = 256
 
-// entityLockManager provides fine-grained entity-level locking using sharded mutexes.
+// Manager provides fine-grained entity-level locking using sharded mutexes.
 // 256 shards (2KB total) balance lock contention against memory overhead.
 // Used by the Graph layer to serialize overlapping AddRelationship + DeleteNode operations.
 //
@@ -18,36 +21,36 @@ const entityLockShards = 256
 // snowflake.ID rather than a typed wrapper because the lock identity is a hash
 // of the ID's timestamp bits, not "this is a node" vs "this is a rel". A typed
 // wrapper would imply distinct lock domains; they're not. Documented Tier D.
-type entityLockManager struct {
-	shards [entityLockShards]sync.Mutex
+type Manager struct {
+	shards [ShardCount]sync.Mutex
 }
 
-// newEntityLockManager creates a new entity lock manager.
-func newEntityLockManager() *entityLockManager {
-	return &entityLockManager{}
+// NewManager creates a new entity lock manager.
+func NewManager() *Manager {
+	return &Manager{}
 }
 
-// shardIndex returns the shard index for the given entity ID.
+// ShardIndex returns the shard index for the given entity ID.
 // Uses the low 8 bits of the snowflake timestamp field. Entities created
 // >256 time ticks apart land in different shards.
-func shardIndex(id snowflake.ID) uint8 {
-	return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1) // #nosec G115 — masked to 8 bits
+func ShardIndex(id snowflake.ID) uint8 {
+	return uint8(storepkg.SnowflakeLayout.Decompose(id).Time) & (ShardCount - 1) // #nosec G115 — masked to 8 bits
 }
 
 // LockEntity acquires the lock for a single entity.
-func (lm *entityLockManager) LockEntity(id snowflake.ID) {
-	lm.shards[shardIndex(id)].Lock()
+func (lm *Manager) LockEntity(id snowflake.ID) {
+	lm.shards[ShardIndex(id)].Lock()
 }
 
 // UnlockEntity releases the lock for a single entity.
-func (lm *entityLockManager) UnlockEntity(id snowflake.ID) {
-	lm.shards[shardIndex(id)].Unlock()
+func (lm *Manager) UnlockEntity(id snowflake.ID) {
+	lm.shards[ShardIndex(id)].Unlock()
 }
 
 // LockTwo acquires locks for two entities in ascending shard order (deadlock-free).
 // If both IDs hash to the same shard, only one lock is acquired.
-func (lm *entityLockManager) LockTwo(a, b snowflake.ID) {
-	sa, sb := shardIndex(a), shardIndex(b)
+func (lm *Manager) LockTwo(a, b snowflake.ID) {
+	sa, sb := ShardIndex(a), ShardIndex(b)
 	if sa == sb {
 		lm.shards[sa].Lock()
 		return
@@ -61,8 +64,8 @@ func (lm *entityLockManager) LockTwo(a, b snowflake.ID) {
 
 // UnlockTwo releases locks for two entities.
 // If both IDs hash to the same shard, only one lock is released.
-func (lm *entityLockManager) UnlockTwo(a, b snowflake.ID) {
-	sa, sb := shardIndex(a), shardIndex(b)
+func (lm *Manager) UnlockTwo(a, b snowflake.ID) {
+	sa, sb := ShardIndex(a), ShardIndex(b)
 	if sa == sb {
 		lm.shards[sa].Unlock()
 		return
@@ -78,7 +81,7 @@ func (lm *entityLockManager) UnlockTwo(a, b snowflake.ID) {
 
 // LockMany acquires locks for multiple entities in ascending shard order (deadlock-free).
 // Deduplicates shard indices so each shard is locked at most once.
-func (lm *entityLockManager) LockMany(ids []snowflake.ID) {
+func (lm *Manager) LockMany(ids []snowflake.ID) {
 	shards := lm.uniqueSortedShards(ids)
 	for _, s := range shards {
 		lm.shards[s].Lock()
@@ -86,7 +89,7 @@ func (lm *entityLockManager) LockMany(ids []snowflake.ID) {
 }
 
 // UnlockMany releases locks for multiple entities in reverse shard order.
-func (lm *entityLockManager) UnlockMany(ids []snowflake.ID) {
+func (lm *Manager) UnlockMany(ids []snowflake.ID) {
 	shards := lm.uniqueSortedShards(ids)
 	for i := len(shards) - 1; i >= 0; i-- {
 		lm.shards[shards[i]].Unlock()
@@ -94,10 +97,10 @@ func (lm *entityLockManager) UnlockMany(ids []snowflake.ID) {
 }
 
 // uniqueSortedShards returns the deduplicated, ascending-sorted shard indices for ids.
-func (lm *entityLockManager) uniqueSortedShards(ids []snowflake.ID) []uint8 {
+func (lm *Manager) uniqueSortedShards(ids []snowflake.ID) []uint8 {
 	seen := make(map[uint8]struct{}, len(ids))
 	for _, id := range ids {
-		seen[shardIndex(id)] = struct{}{}
+		seen[ShardIndex(id)] = struct{}{}
 	}
 	shards := make([]uint8, 0, len(seen))
 	for s := range seen {

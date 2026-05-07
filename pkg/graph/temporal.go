@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -924,7 +925,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	if !ok {
 		return nil, nil
 	}
-	targetKey := propertyValueKey(value)
+	targetKey := indexpkg.PropertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
@@ -950,7 +951,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 		if !n.HasLabelTokenRaw(tok) {
 			return nil
 		}
-		if v, found := n.GetProperty(key); found && propertyValueKey(v) == targetKey {
+		if v, found := n.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
 			result = append(result, n)
 		}
 		return nil
@@ -971,7 +972,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if !ok {
 		return nil, nil
 	}
-	targetKey := propertyValueKey(value)
+	targetKey := indexpkg.PropertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
@@ -993,7 +994,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 			return false
 		}
 		v, found := n.GetProperty(key)
-		return found && propertyValueKey(v) == targetKey
+		return found && indexpkg.PropertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
 	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {

@@ -1,4 +1,4 @@
-package graph
+package index
 
 import (
 	"container/heap"
@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -32,14 +33,10 @@ func (h *knnHeap) Pop() any {
 	return x
 }
 
-// DistanceMetric, DistanceCosine, and DistanceEuclidean are defined in
-// aliases.go as references to pkg/graph/internal/store after the
-// v3.1.17 restructure. They keep the public API surface unchanged.
-
-// vectorIndexKey uniquely identifies a vector index by label token and property key.
-type vectorIndexKey struct {
-	labelToken  uint16
-	propertyKey string
+// VectorIndexKey uniquely identifies a vector index by label token and property key.
+type VectorIndexKey struct {
+	LabelToken  uint16
+	PropertyKey string
 }
 
 // vectorEntry stores a node ID and its associated vector.
@@ -48,19 +45,19 @@ type vectorEntry struct {
 	vec []float32
 }
 
-// vectorIndex is an in-memory brute-force k-nearest-neighbor index.
+// VectorIndex is an in-memory brute-force k-nearest-neighbor index.
 // O(n × dims) per query. Not persisted — must be rebuilt on restart.
-type vectorIndex struct {
+type VectorIndex struct {
 	mu      sync.RWMutex
 	entries []vectorEntry
-	dims    int
-	metric  DistanceMetric
+	Dims    int
+	Metric  storepkg.DistanceMetric
 }
 
-// add inserts or updates a vector entry for the given ID.
+// Add inserts or updates a vector entry for the given ID.
 // Returns ErrDimensionMismatch if the vector length differs from the index's expected dimensions.
-func (vi *vectorIndex) add(id snowflake.ID, vec []float32) error {
-	if vi.dims > 0 && len(vec) != vi.dims {
+func (vi *VectorIndex) Add(id snowflake.ID, vec []float32) error {
+	if vi.Dims > 0 && len(vec) != vi.Dims {
 		return ErrDimensionMismatch
 	}
 	vi.mu.Lock()
@@ -82,8 +79,8 @@ func (vi *vectorIndex) add(id snowflake.ID, vec []float32) error {
 	return nil
 }
 
-// remove deletes the entry for the given ID. No-op if not present.
-func (vi *vectorIndex) remove(id snowflake.ID) {
+// Remove deletes the entry for the given ID. No-op if not present.
+func (vi *VectorIndex) Remove(id snowflake.ID) {
 	vi.mu.Lock()
 	defer vi.mu.Unlock()
 
@@ -96,7 +93,7 @@ func (vi *vectorIndex) remove(id snowflake.ID) {
 	}
 }
 
-// searchNearest returns the IDs of the k nearest entries to query, ordered by
+// SearchNearest returns the IDs of the k nearest entries to query, ordered by
 // ascending distance (closest first).
 // Returns ErrDimensionMismatch if query length differs from the index's dimensions.
 // Returns nil, nil if the index is empty (no entries) or k <= 0.
@@ -107,8 +104,8 @@ func (vi *vectorIndex) remove(id snowflake.ID) {
 // the query must NOT crowd out farther but eligible candidates from the
 // k-best set. By filtering BEFORE the heap insertion, the heap always
 // contains the top-k of the eligible-only set.
-func (vi *vectorIndex) searchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
-	if vi.dims > 0 && len(query) != vi.dims {
+func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	if vi.Dims > 0 && len(query) != vi.Dims {
 		return nil, ErrDimensionMismatch
 	}
 	// Defensive guard: non-positive k yields no results. The public API
@@ -135,8 +132,8 @@ func (vi *vectorIndex) searchNearest(query []float32, k int, filter func(snowfla
 			continue
 		}
 		var d float64
-		switch vi.metric {
-		case DistanceCosine:
+		switch vi.Metric {
+		case storepkg.DistanceCosine:
 			d = cosineDist(query, e.vec)
 		default:
 			d = euclideanDist(query, e.vec)
@@ -184,47 +181,47 @@ func euclideanDist(a, b []float32) float64 {
 	return math.Sqrt(sum)
 }
 
-// addNodeToVectorIndexes updates all vector indexes with the node's vector properties.
-func addNodeToVectorIndexes(idxs map[vectorIndexKey]*vectorIndex, n *types.Node, id snowflake.ID) {
+// AddNodeToVectorIndexes updates all vector indexes with the node's vector properties.
+func AddNodeToVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) {
 	for key, vi := range idxs {
-		if !n.HasLabelTokenRaw(key.labelToken) {
+		if !n.HasLabelTokenRaw(key.LabelToken) {
 			continue
 		}
-		val, ok := n.GetProperty(key.propertyKey)
+		val, ok := n.GetProperty(key.PropertyKey)
 		if !ok {
 			continue
 		}
-		vec, ok := toFloat32Slice(val)
+		vec, ok := ToFloat32Slice(val)
 		if !ok {
 			continue
 		}
-		_ = vi.add(id, vec) // ignore dimension mismatch for auto-maintenance
+		_ = vi.Add(id, vec) // ignore dimension mismatch for auto-maintenance
 	}
 }
 
-// removeNodeFromVectorIndexes removes the node from all vector indexes.
-func removeNodeFromVectorIndexes(idxs map[vectorIndexKey]*vectorIndex, n *types.Node, id snowflake.ID) {
+// RemoveNodeFromVectorIndexes removes the node from all vector indexes.
+func RemoveNodeFromVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) {
 	for key, vi := range idxs {
-		if !n.HasLabelTokenRaw(key.labelToken) {
+		if !n.HasLabelTokenRaw(key.LabelToken) {
 			continue
 		}
-		vi.remove(id)
+		vi.Remove(id)
 	}
 }
 
-// purgeNodeFromAllVectorIndexes removes the node ID from every vector index
+// PurgeNodeFromAllVectorIndexes removes the node ID from every vector index
 // without requiring the node object. Used during corrupt-node deletion.
 // Caller must hold the store's write lock.
-func purgeNodeFromAllVectorIndexes(idxs map[vectorIndexKey]*vectorIndex, id snowflake.ID) {
+func PurgeNodeFromAllVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, id snowflake.ID) {
 	for _, vi := range idxs {
-		vi.remove(id)
+		vi.Remove(id)
 	}
 }
 
-// toFloat32Slice converts any to []float32, supporting []float32 and []any (of float32 or float64).
+// ToFloat32Slice converts any to []float32, supporting []float32 and []any (of float32 or float64).
 // Slow path: the []any branch requires a type-switch per element.
 // Prefer []float32 property values for high-frequency vector nodes.
-func toFloat32Slice(val any) ([]float32, bool) {
+func ToFloat32Slice(val any) ([]float32, bool) {
 	switch v := val.(type) {
 	case []float32:
 		return v, true

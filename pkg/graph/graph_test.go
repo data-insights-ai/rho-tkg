@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -4426,16 +4427,16 @@ func TestPropertyValueKey_AllTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := propertyValueKey(tt.value)
+			got := indexpkg.PropertyValueKey(tt.value)
 			if got != tt.expected {
-				t.Errorf("propertyValueKey(%v) = %q, want %q", tt.value, got, tt.expected)
+				t.Errorf("indexpkg.PropertyValueKey(%v) = %q, want %q", tt.value, got, tt.expected)
 			}
 		})
 	}
 
 	// Verify type-safety: int(1) vs string("1") produce different keys.
-	intKey := propertyValueKey(int(1))
-	strKey := propertyValueKey("1")
+	intKey := indexpkg.PropertyValueKey(int(1))
+	strKey := indexpkg.PropertyValueKey("1")
 	if intKey == strKey {
 		t.Errorf("int(1) and string(\"1\") produced same key: %q", intKey)
 	}

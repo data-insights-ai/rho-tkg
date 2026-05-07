@@ -1,4 +1,4 @@
-package graph
+package index
 
 import (
 	"errors"
@@ -16,13 +16,16 @@ var ErrEmptyName = errors.New("graph: name must not be empty")
 
 const (
 	tokenCapacityWarning = 60000
-	tokenCapacityMax     = 65535
+	// TokenCapacityMax is the maximum number of tokens a registry can hold
+	// before GetOrCreate returns an error. Exposed for tests that fill the
+	// registry to its capacity edge.
+	TokenCapacityMax = 65535
 )
 
-// labelRegistry maps label strings to uint16 tokens and back.
+// LabelRegistry maps label strings to uint16 tokens and back.
 // Token 0 is reserved as the zero/invalid value and is never assigned.
 // Thread-safe via RWMutex with double-check on write miss.
-type labelRegistry struct {
+type LabelRegistry struct {
 	mu        sync.RWMutex
 	toToken   map[string]uint16
 	toLabel   []string // index 0 = "" (reserved)
@@ -30,9 +33,9 @@ type labelRegistry struct {
 	warnOnce  sync.Once
 }
 
-// newLabelRegistry creates a label registry with token 0 reserved.
-func newLabelRegistry() *labelRegistry {
-	return &labelRegistry{
+// NewLabelRegistry creates a label registry with token 0 reserved.
+func NewLabelRegistry() *LabelRegistry {
+	return &LabelRegistry{
 		toToken:   make(map[string]uint16),
 		toLabel:   []string{""}, // index 0 reserved
 		nextToken: 1,
@@ -42,7 +45,7 @@ func newLabelRegistry() *labelRegistry {
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
 // Returns ErrEmptyName if name is empty or whitespace-only.
 // Returns an error if the registry is full (65535 tokens).
-func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
+func (r *LabelRegistry) GetOrCreate(name string) (uint16, error) {
 	if strings.TrimSpace(name) == "" {
 		return 0, ErrEmptyName
 	}
@@ -63,8 +66,8 @@ func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
 		return tok, nil
 	}
 
-	if len(r.toLabel) > int(tokenCapacityMax) {
-		return 0, fmt.Errorf("graph: label registry full (%d tokens)", tokenCapacityMax)
+	if len(r.toLabel) > int(TokenCapacityMax) {
+		return 0, fmt.Errorf("graph: label registry full (%d tokens)", TokenCapacityMax)
 	}
 
 	tok = r.nextToken
@@ -77,7 +80,7 @@ func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
 		r.warnOnce.Do(func() {
 			slog.Warn("label registry approaching capacity",
 				"count", tok,
-				"max", tokenCapacityMax,
+				"max", TokenCapacityMax,
 			)
 		})
 	}
@@ -87,7 +90,7 @@ func (r *labelRegistry) GetOrCreate(name string) (uint16, error) {
 
 // Resolve returns the label string for the given token.
 // Returns "" for token 0 or out-of-range tokens.
-func (r *labelRegistry) Resolve(token uint16) string {
+func (r *LabelRegistry) Resolve(token uint16) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -98,7 +101,7 @@ func (r *labelRegistry) Resolve(token uint16) string {
 }
 
 // ResolveAll resolves a batch of tokens to label strings.
-func (r *labelRegistry) ResolveAll(tokens []uint16) []string {
+func (r *LabelRegistry) ResolveAll(tokens []uint16) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -113,7 +116,7 @@ func (r *labelRegistry) ResolveAll(tokens []uint16) []string {
 
 // Lookup returns the token for name without creating it.
 // Returns false if the name is not registered.
-func (r *labelRegistry) Lookup(name string) (uint16, bool) {
+func (r *LabelRegistry) Lookup(name string) (uint16, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -122,7 +125,7 @@ func (r *labelRegistry) Lookup(name string) (uint16, bool) {
 }
 
 // Len returns the number of registered labels (excluding reserved token 0).
-func (r *labelRegistry) Len() int {
+func (r *LabelRegistry) Len() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -131,7 +134,7 @@ func (r *labelRegistry) Len() int {
 
 // ExportNames returns a copy of the registered names slice for persistence.
 // Index 0 is always "" (reserved). Read-locked.
-func (r *labelRegistry) ExportNames() []string {
+func (r *LabelRegistry) ExportNames() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -142,16 +145,16 @@ func (r *labelRegistry) ExportNames() []string {
 
 // ImportNames restores the registry from persisted data. Write-locked.
 // The registry must be empty (freshly constructed). names[0] must be "".
-func (r *labelRegistry) ImportNames(names []string) error {
+func (r *LabelRegistry) ImportNames(names []string) error {
 	if len(names) == 0 {
 		return errors.New("graph: import: names slice must not be empty")
 	}
 	if names[0] != "" {
 		return errors.New("graph: import: names[0] must be empty (reserved)")
 	}
-	if len(names)-1 > int(tokenCapacityMax) {
+	if len(names)-1 > int(TokenCapacityMax) {
 		return fmt.Errorf("graph: label import: %d entries exceeds registry capacity (%d)",
-			len(names)-1, tokenCapacityMax)
+			len(names)-1, TokenCapacityMax)
 	}
 
 	// Validate entries before acquiring lock: reject empty or duplicate names.
@@ -181,6 +184,6 @@ func (r *labelRegistry) ImportNames(names []string) error {
 		r.toToken[names[i]] = uint16(i)
 	}
 
-	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against tokenCapacityMax
+	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against TokenCapacityMax
 	return nil
 }

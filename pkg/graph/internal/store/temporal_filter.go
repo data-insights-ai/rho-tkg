@@ -1,21 +1,21 @@
-package graph
+package store
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// entityValidFrom derives the effective valid-from time for an entity.
+// EntityValidFrom derives the effective valid-from time for an entity.
 // Uses explicit ValidFrom if set on TemporalMetadata, otherwise derives
-// from the snowflake ID via the package-level snowflakeLayout.
-func entityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
+// from the snowflake ID via the package-level SnowflakeLayout.
+func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	return types.Instant(snowflakeLayout.CreatedAt(id).UnixMilli())
+	return types.Instant(SnowflakeLayout.CreatedAt(id).UnixMilli())
 }
 
-// matchesTemporalFilter evaluates whether an entity passes the temporal
+// MatchesTemporalFilter evaluates whether an entity passes the temporal
 // filter in opts. Returns true when no filter is set (zero values).
 //
 // ValidAt takes precedence over interval (ValidStart/ValidEnd).
@@ -24,7 +24,7 @@ func entityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 //
 // Point-in-time: from <= t AND (to == 0 OR to > t)
 // Interval:      from < end AND (to == 0 OR to > start)
-func matchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts QueryOpts) bool {
+func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return matchesPointInTime(id, tm, opts.ValidAt)
 	}
@@ -36,7 +36,7 @@ func matchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts Que
 
 // matchesPointInTime checks: from <= t AND (to == 0 OR to > t).
 func matchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Instant) bool {
-	from := entityValidFrom(id, tm)
+	from := EntityValidFrom(id, tm)
 	if from > t {
 		return false
 	}
@@ -48,7 +48,7 @@ func matchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Ins
 
 // matchesInterval checks: from < end AND (to == 0 OR to > start).
 func matchesInterval(id snowflake.ID, tm *types.TemporalMetadata, start, end types.Instant) bool {
-	from := entityValidFrom(id, tm)
+	from := EntityValidFrom(id, tm)
 	if from >= end {
 		return false
 	}

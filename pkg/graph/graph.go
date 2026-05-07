@@ -12,6 +12,8 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -120,12 +122,12 @@ type Config struct {
 // to prevent write-skew (concurrent AddRelationship(→X) + DeleteNodeCascade(X)
 // producing a dangling edge).
 type Graph struct {
-	labels        *labelRegistry
-	relTypes      *relTypeRegistry
+	labels        *indexpkg.LabelRegistry
+	relTypes      *indexpkg.RelTypeRegistry
 	nodeIDGen     *snowflake.Node
 	relIDGen      *snowflake.Node
 	store         Store
-	entityLocks   *entityLockManager
+	entityLocks   *locks.Manager
 	validation    ValidationLimits
 	constraints   ConstraintSet  // temporal constraints checked at relationship write time
 	events        eventPublisher // nil = no event publishing; set via SetEventBus/SetAsyncEventBus
@@ -210,11 +212,11 @@ func New(config Config) (*Graph, error) {
 	}
 
 	g := &Graph{
-		labels:         newLabelRegistry(),
-		relTypes:       newRelTypeRegistry(),
+		labels:         indexpkg.NewLabelRegistry(),
+		relTypes:       indexpkg.NewRelTypeRegistry(),
 		nodeIDGen:      nodeGen,
 		relIDGen:       relGen,
-		entityLocks:    newEntityLockManager(),
+		entityLocks:    locks.NewManager(),
 		validation:     v,
 		indexProviders: make(map[string]*indexProviderEntry),
 	}
@@ -1292,7 +1294,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if opts.Depth != DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
-	targetKey := propertyValueKey(value)
+	targetKey := indexpkg.PropertyValueKey(value)
 	if targetKey == "" {
 		return nil, nil
 	}
@@ -1314,7 +1316,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 			return false
 		}
 		v, found := n.GetProperty(key)
-		return found && propertyValueKey(v) == targetKey
+		return found && indexpkg.PropertyValueKey(v) == targetKey
 	}
 	var result []*types.Node
 	err = g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {

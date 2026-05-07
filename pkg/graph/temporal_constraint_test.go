@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -261,7 +262,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 
 	// Derive the rel's effective from time so we can set node ranges around it.
 	relID := g.NextRelID()
-	relFrom := entityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storepkg.EntityValidFrom(relID.SnowflakeID(), nil)
 
 	// Both endpoint nodes: valid from before rel, expires after rel.
 	a.SetTemporal(&types.TemporalMetadata{
@@ -308,7 +309,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	}
 
 	relID := g.NextRelID()
-	relFrom := entityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storepkg.EntityValidFrom(relID.SnowflakeID(), nil)
 
 	// Start node open-ended, end node expires at relFrom+500.
 	// Start node: no ValidTo — checks (5) won't fire.

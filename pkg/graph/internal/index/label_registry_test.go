@@ -1,4 +1,4 @@
-package graph
+package index
 
 import (
 	"errors"
@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestRelTypeRegistryGetOrCreate(t *testing.T) {
+func TestLabelRegistryGetOrCreate(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 
-	tok1, err := reg.GetOrCreate("KNOWS")
+	tok1, err := reg.GetOrCreate("Person")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,56 +20,56 @@ func TestRelTypeRegistryGetOrCreate(t *testing.T) {
 		t.Fatal("GetOrCreate should never return token 0")
 	}
 
-	tok2, err := reg.GetOrCreate("KNOWS")
+	tok2, err := reg.GetOrCreate("Person")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tok1 != tok2 {
-		t.Errorf("second GetOrCreate(\"KNOWS\") = %d, want %d (same token)", tok2, tok1)
+		t.Errorf("second GetOrCreate(\"Person\") = %d, want %d (same token)", tok2, tok1)
 	}
 }
 
-func TestRelTypeRegistryResolveRoundTrip(t *testing.T) {
+func TestLabelRegistryResolveRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	tok, _ := reg.GetOrCreate("ACTED_IN")
+	reg := NewLabelRegistry()
+	tok, _ := reg.GetOrCreate("Movie")
 	got := reg.Resolve(tok)
-	if got != "ACTED_IN" {
-		t.Errorf("Resolve(%d) = %q, want \"ACTED_IN\"", tok, got)
+	if got != "Movie" {
+		t.Errorf("Resolve(%d) = %q, want \"Movie\"", tok, got)
 	}
 }
 
-func TestRelTypeRegistryLookupMiss(t *testing.T) {
+func TestLabelRegistryLookupMiss(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	_, ok := reg.Lookup("Nonexistent")
 	if ok {
 		t.Fatal("Lookup(\"Nonexistent\") should return false")
 	}
 }
 
-func TestRelTypeRegistryTokenZeroReserved(t *testing.T) {
+func TestLabelRegistryTokenZeroReserved(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	got := reg.Resolve(0)
 	if got != "" {
 		t.Errorf("Resolve(0) = %q, want empty string (reserved)", got)
 	}
 }
 
-func TestRelTypeRegistryCapacityError(t *testing.T) {
+func TestLabelRegistryCapacityError(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	// Fill the registry to full capacity (tokens 1..65535).
 	reg.mu.Lock()
 	for i := 1; i <= 65535; i++ {
-		name := fmt.Sprintf("RT%d", i)
+		name := fmt.Sprintf("L%d", i)
 		reg.toToken[name] = uint16(i)
-		reg.toName = append(reg.toName, name)
+		reg.toLabel = append(reg.toLabel, name)
 	}
 	reg.nextToken = 0 // wraps — doesn't matter, len check catches it
 	reg.mu.Unlock()
@@ -81,10 +81,10 @@ func TestRelTypeRegistryCapacityError(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryConcurrentGetOrCreate(t *testing.T) {
+func TestLabelRegistryConcurrentGetOrCreate(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	const goroutines = 50
 	results := make([]uint16, goroutines)
 	var wg sync.WaitGroup
@@ -93,7 +93,7 @@ func TestRelTypeRegistryConcurrentGetOrCreate(t *testing.T) {
 	for i := range goroutines {
 		go func(idx int) {
 			defer wg.Done()
-			tok, err := reg.GetOrCreate("SharedType")
+			tok, err := reg.GetOrCreate("SharedLabel")
 			if err != nil {
 				t.Errorf("goroutine %d: GetOrCreate failed: %v", idx, err)
 				return
@@ -111,32 +111,32 @@ func TestRelTypeRegistryConcurrentGetOrCreate(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryResolveAll(t *testing.T) {
+func TestLabelRegistryResolveAll(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	tok1, _ := reg.GetOrCreate("KNOWS")
-	tok2, _ := reg.GetOrCreate("ACTED_IN")
+	reg := NewLabelRegistry()
+	tok1, _ := reg.GetOrCreate("Person")
+	tok2, _ := reg.GetOrCreate("Actor")
 
-	names := reg.ResolveAll([]uint16{tok1, tok2})
-	if len(names) != 2 {
-		t.Fatalf("ResolveAll len = %d, want 2", len(names))
+	labels := reg.ResolveAll([]uint16{tok1, tok2})
+	if len(labels) != 2 {
+		t.Fatalf("ResolveAll len = %d, want 2", len(labels))
 	}
-	if names[0] != "KNOWS" || names[1] != "ACTED_IN" {
-		t.Errorf("ResolveAll = %v, want [KNOWS ACTED_IN]", names)
+	if labels[0] != "Person" || labels[1] != "Actor" {
+		t.Errorf("ResolveAll = %v, want [Person Actor]", labels)
 	}
 }
 
-func TestRelTypeRegistryToken65535IsAssignable(t *testing.T) {
+func TestLabelRegistryToken65535IsAssignable(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	// Fill tokens 1..65534 by manipulating internal state.
 	reg.mu.Lock()
 	for i := uint16(1); i <= 65534; i++ {
-		name := fmt.Sprintf("RT%d", i)
+		name := fmt.Sprintf("L%d", i)
 		reg.toToken[name] = i
-		reg.toName = append(reg.toName, name)
+		reg.toLabel = append(reg.toLabel, name)
 	}
 	reg.nextToken = 65535
 	reg.mu.Unlock()
@@ -157,10 +157,10 @@ func TestRelTypeRegistryToken65535IsAssignable(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryRejectsEmptyName(t *testing.T) {
+func TestLabelRegistryRejectsEmptyName(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	_, err := reg.GetOrCreate("")
 	if err == nil {
 		t.Fatal("GetOrCreate(\"\") should return error for empty name")
@@ -173,11 +173,11 @@ func TestRelTypeRegistryRejectsEmptyName(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryResolveOutOfRange(t *testing.T) {
+func TestLabelRegistryResolveOutOfRange(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	reg.GetOrCreate("KNOWS") // token 1
+	reg := NewLabelRegistry()
+	reg.GetOrCreate("Person") // token 1
 
 	got := reg.Resolve(9999)
 	if got != "" {
@@ -185,10 +185,10 @@ func TestRelTypeRegistryResolveOutOfRange(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryLen(t *testing.T) {
+func TestLabelRegistryLen(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	if reg.Len() != 0 {
 		t.Errorf("empty Len() = %d, want 0", reg.Len())
 	}
@@ -198,13 +198,13 @@ func TestRelTypeRegistryLen(t *testing.T) {
 	reg.GetOrCreate("A") // duplicate
 
 	if reg.Len() != 2 {
-		t.Errorf("after 2 unique types Len() = %d, want 2", reg.Len())
+		t.Errorf("after 2 unique labels Len() = %d, want 2", reg.Len())
 	}
 }
 
 // ─── Whitespace rejection edge cases ─────────────────────────────────────────
 
-func TestRelTypeRegistryRejectsWhitespaceOnlyName(t *testing.T) {
+func TestLabelRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -218,7 +218,7 @@ func TestRelTypeRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		reg := newRelTypeRegistry()
+		reg := NewLabelRegistry()
 		_, err := reg.GetOrCreate(tc.input)
 		if err == nil {
 			t.Errorf("GetOrCreate(%q) [%s] should return error", tc.input, tc.name)
@@ -230,11 +230,11 @@ func TestRelTypeRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryLookupEmptyReturnsFalse(t *testing.T) {
+func TestLabelRegistryLookupEmptyReturnsFalse(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	reg.GetOrCreate("KNOWS")
+	reg := NewLabelRegistry()
+	reg.GetOrCreate("Person")
 
 	_, ok := reg.Lookup("")
 	if ok {
@@ -242,31 +242,31 @@ func TestRelTypeRegistryLookupEmptyReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryRecoveryAfterEmptyRejection(t *testing.T) {
+func TestLabelRegistryRecoveryAfterEmptyRejection(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	_, err := reg.GetOrCreate("")
 	if err == nil {
 		t.Fatal("GetOrCreate(\"\") should return error")
 	}
 
-	tok, err := reg.GetOrCreate("VALID")
+	tok, err := reg.GetOrCreate("Valid")
 	if err != nil {
-		t.Fatalf("GetOrCreate(\"VALID\") failed after empty rejection: %v", err)
+		t.Fatalf("GetOrCreate(\"Valid\") failed after empty rejection: %v", err)
 	}
 	if tok == 0 {
-		t.Fatal("GetOrCreate(\"VALID\") returned reserved token 0")
+		t.Fatal("GetOrCreate(\"Valid\") returned reserved token 0")
 	}
 	if reg.Len() != 1 {
 		t.Errorf("Len() = %d after 1 valid registration, want 1", reg.Len())
 	}
 }
 
-func TestRelTypeRegistryConcurrentEmptyRejection(t *testing.T) {
+func TestLabelRegistryConcurrentEmptyRejection(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	const goroutines = 50
 	errs := make([]error, goroutines)
 	var wg sync.WaitGroup
@@ -292,105 +292,115 @@ func TestRelTypeRegistryConcurrentEmptyRejection(t *testing.T) {
 
 // ─── Export/Import tests ──────────────────────────────────────────────────────
 
-func TestRelTypeRegistryExportImportRoundTrip(t *testing.T) {
+func TestLabelRegistryExportImportRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	reg1 := newRelTypeRegistry()
-	reg1.GetOrCreate("KNOWS")
-	reg1.GetOrCreate("ACTED_IN")
-	reg1.GetOrCreate("DIRECTED")
+	reg1 := NewLabelRegistry()
+	reg1.GetOrCreate("Person")
+	reg1.GetOrCreate("Movie")
+	reg1.GetOrCreate("Actor")
 
 	names := reg1.ExportNames()
 
-	reg2 := newRelTypeRegistry()
+	reg2 := NewLabelRegistry()
 	if err := reg2.ImportNames(names); err != nil {
 		t.Fatalf("ImportNames: %v", err)
 	}
 
-	tok, ok := reg2.Lookup("KNOWS")
+	// Verify lookups work.
+	tok, ok := reg2.Lookup("Person")
 	if !ok || tok != 1 {
-		t.Fatalf("Lookup(KNOWS): got (%d, %v), want (1, true)", tok, ok)
+		t.Fatalf("Lookup(Person): got (%d, %v), want (1, true)", tok, ok)
 	}
-	tok, ok = reg2.Lookup("ACTED_IN")
+	tok, ok = reg2.Lookup("Movie")
 	if !ok || tok != 2 {
-		t.Fatalf("Lookup(ACTED_IN): got (%d, %v), want (2, true)", tok, ok)
+		t.Fatalf("Lookup(Movie): got (%d, %v), want (2, true)", tok, ok)
+	}
+	tok, ok = reg2.Lookup("Actor")
+	if !ok || tok != 3 {
+		t.Fatalf("Lookup(Actor): got (%d, %v), want (3, true)", tok, ok)
 	}
 
-	if reg2.Resolve(1) != "KNOWS" {
-		t.Fatal("Resolve(1) should be KNOWS")
+	// Verify resolution works.
+	if reg2.Resolve(1) != "Person" {
+		t.Fatal("Resolve(1) should be Person")
+	}
+	if reg2.Resolve(2) != "Movie" {
+		t.Fatal("Resolve(2) should be Movie")
 	}
 
-	tok, err := reg2.GetOrCreate("PRODUCED")
+	// Verify new tokens continue from the right place.
+	tok, err := reg2.GetOrCreate("Director")
 	if err != nil {
-		t.Fatalf("GetOrCreate(PRODUCED): %v", err)
+		t.Fatalf("GetOrCreate(Director): %v", err)
 	}
 	if tok != 4 {
 		t.Fatalf("expected token 4, got %d", tok)
 	}
 }
 
-func TestRelTypeRegistryImportOnNonEmpty(t *testing.T) {
+func TestLabelRegistryImportOnNonEmpty(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	reg.GetOrCreate("KNOWS")
+	reg := NewLabelRegistry()
+	reg.GetOrCreate("Person")
 
-	err := reg.ImportNames([]string{"", "KNOWS"})
+	err := reg.ImportNames([]string{"", "Person"})
 	if err == nil {
 		t.Fatal("ImportNames on non-empty registry should error")
 	}
 }
 
-func TestRelTypeRegistryImportInvalidFirst(t *testing.T) {
+func TestLabelRegistryImportInvalidFirst(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
-	err := reg.ImportNames([]string{"NotEmpty", "KNOWS"})
+	reg := NewLabelRegistry()
+	err := reg.ImportNames([]string{"NotEmpty", "Person"})
 	if err == nil {
 		t.Fatal("ImportNames with names[0] != \"\" should error")
 	}
 }
 
-func TestRelTypeRegistryImportEmpty(t *testing.T) {
+func TestLabelRegistryImportEmpty(t *testing.T) {
 	t.Parallel()
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	err := reg.ImportNames([]string{})
 	if err == nil {
 		t.Fatal("ImportNames with empty slice should error")
 	}
 }
 
-func TestRelTypeRegistryImportAtCapacityAccepted(t *testing.T) {
+func TestLabelRegistryImportAtCapacityAccepted(t *testing.T) {
 	t.Parallel()
 
-	// Exactly tokenCapacityMax tokens (slot 0 + 65535 entries) — must succeed.
-	names := make([]string, tokenCapacityMax+1) // len = 65536
+	// Exactly TokenCapacityMax tokens (slot 0 + 65535 entries) — must succeed.
+	names := make([]string, TokenCapacityMax+1) // len = 65536
 	names[0] = ""
 	for i := 1; i < len(names); i++ {
-		names[i] = fmt.Sprintf("RT%d", i)
+		names[i] = fmt.Sprintf("L%d", i)
 	}
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	if err := reg.ImportNames(names); err != nil {
 		t.Fatalf("ImportNames at exact capacity should succeed, got: %v", err)
 	}
-	if reg.Len() != int(tokenCapacityMax) {
-		t.Errorf("Len() = %d, want %d", reg.Len(), tokenCapacityMax)
+	if reg.Len() != int(TokenCapacityMax) {
+		t.Errorf("Len() = %d, want %d", reg.Len(), TokenCapacityMax)
 	}
 }
 
-func TestRelTypeRegistryImportOverflowRejected(t *testing.T) {
+func TestLabelRegistryImportOverflowRejected(t *testing.T) {
 	t.Parallel()
 
-	// tokenCapacityMax+1 tokens (slot 0 + 65536 entries) — 1 beyond capacity.
-	names := make([]string, tokenCapacityMax+2) // len = 65537
+	// TokenCapacityMax+1 tokens (slot 0 + 65536 entries) — 1 beyond capacity.
+	names := make([]string, TokenCapacityMax+2) // len = 65537
 	names[0] = ""
 	for i := 1; i < len(names); i++ {
-		names[i] = fmt.Sprintf("RT%d", i)
+		names[i] = fmt.Sprintf("L%d", i)
 	}
 
-	reg := newRelTypeRegistry()
+	reg := NewLabelRegistry()
 	err := reg.ImportNames(names)
 	if err == nil {
 		t.Fatal("ImportNames should reject slice exceeding registry capacity")
@@ -400,43 +410,44 @@ func TestRelTypeRegistryImportOverflowRejected(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryImportPreservesTokenOrder(t *testing.T) {
+func TestLabelRegistryImportPreservesTokenOrder(t *testing.T) {
 	t.Parallel()
 
-	names := []string{"", "KNOWS", "ACTED_IN", "DIRECTED"}
-	reg := newRelTypeRegistry()
+	names := []string{"", "Alpha", "Beta", "Gamma"}
+	reg := NewLabelRegistry()
 	if err := reg.ImportNames(names); err != nil {
 		t.Fatalf("ImportNames: %v", err)
 	}
 
-	if reg.Resolve(1) != "KNOWS" {
-		t.Fatal("token 1 should be KNOWS")
+	// Token 1 = names[1], etc.
+	if reg.Resolve(1) != "Alpha" {
+		t.Fatal("token 1 should be Alpha")
 	}
-	if reg.Resolve(2) != "ACTED_IN" {
-		t.Fatal("token 2 should be ACTED_IN")
+	if reg.Resolve(2) != "Beta" {
+		t.Fatal("token 2 should be Beta")
 	}
-	if reg.Resolve(3) != "DIRECTED" {
-		t.Fatal("token 3 should be DIRECTED")
+	if reg.Resolve(3) != "Gamma" {
+		t.Fatal("token 3 should be Gamma")
 	}
 	if reg.Len() != 3 {
 		t.Fatalf("Len() = %d, want 3", reg.Len())
 	}
 }
 
-func TestRelTypeRegistryImportRejectsEmptyEntry(t *testing.T) {
+func TestLabelRegistryImportRejectsEmptyEntry(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name  string
 		names []string
 	}{
-		{"literal empty", []string{"", "KNOWS", "", "ACTED_IN"}},
-		{"whitespace only", []string{"", "KNOWS", "  ", "ACTED_IN"}},
-		{"tab only", []string{"", "\t", "ACTED_IN"}},
+		{"literal empty", []string{"", "Person", "", "Movie"}},
+		{"whitespace only", []string{"", "Person", "  ", "Movie"}},
+		{"tab only", []string{"", "\t", "Movie"}},
 	}
 
 	for _, tc := range cases {
-		reg := newRelTypeRegistry()
+		reg := NewLabelRegistry()
 		err := reg.ImportNames(tc.names)
 		if err == nil {
 			t.Errorf("[%s] ImportNames should reject slice with empty/whitespace entry at index > 0", tc.name)
@@ -448,12 +459,12 @@ func TestRelTypeRegistryImportRejectsEmptyEntry(t *testing.T) {
 	}
 }
 
-func TestRelTypeRegistryImportRejectsDuplicateEntry(t *testing.T) {
+func TestLabelRegistryImportRejectsDuplicateEntry(t *testing.T) {
 	t.Parallel()
 
-	// "KNOWS" appears at both index 1 and index 3 — duplicate must be rejected.
-	names := []string{"", "KNOWS", "ACTED_IN", "KNOWS"}
-	reg := newRelTypeRegistry()
+	// "Person" appears at both index 1 and index 3 — duplicate must be rejected.
+	names := []string{"", "Person", "Movie", "Person"}
+	reg := NewLabelRegistry()
 	err := reg.ImportNames(names)
 	if err == nil {
 		t.Fatal("ImportNames should reject slice with duplicate names")

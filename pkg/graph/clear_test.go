@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -465,7 +466,7 @@ func TestBadgerStoreClear_ClearsVectorIndexes(t *testing.T) {
 func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 
@@ -486,7 +487,7 @@ func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 func TestTieredStoreClear_ClearsTempIdxLabels(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	caseTok, _ := reg.GetOrCreate("Case")
 

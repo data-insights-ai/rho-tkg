@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -293,14 +294,14 @@ func BenchmarkSortTwoProps(b *testing.B) {
 // --- Entity lock overhead ---
 
 func BenchmarkEntityLockUnlock(b *testing.B) {
-	locks := newEntityLockManager()
+	lm := lockspkg.NewManager()
 	var id1, id2 snowflake.ID
 	id1 = 100
 	id2 = 200
 	b.ResetTimer()
 	for b.Loop() {
-		locks.LockTwo(id1, id2)
-		locks.UnlockTwo(id1, id2)
+		lm.LockTwo(id1, id2)
+		lm.UnlockTwo(id1, id2)
 	}
 }
 

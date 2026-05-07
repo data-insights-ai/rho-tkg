@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"container/list"
 	"errors"
 	"fmt"
 	"math"
@@ -13,6 +12,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badger "github.com/dgraph-io/badger/v4"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -684,7 +684,7 @@ func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	reg.GetOrCreate("Person")
 	reg.GetOrCreate("Movie")
 
@@ -692,7 +692,7 @@ func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
 		t.Fatalf("SaveLabelRegistry: %v", err)
 	}
 
-	reg2 := newLabelRegistry()
+	reg2 := indexpkg.NewLabelRegistry()
 	found, err := bs.LoadLabelRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -715,7 +715,7 @@ func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := newRelTypeRegistry()
+	reg := indexpkg.NewRelTypeRegistry()
 	reg.GetOrCreate("KNOWS")
 	reg.GetOrCreate("ACTED_IN")
 
@@ -723,7 +723,7 @@ func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
 		t.Fatalf("SaveRelTypeRegistry: %v", err)
 	}
 
-	reg2 := newRelTypeRegistry()
+	reg2 := indexpkg.NewRelTypeRegistry()
 	found, err := bs.LoadRelTypeRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -742,7 +742,7 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	reg := newLabelRegistry()
+	reg := indexpkg.NewLabelRegistry()
 	found, err := bs.LoadLabelRegistry(reg)
 	if err != nil {
 		t.Fatalf("LoadLabelRegistry: %v", err)
@@ -751,7 +751,7 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 		t.Fatal("expected found=false on fresh DB")
 	}
 
-	reg2 := newRelTypeRegistry()
+	reg2 := indexpkg.NewRelTypeRegistry()
 	found2, err := bs.LoadRelTypeRegistry(reg2)
 	if err != nil {
 		t.Fatalf("LoadRelTypeRegistry: %v", err)
@@ -1750,10 +1750,7 @@ func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
 	}
 
 	// Evict from cache so GetNode must read from Badger.
-	bs.nodeCache.mu.Lock()
-	bs.nodeCache.items = make(map[snowflake.ID]*list.Element)
-	bs.nodeCache.order.Init()
-	bs.nodeCache.mu.Unlock()
+	bs.nodeCache.ResetForTest()
 
 	// Inject corrupt value into Badger.
 	err := bs.db.Update(func(txn *badger.Txn) error {
@@ -1786,10 +1783,7 @@ func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
 	}
 
 	// Evict rel from cache.
-	bs.relCache.mu.Lock()
-	bs.relCache.items = make(map[snowflake.ID]*list.Element)
-	bs.relCache.order.Init()
-	bs.relCache.mu.Unlock()
+	bs.relCache.ResetForTest()
 
 	// Inject corrupt rel value.
 	err := bs.db.Update(func(txn *badger.Txn) error {
@@ -1820,10 +1814,7 @@ func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	bs.relCache.mu.Lock()
-	bs.relCache.items = make(map[snowflake.ID]*list.Element)
-	bs.relCache.order.Init()
-	bs.relCache.mu.Unlock()
+	bs.relCache.ResetForTest()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
@@ -1850,10 +1841,7 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	bs.relCache.mu.Lock()
-	bs.relCache.items = make(map[snowflake.ID]*list.Element)
-	bs.relCache.order.Init()
-	bs.relCache.mu.Unlock()
+	bs.relCache.ResetForTest()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
@@ -3918,8 +3906,8 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 	}
 
 	// Create registries for persistence.
-	labels := newLabelRegistry()
-	relTypes := newRelTypeRegistry()
+	labels := indexpkg.NewLabelRegistry()
+	relTypes := indexpkg.NewRelTypeRegistry()
 	labels.GetOrCreate("Person")  // token 1
 	labels.GetOrCreate("Company") // token 2
 	relTypes.GetOrCreate("KNOWS") // token 1
@@ -4346,28 +4334,6 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
 		if len(nodes) != 1 {
 			t.Errorf("node-%d: expected 1 result, got %d", i, len(nodes))
 		}
-	}
-}
-
-func TestPropertyIndex_Contains(t *testing.T) {
-	t.Parallel()
-	idx := newPropertyIndex()
-
-	if idx.contains(snowflake.ID(1)) {
-		t.Error("empty index should not contain anything")
-	}
-
-	idx.add(snowflake.ID(1), "Alice")
-	idx.add(snowflake.ID(2), "Bob")
-
-	if !idx.contains(snowflake.ID(1)) {
-		t.Error("should contain ID 1")
-	}
-	if !idx.contains(snowflake.ID(2)) {
-		t.Error("should contain ID 2")
-	}
-	if idx.contains(snowflake.ID(3)) {
-		t.Error("should not contain ID 3")
 	}
 }
 
@@ -5214,10 +5180,7 @@ func TestBadgerStoreOutgoingForNodesCorruptionError(t *testing.T) {
 	}
 
 	// Evict from cache and corrupt on-disk data.
-	bs.relCache.mu.Lock()
-	bs.relCache.items = make(map[snowflake.ID]*list.Element)
-	bs.relCache.order.Init()
-	bs.relCache.mu.Unlock()
+	bs.relCache.ResetForTest()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))
@@ -5245,10 +5208,7 @@ func TestBadgerStoreIncomingForNodesCorruptionError(t *testing.T) {
 	}
 
 	// Evict from cache and corrupt on-disk data.
-	bs.relCache.mu.Lock()
-	bs.relCache.items = make(map[snowflake.ID]*list.Element)
-	bs.relCache.order.Init()
-	bs.relCache.mu.Unlock()
+	bs.relCache.ResetForTest()
 
 	err := bs.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(storepkg.RelKey(500), []byte("corrupt"))

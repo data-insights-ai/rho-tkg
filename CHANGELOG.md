@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.18] - 2026-05-06
+
+### Changed (structural, no behaviour change)
+
+- **Restructure phase 2 — extract `pkg/graph/internal/locks` + `pkg/graph/internal/index`, plus relocate the temporal-filter helpers into `internal/store`**: three sequential moves landed as their own commits, each leaving the tree green.
+  - **Step A — temporal-filter helpers into `internal/store`** (`pkg/graph/temporal_filter.go` → `pkg/graph/internal/store/temporal_filter.go`). `entityValidFrom` → `EntityValidFrom`, `matchesTemporalFilter` → `MatchesTemporalFilter`. `matchesPointInTime`/`matchesInterval` stayed unexported (only same-file callers). The move pre-empts a cycle that would have appeared once `internal/index` referenced `EntityValidFrom`/`MatchesTemporalFilter`, since Phase 3 will move backends out of `pkg/graph` too.
+  - **Step B — entity locks into `internal/locks`** (`pkg/graph/entity_locks.go` → `pkg/graph/internal/locks/entity_locks.go`, package `locks`). `entityLockManager` → `Manager`, `newEntityLockManager` → `NewManager`. Public methods (`LockEntity`, `LockTwo`, `LockMany`) and constants stayed exported. Callers in `pkg/graph/` qualify as `locks.Manager` / `locks.NewManager()`.
+  - **Step C — index types into `internal/index`** (`pkg/graph/lru.go`, `label_registry.go`, `reltype_registry.go`, `ontology.go`, `property_index.go`, `temporal_index.go`, `hf_index.go`, `vector_index.go` → `pkg/graph/internal/index/`, package `index`). Cross-package symbols exported: `entityLRU` → `Cache`, `lruEntry` → `Entry`, the cache-status constants → `CacheHit`/`CacheMiss`/`CacheDeleted`; `labelRegistry` → `LabelRegistry`, `relTypeRegistry` → `RelTypeRegistry`, both with their `New*` constructors and `Err*` sentinels; `propertyIndex` → `PropertyIndex`, `temporalIndex` → `TemporalIndex`, `highFrequencyIndex` → `HighFrequencyIndex`, `vectorIndex` → `VectorIndex` (plus their constructors and `Err*` sentinels). `OntologyMapping` and `EntityClass` were already exported; their internal `labelReg *labelRegistry` field tracked the registry rename to `*LabelRegistry`. `internal/index/vector_index.go` references `DistanceMetric` from `internal/store` (Phase 1) qualified as `storepkg.DistanceMetric`. **Judgement call**: `index_provider.go` stays in `pkg/graph` — the `IndexProvider` interface depends tightly on `Graph`, `Event`, `EventBus`, `eventPublisher`, and the `g.indexProviders`/`g.events` fields, and moving it would have required pulling in chunks of `events.go` and `graph.go` that violate the moves-only contract.
+  - **`pkg/graph/aliases.go`** extended with `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, the registry+vector-index sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`, `ErrVectorIndexExists`, `ErrVectorIndexNotFound`, `ErrDimensionMismatch`) so the public API surface stays unchanged.
+  - **Dependency arrows** after the move: `pkg/graph` → `internal/store`, `internal/locks`, `internal/index`; `internal/index` → `internal/store`, `pkg/types`; `internal/locks` → `pkg/types`; `internal/store` → `pkg/types`. No `internal/*` package imports `pkg/graph` (verified by grep). `go build ./...`, `go vet ./...`, `gofmt -l .` empty, and `go test -race -short -count=1 -timeout 600s ./...` all green.
+- **Phase 3-4 deferred**: extracting `memorystore.go`, `badgerstore.go`, and `tieredstore*.go` into `internal/memorystore`/`internal/badgerstore`/`internal/tieredstore` is left for follow-up MRs.
+
 ## [3.1.17] - 2026-05-06
 
 ### Changed (structural, no behaviour change)

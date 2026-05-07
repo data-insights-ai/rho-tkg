@@ -1,4 +1,4 @@
-package graph
+package index
 
 import "sync"
 
@@ -25,7 +25,7 @@ type OntologyMapping struct {
 	byName   map[string]EntityClass // label name -> class (from config)
 	byToken  map[uint16]EntityClass // cached token -> class (populated lazily)
 	mu       sync.RWMutex           // protects byToken lazy cache
-	labelReg *labelRegistry         // shared ref, set after Graph.New()
+	labelReg *LabelRegistry         // shared ref, set after Graph.New()
 }
 
 // NewOntologyMapping creates an OntologyMapping that classifies the given
@@ -87,7 +87,7 @@ func (om *OntologyMapping) ClassifyByToken(token uint16) EntityClass {
 
 // SetLabelRegistry wires the ontology to the graph's label registry for
 // token-based classification. Called by Graph.New() after construction.
-func (om *OntologyMapping) SetLabelRegistry(reg *labelRegistry) {
+func (om *OntologyMapping) SetLabelRegistry(reg *LabelRegistry) {
 	om.labelReg = reg
 }
 
