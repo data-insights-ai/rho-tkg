@@ -46,6 +46,13 @@ type (
 	RelTombstone   = storepkg.RelTombstone
 )
 
+// Store-contract distance-metric alias constants. Re-exported so in-package
+// tests can reference the canonical values without importing the store package.
+const (
+	DistanceCosine    = storepkg.DistanceCosine
+	DistanceEuclidean = storepkg.DistanceEuclidean
+)
+
 // Default configuration values for BadgerStore.
 const (
 	DefaultCacheCapacity  = 10_000
