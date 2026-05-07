@@ -10,6 +10,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/memorystore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -336,3 +337,45 @@ var ComputeNodeHash = integrity.ComputeNodeHash
 // The hash covers: id, version, type name, start ID, end ID, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 var ComputeRelHash = integrity.ComputeRelHash
+
+// --- Temporal-constraint re-exports ---
+//
+// The pure-data types live in pkg/graph/internal/temporal. The Graph-coupled
+// enforcement methods (`checkTemporalConstraints` and friends) stay in
+// pkg/graph/temporal_constraint.go. These aliases preserve the historical
+// public API (`graph.ConstraintSet`, `graph.TemporalConstraint`,
+// `graph.ConstraintRelWithinEndpoints`, the seven sentinel errors) used by
+// external callers and let internal pkg/graph code keep using the unqualified
+// names that existed before the move.
+
+type (
+	// TemporalConstraintKind identifies the type of temporal constraint enforced at write time.
+	TemporalConstraintKind = temporalpkg.TemporalConstraintKind
+	// TemporalConstraint is a single temporal invariant checked at write time.
+	TemporalConstraint = temporalpkg.TemporalConstraint
+	// ConstraintSet is an immutable-by-convention ordered set of TemporalConstraints.
+	ConstraintSet = temporalpkg.ConstraintSet
+)
+
+// TemporalConstraintKind constants.
+const (
+	// ConstraintRelWithinEndpoints enforces that a relationship's validity window
+	// is contained within the validity intervals of both endpoint nodes.
+	ConstraintRelWithinEndpoints = temporalpkg.ConstraintRelWithinEndpoints
+)
+
+// NewConstraintSet creates a ConstraintSet from the given constraints.
+func NewConstraintSet(cs ...TemporalConstraint) ConstraintSet {
+	return temporalpkg.NewConstraintSet(cs...)
+}
+
+// Temporal-constraint sentinel errors.
+var (
+	ErrTemporalConstraint          = temporalpkg.ErrTemporalConstraint
+	ErrRelBeforeStartNode          = temporalpkg.ErrRelBeforeStartNode
+	ErrRelBeforeEndNode            = temporalpkg.ErrRelBeforeEndNode
+	ErrRelAfterStartNode           = temporalpkg.ErrRelAfterStartNode
+	ErrRelAfterEndNode             = temporalpkg.ErrRelAfterEndNode
+	ErrRelExceedsStartNodeValidity = temporalpkg.ErrRelExceedsStartNodeValidity
+	ErrRelExceedsEndNodeValidity   = temporalpkg.ErrRelExceedsEndNodeValidity
+)
