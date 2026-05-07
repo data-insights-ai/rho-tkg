@@ -25,6 +25,12 @@ const exportFormatVersion byte = 1
 // that would result from collecting all IDs into a single monolithic slice.
 const exportBatchSize = 1024
 
+// exportHistoryBatchSize is the page size for cursor-paginated history-ID
+// scans during export. The per-ID history payload is unbounded (deeply
+// versioned nodes carry many entries), so we keep the cursor page narrow:
+// at most ~32 KiB of types.NodeID/types.RelID values resident at once.
+const exportHistoryBatchSize = 4096
+
 // Record type tags for the export stream. Values ≥ 0x80 are reserved for future use.
 const (
 	exportTagHeader   byte = 0x01 // exportHeader record
@@ -129,27 +135,37 @@ func (c *Core) ExportGraph(w io.Writer) error {
 		}
 	}
 
-	// --- Node history ---
-	// AllNodeHistoryIDs does not support cursor pagination (no storepkg.QueryOpts); the full
-	// ID slice is loaded once. The history population is typically much smaller than
-	// the live entity population, so the memory impact is acceptable.
-	// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(storepkg.QueryOpts) to the Store interface
-	// and all three implementations (MemoryStore, BadgerStore, tiered.Store) to eliminate
-	// the OOM risk at large history depths (e.g., 10K nodes × 1K versions = 10M IDs).
-	nodeHistIDs, err := c.store.AllNodeHistoryIDs()
-	if err != nil {
-		return fmt.Errorf("export: node history IDs: %w", err)
-	}
-	for _, id := range nodeHistIDs {
-		history, err := c.store.GetNodeHistory(id)
-		if err != nil {
-			return fmt.Errorf("export: get node history %d: %w", id, err)
-		}
-		for _, entry := range history {
-			w2 := storeutil.NodeToWire(entry)
-			if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
-				return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
+	// --- Node history (paginated) ---
+	// AllNodeHistoryIDsFrom caps memory to exportHistoryBatchSize IDs per call,
+	// eliminating the OOM risk at large history depths (e.g., 10K nodes × 1K
+	// versions = 10M IDs). Each iteration loads at most batch-size IDs plus
+	// the per-ID history list, never the entire history-ID set.
+	{
+		var nodeHistCursor types.NodeID
+		for {
+			nodeHistIDs, err := c.store.AllNodeHistoryIDsFrom(nodeHistCursor, exportHistoryBatchSize)
+			if err != nil {
+				return fmt.Errorf("export: node history IDs: %w", err)
 			}
+			if len(nodeHistIDs) == 0 {
+				break
+			}
+			for _, id := range nodeHistIDs {
+				history, err := c.store.GetNodeHistory(id)
+				if err != nil {
+					return fmt.Errorf("export: get node history %d: %w", id, err)
+				}
+				for _, entry := range history {
+					w2 := storeutil.NodeToWire(entry)
+					if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
+						return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
+					}
+				}
+			}
+			if len(nodeHistIDs) < exportHistoryBatchSize {
+				break
+			}
+			nodeHistCursor = nodeHistIDs[len(nodeHistIDs)-1]
 		}
 	}
 
@@ -172,21 +188,33 @@ func (c *Core) ExportGraph(w io.Writer) error {
 		}
 	}
 
-	// --- Relationship history ---
-	relHistIDs, err := c.store.AllRelHistoryIDs()
-	if err != nil {
-		return fmt.Errorf("export: rel history IDs: %w", err)
-	}
-	for _, id := range relHistIDs {
-		history, err := c.store.GetRelHistory(id)
-		if err != nil {
-			return fmt.Errorf("export: get rel history %d: %w", id, err)
-		}
-		for _, entry := range history {
-			w2 := storeutil.RelToWire(entry)
-			if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
-				return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
+	// --- Relationship history (paginated) ---
+	{
+		var relHistCursor types.RelID
+		for {
+			relHistIDs, err := c.store.AllRelHistoryIDsFrom(relHistCursor, exportHistoryBatchSize)
+			if err != nil {
+				return fmt.Errorf("export: rel history IDs: %w", err)
 			}
+			if len(relHistIDs) == 0 {
+				break
+			}
+			for _, id := range relHistIDs {
+				history, err := c.store.GetRelHistory(id)
+				if err != nil {
+					return fmt.Errorf("export: get rel history %d: %w", id, err)
+				}
+				for _, entry := range history {
+					w2 := storeutil.RelToWire(entry)
+					if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
+						return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
+					}
+				}
+			}
+			if len(relHistIDs) < exportHistoryBatchSize {
+				break
+			}
+			relHistCursor = relHistIDs[len(relHistIDs)-1]
 		}
 	}
 

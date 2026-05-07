@@ -237,7 +237,7 @@ const (
 | Vector indexes | `CreateVectorIndex`, `DropVectorIndex`, `SearchNearestNodes` | In-memory brute-force k-NN. Not persisted |
 | Label management | `RemoveNodeLabelToken`, `RemoveNodeLabelTokenWithHistory` | Atomic label removal with optional history |
 | ID-only queries | `AllNodeIDs`, `AllRelIDs` | No deserialization |
-| History IDs | `AllNodeHistoryIDs`, `AllRelHistoryIDs` | Includes deleted entities |
+| History IDs | `AllNodeHistoryIDs`, `AllRelHistoryIDs`, `AllNodeHistoryIDsFrom`, `AllRelHistoryIDsFrom` | Includes deleted entities. The `*From` variants are cursor-paginated (after, limit) for bounded-RAM walks; the legacy non-paginated methods now delegate to the paginated form |
 | ForEach iterators | `ForEachNodeID`, `ForEachRelID`, `ForEachNodeHistoryID`, `ForEachRelHistoryID` | Callback-based, no slice materialization |
 | Lifecycle | `Clear`, `Close` | `Close` idempotent via `sync.Once` |
 

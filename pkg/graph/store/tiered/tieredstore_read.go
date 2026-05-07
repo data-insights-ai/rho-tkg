@@ -1129,145 +1129,212 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	return found, nil
 }
 
+// AllNodeHistoryIDs returns the IDs of all nodes that have version history
+// entries across the reference shard, the reference archive (when present),
+// and every event shard.
+//
+// Implemented as a thin wrapper over AllNodeHistoryIDsFrom — pages 64K IDs at
+// a time so the in-flight ID slice stays bounded even on graphs with deep
+// history. Eliminates the parallel-merge transient (~400MB on 52-shard
+// year-long graphs) that the previous goroutine fan-out produced.
 func (ts *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
-	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
-	ts.mu.RUnlock()
-
-	refTyped, err := ts.refShard.AllNodeHistoryIDs()
-	if err != nil {
-		return nil, err
-	}
-	refIDs := nodeIDsToRaw(refTyped)
-
-	// refArchive parity: ArchiveNode + post-archive UpdateNode write history
-	// records to refArchive via the rel/node ID resolvers. ForEachNodeHistoryID
-	// already enumerates refArchive; the slice variant must too, otherwise
-	// archived-then-updated entities silently disappear from history scans.
-	// checkoutArchive pins the archive against a concurrent Close so the
-	// underlying DB cannot be torn down between Load and use.
-	var archiveIDs []snowflake.ID
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return nil, archiveErr
-	}
-	if archive != nil {
-		archiveTyped, err := archive.AllNodeHistoryIDs()
-		archiveCheckin()
+	const pageSize = 65536
+	var (
+		all   []types.NodeID
+		after types.NodeID
+	)
+	for {
+		page, err := ts.AllNodeHistoryIDsFrom(after, pageSize)
 		if err != nil {
 			return nil, err
 		}
-		archiveIDs = nodeIDsToRaw(archiveTyped)
-	}
-
-	type result struct {
-		ids []snowflake.ID
-		err error
-	}
-	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			typed, err := store.AllNodeHistoryIDs()
-			results[i].ids = nodeIDsToRaw(typed)
-			results[i].err = err
-		}(i, es)
-	}
-	wg.Wait()
-
-	var slices [][]snowflake.ID
-	if len(refIDs) > 0 {
-		slices = append(slices, refIDs)
-	}
-	if len(archiveIDs) > 0 {
-		slices = append(slices, archiveIDs)
-	}
-	for _, r := range results {
-		if r.err != nil {
-			return nil, r.err
+		if len(page) == 0 {
+			break
 		}
-		if len(r.ids) > 0 {
-			slices = append(slices, r.ids)
+		all = append(all, page...)
+		if len(page) < pageSize {
+			break
 		}
+		after = page[len(page)-1]
 	}
-
-	return rawToNodeIDs(mergeIDSlices(slices)), nil
+	if len(all) == 0 {
+		return nil, nil
+	}
+	return all, nil
 }
 
+// AllRelHistoryIDs returns the IDs of all relationships with version history
+// entries. See AllNodeHistoryIDs for the implementation rationale.
 func (ts *Store) AllRelHistoryIDs() ([]types.RelID, error) {
-	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
-	ts.mu.RUnlock()
+	const pageSize = 65536
+	var (
+		all   []types.RelID
+		after types.RelID
+	)
+	for {
+		page, err := ts.AllRelHistoryIDsFrom(after, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			break
+		}
+		all = append(all, page...)
+		if len(page) < pageSize {
+			break
+		}
+		after = page[len(page)-1]
+	}
+	if len(all) == 0 {
+		return nil, nil
+	}
+	return all, nil
+}
 
-	refTyped, err := ts.refShard.AllRelHistoryIDs()
+// AllNodeHistoryIDsFrom is the bounded-RAM, cursor-paginated history-ID scan
+// for TieredStore.
+//
+// Implementation strategy:
+//
+//   - Probe the reference shard, the reference archive (if any), and each
+//     event shard SEQUENTIALLY via checkout/checkin. Only one shard's
+//     iterator is open at any time.
+//   - Each per-shard call passes (after, limit) through to the underlying
+//     BadgerStore.AllNodeHistoryIDsFrom, so each shard returns at most
+//     `limit` IDs. The dedup `seen` set is therefore bounded by the IDs
+//     returned in the current call (across shards), not by the total
+//     graph size.
+//   - Accumulated IDs are sorted ascending after merging and trimmed to
+//     `limit`. Cross-shard duplicates (same ID in archive and event shard,
+//     possible after archive-then-update) collapse to one occurrence.
+//
+// The previous parallel goroutine fan-out has been removed: it held all
+// shard slices in RAM simultaneously and dedup'd via a final map keyed on
+// the entire population — both transients have been eliminated.
+func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
+	seen := make(map[snowflake.ID]struct{})
+	var raw []snowflake.ID
+
+	addAll := func(ids []types.NodeID) {
+		for _, id := range ids {
+			r := id.SnowflakeID()
+			if _, ok := seen[r]; ok {
+				continue
+			}
+			seen[r] = struct{}{}
+			raw = append(raw, r)
+		}
+	}
+
+	// Reference shard.
+	refIDs, err := ts.refShard.AllNodeHistoryIDsFrom(after, limit)
 	if err != nil {
 		return nil, err
 	}
-	refIDs := relIDsToRaw(refTyped)
+	addAll(refIDs)
 
-	// refArchive parity: see AllNodeHistoryIDs above.
-	var archiveIDs []snowflake.ID
+	// Reference archive (lazy-open + close-race safe via checkoutArchive).
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return nil, archiveErr
 	}
 	if archive != nil {
-		archiveTyped, err := archive.AllRelHistoryIDs()
+		archiveIDs, err := archive.AllNodeHistoryIDsFrom(after, limit)
 		archiveCheckin()
 		if err != nil {
 			return nil, err
 		}
-		archiveIDs = relIDsToRaw(archiveTyped)
+		addAll(archiveIDs)
 	}
 
-	type result struct {
-		ids []snowflake.ID
-		err error
+	// Event shards — sequential checkout/checkin.
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return nil, err
+		}
+		ids, scanErr := store.AllNodeHistoryIDsFrom(after, limit)
+		es.checkinStore()
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		addAll(ids)
 	}
-	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
+
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	sort.Slice(raw, func(i, j int) bool { return raw[i] < raw[j] })
+	if limit > 0 && limit < len(raw) {
+		raw = raw[:limit]
+	}
+	return rawToNodeIDs(raw), nil
+}
+
+// AllRelHistoryIDsFrom is the relationship-history equivalent of
+// AllNodeHistoryIDsFrom. Same sequential checkout/checkin walk, same
+// bounded-RAM dedup contract.
+func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
+	seen := make(map[snowflake.ID]struct{})
+	var raw []snowflake.ID
+
+	addAll := func(ids []types.RelID) {
+		for _, id := range ids {
+			r := id.SnowflakeID()
+			if _, ok := seen[r]; ok {
+				continue
 			}
-			defer es.checkinStore()
-			typed, err := store.AllRelHistoryIDs()
-			results[i].ids = relIDsToRaw(typed)
-			results[i].err = err
-		}(i, es)
-	}
-	wg.Wait()
-
-	var slices [][]snowflake.ID
-	if len(refIDs) > 0 {
-		slices = append(slices, refIDs)
-	}
-	if len(archiveIDs) > 0 {
-		slices = append(slices, archiveIDs)
-	}
-	for _, r := range results {
-		if r.err != nil {
-			return nil, r.err
-		}
-		if len(r.ids) > 0 {
-			slices = append(slices, r.ids)
+			seen[r] = struct{}{}
+			raw = append(raw, r)
 		}
 	}
 
-	return rawToRelIDs(mergeIDSlices(slices)), nil
+	refIDs, err := ts.refShard.AllRelHistoryIDsFrom(after, limit)
+	if err != nil {
+		return nil, err
+	}
+	addAll(refIDs)
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveIDs, err := archive.AllRelHistoryIDsFrom(after, limit)
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		addAll(archiveIDs)
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return nil, err
+		}
+		ids, scanErr := store.AllRelHistoryIDsFrom(after, limit)
+		es.checkinStore()
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		addAll(ids)
+	}
+
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	sort.Slice(raw, func(i, j int) bool { return raw[i] < raw[j] })
+	if limit > 0 && limit < len(raw) {
+		raw = raw[:limit]
+	}
+	return rawToRelIDs(raw), nil
 }
 
 // forEachHistoryShard probes shards that may own history after the live entity

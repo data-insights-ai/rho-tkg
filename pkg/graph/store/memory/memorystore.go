@@ -1508,7 +1508,20 @@ func (ms *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 }
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
+// Thin wrapper that delegates to AllNodeHistoryIDsFrom(0, 0).
 func (ms *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
+	return ms.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
+}
+
+// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+// Thin wrapper that delegates to AllRelHistoryIDsFrom(0, 0).
+func (ms *Store) AllRelHistoryIDs() ([]types.RelID, error) {
+	return ms.AllRelHistoryIDsFrom(types.RelID(0), 0)
+}
+
+// AllNodeHistoryIDsFrom returns the IDs of nodes with version history, sorted
+// ascending, starting strictly after `after`. limit ≤ 0 returns all remaining.
+func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1520,11 +1533,16 @@ func (ms *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = storepkg.PaginateNodeIDs(ids, types.EntityID(after), limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	return ids, nil
 }
 
-// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
-func (ms *Store) AllRelHistoryIDs() ([]types.RelID, error) {
+// AllRelHistoryIDsFrom returns the IDs of relationships with version history,
+// sorted ascending, starting strictly after `after`. limit ≤ 0 returns all remaining.
+func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -1536,6 +1554,10 @@ func (ms *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = storepkg.PaginateRelIDs(ids, types.EntityID(after), limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	return ids, nil
 }
 

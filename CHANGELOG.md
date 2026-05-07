@@ -4,6 +4,64 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Cursor-paginated history-ID scans (`AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`).**
+  Two new methods on the `Store` interface return the IDs of nodes /
+  relationships with version-history entries, sorted ascending, starting
+  strictly after a caller-supplied cursor and capped at a caller-supplied
+  limit. Implemented in `pkg/graph/store/{memory,badger,tiered}`.
+  - **MemoryStore** sorts the in-memory history map and applies
+    `storeutil.PaginateNodeIDs` / `PaginateRelIDs` for an O(N log N + N)
+    one-shot result.
+  - **BadgerStore** seeks the `0x07` (node-history) / `0x08`
+    (rel-history) prefix at `[prefix, after+1]` and merges the seek stream
+    with the pending write-buffer entries strictly greater than `after`,
+    deduplicating same-ID version-suffix repeats. Memory is bounded by
+    `limit`, not total history depth.
+  - **TieredStore** walks the reference shard, the reference archive, and
+    every event shard sequentially via `checkout/checkin` — only one
+    shard's iterator is open at a time. Cross-shard duplicates collapse
+    via a `seen` set bounded by the IDs returned in the current page.
+  - The legacy `AllNodeHistoryIDs()` / `AllRelHistoryIDs()` methods are
+    retained for backward compatibility and now delegate to the
+    paginated form (`limit ≤ 0` means "all remaining").
+
+### Changed
+
+- **`ExportGraph` history phase is now bounded-RAM** (resolves the
+  `TODO(v3.1.0)` in `pkg/graph/internal/core/export.go`). The export
+  loop pages history-ID scans at `exportHistoryBatchSize = 4096` IDs per
+  call, eliminating the OOM risk at large history depths
+  (e.g., 10K nodes × 1K versions = 10M IDs would previously have
+  materialised in a single slice).
+- **TieredStore parallel-merge transient eliminated.** The previous
+  `AllNodeHistoryIDs` / `AllRelHistoryIDs` implementations spun a
+  goroutine per event shard and held all per-shard ID slices in RAM
+  simultaneously before dedup-mapping at the end (~400MB transient on
+  52-shard year-long graphs). The new sequential checkout/checkin walk
+  removes both the goroutine fan-out and the global dedup map. The
+  legacy methods are now thin wrappers that page the new API at a
+  generous in-memory page size.
+
+### Tests
+
+- `pkg/graph/store/memory/history_cursor_test.go` — empty graph, limit=0
+  parity, after-past-last, paginated-walk-equals-unpaginated for both
+  node and rel history.
+- `pkg/graph/store/badger/history_cursor_test.go` — same coverage plus
+  pending-only / persisted / mixed buffer scenarios and the
+  same-ID-multiple-versions dedup case.
+- `pkg/graph/store/tiered/history_cursor_test.go` — empty graph,
+  limit=0 parity, paginated walk across ref + event shards, cross-shard
+  same-ID dedup.
+- `pkg/graph/internal/core/export_history_bounded_test.go` — seeds
+  1K nodes × 50 versions = 50K history records and asserts that
+  `ExportGraph`'s heap delta stays under 16 MiB. Without the cursor the
+  history-ID slice alone would allocate 40+ MiB.
+
 ## [3.4.0] - 2026-05-07
 
 ### Sub-API accessors on Graph (Option 3) — BREAKING

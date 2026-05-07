@@ -3495,35 +3495,147 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 // --- History ID scans ---
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
-// Scans both the pending buffer and Badger for 0x07 prefix keys.
-// The full ID slice is loaded into memory — acceptable for typical history populations.
-// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
-// to eliminate OOM risk at large history depths (10K nodes × 1K versions = 10M IDs).
+// Thin wrapper that delegates to AllNodeHistoryIDsFrom(0, 0).
 func (bs *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
-	seen := make(map[snowflake.ID]struct{})
+	return bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
+}
 
-	// Check pending buffer for unflushed history writes.
+// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+// Thin wrapper that delegates to AllRelHistoryIDsFrom(0, 0).
+func (bs *Store) AllRelHistoryIDs() ([]types.RelID, error) {
+	return bs.AllRelHistoryIDsFrom(types.RelID(0), 0)
+}
+
+// historyIDSeekKey returns the 9-byte Badger seek key for the first history
+// record whose entity ID is strictly greater than `after`. The history-key
+// layout is `prefix(1B) + entityID(8B BE) + version(8B BE)`. Seeking to
+// `prefix + (after+1) BE` lands on the first key whose 8B ID portion is ≥
+// after+1, i.e., strictly greater than after. If after+1 overflows int64,
+// returns nil to signal "no remaining keys".
+func historyIDSeekKey(prefix byte, after snowflake.ID) []byte {
+	// Treat zero (unset cursor) as "from the very beginning".
+	if after == 0 {
+		return []byte{prefix}
+	}
+	next := int64(after) + 1
+	if next < int64(after) {
+		// Overflow guard: after is already MaxInt64, no successor exists.
+		return nil
+	}
+	out := make([]byte, 9)
+	out[0] = prefix
+	storepkg.PutUint64(out, 1, next)
+	return out
+}
+
+// AllNodeHistoryIDsFrom returns up to `limit` distinct node IDs (sorted
+// ascending) with version-history entries whose ID is strictly greater than
+// `after`. limit ≤ 0 means "all remaining".
+//
+// Implementation: scans the pending write-buffer once to surface unflushed
+// history writes, then seeks the 0x07 prefix in Badger. Distinct IDs are
+// dedup'd via a small `seen` set. The ID slice is bounded by `limit` (when
+// limit > 0), so memory usage is O(limit), not O(total history).
+func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
+	afterRaw := snowflake.ID(after)
+
+	// Phase 1: collect candidate IDs from pending buffer. We materialise the
+	// full pending set once (typically small — bounded by FlushInterval), then
+	// merge with the Badger scan in a sorted walk so we can stop at `limit`.
+	pending := make(map[snowflake.ID]struct{})
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistNode {
 			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			seen[id] = struct{}{}
+			if id > afterRaw {
+				pending[id] = struct{}{}
+			}
 		}
 	}
 	bs.wbMu.Unlock()
 
-	// Scan Badger for persisted history keys.
+	pendingSorted := make([]snowflake.ID, 0, len(pending))
+	for id := range pending {
+		pendingSorted = append(pendingSorted, id)
+	}
+	sort.Slice(pendingSorted, func(i, j int) bool { return pendingSorted[i] < pendingSorted[j] })
+
+	// Phase 2: seek-based scan of Badger. Walk pending and Badger streams in
+	// merge order, stopping at `limit`.
+	seekKey := historyIDSeekKey(storepkg.KeyHistNode, afterRaw)
+	if seekKey == nil {
+		// after+1 overflow — only the pending stream can contribute (shouldn't
+		// happen in practice; defensive).
+		return paginateRawNodeIDs(pendingSorted, limit), nil
+	}
+	prefix := []byte{storepkg.KeyHistNode}
+
+	out := make([]types.NodeID, 0, capForLimit(limit))
+	pendingIdx := 0
+	emitted := make(map[snowflake.ID]struct{}) // dedup across pending + Badger
+
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{storepkg.KeyHistNode}
-		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+
+		var lastBadger snowflake.ID
+		var haveLastBadger bool
+
+		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= storepkg.SizeHistKey {
-				id := storepkg.ParseIDFromKey(key, 1)
-				seen[id] = struct{}{}
+			if len(key) < storepkg.SizeHistKey {
+				continue
+			}
+			id := storepkg.ParseIDFromKey(key, 1)
+			if id <= afterRaw {
+				continue // belt-and-braces; seekKey already excludes this.
+			}
+			if haveLastBadger && id == lastBadger {
+				continue // skip same-node version-suffix repeats.
+			}
+			lastBadger = id
+			haveLastBadger = true
+
+			// Drain pending entries strictly less than the current Badger ID.
+			for pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] < id {
+				pid := pendingSorted[pendingIdx]
+				pendingIdx++
+				if _, dup := emitted[pid]; dup {
+					continue
+				}
+				emitted[pid] = struct{}{}
+				out = append(out, types.NodeID(pid))
+				if limit > 0 && len(out) >= limit {
+					return nil
+				}
+			}
+			// Pending may also contain `id` (same id flushed and unflushed simultaneously).
+			if pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] == id {
+				pendingIdx++
+			}
+
+			if _, dup := emitted[id]; dup {
+				continue
+			}
+			emitted[id] = struct{}{}
+			out = append(out, types.NodeID(id))
+			if limit > 0 && len(out) >= limit {
+				return nil
+			}
+		}
+		// Drain any remaining pending entries past the end of Badger.
+		for pendingIdx < len(pendingSorted) {
+			pid := pendingSorted[pendingIdx]
+			pendingIdx++
+			if _, dup := emitted[pid]; dup {
+				continue
+			}
+			emitted[pid] = struct{}{}
+			out = append(out, types.NodeID(pid))
+			if limit > 0 && len(out) >= limit {
+				return nil
 			}
 		}
 		return nil
@@ -3531,49 +3643,102 @@ func (bs *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: scan node history IDs: %w", err)
 	}
-
-	if len(seen) == 0 {
+	if len(out) == 0 {
 		return nil, nil
-	}
-	ids := make([]snowflake.ID, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	out := make([]types.NodeID, len(ids))
-	for i, id := range ids {
-		out[i] = types.NodeID(id)
 	}
 	return out, nil
 }
 
-// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
-// Scans both the pending buffer and Badger for 0x08 prefix keys.
-func (bs *Store) AllRelHistoryIDs() ([]types.RelID, error) {
-	seen := make(map[snowflake.ID]struct{})
+// AllRelHistoryIDsFrom is the relationship analogue of AllNodeHistoryIDsFrom.
+func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
+	afterRaw := snowflake.ID(after)
 
-	// Check pending buffer for unflushed history writes.
+	pending := make(map[snowflake.ID]struct{})
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
 		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistRel {
 			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			seen[id] = struct{}{}
+			if id > afterRaw {
+				pending[id] = struct{}{}
+			}
 		}
 	}
 	bs.wbMu.Unlock()
 
-	// Scan Badger for persisted history keys.
+	pendingSorted := make([]snowflake.ID, 0, len(pending))
+	for id := range pending {
+		pendingSorted = append(pendingSorted, id)
+	}
+	sort.Slice(pendingSorted, func(i, j int) bool { return pendingSorted[i] < pendingSorted[j] })
+
+	seekKey := historyIDSeekKey(storepkg.KeyHistRel, afterRaw)
+	if seekKey == nil {
+		return paginateRawRelIDs(pendingSorted, limit), nil
+	}
+	prefix := []byte{storepkg.KeyHistRel}
+
+	out := make([]types.RelID, 0, capForLimit(limit))
+	pendingIdx := 0
+	emitted := make(map[snowflake.ID]struct{})
+
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		pfx := []byte{storepkg.KeyHistRel}
-		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
+
+		var lastBadger snowflake.ID
+		var haveLastBadger bool
+
+		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) >= storepkg.SizeHistKey {
-				id := storepkg.ParseIDFromKey(key, 1)
-				seen[id] = struct{}{}
+			if len(key) < storepkg.SizeHistKey {
+				continue
+			}
+			id := storepkg.ParseIDFromKey(key, 1)
+			if id <= afterRaw {
+				continue
+			}
+			if haveLastBadger && id == lastBadger {
+				continue
+			}
+			lastBadger = id
+			haveLastBadger = true
+
+			for pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] < id {
+				pid := pendingSorted[pendingIdx]
+				pendingIdx++
+				if _, dup := emitted[pid]; dup {
+					continue
+				}
+				emitted[pid] = struct{}{}
+				out = append(out, types.RelID(pid))
+				if limit > 0 && len(out) >= limit {
+					return nil
+				}
+			}
+			if pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] == id {
+				pendingIdx++
+			}
+			if _, dup := emitted[id]; dup {
+				continue
+			}
+			emitted[id] = struct{}{}
+			out = append(out, types.RelID(id))
+			if limit > 0 && len(out) >= limit {
+				return nil
+			}
+		}
+		for pendingIdx < len(pendingSorted) {
+			pid := pendingSorted[pendingIdx]
+			pendingIdx++
+			if _, dup := emitted[pid]; dup {
+				continue
+			}
+			emitted[pid] = struct{}{}
+			out = append(out, types.RelID(pid))
+			if limit > 0 && len(out) >= limit {
+				return nil
 			}
 		}
 		return nil
@@ -3581,20 +3746,51 @@ func (bs *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graph: scan rel history IDs: %w", err)
 	}
-
-	if len(seen) == 0 {
+	if len(out) == 0 {
 		return nil, nil
 	}
-	ids := make([]snowflake.ID, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
+	return out, nil
+}
+
+// capForLimit returns a sane initial capacity for the page result slice. Small
+// limits get an exact preallocation; "all remaining" (limit ≤ 0) gets a 0
+// capacity (let append grow it) since the caller may legitimately want
+// hundreds of millions of IDs.
+func capForLimit(limit int) int {
+	if limit > 0 && limit <= 1<<20 {
+		return limit
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return 0
+}
+
+// paginateRawNodeIDs trims a sorted, dedup'd ID slice to `limit` and wraps to types.NodeID.
+func paginateRawNodeIDs(ids []snowflake.ID, limit int) []types.NodeID {
+	if len(ids) == 0 {
+		return nil
+	}
+	if limit > 0 && limit < len(ids) {
+		ids = ids[:limit]
+	}
+	out := make([]types.NodeID, len(ids))
+	for i, id := range ids {
+		out[i] = types.NodeID(id)
+	}
+	return out
+}
+
+// paginateRawRelIDs trims a sorted, dedup'd ID slice to `limit` and wraps to types.RelID.
+func paginateRawRelIDs(ids []snowflake.ID, limit int) []types.RelID {
+	if len(ids) == 0 {
+		return nil
+	}
+	if limit > 0 && limit < len(ids) {
+		ids = ids[:limit]
+	}
 	out := make([]types.RelID, len(ids))
 	for i, id := range ids {
 		out[i] = types.RelID(id)
 	}
-	return out, nil
+	return out
 }
 
 // --- Clear ---

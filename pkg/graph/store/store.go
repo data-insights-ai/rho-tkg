@@ -166,10 +166,36 @@ type Store interface {
 
 	// AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 	// This includes deleted nodes whose history was preserved.
+	//
+	// Loads the entire ID set into memory. For graphs with deep history, prefer
+	// AllNodeHistoryIDsFrom which supports cursor-based pagination.
 	AllNodeHistoryIDs() ([]types.NodeID, error)
 
 	// AllRelHistoryIDs returns the IDs of all relationships that have version history entries.
+	//
+	// Loads the entire ID set into memory. For graphs with deep history, prefer
+	// AllRelHistoryIDsFrom which supports cursor-based pagination.
 	AllRelHistoryIDs() ([]types.RelID, error)
+
+	// AllNodeHistoryIDsFrom returns IDs of all nodes that have version history,
+	// sorted ascending, starting STRICTLY AFTER `after` (exclusive). At most
+	// `limit` IDs are returned. Pass `after = types.NodeID(0)` (zero value) for
+	// the first page; pass the last returned ID to resume. limit ≤ 0 means
+	// "all remaining".
+	//
+	// Bounded-RAM alternative to AllNodeHistoryIDs(). For exporting a graph
+	// with deep history, callers should iterate in pages.
+	//
+	// On TieredStore, this iterates shards sequentially via checkout/checkin —
+	// only one shard's history-ID iterator is open at any time. Cross-shard
+	// dedup uses a `seen` set bounded by the IDs returned in the current call,
+	// not by the total graph size.
+	AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error)
+
+	// AllRelHistoryIDsFrom is the relationship-history equivalent of
+	// AllNodeHistoryIDsFrom. Same semantics: ascending order, exclusive
+	// cursor, limit ≤ 0 means all remaining.
+	AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error)
 
 	// ForEachNodeID iterates over all current node IDs, calling fn for each.
 	// Iteration stops early if fn returns false. No ordering guarantee.
