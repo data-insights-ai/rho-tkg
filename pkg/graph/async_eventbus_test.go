@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 )
 
 func TestPriority_GraphDeleteIsCritical(t *testing.T) {
@@ -14,14 +16,14 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 	}
 	defer g.Close()
 
-	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 64})
+	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
 	defer bus.Close()
 	g.SetAsyncEventBus(bus)
 
-	var deleteEvent Event
+	var deleteEvent eventspkg.Event
 	var mu sync.Mutex
-	bus.Subscribe(func(e Event) {
-		if e.Type == EventNodeDelete {
+	bus.Subscribe(func(e eventspkg.Event) {
+		if e.Type == eventspkg.EventNodeDelete {
 			mu.Lock()
 			deleteEvent = e
 			mu.Unlock()
@@ -38,7 +40,7 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 		mu.Lock()
 		got := deleteEvent
 		mu.Unlock()
-		if got.Type == EventNodeDelete {
+		if got.Type == eventspkg.EventNodeDelete {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -46,8 +48,8 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if deleteEvent.Priority != PriorityCritical {
-		t.Errorf("EventNodeDelete priority = %v, want PriorityCritical", deleteEvent.Priority)
+	if deleteEvent.Priority != eventspkg.PriorityCritical {
+		t.Errorf("eventspkg.EventNodeDelete priority = %v, want eventspkg.PriorityCritical", deleteEvent.Priority)
 	}
 }
 
@@ -58,14 +60,14 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 	}
 	defer g.Close()
 
-	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 64})
+	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
 	defer bus.Close()
 	g.SetAsyncEventBus(bus)
 
-	var createEvent Event
+	var createEvent eventspkg.Event
 	var mu sync.Mutex
-	bus.Subscribe(func(e Event) {
-		if e.Type == EventNodeCreate {
+	bus.Subscribe(func(e eventspkg.Event) {
+		if e.Type == eventspkg.EventNodeCreate {
 			mu.Lock()
 			createEvent = e
 			mu.Unlock()
@@ -82,7 +84,7 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 		mu.Lock()
 		got := createEvent
 		mu.Unlock()
-		if got.Type == EventNodeCreate {
+		if got.Type == eventspkg.EventNodeCreate {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -90,8 +92,8 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if createEvent.Priority != PriorityHigh {
-		t.Errorf("EventNodeCreate priority = %v, want PriorityHigh", createEvent.Priority)
+	if createEvent.Priority != eventspkg.PriorityHigh {
+		t.Errorf("eventspkg.EventNodeCreate priority = %v, want eventspkg.PriorityHigh", createEvent.Priority)
 	}
 }
 
@@ -102,14 +104,14 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 	}
 	defer g.Close()
 
-	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 32})
+	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 32})
 	defer bus.Close()
 
 	g.SetAsyncEventBus(bus)
 
 	var received atomic.Int32
-	bus.Subscribe(func(e Event) {
-		if e.Type == EventNodeCreate {
+	bus.Subscribe(func(e eventspkg.Event) {
+		if e.Type == eventspkg.EventNodeCreate {
 			received.Add(1)
 		}
 	})
@@ -128,6 +130,6 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if received.Load() == 0 {
-		t.Fatal("async handler never received EventNodeCreate")
+		t.Fatal("async handler never received eventspkg.EventNodeCreate")
 	}
 }

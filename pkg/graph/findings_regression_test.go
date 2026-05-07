@@ -5,6 +5,11 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -125,11 +130,11 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		// discriminates the two implementations.
 		g := newTestGraph(t)
 
-		// MemoryStore-only: the test pokes private history/nodes fields;
+		// memory.Store-only: the test pokes private history/nodes fields;
 		// other backends don't expose them.
-		ms, ok := g.store.(*MemoryStore)
+		ms, ok := g.store.(*memory.Store)
 		if !ok {
-			t.Fatalf("test requires MemoryStore, got %T", g.store)
+			t.Fatalf("test requires memory.Store, got %T", g.store)
 		}
 
 		// 1. Build a real chain: v0={A}, v1={A,B}, v2={A}.
@@ -495,7 +500,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		events := collectEvents(g, EventNodeUpdate)
+		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 		if err := g.AddNodeLabel(n.ID(), "B"); err != nil {
 			t.Fatalf("AddNodeLabel: %v", err)
@@ -511,7 +516,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		events := collectEvents(g, EventNodeUpdate)
+		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 		if _, err := g.UpdateNode(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
@@ -529,7 +534,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
-		events := collectEvents(g, EventRelUpdate)
+		events := collectEvents(g, eventspkg.EventRelUpdate)
 
 		if _, err := g.UpdateRelationship(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
@@ -545,7 +550,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		events := collectEvents(g, EventNodeUpdate)
+		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 		if _, err := g.UpdateNodeInPlace(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNodeInPlace: %v", err)
@@ -563,7 +568,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
-		events := collectEvents(g, EventRelUpdate)
+		events := collectEvents(g, eventspkg.EventRelUpdate)
 
 		if _, err := g.UpdateRelInPlace(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelInPlace: %v", err)
@@ -579,7 +584,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-		events := collectEvents(g, EventNodeUpdate)
+		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 		ok, err := g.CompareAndSetProperty(n.ID(), "missing", nil, nil)
 		if err != nil {
@@ -596,7 +601,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	g := newTestGraphForEvents(t)
-	events := collectEvents(g, EventNodeCreate)
+	events := collectEvents(g, eventspkg.EventNodeCreate)
 	before := g.Stats()
 
 	n, err := g.ImportNodeWithID(context.Background(), types.NodeID(12345), []string{"Person"}, map[string]any{
@@ -621,8 +626,8 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	if _, ok := n.GetProperty("tkg_valid_from"); ok {
 		t.Fatal("reserved temporal key should not be stored as a normal property")
 	}
-	if got := drain(events); len(got) != 1 || got[0].Type != EventNodeCreate || got[0].EntityID != types.EntityID(n.ID()) {
-		t.Fatalf("expected one EventNodeCreate for imported node, got %v", got)
+	if got := drain(events); len(got) != 1 || got[0].Type != eventspkg.EventNodeCreate || got[0].EntityID != types.EntityID(n.ID()) {
+		t.Fatalf("expected one eventspkg.EventNodeCreate for imported node, got %v", got)
 	}
 	after := g.Stats()
 	if after.NodesAdded != before.NodesAdded+1 {
@@ -641,7 +646,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 		t.Fatalf("AddNode B: %v", err)
 	}
 
-	events := collectEvents(g, EventRelCreate)
+	events := collectEvents(g, eventspkg.EventRelCreate)
 	before := g.Stats()
 
 	r, err := g.ImportRelationshipWithID(context.Background(), types.RelID(54321), "REL", a, b, map[string]any{
@@ -666,8 +671,8 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 	if _, ok := r.GetProperty("tkg_valid_from"); ok {
 		t.Fatal("reserved temporal key should not be stored as a normal property")
 	}
-	if got := drain(events); len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
-		t.Fatalf("expected one EventRelCreate for imported relationship, got %v", got)
+	if got := drain(events); len(got) != 1 || got[0].Type != eventspkg.EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
+		t.Fatalf("expected one eventspkg.EventRelCreate for imported relationship, got %v", got)
 	}
 	after := g.Stats()
 	if after.RelsAdded != before.RelsAdded+1 {
@@ -733,14 +738,14 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: alice and carol carry Pending; bob does not.
-	hits, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0})
+	hits, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Pending@t0: %v", err)
 	}
 	assertNodeSet(t, "Pending@t0", hits, []types.NodeID{aliceID, carolID})
 
 	// At tNow: alice lost Pending, carol is gone, only bob has it.
-	hits, err = g.NodesByLabel("Pending", QueryOpts{ValidAt: tNow})
+	hits, err = g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("Pending@tNow: %v", err)
 	}
@@ -748,25 +753,25 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 
 	// During [t0, tNow): each had Pending at some overlapping moment.
 	// Requires findNodeVersionMatchingDuring to scan all overlapping versions.
-	hits, err = g.NodesByLabel("Pending", QueryOpts{ValidStart: t0, ValidEnd: tNow})
+	hits, err = g.NodesByLabel("Pending", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
 	if err != nil {
 		t.Fatalf("Pending@[t0,tNow): %v", err)
 	}
 	assertNodeSet(t, "Pending@[t0,tNow)", hits, []types.NodeID{aliceID, bobID, carolID})
 
 	// Pagination on the temporal path: Limit + cursor walks without duplication.
-	page1, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, Limit: 1})
+	page1, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, Limit: 1})
 	if err != nil || len(page1) != 1 {
 		t.Fatalf("page1: got %d nodes, err=%v; want 1, nil", len(page1), err)
 	}
-	page2, err := g.NodesByLabel("Pending", QueryOpts{ValidAt: t0, After: types.EntityID(page1[0].ID())})
+	page2, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, After: types.EntityID(page1[0].ID())})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
 	}
 	assertNodeSet(t, "paginated Pending@t0", append(page1, page2...), []types.NodeID{aliceID, carolID})
 
 	// A label nobody ever wrote returns empty (and does not error).
-	hits, err = g.NodesByLabel("Phantom", QueryOpts{ValidAt: t0})
+	hits, err = g.NodesByLabel("Phantom", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Phantom@t0: %v", err)
 	}
@@ -844,14 +849,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: alice, carol, dave have status=draft; bob has published.
-	hits, err := g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidAt: t0})
+	hits, err := g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("draft@t0: %v", err)
 	}
 	assertNodeSet(t, "draft@t0", hits, []types.NodeID{aliceID, carolID, daveID})
 
 	// At tNow: alice changed, dave deleted; bob and carol have status=draft.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidAt: tNow})
+	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("draft@tNow: %v", err)
 	}
@@ -863,7 +868,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// her. Bob, carol, and dave are found by both correct and buggy
 	// implementations (carol's v0 still matches, bob's v1 matches, dave's
 	// tombstone preserves status=draft).
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidStart: t0, ValidEnd: tNow})
+	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
 	if err != nil {
 		t.Fatalf("draft@[t0,tNow): %v", err)
 	}
@@ -873,14 +878,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// equal to aliceMutation she is on v1 (published), so draft must NOT
 	// include her. One millisecond earlier, she is still on v0, so draft MUST
 	// include her. Probes the half-open interval semantic.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidAt: aliceMutation})
+	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation})
 	if err != nil {
 		t.Fatalf("draft@aliceMutation: %v", err)
 	}
 	if containsNodeID(hits, aliceID) {
 		t.Errorf("draft@aliceMutation: alice present, but her v1 (published) starts at this instant")
 	}
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", QueryOpts{ValidAt: aliceMutation - 1})
+	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation - 1})
 	if err != nil {
 		t.Fatalf("draft@aliceMutation-1: %v", err)
 	}
@@ -889,7 +894,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	}
 
 	// Negative: a value nobody ever wrote returns empty.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "archived", QueryOpts{ValidAt: t0})
+	hits, err = g.NodesByLabelAndProperty("Doc", "status", "archived", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("archived@t0: %v", err)
 	}
@@ -948,31 +953,31 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: KNOWS = {r1, r3}; WORKS_WITH = {r2}.
-	got, err := g.RelationshipsByType("KNOWS", QueryOpts{ValidAt: t0})
+	got, err := g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("KNOWS@t0: %v", err)
 	}
 	assertRelSet(t, "KNOWS@t0", got, []types.RelID{r1ID, r3ID})
-	got, err = g.RelationshipsByType("WORKS_WITH", QueryOpts{ValidAt: t0})
+	got, err = g.RelationshipsByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@t0: %v", err)
 	}
 	assertRelSet(t, "WORKS_WITH@t0", got, []types.RelID{r2ID})
 
 	// At tNow: r1 and r2 deleted; r3 survives. WORKS_WITH is empty.
-	got, err = g.RelationshipsByType("KNOWS", QueryOpts{ValidAt: tNow})
+	got, err = g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("KNOWS@tNow: %v", err)
 	}
 	assertRelSet(t, "KNOWS@tNow", got, []types.RelID{r3ID})
-	got, err = g.RelationshipsByType("WORKS_WITH", QueryOpts{ValidAt: tNow})
+	got, err = g.RelationshipsByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@tNow: %v", err)
 	}
 	assertRelSet(t, "WORKS_WITH@tNow", got, []types.RelID{})
 
 	// A type nobody ever used returns empty.
-	got, err = g.RelationshipsByType("Phantom", QueryOpts{ValidAt: t0})
+	got, err = g.RelationshipsByType("Phantom", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Phantom@t0: %v", err)
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -11,7 +13,7 @@ import (
 // AddNodeLabel adds the given label to an existing node.
 // Idempotent: returns nil without bumping version or writing history if the
 // node already has the label. Validates label name length and enforces
-// MaxLabelsPerNode. Returns ErrNodeNotFound if the node does not exist.
+// MaxLabelsPerNode. Returns storepkg.ErrNodeNotFound if the node does not exist.
 // Acquires g.mu.RLock for transaction isolation — blocked while a tx holds g.mu.Lock.
 func (g *Graph) AddNodeLabel(id types.NodeID, label string) error {
 	g.mu.RLock()
@@ -19,7 +21,7 @@ func (g *Graph) AddNodeLabel(id types.NodeID, label string) error {
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil && mutated {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }
@@ -110,7 +112,7 @@ func (g *Graph) RemoveNodeLabel(id types.NodeID, label string) error {
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }

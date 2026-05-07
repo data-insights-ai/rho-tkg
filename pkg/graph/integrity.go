@@ -3,6 +3,8 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -12,12 +14,12 @@ import (
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the node never existed (no current entity AND no history).
 //
-// Handles deleted entities: if the current node is gone (ErrNodeNotFound) but
+// Handles deleted entities: if the current node is gone (storepkg.ErrNodeNotFound) but
 // history exists, verifies the history chain alone. Labels are extracted from
 // the last history entry's internal tokens.
 func (g *Graph) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 	current, err := g.store.GetNode(id)
-	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return false, err
 	}
 	// current may be nil for deleted entities.
@@ -28,7 +30,7 @@ func (g *Graph) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 	}
 
 	if current == nil && len(history) == 0 {
-		return false, ErrNodeNotFound
+		return false, storepkg.ErrNodeNotFound
 	}
 
 	// Build chain: history (ascending version order) + current (if exists).
@@ -78,11 +80,11 @@ func (g *Graph) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the relationship never existed (no current AND no history).
 //
-// Handles deleted entities: if the current relationship is gone (ErrRelNotFound)
+// Handles deleted entities: if the current relationship is gone (storepkg.ErrRelNotFound)
 // but history exists, verifies the history chain alone.
 func (g *Graph) VerifyRelHashChain(id types.RelID) (bool, error) {
 	current, err := g.store.GetRelationship(id)
-	if err != nil && !errors.Is(err, ErrRelNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return false, err
 	}
 	// current may be nil for deleted entities.
@@ -93,7 +95,7 @@ func (g *Graph) VerifyRelHashChain(id types.RelID) (bool, error) {
 	}
 
 	if current == nil && len(history) == 0 {
-		return false, ErrRelNotFound
+		return false, storepkg.ErrRelNotFound
 	}
 
 	// Build chain: history (ascending version order) + current (if exists).

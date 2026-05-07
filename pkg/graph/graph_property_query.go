@@ -3,8 +3,10 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -20,7 +22,7 @@ import (
 // time and the predicate re-checked against that historical version, so a
 // node whose label and property held at the requested time is included even
 // if a later version no longer matches.
-func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -28,7 +30,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if !hasTemporalFilter(opts) {
 		return g.store.NodesByLabelAndProperty(tok, key, value, opts)
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 	targetKey := indexpkg.PropertyValueKey(value)
@@ -39,7 +41,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	// store-level property index (when available — falls back internally to a
 	// label scan if no property index is registered), merged with all history
 	// IDs to cover deleted/changed nodes whose historical version matched.
-	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +61,7 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	err = g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -70,6 +72,6 @@ func (g *Graph) NodesByLabelAndProperty(label, key string, value any, opts Query
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
-	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
+	storeutil.SortNodesByID(result)
+	return storeutil.PaginateNodes(result, opts.After, opts.Limit), nil
 }

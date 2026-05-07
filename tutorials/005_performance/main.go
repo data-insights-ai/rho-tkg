@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"log"
 	"math/rand"
 	"os"
@@ -21,6 +22,8 @@ import (
 	"runtime/debug"
 	"strconv"
 	"time"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -82,7 +85,7 @@ func main() {
 	fmt.Println("\n=== 2. BadgerStore In-Memory Benchmark ===")
 	// ----------------------------------------------------------------
 
-	bsMem, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+	bsMem, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,7 +109,7 @@ func main() {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	bs, err := graph.NewBadgerStore(graph.BadgerStoreConfig{Dir: tmpDir})
+	bs, err := badger.New(badger.Config{Dir: tmpDir})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -133,7 +136,7 @@ func main() {
 	}, nodeCount, relCount)
 
 	memUsageBadger := measureMemoryUsage(func() *graph.Graph {
-		bs, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+		bs, err := badger.New(badger.Config{InMemory: true})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -159,7 +162,7 @@ func main() {
 	fmt.Println("\n=== 6. Point Lookup Performance ===")
 	// ----------------------------------------------------------------
 
-	bsQuery, err := graph.NewBadgerStore(graph.BadgerStoreConfig{InMemory: true})
+	bsQuery, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -250,7 +253,7 @@ func main() {
 	start = time.Now()
 	for i := range labelQueryCount {
 		label := fmt.Sprintf("Type%d", i%10)
-		nodes, err := gQuery.NodesByLabel(label, graph.QueryOpts{})
+		nodes, err := gQuery.NodesByLabel(label, store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -344,7 +347,7 @@ func main() {
 	// Without property index: falls back to label scan + property filter.
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{}); err != nil {
+		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
 			log.Fatalf("NodesByLabelAndProperty: %v", err)
 		}
 	}
@@ -359,7 +362,7 @@ func main() {
 	// With property index: O(1) hash lookup.
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{}); err != nil {
+		if _, err := gProp.NodesByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
 			log.Fatalf("NodesByLabelAndProperty: %v", err)
 		}
 	}
@@ -482,14 +485,14 @@ func main() {
 		}
 	}
 
-	if err := gVec.CreateVectorIndex("Doc", "embedding", vecDims, graph.DistanceCosine); err != nil {
+	if err := gVec.CreateVectorIndex("Doc", "embedding", vecDims, store.DistanceCosine); err != nil {
 		log.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	query := randomVec(vecDims, rng)
 	start = time.Now()
 	for range vecQ {
-		results, err := gVec.SearchNearestNodes("Doc", "embedding", query, vecK, graph.QueryOpts{})
+		results, err := gVec.SearchNearestNodes("Doc", "embedding", query, vecK, store.QueryOpts{})
 		if err != nil {
 			log.Fatalf("SearchNearestNodes: %v", err)
 		}

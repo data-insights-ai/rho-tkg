@@ -2,6 +2,7 @@ package graph
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -14,15 +15,15 @@ import (
 // Returns nil, nil for non-positive k (k <= 0) — empty result is the
 // natural answer, matching how unregistered labels and empty indexes behave.
 //
-// QueryOpts:
+// storepkg.QueryOpts:
 //   - ValidAt / ValidStart+ValidEnd: only nodes whose label-version is valid
 //     at the requested time (or interval) are eligible. Eligibility filtering
 //     happens BEFORE the k-cut so near-but-ineligible candidates do not crowd
 //     out farther-but-eligible candidates from the top-k. The returned node
 //     is the historical version (matching the requested time).
-//   - Depth (TieredStore only): DepthHot/DepthWarm exclude archive-resident
+//   - Depth (tiered.Store only): storepkg.DepthHot/storepkg.DepthWarm exclude archive-resident
 //     nodes from the candidate set. Combining a temporal filter with
-//     Depth != DepthAll returns ErrDepthTemporalUnsupported, matching
+//     Depth != storepkg.DepthAll returns ErrDepthTemporalUnsupported, matching
 //     NodesByLabel/AllNodes/etc.
 //   - After / Limit: cursor pagination over distance-ordered results.
 //     "After" matches by the cursor node's ID — entries up to and including
@@ -36,13 +37,13 @@ import (
 // the top-k may differ from a hypothetical "rank by t-vector" query.
 //
 // External-Store fallback caveat: package-internal Store implementations
-// (MemoryStore/BadgerStore/TieredStore) push the eligibility filter into
+// (MemoryStore/BadgerStore/tiered.Store) push the eligibility filter into
 // the search before the k-cut via filteredVectorSearchStore. An external
 // Store implementation that does NOT satisfy that hook falls back to
 // post-filtering: SearchNearest returns k by raw distance, then ineligible
 // entries are dropped. Result count may be < k even if more eligible
 // candidates exist farther out — over-fetch with larger k to compensate.
-func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if k <= 0 {
 		return nil, nil
 	}
@@ -57,7 +58,7 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 		}
 		return paginateNearestNodes(nodes, opts.After, opts.Limit), nil
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 
@@ -78,7 +79,7 @@ func (g *Graph) SearchNearestNodes(label, propertyKey string, query []float32, k
 		// We can still apply temporal filtering after-the-fact, accepting
 		// the ordering caveat that a near-but-ineligible candidate could
 		// crowd out farther-but-eligible candidates from the top-k.
-		nodes, err := g.store.SearchNearestNodes(tok, propertyKey, query, k, QueryOpts{})
+		nodes, err := g.store.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{})
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +155,7 @@ func paginateNearestNodes(nodes []*types.Node, after types.EntityID, limit int) 
 // time and ineligible entries are dropped. Ordering caveat: a near candidate
 // that fails eligibility may crowd a farther eligible one out of the top-k;
 // callers in this fallback path should over-fetch via larger k.
-func resolveTemporalVectorMatches(g *Graph, candidates []*types.Node, opts QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
+func resolveTemporalVectorMatches(g *Graph, candidates []*types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
 	resolved := make([]*types.Node, 0, len(candidates))
 	for _, c := range candidates {
 		n, err := g.findNodeVersionForOpts(c.ID(), opts, pred)

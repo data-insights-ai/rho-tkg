@@ -1,0 +1,1720 @@
+package tiered
+
+import (
+	"errors"
+	"sort"
+	"sync"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// stripDepth returns opts with the Depth field cleared.
+// Used when forwarding to single-shard queries (Depth is Store-level).
+// All other fields — Limit, After, ValidAt, ValidStart, ValidEnd — are preserved
+// so per-shard calls respect pagination and temporal filters.
+func stripDepth(opts QueryOpts) QueryOpts {
+	opts.Depth = 0
+	return opts
+}
+
+// Internal slice converters bridging typed entity IDs and raw snowflake.ID
+// for cross-shard merge helpers (mergeIDSlices, applyIDPagination).
+func nodeIDsToRaw(ids []types.NodeID) []snowflake.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]snowflake.ID, len(ids))
+	for i, id := range ids {
+		out[i] = id.SnowflakeID()
+	}
+	return out
+}
+
+func relIDsToRaw(ids []types.RelID) []snowflake.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]snowflake.ID, len(ids))
+	for i, id := range ids {
+		out[i] = id.SnowflakeID()
+	}
+	return out
+}
+
+func rawToNodeIDs(ids []snowflake.ID) []types.NodeID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]types.NodeID, len(ids))
+	for i, id := range ids {
+		out[i] = types.NodeID(id)
+	}
+	return out
+}
+
+func rawToRelIDs(ids []snowflake.ID) []types.RelID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]types.RelID, len(ids))
+	for i, id := range ids {
+		out[i] = types.RelID(id)
+	}
+	return out
+}
+
+// --- Entity reads ---
+// O(1) shard resolution: ref probe + timestamp extraction.
+
+func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	return store.GetNode(nid)
+}
+
+func (ts *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	return shard.GetRelationship(rid)
+}
+
+func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
+	var result []*types.Node
+	for _, id := range ids {
+		n, err := ts.GetNode(id)
+		if errors.Is(err, ErrNodeNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, n)
+	}
+	return result, nil
+}
+
+func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	var result []*types.Relationship
+	for _, id := range ids {
+		r, err := ts.GetRelationship(id)
+		if errors.Is(err, ErrRelNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, nil
+}
+
+// --- Label/type queries ---
+
+func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	if ts.ontology.ClassifyByToken(token) == ClassReference {
+		// Reference labels live on refShard + refArchive. Without merging
+		// archive results, archived reference entities silently disappear
+		// from NodesByLabel even though GetNode still finds them.
+		//
+		// Depth gating: archive is the coldest tier of reference data and
+		// must NOT surface in DepthHot/DepthWarm — those callers explicitly
+		// asked to exclude colder tiers. Only DepthAll (zero value, default)
+		// includes archive content. Mirrors the AllNodes / AllRelationships
+		// gating policy.
+		refNodes, err := ts.refShard.NodesByLabel(token, stripDepth(opts))
+		if err != nil {
+			return nil, err
+		}
+		if opts.Depth != DepthAll {
+			return applyNodePagination(refNodes, opts), nil
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive == nil {
+			return refNodes, nil
+		}
+		archiveNodes, err := archive.NodesByLabel(token, stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
+		return applyNodePagination(merged, opts), nil
+	}
+	// Event label: fan out across all event shards matching depth.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].nodes, results[i].err = store.NodesByLabel(token, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Node
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
+		}
+	}
+
+	merged := mergeNodeSlices(slices)
+	return applyNodePagination(merged, opts), nil
+}
+
+func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	refRels, err := ts.refShard.RelationshipsByType(token, stripDepth(opts))
+	if err != nil {
+		return nil, err
+	}
+
+	// refArchive parity: archived rels (migrated together with their
+	// reference endpoints) carry the same type token. Depth-gated to
+	// DepthAll — archive is the coldest tier of reference data and must
+	// not surface in DepthHot/DepthWarm queries. Mirrors NodesByLabel /
+	// AllRelationships gating policy.
+	var archiveRels []*types.Relationship
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveRels, err = archive.RelationshipsByType(token, stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	type result struct {
+		rels []*types.Relationship
+		err  error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].rels, results[i].err = store.RelationshipsByType(token, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Relationship
+	if len(refRels) > 0 {
+		slices = append(slices, refRels)
+	}
+	if len(archiveRels) > 0 {
+		slices = append(slices, archiveRels)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.rels) > 0 {
+			slices = append(slices, r.rels)
+		}
+	}
+
+	merged := mergeRelSlices(slices)
+	return applyRelPagination(merged, opts), nil
+}
+
+// --- Bulk queries ---
+
+func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	refNodes, err := ts.refShard.AllNodes(stripDepth(opts))
+	if err != nil {
+		return nil, err
+	}
+
+	// refArchive parity: archived nodes are still GetNode-addressable, so
+	// public bulk scans must include them. Otherwise an archived entity
+	// silently disappears from AllNodes / similar APIs even though point
+	// lookups still find it. checkoutArchive lazy-opens on cold start
+	// (catalog-archive-shard-but-pointer-nil).
+	//
+	// Depth gating: archive is the coldest tier of reference data;
+	// including it in DepthHot/DepthWarm would surface entities the
+	// caller asked to exclude. Only DepthAll requests archive content.
+	// refShard is queried for all Depth values per existing semantics
+	// (reference data is not Depth-tiered, only event data is).
+	var archiveNodes []*types.Node
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveNodes, err = archive.AllNodes(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].nodes, results[i].err = store.AllNodes(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Node
+	if len(refNodes) > 0 {
+		slices = append(slices, refNodes)
+	}
+	if len(archiveNodes) > 0 {
+		slices = append(slices, archiveNodes)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
+		}
+	}
+
+	merged := mergeNodeSlices(slices)
+	return applyNodePagination(merged, opts), nil
+}
+
+func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	refRels, err := ts.refShard.AllRelationships(stripDepth(opts))
+	if err != nil {
+		return nil, err
+	}
+
+	// refArchive parity: see AllNodes above. Depth-gated to DepthAll —
+	// archive is the coldest tier of reference data and must not surface
+	// in DepthHot/DepthWarm queries.
+	var archiveRels []*types.Relationship
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			archiveRels, err = archive.AllRelationships(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	type result struct {
+		rels []*types.Relationship
+		err  error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].rels, results[i].err = store.AllRelationships(stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Relationship
+	if len(refRels) > 0 {
+		slices = append(slices, refRels)
+	}
+	if len(archiveRels) > 0 {
+		slices = append(slices, archiveRels)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.rels) > 0 {
+			slices = append(slices, r.rels)
+		}
+	}
+
+	merged := mergeRelSlices(slices)
+	return applyRelPagination(merged, opts), nil
+}
+
+// --- Adjacency queries ---
+
+func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	// Entity + out/ are co-located in the node's shard. Use the checked
+	// resolver so a cold owner stays pinned for the duration of the read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	return shard.OutgoingRelationships(nid, typeToken)
+}
+
+// OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
+// Groups nodeIDs by shard, delegates per-shard, and merges results.
+//
+// Each owner shard is checked out via shardForNodeIDChecked so cold shards
+// remain pinned for the per-shard delegated read.
+func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+
+	// Partition nodeIDs by shard. Track checkin functions so each owner shard
+	// can be released once we are done with it.
+	shardBuckets := make(map[*BadgerStore][]types.NodeID)
+	checkins := make(map[*BadgerStore][]func())
+	releaseAll := func() {
+		for _, fns := range checkins {
+			for _, fn := range fns {
+				fn()
+			}
+		}
+	}
+	for _, id := range nodeIDs {
+		shard, checkin, err := ts.shardForNodeIDChecked(id)
+		if err != nil {
+			releaseAll()
+			return nil, err
+		}
+		shardBuckets[shard] = append(shardBuckets[shard], id)
+		checkins[shard] = append(checkins[shard], checkin)
+	}
+	defer releaseAll()
+
+	// Delegate per-shard and merge.
+	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
+	for shard, bucket := range shardBuckets {
+		m, err := shard.OutgoingRelationshipsForNodes(bucket, typeToken)
+		if err != nil {
+			return nil, err
+		}
+		for nid, rels := range m {
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	// Get relIDs from the node's shard inIdx. The owner is checked out so a
+	// cold node shard cannot be closed mid-read.
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	relIDs := shard.IncomingRelIDs(nid.SnowflakeID(), typeToken)
+	checkin()
+
+	if len(relIDs) == 0 {
+		return nil, nil
+	}
+
+	// Fetch each rel entity via checked shard resolution so cross-shard rels
+	// stored on shards that have aged to cold remain reachable.
+	result := make([]*types.Relationship, 0, len(relIDs))
+	for _, relID := range relIDs {
+		rid := types.RelID(relID)
+		relShard, checkin, err := ts.shardForRelIDChecked(rid)
+		if err != nil {
+			return nil, err
+		}
+		r, err := relShard.GetRelationship(rid)
+		checkin()
+		if errors.Is(err, ErrRelNotFound) {
+			continue // orphan from partial failure
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
+	})
+	return result, nil
+}
+
+// IncomingRelationshipsForNodes batches incoming relationship queries for multiple
+// nodes. For each node, relIDs come from the node's shard inIdx; relationship
+// entities are fetched via cross-shard resolution (relID timestamp -> shard).
+func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
+		return nil, nil
+	}
+
+	// Phase 1: collect relIDs per node from each node's shard inIdx.
+	type relRef struct {
+		nodeID snowflake.ID
+		relID  snowflake.ID
+	}
+	var refs []relRef
+	seen := make(map[snowflake.ID]struct{}, len(typedNodeIDs))
+
+	for _, tnid := range typedNodeIDs {
+		nid := tnid.SnowflakeID()
+		if _, dup := seen[nid]; dup {
+			continue
+		}
+		seen[nid] = struct{}{}
+
+		// Check out the node's owner shard so a cold owner stays pinned for
+		// the inIdx scan; release immediately afterwards because the rel
+		// fetch below uses its own checkout against the rel-owner shard.
+		shard, checkin, err := ts.shardForNodeIDChecked(tnid)
+		if err != nil {
+			return nil, err
+		}
+		relIDs := shard.IncomingRelIDs(nid, typeToken)
+		checkin()
+		for _, rid := range relIDs {
+			refs = append(refs, relRef{nodeID: nid, relID: rid})
+		}
+	}
+
+	if len(refs) == 0 {
+		return nil, nil
+	}
+
+	// Phase 2: fetch each rel entity via checked shard resolution so cross-shard
+	// rels stored on shards that have aged to cold remain reachable.
+	result := make(map[types.NodeID][]*types.Relationship, len(seen))
+	for _, ref := range refs {
+		relShard, checkin, err := ts.shardForRelIDChecked(types.RelID(ref.relID))
+		if err != nil {
+			return nil, err
+		}
+		r, err := relShard.GetRelationship(types.RelID(ref.relID))
+		checkin()
+		if errors.Is(err, ErrRelNotFound) {
+			continue // orphan from partial failure
+		}
+		if err != nil {
+			return nil, err
+		}
+		key := types.NodeID(ref.nodeID)
+		result[key] = append(result[key], r)
+	}
+
+	// Sort per-node slices for deterministic output.
+	for nid := range result {
+		storepkg.SortRelsByID(result[nid])
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// --- Counts ---
+
+func (ts *Store) NodeCount() (int, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	total := 0
+	n, err := ts.refShard.NodeCount()
+	if err != nil {
+		return 0, err
+	}
+	total += n
+
+	// refArchive parity: archived nodes count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.NodeCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return 0, err
+		}
+		n, err := store.NodeCount()
+		es.checkinStore()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func (ts *Store) RelationshipCount() (int, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	total := 0
+	n, err := ts.refShard.RelationshipCount()
+	if err != nil {
+		return 0, err
+	}
+	total += n
+
+	// refArchive parity: archived rels count toward the public total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		ar, err := archive.RelationshipCount()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += ar
+	}
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return 0, err
+		}
+		n, err := store.RelationshipCount()
+		es.checkinStore()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
+	if ts.ontology.ClassifyByToken(token) == ClassReference {
+		n, err := ts.refShard.NodeCountByLabel(token)
+		if err != nil {
+			return 0, err
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return 0, archiveErr
+		}
+		if archive == nil {
+			return n, nil
+		}
+		an, err := archive.NodeCountByLabel(token)
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		return n + an, nil
+	}
+	// Event label: sum across all event shards.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	total := 0
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return 0, err
+		}
+		n, err := store.NodeCountByLabel(token)
+		es.checkinStore()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+func (ts *Store) RelCountByType(token uint16) (int, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	total := 0
+	n, err := ts.refShard.RelCountByType(token)
+	if err != nil {
+		return 0, err
+	}
+	total += n
+
+	// refArchive parity: archived rels of this type count toward total.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.RelCountByType(token)
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return 0, err
+		}
+		n, err := store.RelCountByType(token)
+		es.checkinStore()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
+// --- Property indexes ---
+
+func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
+		// Reference labels live on refShard + refArchive — see NodesByLabel.
+		// Depth-gated: archive is excluded from DepthHot/DepthWarm.
+		refNodes, err := ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		if err != nil {
+			return nil, err
+		}
+		if opts.Depth != DepthAll {
+			return applyNodePagination(refNodes, opts), nil
+		}
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive == nil {
+			return refNodes, nil
+		}
+		archiveNodes, err := archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
+		return applyNodePagination(merged, opts), nil
+	}
+	// Event label: fan out across all event shards matching depth.
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	type result struct {
+		nodes []*types.Node
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]*types.Node
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.nodes) > 0 {
+			slices = append(slices, r.nodes)
+		}
+	}
+
+	merged := mergeNodeSlices(slices)
+	return applyNodePagination(merged, opts), nil
+}
+
+// --- ID enumeration ---
+
+func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	refTyped, err := ts.refShard.AllNodeIDs(stripDepth(opts))
+	if err != nil {
+		return nil, err
+	}
+	refIDs := nodeIDsToRaw(refTyped)
+
+	// refArchive parity: AllNodeIDs must surface archived nodes whenever
+	// AllNodes / GetNode see them. Depth-gated to DepthAll — archive is
+	// the coldest tier of reference data; DepthHot/DepthWarm callers
+	// asked to exclude it. Same policy as AllNodes.
+	var archiveIDs []snowflake.ID
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			typed, err := archive.AllNodeIDs(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+			archiveIDs = nodeIDsToRaw(typed)
+		}
+	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			typed, err := store.AllNodeIDs(stripDepth(opts))
+			results[i].ids = nodeIDsToRaw(typed)
+			results[i].err = err
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]snowflake.ID
+	if len(refIDs) > 0 {
+		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
+		}
+	}
+
+	merged := mergeIDSlices(slices)
+	paginated := applyIDPagination(merged, opts)
+	return rawToNodeIDs(paginated), nil
+}
+
+func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+
+	refTyped, err := ts.refShard.AllRelIDs(stripDepth(opts))
+	if err != nil {
+		return nil, err
+	}
+	refIDs := relIDsToRaw(refTyped)
+
+	// refArchive parity: see AllNodeIDs above. Depth-gated to DepthAll.
+	var archiveIDs []snowflake.ID
+	if opts.Depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return nil, archiveErr
+		}
+		if archive != nil {
+			typed, err := archive.AllRelIDs(stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+			archiveIDs = relIDsToRaw(typed)
+		}
+	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			typed, err := store.AllRelIDs(stripDepth(opts))
+			results[i].ids = relIDsToRaw(typed)
+			results[i].err = err
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]snowflake.ID
+	if len(refIDs) > 0 {
+		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
+		}
+	}
+
+	merged := mergeIDSlices(slices)
+	paginated := applyIDPagination(merged, opts)
+	return rawToRelIDs(paginated), nil
+}
+
+// --- History reads ---
+
+func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	n, err := shard.GetNodeVersion(nid, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return n, err
+	}
+
+	// If the live entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards (incl. cold ones).
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if shard.HasNodeID(nid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, ErrVersionNotFound
+	}
+
+	var found *types.Node
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		n, err := candidate.GetNodeVersion(nid, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = n
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
+}
+
+func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	history, err := store.GetNodeHistory(nid)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	// If the live entity is on this shard, an empty history here is
+	// authoritative — the deleted-entity fan-out is unnecessary and would
+	// needlessly wake cold shards.
+	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive history versions remain
+	// on refShard and must be discovered via the fan-out below.
+	if store.HasNodeID(nid.SnowflakeID()) && store != ts.refArchive.Load() {
+		return nil, nil
+	}
+
+	var found []*types.Node
+	searchErr := ts.forEachHistoryShard(store, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetNodeHistory(nid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
+}
+
+func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	r, err := shard.GetRelVersion(rid, version)
+	if err == nil || !errors.Is(err, ErrVersionNotFound) {
+		return r, err
+	}
+
+	// If the live rel entity is on this shard, the local ErrVersionNotFound is
+	// authoritative — no need to wake other shards.
+	// Skip the optimisation when the live rel sits on refArchive: ArchiveNode
+	// only migrates the current entity, so pre-archive rel history versions
+	// remain on refShard and must be discovered via the fan-out below.
+	if shard.HasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, ErrVersionNotFound
+	}
+
+	var found *types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		r, err := candidate.GetRelVersion(rid, version)
+		if errors.Is(err, ErrVersionNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		found = r
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if found != nil {
+		return found, nil
+	}
+	return nil, ErrVersionNotFound
+}
+
+func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	shard, checkin, err := ts.shardForRelIDChecked(rid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	history, err := shard.GetRelHistory(rid)
+	if err != nil || len(history) > 0 {
+		return history, err
+	}
+
+	// If the live rel entity is on this shard, an empty history here is
+	// authoritative — skip the deleted-rel fan-out so cold shards are not
+	// needlessly opened.
+	// Skip the optimisation when the live rel sits on refArchive: pre-archive
+	// rel history remains on refShard, so fall through to the fan-out below.
+	if shard.HasRelID(rid.SnowflakeID()) && shard != ts.refArchive.Load() {
+		return nil, nil
+	}
+
+	var found []*types.Relationship
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.GetRelHistory(rid)
+		if err != nil {
+			return false, err
+		}
+		if len(history) == 0 {
+			return false, nil
+		}
+		found = history
+		return true, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return found, nil
+}
+
+func (ts *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	refTyped, err := ts.refShard.AllNodeHistoryIDs()
+	if err != nil {
+		return nil, err
+	}
+	refIDs := nodeIDsToRaw(refTyped)
+
+	// refArchive parity: ArchiveNode + post-archive UpdateNode write history
+	// records to refArchive via the rel/node ID resolvers. ForEachNodeHistoryID
+	// already enumerates refArchive; the slice variant must too, otherwise
+	// archived-then-updated entities silently disappear from history scans.
+	// checkoutArchive pins the archive against a concurrent Close so the
+	// underlying DB cannot be torn down between Load and use.
+	var archiveIDs []snowflake.ID
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveTyped, err := archive.AllNodeHistoryIDs()
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		archiveIDs = nodeIDsToRaw(archiveTyped)
+	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			typed, err := store.AllNodeHistoryIDs()
+			results[i].ids = nodeIDsToRaw(typed)
+			results[i].err = err
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]snowflake.ID
+	if len(refIDs) > 0 {
+		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
+		}
+	}
+
+	return rawToNodeIDs(mergeIDSlices(slices)), nil
+}
+
+func (ts *Store) AllRelHistoryIDs() ([]types.RelID, error) {
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	refTyped, err := ts.refShard.AllRelHistoryIDs()
+	if err != nil {
+		return nil, err
+	}
+	refIDs := relIDsToRaw(refTyped)
+
+	// refArchive parity: see AllNodeHistoryIDs above.
+	var archiveIDs []snowflake.ID
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return nil, archiveErr
+	}
+	if archive != nil {
+		archiveTyped, err := archive.AllRelHistoryIDs()
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		archiveIDs = relIDsToRaw(archiveTyped)
+	}
+
+	type result struct {
+		ids []snowflake.ID
+		err error
+	}
+	results := make([]result, len(eventShards))
+	var wg sync.WaitGroup
+	for i, es := range eventShards {
+		wg.Add(1)
+		go func(i int, es *EventShard) {
+			defer wg.Done()
+			store, err := es.checkoutStore(ts)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			defer es.checkinStore()
+			typed, err := store.AllRelHistoryIDs()
+			results[i].ids = relIDsToRaw(typed)
+			results[i].err = err
+		}(i, es)
+	}
+	wg.Wait()
+
+	var slices [][]snowflake.ID
+	if len(refIDs) > 0 {
+		slices = append(slices, refIDs)
+	}
+	if len(archiveIDs) > 0 {
+		slices = append(slices, archiveIDs)
+	}
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		if len(r.ids) > 0 {
+			slices = append(slices, r.ids)
+		}
+	}
+
+	return rawToRelIDs(mergeIDSlices(slices)), nil
+}
+
+// forEachHistoryShard probes shards that may own history after the live entity
+// index has been deleted. Reference entity history lives on the reference
+// shard even when timestamp fallback selects an event shard; cross-shard
+// relationship history lives with the relationship entity shard.
+//
+// Probes refShard, refArchive (if present), and ALL event shards (hot, warm,
+// and cold). Cold shards must be included: a cross-shard event→event
+// relationship's history is written to the start-node's home shard, which may
+// have transitioned warm→cold via `ColdAfter` demotion after the relationship
+// was deleted. Skipping cold shards here would silently lose deleted-rel
+// history once the start-node's shard ages out. The lazy-open cost is paid
+// once per cold shard per process; subsequent probes are cheap Badger Seeks.
+func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	if ts.refShard != skip {
+		stop, err := fn(ts.refShard)
+		if err != nil || stop {
+			return err
+		}
+	}
+
+	// Pin the archive via checkoutArchive (incrementing archiveActiveReqs)
+	// so the callback sees a stable handle even if Close / closeIdleShards
+	// races. checkoutArchive lazy-opens on cold start when the catalog
+	// records an archive but the pointer is nil. The checkin must wrap
+	// the callback invocation so the pin is released on every exit path.
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil && archive != skip {
+		stop, err := fn(archive)
+		archiveCheckin()
+		if err != nil || stop {
+			return err
+		}
+	} else if archive != nil {
+		archiveCheckin()
+	}
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range eventShards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		if store == skip {
+			es.checkinStore()
+			continue
+		}
+		stop, cbErr := fn(store)
+		es.checkinStore()
+		if cbErr != nil {
+			return cbErr
+		}
+		if stop {
+			return nil
+		}
+	}
+	return nil
+}
+
+// --- ForEach iterators ---
+// Sequential shard iteration — one shard at a time, no goroutines, no mergeIDSlices.
+// This eliminates the O(N) per-shard slice allocations that cause OOM on large graphs.
+
+func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachNodeID(func(id types.NodeID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachNodeID(func(id types.NodeID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	// Event shards — sequential, depth=all.
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachNodeID(func(id types.NodeID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachRelID(func(id types.RelID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachRelID(func(id types.RelID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachRelID(func(id types.RelID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachNodeHistoryID(func(id types.NodeID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (ts *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
+	stopped := false
+	if err := ts.refShard.ForEachRelHistoryID(func(id types.RelID) bool {
+		if !fn(id) {
+			stopped = true
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if stopped {
+		return nil
+	}
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	for _, es := range shards {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return err
+		}
+		err = store.ForEachRelHistoryID(func(id types.RelID) bool {
+			if !fn(id) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		es.checkinStore()
+		if err != nil {
+			return err
+		}
+		if stopped {
+			return nil
+		}
+	}
+	return nil
+}
+
+// --- Merge helpers ---
+// Standard k-way merge of pre-sorted slices. For Phase 3a with 2 shards,
+// this is a simple 2-way merge.
+
+func mergeNodeSlices(slices [][]*types.Node) []*types.Node {
+	if len(slices) == 0 {
+		return nil
+	}
+	if len(slices) == 1 {
+		return slices[0]
+	}
+
+	// 2-way merge for the common case.
+	total := 0
+	for _, s := range slices {
+		total += len(s)
+	}
+	result := make([]*types.Node, 0, total)
+
+	// Flatten and sort (simple approach for small shard counts).
+	for _, s := range slices {
+		result = append(result, s...)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
+	})
+	return result
+}
+
+func mergeRelSlices(slices [][]*types.Relationship) []*types.Relationship {
+	if len(slices) == 0 {
+		return nil
+	}
+	if len(slices) == 1 {
+		return slices[0]
+	}
+
+	total := 0
+	for _, s := range slices {
+		total += len(s)
+	}
+	result := make([]*types.Relationship, 0, total)
+	for _, s := range slices {
+		result = append(result, s...)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
+	})
+	return result
+}
+
+func mergeIDSlices(slices [][]snowflake.ID) []snowflake.ID {
+	if len(slices) == 0 {
+		return nil
+	}
+	if len(slices) == 1 {
+		return slices[0]
+	}
+
+	total := 0
+	for _, s := range slices {
+		total += len(s)
+	}
+	result := make([]snowflake.ID, 0, total)
+	for _, s := range slices {
+		result = append(result, s...)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i] < result[j]
+	})
+	return result
+}
+
+// --- Pagination helpers ---
+// Apply After/Limit from QueryOpts to already-merged, sorted slices.
+
+func applyNodePagination(nodes []*types.Node, opts QueryOpts) []*types.Node {
+	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
+		i := sort.Search(len(nodes), func(i int) bool {
+			return nodes[i].ID().SnowflakeID() > afterRaw
+		})
+		nodes = nodes[i:]
+	}
+	if opts.Limit > 0 && len(nodes) > opts.Limit {
+		nodes = nodes[:opts.Limit]
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
+	return nodes
+}
+
+func applyRelPagination(rels []*types.Relationship, opts QueryOpts) []*types.Relationship {
+	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
+		i := sort.Search(len(rels), func(i int) bool {
+			return rels[i].ID().SnowflakeID() > afterRaw
+		})
+		rels = rels[i:]
+	}
+	if opts.Limit > 0 && len(rels) > opts.Limit {
+		rels = rels[:opts.Limit]
+	}
+	if len(rels) == 0 {
+		return nil
+	}
+	return rels
+}
+
+func applyIDPagination(ids []snowflake.ID, opts QueryOpts) []snowflake.ID {
+	if opts.After != 0 {
+		afterRaw := opts.After.SnowflakeID()
+		i := sort.Search(len(ids), func(i int) bool {
+			return ids[i] > afterRaw
+		})
+		ids = ids[i:]
+	}
+	if opts.Limit > 0 && len(ids) > opts.Limit {
+		ids = ids[:opts.Limit]
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}

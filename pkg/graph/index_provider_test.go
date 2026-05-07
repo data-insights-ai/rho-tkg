@@ -8,16 +8,21 @@ import (
 	"sync/atomic"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// mockIndexProvider implements the new (Phase 6) IndexProvider interface.
+// mockIndexProvider implements the new (Phase 6) indexpkg.IndexProvider interface.
 // Captures events it receives and tracks Close calls. Tests assert on its
 // observable state.
 type mockIndexProvider struct {
 	name    string
 	mu      sync.Mutex
-	events  []Event
+	events  []eventspkg.Event
 	closed  atomic.Bool
 	closeFn func() error // optional; returns nil if unset
 	onErr   error        // optional; returned from OnEvent when set
@@ -25,7 +30,7 @@ type mockIndexProvider struct {
 
 func (m *mockIndexProvider) Name() string { return m.name }
 
-func (m *mockIndexProvider) OnEvent(ev Event) error {
+func (m *mockIndexProvider) OnEvent(ev eventspkg.Event) error {
 	m.mu.Lock()
 	m.events = append(m.events, ev)
 	m.mu.Unlock()
@@ -40,27 +45,27 @@ func (m *mockIndexProvider) Close() error {
 	return nil
 }
 
-func (m *mockIndexProvider) capturedEvents() []Event {
+func (m *mockIndexProvider) capturedEvents() []eventspkg.Event {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]Event, len(m.events))
+	out := make([]eventspkg.Event, len(m.events))
 	copy(out, m.events)
 	return out
 }
 
-// mockLegacyIndexProvider implements the LegacyIndexProvider shape so the
+// mockLegacyIndexProvider implements the indexpkg.LegacyIndexProvider shape so the
 // backward-compat path through RegisterLegacyIndexProvider can be exercised.
 type mockLegacyIndexProvider struct {
 	name      string
 	mu        sync.Mutex
-	events    []Event
-	graphSeen *Graph // captured from OnEvent's graph argument
+	events    []eventspkg.Event
+	graphSeen indexpkg.GraphReader // captured from OnEvent's graph argument
 	closed    atomic.Bool
 }
 
 func (m *mockLegacyIndexProvider) Name() string { return m.name }
 
-func (m *mockLegacyIndexProvider) OnEvent(ev Event, g *Graph) {
+func (m *mockLegacyIndexProvider) OnEvent(ev eventspkg.Event, g indexpkg.GraphReader) {
 	m.mu.Lock()
 	m.events = append(m.events, ev)
 	m.graphSeen = g
@@ -72,16 +77,16 @@ func (m *mockLegacyIndexProvider) Close() error {
 	return nil
 }
 
-func (m *mockLegacyIndexProvider) capturedEvents() []Event {
+func (m *mockLegacyIndexProvider) capturedEvents() []eventspkg.Event {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]Event, len(m.events))
+	out := make([]eventspkg.Event, len(m.events))
 	copy(out, m.events)
 	return out
 }
 
-// initializableProvider implements both IndexProvider and Initializable.
-// Tests verify the bulk-load callback receives a usable GraphReader and
+// initializableProvider implements both indexpkg.IndexProvider and indexpkg.Initializable.
+// Tests verify the bulk-load callback receives a usable indexpkg.GraphReader and
 // that errors from Init roll back the registration.
 type initializableProvider struct {
 	mockIndexProvider
@@ -92,16 +97,16 @@ type initializableProvider struct {
 	initMu     sync.Mutex
 }
 
-func (p *initializableProvider) Init(g GraphReader) error {
+func (p *initializableProvider) Init(g indexpkg.GraphReader) error {
 	p.initCalled.Add(1)
 	if p.initErr != nil {
 		return p.initErr
 	}
-	nodes, err := g.AllNodes(QueryOpts{})
+	nodes, err := g.AllNodes(storepkg.QueryOpts{})
 	if err != nil {
 		return err
 	}
-	rels, err := g.AllRelationships(QueryOpts{})
+	rels, err := g.AllRelationships(storepkg.QueryOpts{})
 	if err != nil {
 		return err
 	}
@@ -125,7 +130,7 @@ func newProviderTestGraph(t *testing.T) *Graph {
 func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
 	g := newProviderTestGraph(t)
 
-	providers := []IndexProvider{
+	providers := []indexpkg.IndexProvider{
 		&mockIndexProvider{name: "charlie"},
 		&mockIndexProvider{name: "alpha"},
 		&mockIndexProvider{name: "bravo"},
@@ -150,16 +155,16 @@ func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
 		t.Fatalf("first register: %v", err)
 	}
 	err := g.RegisterIndexProvider(&mockIndexProvider{name: "spatial"})
-	if !errors.Is(err, ErrIndexProviderExists) {
-		t.Errorf("expected ErrIndexProviderExists, got %v", err)
+	if !errors.Is(err, indexpkg.ErrIndexProviderExists) {
+		t.Errorf("expected indexpkg.ErrIndexProviderExists, got %v", err)
 	}
 }
 
 func TestIndexProvider_EmptyNameRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
 	err := g.RegisterIndexProvider(&mockIndexProvider{name: ""})
-	if !errors.Is(err, ErrIndexProviderEmptyName) {
-		t.Errorf("expected ErrIndexProviderEmptyName, got %v", err)
+	if !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
+		t.Errorf("expected indexpkg.ErrIndexProviderEmptyName, got %v", err)
 	}
 }
 
@@ -181,7 +186,7 @@ func TestIndexProvider_AutoCreatesEventBus(t *testing.T) {
 		t.Fatalf("register: %v", err)
 	}
 	if g.GetEventBus() == nil {
-		t.Error("RegisterIndexProvider should auto-create an EventBus when none is attached")
+		t.Error("RegisterIndexProvider should auto-create an eventspkg.EventBus when none is attached")
 	}
 }
 
@@ -200,8 +205,8 @@ func TestIndexProvider_ReceivesNodeEvents(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("got %d events, want 1", len(events))
 	}
-	if events[0].Type != EventNodeCreate {
-		t.Errorf("event type: got %v, want EventNodeCreate", events[0].Type)
+	if events[0].Type != eventspkg.EventNodeCreate {
+		t.Errorf("event type: got %v, want eventspkg.EventNodeCreate", events[0].Type)
 	}
 	if events[0].EntityID != types.EntityID(n.ID()) {
 		t.Errorf("event entity id: got %v, want %v", events[0].EntityID, types.EntityID(n.ID()))
@@ -242,8 +247,8 @@ func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 func TestIndexProvider_UnregisterUnknown(t *testing.T) {
 	g := newProviderTestGraph(t)
 	err := g.UnregisterIndexProvider("nope")
-	if !errors.Is(err, ErrIndexProviderNotFound) {
-		t.Errorf("expected ErrIndexProviderNotFound, got %v", err)
+	if !errors.Is(err, indexpkg.ErrIndexProviderNotFound) {
+		t.Errorf("expected indexpkg.ErrIndexProviderNotFound, got %v", err)
 	}
 }
 
@@ -281,7 +286,7 @@ func TestIndexProvider_CloseErrorsAreJoined(t *testing.T) {
 }
 
 // TestIndexProvider_AsyncBusSupported verifies that the Phase 6 redesign
-// removed the "synchronous EventBus only" restriction. Both publisher
+// removed the "synchronous eventspkg.EventBus only" restriction. Both publisher
 // types must accept new IndexProviders.
 func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 	g, err := New(Config{})
@@ -290,7 +295,7 @@ func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	ab := NewAsyncEventBus(AsyncEventBusConfig{QueueSize: 8, Workers: 1})
+	ab := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{QueueSize: 8, Workers: 1})
 	g.SetAsyncEventBus(ab)
 
 	p := &mockIndexProvider{name: "spatial"}
@@ -343,7 +348,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 			switch {
 			case err == nil:
 				successes.Add(1)
-			case errors.Is(err, ErrIndexProviderExists):
+			case errors.Is(err, indexpkg.ErrIndexProviderExists):
 				dups.Add(1)
 			default:
 				other.Add(1)
@@ -357,7 +362,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 		t.Errorf("successes = %d, want 1", successes.Load())
 	}
 	if dups.Load() != N-1 {
-		t.Errorf("ErrIndexProviderExists count = %d, want %d", dups.Load(), N-1)
+		t.Errorf("indexpkg.ErrIndexProviderExists count = %d, want %d", dups.Load(), N-1)
 	}
 	if other.Load() != 0 {
 		t.Errorf("unexpected errors = %d", other.Load())
@@ -383,7 +388,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 	}
 }
 
-// --- Phase 6 redesign: legacy provider, Initializable, GraphReader ---
+// --- Phase 6 redesign: legacy provider, indexpkg.Initializable, indexpkg.GraphReader ---
 
 func TestIndexProvider_LegacyAdapterReceivesEvents(t *testing.T) {
 	g := newProviderTestGraph(t)
@@ -407,8 +412,16 @@ func TestIndexProvider_LegacyAdapterReceivesEvents(t *testing.T) {
 	if events[0].EntityID != types.EntityID(n.ID()) {
 		t.Errorf("event entity id: got %v, want %v", events[0].EntityID, types.EntityID(n.ID()))
 	}
-	if p.graphSeen != g {
-		t.Error("legacy adapter should pass through *Graph reference to OnEvent")
+	// Phase 7f: LegacyIndexProvider.OnEvent now receives a GraphReader (not
+	// *Graph). Verify the reader is non-nil and the adapter forwards a working
+	// reader by reading back the just-created node.
+	if p.graphSeen == nil {
+		t.Fatal("legacy adapter should hand a GraphReader to OnEvent")
+	}
+	if got, err := p.graphSeen.GetNode(n.ID()); err != nil {
+		t.Errorf("legacy adapter GraphReader.GetNode failed: %v", err)
+	} else if got.ID() != n.ID() {
+		t.Errorf("legacy adapter GraphReader.GetNode: got id %v, want %v", got.ID(), n.ID())
 	}
 }
 
@@ -545,18 +558,18 @@ func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
 	}
 }
 
-// graphReaderProbe is a minimal Initializable that records that the
-// GraphReader handed to Init really is restricted (no mutation surface).
-// The compiler enforces this — we cannot call g.AddNode on a GraphReader
+// graphReaderProbe is a minimal indexpkg.Initializable that records that the
+// indexpkg.GraphReader handed to Init really is restricted (no mutation surface).
+// The compiler enforces this — we cannot call g.AddNode on a indexpkg.GraphReader
 // — so the test exists to lock the contract: any future attempt to widen
-// GraphReader will break this test by allowing the recorded type to
+// indexpkg.GraphReader will break this test by allowing the recorded type to
 // expose mutation methods.
 type graphReaderProbe struct {
 	mockIndexProvider
-	receivedReader GraphReader
+	receivedReader indexpkg.GraphReader
 }
 
-func (p *graphReaderProbe) Init(g GraphReader) error {
+func (p *graphReaderProbe) Init(g indexpkg.GraphReader) error {
 	p.receivedReader = g
 	return nil
 }
@@ -568,11 +581,11 @@ func TestIndexProvider_InitReceivesGraphReaderInterface(t *testing.T) {
 		t.Fatalf("register: %v", err)
 	}
 	if p.receivedReader == nil {
-		t.Fatal("Init did not receive a GraphReader")
+		t.Fatal("Init did not receive a indexpkg.GraphReader")
 	}
-	// Confirm the reader is a GraphReader (not *Graph) — type assertion
+	// Confirm the reader is a indexpkg.GraphReader (not *Graph) — type assertion
 	// to *Graph must FAIL because graphReaderView is unexported.
 	if _, ok := p.receivedReader.(*Graph); ok {
-		t.Error("GraphReader should not be a *Graph (would expose mutation surface)")
+		t.Error("indexpkg.GraphReader should not be a *Graph (would expose mutation surface)")
 	}
 }

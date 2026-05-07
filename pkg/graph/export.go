@@ -8,9 +8,11 @@ import (
 	"reflect"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"github.com/vmihailenco/msgpack/v5"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -26,7 +28,7 @@ const exportBatchSize = 1024
 // Record type tags for the export stream. Values ≥ 0x80 are reserved for future use.
 const (
 	exportTagHeader   byte = 0x01 // exportHeader record
-	exportTagRegistry byte = 0x02 // tieredstore.RegistryFileData record
+	exportTagRegistry byte = 0x02 // tiered.RegistryFileData record
 	exportTagNode     byte = 0x03 // current node (nodeWire)
 	exportTagNodeHist byte = 0x04 // node history entry (nodeWire)
 	exportTagRel      byte = 0x05 // current relationship (relWire)
@@ -97,7 +99,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	}
 
 	// --- Registry ---
-	reg := tieredstore.RegistryFileData{
+	reg := tiered.RegistryFileData{
 		Labels:   g.labels.ExportNames(),
 		RelTypes: g.relTypes.ExportNames(),
 	}
@@ -111,12 +113,12 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	// single monolithic slice before fetching (8+ GB for 1B nodes).
 	var nodeCursor types.EntityID
 	for {
-		nodes, err := g.store.AllNodes(QueryOpts{Limit: exportBatchSize, After: nodeCursor})
+		nodes, err := g.store.AllNodes(storepkg.QueryOpts{Limit: exportBatchSize, After: nodeCursor})
 		if err != nil {
 			return fmt.Errorf("export: fetch nodes: %w", err)
 		}
 		for _, n := range nodes {
-			w2 := storepkg.NodeToWire(n)
+			w2 := storeutil.NodeToWire(n)
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
 				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
@@ -128,11 +130,11 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	}
 
 	// --- Node history ---
-	// AllNodeHistoryIDs does not support cursor pagination (no QueryOpts); the full
+	// AllNodeHistoryIDs does not support cursor pagination (no storepkg.QueryOpts); the full
 	// ID slice is loaded once. The history population is typically much smaller than
 	// the live entity population, so the memory impact is acceptable.
-	// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(QueryOpts) to the Store interface
-	// and all three implementations (MemoryStore, BadgerStore, TieredStore) to eliminate
+	// TODO(v3.1.0): add cursor-based AllNodeHistoryIDs(storepkg.QueryOpts) to the Store interface
+	// and all three implementations (MemoryStore, BadgerStore, tiered.Store) to eliminate
 	// the OOM risk at large history depths (e.g., 10K nodes × 1K versions = 10M IDs).
 	nodeHistIDs, err := g.store.AllNodeHistoryIDs()
 	if err != nil {
@@ -144,7 +146,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: get node history %d: %w", id, err)
 		}
 		for _, entry := range history {
-			w2 := storepkg.NodeToWire(entry)
+			w2 := storeutil.NodeToWire(entry)
 			if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
 				return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
 			}
@@ -154,12 +156,12 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 	// --- Current relationships (paginated) ---
 	var relCursor types.EntityID
 	for {
-		rels, err := g.store.AllRelationships(QueryOpts{Limit: exportBatchSize, After: relCursor})
+		rels, err := g.store.AllRelationships(storepkg.QueryOpts{Limit: exportBatchSize, After: relCursor})
 		if err != nil {
 			return fmt.Errorf("export: fetch rels: %w", err)
 		}
 		for _, r := range rels {
-			w2 := storepkg.RelToWire(r)
+			w2 := storeutil.RelToWire(r)
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
 				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
@@ -181,7 +183,7 @@ func (g *Graph) ExportGraph(w io.Writer) error {
 			return fmt.Errorf("export: get rel history %d: %w", id, err)
 		}
 		for _, entry := range history {
-			w2 := storepkg.RelToWire(entry)
+			w2 := storeutil.RelToWire(entry)
 			if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
 				return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
 			}
@@ -248,7 +250,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			}
 
 		case exportTagRegistry:
-			var reg tieredstore.RegistryFileData
+			var reg tiered.RegistryFileData
 			if err := msgpack.Unmarshal(rec.data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
 			}
@@ -272,54 +274,54 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 			}
 
 		case exportTagNode:
-			var wn storepkg.NodeWire
+			var wn storeutil.NodeWire
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
 				return fmt.Errorf("import: node %d: %w", wn.ID, err)
 			}
-			n := storepkg.WireToNode(wn)
-			if err := g.store.PutNode(n); err != nil && !errors.Is(err, ErrNodeExists) {
+			n := storeutil.WireToNode(wn)
+			if err := g.store.PutNode(n); err != nil && !errors.Is(err, storepkg.ErrNodeExists) {
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
 			}
 
 		case exportTagNodeHist:
-			var wn storepkg.NodeWire
+			var wn storeutil.NodeWire
 			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
 				return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 			}
-			n := storepkg.WireToNode(wn)
+			n := storeutil.WireToNode(wn)
 			id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutNodeVersion(id, n.Version(), n); err != nil {
 				return fmt.Errorf("import: put node history %d v%d: %w", wn.ID, n.Version(), err)
 			}
 
 		case exportTagRel:
-			var wr storepkg.RelWire
+			var wr storeutil.RelWire
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {
 				return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 			}
-			rel := storepkg.WireToRel(wr)
-			if err := g.store.PutRelationship(rel); err != nil && !errors.Is(err, ErrRelExists) {
+			rel := storeutil.WireToRel(wr)
+			if err := g.store.PutRelationship(rel); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
 			}
 
 		case exportTagRelHist:
-			var wr storepkg.RelWire
+			var wr storeutil.RelWire
 			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {
 				return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 			}
-			rel := storepkg.WireToRel(wr)
+			rel := storeutil.WireToRel(wr)
 			id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
 			if err := g.store.PutRelVersion(id, rel.Version(), rel); err != nil {
 				return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
@@ -352,7 +354,7 @@ func (g *Graph) ImportGraph(r io.Reader) error {
 // inconsistency later (e.g. failed hash chain verification, lookup
 // misses). Treat ImportGraph as "won't crash on a hostile reader, but
 // post-import audits are still the caller's responsibility."
-func validateNodeWire(w *storepkg.NodeWire) error {
+func validateNodeWire(w *storeutil.NodeWire) error {
 	if w.PrimaryLabel == 0 {
 		return fmt.Errorf("%w: primary label token 0 is reserved", ErrCorruptExport)
 	}
@@ -373,7 +375,7 @@ func validateNodeWire(w *storepkg.NodeWire) error {
 // validateRelWire defends the import boundary against malformed relationship
 // records. types.NewRelationship panics on relType 0; surface a typed error
 // instead.
-func validateRelWire(w *storepkg.RelWire) error {
+func validateRelWire(w *storeutil.RelWire) error {
 	if w.RelType == 0 {
 		return fmt.Errorf("%w: rel type token 0 is reserved", ErrCorruptExport)
 	}

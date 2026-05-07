@@ -5,16 +5,18 @@ import (
 	"errors"
 	"testing"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
+
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// --- ConstraintSet unit tests ---
+// --- temporalpkg.ConstraintSet unit tests ---
 
 func TestTemporalConstraintSet_Add_Len_Items(t *testing.T) {
 	t.Parallel()
 
-	cs := NewConstraintSet()
+	cs := temporalpkg.NewConstraintSet()
 	if cs.Len() != 0 {
 		t.Fatalf("Len() = %d, want 0", cs.Len())
 	}
@@ -22,7 +24,7 @@ func TestTemporalConstraintSet_Add_Len_Items(t *testing.T) {
 		t.Fatalf("Items() = %v, want nil", items)
 	}
 
-	c1 := TemporalConstraint{Kind: ConstraintRelWithinEndpoints}
+	c1 := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
 	cs2 := cs.Add(c1)
 
 	// Original unchanged.
@@ -39,7 +41,7 @@ func TestTemporalConstraintSet_Add_Len_Items(t *testing.T) {
 	}
 
 	// Items returns a copy — mutation does not affect the set.
-	items[0] = TemporalConstraint{Kind: 99}
+	items[0] = temporalpkg.TemporalConstraint{Kind: 99}
 	if cs2.Items()[0] != c1 {
 		t.Error("Items() returned a non-copy; modifying it changed the set")
 	}
@@ -48,8 +50,8 @@ func TestTemporalConstraintSet_Add_Len_Items(t *testing.T) {
 func TestNewConstraintSet(t *testing.T) {
 	t.Parallel()
 
-	c := TemporalConstraint{Kind: ConstraintRelWithinEndpoints}
-	cs := NewConstraintSet(c)
+	c := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
+	cs := temporalpkg.NewConstraintSet(c)
 	if cs.Len() != 1 {
 		t.Errorf("Len() = %d, want 1", cs.Len())
 	}
@@ -61,21 +63,21 @@ func TestSetTemporalConstraints_Replace(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	c := TemporalConstraint{Kind: ConstraintRelWithinEndpoints}
+	c := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
 	g.AddTemporalConstraint(c)
 	if g.TemporalConstraints().Len() != 1 {
 		t.Fatalf("Len() = %d after AddTemporalConstraint, want 1", g.TemporalConstraints().Len())
 	}
 
 	// Replace with a set of two constraints.
-	cs := NewConstraintSet(c, c)
+	cs := temporalpkg.NewConstraintSet(c, c)
 	g.SetTemporalConstraints(cs)
 	if g.TemporalConstraints().Len() != 2 {
 		t.Errorf("Len() = %d after SetTemporalConstraints(2), want 2", g.TemporalConstraints().Len())
 	}
 
 	// Replace with empty — clears all constraints.
-	g.SetTemporalConstraints(ConstraintSet{})
+	g.SetTemporalConstraints(temporalpkg.ConstraintSet{})
 	if g.TemporalConstraints().Len() != 0 {
 		t.Errorf("Len() = %d after SetTemporalConstraints(empty), want 0", g.TemporalConstraints().Len())
 	}
@@ -109,7 +111,7 @@ func TestConstraintRelWithinEndpoints_NoConstraint(t *testing.T) {
 func TestConstraintRelWithinEndpoints_Valid(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	// Open-ended nodes, open-ended rel — always valid.
 	a, err := g.AddNode([]string{"Item"}, nil)
@@ -129,7 +131,7 @@ func TestConstraintRelWithinEndpoints_Valid(t *testing.T) {
 func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -147,20 +149,20 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 
 	_, err = g.AddRelationship("LINK", a, b, nil)
 	if err == nil {
-		t.Fatal("expected ErrRelBeforeStartNode, got nil")
+		t.Fatal("expected temporalpkg.ErrRelBeforeStartNode, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelBeforeStartNode) {
-		t.Errorf("errors.Is(err, ErrRelBeforeStartNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelBeforeStartNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelBeforeStartNode) = false; err = %v", err)
 	}
 }
 
 func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -176,20 +178,20 @@ func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 
 	_, err = g.AddRelationship("LINK", a, b, nil)
 	if err == nil {
-		t.Fatal("expected ErrRelBeforeEndNode, got nil")
+		t.Fatal("expected temporalpkg.ErrRelBeforeEndNode, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelBeforeEndNode) {
-		t.Errorf("errors.Is(err, ErrRelBeforeEndNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelBeforeEndNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelBeforeEndNode) = false; err = %v", err)
 	}
 }
 
 func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -205,20 +207,20 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 
 	_, err = g.AddRelationship("LINK", a, b, nil)
 	if err == nil {
-		t.Fatal("expected ErrRelAfterStartNode, got nil")
+		t.Fatal("expected temporalpkg.ErrRelAfterStartNode, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelAfterStartNode) {
-		t.Errorf("errors.Is(err, ErrRelAfterStartNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelAfterStartNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelAfterStartNode) = false; err = %v", err)
 	}
 }
 
 func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -234,13 +236,13 @@ func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 
 	_, err = g.AddRelationship("LINK", a, b, nil)
 	if err == nil {
-		t.Fatal("expected ErrRelAfterEndNode, got nil")
+		t.Fatal("expected temporalpkg.ErrRelAfterEndNode, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelAfterEndNode) {
-		t.Errorf("errors.Is(err, ErrRelAfterEndNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelAfterEndNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelAfterEndNode) = false; err = %v", err)
 	}
 }
 
@@ -249,7 +251,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 	// Since AddRelationship doesn't set rel temporal, test via the internal method directly.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -262,7 +264,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 
 	// Derive the rel's effective from time so we can set node ranges around it.
 	relID := g.NextRelID()
-	relFrom := storepkg.EntityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storeutil.EntityValidFrom(relID.SnowflakeID(), nil)
 
 	// Both endpoint nodes: valid from before rel, expires after rel.
 	a.SetTemporal(&types.TemporalMetadata{
@@ -283,13 +285,13 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 
 	err = g.checkTemporalConstraints(r, a, b)
 	if err == nil {
-		t.Fatal("expected ErrRelExceedsStartNodeValidity, got nil")
+		t.Fatal("expected temporalpkg.ErrRelExceedsStartNodeValidity, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelExceedsStartNodeValidity) {
-		t.Errorf("errors.Is(err, ErrRelExceedsStartNodeValidity) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
 	}
 }
 
@@ -297,7 +299,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	// rel.ValidTo > endNode.ValidTo — start node has no ValidTo but end node does.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -309,7 +311,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	}
 
 	relID := g.NextRelID()
-	relFrom := storepkg.EntityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storeutil.EntityValidFrom(relID.SnowflakeID(), nil)
 
 	// Start node open-ended, end node expires at relFrom+500.
 	// Start node: no ValidTo — checks (5) won't fire.
@@ -327,13 +329,13 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 
 	err = g.checkTemporalConstraints(r, a, b)
 	if err == nil {
-		t.Fatal("expected ErrRelExceedsEndNodeValidity, got nil")
+		t.Fatal("expected temporalpkg.ErrRelExceedsEndNodeValidity, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelExceedsEndNodeValidity) {
-		t.Errorf("errors.Is(err, ErrRelExceedsEndNodeValidity) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) = false; err = %v", err)
 	}
 }
 
@@ -341,7 +343,7 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 	// errors.Is must work on both the outer sentinel and specific leaf error.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -359,11 +361,11 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 		t.Fatal("expected constraint error")
 	}
 
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelAfterStartNode) {
-		t.Errorf("errors.Is(err, ErrRelAfterStartNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelAfterStartNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelAfterStartNode) = false; err = %v", err)
 	}
 }
 
@@ -372,7 +374,7 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.AddTemporalConstraint(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})
+	g.AddTemporalConstraint(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
 	a, err := g.AddNode([]string{"Item"}, nil)
 	if err != nil {
@@ -388,12 +390,12 @@ func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 	relID := g.NextRelID()
 	_, err = g.ImportRelationshipWithID(context.Background(), relID, "LINK", a, b, nil)
 	if err == nil {
-		t.Fatal("expected ErrRelAfterEndNode from ImportRelationshipWithID, got nil")
+		t.Fatal("expected temporalpkg.ErrRelAfterEndNode from ImportRelationshipWithID, got nil")
 	}
-	if !errors.Is(err, ErrTemporalConstraint) {
-		t.Errorf("errors.Is(err, ErrTemporalConstraint) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
 	}
-	if !errors.Is(err, ErrRelAfterEndNode) {
-		t.Errorf("errors.Is(err, ErrRelAfterEndNode) = false; err = %v", err)
+	if !errors.Is(err, temporalpkg.ErrRelAfterEndNode) {
+		t.Errorf("errors.Is(err, temporalpkg.ErrRelAfterEndNode) = false; err = %v", err)
 	}
 }

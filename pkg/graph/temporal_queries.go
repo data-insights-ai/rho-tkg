@@ -3,8 +3,10 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -18,7 +20,7 @@ func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -29,7 +31,7 @@ func (g *Graph) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -40,7 +42,7 @@ func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship,
 	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -51,7 +53,7 @@ func (g *Graph) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship,
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
+	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -64,7 +66,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 		return nil, nil
 	}
 	// Indexed candidate set + history IDs — avoids a full ForEachNodeID scan.
-	currentByLabel, err := g.store.NodesByLabel(tok, QueryOpts{})
+	currentByLabel, err := g.store.NodesByLabel(tok, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +78,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -88,7 +90,7 @@ func (g *Graph) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -107,7 +109,7 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.getNodeVersionDuring(id, start, end)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -118,7 +120,7 @@ func (g *Graph) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, er
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -132,7 +134,7 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.getRelVersionDuring(id, start, end)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -143,7 +145,7 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
+	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -162,11 +164,11 @@ func (g *Graph) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.
 // version resolution proceeds using only the history chain. The last entry
 // in a deleted entity's history has ValidTo set (tombstone).
 //
-// Returns ErrNodeNotFound if the node never existed (no current, no history).
-// Returns ErrNoVersionValidAt if no version covers the given time.
+// Returns storepkg.ErrNodeNotFound if the node never existed (no current, no history).
+// Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
 func (g *Graph) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error) {
 	current, err := g.store.GetNode(id)
-	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	// current may be nil for deleted entities.
@@ -177,7 +179,7 @@ func (g *Graph) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error)
 	}
 
 	if current == nil && len(history) == 0 {
-		return nil, ErrNodeNotFound
+		return nil, storepkg.ErrNodeNotFound
 	}
 
 	// Build chain: history (ascending version order) + current (if exists).
@@ -194,11 +196,11 @@ func (g *Graph) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error)
 // Mirrors GetNodeAt for relationships. Handles deleted entities by consulting
 // version history when the current relationship is gone.
 //
-// Returns ErrRelNotFound if the relationship never existed (no current, no history).
-// Returns ErrNoVersionValidAt if no version covers the given time.
+// Returns storepkg.ErrRelNotFound if the relationship never existed (no current, no history).
+// Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
 func (g *Graph) GetRelAt(id types.RelID, t types.Instant) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
-	if err != nil && !errors.Is(err, ErrRelNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 	// current may be nil for deleted entities.
@@ -209,7 +211,7 @@ func (g *Graph) GetRelAt(id types.RelID, t types.Instant) (*types.Relationship, 
 	}
 
 	if current == nil && len(history) == 0 {
-		return nil, ErrRelNotFound
+		return nil, storepkg.ErrRelNotFound
 	}
 
 	// Build chain: history (ascending version order) + current (if exists).
@@ -249,7 +251,7 @@ func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*ty
 	if err := g.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -272,14 +274,14 @@ func (g *Graph) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*ty
 	for id := range neighborIDs {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				continue
 			}
 			return nil, err
 		}
 		result = append(result, n)
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -299,7 +301,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	}
 	// Seed candidates from the property index (falls back to a label scan
 	// inside the store when no property index covers (label, key)).
-	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +313,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.GetNodeAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -326,7 +328,7 @@ func (g *Graph) NodesByLabelPropertyAndTime(label, key string, value any, t type
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -349,7 +351,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	end = resolveOpenEndInstant(end)
 	// Seed candidates from the property index (falls back to a label scan
 	// inside the store when no property index covers (label, key)).
-	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, QueryOpts{})
+	currentMatching, err := g.store.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +370,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -378,7 +380,7 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -388,12 +390,12 @@ func (g *Graph) NodesByLabelPropertyDuring(label, key string, value any, start, 
 // that are valid at the given instant. Returns nil if the type is not
 // registered.
 //
-// Thin wrapper over RelationshipsByType(typeName, QueryOpts{ValidAt: t}) —
+// Thin wrapper over RelationshipsByType(typeName, storepkg.QueryOpts{ValidAt: t}) —
 // the named convenience mirror of GetNodesByLabelValidAt. History-aware via
 // the generic-opts path: includes deleted relationships whose type matched
 // at t.
 func (g *Graph) GetRelationshipsByTypeValidAt(relType string, t types.Instant) ([]*types.Relationship, error) {
-	return g.RelationshipsByType(relType, QueryOpts{ValidAt: t})
+	return g.RelationshipsByType(relType, storepkg.QueryOpts{ValidAt: t})
 }
 
 // RelationshipsByTypePropertyAndTime returns relationships matching the type
@@ -416,7 +418,7 @@ func (g *Graph) RelationshipsByTypePropertyAndTime(relType, key string, value an
 	// Seed candidates from the type index. No (type, property) index exists
 	// at the store level for relationships, so the property predicate is
 	// evaluated per-version below.
-	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	current, err := g.store.RelationshipsByType(tok, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +430,7 @@ func (g *Graph) RelationshipsByTypePropertyAndTime(relType, key string, value an
 	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 		r, err := g.GetRelAt(id, t)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -443,7 +445,7 @@ func (g *Graph) RelationshipsByTypePropertyAndTime(relType, key string, value an
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
+	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -472,7 +474,7 @@ func (g *Graph) RelationshipsByTypePropertyDuring(relType, key string, value any
 	end = resolveOpenEndInstant(end)
 	// Seed candidates from the type index. No (type, property) index exists
 	// at the store level for relationships.
-	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	current, err := g.store.RelationshipsByType(tok, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +493,7 @@ func (g *Graph) RelationshipsByTypePropertyDuring(relType, key string, value any
 	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 		r, err := g.findRelVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -501,6 +503,6 @@ func (g *Graph) RelationshipsByTypePropertyDuring(relType, key string, value any
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
+	storeutil.SortRelsByID(result)
 	return result, nil
 }

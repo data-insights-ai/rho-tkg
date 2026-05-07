@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -337,7 +339,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.g.mu.Lock()
 
 	// Buffer events during batch execution; dispatch after g.mu.Unlock.
-	var batchEvents []Event
+	var batchEvents []eventspkg.Event
 	b.g.txEventBuffer = &batchEvents
 
 	unlocked := false
@@ -399,7 +401,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		} else {
 			result.Created += len(b.nodes)
 			for _, pn := range b.nodes {
-				b.g.publishEvent(EventNodeCreate, types.EntityID(pn.node.ID()), txNow, PriorityHigh)
+				b.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(pn.node.ID()), txNow, eventspkg.PriorityHigh)
 			}
 		}
 	}
@@ -488,7 +490,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Created++
-			b.g.publishEvent(EventRelCreate, types.EntityID(pr.rel.ID()), txNow, PriorityHigh)
+			b.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(pr.rel.ID()), txNow, eventspkg.PriorityHigh)
 		}
 	}
 
@@ -504,7 +506,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(EventNodeUpdate, types.EntityID(pu.id), nowInstant(), PriorityNormal)
+			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pu.id), nowInstant(), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -520,7 +522,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(EventRelUpdate, types.EntityID(pu.id), nowInstant(), PriorityNormal)
+			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), nowInstant(), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -535,7 +537,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(EventRelDelete, types.EntityID(id), nowInstant(), PriorityCritical)
+			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
 		}
 	}
 
@@ -550,7 +552,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(EventNodeDelete, types.EntityID(id), nowInstant(), PriorityCritical)
+			b.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
 		}
 	}
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -237,12 +239,12 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 }
 
 // TestCloseNodeVersion_NotFound verifies that CloseNodeVersion on a missing node
-// returns ErrNodeNotFound.
+// returns storepkg.ErrNodeNotFound.
 func TestCloseNodeVersion_NotFound(t *testing.T) {
 	g := newTestGraphForChain(t)
 	err := g.CloseNodeVersion(types.NodeID(999999999), types.Instant(time.Now().UnixMilli()))
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
@@ -296,8 +298,8 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	}
 
 	// NotFound.
-	if err := g.CloseRelVersion(types.RelID(777777777), closeTime); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("CloseRelVersion missing: expected ErrRelNotFound, got %v", err)
+	if err := g.CloseRelVersion(types.RelID(777777777), closeTime); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("CloseRelVersion missing: expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 
@@ -347,12 +349,12 @@ func TestGetNextNodeVersion_DeletedNode(t *testing.T) {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	// Delete the node. Now GetNode returns ErrNodeNotFound.
+	// Delete the node. Now GetNode returns storepkg.ErrNodeNotFound.
 	if err := g.DeleteNode(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	// GetNextNodeVersion(id, 1): v2 not in history, GetNode → ErrNodeNotFound → nil, nil.
+	// GetNextNodeVersion(id, 1): v2 not in history, GetNode → storepkg.ErrNodeNotFound → nil, nil.
 	next, err := g.GetNextNodeVersion(id, 1)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion on deleted node: unexpected error: %v", err)
@@ -419,7 +421,7 @@ func TestGetNextRelVersion_DeletedRel(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	// GetNextRelVersion(rid, 1): v2 not in history, GetRelationship → ErrRelNotFound → nil, nil.
+	// GetNextRelVersion(rid, 1): v2 not in history, GetRelationship → storepkg.ErrRelNotFound → nil, nil.
 	next, err := g.GetNextRelVersion(rid, 1)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion on deleted rel: unexpected error: %v", err)

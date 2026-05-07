@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"time"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -26,7 +28,7 @@ func (g *Graph) CompareAndSetPropertyWithContext(ctx context.Context, id types.N
 	ep := g.events
 	g.mu.RUnlock()
 	if ok && mutated && err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
 	return ok, err
 }

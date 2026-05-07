@@ -9,6 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -17,7 +22,7 @@ import (
 func TestNewGraph(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -29,7 +34,7 @@ func TestNewGraph(t *testing.T) {
 func TestGraphNodeLabels(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	personTok, _ := g.GetOrCreateLabel("Person")
 	actorTok, _ := g.GetOrCreateLabel("Actor")
@@ -48,7 +53,7 @@ func TestGraphNodeLabels(t *testing.T) {
 func TestGraphNodePrimaryLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	personTok, _ := g.GetOrCreateLabel("Person")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(1)), personTok, nil)
@@ -61,7 +66,7 @@ func TestGraphNodePrimaryLabel(t *testing.T) {
 func TestGraphNodeHasLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	personTok, _ := g.GetOrCreateLabel("Person")
 	actorTok, _ := g.GetOrCreateLabel("Actor")
 
@@ -87,7 +92,7 @@ func TestGraphNodeHasLabel(t *testing.T) {
 func TestGraphRelationshipType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	knowsTok, _ := g.GetOrCreateRelType("KNOWS")
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), knowsTok, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
@@ -100,7 +105,7 @@ func TestGraphRelationshipType(t *testing.T) {
 func TestGraphRelationshipHasType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	knowsTok, _ := g.GetOrCreateRelType("KNOWS")
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), knowsTok, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
@@ -122,7 +127,7 @@ func TestGraphRelationshipHasType(t *testing.T) {
 func TestGraphLookupLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 
 	tok, ok := g.LookupLabel("Person")
@@ -142,7 +147,7 @@ func TestGraphLookupLabel(t *testing.T) {
 func TestGraphLookupRelType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateRelType("KNOWS")
 
 	tok, ok := g.LookupRelType("KNOWS")
@@ -164,7 +169,7 @@ func TestGraphLookupRelType(t *testing.T) {
 func TestGraphSnowflakeGeneratorsInitialized(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -183,7 +188,7 @@ func TestGraphSnowflakeGeneratorsInitialized(t *testing.T) {
 func TestGraphNextRelID(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -203,25 +208,25 @@ func TestGraphSnowflakeNodeIDRange(t *testing.T) {
 	t.Parallel()
 
 	// Valid: 0 (minimum)
-	_, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	_, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Errorf("SnowflakeNodeID=0 should be valid, got: %v", err)
 	}
 
 	// Valid: 15 (maximum — maps to even/odd pair 30/31 in 5-bit node field)
-	_, err = New(Config{SnowflakeNodeID: 15, Store: NewMemoryStore()})
+	_, err = New(Config{SnowflakeNodeID: 15, Store: memory.New()})
 	if err != nil {
 		t.Errorf("SnowflakeNodeID=15 should be valid, got: %v", err)
 	}
 
 	// Invalid: 16 (would map to 32/33 — exceeds 5-bit range)
-	_, err = New(Config{SnowflakeNodeID: 16, Store: NewMemoryStore()})
+	_, err = New(Config{SnowflakeNodeID: 16, Store: memory.New()})
 	if err == nil {
 		t.Fatal("SnowflakeNodeID=16 should return error")
 	}
 
 	// Invalid: negative
-	_, err = New(Config{SnowflakeNodeID: -1, Store: NewMemoryStore()})
+	_, err = New(Config{SnowflakeNodeID: -1, Store: memory.New()})
 	if err == nil {
 		t.Fatal("SnowflakeNodeID=-1 should return error")
 	}
@@ -230,7 +235,7 @@ func TestGraphSnowflakeNodeIDRange(t *testing.T) {
 func TestGraphNodeRelIDValueUniqueness(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -258,7 +263,7 @@ func TestGraphNodeRelIDValueUniqueness(t *testing.T) {
 func TestGraphSnowflakeIDsAreUnique(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{SnowflakeNodeID: 1, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -288,7 +293,7 @@ func TestGraphSnowflakeIDsAreUnique(t *testing.T) {
 func TestGraphAddNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, err := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": 30})
 	if err != nil {
 		t.Fatalf("AddNode() returned error: %v", err)
@@ -327,7 +332,7 @@ func TestGraphAddNode(t *testing.T) {
 func TestGraphAddNodeNoLabels(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	_, err := g.AddNode(nil, nil)
 	if err == nil {
 		t.Fatal("AddNode(nil labels) should return error")
@@ -345,7 +350,7 @@ func TestGraphAddNodeNoLabels(t *testing.T) {
 func TestGraphAddNodeInvalidProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	_, err := g.AddNode([]string{"Person"}, map[string]any{"tkg_hack": "bad"})
 	if err == nil {
 		t.Fatal("AddNode with tkg_ property should return error")
@@ -355,7 +360,7 @@ func TestGraphAddNodeInvalidProperty(t *testing.T) {
 func TestGraphAddNodeBulkProperties(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	props := make(map[string]any, 50)
 	for i := range 50 {
 		props[fmt.Sprintf("prop_%02d", i)] = i
@@ -381,7 +386,7 @@ func TestGraphAddNodeBulkProperties(t *testing.T) {
 func TestGraphAddNodeUniqueIDs(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	seen := make(map[snowflake.ID]struct{}, 100)
 
 	for range 100 {
@@ -400,7 +405,7 @@ func TestGraphAddNodeUniqueIDs(t *testing.T) {
 func TestGraphAddNodeNilProperties(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, err := g.AddNode([]string{"Empty"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode(nil props) returned error: %v", err)
@@ -413,7 +418,7 @@ func TestGraphAddNodeNilProperties(t *testing.T) {
 func TestGraphAddRelationship(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 
@@ -445,7 +450,7 @@ func TestGraphAddRelationship(t *testing.T) {
 func TestGraphAddRelNilStart(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
 	_, err := g.AddRelationship("KNOWS", nil, nB, nil)
@@ -457,7 +462,7 @@ func TestGraphAddRelNilStart(t *testing.T) {
 func TestGraphAddRelNilEnd(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 
 	_, err := g.AddRelationship("KNOWS", nA, nil, nil)
@@ -469,7 +474,7 @@ func TestGraphAddRelNilEnd(t *testing.T) {
 func TestGraphAddRelEmptyType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
@@ -484,7 +489,7 @@ func TestGraphAddRelEmptyType(t *testing.T) {
 func TestGraphAddRelationshipByID(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 
@@ -552,7 +557,7 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 func TestGraphAddRelationshipByID_SelfLoop(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"X"}, nil)
 	nID := n.ID()
 
@@ -565,7 +570,7 @@ func TestGraphAddRelationshipByID_SelfLoop(t *testing.T) {
 func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
@@ -593,7 +598,7 @@ func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
 func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	aID := nA.ID()
@@ -633,7 +638,7 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	aID := nA.ID()
@@ -669,7 +674,7 @@ func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
 func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	aID := nA.ID()
@@ -719,7 +724,7 @@ func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
 func TestGraphDeleteNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -728,15 +733,15 @@ func TestGraphDeleteNode(t *testing.T) {
 	}
 
 	_, err := g.GetNode(id)
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("GetNode after delete: errors.Is(err, storepkg.ErrNodeNotFound) = false; err = %v", err)
 	}
 }
 
 func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	nC, _ := g.AddNode([]string{"Person"}, nil)
@@ -752,15 +757,15 @@ func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 	}
 
 	// Verify node A is gone.
-	if _, err := g.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := g.GetNode(nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 
 	// Verify relationships are gone.
-	if _, err := g.GetRelationship(rAB.ID()); !errors.Is(err, ErrRelNotFound) {
+	if _, err := g.GetRelationship(rAB.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Error("Rel A→B should be cascade-deleted")
 	}
-	if _, err := g.GetRelationship(rCA.ID()); !errors.Is(err, ErrRelNotFound) {
+	if _, err := g.GetRelationship(rCA.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Error("Rel C→A should be cascade-deleted")
 	}
 
@@ -776,7 +781,7 @@ func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
@@ -806,12 +811,12 @@ func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 func TestGraphNodesByLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Animal"}, nil)
 
-	persons, err := g.NodesByLabel("Person", QueryOpts{})
+	persons, err := g.NodesByLabel("Person", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -819,7 +824,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 		t.Fatalf("NodesByLabel(\"Person\") = %d, want 2", len(persons))
 	}
 
-	animals, err := g.NodesByLabel("Animal", QueryOpts{})
+	animals, err := g.NodesByLabel("Animal", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -828,7 +833,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 	}
 
 	// Unregistered label.
-	unknown, err := g.NodesByLabel("Robot", QueryOpts{})
+	unknown, err := g.NodesByLabel("Robot", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -840,7 +845,7 @@ func TestGraphNodesByLabel(t *testing.T) {
 func TestGraphRelationshipsByType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
@@ -848,7 +853,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 	g.AddRelationship("KNOWS", nB, nA, nil)
 	g.AddRelationship("LIKES", nA, nB, nil)
 
-	knows, err := g.RelationshipsByType("KNOWS", QueryOpts{})
+	knows, err := g.RelationshipsByType("KNOWS", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -856,7 +861,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 		t.Fatalf("RelationshipsByType(\"KNOWS\") = %d, want 2", len(knows))
 	}
 
-	likes, err := g.RelationshipsByType("LIKES", QueryOpts{})
+	likes, err := g.RelationshipsByType("LIKES", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -864,7 +869,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 		t.Fatalf("RelationshipsByType(\"LIKES\") = %d, want 1", len(likes))
 	}
 
-	unknown, err := g.RelationshipsByType("HATES", QueryOpts{})
+	unknown, err := g.RelationshipsByType("HATES", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -876,7 +881,7 @@ func TestGraphRelationshipsByType(t *testing.T) {
 func TestGraphNodeCount(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nc, err := g.NodeCount()
 	if err != nil {
 		t.Fatal(err)
@@ -898,7 +903,7 @@ func TestGraphNodeCount(t *testing.T) {
 func TestGraphRelCount(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	g.AddRelationship("R", nA, nB, nil)
@@ -914,7 +919,7 @@ func TestGraphRelCount(t *testing.T) {
 func TestGraphDefaultMemoryStore(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -929,7 +934,7 @@ func TestGraphDefaultMemoryStore(t *testing.T) {
 func TestGraphDeleteRelationship(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("R", nA, nB, nil)
@@ -949,7 +954,7 @@ func TestGraphDeleteRelationship(t *testing.T) {
 func TestGraphLabelAndRelTypeIndependentNamespaces(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	labelTok, _ := g.GetOrCreateLabel("KNOWS")
 	relTok, _ := g.GetOrCreateRelType("KNOWS")
@@ -972,26 +977,26 @@ func TestGraphLabelAndRelTypeIndependentNamespaces(t *testing.T) {
 func TestGraphDeleteNodeCascadeToleratesPreDeletedOutgoingRel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 
 	r, _ := g.AddRelationship("R", nA, nB, nil)
 
 	// Simulate a concurrent delete: remove the outgoing relationship before
-	// cascade-deleting the node. Without the ErrRelNotFound guard in the
+	// cascade-deleting the node. Without the storepkg.ErrRelNotFound guard in the
 	// outgoing loop, DeleteNode would return an error and leave the node stranded.
 	if err := g.DeleteRelationship(r.ID()); err != nil {
 		t.Fatalf("pre-delete rel: %v", err)
 	}
 
-	// DeleteNode must succeed — the outgoing loop must tolerate ErrRelNotFound.
+	// DeleteNode must succeed — the outgoing loop must tolerate storepkg.ErrRelNotFound.
 	if err := g.DeleteNode(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() after pre-deleted outgoing rel: %v", err)
 	}
 
 	// Node A should be gone.
-	if _, err := g.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
+	if _, err := g.GetNode(nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 }
@@ -1130,7 +1135,7 @@ func TestGraphRegistryPersistence(t *testing.T) {
 func TestGraphCloseNoop(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()}) // MemoryStore — Close() calls MemoryStore.Close() which returns nil
+	g, _ := New(Config{Store: memory.New()}) // MemoryStore — Close() calls MemoryStore.Close() which returns nil
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close on MemoryStore should return nil, got: %v", err)
 	}
@@ -1141,7 +1146,7 @@ func TestGraphCloseMemoryStoreCallsStoreClose(t *testing.T) {
 
 	// Verify Close() calls store.Close() even for MemoryStore.
 	// Previously Close() was a no-op (closeFn == nil); now it goes through store.Close().
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -1188,7 +1193,7 @@ func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
 	}
 
 	// Sabotage: close the Badger DB directly so registry saves will fail.
-	bs := g.store.(*BadgerStore)
+	bs := g.store.(*badger.Store)
 	if err := bs.DBForTest().Close(); err != nil {
 		t.Fatalf("sabotage close: %v", err)
 	}
@@ -1209,7 +1214,7 @@ func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
 func TestGraphCloseConcurrent(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -1236,7 +1241,7 @@ func TestGraphCloseConcurrent(t *testing.T) {
 func TestGraphDeleteNodeCascade_MemStore(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -1288,9 +1293,9 @@ func TestGraphBadgerInMemoryDefault(t *testing.T) {
 	}
 	defer g.Close()
 
-	// Verify it's a BadgerStore.
-	if _, ok := g.store.(*BadgerStore); !ok {
-		t.Fatalf("expected BadgerStore, got %T", g.store)
+	// Verify it's a badger.Store.
+	if _, ok := g.store.(*badger.Store); !ok {
+		t.Fatalf("expected badger.Store, got %T", g.store)
 	}
 }
 
@@ -1306,7 +1311,7 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 	for i := range iterations {
 		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
 			t.Parallel()
-			g, err := New(Config{Store: NewMemoryStore()})
+			g, err := New(Config{Store: memory.New()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -1338,7 +1343,7 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 
 			// Exactly one of two valid outcomes:
 			// 1. AddRel succeeded first → DeleteNode cascade removes it → graph clean
-			// 2. DeleteNode succeeded first → AddRel fails with ErrNodeNotFound
+			// 2. DeleteNode succeeded first → AddRel fails with storepkg.ErrNodeNotFound
 			if addErr != nil && delErr != nil {
 				// Both failed — unexpected.
 				t.Fatalf("both failed: addErr=%v, delErr=%v", addErr, delErr)
@@ -1393,7 +1398,7 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 func TestGraphOutgoingRelationships(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	c, _ := g.AddNode([]string{"Person"}, nil)
@@ -1441,7 +1446,7 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 func TestGraphIncomingRelationships(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	c, _ := g.AddNode([]string{"Person"}, nil)
@@ -1491,7 +1496,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 func TestGraphUpdateNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
 	id := n.ID()
 
@@ -1519,7 +1524,7 @@ func TestGraphUpdateNode(t *testing.T) {
 func TestGraphUpdateNodeAddProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -1543,7 +1548,7 @@ func TestGraphUpdateNodeAddProperty(t *testing.T) {
 func TestGraphUpdateNodeDeleteProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
 	id := n.ID()
 
@@ -1566,7 +1571,7 @@ func TestGraphUpdateNodeDeleteProperty(t *testing.T) {
 func TestGraphUpdateNodeMixed(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": 30, "city": "NYC"})
 	id := n.ID()
 
@@ -1602,17 +1607,17 @@ func TestGraphUpdateNodeMixed(t *testing.T) {
 func TestGraphUpdateNodeNotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	_, err := g.UpdateNode(types.NodeID(999), map[string]any{"name": "Alice"})
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("UpdateNode(nonexistent): errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("UpdateNode(nonexistent): errors.Is(err, storepkg.ErrNodeNotFound) = false; err = %v", err)
 	}
 }
 
 func TestGraphUpdateNodeInvalidProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -1625,7 +1630,7 @@ func TestGraphUpdateNodeInvalidProperty(t *testing.T) {
 func TestGraphUpdateNodeInvalidValue(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -1639,7 +1644,7 @@ func TestGraphUpdateNodeInvalidValue(t *testing.T) {
 func TestGraphUpdateNodeVersionIncrement(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -1661,7 +1666,7 @@ func TestGraphUpdateNodeVersionIncrement(t *testing.T) {
 func TestGraphUpdateNodeUpdatedAt(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -1678,7 +1683,7 @@ func TestGraphUpdateNodeUpdatedAt(t *testing.T) {
 func TestGraphUpdateNodeEmptyUpdates(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -1698,7 +1703,7 @@ func TestGraphUpdateNodeEmptyUpdates(t *testing.T) {
 func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"counter": 0})
 	id := n.ID()
 
@@ -1736,7 +1741,7 @@ func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
 func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	const count = 20
 	ids := make([]types.NodeID, count)
@@ -1770,7 +1775,7 @@ func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
 func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -1788,7 +1793,7 @@ func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
 func TestGraphUpdateRelationship(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020})
@@ -1814,7 +1819,7 @@ func TestGraphUpdateRelationship(t *testing.T) {
 func TestGraphUpdateRelAddProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -1835,7 +1840,7 @@ func TestGraphUpdateRelAddProperty(t *testing.T) {
 func TestGraphUpdateRelDeleteProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
@@ -1860,7 +1865,7 @@ func TestGraphUpdateRelDeleteProperty(t *testing.T) {
 func TestGraphUpdateRelMixed(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
@@ -1893,17 +1898,17 @@ func TestGraphUpdateRelMixed(t *testing.T) {
 func TestGraphUpdateRelNotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	_, err := g.UpdateRelationship(types.RelID(999), map[string]any{"x": 1})
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("UpdateRelationship(nonexistent): errors.Is(err, ErrRelNotFound) = false; err = %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("UpdateRelationship(nonexistent): errors.Is(err, storepkg.ErrRelNotFound) = false; err = %v", err)
 	}
 }
 
 func TestGraphUpdateRelInvalidProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -1918,7 +1923,7 @@ func TestGraphUpdateRelInvalidProperty(t *testing.T) {
 func TestGraphUpdateRelInvalidValue(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -1934,7 +1939,7 @@ func TestGraphUpdateRelInvalidValue(t *testing.T) {
 func TestGraphUpdateRelVersionIncrement(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -1958,7 +1963,7 @@ func TestGraphUpdateRelVersionIncrement(t *testing.T) {
 func TestGraphUpdateRelUpdatedAt(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -1977,7 +1982,7 @@ func TestGraphUpdateRelUpdatedAt(t *testing.T) {
 func TestGraphUpdateRelEmptyUpdates(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
@@ -1995,7 +2000,7 @@ func TestGraphUpdateRelEmptyUpdates(t *testing.T) {
 func TestGraphUpdateRelEndpointsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"x": 1})
@@ -2019,7 +2024,7 @@ func TestGraphUpdateRelEndpointsUnchanged(t *testing.T) {
 func TestGraphSetNodeProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -2037,7 +2042,7 @@ func TestGraphSetNodeProperty(t *testing.T) {
 func TestGraphDeleteNodeProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -2055,7 +2060,7 @@ func TestGraphDeleteNodeProperty(t *testing.T) {
 func TestGraphSetRelationshipProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -2075,7 +2080,7 @@ func TestGraphSetRelationshipProperty(t *testing.T) {
 func TestGraphDeleteRelationshipProperty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 0.5})
@@ -2097,7 +2102,7 @@ func TestGraphDeleteRelationshipProperty(t *testing.T) {
 func TestGraphUpdateNodeWithMemStore(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -2129,7 +2134,7 @@ func TestGraphUpdateNodeWithMemStore(t *testing.T) {
 func TestGraphUpdateRelWithMemStore(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -2238,7 +2243,7 @@ func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
 
 func TestGraphUpdateNodeSavesHistory(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
@@ -2268,7 +2273,7 @@ func TestGraphUpdateNodeSavesHistory(t *testing.T) {
 
 func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
@@ -2292,7 +2297,7 @@ func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
 
 func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
@@ -2313,7 +2318,7 @@ func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 
 func TestGraphGetNodeHistoryEmpty(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, nil)
@@ -2331,7 +2336,7 @@ func TestGraphGetNodeHistoryEmpty(t *testing.T) {
 
 func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
@@ -2355,7 +2360,7 @@ func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 
 func TestGraphUpdateRelSavesHistory(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	nA, _ := g.AddNode([]string{"X"}, nil)
@@ -2386,7 +2391,7 @@ func TestGraphUpdateRelSavesHistory(t *testing.T) {
 
 func TestGraphUpdateRelHistoryGrows(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	nA, _ := g.AddNode([]string{"X"}, nil)
@@ -2406,7 +2411,7 @@ func TestGraphUpdateRelHistoryGrows(t *testing.T) {
 
 func TestGraphUpdateRelHistoryAscendingOrder(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	nA, _ := g.AddNode([]string{"X"}, nil)
@@ -2429,7 +2434,7 @@ func TestGraphUpdateRelHistoryAscendingOrder(t *testing.T) {
 
 func TestGraphGetRelHistoryEmpty(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	nA, _ := g.AddNode([]string{"X"}, nil)
@@ -2448,7 +2453,7 @@ func TestGraphGetRelHistoryEmpty(t *testing.T) {
 
 func TestGraphDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
 	nA, _ := g.AddNode([]string{"X"}, nil)
@@ -2616,7 +2621,7 @@ func TestGraphBadgerDeleteRelPreservesHistory(t *testing.T) {
 func TestGraphAddNodeSetsIntegrity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -2640,7 +2645,7 @@ func TestGraphAddNodeSetsIntegrity(t *testing.T) {
 func TestGraphAddNodeHashDeterministic(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n1, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
 	n2, _ := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
 
@@ -2658,7 +2663,7 @@ func TestGraphAddNodeHashDeterministic(t *testing.T) {
 func TestGraphAddNodeGenesisZeroPrevHash(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"X"}, nil)
 
 	if n.Integrity().PrevHash != "" {
@@ -2671,7 +2676,7 @@ func TestGraphAddNodeGenesisZeroPrevHash(t *testing.T) {
 func TestGraphAddRelSetsIntegrity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 
@@ -2698,7 +2703,7 @@ func TestGraphAddRelSetsIntegrity(t *testing.T) {
 func TestGraphAddRelHashDeterministic(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 
@@ -2717,7 +2722,7 @@ func TestGraphAddRelHashDeterministic(t *testing.T) {
 func TestGraphAddRelGenesisZeroPrevHash(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -2732,7 +2737,7 @@ func TestGraphAddRelGenesisZeroPrevHash(t *testing.T) {
 func TestGraphUpdateNodeHashChain(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -2758,7 +2763,7 @@ func TestGraphUpdateNodeHashChain(t *testing.T) {
 func TestGraphUpdateNodeMultipleUpdatesChain(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
@@ -2791,7 +2796,7 @@ func TestGraphUpdateNodeMultipleUpdatesChain(t *testing.T) {
 func TestGraphUpdateNodeHashChanges(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 	hashBefore := n.Integrity().Hash
@@ -2807,7 +2812,7 @@ func TestGraphUpdateNodeHashChanges(t *testing.T) {
 func TestGraphUpdateRelHashChain(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": int64(1)})
@@ -2835,7 +2840,7 @@ func TestGraphUpdateRelHashChain(t *testing.T) {
 func TestGraphUpdateRelMultipleUpdatesChain(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(0)})
@@ -2869,7 +2874,7 @@ func TestGraphUpdateRelMultipleUpdatesChain(t *testing.T) {
 func TestGraphUpdateRelHashChanges(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"X"}, nil)
 	nB, _ := g.AddNode([]string{"X"}, nil)
 	r, _ := g.AddRelationship("KNOWS", nA, nB, map[string]any{"w": int64(1)})
@@ -2886,7 +2891,7 @@ func TestGraphUpdateRelHashChanges(t *testing.T) {
 
 func TestGraphVerifyNodeHashChain_DeletedEntity(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2921,7 +2926,7 @@ func TestGraphVerifyNodeHashChain_DeletedEntity(t *testing.T) {
 
 func TestGraphVerifyRelHashChain_DeletedEntity(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2955,29 +2960,29 @@ func TestGraphVerifyRelHashChain_DeletedEntity(t *testing.T) {
 
 func TestGraphVerifyNodeHashChain_NeverExisted(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
 	_, err = g.VerifyNodeHashChain(types.NodeID(999))
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
 func TestGraphVerifyRelHashChain_NeverExisted(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
 	_, err = g.VerifyRelHashChain(types.RelID(999))
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 
@@ -2990,7 +2995,7 @@ func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
 	for i := range iterations {
 		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
 			t.Parallel()
-			g, err := New(Config{Store: NewMemoryStore()})
+			g, err := New(Config{Store: memory.New()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -3043,7 +3048,7 @@ func TestGraphConcurrentDeleteNodeOverlappingRels(t *testing.T) {
 	for i := range iterations {
 		t.Run(fmt.Sprintf("iter_%d", i), func(t *testing.T) {
 			t.Parallel()
-			g, err := New(Config{Store: NewMemoryStore()})
+			g, err := New(Config{Store: memory.New()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -3085,7 +3090,7 @@ func TestGraphConcurrentDeleteNodeOverlappingRels(t *testing.T) {
 func TestGraphConcurrentCRUDStress(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -3130,7 +3135,7 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 
 			for i := range opsPerWorker {
 				// Query.
-				g.NodesByLabel("Hub", QueryOpts{})
+				g.NodesByLabel("Hub", storepkg.QueryOpts{})
 
 				// Update.
 				g.UpdateNode(wn.ID(), map[string]any{"iter": int64(i)})
@@ -3161,12 +3166,12 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 func TestGraphAllNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.AddNode([]string{"City"}, map[string]any{"name": "Vienna"})
 
-	got, err := g.AllNodes(QueryOpts{})
+	got, err := g.AllNodes(storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -3178,8 +3183,8 @@ func TestGraphAllNodes(t *testing.T) {
 func TestGraphAllNodesEmpty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
-	got, err := g.AllNodes(QueryOpts{})
+	g, _ := New(Config{Store: memory.New()})
+	got, err := g.AllNodes(storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllNodes() returned error: %v", err)
 	}
@@ -3191,14 +3196,14 @@ func TestGraphAllNodesEmpty(t *testing.T) {
 func TestGraphAllRels(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	nC, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddRelationship("KNOWS", nA, nB, nil)
 	g.AddRelationship("LIKES", nB, nC, nil)
 
-	got, err := g.AllRelationships(QueryOpts{})
+	got, err := g.AllRelationships(storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3210,8 +3215,8 @@ func TestGraphAllRels(t *testing.T) {
 func TestGraphAllRelsEmpty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
-	got, err := g.AllRelationships(QueryOpts{})
+	g, _ := New(Config{Store: memory.New()})
+	got, err := g.AllRelationships(storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("AllRelationships() returned error: %v", err)
 	}
@@ -3223,7 +3228,7 @@ func TestGraphAllRelsEmpty(t *testing.T) {
 func TestGraphGetNodesByIDs(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n1, _ := g.AddNode([]string{"Person"}, nil)
 	n2, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil) // n3 — not requested
@@ -3246,7 +3251,7 @@ func TestGraphGetNodesByIDs(t *testing.T) {
 func TestGraphGetNodesByIDsEmpty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	got, err := g.GetNodesByIDs(nil)
 	if err != nil {
 		t.Fatalf("GetNodesByIDs(nil) returned error: %v", err)
@@ -3259,7 +3264,7 @@ func TestGraphGetNodesByIDsEmpty(t *testing.T) {
 func TestGraphGetRelsByIDs(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	nA, _ := g.AddNode([]string{"Person"}, nil)
 	nB, _ := g.AddNode([]string{"Person"}, nil)
 	r1, _ := g.AddRelationship("KNOWS", nA, nB, nil)
@@ -3283,7 +3288,7 @@ func TestGraphGetRelsByIDs(t *testing.T) {
 func TestGraphGetRelsByIDsEmpty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	got, err := g.GetRelationshipsByIDs(nil)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByIDs(nil) returned error: %v", err)
@@ -3298,7 +3303,7 @@ func TestGraphGetRelsByIDsEmpty(t *testing.T) {
 func TestNodeCountByLabel_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	// Register label but add no nodes.
 	g.GetOrCreateLabel("Person")
 
@@ -3314,7 +3319,7 @@ func TestNodeCountByLabel_Empty(t *testing.T) {
 func TestNodeCountByLabel_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	count, err := g.NodeCountByLabel("NeverRegistered")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3327,7 +3332,7 @@ func TestNodeCountByLabel_UnregisteredLabel(t *testing.T) {
 func TestNodeCountByLabel_SingleNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	count, err := g.NodeCountByLabel("Person")
@@ -3342,7 +3347,7 @@ func TestNodeCountByLabel_SingleNode(t *testing.T) {
 func TestNodeCountByLabel_MultipleNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Charlie"})
@@ -3359,7 +3364,7 @@ func TestNodeCountByLabel_MultipleNodes(t *testing.T) {
 func TestNodeCountByLabel_AfterDelete(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n1, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil)
 
@@ -3377,7 +3382,7 @@ func TestNodeCountByLabel_AfterDelete(t *testing.T) {
 func TestRelCountByType_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateRelType("KNOWS")
 
 	count, err := g.RelCountByType("KNOWS")
@@ -3392,7 +3397,7 @@ func TestRelCountByType_Empty(t *testing.T) {
 func TestRelCountByType_UnregisteredType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	count, err := g.RelCountByType("NeverRegistered")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3405,7 +3410,7 @@ func TestRelCountByType_UnregisteredType(t *testing.T) {
 func TestRelCountByType_SingleRel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddRelationship("KNOWS", a, b, nil)
@@ -3422,7 +3427,7 @@ func TestRelCountByType_SingleRel(t *testing.T) {
 func TestRelCountByType_AfterDelete(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	r1, _ := g.AddRelationship("KNOWS", a, b, nil)
@@ -3442,7 +3447,7 @@ func TestRelCountByType_AfterDelete(t *testing.T) {
 func TestAllLabelCounts_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	counts, err := g.AllLabelCounts()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3455,7 +3460,7 @@ func TestAllLabelCounts_Empty(t *testing.T) {
 func TestAllLabelCounts_Multiple(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Person"}, nil)
 	g.AddNode([]string{"Company"}, nil)
@@ -3480,7 +3485,7 @@ func TestAllLabelCounts_Multiple(t *testing.T) {
 func TestAllRelTypeCounts_Multiple(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	c, _ := g.AddNode([]string{"Company"}, nil)
@@ -3510,7 +3515,7 @@ func TestAllRelTypeCounts_Multiple(t *testing.T) {
 
 func TestDefaultValidationLimits(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	v := g.ValidationDefaults()
 	if v.MaxLabelsPerNode != 50 {
 		t.Errorf("MaxLabelsPerNode = %d, want 50", v.MaxLabelsPerNode)
@@ -3926,7 +3931,7 @@ func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
 
 func TestMemStoreNodeCountByLabel_AfterPut(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
 	if err := ms.PutNode(n); err != nil {
@@ -3949,7 +3954,7 @@ func TestMemStoreNodeCountByLabel_AfterPut(t *testing.T) {
 
 func TestMemStoreNodeCountByLabel_AfterDelete(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	ms.PutNode(n)
@@ -3966,7 +3971,7 @@ func TestMemStoreNodeCountByLabel_AfterDelete(t *testing.T) {
 
 func TestMemStoreNodeCountByLabel_MultiLabel(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	// Node with labels 1, 2, 3 — each label counter incremented.
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2, 3})
@@ -3982,7 +3987,7 @@ func TestMemStoreNodeCountByLabel_MultiLabel(t *testing.T) {
 
 func TestMemStoreRelCountByType_AfterPut(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
@@ -4004,7 +4009,7 @@ func TestMemStoreRelCountByType_AfterPut(t *testing.T) {
 
 func TestMemStoreRelCountByType_AfterDelete(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
 	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
@@ -4026,7 +4031,7 @@ func TestMemStoreRelCountByType_AfterDelete(t *testing.T) {
 
 func TestMemStoreNodeCountByLabel_CascadeDelete(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
 	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
@@ -4057,7 +4062,7 @@ func TestMemStoreNodeCountByLabel_CascadeDelete(t *testing.T) {
 
 func TestNodeCountByLabel_BatchAdd(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	batch := NewBatchBuilder(g)
 	batch.AddNode([]string{"Animal"}, nil)
@@ -4080,7 +4085,7 @@ func TestNodeCountByLabel_BatchAdd(t *testing.T) {
 
 func TestCountAfterCascadeDelete(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
@@ -4115,7 +4120,7 @@ func TestCountAfterCascadeDelete(t *testing.T) {
 func TestMemStoreCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	err := g.CreatePropertyIndex("Person", "name")
@@ -4127,20 +4132,20 @@ func TestMemStoreCreatePropertyIndex(t *testing.T) {
 func TestMemStoreCreatePropertyIndex_Duplicate(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 	g.CreatePropertyIndex("Person", "name")
 
 	err := g.CreatePropertyIndex("Person", "name")
-	if !errors.Is(err, ErrIndexExists) {
-		t.Fatalf("expected ErrIndexExists, got %v", err)
+	if !errors.Is(err, storepkg.ErrIndexExists) {
+		t.Fatalf("expected storepkg.ErrIndexExists, got %v", err)
 	}
 }
 
 func TestMemStoreDropPropertyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 	g.CreatePropertyIndex("Person", "name")
 
@@ -4153,24 +4158,24 @@ func TestMemStoreDropPropertyIndex(t *testing.T) {
 func TestMemStoreDropPropertyIndex_NotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 
 	err := g.DropPropertyIndex("Person", "name")
-	if !errors.Is(err, ErrIndexNotFound) {
-		t.Fatalf("expected ErrIndexNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrIndexNotFound) {
+		t.Fatalf("expected storepkg.ErrIndexNotFound, got %v", err)
 	}
 }
 
 func TestMemStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4186,11 +4191,11 @@ func TestMemStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 func TestMemStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Bob", QueryOpts{})
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Bob", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4202,12 +4207,12 @@ func TestMemStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 
 	// No index — should fall back to scan.
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4219,12 +4224,12 @@ func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
 	// Verify index finds Alice.
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after add: expected 1, got %d", len(nodes))
 	}
@@ -4234,13 +4239,13 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value should be gone.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after update: old value still found, got %d", len(nodes))
 	}
 
 	// New value should be found.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("after update: new value not found, got %d", len(nodes))
 	}
@@ -4248,7 +4253,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	// Delete the node.
 	g.DeleteNode(id)
 
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
@@ -4259,7 +4264,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 func TestGraphCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 
 	err := g.CreatePropertyIndex("Person", "name")
@@ -4277,7 +4282,7 @@ func TestGraphCreatePropertyIndex(t *testing.T) {
 func TestGraphDropPropertyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.GetOrCreateLabel("Person")
 	g.CreatePropertyIndex("Person", "name")
 
@@ -4296,12 +4301,12 @@ func TestGraphDropPropertyIndex(t *testing.T) {
 func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4313,11 +4318,11 @@ func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
 func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Charlie", QueryOpts{})
+	nodes, err := g.NodesByLabelAndProperty("Person", "name", "Charlie", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4329,8 +4334,8 @@ func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
 func TestGraphNodesByLabelAndProperty_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
-	nodes, err := g.NodesByLabelAndProperty("Unknown", "name", "Alice", QueryOpts{})
+	g, _ := New(Config{Store: memory.New()})
+	nodes, err := g.NodesByLabelAndProperty("Unknown", "name", "Alice", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -4342,18 +4347,18 @@ func TestGraphNodesByLabelAndProperty_UnregisteredLabel(t *testing.T) {
 func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.CreatePropertyIndex("Person", "name")
 
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 2 {
 		t.Fatalf("expected 2 Alices, got %d", len(nodes))
 	}
 
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Bob", QueryOpts{})
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Bob", storepkg.QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 Bob, got %d", len(nodes))
 	}
@@ -4362,7 +4367,7 @@ func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
 func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
@@ -4370,13 +4375,13 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	g.UpdateNode(id, map[string]any{"name": "Alicia"})
 
 	// Old value gone.
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("old value still found: %d", len(nodes))
 	}
 
 	// New value present.
-	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", QueryOpts{})
+	nodes, _ = g.NodesByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
 	if len(nodes) != 1 {
 		t.Fatalf("new value not found: %d", len(nodes))
 	}
@@ -4385,13 +4390,13 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.CreatePropertyIndex("Person", "name")
 
 	g.DeleteNode(n.ID())
 
-	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{})
+	nodes, _ := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
 		t.Fatalf("deleted node still in index: %d", len(nodes))
 	}
@@ -4560,7 +4565,7 @@ func TestGraphAddNode_DuplicateLabelsOnlyOneStored(t *testing.T) {
 
 func TestCAS_Match(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
@@ -4581,7 +4586,7 @@ func TestCAS_Match(t *testing.T) {
 
 func TestCAS_Mismatch(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
@@ -4602,7 +4607,7 @@ func TestCAS_Mismatch(t *testing.T) {
 
 func TestCAS_NilExpected_Absent(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -4623,7 +4628,7 @@ func TestCAS_NilExpected_Absent(t *testing.T) {
 
 func TestCAS_NilExpected_Present(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
@@ -4638,7 +4643,7 @@ func TestCAS_NilExpected_Present(t *testing.T) {
 
 func TestCAS_DeleteOnMatch(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
@@ -4658,7 +4663,7 @@ func TestCAS_DeleteOnMatch(t *testing.T) {
 
 func TestCAS_NilBoth_Absent(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -4673,7 +4678,7 @@ func TestCAS_NilBoth_Absent(t *testing.T) {
 
 func TestCAS_ShadowKey(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, nil)
 	id := n.ID()
 
@@ -4688,20 +4693,20 @@ func TestCAS_ShadowKey(t *testing.T) {
 
 func TestCAS_NodeNotFound(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 
 	_, err := g.CompareAndSetProperty(types.NodeID(999999), "status", nil, "x")
 	if err == nil {
 		t.Fatal("CAS should return error for non-existent node")
 	}
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("errors.Is(err, storepkg.ErrNodeNotFound) = false; err = %v", err)
 	}
 }
 
 func TestCAS_VersionBump(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
 	before, _ := g.GetNode(id)
@@ -4720,7 +4725,7 @@ func TestCAS_VersionBump(t *testing.T) {
 
 func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
 	before, _ := g.GetNode(id)
@@ -4739,7 +4744,7 @@ func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
 
 func TestCAS_History(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
 
@@ -4764,7 +4769,7 @@ func TestCAS_History(t *testing.T) {
 
 func TestCAS_TypeMismatch(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"v": int(42)})
 	id := n.ID()
 
@@ -4786,7 +4791,7 @@ func TestCAS_TypeMismatch(t *testing.T) {
 
 func TestCAS_DeleteMismatch(t *testing.T) {
 	t.Parallel()
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
@@ -4811,7 +4816,7 @@ func TestCAS_DeleteMismatch(t *testing.T) {
 func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	c, _ := g.AddNode([]string{"Person"}, nil)
@@ -4870,7 +4875,7 @@ func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 func TestGraphOutgoingForNodesUnregisteredType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddRelationship("KNOWS", a, b, nil)
@@ -4890,7 +4895,7 @@ func TestGraphOutgoingForNodesUnregisteredType(t *testing.T) {
 func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	c, _ := g.AddNode([]string{"Person"}, nil)
@@ -4949,7 +4954,7 @@ func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 func TestGraphIncomingForNodesUnregisteredType(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Store: NewMemoryStore()})
+	g, _ := New(Config{Store: memory.New()})
 	a, _ := g.AddNode([]string{"Person"}, nil)
 	b, _ := g.AddNode([]string{"Person"}, nil)
 	g.AddRelationship("KNOWS", a, b, nil)

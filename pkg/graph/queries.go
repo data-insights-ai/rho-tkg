@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -28,7 +30,7 @@ func (g *Graph) GetRelationship(id types.RelID) (*types.Relationship, error) {
 // any version whose label set contained the requested label at the requested
 // time matches. Without a temporal filter, the call falls through to the
 // store-level label index for O(matches) lookup.
-func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error) {
+func (g *Graph) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -36,14 +38,14 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if !hasTemporalFilter(opts) {
 		return g.store.NodesByLabel(tok, opts)
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 	// Indexed candidate set: current nodes that carry the label NOW, plus all
 	// node IDs that ever appeared in history (covering the case where the
 	// label was held in a previous version but not the current one). Avoids
 	// a full ForEachNodeID scan.
-	current, err := g.store.NodesByLabel(tok, QueryOpts{})
+	current, err := g.store.NodesByLabel(tok, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +59,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	if err := g.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -67,8 +69,8 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
-	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
+	storeutil.SortNodesByID(result)
+	return storeutil.PaginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // RelationshipsByType returns relationships with the given type (resolved from string),
@@ -79,7 +81,7 @@ func (g *Graph) NodesByLabel(label string, opts QueryOpts) ([]*types.Node, error
 // history-relevant information added by this scan is deleted/closed-out
 // relationships that the current type index no longer references. Without a
 // temporal filter, the call falls through to the store-level type index.
-func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.Relationship, error) {
+func (g *Graph) RelationshipsByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	tok, ok := g.relTypes.Lookup(typeName)
 	if !ok {
 		return nil, nil
@@ -87,13 +89,13 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	if !hasTemporalFilter(opts) {
 		return g.store.RelationshipsByType(tok, opts)
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 	// Indexed candidate set: current rels of this type, plus history IDs.
 	// Type tokens are structurally immutable so the type predicate is only
 	// needed for safety; history IDs cover the deleted-rel case.
-	current, err := g.store.RelationshipsByType(tok, QueryOpts{})
+	current, err := g.store.RelationshipsByType(tok, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +109,7 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	if err := g.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 		r, err := g.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -117,8 +119,8 @@ func (g *Graph) RelationshipsByType(typeName string, opts QueryOpts) ([]*types.R
 	}); err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
-	return storepkg.PaginateRels(result, opts.After, opts.Limit), nil
+	storeutil.SortRelsByID(result)
+	return storeutil.PaginateRels(result, opts.After, opts.Limit), nil
 }
 
 // OutgoingRelationships returns all outgoing relationships from the given node.
@@ -208,18 +210,18 @@ func (g *Graph) RelationshipCount() (int, error) {
 // the version chain, and surfaces deleted entities that were valid at the
 // query time. Without a temporal filter the fast store-side pushdown path
 // is preserved.
-func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+func (g *Graph) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if !hasTemporalFilter(opts) {
 		return g.store.AllNodes(opts)
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 	var result []*types.Node
 	err := g.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := g.findNodeVersionForOpts(id, opts, nil)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrNodeNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
 			}
 			return err
@@ -230,8 +232,8 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortNodesByID(result)
-	return storepkg.PaginateNodes(result, opts.After, opts.Limit), nil
+	storeutil.SortNodesByID(result)
+	return storeutil.PaginateNodes(result, opts.After, opts.Limit), nil
 }
 
 // AllRelationships returns all relationships in the store, with optional
@@ -242,18 +244,18 @@ func (g *Graph) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 // the version chain, and surfaces deleted relationships that were valid at
 // the query time. Without a temporal filter the fast store-side pushdown
 // path is preserved.
-func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+func (g *Graph) AllRelationships(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	if !hasTemporalFilter(opts) {
 		return g.store.AllRelationships(opts)
 	}
-	if opts.Depth != DepthAll {
+	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
 	}
 	var result []*types.Relationship
 	err := g.forEachKnownRelID(func(id types.RelID) error {
 		r, err := g.findRelVersionForOpts(id, opts, nil)
 		if err != nil {
-			if errors.Is(err, ErrNoVersionValidAt) || errors.Is(err, ErrRelNotFound) {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
 			}
 			return err
@@ -264,8 +266,8 @@ func (g *Graph) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 	if err != nil {
 		return nil, err
 	}
-	storepkg.SortRelsByID(result)
-	return storepkg.PaginateRels(result, opts.After, opts.Limit), nil
+	storeutil.SortRelsByID(result)
+	return storeutil.PaginateRels(result, opts.After, opts.Limit), nil
 }
 
 // GetNodesByIDs returns nodes matching the given IDs. Missing IDs are skipped.

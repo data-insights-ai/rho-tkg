@@ -8,6 +8,8 @@ import (
 	"sort"
 	"testing"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
@@ -17,7 +19,7 @@ import (
 // benchGraph creates an in-memory graph for benchmarking.
 func benchGraph(b *testing.B) *Graph {
 	b.Helper()
-	g, err := New(Config{SnowflakeNodeID: 1, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -80,7 +82,7 @@ func BenchmarkNodeDeepCopy(b *testing.B) {
 }
 
 func BenchmarkMemoryStorePutNode(b *testing.B) {
-	ms := NewMemoryStore()
+	ms := memory.New()
 	g := benchGraph(b)
 	// Pre-build nodes to isolate PutNode cost
 	nodes := make([]*types.Node, b.N)
@@ -112,7 +114,7 @@ func BenchmarkComputeRelHash(b *testing.B) {
 }
 
 func BenchmarkMemoryStorePutRel(b *testing.B) {
-	ms := NewMemoryStore()
+	ms := memory.New()
 	g := benchGraph(b)
 	// Create two anchor nodes
 	n1 := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
@@ -157,7 +159,7 @@ func BenchmarkAddNode(b *testing.B) {
 }
 
 func BenchmarkAddNodeMemStore(b *testing.B) {
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -191,7 +193,7 @@ func BenchmarkAddRelationship(b *testing.B) {
 }
 
 func BenchmarkAddRelationshipMemStore(b *testing.B) {
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}

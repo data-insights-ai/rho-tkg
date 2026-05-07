@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/badgerstore"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -41,7 +43,7 @@ func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 }
 
 // shardForRelIDChecked on an unknown ID must return a usable shard whose
-// downstream Get* surfaces ErrRelNotFound, and the checkin must be balanced.
+// downstream Get* surfaces storepkg.ErrRelNotFound, and the checkin must be balanced.
 func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 	const unknownID types.RelID = 0xDEADBEEF
@@ -52,8 +54,8 @@ func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T)
 	if shard == nil {
 		t.Fatal("shard must not be nil")
 	}
-	if _, err := shard.GetRelationship(unknownID); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("downstream Get on candidate shard err = %v, want ErrRelNotFound", err)
+	if _, err := shard.GetRelationship(unknownID); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("downstream Get on candidate shard err = %v, want storepkg.ErrRelNotFound", err)
 	}
 	checkin()
 }
@@ -74,8 +76,8 @@ func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
 	id := n.ID()
 
 	err = g.RemoveNodeLabel(id, "Case")
-	if !errors.Is(err, ErrPrimaryLabelClassMutation) {
-		t.Fatalf("RemoveNodeLabel(primary ref→event) err = %v, want ErrPrimaryLabelClassMutation", err)
+	if !errors.Is(err, tiered.ErrPrimaryLabelClassMutation) {
+		t.Fatalf("RemoveNodeLabel(primary ref→event) err = %v, want tiered.ErrPrimaryLabelClassMutation", err)
 	}
 }
 
@@ -279,7 +281,7 @@ func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
 }
 
 // TruncateNodeHistory on a totally unknown ID must be a silent no-op,
-// matching MemoryStore/BadgerStore semantics for empty history truncation.
+// matching MemoryStore/badger.Store semantics for empty history truncation.
 func TestTieredStore_TruncateNodeHistory_UnknownID_NoError(t *testing.T) {
 	_, ts := newTestTieredGraph(t)
 	if err := ts.TruncateNodeHistory(types.NodeID(0xDEADBEEF), 0); err != nil {
@@ -588,8 +590,8 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 		}
 
 		_, err = ts.GetNodeVersion(n.ID(), 99)
-		if !errors.Is(err, ErrVersionNotFound) {
-			t.Fatalf("GetNodeVersion missing err = %v, want ErrVersionNotFound", err)
+		if !errors.Is(err, storepkg.ErrVersionNotFound) {
+			t.Fatalf("GetNodeVersion missing err = %v, want storepkg.ErrVersionNotFound", err)
 		}
 		assertColdShardStillClosed(t, cold, "GetNodeVersion for missing version on current node")
 	})
@@ -610,8 +612,8 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 		}
 
 		_, err = ts.GetRelVersion(r.ID(), 99)
-		if !errors.Is(err, ErrVersionNotFound) {
-			t.Fatalf("GetRelVersion missing err = %v, want ErrVersionNotFound", err)
+		if !errors.Is(err, storepkg.ErrVersionNotFound) {
+			t.Fatalf("GetRelVersion missing err = %v, want storepkg.ErrVersionNotFound", err)
 		}
 		assertColdShardStillClosed(t, cold, "GetRelVersion for missing version on current rel")
 	})
@@ -651,16 +653,16 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 	})
 }
 
-func newDiskTieredGraph(t *testing.T) (*Graph, *TieredStore) {
+func newDiskTieredGraph(t *testing.T) (*Graph, *tiered.Store) {
 	t.Helper()
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		DataDir:       t.TempDir(),
 		RefLabels:     []string{"Case", "User"},
 		ShardWindow:   7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1,
 	})
 	if err != nil {
-		t.Fatalf("NewTieredStore: %v", err)
+		t.Fatalf("tiered.New: %v", err)
 	}
 	g, err := New(Config{
 		SnowflakeNodeID: 0,
@@ -673,7 +675,7 @@ func newDiskTieredGraph(t *testing.T) (*Graph, *TieredStore) {
 	return g, ts
 }
 
-func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *tieredstore.EventShard) {
+func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *tiered.Store, *tiered.EventShard) {
 	t.Helper()
 	g, ts := newTestTieredGraph(t)
 
@@ -695,7 +697,7 @@ func newTieredGraphWithClosedColdShard(t *testing.T) (*Graph, *TieredStore, *tie
 	return g, ts, cold
 }
 
-func eventShardByName(t *testing.T, ts *TieredStore, name string) *tieredstore.EventShard {
+func eventShardByName(t *testing.T, ts *tiered.Store, name string) *tiered.EventShard {
 	t.Helper()
 	ts.MuForTest().RLock()
 	defer ts.MuForTest().RUnlock()
@@ -706,7 +708,7 @@ func eventShardByName(t *testing.T, ts *TieredStore, name string) *tieredstore.E
 	return es
 }
 
-func closeEventShardStore(t *testing.T, es *tieredstore.EventShard) {
+func closeEventShardStore(t *testing.T, es *tiered.EventShard) {
 	t.Helper()
 	es.LockShardMuForTest()
 	defer es.UnlockShardMuForTest()
@@ -719,7 +721,7 @@ func closeEventShardStore(t *testing.T, es *tieredstore.EventShard) {
 	es.SetStoreForTest(nil)
 }
 
-func assertColdShardStillClosed(t *testing.T, es *tieredstore.EventShard, op string) {
+func assertColdShardStillClosed(t *testing.T, es *tiered.EventShard, op string) {
 	t.Helper()
 	es.LockShardMuForTest()
 	open := es.Store() != nil
@@ -843,18 +845,18 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 		t.Fatalf("DeleteRelationship after cold demotion: %v", err)
 	}
 
-	if _, err := ts.GetRelationship(relID); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("GetRelationship after delete = %v, want ErrRelNotFound", err)
+	if _, err := ts.GetRelationship(relID); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("GetRelationship after delete = %v, want storepkg.ErrRelNotFound", err)
 	}
 }
 
 // E->E rel created post-rotation lives on the start-node's old (now cold)
 // shard. Update and delete must keep that shard pinned for the entire
 // read-mutate-write cycle: each ReplaceRelWithHistory / DeleteRelWithHistory
-// runs through TieredStore which previously resolved owners via the
+// runs through tiered.Store which previously resolved owners via the
 // unchecked shardForRelID/shardForNodeID.
 func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
-	rotateAndDemoteHot := func(t *testing.T, ts *TieredStore) {
+	rotateAndDemoteHot := func(t *testing.T, ts *tiered.Store) {
 		t.Helper()
 		ts.MuForTest().RLock()
 		originName := ts.HotShardForTest().Name()
@@ -954,7 +956,7 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 //
 // We exercise the resolver directly by writing a rel to refArchive via the
 // underlying store: ArchiveNode currently drops rels whose other endpoint
-// isn't already in archive (PutRelationship rejects with ErrNodeNotFound),
+// isn't already in archive (PutRelationship rejects with storepkg.ErrNodeNotFound),
 // so a end-to-end ArchiveNode setup is brittle for the routing-only check
 // this regression guards.
 func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
@@ -1167,7 +1169,7 @@ func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
 // and RunRepair finds no orphan. The rollback path proper is exercised
 // by TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry
 // below — full-path rollback with injected failure requires a Store
-// wrapper hook that the TieredStore test scaffolding does not yet expose.
+// wrapper hook that the tiered.Store test scaffolding does not yet expose.
 func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
@@ -1268,7 +1270,7 @@ func containsRelEntity(rels []*types.Relationship, want types.RelID) bool {
 	return false
 }
 
-func mustArchivedRelationshipFixture(t *testing.T) (*TieredStore, types.RelID, uint16) {
+func mustArchivedRelationshipFixture(t *testing.T) (*tiered.Store, types.RelID, uint16) {
 	t.Helper()
 
 	ts := newTestTieredStore(t)
@@ -1399,7 +1401,7 @@ func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *te
 	}
 
 	// Step 1 of cross-shard delete: remove in/ on end shard.
-	info := badgerstore.RelDeleteInfo{ID: rid, RelType: relType, StartID: startID, EndID: endID}
+	info := badger.RelDeleteInfo{ID: rid, RelType: relType, StartID: startID, EndID: endID}
 	if err := endShard.DeleteRelIncoming(info); err != nil {
 		t.Fatalf("DeleteRelIncoming: %v", err)
 	}
@@ -1434,7 +1436,7 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 	}
 
 	t.Run("AllNodes includes archived", func(t *testing.T) {
-		all, err := ts.AllNodes(QueryOpts{})
+		all, err := ts.AllNodes(storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("AllNodes: %v", err)
 		}
@@ -1480,21 +1482,21 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 // silently skipping it. This requires disk-backed persistence — the
 // in-memory mode loses archive state on instance teardown.
 //
-// We exercise a real restart: write archive data, Close the TieredStore,
+// We exercise a real restart: write archive data, Close the tiered.Store,
 // reopen against the same DataDir, and assert the public APIs see the
 // archived entity without an explicit point lookup having triggered
 // ensureRefArchive first.
 func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 	dir := t.TempDir()
-	mkStore := func() *TieredStore {
-		ts, err := NewTieredStore(TieredStoreConfig{
+	mkStore := func() *tiered.Store {
+		ts, err := tiered.New(tiered.Config{
 			DataDir:       dir,
 			RefLabels:     []string{"Case", "User"},
 			ShardWindow:   7 * 24 * time.Hour,
 			FlushInterval: 1<<63 - 1,
 		})
 		if err != nil {
-			t.Fatalf("NewTieredStore: %v", err)
+			t.Fatalf("tiered.New: %v", err)
 		}
 		return ts
 	}
@@ -1555,7 +1557,7 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 	})
 
 	t.Run("AllNodes lazy-opens archive", func(t *testing.T) {
-		nodes, err := ts.AllNodes(QueryOpts{})
+		nodes, err := ts.AllNodes(storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("AllNodes: %v", err)
 		}
@@ -1592,7 +1594,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 	// Modification rationale (vs. an earlier draft of this test): the
 	// original setup created a Case → other(Case) ref→ref rel and
 	// archived one endpoint, relying on the silent-skip behavior to
-	// "succeed". With ErrCrossShardArchiveRel that setup no longer
+	// "succeed". With tiered.ErrCrossShardArchiveRel that setup no longer
 	// runs to completion. The test's intent — verify that indexed
 	// public queries (NodesByLabel, NodesByLabelAndProperty,
 	// NodeCountByLabel, RelationshipsByType, RelCountByType) include
@@ -1636,7 +1638,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 	}
 
 	t.Run("NodesByLabel surfaces archived", func(t *testing.T) {
-		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		nodes, err := ts.NodesByLabel(caseTok, storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("NodesByLabel: %v", err)
 		}
@@ -1653,7 +1655,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 	})
 
 	t.Run("NodesByLabelAndProperty surfaces archived", func(t *testing.T) {
-		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("NodesByLabelAndProperty: %v", err)
 		}
@@ -1681,7 +1683,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 
 	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasRelID(relID.SnowflakeID()) {
 		t.Run("RelationshipsByType surfaces archived", func(t *testing.T) {
-			rels, err := ts.RelationshipsByType(knowsTok, QueryOpts{})
+			rels, err := ts.RelationshipsByType(knowsTok, storepkg.QueryOpts{})
 			if err != nil {
 				t.Fatalf("RelationshipsByType: %v", err)
 			}
@@ -1709,8 +1711,8 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 }
 
 // AllNodes / AllRelationships gate archive enumeration on Depth ==
-// DepthAll. Archive is the coldest tier of reference data; including
-// it in DepthHot or DepthWarm would surface entities the caller asked
+// storepkg.DepthAll. Archive is the coldest tier of reference data; including
+// it in storepkg.DepthHot or storepkg.DepthWarm would surface entities the caller asked
 // to exclude. refShard is queried for all Depth values per existing
 // semantics — reference data is not Depth-tiered.
 func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
@@ -1734,43 +1736,43 @@ func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
 		return false
 	}
 
-	t.Run("DepthHot excludes archive", func(t *testing.T) {
-		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthHot})
+	t.Run("storepkg.DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(storepkg.QueryOpts{Depth: storepkg.DepthHot})
 		if err != nil {
-			t.Fatalf("AllNodes(DepthHot): %v", err)
+			t.Fatalf("AllNodes(storepkg.DepthHot): %v", err)
 		}
 		if containsNodeID(nodes, caseID) {
-			t.Fatal("AllNodes(DepthHot) returned archived node — Depth gate did not exclude archive")
+			t.Fatal("AllNodes(storepkg.DepthHot) returned archived node — Depth gate did not exclude archive")
 		}
 	})
 
-	t.Run("DepthWarm excludes archive", func(t *testing.T) {
-		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthWarm})
+	t.Run("storepkg.DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(storepkg.QueryOpts{Depth: storepkg.DepthWarm})
 		if err != nil {
-			t.Fatalf("AllNodes(DepthWarm): %v", err)
+			t.Fatalf("AllNodes(storepkg.DepthWarm): %v", err)
 		}
 		if containsNodeID(nodes, caseID) {
-			t.Fatal("AllNodes(DepthWarm) returned archived node — Depth gate did not exclude archive")
+			t.Fatal("AllNodes(storepkg.DepthWarm) returned archived node — Depth gate did not exclude archive")
 		}
 	})
 
-	t.Run("DepthAll includes archive", func(t *testing.T) {
-		nodes, err := ts.AllNodes(QueryOpts{Depth: DepthAll})
+	t.Run("storepkg.DepthAll includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(storepkg.QueryOpts{Depth: storepkg.DepthAll})
 		if err != nil {
-			t.Fatalf("AllNodes(DepthAll): %v", err)
+			t.Fatalf("AllNodes(storepkg.DepthAll): %v", err)
 		}
 		if !containsNodeID(nodes, caseID) {
-			t.Fatal("AllNodes(DepthAll) missed archived node")
+			t.Fatal("AllNodes(storepkg.DepthAll) missed archived node")
 		}
 	})
 
-	t.Run("default opts (Depth=0=DepthAll) includes archive", func(t *testing.T) {
-		nodes, err := ts.AllNodes(QueryOpts{})
+	t.Run("default opts (Depth=0=storepkg.DepthAll) includes archive", func(t *testing.T) {
+		nodes, err := ts.AllNodes(storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("AllNodes(zero): %v", err)
 		}
 		if !containsNodeID(nodes, caseID) {
-			t.Fatal("AllNodes(zero opts) missed archived node — DepthAll is the zero value")
+			t.Fatal("AllNodes(zero opts) missed archived node — storepkg.DepthAll is the zero value")
 		}
 	})
 }
@@ -1819,7 +1821,7 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 	}
 
 	t.Run("AllNodeIDs default includes archive", func(t *testing.T) {
-		ids, err := ts.AllNodeIDs(QueryOpts{})
+		ids, err := ts.AllNodeIDs(storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("AllNodeIDs(default): %v", err)
 		}
@@ -1828,40 +1830,40 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 		}
 	})
 
-	t.Run("AllNodeIDs DepthAll includes archive", func(t *testing.T) {
-		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthAll})
+	t.Run("AllNodeIDs storepkg.DepthAll includes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(storepkg.QueryOpts{Depth: storepkg.DepthAll})
 		if err != nil {
-			t.Fatalf("AllNodeIDs(DepthAll): %v", err)
+			t.Fatalf("AllNodeIDs(storepkg.DepthAll): %v", err)
 		}
 		if !containsNodeIDValue(ids, caseID) {
-			t.Fatal("AllNodeIDs(DepthAll) missed archived node")
+			t.Fatal("AllNodeIDs(storepkg.DepthAll) missed archived node")
 		}
 	})
 
-	t.Run("AllNodeIDs DepthHot excludes archive", func(t *testing.T) {
-		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthHot})
+	t.Run("AllNodeIDs storepkg.DepthHot excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(storepkg.QueryOpts{Depth: storepkg.DepthHot})
 		if err != nil {
-			t.Fatalf("AllNodeIDs(DepthHot): %v", err)
+			t.Fatalf("AllNodeIDs(storepkg.DepthHot): %v", err)
 		}
 		if containsNodeIDValue(ids, caseID) {
-			t.Fatal("AllNodeIDs(DepthHot) returned archived node")
+			t.Fatal("AllNodeIDs(storepkg.DepthHot) returned archived node")
 		}
 	})
 
-	t.Run("AllNodeIDs DepthWarm excludes archive", func(t *testing.T) {
-		ids, err := ts.AllNodeIDs(QueryOpts{Depth: DepthWarm})
+	t.Run("AllNodeIDs storepkg.DepthWarm excludes archive", func(t *testing.T) {
+		ids, err := ts.AllNodeIDs(storepkg.QueryOpts{Depth: storepkg.DepthWarm})
 		if err != nil {
-			t.Fatalf("AllNodeIDs(DepthWarm): %v", err)
+			t.Fatalf("AllNodeIDs(storepkg.DepthWarm): %v", err)
 		}
 		if containsNodeIDValue(ids, caseID) {
-			t.Fatal("AllNodeIDs(DepthWarm) returned archived node")
+			t.Fatal("AllNodeIDs(storepkg.DepthWarm) returned archived node")
 		}
 	})
 
 	relTS, relID, _ := mustArchivedRelationshipFixture(t)
 
 	t.Run("AllRelIDs default includes archive", func(t *testing.T) {
-		ids, err := relTS.AllRelIDs(QueryOpts{})
+		ids, err := relTS.AllRelIDs(storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("AllRelIDs(default): %v", err)
 		}
@@ -1870,23 +1872,23 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 		}
 	})
 
-	t.Run("AllRelIDs DepthAll includes archive", func(t *testing.T) {
-		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthAll})
+	t.Run("AllRelIDs storepkg.DepthAll includes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(storepkg.QueryOpts{Depth: storepkg.DepthAll})
 		if err != nil {
-			t.Fatalf("AllRelIDs(DepthAll): %v", err)
+			t.Fatalf("AllRelIDs(storepkg.DepthAll): %v", err)
 		}
 		if !containsRelIDValue(ids, relID) {
-			t.Fatal("AllRelIDs(DepthAll) missed archived relationship")
+			t.Fatal("AllRelIDs(storepkg.DepthAll) missed archived relationship")
 		}
 	})
 
-	t.Run("AllRelIDs DepthHot excludes archive", func(t *testing.T) {
-		ids, err := relTS.AllRelIDs(QueryOpts{Depth: DepthHot})
+	t.Run("AllRelIDs storepkg.DepthHot excludes archive", func(t *testing.T) {
+		ids, err := relTS.AllRelIDs(storepkg.QueryOpts{Depth: storepkg.DepthHot})
 		if err != nil {
-			t.Fatalf("AllRelIDs(DepthHot): %v", err)
+			t.Fatalf("AllRelIDs(storepkg.DepthHot): %v", err)
 		}
 		if containsRelIDValue(ids, relID) {
-			t.Fatal("AllRelIDs(DepthHot) returned archived relationship")
+			t.Fatal("AllRelIDs(storepkg.DepthHot) returned archived relationship")
 		}
 	})
 }
@@ -1908,7 +1910,7 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 	}
 
 	t.Run("NodesByLabel default includes archive", func(t *testing.T) {
-		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+		nodes, err := ts.NodesByLabel(caseTok, storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("NodesByLabel(default): %v", err)
 		}
@@ -1917,18 +1919,18 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("NodesByLabel DepthHot excludes archive", func(t *testing.T) {
-		nodes, err := ts.NodesByLabel(caseTok, QueryOpts{Depth: DepthHot})
+	t.Run("NodesByLabel storepkg.DepthHot excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabel(caseTok, storepkg.QueryOpts{Depth: storepkg.DepthHot})
 		if err != nil {
-			t.Fatalf("NodesByLabel(DepthHot): %v", err)
+			t.Fatalf("NodesByLabel(storepkg.DepthHot): %v", err)
 		}
 		if containsNodeEntity(nodes, caseID) {
-			t.Fatal("NodesByLabel(DepthHot) returned archived node")
+			t.Fatal("NodesByLabel(storepkg.DepthHot) returned archived node")
 		}
 	})
 
 	t.Run("NodesByLabelAndProperty default includes archive", func(t *testing.T) {
-		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{})
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("NodesByLabelAndProperty(default): %v", err)
 		}
@@ -1937,20 +1939,20 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("NodesByLabelAndProperty DepthWarm excludes archive", func(t *testing.T) {
-		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", QueryOpts{Depth: DepthWarm})
+	t.Run("NodesByLabelAndProperty storepkg.DepthWarm excludes archive", func(t *testing.T) {
+		nodes, err := ts.NodesByLabelAndProperty(caseTok, "status", "open", storepkg.QueryOpts{Depth: storepkg.DepthWarm})
 		if err != nil {
-			t.Fatalf("NodesByLabelAndProperty(DepthWarm): %v", err)
+			t.Fatalf("NodesByLabelAndProperty(storepkg.DepthWarm): %v", err)
 		}
 		if containsNodeEntity(nodes, caseID) {
-			t.Fatal("NodesByLabelAndProperty(DepthWarm) returned archived node")
+			t.Fatal("NodesByLabelAndProperty(storepkg.DepthWarm) returned archived node")
 		}
 	})
 
 	relTS, relID, knowsTok := mustArchivedRelationshipFixture(t)
 
 	t.Run("RelationshipsByType default includes archive", func(t *testing.T) {
-		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{})
+		rels, err := relTS.RelationshipsByType(knowsTok, storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("RelationshipsByType(default): %v", err)
 		}
@@ -1959,13 +1961,13 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("RelationshipsByType DepthHot excludes archive", func(t *testing.T) {
-		rels, err := relTS.RelationshipsByType(knowsTok, QueryOpts{Depth: DepthHot})
+	t.Run("RelationshipsByType storepkg.DepthHot excludes archive", func(t *testing.T) {
+		rels, err := relTS.RelationshipsByType(knowsTok, storepkg.QueryOpts{Depth: storepkg.DepthHot})
 		if err != nil {
-			t.Fatalf("RelationshipsByType(DepthHot): %v", err)
+			t.Fatalf("RelationshipsByType(storepkg.DepthHot): %v", err)
 		}
 		if containsRelEntity(rels, relID) {
-			t.Fatal("RelationshipsByType(DepthHot) returned archived relationship")
+			t.Fatal("RelationshipsByType(storepkg.DepthHot) returned archived relationship")
 		}
 	})
 }
@@ -1987,7 +1989,7 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 	}
 
 	sawArchive := false
-	err = ts.ForEachHistoryShardForTest(ts.RefShardForTest(), func(store *BadgerStore) (bool, error) {
+	err = ts.ForEachHistoryShardForTest(ts.RefShardForTest(), func(store *badger.Store) (bool, error) {
 		if store != archive {
 			return false, nil
 		}
@@ -2008,13 +2010,13 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 // TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE verifies that
 // archiving a reference node A which has an outgoing rel R: A -> B
 // where B lives on an event shard does NOT silently lose R. Pre-fix,
-// archive.PutRelationship(R) failed with ErrNodeNotFound (B not in
+// archive.PutRelationship(R) failed with storepkg.ErrNodeNotFound (B not in
 // archive) and the error was swallowed via `continue`; refShard.Cascade
 // then deleted R from refShard while leaving the in/ entry on B's
 // event shard dangling — silent data corruption.
 //
 // The fix detects the boundary-crossing rel up front and returns
-// ErrCrossShardArchiveRel, leaving all state untouched. Callers must
+// tiered.ErrCrossShardArchiveRel, leaving all state untouched. Callers must
 // either delete the rel or archive both endpoints first.
 func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
@@ -2039,8 +2041,8 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	if err == nil {
 		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; data loss")
 	}
-	if !errors.Is(err, ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
 	}
 
 	// State must be unchanged on rejection — no partial archive.
@@ -2059,7 +2061,7 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 		t.Fatalf("resolve signal shard: %v", err)
 	}
 	defer signalCheckin()
-	if !tieredstore.HasIncomingEntryForTest(signalShard, signalID, relID) {
+	if !tiered.HasIncomingEntryForTest(signalShard, signalID, relID) {
 		t.Error("event shard's in/ entry for cross-shard rel should be unchanged after rejected archive")
 	}
 }
@@ -2067,7 +2069,7 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 // TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR — symmetric to
 // the case above but with rel R: B(event) -> A(ref). The rel entity
 // lives on the event shard and refShard only has the in/ entry. Pre-fix,
-// refShard.GetRelationship(R) returned ErrRelNotFound and the rel was
+// refShard.GetRelationship(R) returned storepkg.ErrRelNotFound and the rel was
 // silently skipped, leaving the in/ entry on refShard dangling after
 // cascade.
 func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
@@ -2092,8 +2094,8 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	if err == nil {
 		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; in/ entry would dangle")
 	}
-	if !errors.Is(err, ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
 	}
 
 	// State must be unchanged on rejection.
@@ -2102,7 +2104,7 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	}
 	// E→R: rel entity lives on event shard. refShard only has the in/
 	// entry for caseID → relID; verify it is still present.
-	if !tieredstore.HasIncomingEntryForTest(ts.RefShardForTest(), caseID, relID) {
+	if !tiered.HasIncomingEntryForTest(ts.RefShardForTest(), caseID, relID) {
 		t.Error("refShard's in/ entry for caseNode should be unchanged after rejected archive")
 	}
 	if ts.RefArchiveForTest().Load() != nil {
@@ -2138,8 +2140,8 @@ func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
 	if err == nil {
 		t.Fatal("ArchiveNode silently succeeded with ref-ref rel where the other endpoint stays on refShard; rel would be silently deleted")
 	}
-	if !errors.Is(err, ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want ErrCrossShardArchiveRel", err)
+	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
 	}
 
 	// State must be unchanged on rejection — no partial archive.
@@ -2366,16 +2368,16 @@ func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
 // and restore. Without g.mu.Lock in ArchiveNode, the adjacency pre-scan can
 // miss rels added concurrently, and the cascade partially destroys them.
 // With the lock, AddRelationship blocks until ArchiveNode finishes and then
-// receives ErrCrossShardArchiveRel.
+// receives tiered.ErrCrossShardArchiveRel.
 func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,
 		RefLabels:     []string{"Case"},
 		ShardWindow:   7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1,
 	})
 	if err != nil {
-		t.Fatalf("NewTieredStore: %v", err)
+		t.Fatalf("tiered.New: %v", err)
 	}
 	g, err := New(Config{
 		SnowflakeNodeID: 0,
@@ -2420,13 +2422,13 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	// Pre-fix (no g.mu.Lock): a concurrent AddRelationship between the
 	// pre-scan and the cascade could succeed, leaving a dangling cross-shard
 	// rel. Post-fix: either blocked by the lock or caught by PutRelationship's
-	// archive guard, which returns ErrCrossShardArchiveRel.
+	// archive guard, which returns tiered.ErrCrossShardArchiveRel.
 	_, addErr := g.AddRelationship("TOUCHES", node, partner, nil)
 	if addErr == nil {
 		t.Fatal("AddRelationship archive→live succeeded; cross-shard archive rel created — re-introduces M2 silent-loss surface")
 	}
-	if !errors.Is(addErr, ErrCrossShardArchiveRel) {
-		t.Fatalf("AddRelationship archive→live returned %v, want ErrCrossShardArchiveRel", addErr)
+	if !errors.Is(addErr, tiered.ErrCrossShardArchiveRel) {
+		t.Fatalf("AddRelationship archive→live returned %v, want tiered.ErrCrossShardArchiveRel", addErr)
 	}
 
 	// Restore via Graph API.

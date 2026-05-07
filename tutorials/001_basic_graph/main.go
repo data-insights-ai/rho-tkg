@@ -12,6 +12,8 @@ import (
 	"log"
 	"strconv"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 )
 
@@ -139,7 +141,7 @@ func main() {
 
 	fmt.Println("\n=== 4. Query Nodes by Label ===")
 
-	persons, err := g.NodesByLabel("Person", graph.QueryOpts{})
+	persons, err := g.NodesByLabel("Person", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func main() {
 		fmt.Printf("  - %s (primary: %s)\n", name, g.NodePrimaryLabel(n))
 	}
 
-	employees, err := g.NodesByLabel("Employee", graph.QueryOpts{})
+	employees, err := g.NodesByLabel("Employee", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,13 +163,13 @@ func main() {
 
 	fmt.Println("\n=== 5. Query Relationships by Type ===")
 
-	knowsRels, err := g.RelationshipsByType("KNOWS", graph.QueryOpts{})
+	knowsRels, err := g.RelationshipsByType("KNOWS", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
-	worksRels, err := g.RelationshipsByType("WORKS_WITH", graph.QueryOpts{})
+	worksRels, err := g.RelationshipsByType("WORKS_WITH", store.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -243,7 +245,7 @@ func main() {
 	fmt.Printf("After deleting WORKS_WITH: relationships=%d\n", rc)
 
 	_, err = g.GetRelationship(worksWith.ID())
-	if errors.Is(err, graph.ErrRelNotFound) {
+	if errors.Is(err, store.ErrRelNotFound) {
 		fmt.Println("WORKS_WITH correctly not found after deletion")
 	}
 
@@ -264,7 +266,7 @@ func main() {
 	fmt.Printf("After deleting Alice: nodes=%d, relationships=%d\n", nc, rc)
 
 	_, err = g.GetNode(alice.ID())
-	if errors.Is(err, graph.ErrNodeNotFound) {
+	if errors.Is(err, store.ErrNodeNotFound) {
 		fmt.Println("Alice correctly not found after deletion")
 	}
 

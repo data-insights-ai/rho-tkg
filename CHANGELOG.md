@@ -4,6 +4,89 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.3.0] - 2026-05-07
+
+### Public API reorganization (Option A — audience-based sub-packages)
+
+This is a major API restructure. External customers (notably `tkgd-v3`) must update import paths.
+
+#### New sub-packages
+
+- `pkg/graph/store` — `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, the `Depth*` and `Distance*` constants, and 12 store-layer sentinel errors (was `pkg/graph.{Store,QueryOpts,...}`).
+- `pkg/graph/store/memory` — `memory.Store`, `memory.New()` (was `graph.MemoryStore`, `graph.NewMemoryStore`).
+- `pkg/graph/store/badger` — `badger.Store`, `badger.Config`, `badger.New()` (was `graph.BadgerStore`, `graph.BadgerStoreConfig`, `graph.NewBadgerStore`).
+- `pkg/graph/store/tiered` — `tiered.Store`, `tiered.Config`, `tiered.New()`, `tiered.MigrateFromBadger()`, `tiered.ShardInfo`, `tiered.VerifyResult`, `tiered.RepairResult`, plus the four TieredStore sentinels (`ErrEventPropertyIndex`, `ErrPrimaryLabelClassMutation`, `ErrNotReferenceEntity`, `ErrCrossShardArchiveRel`).
+- `pkg/graph/events` — `Event`, `EventBus`, `AsyncEventBus`, `EventType`, `EventPriority`, `BackpressureStrategy`, `Publisher`, plus constructors and constants.
+- `pkg/graph/index` — `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, plus the three `ErrIndexProvider*` sentinels.
+- `pkg/graph/temporal` — `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `TemporalConstraintKind`, `ConstraintSet`, `NewConstraintSet`, `ConstraintRelWithinEndpoints`, plus seven temporal-constraint sentinels.
+- `pkg/graph/ontology` — `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`, `ClassReference`.
+
+#### Breaking changes
+
+- **`LegacyIndexProvider.OnEvent` signature** — was `OnEvent(events.Event, *Graph)`, now `OnEvent(events.Event, index.GraphReader)`. The interface had to move out of `pkg/graph` to break a cycle with `pkg/graph/index`; the read-only contract is now enforced at the type level.
+- **All public re-exports for store backends, events, index providers, temporal constraints, and ontology classification are removed from `pkg/graph`**. Customers must import the new sub-packages directly.
+
+#### Migration guide
+
+```go
+// Before (v3.2.0)                              // After (v3.3.0)
+graph.QueryOpts{...}                            store.QueryOpts{...}
+                                                // import .../pkg/graph/store
+
+graph.NewMemoryStore()                          memory.New()
+                                                // import .../pkg/graph/store/memory
+
+graph.NewBadgerStore(graph.BadgerStoreConfig{}) badger.New(badger.Config{})
+                                                // import .../pkg/graph/store/badger
+
+graph.NewTieredStore(graph.TieredStoreConfig{}) tiered.New(tiered.Config{})
+                                                // import .../pkg/graph/store/tiered
+
+graph.MigrateFromBadger(src, dst)               tiered.MigrateFromBadger(src, dst, labels)
+
+graph.NewEventBus()                             events.NewEventBus()
+graph.SetEventBus(...)                          g.SetEventBus(events.NewEventBus())
+graph.PriorityHigh                              events.PriorityHigh
+                                                // import .../pkg/graph/events
+
+graph.IndexProvider                             index.IndexProvider
+graph.LegacyIndexProvider                       index.LegacyIndexProvider
+graph.GraphReader                               index.GraphReader
+                                                // import .../pkg/graph/index
+
+graph.GraphSnapshot                             temporal.GraphSnapshot
+graph.SnapshotDiff                              temporal.SnapshotDiff
+graph.NewConstraintSet(...)                     temporal.NewConstraintSet(...)
+graph.ConstraintRelWithinEndpoints              temporal.ConstraintRelWithinEndpoints
+                                                // import .../pkg/graph/temporal
+
+graph.NewOntologyMapping([]string{"Case"})      ontology.NewOntologyMapping([]string{"Case"})
+graph.ClassReference                            ontology.ClassReference
+                                                // import .../pkg/graph/ontology
+
+errors.Is(err, graph.ErrNodeNotFound)           errors.Is(err, store.ErrNodeNotFound)
+errors.Is(err, graph.ErrEventPropertyIndex)     errors.Is(err, tiered.ErrEventPropertyIndex)
+errors.Is(err, graph.ErrTemporalConstraint)     errors.Is(err, temporal.ErrTemporalConstraint)
+```
+
+#### Internal restructure
+
+- `internal/events` deleted (contents promoted to `pkg/graph/events`).
+- `internal/temporal` deleted (contents promoted to `pkg/graph/temporal`).
+- `internal/memorystore` deleted (contents promoted to `pkg/graph/store/memory`).
+- `internal/badgerstore` deleted (contents promoted to `pkg/graph/store/badger`).
+- `internal/tieredstore` deleted (contents promoted to `pkg/graph/store/tiered`).
+- `internal/store` renamed to `internal/storeutil` (helpers only — key encoding, msgpack wire types, pagination, temporal-filter push-down). The public `Store` contract now lives in `pkg/graph/store`.
+
+#### File consolidation in pkg/graph
+
+Pre-restructure consolidation merged 11 over-split per-operation files into 4 cohesive files organized by domain:
+
+- `context_node_{add,update,read_delete}.go` (3 files) → `node.go` (~750 LOC)
+- `context_relationship_{add,update,read_delete,import}.go` (4 files) → `relationship.go` (~900 LOC)
+- `temporal_{snapshot,diff}.go` → folded into `temporal.go` (~660 LOC)
+- `graph.go` + `lifecycle.go` + `config.go` → `graph.go` (~330 LOC)
+
 ## [3.2.0] - 2026-05-07
 
 ### Breaking changes

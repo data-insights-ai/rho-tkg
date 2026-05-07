@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -456,8 +458,8 @@ func TestGetNodeAt_BeforeCreation(t *testing.T) {
 
 	// Query before the entity existed.
 	_, err := g.GetNodeAt(n.ID(), 1)
-	if !errors.Is(err, ErrNoVersionValidAt) {
-		t.Fatalf("expected ErrNoVersionValidAt, got %v", err)
+	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
 }
 
@@ -466,8 +468,8 @@ func TestGetNodeAt_NotFound(t *testing.T) {
 
 	g, _ := New(Config{})
 	_, err := g.GetNodeAt(types.NodeID(999), nowMs())
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
@@ -495,14 +497,14 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 
 	// Query at t=3000 — before explicit ValidFrom.
 	_, err = g.GetNodeAt(id, 3000)
-	if !errors.Is(err, ErrNoVersionValidAt) {
-		t.Fatalf("before explicit ValidFrom: expected ErrNoVersionValidAt, got %v", err)
+	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("before explicit ValidFrom: expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
 
 	// Query at t=15000 — after explicit ValidTo.
 	_, err = g.GetNodeAt(id, 15000)
-	if !errors.Is(err, ErrNoVersionValidAt) {
-		t.Fatalf("after explicit ValidTo: expected ErrNoVersionValidAt, got %v", err)
+	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("after explicit ValidTo: expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
 }
 
@@ -930,10 +932,10 @@ func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 	}
 	time.Sleep(2 * time.Millisecond)
 
-	// GetNodeAt after deletion should return ErrNoVersionValidAt.
+	// GetNodeAt after deletion should return storepkg.ErrNoVersionValidAt.
 	_, err := g.GetNodeAt(id, nowMs())
-	if !errors.Is(err, ErrNoVersionValidAt) {
-		t.Fatalf("expected ErrNoVersionValidAt after deletion, got %v", err)
+	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
 }
 
@@ -1063,11 +1065,11 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 		t.Fatalf("expected weight=1, got %v", w)
 	}
 
-	// Query at current time — should return ErrNoVersionValidAt.
+	// Query at current time — should return storepkg.ErrNoVersionValidAt.
 	time.Sleep(2 * time.Millisecond)
 	_, err = g.GetRelAt(rid, nowMs())
-	if !errors.Is(err, ErrNoVersionValidAt) {
-		t.Fatalf("expected ErrNoVersionValidAt after deletion, got %v", err)
+	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
 }
 
@@ -1076,8 +1078,8 @@ func TestGetRelAt_NotFound(t *testing.T) {
 
 	g, _ := New(Config{})
 	_, err := g.GetRelAt(types.RelID(999), nowMs())
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 

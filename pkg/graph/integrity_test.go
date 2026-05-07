@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -343,8 +345,8 @@ func TestVerifyNodeHashChain_NonExistent(t *testing.T) {
 	g, _ := New(Config{})
 
 	_, err := g.VerifyNodeHashChain(types.NodeID(999))
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
@@ -482,8 +484,8 @@ func TestVerifyRelHashChain_NonExistent(t *testing.T) {
 	g, _ := New(Config{})
 
 	_, err := g.VerifyRelHashChain(types.RelID(999))
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 

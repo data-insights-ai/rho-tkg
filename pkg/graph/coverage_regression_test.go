@@ -3,6 +3,8 @@ package graph
 import (
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -85,12 +87,12 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 		t.Fatalf("AddNodeLabelToken: %v", err)
 	}
 
-	nodes, err := g.NodesByLabel("User", QueryOpts{})
+	nodes, err := g.NodesByLabel("User", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
 	if !containsNodeID(nodes, types.NodeID(id)) {
-		t.Fatal("node missing from TieredStore added label index")
+		t.Fatal("node missing from tiered.Store added label index")
 	}
 }
 
@@ -123,11 +125,11 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	if len(hist) != 1 {
 		t.Fatalf("history entries = %d, want 1", len(hist))
 	}
-	nodes, err := g.NodesByLabel("User", QueryOpts{})
+	nodes, err := g.NodesByLabel("User", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
 	if !containsNodeID(nodes, types.NodeID(id)) {
-		t.Fatal("node missing from TieredStore added label index")
+		t.Fatal("node missing from tiered.Store added label index")
 	}
 }

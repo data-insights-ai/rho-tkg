@@ -6,7 +6,7 @@
 // adversarial coverage there).
 //
 // Tests for bugs already fixed on main (history-aware NodesByLabel /
-// NodesByLabelAndProperty / RelationshipsByType with temporal QueryOpts,
+// NodesByLabelAndProperty / RelationshipsByType with temporal storepkg.QueryOpts,
 // pagination after historical resolution, direct RemoveNodeLabelToken
 // coverage) have been removed — main's TestNodesByLabel*_TemporalOpts_*
 // adversarial tests cover that ground.
@@ -18,6 +18,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -37,7 +41,7 @@ func containsRelID(rels []*types.Relationship, id types.RelID) bool {
 // every current ID when an indexed candidate set is available, and that the
 // tightest available index (property over label) is used when both apply.
 type temporalCandidateCountingStore struct {
-	Store
+	storepkg.Store
 	forEachNodeIDCalls           int
 	forEachRelIDCalls            int
 	nodesByLabelCalls            int
@@ -54,19 +58,19 @@ func (s *temporalCandidateCountingStore) ForEachRelID(fn func(types.RelID) bool)
 	return s.Store.ForEachRelID(fn)
 }
 
-func (s *temporalCandidateCountingStore) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+func (s *temporalCandidateCountingStore) NodesByLabel(token uint16, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.nodesByLabelCalls++
 	return s.Store.NodesByLabel(token, opts)
 }
 
-func (s *temporalCandidateCountingStore) NodesByLabelAndProperty(token uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+func (s *temporalCandidateCountingStore) NodesByLabelAndProperty(token uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.nodesByLabelAndPropertyCalls++
 	return s.Store.NodesByLabelAndProperty(token, key, value, opts)
 }
 
 func newTemporalCandidateCountingGraph(t *testing.T) (*Graph, *temporalCandidateCountingStore) {
 	t.Helper()
-	store := &temporalCandidateCountingStore{Store: NewMemoryStore()}
+	store := &temporalCandidateCountingStore{Store: memory.New()}
 	g, err := New(Config{Store: store})
 	if err != nil {
 		t.Fatalf("New graph: %v", err)
@@ -77,7 +81,7 @@ func newTemporalCandidateCountingGraph(t *testing.T) (*Graph, *temporalCandidate
 // History-aware indexed temporal queries must not scan the full current-ID set
 // when the label/property index already narrows candidates. Guards the new
 // indexed-candidate planner in temporal.go: every label/property/adjacency
-// query path under a temporal QueryOpts must derive candidates from the
+// query path under a temporal storepkg.QueryOpts must derive candidates from the
 // matching index and merge them with history IDs via forEach{Node,Rel}CandidateID,
 // rather than degrading to ForEachNodeID/ForEachRelID over every entity.
 func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
@@ -100,14 +104,14 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	if _, err := g.GetNodesByLabelValidAt("Person", queryTime); err != nil {
 		t.Fatalf("GetNodesByLabelValidAt: %v", err)
 	}
-	if _, err := g.NodesByLabel("Person", QueryOpts{ValidAt: queryTime}); err != nil {
-		t.Fatalf("NodesByLabel temporal QueryOpts: %v", err)
+	if _, err := g.NodesByLabel("Person", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+		t.Fatalf("NodesByLabel temporal storepkg.QueryOpts: %v", err)
 	}
 	if _, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime); err != nil {
 		t.Fatalf("NodesByLabelPropertyAndTime: %v", err)
 	}
-	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", QueryOpts{ValidAt: queryTime}); err != nil {
-		t.Fatalf("NodesByLabelAndProperty temporal QueryOpts: %v", err)
+	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+		t.Fatalf("NodesByLabelAndProperty temporal storepkg.QueryOpts: %v", err)
 	}
 	if _, err := g.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
 		t.Fatalf("NodesByLabelPropertyDuring: %v", err)
@@ -156,7 +160,7 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 	store.nodesByLabelCalls = 0
 	store.nodesByLabelAndPropertyCalls = 0
 
-	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", QueryOpts{ValidAt: queryTime}); err != nil {
+	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
 		t.Fatalf("NodesByLabelAndProperty temporal: %v", err)
 	}
 	if _, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime); err != nil {
@@ -204,8 +208,8 @@ func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 	if _, err := g.GetNeighborsValidAt(a.ID(), queryTime); err != nil {
 		t.Fatalf("GetNeighborsValidAt: %v", err)
 	}
-	if _, err := g.RelationshipsByType("KNOWS", QueryOpts{ValidAt: queryTime}); err != nil {
-		t.Fatalf("RelationshipsByType temporal QueryOpts: %v", err)
+	if _, err := g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+		t.Fatalf("RelationshipsByType temporal storepkg.QueryOpts: %v", err)
 	}
 
 	if store.forEachRelIDCalls != 0 {
@@ -251,8 +255,8 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 	}
 
 	err = ts.PutRelationship(r)
-	if !errors.Is(err, ErrRelExists) {
-		t.Fatalf("PutRelationship duplicate = %v, want ErrRelExists", err)
+	if !errors.Is(err, storepkg.ErrRelExists) {
+		t.Fatalf("PutRelationship duplicate = %v, want storepkg.ErrRelExists", err)
 	}
 	if got := ts.RefShardForTest().IncomingRelIDs(endID.SnowflakeID(), 0); len(got) != 0 {
 		t.Fatalf("failed cross-shard PutRelationship left %d incoming entries, want rollback to 0", len(got))
@@ -264,7 +268,7 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 // only consult current state so deleted entities are silently dropped from
 // historical snapshots.
 //
-// FIX: temporal.go AllNodes/AllRelationships QueryOpts handling must merge
+// FIX: temporal.go AllNodes/AllRelationships storepkg.QueryOpts handling must merge
 // current IDs with history IDs and resolve each via GetNodeAt/GetRelAt.
 func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	g := newTestGraph(t)
@@ -293,7 +297,7 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	nodes, err := g.AllNodes(QueryOpts{ValidAt: queryTime})
+	nodes, err := g.AllNodes(storepkg.QueryOpts{ValidAt: queryTime})
 	if err != nil {
 		t.Fatalf("AllNodes ValidAt: %v", err)
 	}
@@ -301,7 +305,7 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 		t.Fatalf("generic AllNodes missed deleted historical node at %d; got %d nodes", queryTime, len(nodes))
 	}
 
-	rels, err := g.AllRelationships(QueryOpts{ValidAt: queryTime})
+	rels, err := g.AllRelationships(storepkg.QueryOpts{ValidAt: queryTime})
 	if err != nil {
 		t.Fatalf("AllRelationships ValidAt: %v", err)
 	}
@@ -461,7 +465,7 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 // error so the batch can exercise its node-failure short-circuit on the rel
 // step. Other methods delegate verbatim.
 type failPutNodesBatchStore struct {
-	Store
+	storepkg.Store
 	err error
 }
 
@@ -474,7 +478,7 @@ func (s *failPutNodesBatchStore) PutNodesBatch(nodes []*types.Node) error {
 // letting PutRelationship surface a generic "node not found".
 func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 	injected := errors.New("injected PutNodesBatch failure")
-	store := &failPutNodesBatchStore{Store: NewMemoryStore(), err: injected}
+	store := &failPutNodesBatchStore{Store: memory.New(), err: injected}
 	g, err := New(Config{Store: store})
 	if err != nil {
 		t.Fatalf("New graph: %v", err)
@@ -586,7 +590,7 @@ func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) 
 // pointer that AddNode returned.
 func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *testing.T) {
 	injected := errors.New("injected PutNodesBatch failure for rollback test")
-	g, err := New(Config{Store: &failPutNodesBatchStore{Store: NewMemoryStore(), err: injected}})
+	g, err := New(Config{Store: &failPutNodesBatchStore{Store: memory.New(), err: injected}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -617,7 +621,7 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 // AllNodes / NodesByLabel / NodesByLabelAndProperty / RelationshipsByType /
 // AllRelationships must reject opts.Depth+temporal explicitly: the
 // history-aware path enumerates IDs through ForEach* iterators that have
-// no QueryOpts, so the underlying TieredStore cannot honor Depth there.
+// no storepkg.QueryOpts, so the underlying tiered.Store cannot honor Depth there.
 // Surfacing the limitation is preferable to silently returning entities
 // the caller asked to exclude.
 func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
@@ -636,7 +640,7 @@ func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	now := nowInstant()
-	opts := QueryOpts{ValidAt: now, Depth: DepthHot}
+	opts := storepkg.QueryOpts{ValidAt: now, Depth: storepkg.DepthHot}
 
 	if _, err := g.AllNodes(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("AllNodes(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
@@ -662,7 +666,7 @@ func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
 // a transaction commit time that never actually committed.
 func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *testing.T) {
 	injected := errors.New("injected PutRelationship failure for rollback test")
-	g, err := New(Config{Store: &failPutRelationshipStore{Store: NewMemoryStore(), err: injected}})
+	g, err := New(Config{Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -700,7 +704,7 @@ func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *t
 // failPutRelationshipStore wraps a Store and fails PutRelationship with a
 // fixed error so the batch path can exercise its rel-failure rollback.
 type failPutRelationshipStore struct {
-	Store
+	storepkg.Store
 	err error
 }
 

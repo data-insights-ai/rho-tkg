@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -74,14 +76,14 @@ func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 
 func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"Thing"}, nil)
 	id := n.ID()
 
-	var got []Event
-	bus.Subscribe(func(e Event) {
+	var got []eventspkg.Event
+	bus.Subscribe(func(e eventspkg.Event) {
 		got = append(got, e)
 	})
 
@@ -94,10 +96,10 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	}
 
 	if len(got) == 0 {
-		t.Fatal("expected EventNodeUpdate, got none")
+		t.Fatal("expected eventspkg.EventNodeUpdate, got none")
 	}
-	if got[0].Type != EventNodeUpdate {
-		t.Errorf("event type = %v, want EventNodeUpdate", got[0].Type)
+	if got[0].Type != eventspkg.EventNodeUpdate {
+		t.Errorf("event type = %v, want eventspkg.EventNodeUpdate", got[0].Type)
 	}
 }
 
@@ -191,7 +193,7 @@ func TestUpdateRelInPlace_NoOp(t *testing.T) {
 
 func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	a, _ := g.AddNode([]string{"A"}, nil)
@@ -199,8 +201,8 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	r, _ := g.AddRelationship("KNOWS", a, b, nil)
 	id := r.ID()
 
-	var got []Event
-	bus.Subscribe(func(e Event) {
+	var got []eventspkg.Event
+	bus.Subscribe(func(e eventspkg.Event) {
 		got = append(got, e)
 	})
 	got = nil // clear AddNode/AddRel events
@@ -211,10 +213,10 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	}
 
 	if len(got) == 0 {
-		t.Fatal("expected EventRelUpdate, got none")
+		t.Fatal("expected eventspkg.EventRelUpdate, got none")
 	}
-	if got[0].Type != EventRelUpdate {
-		t.Errorf("event type = %v, want EventRelUpdate", got[0].Type)
+	if got[0].Type != eventspkg.EventRelUpdate {
+		t.Errorf("event type = %v, want eventspkg.EventRelUpdate", got[0].Type)
 	}
 }
 

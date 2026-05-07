@@ -7,13 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func newTestGraph(t *testing.T) *Graph {
 	t.Helper()
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -436,7 +440,7 @@ func TestBatchBuilderUpdateRelInvalidKey(t *testing.T) {
 
 func TestBatchErrorString(t *testing.T) {
 	t.Parallel()
-	be := BatchError{Op: "AddNode", ID: types.EntityID(42), Err: ErrNodeExists}
+	be := BatchError{Op: "AddNode", ID: types.EntityID(42), Err: storepkg.ErrNodeExists}
 	s := be.Error()
 	if s == "" {
 		t.Fatal("BatchError.Error() returned empty string")

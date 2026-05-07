@@ -17,10 +17,10 @@
 //     dirty tracking, and in-memory indexes (nodeIDs, relIDs, labelIdx,
 //     typeIdx, outIdx, inIdx) rebuilt from Badger on startup via loadIndexes().
 //
-//   - TieredStore: multi-shard store routing entities across ref shard +
+//   - tiered.Store: multi-shard store routing entities across ref shard +
 //     time-windowed event shards by ontology classification (RefLabels config).
 //     Hot→warm→cold shard rotation. Warm/cold recovery on restart. Cross-shard
-//     relationship split-writes. Depth-aware reads via ShardDepth.
+//     relationship split-writes. Depth-aware reads via storepkg.ShardDepth.
 //
 // # BadgerStore Architecture
 //
@@ -49,15 +49,15 @@
 //
 // # Temporal Push-Down
 //
-// QueryOpts supports ValidAt (point-in-time) and ValidStart/ValidEnd (interval)
+// storepkg.QueryOpts supports ValidAt (point-in-time) and ValidStart/ValidEnd (interval)
 // temporal filters. Both MemoryStore and BadgerStore evaluate these filters
 // before deep-copying entities, avoiding O(N) materialization waste. BadgerStore
 // uses a two-stage approach: Peek pre-filter for zero-allocation cache hits,
 // then post-filter for cache misses.
 //
-// # TieredStore
+// # tiered.Store
 //
-// TieredStore routes entities across multiple BadgerStore instances by ontology
+// tiered.Store routes entities across multiple BadgerStore instances by ontology
 // classification. Reference entities (configured via RefLabels) go to a single
 // reference shard; event entities go to time-windowed event shards. The hot
 // shard receives all new event writes. On window expiry, RotateHotShard demotes
@@ -65,7 +65,7 @@
 // catalog on restart. Cold shards are lazy-opened on first access and auto-closed
 // after idle timeout. Cross-shard relationships use split writes: entity+out/ in
 // start shard, in/ in end shard. Merge queries run parallel goroutines per shard.
-// ShardDepth (DepthAll/DepthHot/DepthWarm) controls tier inclusion in queries.
+// storepkg.ShardDepth (storepkg.DepthAll/storepkg.DepthHot/storepkg.DepthWarm) controls tier inclusion in queries.
 //
 // # Transactions
 //

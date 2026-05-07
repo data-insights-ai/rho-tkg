@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -370,10 +372,10 @@ func TestBuildDiff_NilIntegrity(t *testing.T) {
 	only1, _ := g.AddNode([]string{"Only1"}, nil)
 	only1.SetIntegrity(nil)
 
-	snap1 := &GraphSnapshot{
+	snap1 := &temporalpkg.GraphSnapshot{
 		Nodes: []*types.Node{shared, only1},
 	}
-	snap2 := &GraphSnapshot{
+	snap2 := &temporalpkg.GraphSnapshot{
 		Nodes: []*types.Node{shared}, // shared appears in both → same empty hash → unchanged
 	}
 
@@ -402,8 +404,8 @@ func TestBuildDiff_NilIntegrityRel(t *testing.T) {
 	r, _ := g.AddRelationship("E", a, b, nil)
 	r.SetIntegrity(nil) // exercise relHash nil branch
 
-	snap1 := &GraphSnapshot{Relationships: []*types.Relationship{r}}
-	snap2 := &GraphSnapshot{Relationships: []*types.Relationship{r}}
+	snap1 := &temporalpkg.GraphSnapshot{Relationships: []*types.Relationship{r}}
+	snap2 := &temporalpkg.GraphSnapshot{Relationships: []*types.Relationship{r}}
 
 	diff := buildDiff(1, 2, snap1, snap2)
 	// Same rel with nil integrity in both → empty hash, unchanged.

@@ -2,7 +2,7 @@ package graph
 
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;
-// they are zero for MemoryStore and TieredStore.
+// they are zero for MemoryStore and tiered.Store.
 type GraphStats struct {
 	// Operation counters — incremented on every successful operation.
 	NodesAdded   int64
@@ -35,7 +35,7 @@ type StoreStats interface {
 
 // Stats returns a snapshot of graph operation counters and optional cache metrics.
 // Cache metrics are populated only when the underlying store implements StoreStats
-// (currently BadgerStore only); all cache fields are zero for MemoryStore and TieredStore.
+// (currently BadgerStore only); all cache fields are zero for MemoryStore and tiered.Store.
 func (g *Graph) Stats() GraphStats {
 	s := GraphStats{
 		NodesAdded:   g.opNodeAdds.Load(),

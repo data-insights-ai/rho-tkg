@@ -3,6 +3,10 @@ package graph
 import (
 	"errors"
 	"testing"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 )
 
 func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
@@ -69,8 +73,8 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 	_, _ = g.GetOrCreateLabel("Person")
 
 	err := g.RemoveNodeLabel(999, "Person")
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
@@ -105,7 +109,7 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	n, _ := g.AddNode([]string{"Thing", "Tag"}, nil)
 	id := n.ID()
 
-	before, _ := g.NodesByLabel("Tag", QueryOpts{})
+	before, _ := g.NodesByLabel("Tag", storepkg.QueryOpts{})
 	if len(before) == 0 {
 		t.Fatal("expected node in Tag label index before removal")
 	}
@@ -114,7 +118,7 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	after, _ := g.NodesByLabel("Tag", QueryOpts{})
+	after, _ := g.NodesByLabel("Tag", storepkg.QueryOpts{})
 	for _, node := range after {
 		if node.ID() == id {
 			t.Error("node still found in 'Tag' label index after removal")
@@ -124,14 +128,14 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 
 func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"A", "B"}, nil)
 	id := n.ID()
 
-	var events []Event
-	bus.Subscribe(func(e Event) {
+	var events []eventspkg.Event
+	bus.Subscribe(func(e eventspkg.Event) {
 		events = append(events, e)
 	})
 	events = nil // clear AddNode event
@@ -141,9 +145,9 @@ func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	}
 
 	if len(events) == 0 {
-		t.Fatal("expected EventNodeUpdate, got none")
+		t.Fatal("expected eventspkg.EventNodeUpdate, got none")
 	}
-	if events[0].Type != EventNodeUpdate {
-		t.Errorf("event type = %v, want EventNodeUpdate", events[0].Type)
+	if events[0].Type != eventspkg.EventNodeUpdate {
+		t.Errorf("event type = %v, want eventspkg.EventNodeUpdate", events[0].Type)
 	}
 }

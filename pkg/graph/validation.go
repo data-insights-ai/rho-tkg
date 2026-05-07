@@ -3,13 +3,14 @@ package graph
 import (
 	"fmt"
 
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // AddTemporalConstraint appends a constraint to the current constraint set.
 // Constraints are checked at relationship write time (AddRelationship, ImportRelationshipWithID).
 // Typically called once at startup before any writes.
-func (g *Graph) AddTemporalConstraint(c TemporalConstraint) {
+func (g *Graph) AddTemporalConstraint(c temporalpkg.TemporalConstraint) {
 	g.mu.Lock()
 	g.constraints = g.constraints.Add(c)
 	g.mu.Unlock()

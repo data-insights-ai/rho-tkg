@@ -3,6 +3,8 @@ package graph
 import (
 	"testing"
 	"time"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
 // Integration tests for the Graph-level high-frequency index API.
@@ -54,7 +56,7 @@ func TestHFIndex_ReplacesTemporalIndex(t *testing.T) {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
 
-	// Replace with HFI — should either succeed or return ErrTemporalIndexExists
+	// Replace with HFI — should either succeed or return storepkg.ErrTemporalIndexExists
 	// The spec says only one type can be set at a time.
 	// Drop first, then create HFI.
 	err = g.DropTemporalIndex("Widget")
@@ -85,13 +87,13 @@ func TestHFIndex_DuplicateCreate(t *testing.T) {
 		t.Fatalf("first CreateHighFrequencyIndex: %v", err)
 	}
 
-	// Second create must return ErrTemporalIndexExists
+	// Second create must return storepkg.ErrTemporalIndexExists
 	err = g.CreateHighFrequencyIndex("Alpha", time.Hour)
 	if err == nil {
-		t.Fatal("expected ErrTemporalIndexExists on duplicate create, got nil")
+		t.Fatal("expected storepkg.ErrTemporalIndexExists on duplicate create, got nil")
 	}
-	if err != ErrTemporalIndexExists {
-		t.Errorf("expected ErrTemporalIndexExists, got %v", err)
+	if err != storepkg.ErrTemporalIndexExists {
+		t.Errorf("expected storepkg.ErrTemporalIndexExists, got %v", err)
 	}
 }
 
@@ -107,13 +109,13 @@ func TestHFIndex_DropNotFound(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	// Drop when no HFI exists — should return ErrTemporalIndexNotFound
+	// Drop when no HFI exists — should return storepkg.ErrTemporalIndexNotFound
 	err = g.DropHighFrequencyIndex("Beta")
 	if err == nil {
-		t.Fatal("expected ErrTemporalIndexNotFound on drop of non-existent index, got nil")
+		t.Fatal("expected storepkg.ErrTemporalIndexNotFound on drop of non-existent index, got nil")
 	}
-	if err != ErrTemporalIndexNotFound {
-		t.Errorf("expected ErrTemporalIndexNotFound, got %v", err)
+	if err != storepkg.ErrTemporalIndexNotFound {
+		t.Errorf("expected storepkg.ErrTemporalIndexNotFound, got %v", err)
 	}
 }
 
@@ -138,10 +140,10 @@ func TestHFIndex_ConflictsWithTemporalIndex(t *testing.T) {
 	// Attempt to create HFI while temporal index exists — must fail
 	err = g.CreateHighFrequencyIndex("Gamma", time.Hour)
 	if err == nil {
-		t.Fatal("expected ErrTemporalIndexExists when temporal index already exists, got nil")
+		t.Fatal("expected storepkg.ErrTemporalIndexExists when temporal index already exists, got nil")
 	}
-	if err != ErrTemporalIndexExists {
-		t.Errorf("expected ErrTemporalIndexExists, got %v", err)
+	if err != storepkg.ErrTemporalIndexExists {
+		t.Errorf("expected storepkg.ErrTemporalIndexExists, got %v", err)
 	}
 }
 

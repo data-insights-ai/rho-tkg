@@ -2,10 +2,12 @@ package graph
 
 import (
 	"testing"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 )
 
 func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {
-	// Verify that Config.SyncWrites flows through to the backing BadgerStore.
+	// Verify that Config.SyncWrites flows through to the backing badger.Store.
 	dir := t.TempDir()
 	g, err := New(Config{
 		BadgerDir:  dir,
@@ -16,9 +18,9 @@ func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {
 	}
 	defer g.Close()
 
-	bs, ok := g.store.(*BadgerStore)
+	bs, ok := g.store.(*badger.Store)
 	if !ok {
-		t.Fatal("expected store to be *BadgerStore")
+		t.Fatal("expected store to be *badger.Store")
 	}
 	if !bs.SyncWritesForTest() {
 		t.Error("expected bs.SyncWritesForTest() = true when Config.SyncWrites=true")

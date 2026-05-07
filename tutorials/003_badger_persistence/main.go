@@ -12,6 +12,8 @@ import (
 	"os"
 	"strconv"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -165,20 +167,20 @@ func main() {
 		fmt.Printf("Alice primary: %s\n", g.NodePrimaryLabel(alice))
 
 		// Query by label.
-		persons, err := g.NodesByLabel("Person", graph.QueryOpts{})
+		persons, err := g.NodesByLabel("Person", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Person nodes: %d\n", len(persons))
 
-		developers, err := g.NodesByLabel("Developer", graph.QueryOpts{})
+		developers, err := g.NodesByLabel("Developer", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Developer nodes: %d\n", len(developers))
 
 		// Query by relationship type.
-		knowsRels, err := g.RelationshipsByType("KNOWS", graph.QueryOpts{})
+		knowsRels, err := g.RelationshipsByType("KNOWS", store.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}

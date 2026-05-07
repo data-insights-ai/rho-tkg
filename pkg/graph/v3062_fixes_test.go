@@ -7,6 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -45,14 +50,14 @@ func TestNew_NegativeValidationLimits(t *testing.T) {
 
 	// Zero and positive values should succeed.
 	t.Run("zero_ok", func(t *testing.T) {
-		g, err := New(Config{Store: NewMemoryStore()})
+		g, err := New(Config{Store: memory.New()})
 		if err != nil {
 			t.Fatalf("New(zero defaults) error: %v", err)
 		}
 		g.Close()
 	})
 	t.Run("positive_ok", func(t *testing.T) {
-		g, err := New(Config{Store: NewMemoryStore(), Validation: ValidationLimits{
+		g, err := New(Config{Store: memory.New(), Validation: ValidationLimits{
 			MaxLabelsPerNode:       10,
 			MaxPropertiesPerEntity: 100,
 			MaxPropertyKeyLength:   64,
@@ -66,31 +71,31 @@ func TestNew_NegativeValidationLimits(t *testing.T) {
 	})
 }
 
-// ─── Issue 4: BadgerStore config — reject invalid values ──────────────────────
+// ─── Issue 4: badger.Store config — reject invalid values ──────────────────────
 
 func TestNewBadgerStore_InvalidConfig(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name string
-		cfg  BadgerStoreConfig
+		cfg  badger.Config
 		want string
 	}{
-		{"negative_flush", BadgerStoreConfig{InMemory: true, FlushInterval: -time.Second}, "FlushInterval must not be negative"},
-		{"negative_gc", BadgerStoreConfig{InMemory: true, GCInterval: -time.Second}, "GCInterval must not be negative"},
-		{"gc_ratio_zero_negative", BadgerStoreConfig{InMemory: true, GCDiscardRatio: -0.5}, "GCDiscardRatio must be in (0, 1),"},
-		{"gc_ratio_one", BadgerStoreConfig{InMemory: true, GCDiscardRatio: 1.0}, "GCDiscardRatio must be in (0, 1),"},
-		{"gc_ratio_above_one", BadgerStoreConfig{InMemory: true, GCDiscardRatio: 1.5}, "GCDiscardRatio must be in (0, 1),"},
-		{"empty_dir", BadgerStoreConfig{InMemory: false, Dir: ""}, "Dir required when InMemory is false"},
+		{"negative_flush", badger.Config{InMemory: true, FlushInterval: -time.Second}, "FlushInterval must not be negative"},
+		{"negative_gc", badger.Config{InMemory: true, GCInterval: -time.Second}, "GCInterval must not be negative"},
+		{"gc_ratio_zero_negative", badger.Config{InMemory: true, GCDiscardRatio: -0.5}, "GCDiscardRatio must be in (0, 1),"},
+		{"gc_ratio_one", badger.Config{InMemory: true, GCDiscardRatio: 1.0}, "GCDiscardRatio must be in (0, 1),"},
+		{"gc_ratio_above_one", badger.Config{InMemory: true, GCDiscardRatio: 1.5}, "GCDiscardRatio must be in (0, 1),"},
+		{"empty_dir", badger.Config{InMemory: false, Dir: ""}, "Dir required when InMemory is false"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			bs, err := NewBadgerStore(tc.cfg)
+			bs, err := badger.New(tc.cfg)
 			if err == nil {
 				bs.Close()
-				t.Fatalf("NewBadgerStore(%s) should return error", tc.name)
+				t.Fatalf("badger.New(%s) should return error", tc.name)
 			}
 			if got := err.Error(); !containsSubstring(got, tc.want) {
 				t.Errorf("error = %q, want substring %q", got, tc.want)
@@ -145,7 +150,7 @@ func TestExtractProvenance_FractionalAuthLevel(t *testing.T) {
 
 // panicStore is a Store that panics on PutNodesBatch to test batch panic recovery.
 type panicStore struct {
-	*MemoryStore
+	*memory.Store
 }
 
 func (ps *panicStore) PutNodesBatch(_ []*types.Node) error {
@@ -155,8 +160,8 @@ func (ps *panicStore) PutNodesBatch(_ []*types.Node) error {
 func TestBatchExecute_PanicRecovery(t *testing.T) {
 	t.Parallel()
 
-	ms := NewMemoryStore()
-	ps := &panicStore{MemoryStore: ms}
+	ms := memory.New()
+	ps := &panicStore{Store: ms}
 	g, err := New(Config{Store: ps})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -203,7 +208,7 @@ func TestBatchExecute_PanicRecovery(t *testing.T) {
 	g.mu.Unlock()
 }
 
-// ─── Issue 1: TieredStore — CreateTemporalIndex ───────────────────────────────
+// ─── Issue 1: tiered.Store — CreateTemporalIndex ───────────────────────────────
 
 func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
 	t.Parallel()
@@ -221,14 +226,14 @@ func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
 		t.Fatalf("CreateTemporalIndex(Case): %v", err)
 	}
 
-	// TieredStore swallows ErrTemporalIndexExists (creates across shards idempotently).
+	// tiered.Store swallows storepkg.ErrTemporalIndexExists (creates across shards idempotently).
 	// Second call should succeed without error.
 	if err := g.CreateTemporalIndex("Case"); err != nil {
 		t.Errorf("duplicate CreateTemporalIndex should be idempotent, got: %v", err)
 	}
 
 	// Verify the index actually works by checking temporal query returns the node.
-	nodes, err := g.NodesByLabel("Case", QueryOpts{ValidAt: types.Instant(time.Now().UnixMilli())})
+	nodes, err := g.NodesByLabel("Case", storepkg.QueryOpts{ValidAt: types.Instant(time.Now().UnixMilli())})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
@@ -237,7 +242,7 @@ func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
 	}
 }
 
-// ─── Issue 1: TieredStore — DropTemporalIndex ─────────────────────────────────
+// ─── Issue 1: tiered.Store — DropTemporalIndex ─────────────────────────────────
 
 func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
 	t.Parallel()
@@ -253,12 +258,12 @@ func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
 
 	// Double-drop.
 	err := g.DropTemporalIndex("Case")
-	if !errors.Is(err, ErrTemporalIndexNotFound) {
-		t.Errorf("double DropTemporalIndex err = %v, want ErrTemporalIndexNotFound", err)
+	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
+		t.Errorf("double DropTemporalIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
 	}
 }
 
-// ─── Issue 1: TieredStore — CreateHighFrequencyIndex ──────────────────────────
+// ─── Issue 1: tiered.Store — CreateHighFrequencyIndex ──────────────────────────
 
 func TestTieredStore_CreateHighFrequencyIndex_Store(t *testing.T) {
 	t.Parallel()
@@ -269,13 +274,13 @@ func TestTieredStore_CreateHighFrequencyIndex_Store(t *testing.T) {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
 	}
 
-	// TieredStore swallows ErrTemporalIndexExists from shard-level duplicates.
+	// tiered.Store swallows storepkg.ErrTemporalIndexExists from shard-level duplicates.
 	if err := g.CreateHighFrequencyIndex("Case", time.Hour); err != nil {
 		t.Errorf("duplicate CreateHighFrequencyIndex should be idempotent, got: %v", err)
 	}
 }
 
-// ─── Issue 1: TieredStore — DropHighFrequencyIndex ────────────────────────────
+// ─── Issue 1: tiered.Store — DropHighFrequencyIndex ────────────────────────────
 
 func TestTieredStore_DropHighFrequencyIndex_Store(t *testing.T) {
 	t.Parallel()
@@ -291,12 +296,12 @@ func TestTieredStore_DropHighFrequencyIndex_Store(t *testing.T) {
 
 	// Double-drop.
 	err := g.DropHighFrequencyIndex("Case")
-	if !errors.Is(err, ErrTemporalIndexNotFound) {
-		t.Errorf("double DropHighFrequencyIndex err = %v, want ErrTemporalIndexNotFound", err)
+	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
+		t.Errorf("double DropHighFrequencyIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
 	}
 }
 
-// ─── Issue 1 + 6: TieredStore — RemoveNodeLabelTokenWithHistory ───────────────
+// ─── Issue 1 + 6: tiered.Store — RemoveNodeLabelTokenWithHistory ───────────────
 
 func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	t.Parallel()
@@ -333,7 +338,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	}
 }
 
-// ─── Issue 6: RemoveNodeLabel via Graph — crash-consistency (MemoryStore) ─────
+// ─── Issue 6: RemoveNodeLabel via Graph — crash-consistency (memory.Store) ─────
 
 func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
 	t.Parallel()

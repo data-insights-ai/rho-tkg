@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"testing"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -11,7 +13,7 @@ import (
 // node on the in-memory store. Each iteration targets a fresh node/label
 // pair to avoid the idempotent fast path.
 func BenchmarkAddNodeLabel(b *testing.B) {
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -43,7 +45,7 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 // BenchmarkAddNodeLabelIdempotent measures the idempotent fast path —
 // adding a label the node already has.
 func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 // BenchmarkRemoveNodeLabel measures the cost of removing a label from an
 // existing node (opposite of BenchmarkAddNodeLabel).
 func BenchmarkRemoveNodeLabel(b *testing.B) {
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}

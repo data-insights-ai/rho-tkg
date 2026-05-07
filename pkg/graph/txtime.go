@@ -3,6 +3,8 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -21,7 +23,7 @@ var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the give
 func (g *Graph) GetNodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	// Try current node first.
 	current, err := g.store.GetNode(id)
-	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	if current != nil {
@@ -59,7 +61,7 @@ func (g *Graph) GetNodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node,
 // transaction time. Mirrors GetNodeAsOf for relationships.
 func (g *Graph) GetRelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	current, err := g.store.GetRelationship(id)
-	if err != nil && !errors.Is(err, ErrRelNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 	if current != nil {

@@ -3,10 +3,17 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// --- Internal helpers ---
+// =============================================================================
+// Internal helpers
+// =============================================================================
 
 // resolveOpenEndInstant maps an open-ended `end == 0` upper bound to a
 // concrete instant ("now + 1") so a single per-query value is shared
@@ -79,7 +86,7 @@ func (g *Graph) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*typ
 			return entry, nil
 		}
 	}
-	return nil, ErrNoVersionValidAt
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // nodeVersionBounds computes the effective [vStart, vEnd) for chain[i].
@@ -132,7 +139,7 @@ func (g *Graph) resolveRelVersionAt(chain []*types.Relationship, t types.Instant
 			return entry, nil
 		}
 	}
-	return nil, ErrNoVersionValidAt
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
@@ -289,19 +296,19 @@ func (g *Graph) forEachKnownRelID(fn func(types.RelID) error) error {
 }
 
 // hasTemporalFilter reports whether opts carries a temporal filter that
-// requires history-aware resolution. Matches the Store-level QueryOpts
+// requires history-aware resolution. Matches the Store-level storepkg.QueryOpts
 // contract: ValidStart/ValidEnd form an interval filter ONLY when both are
 // set; a single one-sided bound is treated as "no filter" so the call falls
 // through to the non-temporal fast path. Without this guard the interval
 // predicate `vStart < end && (vEnd == 0 || vEnd > start)` collapses
 // (e.g. with end == 0) and rejects every entity, regressing
-// AllNodes(QueryOpts{ValidStart: t}) and similar one-sided callers.
+// AllNodes(storepkg.QueryOpts{ValidStart: t}) and similar one-sided callers.
 //
-// Implemented as a free function rather than a method on QueryOpts because
-// QueryOpts is now a type alias to internal/store.QueryOpts after the
+// Implemented as a free function rather than a method on storepkg.QueryOpts because
+// storepkg.QueryOpts is now a type alias to internal/store.storepkg.QueryOpts after the
 // v3.1.17 restructure, and Go forbids defining methods on a non-local
 // aliased type.
-func hasTemporalFilter(opts QueryOpts) bool {
+func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return true
 	}
@@ -313,16 +320,16 @@ func hasTemporalFilter(opts QueryOpts) bool {
 // For interval queries, all overlapping versions are scanned (most-recent
 // first) and the first match is returned — so a node whose label/property held
 // at any moment in the interval is found, even if a later version no longer
-// matches. Returns ErrNoVersionValidAt if no overlapping version satisfies
+// matches. Returns storepkg.ErrNoVersionValidAt if no overlapping version satisfies
 // pred. pred==nil means "any overlapping version".
-func (g *Graph) findNodeVersionForOpts(id types.NodeID, opts QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+func (g *Graph) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if opts.ValidAt != 0 {
 		n, err := g.GetNodeAt(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}
 		if pred != nil && !pred(n) {
-			return nil, ErrNoVersionValidAt
+			return nil, storepkg.ErrNoVersionValidAt
 		}
 		return n, nil
 	}
@@ -330,14 +337,14 @@ func (g *Graph) findNodeVersionForOpts(id types.NodeID, opts QueryOpts, pred fun
 }
 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
-func (g *Graph) findRelVersionForOpts(id types.RelID, opts QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (g *Graph) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if opts.ValidAt != 0 {
 		r, err := g.GetRelAt(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}
 		if pred != nil && !pred(r) {
-			return nil, ErrNoVersionValidAt
+			return nil, storepkg.ErrNoVersionValidAt
 		}
 		return r, nil
 	}
@@ -347,8 +354,8 @@ func (g *Graph) findRelVersionForOpts(id types.RelID, opts QueryOpts, pred func(
 // findNodeVersionMatchingDuring iterates versions of node id whose validity
 // overlaps [start, end), most-recent first, and returns the first version for
 // which pred returns true. pred==nil returns the most-recent overlapping
-// version (the original "any overlap" semantic). Returns ErrNoVersionValidAt
-// if no overlapping version satisfies pred, ErrNodeNotFound if the node was
+// version (the original "any overlap" semantic). Returns storepkg.ErrNoVersionValidAt
+// if no overlapping version satisfies pred, storepkg.ErrNodeNotFound if the node was
 // never seen.
 //
 // This is the predicate-aware variant of "during" resolution. The "predicate
@@ -365,7 +372,7 @@ func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.
 	// non-deterministically. The entry-point resolution gives every
 	// candidate the same upper bound.
 	current, err := g.store.GetNode(id)
-	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 
@@ -375,7 +382,7 @@ func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.
 	}
 
 	if current == nil && len(history) == 0 {
-		return nil, ErrNodeNotFound
+		return nil, storepkg.ErrNodeNotFound
 	}
 
 	chain := make([]*types.Node, 0, len(history)+1)
@@ -394,14 +401,14 @@ func (g *Graph) findNodeVersionMatchingDuring(id types.NodeID, start, end types.
 		}
 	}
 
-	return nil, ErrNoVersionValidAt
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (g *Graph) findRelVersionMatchingDuring(id types.RelID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	// See findNodeVersionMatchingDuring: callers must pre-resolve end == 0.
 	current, err := g.store.GetRelationship(id)
-	if err != nil && !errors.Is(err, ErrRelNotFound) {
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 
@@ -411,7 +418,7 @@ func (g *Graph) findRelVersionMatchingDuring(id types.RelID, start, end types.In
 	}
 
 	if current == nil && len(history) == 0 {
-		return nil, ErrRelNotFound
+		return nil, storepkg.ErrRelNotFound
 	}
 
 	chain := make([]*types.Relationship, 0, len(history)+1)
@@ -429,7 +436,7 @@ func (g *Graph) findRelVersionMatchingDuring(id types.RelID, start, end types.In
 		}
 	}
 
-	return nil, ErrNoVersionValidAt
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // getNodeVersionDuring is a thin wrapper preserving the original "any overlap"
@@ -443,4 +450,170 @@ func (g *Graph) getNodeVersionDuring(id types.NodeID, start, end types.Instant) 
 // semantic for relationships.
 func (g *Graph) getRelVersionDuring(id types.RelID, start, end types.Instant) (*types.Relationship, error) {
 	return g.findRelVersionMatchingDuring(id, start, end, nil)
+}
+
+// =============================================================================
+// Snapshot
+// =============================================================================
+
+// Snapshot returns a complete graph state at the given instant.
+// Relationships are only included if both endpoints are valid at t.
+// Acquires g.mu.RLock to prevent torn reads from concurrent Batch execution.
+func (g *Graph) Snapshot(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.snapshotAt(t)
+}
+
+// snapshotAt computes the graph snapshot at t. It does not acquire g.mu;
+// callers that require strong snapshot consistency should hold g.mu.RLock.
+func (g *Graph) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
+	nodes, err := g.GetNodesValidAt(t)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build set of valid node IDs for endpoint filtering.
+	nodeSet := make(map[snowflake.ID]struct{}, len(nodes))
+	for _, n := range nodes {
+		nodeSet[n.ID().SnowflakeID()] = struct{}{}
+	}
+
+	allRels, err := g.GetRelationshipsValidAt(t)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only include rels where both endpoints are in the valid node set.
+	var rels []*types.Relationship
+	for _, r := range allRels {
+		_, startOK := nodeSet[r.StartNodeID().SnowflakeID()]
+		_, endOK := nodeSet[r.EndNodeID().SnowflakeID()]
+		if startOK && endOK {
+			rels = append(rels, r)
+		}
+	}
+
+	return &temporalpkg.GraphSnapshot{
+		Timestamp:     t,
+		Nodes:         nodes,
+		Relationships: rels,
+		NodeCount:     len(nodes),
+		RelCount:      len(rels),
+	}, nil
+}
+
+// =============================================================================
+// Diff
+// =============================================================================
+
+// DiffSnapshots returns the set of entity changes between t1 and t2.
+// Entities valid at T2 but not T1 → Created.
+// Entities valid at both but with different integrity hash → Updated.
+// Entities valid at T1 but not T2 → Deleted.
+// Returns ErrInvalidTimeRange if t1 >= t2 or either is zero.
+//
+// Note: the two snapshots are read independently without holding g.mu. A
+// concurrent backdated write that commits between the two reads may appear as
+// a spurious Created/Deleted entry. This is an acceptable trade-off against
+// blocking all writes for the full O(N) snapshot duration.
+//
+// TODO(v3.1.0): streaming DiffSnapshots to avoid O(N) RAM materialization.
+func (g *Graph) DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
+	if t1 == 0 || t2 == 0 || t1 >= t2 {
+		return nil, ErrInvalidTimeRange
+	}
+
+	// No g.mu.RLock — see doc comment above.
+	snap1, err := g.snapshotAt(t1)
+	if err != nil {
+		return nil, err
+	}
+	snap2, err := g.snapshotAt(t2)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildDiff(t1, t2, snap1, snap2), nil
+}
+
+// buildDiff computes the SnapshotDiff between two snapshots.
+func buildDiff(t1, t2 types.Instant, snap1, snap2 *temporalpkg.GraphSnapshot) *temporalpkg.SnapshotDiff {
+	diff := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
+
+	// --- Nodes ---
+	nodes1 := make(map[snowflake.ID]*types.Node, len(snap1.Nodes))
+	for _, n := range snap1.Nodes {
+		nodes1[n.ID().SnowflakeID()] = n
+	}
+	nodes2 := make(map[snowflake.ID]*types.Node, len(snap2.Nodes))
+	for _, n := range snap2.Nodes {
+		nodes2[n.ID().SnowflakeID()] = n
+	}
+
+	for id, n2 := range nodes2 {
+		if n1, ok := nodes1[id]; ok {
+			// Present in both: compare hashes.
+			h1 := nodeHash(n1)
+			h2 := nodeHash(n2)
+			if h1 != h2 {
+				diff.NodesUpdated = append(diff.NodesUpdated, temporalpkg.NodeUpdate{Before: n1, After: n2})
+			}
+			// identical hash → unchanged; skip
+		} else {
+			// Only in snap2 → Created.
+			diff.NodesCreated = append(diff.NodesCreated, n2)
+		}
+	}
+	for id, n1 := range nodes1 {
+		if _, ok := nodes2[id]; !ok {
+			// Only in snap1 → Deleted.
+			diff.NodesDeleted = append(diff.NodesDeleted, n1)
+		}
+	}
+
+	// --- Relationships ---
+	rels1 := make(map[snowflake.ID]*types.Relationship, len(snap1.Relationships))
+	for _, r := range snap1.Relationships {
+		rels1[r.ID().SnowflakeID()] = r
+	}
+	rels2 := make(map[snowflake.ID]*types.Relationship, len(snap2.Relationships))
+	for _, r := range snap2.Relationships {
+		rels2[r.ID().SnowflakeID()] = r
+	}
+
+	for id, r2 := range rels2 {
+		if r1, ok := rels1[id]; ok {
+			h1 := relHash(r1)
+			h2 := relHash(r2)
+			if h1 != h2 {
+				diff.RelsUpdated = append(diff.RelsUpdated, temporalpkg.RelUpdate{Before: r1, After: r2})
+			}
+		} else {
+			diff.RelsCreated = append(diff.RelsCreated, r2)
+		}
+	}
+	for id, r1 := range rels1 {
+		if _, ok := rels2[id]; !ok {
+			diff.RelsDeleted = append(diff.RelsDeleted, r1)
+		}
+	}
+
+	return diff
+}
+
+// nodeHash returns the integrity hash of a node, or empty string if unset.
+func nodeHash(n *types.Node) string {
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
+// relHash returns the integrity hash of a relationship, or empty string if unset.
+func relHash(r *types.Relationship) string {
+	if ig := r.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
 }

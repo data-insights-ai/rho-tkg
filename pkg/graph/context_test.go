@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -270,8 +272,8 @@ func TestDeleteNodeWithContextSuccess(t *testing.T) {
 
 	// Node and cascade-deleted rels should be gone.
 	_, err = g.GetNode(a.ID())
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: err = %v, want ErrNodeNotFound", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("GetNode after delete: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
 
 	relCount, _ := g.RelationshipCount()
@@ -294,8 +296,8 @@ func TestDeleteRelWithContextSuccess(t *testing.T) {
 	}
 
 	_, err = g.GetRelationship(r.ID())
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Errorf("GetRelationship after delete: err = %v, want ErrRelNotFound", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Errorf("GetRelationship after delete: err = %v, want storepkg.ErrRelNotFound", err)
 	}
 }
 
@@ -429,8 +431,8 @@ func TestDeleteNodeDelegatesToContext(t *testing.T) {
 		t.Fatalf("DeleteNode error: %v", err)
 	}
 	_, err = g.GetNode(n.ID())
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: err = %v, want ErrNodeNotFound", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("GetNode after delete: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
 }
 
@@ -540,8 +542,8 @@ func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
 
 	// Rel should be gone (at least one delete succeeded).
 	_, err := g.GetRelationship(rID)
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound after concurrent delete, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound after concurrent delete, got %v", err)
 	}
 }
 
@@ -562,8 +564,8 @@ func TestDeleteRelWithContext_ConcurrentUpdate(t *testing.T) {
 
 	// Verify deleted.
 	_, err = g.GetRelationship(rID)
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 
 	// Verify tombstone history preserved.
@@ -610,12 +612,12 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 
 	// Node and rel should be gone.
 	_, err := g.GetNode(aID)
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 	_, err = g.GetRelationship(rID)
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 
@@ -653,8 +655,8 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 
 	// Node should be gone.
 	_, err := g.GetNode(aID)
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 

@@ -38,13 +38,13 @@ func (g *Graph) AddRelationshipByIDIfAbsent(typeName string, startID, endID type
 // DeleteNode atomically removes a node and all connected relationships.
 // Acquires the entity lock for the node to prevent write-skew with concurrent
 // AddRelationship targeting the same node.
-// Returns ErrNodeNotFound if the node does not exist.
+// Returns storepkg.ErrNodeNotFound if the node does not exist.
 func (g *Graph) DeleteNode(id types.NodeID) error {
 	return g.DeleteNodeWithContext(context.Background(), id)
 }
 
 // DeleteRelationship removes a relationship from the store.
-// Returns ErrRelNotFound if the relationship does not exist.
+// Returns storepkg.ErrRelNotFound if the relationship does not exist.
 func (g *Graph) DeleteRelationship(id types.RelID) error {
 	return g.DeleteRelationshipWithContext(context.Background(), id)
 }

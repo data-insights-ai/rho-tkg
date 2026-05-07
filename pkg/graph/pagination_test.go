@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"testing"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// ─── MemoryStore pagination integration tests ────────────────────────────────
+// ─── memory.Store pagination integration tests ────────────────────────────────
 
-func seedMemoryStore(t *testing.T, ms *MemoryStore, label uint16, count int) []snowflake.ID {
+func seedMemoryStore(t *testing.T, ms *memory.Store, label uint16, count int) []snowflake.ID {
 	t.Helper()
 	ids := make([]snowflake.ID, count)
 	for i := range count {
@@ -26,10 +30,10 @@ func seedMemoryStore(t *testing.T, ms *MemoryStore, label uint16, count int) []s
 
 func TestMemoryStoreNodesByLabel_Paginated(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	seedMemoryStore(t, ms, 10, 10)
 
-	got, err := ms.NodesByLabel(10, QueryOpts{Limit: 3})
+	got, err := ms.NodesByLabel(10, storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
@@ -46,13 +50,13 @@ func TestMemoryStoreNodesByLabel_Paginated(t *testing.T) {
 
 func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	seedMemoryStore(t, ms, 10, 10)
 
 	var all []*types.Node
 	var cursor snowflake.ID
 	for {
-		page, err := ms.NodesByLabel(10, QueryOpts{Limit: 3, After: types.EntityID(cursor)})
+		page, err := ms.NodesByLabel(10, storepkg.QueryOpts{Limit: 3, After: types.EntityID(cursor)})
 		if err != nil {
 			t.Fatalf("NodesByLabel: %v", err)
 		}
@@ -81,10 +85,10 @@ func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 
 func TestMemoryStoreNodesByLabel_ZeroOptsReturnsAll(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	seedMemoryStore(t, ms, 10, 5)
 
-	got, err := ms.NodesByLabel(10, QueryOpts{})
+	got, err := ms.NodesByLabel(10, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
@@ -95,7 +99,7 @@ func TestMemoryStoreNodesByLabel_ZeroOptsReturnsAll(t *testing.T) {
 
 func TestMemoryStoreRelationshipsByType_Paginated(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	// Create 2 nodes and 5 rels.
 	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
@@ -108,7 +112,7 @@ func TestMemoryStoreRelationshipsByType_Paginated(t *testing.T) {
 		}
 	}
 
-	got, err := ms.RelationshipsByType(5, QueryOpts{Limit: 2})
+	got, err := ms.RelationshipsByType(5, storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatalf("RelationshipsByType: %v", err)
 	}
@@ -119,10 +123,10 @@ func TestMemoryStoreRelationshipsByType_Paginated(t *testing.T) {
 
 func TestMemoryStoreAllNodes_Paginated(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	seedMemoryStore(t, ms, 10, 7)
 
-	got, err := ms.AllNodes(QueryOpts{Limit: 4})
+	got, err := ms.AllNodes(storepkg.QueryOpts{Limit: 4})
 	if err != nil {
 		t.Fatalf("AllNodes: %v", err)
 	}
@@ -133,7 +137,7 @@ func TestMemoryStoreAllNodes_Paginated(t *testing.T) {
 
 func TestMemoryStoreAllRelationships_Paginated(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
 	_ = ms.PutNode(n1)
@@ -143,7 +147,7 @@ func TestMemoryStoreAllRelationships_Paginated(t *testing.T) {
 		_ = ms.PutRelationship(r)
 	}
 
-	got, err := ms.AllRelationships(QueryOpts{Limit: 3})
+	got, err := ms.AllRelationships(storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatalf("AllRelationships: %v", err)
 	}
@@ -154,7 +158,7 @@ func TestMemoryStoreAllRelationships_Paginated(t *testing.T) {
 
 func TestMemoryStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
@@ -169,7 +173,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 		t.Fatalf("CreatePropertyIndex: %v", err)
 	}
 
-	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", QueryOpts{Limit: 3})
+	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatalf("NodesByLabelAndProperty: %v", err)
 	}
@@ -180,7 +184,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 
 func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 	t.Parallel()
-	ms := NewMemoryStore()
+	ms := memory.New()
 
 	for i := range 6 {
 		id := snowflake.ID(1000 + i)
@@ -193,7 +197,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 	}
 	// No index — fallback path.
 
-	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", QueryOpts{Limit: 3})
+	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatalf("NodesByLabelAndProperty: %v", err)
 	}
@@ -206,7 +210,7 @@ func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
 
 func TestGraphNodesByLabel_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +223,7 @@ func TestGraphNodesByLabel_Paginated(t *testing.T) {
 		}
 	}
 
-	got, err := g.NodesByLabel("Person", QueryOpts{Limit: 3})
+	got, err := g.NodesByLabel("Person", storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +234,7 @@ func TestGraphNodesByLabel_Paginated(t *testing.T) {
 
 func TestGraphAllNodes_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +247,7 @@ func TestGraphAllNodes_Paginated(t *testing.T) {
 		}
 	}
 
-	got, err := g.AllNodes(QueryOpts{Limit: 2})
+	got, err := g.AllNodes(storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +258,7 @@ func TestGraphAllNodes_Paginated(t *testing.T) {
 
 func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +271,7 @@ func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
 		}
 	}
 
-	got, err := g.NodesByLabelAndProperty("Person", "name", "Alice", QueryOpts{Limit: 2})
+	got, err := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,10 @@ import (
 	"context"
 	"sync"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -46,7 +50,7 @@ type labelDelta struct {
 // Events are buffered during the transaction and published on Commit (after
 // g.mu.Unlock). On Rollback, buffered events are discarded.
 //
-// All methods check the done flag and return ErrTxDone after Commit/Rollback.
+// All methods check the done flag and return storepkg.ErrTxDone after Commit/Rollback.
 type GraphTx struct {
 	g             *Graph
 	createdNodes  []snowflake.ID
@@ -56,7 +60,7 @@ type GraphTx struct {
 	deletedNodes  []deletedNodeSnapshot
 	deletedRels   []*types.Relationship
 	labelDeltas   []labelDelta          // label index mutations — reversed on Rollback
-	pendingEvents []Event               // buffered events — published on Commit, discarded on Rollback
+	pendingEvents []eventspkg.Event     // buffered events — published on Commit, discarded on Rollback
 	snapshotSet   map[snowflake.ID]bool // tracks already-snapshotted entities (first mutation only)
 	mu            sync.Mutex            // protects done flag and snapshot tracking
 	done          bool
@@ -79,7 +83,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -88,7 +92,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventNodeCreate, types.EntityID(n.ID()), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
@@ -103,7 +107,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -112,7 +116,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
@@ -127,7 +131,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -136,7 +140,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventNodeCreate, types.EntityID(n.ID()), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
@@ -151,7 +155,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -160,7 +164,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
@@ -176,7 +180,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -200,7 +204,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 
 	n, err := tx.g.updateNodeInternal(context.Background(), id, updates)
 	if err == nil {
-		tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
+		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), nowInstant(), eventspkg.PriorityNormal)
 	}
 	return n, err
 }
@@ -212,7 +216,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -232,7 +236,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 
 	r, err := tx.g.updateRelationshipInternal(context.Background(), id, updates)
 	if err == nil {
-		tx.g.publishEvent(EventRelUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
+		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), nowInstant(), eventspkg.PriorityNormal)
 	}
 	return r, err
 }
@@ -268,7 +272,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -309,7 +313,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 		return err
 	}
 
-	tx.g.publishEvent(EventNodeDelete, types.EntityID(id), nowInstant(), PriorityCritical)
+	tx.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
 
 	tx.mu.Lock()
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
@@ -327,7 +331,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -343,7 +347,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 		return err
 	}
 
-	tx.g.publishEvent(EventRelDelete, types.EntityID(id), nowInstant(), PriorityCritical)
+	tx.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
 
 	tx.mu.Lock()
 	tx.deletedRels = append(tx.deletedRels, relCopy)
@@ -360,7 +364,7 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -397,7 +401,7 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: true})
 	tx.mu.Unlock()
 
-	tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
+	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), nowInstant(), eventspkg.PriorityNormal)
 	return nil
 }
 
@@ -409,7 +413,7 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -428,7 +432,7 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: false})
 	tx.mu.Unlock()
 
-	tx.g.publishEvent(EventNodeUpdate, types.EntityID(id), nowInstant(), PriorityNormal)
+	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), nowInstant(), eventspkg.PriorityNormal)
 	return nil
 }
 
@@ -485,13 +489,13 @@ func (tx *GraphTx) snapshotRel(id snowflake.ID) error {
 // Commit finalizes the transaction, making all mutations permanent.
 // Releases the graph write lock, then publishes buffered events outside the lock
 // so that event handlers can safely call Graph read methods.
-// After Commit, all tx methods return ErrTxDone.
+// After Commit, all tx methods return storepkg.ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 
 	if tx.done {
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.done = true
 
@@ -528,13 +532,13 @@ func (tx *GraphTx) Commit() error {
 // entries. Entity state is correct; history may have extra entries.
 //
 // Best-effort: continues on error, returns the first error encountered.
-// After Rollback, all tx methods return ErrTxDone.
+// After Rollback, all tx methods return storepkg.ErrTxDone.
 func (tx *GraphTx) Rollback() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 
 	if tx.done {
-		return ErrTxDone
+		return storepkg.ErrTxDone
 	}
 	tx.done = true
 	defer tx.g.mu.Unlock() // deferred so a store panic cannot permanently hold the write lock
@@ -614,7 +618,7 @@ func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -627,7 +631,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, ErrTxDone
+		return nil, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -636,7 +640,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 		return nil, err
 	}
 
-	tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
+	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 	tx.mu.Lock()
 	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
@@ -653,7 +657,7 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 	tx.mu.Lock()
 	if tx.done {
 		tx.mu.Unlock()
-		return nil, false, ErrTxDone
+		return nil, false, storepkg.ErrTxDone
 	}
 	tx.mu.Unlock()
 
@@ -663,7 +667,7 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 	}
 
 	if created {
-		tx.g.publishEvent(EventRelCreate, types.EntityID(r.ID()), nowInstant(), PriorityHigh)
+		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), nowInstant(), eventspkg.PriorityHigh)
 
 		tx.mu.Lock()
 		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())

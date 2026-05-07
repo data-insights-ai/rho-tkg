@@ -8,33 +8,35 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- Test helpers ---
 
-// newTestTieredStore creates an in-memory TieredStore with Case/User as reference labels.
-func newTestTieredStore(t *testing.T) *TieredStore {
+// newTestTieredStore creates an in-memory tiered.Store with Case/User as reference labels.
+func newTestTieredStore(t *testing.T) *tiered.Store {
 	t.Helper()
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,
 		RefLabels:     []string{"Case", "User"},
 		ShardWindow:   7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1, // disable periodic flush
 	})
 	if err != nil {
-		t.Fatalf("NewTieredStore: %v", err)
+		t.Fatalf("tiered.New: %v", err)
 	}
 	t.Cleanup(func() { _ = ts.Close() })
 	return ts
 }
 
-// newTestTieredGraph creates a Graph backed by an in-memory TieredStore.
-func newTestTieredGraph(t *testing.T) (*Graph, *TieredStore) {
+// newTestTieredGraph creates a Graph backed by an in-memory tiered.Store.
+func newTestTieredGraph(t *testing.T) (*Graph, *tiered.Store) {
 	t.Helper()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
@@ -77,8 +79,8 @@ func tieredRelGen(t *testing.T) *snowflake.Node {
 func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create graph with TieredStore.
-	ts, err := NewTieredStore(TieredStoreConfig{
+	// Create graph with tiered.Store.
+	ts, err := tiered.New(tiered.Config{
 		DataDir:       dir,
 		RefLabels:     []string{"Case"},
 		FlushInterval: 1<<63 - 1,
@@ -121,7 +123,7 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 	}
 
 	// Reopen.
-	ts2, err := NewTieredStore(TieredStoreConfig{
+	ts2, err := tiered.New(tiered.Config{
 		DataDir:       dir,
 		RefLabels:     []string{"Case"},
 		FlushInterval: 1<<63 - 1,
@@ -165,7 +167,7 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 // --- E→E cross-shard tests ---
 // --- Depth-aware read tests ---
 // --- Warm recovery tests ---
-// --- ReadOnly BadgerStore tests ---
+// --- ReadOnly badger.Store tests ---
 // --- Catalog tests ---
 // --- Depth-aware RelationshipsByType test ---
 // --- Depth-aware AllRelIDs test ---
@@ -181,15 +183,15 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 // idle-close goroutine) so tests can deterministically observe behaviour
 // against a cold shard without sleeping. Holds ts.MuForTest() across the tier flip
 // AND the catalog update so a concurrent rotation cannot read a half-updated
-// state — but does NOT close the underlying BadgerStore. Pair with
+// state — but does NOT close the underlying badger.Store. Pair with
 // closeEventShardStore to fully simulate a cold idle-close, or leave the
 // store open to test pure tier-based code paths.
-func demoteToCold(ts *TieredStore, shardName string) {
+func demoteToCold(ts *tiered.Store, shardName string) {
 	ts.MuForTest().Lock()
 	defer ts.MuForTest().Unlock()
 	if es, ok := ts.EventShardsForTest()[shardName]; ok {
-		es.SetTierForTest(tieredstore.TierCold)
-		ts.CatalogForTest().UpdateShardTier(shardName, tieredstore.TierCold)
+		es.SetTierForTest(tiered.TierCold)
+		ts.CatalogForTest().UpdateShardTier(shardName, tiered.TierCold)
 	}
 }
 
@@ -214,7 +216,7 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 
 	// RelationshipsByType should find rels across shards (parallel).
 	tok, _ := g.LookupRelType("TRIGGERED")
-	rels, err := ts.RelationshipsByType(tok, QueryOpts{})
+	rels, err := ts.RelationshipsByType(tok, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +266,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	// from refShard and not copied to archive ... this is expected:
 	// partial archive loses cross-node rels". That comment encoded
 	// silent rel loss as desired behavior — the precise bug
-	// ErrCrossShardArchiveRel was introduced to reject. Inverting the
+	// tiered.ErrCrossShardArchiveRel was introduced to reject. Inverting the
 	// assertion (now: archive must reject, leaving state untouched)
 	// preserves the test's role as a regression guard for the rel
 	// topology while reflecting the corrected semantic.
@@ -279,8 +281,8 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	relID := rel.ID()
 
 	err := ts.ArchiveNode(case1ID)
-	if !errors.Is(err, ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode with ref-ref rel: got %v, want ErrCrossShardArchiveRel", err)
+	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
+		t.Fatalf("ArchiveNode with ref-ref rel: got %v, want tiered.ErrCrossShardArchiveRel", err)
 	}
 
 	// State must be unchanged on rejection — no partial archive.
@@ -392,8 +394,8 @@ func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 
 	sigNode, _ := g.AddNode([]string{"Signal"}, nil)
 	err := ts.ArchiveNode(sigNode.ID())
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("expected ErrNodeNotFound for event node archive, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("expected storepkg.ErrNodeNotFound for event node archive, got %v", err)
 	}
 }
 
@@ -401,7 +403,7 @@ func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 // --- Graph-layer archive passthrough tests ---
 
 func TestGraph_ArchiveNode_NotTiered(t *testing.T) {
-	// ArchiveNode on non-TieredStore should return an error.
+	// ArchiveNode on non-tiered.Store should return an error.
 	g, err := New(Config{
 		SnowflakeNodeID: 0,
 	})
@@ -413,7 +415,7 @@ func TestGraph_ArchiveNode_NotTiered(t *testing.T) {
 	gen := tieredNodeGen(t)
 	err = g.ArchiveNode(types.NodeID(gen.Generate()))
 	if err == nil {
-		t.Error("expected error for ArchiveNode on non-TieredStore")
+		t.Error("expected error for ArchiveNode on non-tiered.Store")
 	}
 }
 
@@ -429,7 +431,7 @@ func TestGraph_RestoreNode_NotTiered(t *testing.T) {
 	gen := tieredNodeGen(t)
 	err = g.RestoreNode(types.NodeID(gen.Generate()))
 	if err == nil {
-		t.Error("expected error for RestoreNode on non-TieredStore")
+		t.Error("expected error for RestoreNode on non-tiered.Store")
 	}
 }
 
@@ -491,7 +493,7 @@ func TestDecomposeID_ConsistentWithTemporalFilter(t *testing.T) {
 
 	// DecomposeID time should match EntityValidFrom derivation.
 	c := DecomposeID(id)
-	efrom := storepkg.EntityValidFrom(id, nil)
+	efrom := storeutil.EntityValidFrom(id, nil)
 	decomposedMs := c.CreatedAt.UnixMilli()
 	efromMs := int64(efrom)
 
@@ -518,7 +520,7 @@ func TestTieredStore_ForceRotate_ViaGraph(t *testing.T) {
 	t.Cleanup(func() { _ = g2.Close() })
 
 	if err := g2.ForceRotate(); err == nil {
-		t.Error("ForceRotate on non-TieredStore should error")
+		t.Error("ForceRotate on non-tiered.Store should error")
 	}
 }
 func TestTieredStore_AdminNotTiered(t *testing.T) {
@@ -730,7 +732,7 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 	ts.MuForTest().RLock()
 	coldES := ts.EventShardsForTest()[hotName]
 	ts.MuForTest().RUnlock()
-	if coldES == nil || coldES.Tier() != tieredstore.TierCold {
+	if coldES == nil || coldES.Tier() != tiered.TierCold {
 		t.Fatal("expected cold shard")
 	}
 
@@ -901,7 +903,7 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	// asserted that ArchiveNode(n1) succeeded — but the *actual* behavior
 	// then was to silently drop the rel (the test never asserted on rel
 	// state, so the bug went undetected here for as long as the test
-	// existed). With ErrCrossShardArchiveRel, that exact setup is now
+	// existed). With tiered.ErrCrossShardArchiveRel, that exact setup is now
 	// rejected, so the original assertions no longer hold. Refactoring
 	// to a self-loop preserves the test's documented intent — round-trip
 	// archive + restore for a node with a relationship — and uses the
@@ -966,7 +968,7 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	// BOTH, restored n1, and asserted that the rel "should not be in
 	// refShard" because n2 was still archived. That assertion codified
 	// silent rel loss as expected behavior — the same data-loss class
-	// that ErrCrossShardArchiveRel was added to reject. The original
+	// that tiered.ErrCrossShardArchiveRel was added to reject. The original
 	// test's setup also no longer compiles past the new pre-scan
 	// (ArchiveNode(n1) is rejected because the ref→ref rel would cross
 	// the archive boundary).

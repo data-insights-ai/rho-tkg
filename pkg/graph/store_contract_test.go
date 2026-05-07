@@ -7,6 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -25,7 +33,7 @@ func storeContractBackends() []storeContractBackend {
 			snowflakeNodeID: 12,
 			newGraph: func(t *testing.T, snowflakeNodeID int) *Graph {
 				t.Helper()
-				g, err := New(Config{SnowflakeNodeID: int64(snowflakeNodeID), Store: NewMemoryStore()})
+				g, err := New(Config{SnowflakeNodeID: int64(snowflakeNodeID), Store: memory.New()})
 				if err != nil {
 					t.Fatalf("New memory graph: %v", err)
 				}
@@ -35,17 +43,17 @@ func storeContractBackends() []storeContractBackend {
 			expectZeroLRUStat: true,
 		},
 		{
-			name:             "BadgerStore",
+			name:             "badger.Store",
 			snowflakeNodeID:  13,
 			supportsLRUStats: true,
 			newGraph: func(t *testing.T, snowflakeNodeID int) *Graph {
 				t.Helper()
-				bs, err := NewBadgerStore(BadgerStoreConfig{
+				bs, err := badger.New(badger.Config{
 					InMemory:      true,
 					FlushInterval: 1<<63 - 1,
 				})
 				if err != nil {
-					t.Fatalf("NewBadgerStore: %v", err)
+					t.Fatalf("badger.New: %v", err)
 				}
 				g, err := New(Config{SnowflakeNodeID: int64(snowflakeNodeID), Store: bs})
 				if err != nil {
@@ -57,18 +65,18 @@ func storeContractBackends() []storeContractBackend {
 			},
 		},
 		{
-			name:            "TieredStore",
+			name:            "tiered.Store",
 			snowflakeNodeID: 14,
 			newGraph: func(t *testing.T, snowflakeNodeID int) *Graph {
 				t.Helper()
-				ts, err := NewTieredStore(TieredStoreConfig{
+				ts, err := tiered.New(tiered.Config{
 					InMemory:      true,
 					RefLabels:     []string{"Case", "User"},
 					ShardWindow:   7 * 24 * time.Hour,
 					FlushInterval: 1<<63 - 1,
 				})
 				if err != nil {
-					t.Fatalf("NewTieredStore: %v", err)
+					t.Fatalf("tiered.New: %v", err)
 				}
 				g, err := New(Config{SnowflakeNodeID: int64(snowflakeNodeID), Store: ts})
 				if err != nil {
@@ -116,16 +124,16 @@ func TestStoreContract_CurrentVisibility(t *testing.T) {
 			return g.RelCountByType("OBSERVED")
 		}, 1)
 
-		assertNodeIDs(t, "AllNodes", mustAllNodes(t, g, QueryOpts{}),
+		assertNodeIDs(t, "AllNodes", mustAllNodes(t, g, storepkg.QueryOpts{}),
 			[]types.NodeID{caseNode.ID(), signalNode.ID()})
-		assertNodeIDs(t, "NodesByLabel(Case)", mustNodesByLabel(t, g, "Case", QueryOpts{}),
+		assertNodeIDs(t, "NodesByLabel(Case)", mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{}),
 			[]types.NodeID{caseNode.ID()})
-		assertNodeIDs(t, "NodesByLabel(Signal)", mustNodesByLabel(t, g, "Signal", QueryOpts{}),
+		assertNodeIDs(t, "NodesByLabel(Signal)", mustNodesByLabel(t, g, "Signal", storepkg.QueryOpts{}),
 			[]types.NodeID{signalNode.ID()})
 
-		assertRelIDs(t, "AllRelationships", mustAllRelationships(t, g, QueryOpts{}),
+		assertRelIDs(t, "AllRelationships", mustAllRelationships(t, g, storepkg.QueryOpts{}),
 			[]types.RelID{observed.ID()})
-		assertRelIDs(t, "RelationshipsByType(OBSERVED)", mustRelationshipsByType(t, g, "OBSERVED", QueryOpts{}),
+		assertRelIDs(t, "RelationshipsByType(OBSERVED)", mustRelationshipsByType(t, g, "OBSERVED", storepkg.QueryOpts{}),
 			[]types.RelID{observed.ID()})
 		assertRelIDs(t, "OutgoingRelationships(Case)", mustOutgoingRelationships(t, g, caseNode.ID(), ""),
 			[]types.RelID{observed.ID()})
@@ -212,27 +220,27 @@ func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
 		if err := g.DeleteRelationship(rel.ID()); err != nil {
 			t.Fatalf("DeleteRelationship: %v", err)
 		}
-		if _, err := g.GetRelationship(rel.ID()); !errors.Is(err, ErrRelNotFound) {
-			t.Fatalf("GetRelationship after delete err = %v, want ErrRelNotFound", err)
+		if _, err := g.GetRelationship(rel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+			t.Fatalf("GetRelationship after delete err = %v, want storepkg.ErrRelNotFound", err)
 		}
-		assertRelIDs(t, "RelationshipsByType after rel delete", mustRelationshipsByType(t, g, "OBSERVED", QueryOpts{}), nil)
+		assertRelIDs(t, "RelationshipsByType after rel delete", mustRelationshipsByType(t, g, "OBSERVED", storepkg.QueryOpts{}), nil)
 		assertRelTombstone(t, g, rel.ID())
 
 		if err := g.DeleteNode(signalNode.ID()); err != nil {
 			t.Fatalf("DeleteNode(signal): %v", err)
 		}
-		if _, err := g.GetNode(signalNode.ID()); !errors.Is(err, ErrNodeNotFound) {
-			t.Fatalf("GetNode after delete err = %v, want ErrNodeNotFound", err)
+		if _, err := g.GetNode(signalNode.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+			t.Fatalf("GetNode after delete err = %v, want storepkg.ErrNodeNotFound", err)
 		}
-		assertNodeIDs(t, "NodesByLabel(Signal) after delete", mustNodesByLabel(t, g, "Signal", QueryOpts{}), nil)
+		assertNodeIDs(t, "NodesByLabel(Signal) after delete", mustNodesByLabel(t, g, "Signal", storepkg.QueryOpts{}), nil)
 		assertNodeTombstone(t, g, signalNode.ID())
 
 		cascadeTarget, cascadeRel := addContractSignalRel(t, g, caseNode)
 		if err := g.DeleteNode(caseNode.ID()); err != nil {
 			t.Fatalf("DeleteNode(case cascade): %v", err)
 		}
-		if _, err := g.GetRelationship(cascadeRel.ID()); !errors.Is(err, ErrRelNotFound) {
-			t.Fatalf("GetRelationship cascade rel err = %v, want ErrRelNotFound", err)
+		if _, err := g.GetRelationship(cascadeRel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+			t.Fatalf("GetRelationship cascade rel err = %v, want storepkg.ErrRelNotFound", err)
 		}
 		assertNodeTombstone(t, g, caseNode.ID())
 		assertRelTombstone(t, g, cascadeRel.ID())
@@ -286,20 +294,20 @@ func TestStoreContract_Pagination(t *testing.T) {
 		}
 		wantNodeIDs := nodeIDs(nodes)
 
-		firstNodes := mustNodesByLabel(t, g, "Case", QueryOpts{Limit: 2})
+		firstNodes := mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{Limit: 2})
 		assertNodeIDs(t, "NodesByLabel first page", firstNodes, wantNodeIDs[:2])
-		secondNodes := mustNodesByLabel(t, g, "Case", QueryOpts{
+		secondNodes := mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{
 			Limit: 2,
 			After: types.EntityID(firstNodes[len(firstNodes)-1].ID()),
 		})
 		assertNodeIDs(t, "NodesByLabel second page", secondNodes, wantNodeIDs[2:4])
 
-		allNodeIDs, err := g.store.AllNodeIDs(QueryOpts{Limit: 3})
+		allNodeIDs, err := g.store.AllNodeIDs(storepkg.QueryOpts{Limit: 3})
 		if err != nil {
 			t.Fatalf("AllNodeIDs first page: %v", err)
 		}
 		assertIDSetPreserveOrder(t, "AllNodeIDs first page", allNodeIDs, wantNodeIDs[:3])
-		allNodeIDs, err = g.store.AllNodeIDs(QueryOpts{After: types.EntityID(allNodeIDs[len(allNodeIDs)-1])})
+		allNodeIDs, err = g.store.AllNodeIDs(storepkg.QueryOpts{After: types.EntityID(allNodeIDs[len(allNodeIDs)-1])})
 		if err != nil {
 			t.Fatalf("AllNodeIDs second page: %v", err)
 		}
@@ -315,20 +323,20 @@ func TestStoreContract_Pagination(t *testing.T) {
 		}
 		wantRelIDs := relIDs(rels)
 
-		firstRels := mustRelationshipsByType(t, g, "LINK", QueryOpts{Limit: 2})
+		firstRels := mustRelationshipsByType(t, g, "LINK", storepkg.QueryOpts{Limit: 2})
 		assertRelIDs(t, "RelationshipsByType first page", firstRels, wantRelIDs[:2])
-		secondRels := mustRelationshipsByType(t, g, "LINK", QueryOpts{
+		secondRels := mustRelationshipsByType(t, g, "LINK", storepkg.QueryOpts{
 			Limit: 2,
 			After: types.EntityID(firstRels[len(firstRels)-1].ID()),
 		})
 		assertRelIDs(t, "RelationshipsByType second page", secondRels, wantRelIDs[2:4])
 
-		allRelIDs, err := g.store.AllRelIDs(QueryOpts{Limit: 3})
+		allRelIDs, err := g.store.AllRelIDs(storepkg.QueryOpts{Limit: 3})
 		if err != nil {
 			t.Fatalf("AllRelIDs first page: %v", err)
 		}
 		assertIDSetPreserveOrder(t, "AllRelIDs first page", allRelIDs, wantRelIDs[:3])
-		allRelIDs, err = g.store.AllRelIDs(QueryOpts{After: types.EntityID(allRelIDs[len(allRelIDs)-1])})
+		allRelIDs, err = g.store.AllRelIDs(storepkg.QueryOpts{After: types.EntityID(allRelIDs[len(allRelIDs)-1])})
 		if err != nil {
 			t.Fatalf("AllRelIDs second page: %v", err)
 		}
@@ -345,29 +353,29 @@ func TestStoreContract_TemporalFilters(t *testing.T) {
 		caseC := addContractTemporalNode(t, g, "Case", "blue", 500, 0)
 		signal := addContractTemporalNode(t, g, "Signal", "event", 200, 400)
 
-		assertNodeIDs(t, "NodesByLabel Case ValidAt=250", mustNodesByLabel(t, g, "Case", QueryOpts{ValidAt: 250}),
+		assertNodeIDs(t, "NodesByLabel Case ValidAt=250", mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{ValidAt: 250}),
 			[]types.NodeID{caseA.ID(), caseB.ID()})
-		assertNodeIDs(t, "NodesByLabel Case ValidAt=350", mustNodesByLabel(t, g, "Case", QueryOpts{ValidAt: 350}),
+		assertNodeIDs(t, "NodesByLabel Case ValidAt=350", mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{ValidAt: 350}),
 			[]types.NodeID{caseB.ID()})
-		assertNodeIDs(t, "NodesByLabel Case interval", mustNodesByLabel(t, g, "Case", QueryOpts{ValidStart: 250, ValidEnd: 550}),
+		assertNodeIDs(t, "NodesByLabel Case interval", mustNodesByLabel(t, g, "Case", storepkg.QueryOpts{ValidStart: 250, ValidEnd: 550}),
 			[]types.NodeID{caseA.ID(), caseB.ID(), caseC.ID()})
-		assertNodeIDs(t, "AllNodes ValidAt=250", mustAllNodes(t, g, QueryOpts{ValidAt: 250}),
+		assertNodeIDs(t, "AllNodes ValidAt=250", mustAllNodes(t, g, storepkg.QueryOpts{ValidAt: 250}),
 			[]types.NodeID{caseA.ID(), caseB.ID(), signal.ID()})
 
 		if err := g.CreatePropertyIndex("Case", "color"); err != nil {
 			t.Fatalf("CreatePropertyIndex: %v", err)
 		}
 		assertNodeIDs(t, "NodesByLabelAndProperty indexed ValidAt=350",
-			mustNodesByLabelAndProperty(t, g, "Case", "color", "red", QueryOpts{ValidAt: 350}),
+			mustNodesByLabelAndProperty(t, g, "Case", "color", "red", storepkg.QueryOpts{ValidAt: 350}),
 			[]types.NodeID{caseB.ID()})
 
 		relA := addContractTemporalRel(t, g, caseA, caseB, 100, 300)
 		relB := addContractTemporalRel(t, g, caseB, caseC, 400, 0)
-		assertRelIDs(t, "RelationshipsByType ValidAt=250", mustRelationshipsByType(t, g, "TEMPORAL_LINK", QueryOpts{ValidAt: 250}),
+		assertRelIDs(t, "RelationshipsByType ValidAt=250", mustRelationshipsByType(t, g, "TEMPORAL_LINK", storepkg.QueryOpts{ValidAt: 250}),
 			[]types.RelID{relA.ID()})
-		assertRelIDs(t, "RelationshipsByType interval", mustRelationshipsByType(t, g, "TEMPORAL_LINK", QueryOpts{ValidStart: 250, ValidEnd: 450}),
+		assertRelIDs(t, "RelationshipsByType interval", mustRelationshipsByType(t, g, "TEMPORAL_LINK", storepkg.QueryOpts{ValidStart: 250, ValidEnd: 450}),
 			[]types.RelID{relA.ID(), relB.ID()})
-		assertRelIDs(t, "AllRelationships ValidAt=450", mustAllRelationships(t, g, QueryOpts{ValidAt: 450}),
+		assertRelIDs(t, "AllRelationships ValidAt=450", mustAllRelationships(t, g, storepkg.QueryOpts{ValidAt: 450}),
 			[]types.RelID{relB.ID()})
 	})
 }
@@ -375,9 +383,9 @@ func TestStoreContract_TemporalFilters(t *testing.T) {
 func TestStoreContract_Events(t *testing.T) {
 	runStoreContract(t, "events", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
-		bus := NewEventBus()
-		var events []Event
-		bus.Subscribe(func(e Event) {
+		bus := eventspkg.NewEventBus()
+		var events []eventspkg.Event
+		bus.Subscribe(func(e eventspkg.Event) {
 			events = append(events, e)
 		})
 		g.SetEventBus(bus)
@@ -396,14 +404,14 @@ func TestStoreContract_Events(t *testing.T) {
 			t.Fatalf("DeleteNode: %v", err)
 		}
 
-		want := []EventType{
-			EventNodeCreate,
-			EventNodeCreate,
-			EventRelCreate,
-			EventNodeUpdate,
-			EventRelUpdate,
-			EventRelDelete,
-			EventNodeDelete,
+		want := []eventspkg.EventType{
+			eventspkg.EventNodeCreate,
+			eventspkg.EventNodeCreate,
+			eventspkg.EventRelCreate,
+			eventspkg.EventNodeUpdate,
+			eventspkg.EventRelUpdate,
+			eventspkg.EventRelDelete,
+			eventspkg.EventNodeDelete,
 		}
 		if len(events) != len(want) {
 			t.Fatalf("event count = %d, want %d: %+v", len(events), len(want), events)
@@ -419,14 +427,14 @@ func TestStoreContract_Events(t *testing.T) {
 				t.Fatalf("event[%d].Timestamp is zero", i)
 			}
 		}
-		if events[0].Priority != PriorityHigh || events[2].Priority != PriorityHigh {
-			t.Fatalf("create event priorities = %v/%v, want PriorityHigh", events[0].Priority, events[2].Priority)
+		if events[0].Priority != eventspkg.PriorityHigh || events[2].Priority != eventspkg.PriorityHigh {
+			t.Fatalf("create event priorities = %v/%v, want eventspkg.PriorityHigh", events[0].Priority, events[2].Priority)
 		}
-		if events[3].Priority != PriorityNormal || events[4].Priority != PriorityNormal {
-			t.Fatalf("update event priorities = %v/%v, want PriorityNormal", events[3].Priority, events[4].Priority)
+		if events[3].Priority != eventspkg.PriorityNormal || events[4].Priority != eventspkg.PriorityNormal {
+			t.Fatalf("update event priorities = %v/%v, want eventspkg.PriorityNormal", events[3].Priority, events[4].Priority)
 		}
-		if events[5].Priority != PriorityCritical || events[6].Priority != PriorityCritical {
-			t.Fatalf("delete event priorities = %v/%v, want PriorityCritical", events[5].Priority, events[6].Priority)
+		if events[5].Priority != eventspkg.PriorityCritical || events[6].Priority != eventspkg.PriorityCritical {
+			t.Fatalf("delete event priorities = %v/%v, want eventspkg.PriorityCritical", events[5].Priority, events[6].Priority)
 		}
 	})
 }
@@ -582,7 +590,7 @@ func assertGraphCount(t *testing.T, name string, fn func() (int, error), want in
 	}
 }
 
-func mustAllNodes(t *testing.T, g *Graph, opts QueryOpts) []*types.Node {
+func mustAllNodes(t *testing.T, g *Graph, opts storepkg.QueryOpts) []*types.Node {
 	t.Helper()
 	nodes, err := g.AllNodes(opts)
 	if err != nil {
@@ -591,7 +599,7 @@ func mustAllNodes(t *testing.T, g *Graph, opts QueryOpts) []*types.Node {
 	return nodes
 }
 
-func mustNodesByLabel(t *testing.T, g *Graph, label string, opts QueryOpts) []*types.Node {
+func mustNodesByLabel(t *testing.T, g *Graph, label string, opts storepkg.QueryOpts) []*types.Node {
 	t.Helper()
 	nodes, err := g.NodesByLabel(label, opts)
 	if err != nil {
@@ -600,7 +608,7 @@ func mustNodesByLabel(t *testing.T, g *Graph, label string, opts QueryOpts) []*t
 	return nodes
 }
 
-func mustNodesByLabelAndProperty(t *testing.T, g *Graph, label, key string, value any, opts QueryOpts) []*types.Node {
+func mustNodesByLabelAndProperty(t *testing.T, g *Graph, label, key string, value any, opts storepkg.QueryOpts) []*types.Node {
 	t.Helper()
 	nodes, err := g.NodesByLabelAndProperty(label, key, value, opts)
 	if err != nil {
@@ -609,7 +617,7 @@ func mustNodesByLabelAndProperty(t *testing.T, g *Graph, label, key string, valu
 	return nodes
 }
 
-func mustAllRelationships(t *testing.T, g *Graph, opts QueryOpts) []*types.Relationship {
+func mustAllRelationships(t *testing.T, g *Graph, opts storepkg.QueryOpts) []*types.Relationship {
 	t.Helper()
 	rels, err := g.AllRelationships(opts)
 	if err != nil {
@@ -618,7 +626,7 @@ func mustAllRelationships(t *testing.T, g *Graph, opts QueryOpts) []*types.Relat
 	return rels
 }
 
-func mustRelationshipsByType(t *testing.T, g *Graph, typeName string, opts QueryOpts) []*types.Relationship {
+func mustRelationshipsByType(t *testing.T, g *Graph, typeName string, opts storepkg.QueryOpts) []*types.Relationship {
 	t.Helper()
 	rels, err := g.RelationshipsByType(typeName, opts)
 	if err != nil {
@@ -645,7 +653,7 @@ func mustIncomingRelationships(t *testing.T, g *Graph, id types.NodeID, typeName
 	return rels
 }
 
-func mustStoreNodeHistoryIDs(t *testing.T, store Store) []types.NodeID {
+func mustStoreNodeHistoryIDs(t *testing.T, store storepkg.Store) []types.NodeID {
 	t.Helper()
 	ids, err := store.AllNodeHistoryIDs()
 	if err != nil {
@@ -654,7 +662,7 @@ func mustStoreNodeHistoryIDs(t *testing.T, store Store) []types.NodeID {
 	return ids
 }
 
-func mustStoreRelHistoryIDs(t *testing.T, store Store) []types.RelID {
+func mustStoreRelHistoryIDs(t *testing.T, store storepkg.Store) []types.RelID {
 	t.Helper()
 	ids, err := store.AllRelHistoryIDs()
 	if err != nil {
@@ -663,12 +671,12 @@ func mustStoreRelHistoryIDs(t *testing.T, store Store) []types.RelID {
 	return ids
 }
 
-func idsToNodes(t *testing.T, store Store, ids []types.NodeID) []*types.Node {
+func idsToNodes(t *testing.T, store storepkg.Store, ids []types.NodeID) []*types.Node {
 	t.Helper()
 	nodes := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
 		n, err := store.GetNode(id)
-		if errors.Is(err, ErrNodeNotFound) {
+		if errors.Is(err, storepkg.ErrNodeNotFound) {
 			continue
 		}
 		if err != nil {
@@ -679,12 +687,12 @@ func idsToNodes(t *testing.T, store Store, ids []types.NodeID) []*types.Node {
 	return nodes
 }
 
-func idsToRels(t *testing.T, store Store, ids []types.RelID) []*types.Relationship {
+func idsToRels(t *testing.T, store storepkg.Store, ids []types.RelID) []*types.Relationship {
 	t.Helper()
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
 		r, err := store.GetRelationship(id)
-		if errors.Is(err, ErrRelNotFound) {
+		if errors.Is(err, storepkg.ErrRelNotFound) {
 			continue
 		}
 		if err != nil {

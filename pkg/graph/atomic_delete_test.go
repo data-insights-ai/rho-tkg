@@ -5,15 +5,18 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 	t.Parallel()
 
-	bs, err := NewBadgerStore(BadgerStoreConfig{InMemory: true, SyncWrites: true})
+	bs, err := badger.New(badger.Config{InMemory: true, SyncWrites: true})
 	if err != nil {
-		t.Fatalf("NewBadgerStore: %v", err)
+		t.Fatalf("badger.New: %v", err)
 	}
 	defer bs.Close() //nolint:errcheck
 
@@ -27,7 +30,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 	now := types.Instant(time.Now().UnixMilli())
 
 	// Build rel tombstones.
-	relTombstones := make([]RelTombstone, 0, 2)
+	relTombstones := make([]storepkg.RelTombstone, 0, 2)
 	for _, r := range []*types.Relationship{r1, r2} {
 		tombR := r.DeepCopy()
 		tm := tombR.Temporal()
@@ -39,7 +42,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 		tm.ValidTo = now
 		tm.TxFrom = now
 		tm.TxTo = now
-		relTombstones = append(relTombstones, RelTombstone{
+		relTombstones = append(relTombstones, storepkg.RelTombstone{
 			ID:          r.ID(),
 			PrevVersion: r.Version(),
 			Tombstone:   tombR,
@@ -64,13 +67,13 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 
 	// SyncWrites=true — no explicit flush needed.
 	// Node gone.
-	if _, err := bs.GetNode(nA.ID()); !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: got %v, want ErrNodeNotFound", err)
+	if _, err := bs.GetNode(nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("GetNode after delete: got %v, want storepkg.ErrNodeNotFound", err)
 	}
 	// Rels gone.
 	for _, id := range []types.RelID{100, 200} {
-		if _, err := bs.GetRelationship(id); !errors.Is(err, ErrRelNotFound) {
-			t.Errorf("GetRelationship(%d) after delete: got %v, want ErrRelNotFound", id, err)
+		if _, err := bs.GetRelationship(id); !errors.Is(err, storepkg.ErrRelNotFound) {
+			t.Errorf("GetRelationship(%d) after delete: got %v, want storepkg.ErrRelNotFound", id, err)
 		}
 	}
 	// Node history present.
@@ -103,11 +106,11 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 
 // TestDeleteNodeWithHistory_TieredStore is a smoke test via the Graph API.
 // DeleteNode internally calls DeleteNodeWithHistory; this verifies that after
-// a Graph-layer delete on a TieredStore:
+// a Graph-layer delete on a tiered.Store:
 //   - live entities are gone
 //   - history tombstones are present in the underlying shard's Badger DB
 //
-// Note: TieredStore.GetNodeVersion/GetRelVersion use shardForNodeID/shardForRelID
+// Note: tiered.Store.GetNodeVersion/GetRelVersion use shardForNodeID/shardForRelID
 // which resolve shards via in-memory presence. After deletion, the shard cannot be
 // resolved via the high-level routing. We access the underlying shard directly
 // (refShard for "User" reference entities) to verify history was written.
@@ -142,15 +145,15 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	}
 
 	// nA and the rel must be gone from live store.
-	if _, err := ts.GetNode(nodeID); !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("GetNode after delete: got %v, want ErrNodeNotFound", err)
+	if _, err := ts.GetNode(nodeID); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("GetNode after delete: got %v, want storepkg.ErrNodeNotFound", err)
 	}
-	if _, err := ts.GetRelationship(relID); !errors.Is(err, ErrRelNotFound) {
-		t.Errorf("GetRelationship after delete: got %v, want ErrRelNotFound", err)
+	if _, err := ts.GetRelationship(relID); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Errorf("GetRelationship after delete: got %v, want storepkg.ErrRelNotFound", err)
 	}
 
 	// History lives in refShard (both nA and r are ref-label entities: "User" + KNOWS).
-	// Access the underlying BadgerStore directly — TieredStore high-level GetNodeVersion
+	// Access the underlying badger.Store directly — tiered.Store high-level GetNodeVersion
 	// uses shardForNodeID which resolves via live presence (unavailable post-delete).
 	if err := ts.RefShardForTest().Flush(); err != nil {
 		t.Fatalf("Flush refShard: %v", err)
@@ -161,7 +164,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 		t.Fatalf("refShard.GetNodeVersion: %v", err)
 	}
 	if nodeHist.Temporal() == nil || nodeHist.Temporal().DeletedAt == 0 {
-		t.Error("node tombstone DeletedAt not set in TieredStore/refShard history")
+		t.Error("node tombstone DeletedAt not set in tiered.Store/refShard history")
 	}
 
 	relHist, err := ts.RefShardForTest().GetRelVersion(relID, relVersion)
@@ -169,7 +172,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 		t.Fatalf("refShard.GetRelVersion: %v", err)
 	}
 	if relHist.Temporal() == nil || relHist.Temporal().DeletedAt == 0 {
-		t.Error("rel tombstone DeletedAt not set in TieredStore/refShard history")
+		t.Error("rel tombstone DeletedAt not set in tiered.Store/refShard history")
 	}
 
 	// nB must still be alive.

@@ -7,10 +7,15 @@ import (
 	"io"
 	"testing"
 
-	badger "github.com/dgraph-io/badger/v4"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/tieredstore"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -50,7 +55,7 @@ func validImportPrelude(t *testing.T) []byte {
 	// non-empty names[0]. Real exports include the reserved slot — match
 	// that shape so the prelude is admitted and the test exercises the
 	// node/rel record validation, not the registry validation.
-	reg := tieredstore.RegistryFileData{
+	reg := tiered.RegistryFileData{
 		Labels:   []string{"", "L1"},
 		RelTypes: []string{"", "R1"},
 	}
@@ -88,7 +93,7 @@ func runImportSafely(t *testing.T, g *Graph, r io.Reader) error {
 func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 0, // CORRUPT — token 0 is reserved
 		Version:      0,
@@ -101,7 +106,7 @@ func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNode, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -122,7 +127,7 @@ func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 1,
 		ExtraLabels:  []int{2, 0, 3}, // CORRUPT — extra label token 0
@@ -136,7 +141,7 @@ func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNode, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -157,7 +162,7 @@ func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.RelWire{
+	body, err := msgpack.Marshal(&storeutil.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 0, // CORRUPT — token 0 is reserved
 		StartID: 100,
@@ -172,7 +177,7 @@ func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagRel, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -192,7 +197,7 @@ func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 0,
 		Version:      1,
@@ -205,7 +210,7 @@ func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNodeHist, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -224,7 +229,7 @@ func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 func TestImportGraph_RejectsZeroRelTypeInHistory(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.RelWire{
+	body, err := msgpack.Marshal(&storeutil.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 0,
 		StartID: 100,
@@ -239,7 +244,7 @@ func TestImportGraph_RejectsZeroRelTypeInHistory(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagRelHist, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -263,7 +268,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 	t.Parallel()
 
 	// Token = 70000 doesn't fit in uint16 (max 65535).
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 70000, // CORRUPT — out of uint16 range
 		Version:      0,
@@ -276,7 +281,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNode, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -296,7 +301,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 func TestImportGraph_RejectsNegativeLabelToken(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: -1, // CORRUPT — negative
 		Version:      0,
@@ -309,7 +314,7 @@ func TestImportGraph_RejectsNegativeLabelToken(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNode, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -339,7 +344,7 @@ func snowflakeIDForTest() int64 {
 func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.NodeWire{
+	body, err := msgpack.Marshal(&storeutil.NodeWire{
 		ID:           int64(snowflakeIDForTest()),
 		PrimaryLabel: 1,            // valid primary
 		ExtraLabels:  []int{70000}, // CORRUPT — out of uint16 range
@@ -353,7 +358,7 @@ func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagNode, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -374,7 +379,7 @@ func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storepkg.RelWire{
+	body, err := msgpack.Marshal(&storeutil.RelWire{
 		ID:      int64(snowflakeIDForTest()),
 		RelType: 70000, // CORRUPT — out of uint16 range
 		StartID: int64(snowflakeIDForTest()) + 1,
@@ -389,7 +394,7 @@ func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
 	buf.Write(validImportPrelude(t))
 	writeImportRecord(&buf, exportTagRel, body)
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -412,7 +417,7 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	// Source graph: a Case node, a Signal event, and a relationship.
-	src, err := New(Config{Store: NewMemoryStore()})
+	src, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New source: %v", err)
 	}
@@ -436,7 +441,7 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 	}
 
 	// Destination graph: must accept the import and reproduce all entities.
-	dst, err := New(Config{Store: NewMemoryStore()})
+	dst, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New dest: %v", err)
 	}
@@ -465,7 +470,7 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 // --- F2: RunRepair Phase 2 must not silently swallow operational errors ---
 //
 // The bug: r, err := ns.store.GetRelationship(relID); if err != nil { continue }
-// This conflates ErrRelNotFound (legitimate skip) with operational errors
+// This conflates storepkg.ErrRelNotFound (legitimate skip) with operational errors
 // (closed shard, I/O failure, routing failure) — leaving real corruption
 // hiding behind a "Repair succeeded" return.
 //
@@ -474,7 +479,7 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 
 // TestRunRepair_PropagatesOperationalReadError: in Phase 2, RunRepair calls
 // ns.store.GetRelationship(relID) for every rel. If that read returns a
-// non-ErrRelNotFound error (real I/O failure / closed shard / routing
+// non-storepkg.ErrRelNotFound error (real I/O failure / closed shard / routing
 // failure), the original code silently `continue`s — the repair returns
 // success while genuinely needed in/-index repairs were missed.
 //
@@ -506,17 +511,17 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 	}
 
 	// Inject an operational-class fault into the rel's entity shard so
-	// Phase 2's GetRelationship surfaces a non-ErrRelNotFound error.
+	// Phase 2's GetRelationship surfaces a non-storepkg.ErrRelNotFound error.
 	// Pre-fix code did `if err != nil { continue }` and silently swallowed
-	// this — returning RepairResult success while genuinely needed in/-index
+	// this — returning tiered.RepairResult success while genuinely needed in/-index
 	// repairs were missed. Post-fix code must propagate.
 	//
-	// We cannot swap the BadgerStore wholesale (RunRepair calls non-Store
-	// methods on the concrete *BadgerStore). The chosen fault: corrupt the
+	// We cannot swap the badger.Store wholesale (RunRepair calls non-Store
+	// methods on the concrete *badger.Store). The chosen fault: corrupt the
 	// rel's stored msgpack bytes. After evicting it from the LRU cache,
 	// GetRelationship cache-misses, finds the rel ID in the in-memory index,
 	// reads garbage from Badger, and surfaces the unmarshal error — exactly
-	// the "operational, non-ErrRelNotFound" class the fix must propagate.
+	// the "operational, non-storepkg.ErrRelNotFound" class the fix must propagate.
 	ts.MuForTest().RLock()
 	hot := ts.HotShardForTest()
 	ts.MuForTest().RUnlock()
@@ -536,24 +541,24 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("RunRepair: got nil error, want operational error to be propagated. Result: %+v", res)
 	}
-	// Must NOT be an ErrRelNotFound — that's the legitimate-skip sentinel
+	// Must NOT be an storepkg.ErrRelNotFound — that's the legitimate-skip sentinel
 	// the original code conflated with operational errors. The fix must
 	// surface real failures distinctly.
-	if errors.Is(err, ErrRelNotFound) {
-		t.Errorf("RunRepair returned ErrRelNotFound; the fix must surface operational errors as themselves, not as the legitimate-skip sentinel")
+	if errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Errorf("RunRepair returned storepkg.ErrRelNotFound; the fix must surface operational errors as themselves, not as the legitimate-skip sentinel")
 	}
 }
 
-// corruptRelBytesOnDisk forces a non-ErrRelNotFound failure path on a
+// corruptRelBytesOnDisk forces a non-storepkg.ErrRelNotFound failure path on a
 // subsequent GetRelationship for relID against bs:
 //  1. Flush pending writes so the rel value is durable.
 //  2. Evict the rel from the relCache so the read falls through to Badger.
 //  3. Overwrite the rel's Badger value with non-msgpack bytes — the next
 //     read will surface a msgpack unmarshal error (operational class).
 //
-// The test cannot use ErrRelNotFound (legitimate-skip sentinel); it
+// The test cannot use storepkg.ErrRelNotFound (legitimate-skip sentinel); it
 // specifically needs an operational-class error to exercise the F2 fix.
-func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
+func corruptRelBytesOnDisk(t *testing.T, bs *badger.Store, relID types.RelID) {
 	t.Helper()
 
 	// 1. Flush pending so the value is in Badger, not just the WriteBatch.
@@ -570,8 +575,8 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	bs.RelCacheForTest().EvictForTest(id)
 
 	// 3. Overwrite the Badger value with non-msgpack bytes.
-	err := bs.DBForTest().Update(func(txn *badger.Txn) error {
-		return txn.Set(storepkg.RelKey(id), []byte{0xFF, 0xFE, 0xFD, 0xFC})
+	err := bs.DBForTest().Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storeutil.RelKey(id), []byte{0xFF, 0xFE, 0xFD, 0xFC})
 	})
 	if err != nil {
 		t.Fatalf("corrupt rel bytes: %v", err)
@@ -585,9 +590,9 @@ func corruptRelBytesOnDisk(t *testing.T, bs *BadgerStore, relID types.RelID) {
 //   - the Badger value is gone (so the disk read returns key-not-found)
 //
 // Without this divergence, Phase 2 would see a healthy rel and never
-// hit the ErrRelNotFound `continue` branch — the test would then pass
+// hit the storepkg.ErrRelNotFound `continue` branch — the test would then pass
 // regardless of whether the fix's errors.Is gate is correct.
-func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
+func staleRelIDInAllRelIDs(t *testing.T, bs *badger.Store, relID types.RelID) {
 	t.Helper()
 
 	// Flush so the rel is persisted to Badger.
@@ -599,10 +604,10 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
 	bs.RelCacheForTest().EvictForTest(relID.SnowflakeID())
 
 	// Delete the Badger key so GetRelationship's disk read returns
-	// key-not-found, which BadgerStore translates to ErrRelNotFound.
+	// key-not-found, which badger.Store translates to storepkg.ErrRelNotFound.
 	id := relID.SnowflakeID()
-	err := bs.DBForTest().Update(func(txn *badger.Txn) error {
-		return txn.Delete(storepkg.RelKey(id))
+	err := bs.DBForTest().Update(func(txn *badgerv4.Txn) error {
+		return txn.Delete(storeutil.RelKey(id))
 	})
 	if err != nil {
 		t.Fatalf("delete rel key for stale-id setup: %v", err)
@@ -613,11 +618,11 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *BadgerStore, relID types.RelID) {
 }
 
 // TestRunRepair_SkipsLegitimateRelNotFound: a Phase 2 read that returns
-// ErrRelNotFound (rel deleted between AllRelIDs and GetRelationship — a
+// storepkg.ErrRelNotFound (rel deleted between AllRelIDs and GetRelationship — a
 // legitimate TOCTOU race) must NOT be propagated. RunRepair should still
 // complete successfully. The `staleRelIDInAllRelIDs` helper engineers
 // the exact divergence — without it we'd be testing the happy path,
-// not the fix's errors.Is(err, ErrRelNotFound) gate (review HIGH Q7).
+// not the fix's errors.Is(err, storepkg.ErrRelNotFound) gate (review HIGH Q7).
 func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
@@ -637,15 +642,15 @@ func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
 	}
 
 	// Engineer the divergence: rel still in AllRelIDs, but
-	// GetRelationship will return ErrRelNotFound. The owner shard for a
+	// GetRelationship will return storepkg.ErrRelNotFound. The owner shard for a
 	// cross-shard ref→event rel is refShard.
 	staleRelIDInAllRelIDs(t, ts.RefShardForTest(), rel.InternalID())
 
-	// RunRepair must NOT propagate ErrRelNotFound — that's the fix's
+	// RunRepair must NOT propagate storepkg.ErrRelNotFound — that's the fix's
 	// legitimate-skip class.
 	res, err := ts.RunRepair()
 	if err != nil {
-		t.Fatalf("RunRepair must skip ErrRelNotFound silently; got error %v", err)
+		t.Fatalf("RunRepair must skip storepkg.ErrRelNotFound silently; got error %v", err)
 	}
 	if res == nil {
 		t.Fatal("RunRepair returned nil result")

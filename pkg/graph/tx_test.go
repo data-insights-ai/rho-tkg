@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -111,8 +115,8 @@ func TestGraphTx_DoubleCommit(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 	err := tx.Commit()
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("double commit: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("double commit: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -125,8 +129,8 @@ func TestGraphTx_DoubleRollback(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 	err := tx.Rollback()
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("double rollback: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("double rollback: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -140,8 +144,8 @@ func TestGraphTx_AddAfterCommit(t *testing.T) {
 	}
 
 	_, err := tx.AddNode([]string{"Person"}, nil)
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("AddNode after commit: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("AddNode after commit: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -155,13 +159,13 @@ func TestGraphTx_AddAfterRollback(t *testing.T) {
 	}
 
 	_, err := tx.AddNode([]string{"Person"}, nil)
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("AddNode after rollback: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("AddNode after rollback: got %v, want storepkg.ErrTxDone", err)
 	}
 
 	_, err = tx.AddRelationship("KNOWS", nil, nil, nil)
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("AddRelationship after rollback: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("AddRelationship after rollback: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -174,8 +178,8 @@ func TestGraphTx_CommitThenRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := tx.Rollback()
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("rollback after commit: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("rollback after commit: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -188,8 +192,8 @@ func TestGraphTx_RollbackThenCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := tx.Commit()
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("commit after rollback: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("commit after rollback: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -239,7 +243,7 @@ func TestGraphTx_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// This should block until the tx is committed.
-		_, _ = g.AllNodes(QueryOpts{})
+		_, _ = g.AllNodes(storepkg.QueryOpts{})
 		close(done)
 	}()
 
@@ -655,18 +659,18 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// All mutation methods should return ErrTxDone after commit.
-	if _, err := tx.UpdateNode(nodeID, map[string]any{"x": int64(1)}); !errors.Is(err, ErrTxDone) {
-		t.Errorf("UpdateNode: got %v, want ErrTxDone", err)
+	// All mutation methods should return storepkg.ErrTxDone after commit.
+	if _, err := tx.UpdateNode(nodeID, map[string]any{"x": int64(1)}); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("UpdateNode: got %v, want storepkg.ErrTxDone", err)
 	}
-	if _, err := tx.UpdateRelationship(relID, map[string]any{"x": int64(1)}); !errors.Is(err, ErrTxDone) {
-		t.Errorf("UpdateRelationship: got %v, want ErrTxDone", err)
+	if _, err := tx.UpdateRelationship(relID, map[string]any{"x": int64(1)}); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("UpdateRelationship: got %v, want storepkg.ErrTxDone", err)
 	}
-	if err := tx.DeleteNode(nodeID); !errors.Is(err, ErrTxDone) {
-		t.Errorf("DeleteNode: got %v, want ErrTxDone", err)
+	if err := tx.DeleteNode(nodeID); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("DeleteNode: got %v, want storepkg.ErrTxDone", err)
 	}
-	if err := tx.DeleteRelationship(relID); !errors.Is(err, ErrTxDone) {
-		t.Errorf("DeleteRelationship: got %v, want ErrTxDone", err)
+	if err := tx.DeleteRelationship(relID); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("DeleteRelationship: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -710,8 +714,8 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = tx.GetNode(n.ID())
-	if !errors.Is(err, ErrTxDone) {
-		t.Errorf("GetNode after commit: got %v, want ErrTxDone", err)
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("GetNode after commit: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 
@@ -961,7 +965,7 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 // deleteRelPanicStore wraps a Store and panics on DeleteRelationship.
 // This simulates a store panic during the "delete created rels" rollback phase.
 type deleteRelPanicStore struct {
-	Store
+	storepkg.Store
 }
 
 func (s *deleteRelPanicStore) DeleteRelationship(_ types.RelID) error {
@@ -1125,7 +1129,7 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				_, _ = g.AllNodes(QueryOpts{})
+				_, _ = g.AllNodes(storepkg.QueryOpts{})
 			}
 		}()
 	}
@@ -1148,12 +1152,12 @@ func TestTxCommitPublishesBufferedEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	var mu sync.Mutex
-	var received []Event
-	bus.Subscribe(func(e Event) {
+	var received []eventspkg.Event
+	bus.Subscribe(func(e eventspkg.Event) {
 		mu.Lock()
 		received = append(received, e)
 		mu.Unlock()
@@ -1194,14 +1198,14 @@ func TestTxCommitPublishesBufferedEvents(t *testing.T) {
 	if len(received) != 3 {
 		t.Fatalf("events after commit: got %d, want 3", len(received))
 	}
-	if received[0].Type != EventNodeCreate {
-		t.Errorf("event[0].Type: got %d, want EventNodeCreate(%d)", received[0].Type, EventNodeCreate)
+	if received[0].Type != eventspkg.EventNodeCreate {
+		t.Errorf("event[0].Type: got %d, want eventspkg.EventNodeCreate(%d)", received[0].Type, eventspkg.EventNodeCreate)
 	}
-	if received[1].Type != EventNodeCreate {
-		t.Errorf("event[1].Type: got %d, want EventNodeCreate(%d)", received[1].Type, EventNodeCreate)
+	if received[1].Type != eventspkg.EventNodeCreate {
+		t.Errorf("event[1].Type: got %d, want eventspkg.EventNodeCreate(%d)", received[1].Type, eventspkg.EventNodeCreate)
 	}
-	if received[2].Type != EventRelCreate {
-		t.Errorf("event[2].Type: got %d, want EventRelCreate(%d)", received[2].Type, EventRelCreate)
+	if received[2].Type != eventspkg.EventRelCreate {
+		t.Errorf("event[2].Type: got %d, want eventspkg.EventRelCreate(%d)", received[2].Type, eventspkg.EventRelCreate)
 	}
 }
 
@@ -1214,11 +1218,11 @@ func TestTxRollbackNoEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	var count atomic.Int64
-	bus.Subscribe(func(e Event) {
+	bus.Subscribe(func(e eventspkg.Event) {
 		count.Add(1)
 	})
 
@@ -1255,12 +1259,12 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	var handlerOK atomic.Bool
-	bus.Subscribe(func(e Event) {
-		if e.Type == EventNodeCreate {
+	bus.Subscribe(func(e eventspkg.Event) {
+		if e.Type == eventspkg.EventNodeCreate {
 			// This must not deadlock — g.mu must be unlocked at this point.
 			n, err := g.GetNode(types.NodeID(e.EntityID))
 			if err == nil && n != nil {
@@ -1294,11 +1298,11 @@ func TestBatchEventsNotBuffered(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	var count atomic.Int64
-	bus.Subscribe(func(e Event) {
+	bus.Subscribe(func(e eventspkg.Event) {
 		count.Add(1)
 	})
 

@@ -2,12 +2,13 @@ package graph
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // ArchiveNode moves a reference node and its relationships from the reference
-// shard to the reference archive. Only available with TieredStore.
-// Returns ErrNodeNotFound if the node is not in the reference shard.
+// shard to the reference archive. Only available with tiered.Store.
+// Returns storepkg.ErrNodeNotFound if the node is not in the reference shard.
 //
 // Concurrency: takes g.mu.Lock — same exclusion class as a transaction.
 // ArchiveNode reads adjacency, then runs cascade; without this lock a
@@ -18,7 +19,7 @@ import (
 // is a rare, batch-style admin operation; serializing against all
 // writers is acceptable and mirrors the tx/batch lock discipline.
 func (g *Graph) ArchiveNode(id types.NodeID) error {
-	if ts, ok := g.store.(*TieredStore); ok {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		return ts.ArchiveNode(id)
@@ -27,12 +28,12 @@ func (g *Graph) ArchiveNode(id types.NodeID) error {
 }
 
 // RestoreNode moves a reference node and its relationships from the reference
-// archive back to the reference shard. Only available with TieredStore.
-// Returns ErrNodeNotFound if the node is not in the archive.
+// archive back to the reference shard. Only available with tiered.Store.
+// Returns storepkg.ErrNodeNotFound if the node is not in the archive.
 //
 // Concurrency: takes g.mu.Lock — see ArchiveNode for the rationale.
 func (g *Graph) RestoreNode(id types.NodeID) error {
-	if ts, ok := g.store.(*TieredStore); ok {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		return ts.RestoreNode(id)
@@ -46,44 +47,44 @@ func (g *Graph) DecomposeID(id snowflake.ID) IDComponents {
 	return DecomposeID(id)
 }
 
-// ForceRotate triggers a hot-shard rotation. Only available with TieredStore.
+// ForceRotate triggers a hot-shard rotation. Only available with tiered.Store.
 func (g *Graph) ForceRotate() error {
-	if ts, ok := g.store.(*TieredStore); ok {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		return ts.ForceRotate()
 	}
 	return ErrNotTieredStore
 }
 
-// ListShards returns information about all shards. Only available with TieredStore.
-func (g *Graph) ListShards() ([]ShardInfo, error) {
-	if ts, ok := g.store.(*TieredStore); ok {
+// ListShards returns information about all shards. Only available with tiered.Store.
+func (g *Graph) ListShards() ([]tiered.ShardInfo, error) {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
 }
 
 // RebuildCatalog reconstructs the shard catalog from live state.
-// Only available with TieredStore.
+// Only available with tiered.Store.
 func (g *Graph) RebuildCatalog() error {
-	if ts, ok := g.store.(*TieredStore); ok {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		return ts.RebuildCatalog()
 	}
 	return ErrNotTieredStore
 }
 
 // RunRepair scans for cross-shard consistency issues and fixes them.
-// Only available with TieredStore.
-func (g *Graph) RunRepair() (*RepairResult, error) {
-	if ts, ok := g.store.(*TieredStore); ok {
+// Only available with tiered.Store.
+func (g *Graph) RunRepair() (*tiered.RepairResult, error) {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		return ts.RunRepair()
 	}
 	return nil, ErrNotTieredStore
 }
 
 // VerifyShard runs hash chain verification on all entities in a shard.
-// Only available with TieredStore.
-func (g *Graph) VerifyShard(shardName string) (*VerifyResult, error) {
-	if ts, ok := g.store.(*TieredStore); ok {
+// Only available with tiered.Store.
+func (g *Graph) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
+	if ts, ok := g.store.(*tiered.Store); ok {
 		return ts.VerifyShard(g, shardName)
 	}
 	return nil, ErrNotTieredStore

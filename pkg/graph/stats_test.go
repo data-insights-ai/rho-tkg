@@ -156,7 +156,7 @@ func TestGraphStats_CacheMetrics_MemoryStore_Zero(t *testing.T) {
 	}
 }
 
-// TestGraphStats_CacheMetrics_BadgerStore verifies that BadgerStore populates
+// TestGraphStats_CacheMetrics_BadgerStore verifies that badger.Store populates
 // NodeCacheHits and NodeCacheMisses in Stats(). AddNode calls PutNode which
 // inserts the node into the LRU cache, so subsequent GetNode calls are cache hits.
 func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
@@ -187,7 +187,7 @@ func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
 
 	s := g.Stats()
 	if s.NodeCacheHits == 0 {
-		t.Errorf("expected NodeCacheHits > 0 with BadgerStore, got %d", s.NodeCacheHits)
+		t.Errorf("expected NodeCacheHits > 0 with badger.Store, got %d", s.NodeCacheHits)
 	}
 	// Total cache activity must be positive.
 	if s.NodeCacheHits+s.NodeCacheMisses == 0 {

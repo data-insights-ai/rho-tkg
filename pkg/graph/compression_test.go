@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v4/options"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 )
 
 func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
@@ -33,14 +34,14 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 }
 
 func TestCompression_TieredStore_Passthrough(t *testing.T) {
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		InMemory:             true,
 		RefLabels:            []string{"Ref"},
 		Compression:          options.ZSTD,
 		ZSTDCompressionLevel: 1,
 	})
 	if err != nil {
-		t.Fatalf("NewTieredStore: %v", err)
+		t.Fatalf("tiered.New: %v", err)
 	}
 	defer ts.Close()
 

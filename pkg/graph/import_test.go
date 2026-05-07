@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -50,8 +52,8 @@ func TestImportNodeWithID_Collision(t *testing.T) {
 
 	// Second import with same ID should fail.
 	_, err = g.ImportNodeWithID(context.Background(), types.NodeID(id), []string{"B"}, nil)
-	if !errors.Is(err, ErrNodeExists) {
-		t.Errorf("err = %v, want ErrNodeExists", err)
+	if !errors.Is(err, storepkg.ErrNodeExists) {
+		t.Errorf("err = %v, want storepkg.ErrNodeExists", err)
 	}
 }
 
@@ -117,8 +119,8 @@ func TestImportRelationshipWithID_Collision(t *testing.T) {
 	}
 
 	_, err = g.ImportRelationshipWithID(context.Background(), types.RelID(relID), "LIKES", n1, n2, nil)
-	if !errors.Is(err, ErrRelExists) {
-		t.Errorf("err = %v, want ErrRelExists", err)
+	if !errors.Is(err, storepkg.ErrRelExists) {
+		t.Errorf("err = %v, want storepkg.ErrRelExists", err)
 	}
 }
 
@@ -177,8 +179,8 @@ func TestGraphTx_ImportNodeWithID_Rollback(t *testing.T) {
 
 	// Node should be gone after rollback.
 	_, err = g.GetNode(types.NodeID(id))
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Errorf("after rollback: err = %v, want ErrNodeNotFound", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Errorf("after rollback: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -14,7 +16,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 
 	g, err := New(Config{
 		SnowflakeNodeID: 0,
-		Store:           NewMemoryStore(),
+		Store:           memory.New(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

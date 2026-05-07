@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -362,12 +364,12 @@ func main() {
 	// ----------------------------------------------------------------
 
 	_, err = g.GetNode(aliceID)
-	if errors.Is(err, graph.ErrNodeNotFound) {
+	if errors.Is(err, store.ErrNodeNotFound) {
 		fmt.Println("GetNode(deleted Alice): ErrNodeNotFound")
 	}
 
 	_, err = g.GetRelationship(worksIn.ID())
-	if errors.Is(err, graph.ErrRelNotFound) {
+	if errors.Is(err, store.ErrRelNotFound) {
 		fmt.Println("GetRelationship(cascaded rel): ErrRelNotFound")
 	}
 

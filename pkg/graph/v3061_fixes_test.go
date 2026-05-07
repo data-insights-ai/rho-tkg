@@ -7,8 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/store"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -17,7 +25,7 @@ import (
 func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +61,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 		Signature: []byte{0xAA, 0xBB},
 	})
 
-	w := storepkg.NodeToWire(n)
+	w := storeutil.NodeToWire(n)
 
 	// Mutate wire signature — must not affect original node.
 	w.Signature[0] = 0xFF
@@ -64,7 +72,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xAA
 
-	decoded := storepkg.WireToNode(w)
+	decoded := storeutil.WireToNode(w)
 
 	// Mutate wire again — must not affect decoded node.
 	w.Signature[0] = 0xFF
@@ -82,7 +90,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 		Signature: []byte{0xCC, 0xDD},
 	})
 
-	w := storepkg.RelToWire(r)
+	w := storeutil.RelToWire(r)
 
 	// Mutate wire signature — must not affect original rel.
 	w.Signature[0] = 0xFF
@@ -93,7 +101,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xCC
 
-	decoded := storepkg.WireToRel(w)
+	decoded := storeutil.WireToRel(w)
 
 	// Mutate wire again — must not affect decoded rel.
 	w.Signature[0] = 0xFF
@@ -107,13 +115,13 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 func TestSetEventBus_NoRace(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	var wg sync.WaitGroup
@@ -148,7 +156,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,12 +183,12 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		cs := NewConstraintSet(TemporalConstraint{
-			Kind: ConstraintRelWithinEndpoints,
+		cs := temporalpkg.NewConstraintSet(temporalpkg.TemporalConstraint{
+			Kind: temporalpkg.ConstraintRelWithinEndpoints,
 		})
 		for j := 0; j < 50; j++ {
 			g.SetTemporalConstraints(cs)
-			g.SetTemporalConstraints(ConstraintSet{})
+			g.SetTemporalConstraints(temporalpkg.ConstraintSet{})
 		}
 	}()
 
@@ -192,19 +200,19 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	// Sync handler calls g.GetNode inside the callback.
 	var handlerNodeID types.EntityID
-	bus.Subscribe(func(e Event) {
-		if e.Type == EventNodeCreate {
+	bus.Subscribe(func(e eventspkg.Event) {
+		if e.Type == eventspkg.EventNodeCreate {
 			// This would deadlock if publishEvent ran under g.mu.RLock
 			// because GetNodeWithContext doesn't acquire g.mu.RLock,
 			// but more complex handlers calling write methods would.
@@ -263,7 +271,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 	t.Parallel()
 
 	// Negative window.
-	_, err := NewTieredStore(TieredStoreConfig{
+	_, err := tiered.New(tiered.Config{
 		InMemory:    true,
 		ShardWindow: -time.Hour,
 	})
@@ -272,7 +280,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 	}
 
 	// Sub-minute window.
-	_, err = NewTieredStore(TieredStoreConfig{
+	_, err = tiered.New(tiered.Config{
 		InMemory:    true,
 		ShardWindow: 30 * time.Second,
 	})
@@ -281,7 +289,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 	}
 
 	// Exactly 1 minute — should succeed.
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,
 		ShardWindow: time.Minute,
 	})
@@ -296,7 +304,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 func TestTx_ImportRelationshipWithID(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,8 +345,8 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 
 	// Import duplicate — should fail.
 	_, err = g.ImportRelationshipWithID(context.Background(), types.RelID(relID), "KNOWS", a, b, nil)
-	if !errors.Is(err, ErrRelExists) {
-		t.Fatalf("expected ErrRelExists, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelExists) {
+		t.Fatalf("expected storepkg.ErrRelExists, got %v", err)
 	}
 
 	// Rollback: create new rel in tx, rollback, verify original persists.
@@ -354,8 +362,8 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 
 	// New rel should not exist.
 	_, err = g.GetRelationship(types.RelID(newRelID))
-	if !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("expected ErrRelNotFound after rollback, got %v", err)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("expected storepkg.ErrRelNotFound after rollback, got %v", err)
 	}
 
 	// Original rel should still exist.
@@ -368,7 +376,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 func TestGetRelsAsOf(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,27 +445,27 @@ func TestGetRelsAsOf(t *testing.T) {
 func TestCreateDropTemporalIndex(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
 	// Register the label.
-	g.AddNode([]string{"Event"}, nil)
+	g.AddNode([]string{"eventspkg.Event"}, nil)
 
 	// Create temporal index.
-	if err := g.CreateTemporalIndex("Event"); err != nil {
+	if err := g.CreateTemporalIndex("eventspkg.Event"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Drop.
-	if err := g.DropTemporalIndex("Event"); err != nil {
+	if err := g.DropTemporalIndex("eventspkg.Event"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second drop should error.
-	err = g.DropTemporalIndex("Event")
+	err = g.DropTemporalIndex("eventspkg.Event")
 	if err == nil {
 		t.Fatal("second DropTemporalIndex should fail")
 	}
@@ -466,7 +474,7 @@ func TestCreateDropTemporalIndex(t *testing.T) {
 func TestDropHighFrequencyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: NewMemoryStore()})
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,25 +504,25 @@ func TestToFloat32SliceWire(t *testing.T) {
 	t.Parallel()
 
 	// []any{float32, float64} input.
-	got := storepkg.ToFloat32SliceWire([]any{float32(1.5), float64(2.5)})
+	got := storeutil.ToFloat32SliceWire([]any{float32(1.5), float64(2.5)})
 	if len(got) != 2 || got[0] != 1.5 || got[1] != 2.5 {
 		t.Fatalf("[]any input: got %v", got)
 	}
 
 	// []float32 input (passthrough).
-	got2 := storepkg.ToFloat32SliceWire([]float32{3.0, 4.0})
+	got2 := storeutil.ToFloat32SliceWire([]float32{3.0, 4.0})
 	if len(got2) != 2 || got2[0] != 3.0 || got2[1] != 4.0 {
 		t.Fatalf("[]float32 input: got %v", got2)
 	}
 
 	// nil input.
-	got3 := storepkg.ToFloat32SliceWire(nil)
+	got3 := storeutil.ToFloat32SliceWire(nil)
 	if got3 != nil {
 		t.Fatalf("nil input: got %v", got3)
 	}
 
 	// Unsupported type.
-	got4 := storepkg.ToFloat32SliceWire("not a slice")
+	got4 := storeutil.ToFloat32SliceWire("not a slice")
 	if got4 != nil {
 		t.Fatalf("unsupported input: got %v", got4)
 	}

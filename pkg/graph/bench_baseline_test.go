@@ -6,6 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -26,7 +31,7 @@ type graphBaselineFixture struct {
 
 func newBaselineMemoryGraph(b *testing.B) *Graph {
 	b.Helper()
-	g, err := New(Config{SnowflakeNodeID: 2, Store: NewMemoryStore()})
+	g, err := New(Config{SnowflakeNodeID: 2, Store: memory.New()})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -50,7 +55,7 @@ func newBaselineBadgerGraph(b *testing.B, syncWrites bool) *Graph {
 
 func newBaselineTieredGraph(b *testing.B) *Graph {
 	b.Helper()
-	ts, err := NewTieredStore(TieredStoreConfig{
+	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,
 		RefLabels:   []string{"Case", "User", "Organization"},
 		ShardWindow: 7 * 24 * time.Hour,
@@ -105,7 +110,7 @@ func newGraphBaselineFixture(b *testing.B, g *Graph, size int) graphBaselineFixt
 	if err := g.CreateTemporalIndex("Person"); err != nil {
 		b.Fatal(err)
 	}
-	if err := g.CreateVectorIndex("Person", "embedding", 3, DistanceEuclidean); err != nil {
+	if err := g.CreateVectorIndex("Person", "embedding", 3, storepkg.DistanceEuclidean); err != nil {
 		b.Fatal(err)
 	}
 
@@ -150,7 +155,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 	b.Run("NodesByLabelLimit64", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabel("Person", QueryOpts{Limit: 64})
+			nodes, err := f.g.NodesByLabel("Person", storepkg.QueryOpts{Limit: 64})
 			if err != nil || len(nodes) != 64 {
 				b.Fatalf("NodesByLabel: len=%d err=%v", len(nodes), err)
 			}
@@ -160,7 +165,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 	b.Run("RelationshipsByTypeLimit64", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.RelationshipsByType("KNOWS", QueryOpts{Limit: 64})
+			rels, err := f.g.RelationshipsByType("KNOWS", storepkg.QueryOpts{Limit: 64})
 			if err != nil || len(rels) != 64 {
 				b.Fatalf("RelationshipsByType: len=%d err=%v", len(rels), err)
 			}
@@ -193,7 +198,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 	b.Run("NodesByLabelAndPropertyIndexed", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabelAndProperty("Person", "group", "g7", QueryOpts{Limit: 64})
+			nodes, err := f.g.NodesByLabelAndProperty("Person", "group", "g7", storepkg.QueryOpts{Limit: 64})
 			if err != nil || len(nodes) != 64 {
 				b.Fatalf("NodesByLabelAndProperty: len=%d err=%v", len(nodes), err)
 			}
@@ -218,7 +223,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 		query := []float32{1, 2, 3}
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.SearchNearestNodes("Person", "embedding", query, 8, QueryOpts{})
+			nodes, err := f.g.SearchNearestNodes("Person", "embedding", query, 8, storepkg.QueryOpts{})
 			if err != nil || len(nodes) != 8 {
 				b.Fatalf("SearchNearestNodes: len=%d err=%v", len(nodes), err)
 			}
@@ -465,7 +470,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabel("Person", QueryOpts{Limit: 64})
+			nodes, err := f.g.NodesByLabel("Person", storepkg.QueryOpts{Limit: 64})
 			if err != nil || len(nodes) != 64 {
 				b.Fatalf("NodesByLabel: len=%d err=%v", len(nodes), err)
 			}

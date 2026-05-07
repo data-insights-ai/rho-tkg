@@ -3,6 +3,10 @@ package graph
 import (
 	"errors"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -16,7 +20,7 @@ func (g *Graph) GetPreviousNodeVersion(id types.NodeID, version uint32) (*types.
 		return nil, nil
 	}
 	n, err := g.store.GetNodeVersion(id, version-1)
-	if errors.Is(err, ErrVersionNotFound) {
+	if errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, nil
 	}
 	return n, err
@@ -30,13 +34,13 @@ func (g *Graph) GetNextNodeVersion(id types.NodeID, version uint32) (*types.Node
 	if err == nil {
 		return n, nil
 	}
-	if !errors.Is(err, ErrVersionNotFound) {
+	if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, err
 	}
 	// Not in history: the current node itself may be version+1.
 	current, err2 := g.store.GetNode(id)
 	if err2 != nil {
-		if errors.Is(err2, ErrNodeNotFound) {
+		if errors.Is(err2, storepkg.ErrNodeNotFound) {
 			return nil, nil
 		}
 		return nil, err2
@@ -56,7 +60,7 @@ func (g *Graph) CloseNodeVersion(id types.NodeID, t types.Instant) error {
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }
@@ -106,7 +110,7 @@ func (g *Graph) GetPreviousRelVersion(id types.RelID, version uint32) (*types.Re
 		return nil, nil
 	}
 	r, err := g.store.GetRelVersion(id, version-1)
-	if errors.Is(err, ErrVersionNotFound) {
+	if errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, nil
 	}
 	return r, err
@@ -120,13 +124,13 @@ func (g *Graph) GetNextRelVersion(id types.RelID, version uint32) (*types.Relati
 	if err == nil {
 		return r, nil
 	}
-	if !errors.Is(err, ErrVersionNotFound) {
+	if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, err
 	}
 	// Not in history: the current rel itself may be version+1.
 	current, err2 := g.store.GetRelationship(id)
 	if err2 != nil {
-		if errors.Is(err2, ErrRelNotFound) {
+		if errors.Is(err2, storepkg.ErrRelNotFound) {
 			return nil, nil
 		}
 		return nil, err2
@@ -146,7 +150,7 @@ func (g *Graph) CloseRelVersion(id types.RelID, t types.Instant) error {
 	ep := g.events
 	g.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, Event{Type: EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }

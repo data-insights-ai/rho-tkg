@@ -13,27 +13,31 @@ package graph
 //     - validates name length (ErrNameTooLong)
 //     - rejects empty label names
 //     - enforces MaxLabelsPerNode (ErrTooManyLabels)
-//     - ErrNodeNotFound for unknown id
+//     - storepkg.ErrNodeNotFound for unknown id
 //     - advances hash chain (new hash, PrevHash == old hash)
 //     - writes version history entry
-//     - publishes EventNodeUpdate
+//     - publishes eventspkg.EventNodeUpdate
 //
 //   GraphTx.AddNodeLabel(id, label) error
 //     - applies inside transaction
 //     - rollback undoes the add (label gone after Rollback)
 //     - Commit persists the added label
-//     - ErrTxDone after Commit/Rollback
+//     - storepkg.ErrTxDone after Commit/Rollback
 //
 //   GraphTx.RemoveNodeLabel(id, label) error
 //     - wraps g.removeNodeLabelInternal under tx lock
 //     - rollback restores the removed label
 //     - returns ErrLastLabel when removing the only label
-//     - ErrTxDone after Commit/Rollback
+//     - storepkg.ErrTxDone after Commit/Rollback
 
 import (
 	"errors"
 	"strings"
 	"testing"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 )
 
 // --- Graph.AddNodeLabel ---
@@ -110,8 +114,8 @@ func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 	g, _ := New(Config{})
 	err := g.AddNodeLabel(999, "Person")
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
@@ -179,7 +183,7 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
-	nodes, _ := g.NodesByLabel("Tag", QueryOpts{})
+	nodes, _ := g.NodesByLabel("Tag", storepkg.QueryOpts{})
 	found := false
 	for _, node := range nodes {
 		if node.ID() == id {
@@ -194,14 +198,14 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 
 func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 	g.SetEventBus(bus)
 
 	n, _ := g.AddNode([]string{"A"}, nil)
 	id := n.ID()
 
-	var events []Event
-	bus.Subscribe(func(e Event) {
+	var events []eventspkg.Event
+	bus.Subscribe(func(e eventspkg.Event) {
 		events = append(events, e)
 	})
 	events = nil // clear AddNode event
@@ -211,10 +215,10 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	}
 
 	if len(events) == 0 {
-		t.Fatal("expected EventNodeUpdate, got none")
+		t.Fatal("expected eventspkg.EventNodeUpdate, got none")
 	}
-	if events[0].Type != EventNodeUpdate {
-		t.Errorf("event type = %v, want EventNodeUpdate", events[0].Type)
+	if events[0].Type != eventspkg.EventNodeUpdate {
+		t.Errorf("event type = %v, want eventspkg.EventNodeUpdate", events[0].Type)
 	}
 }
 
@@ -275,7 +279,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	}
 
 	// Label index must not contain this node under "B" after rollback.
-	nodes, _ := g.NodesByLabel("B", QueryOpts{})
+	nodes, _ := g.NodesByLabel("B", storepkg.QueryOpts{})
 	for _, nd := range nodes {
 		if nd.ID() == id {
 			t.Fatal("label index still contains node under B after rollback")
@@ -297,7 +301,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	nodes, _ := g.NodesByLabel("B", QueryOpts{})
+	nodes, _ := g.NodesByLabel("B", storepkg.QueryOpts{})
 	found := false
 	for _, nd := range nodes {
 		if nd.ID() == id {
@@ -319,8 +323,8 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
-	if err := tx.AddNodeLabel(id, "B"); !errors.Is(err, ErrTxDone) {
-		t.Fatalf("expected ErrTxDone, got %v", err)
+	if err := tx.AddNodeLabel(id, "B"); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Fatalf("expected storepkg.ErrTxDone, got %v", err)
 	}
 }
 
@@ -389,7 +393,7 @@ func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
-	if err := tx.RemoveNodeLabel(id, "B"); !errors.Is(err, ErrTxDone) {
-		t.Fatalf("expected ErrTxDone, got %v", err)
+	if err := tx.RemoveNodeLabel(id, "B"); !errors.Is(err, storepkg.ErrTxDone) {
+		t.Fatalf("expected storepkg.ErrTxDone, got %v", err)
 	}
 }

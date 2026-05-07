@@ -5,52 +5,54 @@ import (
 	"testing"
 	"time"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // TestEventBus_Subscribe_Unsubscribe verifies that subscribing two handlers and
 // unsubscribing one results in only the remaining handler receiving events.
 func TestEventBus_Subscribe_Unsubscribe(t *testing.T) {
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 
-	var got1, got2 []EventType
-	unsub1 := bus.Subscribe(func(e Event) { got1 = append(got1, e.Type) })
-	_ = bus.Subscribe(func(e Event) { got2 = append(got2, e.Type) })
+	var got1, got2 []eventspkg.EventType
+	unsub1 := bus.Subscribe(func(e eventspkg.Event) { got1 = append(got1, e.Type) })
+	_ = bus.Subscribe(func(e eventspkg.Event) { got2 = append(got2, e.Type) })
 
 	// Unsubscribe first handler.
 	unsub1()
 
-	bus.Publish(Event{Type: EventNodeCreate})
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventNodeCreate})
 
 	if len(got1) != 0 {
 		t.Fatalf("unsubscribed handler received %d events", len(got1))
 	}
-	if len(got2) != 1 || got2[0] != EventNodeCreate {
-		t.Fatalf("remaining handler: expected [EventNodeCreate], got %v", got2)
+	if len(got2) != 1 || got2[0] != eventspkg.EventNodeCreate {
+		t.Fatalf("remaining handler: expected [eventspkg.EventNodeCreate], got %v", got2)
 	}
 }
 
 // TestEventBus_Unsubscribe_Idempotent verifies that calling the unsubscribe
 // function multiple times is safe and does not panic.
 func TestEventBus_Unsubscribe_Idempotent(t *testing.T) {
-	bus := NewEventBus()
-	unsub := bus.Subscribe(func(Event) {})
+	bus := eventspkg.NewEventBus()
+	unsub := bus.Subscribe(func(eventspkg.Event) {})
 	unsub()
 	unsub() // second call must not panic
 }
 
 // TestEventBus_MultipleHandlers verifies all registered handlers receive every event.
 func TestEventBus_MultipleHandlers(t *testing.T) {
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 
 	counts := make([]int, 3)
 	for i := range counts {
 		i := i
-		bus.Subscribe(func(e Event) { counts[i]++ })
+		bus.Subscribe(func(e eventspkg.Event) { counts[i]++ })
 	}
 
-	bus.Publish(Event{Type: EventRelCreate})
-	bus.Publish(Event{Type: EventRelDelete})
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventRelCreate})
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventRelDelete})
 
 	for i, c := range counts {
 		if c != 2 {
@@ -60,7 +62,7 @@ func TestEventBus_MultipleHandlers(t *testing.T) {
 }
 
 // TestGraph_EventBus_NilDefault verifies that a freshly created Graph has no
-// EventBus attached and does not panic on mutations.
+// eventspkg.EventBus attached and does not panic on mutations.
 func TestGraph_EventBus_NilDefault(t *testing.T) {
 	g, err := New(Config{})
 	if err != nil {
@@ -69,7 +71,7 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	if g.GetEventBus() != nil {
-		t.Fatal("expected nil EventBus by default")
+		t.Fatal("expected nil eventspkg.EventBus by default")
 	}
 
 	// Should not panic even without an event bus.
@@ -82,11 +84,11 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	}
 }
 
-// TestGraph_NodeCreate_Event verifies that AddNode fires EventNodeCreate with
+// TestGraph_NodeCreate_Event verifies that AddNode fires eventspkg.EventNodeCreate with
 // the correct EntityID and a non-zero Timestamp.
 func TestGraph_NodeCreate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
-	events := collectEvents(g, EventNodeCreate)
+	events := collectEvents(g, eventspkg.EventNodeCreate)
 
 	n, err := g.AddNode([]string{"Person"}, nil)
 	if err != nil {
@@ -97,8 +99,8 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(got))
 	}
-	if got[0].Type != EventNodeCreate {
-		t.Fatalf("expected EventNodeCreate, got %v", got[0].Type)
+	if got[0].Type != eventspkg.EventNodeCreate {
+		t.Fatalf("expected eventspkg.EventNodeCreate, got %v", got[0].Type)
 	}
 	if got[0].EntityID != types.EntityID(n.ID()) {
 		t.Fatalf("EntityID mismatch: expected %d, got %d", n.ID(), got[0].EntityID)
@@ -108,7 +110,7 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 	}
 }
 
-// TestGraph_NodeUpdate_Event verifies that UpdateNode fires EventNodeUpdate.
+// TestGraph_NodeUpdate_Event verifies that UpdateNode fires eventspkg.EventNodeUpdate.
 func TestGraph_NodeUpdate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -118,19 +120,19 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 	}
 	id := n.ID()
 
-	events := collectEvents(g, EventNodeUpdate)
+	events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 	if _, err := g.UpdateNode(id, map[string]any{"name": "Alice"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
-		t.Fatalf("expected 1 EventNodeUpdate for %d, got %v", id, got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
+		t.Fatalf("expected 1 eventspkg.EventNodeUpdate for %d, got %v", id, got)
 	}
 }
 
-// TestGraph_NodeDelete_Event verifies that DeleteNode fires EventNodeDelete.
+// TestGraph_NodeDelete_Event verifies that DeleteNode fires eventspkg.EventNodeDelete.
 func TestGraph_NodeDelete_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -140,26 +142,26 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 	}
 	id := n.ID()
 
-	events := collectEvents(g, EventNodeDelete)
+	events := collectEvents(g, eventspkg.EventNodeDelete)
 
 	if err := g.DeleteNode(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeDelete || got[0].EntityID != types.EntityID(id) {
-		t.Fatalf("expected 1 EventNodeDelete for %d, got %v", id, got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventNodeDelete || got[0].EntityID != types.EntityID(id) {
+		t.Fatalf("expected 1 eventspkg.EventNodeDelete for %d, got %v", id, got)
 	}
 }
 
-// TestGraph_RelCreate_Event verifies that AddRelationship fires EventRelCreate.
+// TestGraph_RelCreate_Event verifies that AddRelationship fires eventspkg.EventRelCreate.
 func TestGraph_RelCreate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
 	a, _ := g.AddNode([]string{"A"}, nil)
 	b, _ := g.AddNode([]string{"B"}, nil)
 
-	events := collectEvents(g, EventRelCreate)
+	events := collectEvents(g, eventspkg.EventRelCreate)
 
 	r, err := g.AddRelationship("LINKS", a, b, nil)
 	if err != nil {
@@ -167,12 +169,12 @@ func TestGraph_RelCreate_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
-		t.Fatalf("expected 1 EventRelCreate, got %v", got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
+		t.Fatalf("expected 1 eventspkg.EventRelCreate, got %v", got)
 	}
 }
 
-// TestGraph_RelDelete_Event verifies that DeleteRelationship fires EventRelDelete.
+// TestGraph_RelDelete_Event verifies that DeleteRelationship fires eventspkg.EventRelDelete.
 func TestGraph_RelDelete_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -181,19 +183,19 @@ func TestGraph_RelDelete_Event(t *testing.T) {
 	r, _ := g.AddRelationship("LINKS", a, b, nil)
 	rid := r.ID()
 
-	events := collectEvents(g, EventRelDelete)
+	events := collectEvents(g, eventspkg.EventRelDelete)
 
 	if err := g.DeleteRelationship(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelDelete || got[0].EntityID != types.EntityID(rid) {
-		t.Fatalf("expected 1 EventRelDelete, got %v", got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventRelDelete || got[0].EntityID != types.EntityID(rid) {
+		t.Fatalf("expected 1 eventspkg.EventRelDelete, got %v", got)
 	}
 }
 
-// TestGraph_RelUpdate_Event verifies that UpdateRelationship fires EventRelUpdate.
+// TestGraph_RelUpdate_Event verifies that UpdateRelationship fires eventspkg.EventRelUpdate.
 func TestGraph_RelUpdate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -202,15 +204,15 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 	r, _ := g.AddRelationship("LINKS", a, b, nil)
 	rid := r.ID()
 
-	events := collectEvents(g, EventRelUpdate)
+	events := collectEvents(g, eventspkg.EventRelUpdate)
 
 	if _, err := g.UpdateRelationship(rid, map[string]any{"w": int64(1)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
-		t.Fatalf("expected 1 EventRelUpdate, got %v", got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
+		t.Fatalf("expected 1 eventspkg.EventRelUpdate, got %v", got)
 	}
 }
 
@@ -219,8 +221,8 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 func TestEventBus_AsyncHandler(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	ch := make(chan Event, 10)
-	g.GetEventBus().Subscribe(func(e Event) { ch <- e })
+	ch := make(chan eventspkg.Event, 10)
+	g.GetEventBus().Subscribe(func(e eventspkg.Event) { ch <- e })
 
 	const n = 5
 	for i := range n {
@@ -232,7 +234,7 @@ func TestEventBus_AsyncHandler(t *testing.T) {
 	// Give any async processing a moment, then drain.
 	time.Sleep(time.Millisecond)
 	close(ch)
-	var got []Event
+	var got []eventspkg.Event
 	for e := range ch {
 		got = append(got, e)
 	}
@@ -241,7 +243,7 @@ func TestEventBus_AsyncHandler(t *testing.T) {
 	}
 }
 
-// TestGraph_CloseNodeVersion_Event verifies CloseNodeVersion fires EventNodeUpdate.
+// TestGraph_CloseNodeVersion_Event verifies CloseNodeVersion fires eventspkg.EventNodeUpdate.
 func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -251,7 +253,7 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	}
 	id := n.ID()
 
-	events := collectEvents(g, EventNodeUpdate)
+	events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
 	if err := g.CloseNodeVersion(id, closeTime); err != nil {
@@ -259,12 +261,12 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
-		t.Fatalf("expected 1 EventNodeUpdate for %d, got %v", id, got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventNodeUpdate || got[0].EntityID != types.EntityID(id) {
+		t.Fatalf("expected 1 eventspkg.EventNodeUpdate for %d, got %v", id, got)
 	}
 }
 
-// TestGraph_CloseRelVersion_Event verifies CloseRelVersion fires EventRelUpdate.
+// TestGraph_CloseRelVersion_Event verifies CloseRelVersion fires eventspkg.EventRelUpdate.
 func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
@@ -273,7 +275,7 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	r, _ := g.AddRelationship("E", a, b, nil)
 	rid := r.ID()
 
-	events := collectEvents(g, EventRelUpdate)
+	events := collectEvents(g, eventspkg.EventRelUpdate)
 
 	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
 	if err := g.CloseRelVersion(rid, closeTime); err != nil {
@@ -281,31 +283,31 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	}
 
 	got := drain(events)
-	if len(got) != 1 || got[0].Type != EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
-		t.Fatalf("expected 1 EventRelUpdate for %d, got %v", rid, got)
+	if len(got) != 1 || got[0].Type != eventspkg.EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
+		t.Fatalf("expected 1 eventspkg.EventRelUpdate for %d, got %v", rid, got)
 	}
 }
 
 // --- test helpers ---
 
-// newTestGraphForEvents returns a Graph with an EventBus already attached.
+// newTestGraphForEvents returns a Graph with an eventspkg.EventBus already attached.
 func newTestGraphForEvents(t *testing.T) *Graph {
 	t.Helper()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	g.SetEventBus(NewEventBus())
+	g.SetEventBus(eventspkg.NewEventBus())
 	t.Cleanup(func() { _ = g.Close() })
 	return g
 }
 
 // collectEvents subscribes to ALL events and returns a slice pointer that
 // accumulates them as they arrive. Use drain() to read the slice safely.
-func collectEvents(g *Graph, _ EventType) *[]Event {
+func collectEvents(g *Graph, _ eventspkg.EventType) *[]eventspkg.Event {
 	var mu sync.Mutex
-	result := &[]Event{}
-	g.GetEventBus().Subscribe(func(e Event) {
+	result := &[]eventspkg.Event{}
+	g.GetEventBus().Subscribe(func(e eventspkg.Event) {
 		mu.Lock()
 		*result = append(*result, e)
 		mu.Unlock()
@@ -314,7 +316,7 @@ func collectEvents(g *Graph, _ EventType) *[]Event {
 }
 
 // drain returns the current contents of the collected events slice and clears it.
-func drain(events *[]Event) []Event {
+func drain(events *[]eventspkg.Event) []eventspkg.Event {
 	// Events are synchronous — no wait needed.
 	return *events
 }
@@ -322,19 +324,19 @@ func drain(events *[]Event) []Event {
 // TestEventBus_PanicHandler verifies that a panicking handler does not crash
 // the publish call and does not prevent other handlers from receiving the event.
 func TestEventBus_PanicHandler(t *testing.T) {
-	bus := NewEventBus()
+	bus := eventspkg.NewEventBus()
 
 	// First handler panics.
-	bus.Subscribe(func(Event) { panic("intentional panic in handler") })
+	bus.Subscribe(func(eventspkg.Event) { panic("intentional panic in handler") })
 
 	// Second handler records received events.
-	var got []EventType
-	bus.Subscribe(func(e Event) { got = append(got, e.Type) })
+	var got []eventspkg.EventType
+	bus.Subscribe(func(e eventspkg.Event) { got = append(got, e.Type) })
 
 	// publish must not panic.
-	bus.Publish(Event{Type: EventNodeCreate})
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventNodeCreate})
 
-	if len(got) != 1 || got[0] != EventNodeCreate {
-		t.Fatalf("expected surviving handler to receive EventNodeCreate, got %v", got)
+	if len(got) != 1 || got[0] != eventspkg.EventNodeCreate {
+		t.Fatalf("expected surviving handler to receive eventspkg.EventNodeCreate, got %v", got)
 	}
 }

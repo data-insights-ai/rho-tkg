@@ -1,13 +1,15 @@
-// Internal-package tests for TieredStore (Graph-integration) implementations
+// Internal-package tests for tiered.Store (Graph-integration) implementations
 // of RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes.
 package graph
 
 import (
 	"errors"
 	"testing"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
-// --- TieredStore: RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes ---
+// --- tiered.Store: RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes ---
 
 func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
@@ -24,7 +26,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 
 	updated, _ := g.GetNode(id)
 	if g.NodeHasLabel(updated, "Admin") {
-		t.Error("label 'Admin' still present after removal from TieredStore")
+		t.Error("label 'Admin' still present after removal from tiered.Store")
 	}
 }
 
@@ -36,11 +38,11 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	n1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0, 0}})
 	n2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1, 0}})
 
-	if err := g.CreateVectorIndex(label, key, 3, DistanceCosine); err != nil {
+	if err := g.CreateVectorIndex(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{1, 0, 0}, 2, QueryOpts{})
+	results, err := g.SearchNearestNodes(label, key, []float32{1, 0, 0}, 2, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -55,8 +57,8 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 	g.AddNode([]string{"User"}, nil)
-	g.CreateVectorIndex("User", "v", 2, DistanceCosine)
-	err := g.CreateVectorIndex("User", "v", 2, DistanceCosine)
+	g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
+	err := g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
 	if !errors.Is(err, ErrVectorIndexExists) {
 		t.Errorf("expected ErrVectorIndexExists, got %v", err)
 	}
@@ -65,11 +67,11 @@ func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 func TestTieredStore_VectorIndex_Drop(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 	g.AddNode([]string{"User"}, nil)
-	g.CreateVectorIndex("User", "v", 2, DistanceCosine)
+	g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
 	if err := g.DropVectorIndex("User", "v"); err != nil {
 		t.Fatalf("DropVectorIndex: %v", err)
 	}
-	_, err := g.SearchNearestNodes("User", "v", []float32{1, 0}, 1, QueryOpts{})
+	_, err := g.SearchNearestNodes("User", "v", []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if !errors.Is(err, ErrVectorIndexNotFound) {
 		t.Errorf("expected ErrVectorIndexNotFound after drop, got %v", err)
 	}

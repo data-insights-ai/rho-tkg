@@ -3,47 +3,19 @@ package graph
 import (
 	"fmt"
 
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/temporal"
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// The pure-data temporal-constraint types live in `pkg/graph/internal/temporal`
-// to keep the constraint vocabulary independent of the Graph-coupled
-// enforcement code. The aliases below ARE the public API; the Graph-coupled
-// enforcement methods (`checkTemporalConstraints` and helpers) stay in this
-// file.
+// Public temporal-constraint vocabulary lives in `pkg/graph/temporal`.
+// The Graph-coupled enforcement methods (checkTemporalConstraints and
+// helpers) stay in this file because they need access to *Graph state
+// (g.constraints, g.relValidFrom, g.nodeValidFrom).
 
-type (
-	// TemporalConstraintKind identifies the type of temporal constraint enforced at write time.
-	TemporalConstraintKind = temporalpkg.TemporalConstraintKind
-	// TemporalConstraint is a single temporal invariant checked at write time.
-	TemporalConstraint = temporalpkg.TemporalConstraint
-	// ConstraintSet is an immutable-by-convention ordered set of TemporalConstraints.
-	ConstraintSet = temporalpkg.ConstraintSet
-)
-
-// TemporalConstraintKind constants.
-const (
-	// ConstraintRelWithinEndpoints enforces that a relationship's validity window
-	// is contained within the validity intervals of both endpoint nodes.
-	ConstraintRelWithinEndpoints = temporalpkg.ConstraintRelWithinEndpoints
-)
-
-// NewConstraintSet creates a ConstraintSet from the given constraints.
-func NewConstraintSet(cs ...TemporalConstraint) ConstraintSet {
-	return temporalpkg.NewConstraintSet(cs...)
-}
-
-// Temporal-constraint sentinel errors.
-var (
-	ErrTemporalConstraint          = temporalpkg.ErrTemporalConstraint
-	ErrRelBeforeStartNode          = temporalpkg.ErrRelBeforeStartNode
-	ErrRelBeforeEndNode            = temporalpkg.ErrRelBeforeEndNode
-	ErrRelAfterStartNode           = temporalpkg.ErrRelAfterStartNode
-	ErrRelAfterEndNode             = temporalpkg.ErrRelAfterEndNode
-	ErrRelExceedsStartNodeValidity = temporalpkg.ErrRelExceedsStartNodeValidity
-	ErrRelExceedsEndNodeValidity   = temporalpkg.ErrRelExceedsEndNodeValidity
-)
+// ConstraintSet is the type of Graph.constraints — re-exported from
+// pkg/graph/temporal as a type alias to avoid extra fully-qualified
+// names inside this file.
+type ConstraintSet = temporalpkg.ConstraintSet
 
 // checkTemporalConstraints validates relationship r against all configured constraints.
 // Returns nil immediately if no constraints are configured (fast path).
@@ -52,9 +24,9 @@ func (g *Graph) checkTemporalConstraints(r *types.Relationship, startNode, endNo
 	if g.constraints.Len() == 0 {
 		return nil // fast path: no constraints configured
 	}
-	return g.constraints.ForEach(func(c TemporalConstraint) error {
+	return g.constraints.ForEach(func(c temporalpkg.TemporalConstraint) error {
 		switch c.Kind {
-		case ConstraintRelWithinEndpoints:
+		case temporalpkg.ConstraintRelWithinEndpoints:
 			return g.checkRelWithinEndpoints(r, startNode, endNode)
 		}
 		return nil
@@ -83,17 +55,17 @@ func (g *Graph) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Ins
 	// (1)/(2): rel must not start before the node becomes valid.
 	if relFrom < nodeFrom {
 		if isStart {
-			return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelBeforeStartNode)
+			return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelBeforeStartNode)
 		}
-		return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelBeforeEndNode)
+		return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelBeforeEndNode)
 	}
 
 	// (3)/(4): rel must not start after the node has already expired.
 	if nodeTo != 0 && relFrom >= nodeTo {
 		if isStart {
-			return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelAfterStartNode)
+			return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelAfterStartNode)
 		}
-		return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelAfterEndNode)
+		return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelAfterEndNode)
 	}
 
 	// (5)/(6): if rel has an explicit ValidTo and node has a finite ValidTo,
@@ -105,9 +77,9 @@ func (g *Graph) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Ins
 		}
 		if relTo != 0 && relTo > nodeTo {
 			if isStart {
-				return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelExceedsStartNodeValidity)
+				return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelExceedsStartNodeValidity)
 			}
-			return fmt.Errorf("%w: %w", ErrTemporalConstraint, ErrRelExceedsEndNodeValidity)
+			return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelExceedsEndNodeValidity)
 		}
 	}
 

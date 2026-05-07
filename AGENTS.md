@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.2.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-3.1.23 changes: phase 7a public-API consolidation — `aliases.go` split into themed files (`store.go`, `events.go`, `ontology.go`, `snowflake.go`, `errors.go`, `backends.go`); `MigrateFromBadger(src, dst, labels)` simplified to `MigrateFromBadger(src, dst)`; `ComputeNodeHash`/`ComputeRelHash`/`LabelRegistry`/`RelTypeRegistry`/TieredStore catalog types/`RelDeleteInfo` demoted from the public surface (breaking).
+Status: v3.3.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.2.0 change: audience-based public sub-package layout — `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. External callers must update import paths; see CHANGELOG.md for the migration guide.
 
 ## Build & Test Commands
 

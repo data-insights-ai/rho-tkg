@@ -2,12 +2,14 @@ package graph
 
 import (
 	"time"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
 // --- Property indexes ---
 
 // CreatePropertyIndex creates a property index on the given label and property key.
-// Resolves the label name to a token. Returns ErrIndexExists if the index already exists.
+// Resolves the label name to a token. Returns storepkg.ErrIndexExists if the index already exists.
 // Returns nil if the label has never been registered (nothing to index).
 func (g *Graph) CreatePropertyIndex(label, propertyKey string) error {
 	tok, ok := g.labels.Lookup(label)
@@ -18,7 +20,7 @@ func (g *Graph) CreatePropertyIndex(label, propertyKey string) error {
 }
 
 // DropPropertyIndex removes a property index.
-// Resolves the label name to a token. Returns ErrIndexNotFound if the index does not exist.
+// Resolves the label name to a token. Returns storepkg.ErrIndexNotFound if the index does not exist.
 // Returns nil if the label has never been registered.
 func (g *Graph) DropPropertyIndex(label, propertyKey string) error {
 	tok, ok := g.labels.Lookup(label)
@@ -30,7 +32,7 @@ func (g *Graph) DropPropertyIndex(label, propertyKey string) error {
 
 // CreateTemporalIndex creates a temporal index on nodes with the given label.
 // Accelerates temporal queries (ValidAt/interval filter) for that label.
-// Returns ErrTemporalIndexExists if the index already exists.
+// Returns storepkg.ErrTemporalIndexExists if the index already exists.
 // Returns nil if the label has never been registered.
 func (g *Graph) CreateTemporalIndex(label string) error {
 	tok, ok := g.labels.Lookup(label)
@@ -41,7 +43,7 @@ func (g *Graph) CreateTemporalIndex(label string) error {
 }
 
 // DropTemporalIndex removes a temporal index for the given label.
-// Returns ErrTemporalIndexNotFound if the index does not exist.
+// Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
 // Returns nil if the label has never been registered.
 func (g *Graph) DropTemporalIndex(label string) error {
 	tok, ok := g.labels.Lookup(label)
@@ -59,7 +61,7 @@ func (g *Graph) DropTemporalIndex(label string) error {
 // Designed for high-write-rate scenarios (thousands of event writes/sec).
 // Only one temporal index type (temporal or high-frequency) can exist per label.
 // Returns nil if the label has never been registered.
-// Returns ErrTemporalIndexExists if any temporal index already exists for this label.
+// Returns storepkg.ErrTemporalIndexExists if any temporal index already exists for this label.
 // Not persisted: the index must be rebuilt via CreateHighFrequencyIndex after restart.
 func (g *Graph) CreateHighFrequencyIndex(label string, bucketSize time.Duration) error {
 	tok, ok := g.labels.Lookup(label)
@@ -71,7 +73,7 @@ func (g *Graph) CreateHighFrequencyIndex(label string, bucketSize time.Duration)
 
 // DropHighFrequencyIndex removes the high-frequency temporal index for the given label.
 // Returns nil if the label has never been registered.
-// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+// Returns storepkg.ErrTemporalIndexNotFound if no high-frequency index exists.
 func (g *Graph) DropHighFrequencyIndex(label string) error {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
@@ -86,7 +88,7 @@ func (g *Graph) DropHighFrequencyIndex(label string) error {
 // dims is the expected vector dimension. metric selects the distance function.
 // Returns nil if the label has never been registered (no-op).
 // Returns ErrVectorIndexExists if the index already exists.
-func (g *Graph) CreateVectorIndex(label, propertyKey string, dims int, metric DistanceMetric) error {
+func (g *Graph) CreateVectorIndex(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	tok, ok := g.labels.Lookup(label)
 	if !ok {
 		return nil
