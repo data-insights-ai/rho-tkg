@@ -34,8 +34,7 @@ const (
 	KeyMeta     byte = 0x0F // + variable (rare, only registry keys)
 )
 
-// --- Key sizes ---
-
+// Key size constants — byte counts for the Badger key layout.
 const (
 	SizeNodeKey    = 1 + 8             // 9B
 	SizeRelKey     = 1 + 8             // 9B

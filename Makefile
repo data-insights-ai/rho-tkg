@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover vet fmt fmt-check security vulncheck check ci clean
+.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover vet fmt fmt-check lint security vulncheck check ci clean
 
 # Build (verify compilation)
 build:
@@ -91,6 +91,10 @@ fmt:
 fmt-check:
 	@test -z "$$(gofmt -l .)" || (echo "Files need formatting:"; gofmt -l .; exit 1)
 
+# Run golangci-lint
+lint:
+	golangci-lint run ./...
+
 # Static security analysis
 security:
 	gosec ./...
@@ -103,7 +107,7 @@ vulncheck:
 check: vet build test
 
 # Full CI pipeline
-ci: fmt-check vet build test-race security vulncheck
+ci: fmt-check vet lint build test-race security vulncheck
 
 # Clean generated files
 clean:

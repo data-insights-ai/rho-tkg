@@ -1,6 +1,7 @@
 package graph_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -74,12 +75,15 @@ func TestSubAPISmoke(t *testing.T) {
 		t.Fatalf("Rels.Outgoing: %v len=%d", err, len(out))
 	}
 
-	// Stats / Statistics
-	if cnt, _ := g.Statistics.NodeCount(); cnt != 2 {
-		t.Fatalf("Statistics.NodeCount = %d", cnt)
+	// Stats
+	if cnt, _ := g.Stats.NodeCount(); cnt != 2 {
+		t.Fatalf("Stats.NodeCount = %d", cnt)
 	}
-	if cnt, _ := g.Statistics.RelCount(); cnt != 1 {
-		t.Fatalf("Statistics.RelCount = %d", cnt)
+	if cnt, _ := g.Stats.RelCount(); cnt != 1 {
+		t.Fatalf("Stats.RelCount = %d", cnt)
+	}
+	if snap := g.Stats.Get(); snap.NodesAdded != 2 || snap.RelsAdded != 1 {
+		t.Fatalf("Stats.Get = %+v, want NodesAdded=2 RelsAdded=1", snap)
 	}
 
 	// Hash
@@ -108,6 +112,20 @@ func TestSubAPISmoke(t *testing.T) {
 		t.Fatalf("Index.DropProperty: %v", err)
 	}
 
+	// IO — round-trip Export/Import via in-memory graph.
+	var exported bytes.Buffer
+	if err := g.IO.Export(&exported); err != nil {
+		t.Fatalf("IO.Export: %v", err)
+	}
+	dst, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
+	if err != nil {
+		t.Fatalf("New(dst): %v", err)
+	}
+	t.Cleanup(func() { _ = dst.Close() })
+	if err := dst.IO.Import(&exported); err != nil {
+		t.Fatalf("IO.Import: %v", err)
+	}
+
 	// Tx — round trip
 	if err := g.Tx.Run(func(tx *graphpkg.GraphTx) error {
 		_, err := tx.AddNode([]string{"Place"}, map[string]any{"name": "Vienna"})
@@ -115,7 +133,7 @@ func TestSubAPISmoke(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Tx.Run: %v", err)
 	}
-	if cnt, _ := g.Statistics.NodeCount(); cnt != 3 {
+	if cnt, _ := g.Stats.NodeCount(); cnt != 3 {
 		t.Fatalf("after Tx.Run, NodeCount = %d, want 3", cnt)
 	}
 
@@ -127,7 +145,7 @@ func TestSubAPISmoke(t *testing.T) {
 	if _, err := bb.Execute(); err != nil {
 		t.Fatalf("Batch.Execute: %v", err)
 	}
-	if cnt, _ := g.Statistics.NodeCount(); cnt != 4 {
+	if cnt, _ := g.Stats.NodeCount(); cnt != 4 {
 		t.Fatalf("after Batch.Execute, NodeCount = %d, want 4", cnt)
 	}
 

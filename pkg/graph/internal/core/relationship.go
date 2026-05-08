@@ -17,20 +17,21 @@ import (
 // Relationship — Add (Create / IfAbsent / ByID)
 // =============================================================================
 
-// AddRelationshipWithContext creates a new directed relationship between two nodes.
+// AddWithContext creates a new directed relationship between two nodes.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) AddRelationshipWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	c := r.c
 	c.mu.RLock()
-	r, err := c.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
+	rel, err := c.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return r, err
+	return rel, err
 }
 
-// addRelationshipInternal is the lock-free implementation of AddRelationshipWithContext.
+// addRelationshipInternal is the lock-free implementation of RelOps.AddWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -88,7 +89,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	id := c.NextRelID()
+	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
@@ -150,28 +151,29 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	return r, nil
 }
 
-// AddRelationshipByIDWithContext creates a relationship using endpoint snowflake IDs
+// AddByIDWithContext creates a relationship using endpoint snowflake IDs
 // without fetching the endpoint nodes. This is the high-throughput path when the
 // caller already knows both endpoint IDs.
 //
-// Trade-offs vs AddRelationshipWithContext:
+// Trade-offs vs RelOps.AddWithContext:
 //   - FromNodeHash/ToNodeHash are not captured (empty in RelIntegrity)
 //   - Temporal constraints against endpoint nodes are not checked
 //
-// Use AddRelationshipWithContext when endpoint integrity hashing or temporal
+// AddByIDWithContext vs RelOps.AddWithContext when endpoint integrity hashing or temporal
 // constraint validation against endpoint nodes is required.
-func (c *Core) AddRelationshipByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+	c := r.c
 	c.mu.RLock()
-	r, err := c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
+	rel, err := c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return r, err
+	return rel, err
 }
 
-// addRelationshipByIDInternal is the lock-free implementation of AddRelationshipByIDWithContext.
+// addRelationshipByIDInternal is the lock-free implementation of RelOps.AddByIDWithContext.
 // Unlike addRelationshipInternal, it does NOT require pre-fetched endpoint nodes.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
@@ -223,7 +225,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	id := c.NextRelID()
+	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
@@ -278,7 +280,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	return r, nil
 }
 
-// AddRelationshipByIDIfAbsentWithContext atomically creates a relationship using
+// AddByIDIfAbsentWithContext atomically creates a relationship using
 // endpoint snowflake IDs only if no relationship of the same type between the same
 // endpoints already exists. Returns (rel, created, err) where created is true if a
 // new relationship was created, false if an existing one was returned.
@@ -288,15 +290,16 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 //
 // Trade-offs vs AddRelationshipByIDWithContext: same (no endpoint hashing, no
 // temporal constraint checks against endpoint nodes).
-func (c *Core) AddRelationshipByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
+func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
+	c := r.c
 	c.mu.RLock()
-	r, created, err := c.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
+	rel, created, err := c.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil && created {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(r.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return r, created, err
+	return rel, created, err
 }
 
 // addRelationshipByIDIfAbsentInternal is the lock-free implementation of
@@ -363,7 +366,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	}
 
 	// Not found — create.
-	id := c.NextRelID()
+	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
@@ -417,20 +420,21 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 // Relationship — Update
 // =============================================================================
 
-// UpdateRelationshipWithContext applies property updates to an existing relationship with context support.
+// UpdateWithContext applies property updates to an existing relationship with context support.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) UpdateRelationshipWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+	c := r.c
 	c.mu.RLock()
-	r, err := c.updateRelationshipInternal(ctx, id, updates)
+	rel, err := c.updateRelationshipInternal(ctx, id, updates)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
-	return r, err
+	return rel, err
 }
 
-// updateRelationshipInternal is the lock-free implementation of UpdateRelationshipWithContext.
+// updateRelationshipInternal is the lock-free implementation of RelOps.UpdateWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -438,7 +442,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	}
 
 	if len(updates) == 0 {
-		return c.GetRelationshipWithContext(ctx, id)
+		return c.Rels.GetWithContext(ctx, id)
 	}
 
 	// Extract reserved provenance fields before validation.
@@ -538,7 +542,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	// Set TxFrom on the new version (this is the commit time of the new version).
 	tm.TxFrom = now
 
-	relTypeName := c.RelationshipType(current)
+	relTypeName := c.Rels.Type(current)
 	hash := integrity.ComputeRelHash(current, relTypeName)
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
@@ -576,27 +580,29 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	return current, nil
 }
 
-// UpdateRelInPlace applies property updates to a relationship without creating a version history entry.
+// UpdateInPlace applies property updates to a relationship without creating a version history entry.
 // Version number is NOT incremented. PrevHash in the integrity chain is preserved.
 // Returns storepkg.ErrRelNotFound if the relationship does not exist. Empty updates map is a no-op.
-func (c *Core) UpdateRelInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	return c.UpdateRelInPlaceWithContext(context.Background(), id, updates)
+func (r *RelOps) UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
+	c := r.c
+	return c.Rels.UpdateInPlaceWithContext(context.Background(), id, updates)
 }
 
-// UpdateRelInPlaceWithContext applies property updates to a relationship without history.
+// UpdateInPlaceWithContext applies property updates to a relationship without history.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) UpdateRelInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+	c := r.c
 	c.mu.RLock()
-	r, err := c.updateRelInPlaceInternal(ctx, id, updates)
+	rel, err := c.updateRelInPlaceInternal(ctx, id, updates)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
-	return r, err
+	return rel, err
 }
 
-// updateRelInPlaceInternal is the lock-free implementation of UpdateRelInPlaceWithContext.
+// updateRelInPlaceInternal is the lock-free implementation of RelOps.UpdateInPlaceWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -604,7 +610,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 
 	if len(updates) == 0 {
-		return c.GetRelationshipWithContext(ctx, id)
+		return c.Rels.GetWithContext(ctx, id)
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
@@ -680,7 +686,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 	tm.UpdatedAt = now
 
-	relTypeName := c.RelationshipType(current)
+	relTypeName := c.Rels.Type(current)
 	hash := integrity.ComputeRelHash(current, relTypeName)
 	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
 
@@ -701,21 +707,23 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 // Relationship — Read / Delete
 // =============================================================================
 
-// GetRelationshipWithContext retrieves a relationship by snowflake ID with context support.
-func (c *Core) GetRelationshipWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+// GetWithContext retrieves a relationship by snowflake ID with context support.
+func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+	c := r.c
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	r, err := c.store.GetRelationship(id)
+	rel, err := c.store.GetRelationship(id)
 	if err == nil {
 		c.opRelReads.Add(1)
 	}
-	return r, err
+	return rel, err
 }
 
-// DeleteRelationshipWithContext removes a relationship from the store.
+// DeleteWithContext removes a relationship from the store.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) DeleteRelationshipWithContext(ctx context.Context, id types.RelID) error {
+func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
+	c := r.c
 	c.mu.RLock()
 	err := c.deleteRelationshipInternal(ctx, id)
 	ep := c.events
@@ -726,7 +734,7 @@ func (c *Core) DeleteRelationshipWithContext(ctx context.Context, id types.RelID
 	return err
 }
 
-// deleteRelationshipInternal is the lock-free implementation of DeleteRelationshipWithContext.
+// deleteRelationshipInternal is the lock-free implementation of RelOps.DeleteWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {
 	if err := checkCtx(ctx); err != nil {
@@ -767,20 +775,21 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 // Relationship — Import (caller-specified ID)
 // =============================================================================
 
-// ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID.
+// Import creates a relationship with a caller-specified snowflake ID.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	c := r.c
 	c.mu.RLock()
-	r, err := c.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+	rel, err := c.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return r, err
+	return rel, err
 }
 
-// importRelWithIDInternal is the lock-free implementation of ImportRelationshipWithID.
+// importRelWithIDInternal is the lock-free implementation of RelOps.Import.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {

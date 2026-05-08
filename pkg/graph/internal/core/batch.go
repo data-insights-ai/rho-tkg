@@ -147,11 +147,11 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		extraTokens = append(extraTokens, tok)
 	}
 
-	id := b.g.NextNodeID()
-	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
+	id := b.g.Nodes.NextID()
+	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
-	canonicalLabels := b.g.NodeLabels(n)
+	canonicalLabels := b.g.Nodes.Labels(n)
 	hash := integrity.ComputeNodeHash(n, canonicalLabels)
 	nodeIntegrity := &types.NodeIntegrity{
 		Hash:               hash,
@@ -224,14 +224,14 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	// Apply the same self-loop policy as the standalone path
 	// (addRelationshipInternal). Without this gate a default graph would
-	// reject c.AddRelationship("R", n, n, nil) but accept the same rel
+	// reject c.Rels.Add("R", n, n, nil) but accept the same rel
 	// through batch execution.
 	if startID == endID && !b.g.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
 	}
 
-	id := b.g.NextRelID()
-	r := types.NewRelationship(types.RelID(id), typeToken, types.NodeID(startID), types.NodeID(endID))
+	id := b.g.Rels.NextID()
+	r := types.NewRelationship(id, typeToken, startID, endID)
 	r.SetProperties(ps)
 
 	hash := integrity.ComputeRelHash(r, typeName)
@@ -315,7 +315,7 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 	return nil
 }
 
-// DeleteNode queues a node for deletion (cascade via Graph.DeleteNode).
+// DeleteNode queues a node for deletion (cascade via Graph.Nodes.Delete).
 func (b *BatchBuilder) DeleteNode(id types.NodeID) {
 	b.nodeDeletes = append(b.nodeDeletes, id)
 }
@@ -332,7 +332,7 @@ func (b *BatchBuilder) DeleteRelationship(id types.RelID) {
 // lock endpoints per-rel via LockTwo. Updates and deletes use existing Graph
 // methods (handles version history, entity locks, cascade).
 //
-// Returns (result, nil) always — individual operation failures are tracked
+// Execute (result, nil) always — individual operation failures are tracked
 // in result.Errors, not returned as the error. The error return is reserved
 // for catastrophic failures that prevent the batch from starting.
 func (b *BatchBuilder) Execute() (*BatchResult, error) {

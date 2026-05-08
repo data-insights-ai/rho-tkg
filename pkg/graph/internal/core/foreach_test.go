@@ -24,7 +24,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	defer g.Close()
 
 	// Add a node.
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	now := types.Instant(time.Now().UnixMilli())
 
 	// GetNodesValidAt should find Alice.
-	nodes, err := g.GetNodesValidAt(now)
+	nodes, err := g.Temporal.NodesAt(now)
 	if err != nil {
 		t.Fatalf("GetNodesValidAt: %v", err)
 	}
@@ -45,11 +45,11 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// Add a relationship.
-	n2, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	_, err = g.AddRelationship("KNOWS", n, n2, nil)
+	_, err = g.Rels.Add("KNOWS", n, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	now2 := types.Instant(time.Now().UnixMilli())
 
 	// GetRelationshipsValidAt should find the rel.
-	rels, err := g.GetRelationshipsValidAt(now2)
+	rels, err := g.Temporal.RelationshipsAt(now2)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidAt: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// GetNodesValidDuring should find both nodes.
-	nodesDuring, err := g.GetNodesValidDuring(now, now2+1000)
+	nodesDuring, err := g.Temporal.NodesDuring(now, now2+1000)
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// GetRelationshipsValidDuring should find the rel.
-	relsDuring, err := g.GetRelationshipsValidDuring(now, now2+1000)
+	relsDuring, err := g.Temporal.RelationshipsDuring(now, now2+1000)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// Snapshot should work.
-	snap, err := g.Snapshot(now2)
+	snap, err := g.Temporal.Snapshot(now2)
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}

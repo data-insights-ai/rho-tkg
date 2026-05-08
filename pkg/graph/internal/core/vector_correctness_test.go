@@ -35,15 +35,15 @@ func TestSearchNearestNodes_NonPositiveK_NoPanic(t *testing.T) {
 
 	label := "Vec"
 	key := "v"
-	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
-	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// k = 0 must not panic and must return an empty result.
-	results, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 0, storepkg.QueryOpts{})
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 0, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("k=0: unexpected error %v", err)
 	}
@@ -52,7 +52,7 @@ func TestSearchNearestNodes_NonPositiveK_NoPanic(t *testing.T) {
 	}
 
 	// k = -1 must not panic and must return an empty result.
-	results, err = g.SearchNearestNodes(label, key, []float32{1, 0}, -1, storepkg.QueryOpts{})
+	results, err = g.Index.SearchNearest(label, key, []float32{1, 0}, -1, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("k=-1: unexpected error %v", err)
 	}
@@ -76,10 +76,10 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 	key := "v"
 
 	// Phase 1 (t0 era): create 4 "old" nodes far from origin.
-	old1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{10, 0}})
-	old2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{11, 0}})
-	old3, _ := g.AddNode([]string{label}, map[string]any{key: []float32{12, 0}})
-	old4, _ := g.AddNode([]string{label}, map[string]any{key: []float32{13, 0}})
+	old1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
+	old2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{11, 0}})
+	old3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{12, 0}})
+	old4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{13, 0}})
 
 	// Snapshot t0 — strictly after old nodes, strictly before new nodes.
 	time.Sleep(2 * time.Millisecond)
@@ -88,21 +88,21 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 
 	// Phase 2 (post-t0): create 3 "new" nodes very close to origin (smaller distance
 	// to query [0, 0] than any old node). These did NOT exist at t0.
-	new1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}})
-	new2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0.1, 0}})
-	new3, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0.2, 0}})
+	new1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
+	new2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}})
+	new3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.2, 0}})
 	_ = new1
 	_ = new2
 	_ = new3
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// Query nearest to origin with ValidAt=t0, k=3. The 3 new nodes (closest
 	// in raw distance) MUST be excluded as ineligible, so results must be
 	// the 3 old nodes nearest to origin: old1, old2, old3.
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 3, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 3, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	label := "Doc"
 	key := "v"
 
-	n, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}, "status": "draft"})
+	n, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}, "status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -152,15 +152,15 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Mutate property after t0 — vector unchanged so ranking is stable.
-	if _, err := g.UpdateNode(n.ID(), map[string]any{"status": "final"}); err != nil {
+	if _, err := g.Nodes.Update(n.ID(), map[string]any{"status": "final"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 }
 
 // TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent documents the
-// distance-vs-current-vector caveat from Graph.SearchNearestNodes: the vector
+// distance-vs-current-vector caveat from Graph.Index.SearchNearest: the vector
 // index holds only the latest vector per node, so when ValidAt=t resolves a
 // node to its historical version, the returned node properties reflect t but
 // the distance ranking is computed against the CURRENT vector.
@@ -204,11 +204,11 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 	label := "Doc"
 	key := "v"
 
-	a, err := g.AddNode([]string{label}, map[string]any{key: []float32{10, 0}})
+	a, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	b, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -219,15 +219,15 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 
 	// Mutate A's vector AFTER t0 so it becomes the closest by current vector
 	// while its t0 historical vector (10,0) is the farthest.
-	if _, err := g.UpdateNode(a.ID(), map[string]any{key: []float32{0.1, 0}}); err != nil {
+	if _, err := g.Nodes.Update(a.ID(), map[string]any{key: []float32{0.1, 0}}); err != nil {
 		t.Fatalf("UpdateNode A: %v", err)
 	}
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 	if results[0].ID() != a.ID() {
 		t.Errorf("expected A (ranked by current vector); got %d. "+
 			"If this flipped to B, the index became history-aware — update the "+
-			"distance-vs-current-vector caveat in Graph.SearchNearestNodes doc.",
+			"distance-vs-current-vector caveat in Graph.Index.SearchNearest doc.",
 			results[0].ID())
 	}
 	// Resolution is honest: the returned node is A's t0 version with vector (10,0).
@@ -271,20 +271,20 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	key := "v"
 
 	// Pre-t0 node: far from query.
-	pre, _ := g.AddNode([]string{label}, map[string]any{key: []float32{5, 5}})
+	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{5, 5}})
 
 	time.Sleep(2 * time.Millisecond)
 	t0 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
 	// Post-t0 node: exactly at query — would dominate without temporal filter.
-	post, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}})
+	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -311,18 +311,18 @@ func TestSearchNearestNodes_AfterLimit(t *testing.T) {
 	key := "v"
 
 	// 5 nodes with strictly distinct distances from the query [0, 0].
-	n1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}}) // d=1
-	n2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{2, 0}}) // d=2
-	n3, _ := g.AddNode([]string{label}, map[string]any{key: []float32{3, 0}}) // d=3
-	n4, _ := g.AddNode([]string{label}, map[string]any{key: []float32{4, 0}}) // d=4
-	n5, _ := g.AddNode([]string{label}, map[string]any{key: []float32{5, 0}}) // d=5
+	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}}) // d=1
+	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{2, 0}}) // d=2
+	n3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{3, 0}}) // d=3
+	n4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{4, 0}}) // d=4
+	n5, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{5, 0}}) // d=5
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// Page 1: top-2 closest (n1, n2 in distance order).
-	page1, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{Limit: 2})
+	page1, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatalf("page1: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestSearchNearestNodes_AfterLimit(t *testing.T) {
 	}
 
 	// Page 2: After=n2 should yield n3 (next in distance order).
-	page2, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5,
+	page2, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 5,
 		storepkg.QueryOpts{Limit: 2, After: types.EntityID(n2.ID())})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
@@ -348,7 +348,7 @@ func TestSearchNearestNodes_AfterLimit(t *testing.T) {
 	}
 
 	// Page 3: After=n4, Limit=2 should yield only n5 (last one).
-	page3, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5,
+	page3, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 5,
 		storepkg.QueryOpts{Limit: 2, After: types.EntityID(n4.ID())})
 	if err != nil {
 		t.Fatalf("page3: %v", err)
@@ -371,27 +371,27 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 	key := "v"
 
 	// Two reference nodes.
-	live, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	live, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode live: %v", err)
 	}
-	archived, err := g.AddNode([]string{label}, map[string]any{key: []float32{1.01, 0}})
+	archived, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1.01, 0}})
 	if err != nil {
 		t.Fatalf("AddNode archived: %v", err)
 	}
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// Move one node to refArchive.
-	if err := g.ArchiveNode(archived.ID()); err != nil {
+	if err := g.Admin.Archive(archived.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
 	// storepkg.DepthAll: both nodes are eligible; the archived one is slightly closer
 	// (1.01 vs 1.0 to query [0, 0]), but both within k=2.
-	resultsAll, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{})
+	resultsAll, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("storepkg.DepthAll: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 	}
 
 	// storepkg.DepthHot: archived node must be excluded.
-	resultsHot, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{Depth: storepkg.DepthHot})
+	resultsHot, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{Depth: storepkg.DepthHot})
 	if err != nil {
 		t.Fatalf("storepkg.DepthHot: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 	}
 
 	// storepkg.DepthWarm: archived also excluded (archive is colder than warm).
-	resultsWarm, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{Depth: storepkg.DepthWarm})
+	resultsWarm, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 2, storepkg.QueryOpts{Depth: storepkg.DepthWarm})
 	if err != nil {
 		t.Fatalf("storepkg.DepthWarm: %v", err)
 	}
@@ -438,14 +438,14 @@ func TestSearchNearestNodes_TemporalDepthCombo_Rejected(t *testing.T) {
 
 	label := "User"
 	key := "v"
-	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	now := types.Instant(time.Now().UnixMilli())
-	_, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 1,
+	_, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1,
 		storepkg.QueryOpts{ValidAt: now, Depth: storepkg.DepthHot})
 	if !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("expected ErrDepthTemporalUnsupported for ValidAt + Depth, got %v", err)
@@ -454,7 +454,7 @@ func TestSearchNearestNodes_TemporalDepthCombo_Rejected(t *testing.T) {
 
 // --- searchNearestFiltered backend coverage ---
 //
-// The temporal path in Graph.SearchNearestNodes routes through
+// The temporal path in Graph.Index.SearchNearest routes through
 // store.searchNearestFiltered when the store implements the
 // filteredVectorSearchStore hook. All three concrete stores implement it,
 // but the existing temporal tests all use MemoryStore (newTestGraph).
@@ -478,19 +478,19 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	label, key := "Doc", "v"
-	pre, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 
 	time.Sleep(2 * time.Millisecond)
 	t0 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
-	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -510,19 +510,19 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
 	label, key := "User", "v"
-	pre, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 
 	time.Sleep(2 * time.Millisecond)
 	t0 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
-	_, _ = g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
 
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{ValidAt: t0})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 5, storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -544,22 +544,22 @@ func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
 	g := newTestGraph(t)
 	label, key := "Vec", "v"
 
-	pre1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
-	pre2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{2, 0}})
-	pre3, _ := g.AddNode([]string{label}, map[string]any{key: []float32{3, 0}})
+	pre1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{2, 0}})
+	pre3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{3, 0}})
 
 	time.Sleep(2 * time.Millisecond)
 	t0 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
-	post, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0}})
+	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
 
 	tok, _ := g.labels.Lookup(label)
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
 	opts := storepkg.QueryOpts{ValidAt: t0}
 
 	// Candidates: all four nodes (simulating what the store returned).
-	all, _ := g.AllNodes(storepkg.QueryOpts{})
+	all, _ := g.Nodes.All(storepkg.QueryOpts{})
 
 	// No pagination: all three eligible pre-t0 nodes returned, post filtered out.
 	got := resolveTemporalVectorMatches(g, all, opts, pred, 0, 0)
@@ -605,25 +605,25 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 	label := "VDel"
 	key := "v"
 
-	nA, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0, 0}})
+	nA, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	nB, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1, 0}})
+	nB, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
 	// nC is the node we will delete
-	nC, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 0, 1}})
+	nC, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode C: %v", err)
 	}
-	if err := g.CreateVectorIndex(label, key, 3, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// Confirm C is visible pre-deletion.
-	results, err := g.SearchNearestNodes(label, key, []float32{0, 0, 1}, 3, storepkg.QueryOpts{})
+	results, err := g.Index.SearchNearest(label, key, []float32{0, 0, 1}, 3, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("pre-delete search: %v", err)
 	}
@@ -638,12 +638,12 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 	}
 
 	// Delete C via the graph public API (exercises DeleteNodeWithHistory path).
-	if err := g.DeleteNode(nC.ID()); err != nil {
+	if err := g.Nodes.Delete(nC.ID()); err != nil {
 		t.Fatalf("DeleteNode C: %v", err)
 	}
 
 	// C must no longer appear in results.
-	results, err = g.SearchNearestNodes(label, key, []float32{0, 0, 1}, 3, storepkg.QueryOpts{})
+	results, err = g.Index.SearchNearest(label, key, []float32{0, 0, 1}, 3, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("post-delete search: %v", err)
 	}
@@ -698,20 +698,20 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	key := "v"
 
 	// nA stays far from query [1,0]; nB starts far but will be updated near.
-	nA, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	nA, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	nB, err := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1}})
+	nB, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
 	// Both start equidistant from [1,0] — confirm both appear.
-	pre, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 2, storepkg.QueryOpts{})
+	pre, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 2, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("pre-update search: %v", err)
 	}
@@ -720,12 +720,12 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	}
 
 	// Update nB to be identical to query direction.
-	if _, err := g.UpdateNode(nB.ID(), map[string]any{key: []float32{1, 0}}); err != nil {
+	if _, err := g.Nodes.Update(nB.ID(), map[string]any{key: []float32{1, 0}}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	// k=1 search for [1,0]: nB must be the nearest neighbour (distance 0).
-	post, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{})
+	post, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("post-update search: %v", err)
 	}
@@ -786,11 +786,11 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 
 	// Add a seed node first so the label is registered, then create the index.
 	// CreateVectorIndex uses Lookup (not GetOrCreate), so the label must exist.
-	seed, err := g.AddNode([]string{label}, map[string]any{key: []float32{1, 1}})
+	seed, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 1}})
 	if err != nil {
 		t.Fatalf("AddNode seed: %v", err)
 	}
-	if err := g.CreateVectorIndex(label, key, 2, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
@@ -810,7 +810,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	}
 
 	// All three (seed + batch A + batch B) must appear in vector search.
-	results, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 10, storepkg.QueryOpts{})
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 10, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("post-batch-put search: %v", err)
 	}
@@ -830,7 +830,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 
 	// Both must appear in temporal query (ValidAt = now).
 	now := types.Instant(time.Now().UnixMilli())
-	temporal, err := g.NodesByLabel(label, storepkg.QueryOpts{ValidAt: now})
+	temporal, err := g.Nodes.ByLabel(label, storepkg.QueryOpts{ValidAt: now})
 	if err != nil {
 		t.Fatalf("temporal query: %v", err)
 	}
@@ -846,12 +846,12 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	}
 
 	// Delete nA via DeleteNode (exercises DeleteNodeWithHistory → DeleteNodesBatch path indirectly).
-	if err := g.DeleteNode(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(nA.ID()); err != nil {
 		t.Fatalf("DeleteNode A: %v", err)
 	}
 
 	// nA must not appear in vector search after deletion.
-	results2, err := g.SearchNearestNodes(label, key, []float32{1, 0}, 10, storepkg.QueryOpts{})
+	results2, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 10, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("post-delete search: %v", err)
 	}
@@ -929,7 +929,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 
 	ids := make([]types.NodeID, len(vectors))
 	for i, vec := range vectors {
-		n, nerr := g.AddNode([]string{label}, map[string]any{key: vec})
+		n, nerr := g.Nodes.Add([]string{label}, map[string]any{key: vec})
 		if nerr != nil {
 			t.Fatalf("AddNode[%d]: %v", i, nerr)
 		}
@@ -937,7 +937,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 	}
 
 	const vecDims = 3 // each vector is 3-dimensional
-	if err := g.CreateVectorIndex(label, key, vecDims, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector(label, key, vecDims, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
@@ -955,7 +955,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 	sort.Slice(bf, func(i, j int) bool { return bf[i].dist < bf[j].dist })
 
 	// k=1 — closest node must match brute-force top-1.
-	results1, err := g.SearchNearestNodes(label, key, query, 1, storepkg.QueryOpts{})
+	results1, err := g.Index.SearchNearest(label, key, query, 1, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes k=1: %v", err)
 	}
@@ -968,7 +968,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 
 	// k=3 — top-3 IDs must match brute-force top-3 (same set, ascending order).
 	k3 := 3
-	results3, err := g.SearchNearestNodes(label, key, query, k3, storepkg.QueryOpts{})
+	results3, err := g.Index.SearchNearest(label, key, query, k3, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes k=3: %v", err)
 	}
@@ -1000,7 +1000,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 	// Ties (equal distances) may appear in any order within the tied group, so we
 	// do NOT require an exact rank match — only set equality and monotonicity.
 	kN := len(vectors)
-	resultsN, err := g.SearchNearestNodes(label, key, query, kN, storepkg.QueryOpts{})
+	resultsN, err := g.Index.SearchNearest(label, key, query, kN, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes k=N: %v", err)
 	}

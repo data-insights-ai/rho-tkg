@@ -18,7 +18,7 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 
 	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
 	defer bus.Close()
-	g.SetAsyncEventBus(bus)
+	g.Events.SetAsync(bus)
 
 	var deleteEvent eventspkg.Event
 	var mu sync.Mutex
@@ -30,9 +30,9 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 		}
 	})
 
-	n, _ := g.AddNode([]string{"X"}, nil)
+	n, _ := g.Nodes.Add([]string{"X"}, nil)
 	nid := n.ID()
-	_ = g.DeleteNode(nid)
+	_ = g.Nodes.Delete(nid)
 
 	// Wait for delivery
 	deadline := time.Now().Add(2 * time.Second)
@@ -62,7 +62,7 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 
 	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
 	defer bus.Close()
-	g.SetAsyncEventBus(bus)
+	g.Events.SetAsync(bus)
 
 	var createEvent eventspkg.Event
 	var mu sync.Mutex
@@ -74,7 +74,7 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 		}
 	})
 
-	_, err = g.AddNode([]string{"Y"}, nil)
+	_, err = g.Nodes.Add([]string{"Y"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 32})
 	defer bus.Close()
 
-	g.SetAsyncEventBus(bus)
+	g.Events.SetAsync(bus)
 
 	var received atomic.Int32
 	bus.Subscribe(func(e eventspkg.Event) {
@@ -116,7 +116,7 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 		}
 	})
 
-	_, err = g.AddNode([]string{"Test"}, nil)
+	_, err = g.Nodes.Add([]string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

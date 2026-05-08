@@ -136,12 +136,12 @@ func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
 		&mockIndexProvider{name: "bravo"},
 	}
 	for _, p := range providers {
-		if err := g.RegisterIndexProvider(p); err != nil {
+		if err := g.Index.RegisterProvider(p); err != nil {
 			t.Fatalf("register %q: %v", p.Name(), err)
 		}
 	}
 
-	got := g.IndexProviders()
+	got := g.Index.Providers()
 	want := []string{"alpha", "bravo", "charlie"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("IndexProviders order: got %v, want %v", got, want)
@@ -151,10 +151,10 @@ func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
 func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("first register: %v", err)
 	}
-	err := g.RegisterIndexProvider(&mockIndexProvider{name: "spatial"})
+	err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"})
 	if !errors.Is(err, indexpkg.ErrIndexProviderExists) {
 		t.Errorf("expected indexpkg.ErrIndexProviderExists, got %v", err)
 	}
@@ -162,7 +162,7 @@ func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
 
 func TestIndexProvider_EmptyNameRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
-	err := g.RegisterIndexProvider(&mockIndexProvider{name: ""})
+	err := g.Index.RegisterProvider(&mockIndexProvider{name: ""})
 	if !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
 		t.Errorf("expected indexpkg.ErrIndexProviderEmptyName, got %v", err)
 	}
@@ -170,7 +170,7 @@ func TestIndexProvider_EmptyNameRejected(t *testing.T) {
 
 func TestIndexProvider_NilRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
-	if err := g.RegisterIndexProvider(nil); err == nil {
+	if err := g.Index.RegisterProvider(nil); err == nil {
 		t.Error("expected error for nil provider")
 	}
 }
@@ -178,14 +178,14 @@ func TestIndexProvider_NilRejected(t *testing.T) {
 func TestIndexProvider_AutoCreatesEventBus(t *testing.T) {
 	g := newProviderTestGraph(t)
 
-	if g.GetEventBus() != nil {
+	if g.Events.GetSync() != nil {
 		t.Fatal("fresh Graph should not have an event bus yet")
 	}
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if g.GetEventBus() == nil {
+	if g.Events.GetSync() == nil {
 		t.Error("RegisterIndexProvider should auto-create an eventspkg.EventBus when none is attached")
 	}
 }
@@ -193,11 +193,11 @@ func TestIndexProvider_AutoCreatesEventBus(t *testing.T) {
 func TestIndexProvider_ReceivesNodeEvents(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
-	n, err := g.AddNode([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
+	n, err := g.Nodes.Add([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -216,11 +216,11 @@ func TestIndexProvider_ReceivesNodeEvents(t *testing.T) {
 func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
-	_, err := g.AddNode([]string{"A"}, map[string]any{})
+	_, err := g.Nodes.Add([]string{"A"}, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,14 +228,14 @@ func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 		t.Fatalf("expected 1 event after first AddNode, got %d", got)
 	}
 
-	if err := g.UnregisterIndexProvider("spatial"); err != nil {
+	if err := g.Index.UnregisterProvider("spatial"); err != nil {
 		t.Fatalf("unregister: %v", err)
 	}
 	if !p.closed.Load() {
 		t.Error("Close should have been called on unregister")
 	}
 
-	_, err = g.AddNode([]string{"B"}, map[string]any{})
+	_, err = g.Nodes.Add([]string{"B"}, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 
 func TestIndexProvider_UnregisterUnknown(t *testing.T) {
 	g := newProviderTestGraph(t)
-	err := g.UnregisterIndexProvider("nope")
+	err := g.Index.UnregisterProvider("nope")
 	if !errors.Is(err, indexpkg.ErrIndexProviderNotFound) {
 		t.Errorf("expected indexpkg.ErrIndexProviderNotFound, got %v", err)
 	}
@@ -258,7 +258,7 @@ func TestIndexProvider_CloseCalledFromGraphClose(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if err := g.Close(); err != nil {
@@ -276,7 +276,7 @@ func TestIndexProvider_CloseErrorsAreJoined(t *testing.T) {
 	}
 	boom := fmt.Errorf("spatial-close-failed")
 	p := &mockIndexProvider{name: "spatial", closeFn: func() error { return boom }}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	err = g.Close()
@@ -296,14 +296,14 @@ func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	ab := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{QueueSize: 8, Workers: 1})
-	g.SetAsyncEventBus(ab)
+	g.Events.SetAsync(ab)
 
 	p := &mockIndexProvider{name: "spatial"}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register on async bus: %v", err)
 	}
 
-	if _, err := g.AddNode([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
@@ -344,7 +344,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 		wg.Add(1)
 		go func(p *mockIndexProvider) {
 			defer wg.Done()
-			err := g.RegisterIndexProvider(p)
+			err := g.Index.RegisterProvider(p)
 			switch {
 			case err == nil:
 				successes.Add(1)
@@ -367,14 +367,14 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 	if other.Load() != 0 {
 		t.Errorf("unexpected errors = %d", other.Load())
 	}
-	if got := len(g.IndexProviders()); got != 1 {
+	if got := len(g.Index.Providers()); got != 1 {
 		t.Errorf("registered providers = %d, want 1", got)
 	}
 
 	// Fire one event; only the single registered provider should observe it.
 	// If orphan subscriptions leaked (pre-fix behaviour), multiple providers
 	// would have received the event because all N closures subscribed to bus.
-	if _, err := g.AddNode([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	fired := 0
@@ -393,15 +393,15 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 func TestIndexProvider_LegacyAdapterReceivesEvents(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockLegacyIndexProvider{name: "legacy-spatial"}
-	if err := g.RegisterLegacyIndexProvider(p); err != nil {
+	if err := g.Index.RegisterLegacyProvider(p); err != nil {
 		t.Fatalf("RegisterLegacyIndexProvider: %v", err)
 	}
 
-	if names := g.IndexProviders(); len(names) != 1 || names[0] != "legacy-spatial" {
+	if names := g.Index.Providers(); len(names) != 1 || names[0] != "legacy-spatial" {
 		t.Fatalf("registry: got %v, want [legacy-spatial]", names)
 	}
 
-	n, err := g.AddNode([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
+	n, err := g.Nodes.Add([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -428,10 +428,10 @@ func TestIndexProvider_LegacyAdapterReceivesEvents(t *testing.T) {
 func TestIndexProvider_LegacyUnregisterClosesProvider(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockLegacyIndexProvider{name: "legacy-spatial"}
-	if err := g.RegisterLegacyIndexProvider(p); err != nil {
+	if err := g.Index.RegisterLegacyProvider(p); err != nil {
 		t.Fatalf("RegisterLegacyIndexProvider: %v", err)
 	}
-	if err := g.UnregisterIndexProvider("legacy-spatial"); err != nil {
+	if err := g.Index.UnregisterProvider("legacy-spatial"); err != nil {
 		t.Fatalf("Unregister: %v", err)
 	}
 	if !p.closed.Load() {
@@ -441,7 +441,7 @@ func TestIndexProvider_LegacyUnregisterClosesProvider(t *testing.T) {
 
 func TestIndexProvider_LegacyNilRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
-	if err := g.RegisterLegacyIndexProvider(nil); err == nil {
+	if err := g.Index.RegisterLegacyProvider(nil); err == nil {
 		t.Error("expected error for nil legacy provider")
 	}
 }
@@ -450,20 +450,20 @@ func TestIndexProvider_InitializableBulkLoad(t *testing.T) {
 	g := newProviderTestGraph(t)
 	// Seed graph state BEFORE registering the provider so Init has
 	// something to bulk-load.
-	n1, err := g.AddNode([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
+	n1, err := g.Nodes.Add([]string{"Gemeinde"}, map[string]any{"gkz": "60201"})
 	if err != nil {
 		t.Fatalf("AddNode 1: %v", err)
 	}
-	n2, err := g.AddNode([]string{"Gemeinde"}, map[string]any{"gkz": "60202"})
+	n2, err := g.Nodes.Add([]string{"Gemeinde"}, map[string]any{"gkz": "60202"})
 	if err != nil {
 		t.Fatalf("AddNode 2: %v", err)
 	}
-	if _, err := g.AddRelationshipByID("RELATED", n1.ID(), n2.ID(), nil); err != nil {
+	if _, err := g.Rels.AddByID("RELATED", n1.ID(), n2.ID(), nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	p := &initializableProvider{mockIndexProvider: mockIndexProvider{name: "spatial"}}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -490,20 +490,20 @@ func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
 		initErr:           boom,
 	}
 
-	err := g.RegisterIndexProvider(p)
+	err := g.Index.RegisterProvider(p)
 	if err == nil {
 		t.Fatal("expected register to fail when Init errors")
 	}
 	if !errors.Is(err, boom) {
 		t.Errorf("error chain should wrap Init error; got %v", err)
 	}
-	if names := g.IndexProviders(); len(names) != 0 {
+	if names := g.Index.Providers(); len(names) != 0 {
 		t.Errorf("provider should be removed after Init failure; got registry %v", names)
 	}
 
 	// Subscription must have been torn down — subsequent events must not
 	// reach the provider, otherwise we leaked a subscription closure.
-	if _, err := g.AddNode([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(p.capturedEvents()); got != 0 {
@@ -516,12 +516,12 @@ func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
 	// mutations arrive via OnEvent. Verify the provider can stitch
 	// bulk-load + incremental updates without missing or double-counting.
 	g := newProviderTestGraph(t)
-	if _, err := g.AddNode([]string{"A"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"A"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	p := &initializableProvider{mockIndexProvider: mockIndexProvider{name: "spatial"}}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatal(err)
 	}
 	p.initMu.Lock()
@@ -532,7 +532,7 @@ func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
 	}
 
 	// Mutation after registration should reach OnEvent (not Init).
-	if _, err := g.AddNode([]string{"B"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"B"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(p.capturedEvents()); got != 1 {
@@ -543,14 +543,14 @@ func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
 func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial", onErr: errors.New("provider-failed")}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatal(err)
 	}
 
 	// AddNode must succeed even when the provider's OnEvent reports an
 	// error — provider failures are best-effort diagnostics, not
 	// mutation veto.
-	if _, err := g.AddNode([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
 		t.Errorf("AddNode should succeed when provider returns OnEvent error; got %v", err)
 	}
 	if got := len(p.capturedEvents()); got != 1 {
@@ -560,7 +560,7 @@ func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
 
 // graphReaderProbe is a minimal indexpkg.Initializable that records that the
 // indexpkg.GraphReader handed to Init really is restricted (no mutation surface).
-// The compiler enforces this — we cannot call g.AddNode on a indexpkg.GraphReader
+// The compiler enforces this — we cannot call g.Nodes.Add on a indexpkg.GraphReader
 // — so the test exists to lock the contract: any future attempt to widen
 // indexpkg.GraphReader will break this test by allowing the recorded type to
 // expose mutation methods.
@@ -577,15 +577,13 @@ func (p *graphReaderProbe) Init(g indexpkg.GraphReader) error {
 func TestIndexProvider_InitReceivesGraphReaderInterface(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &graphReaderProbe{mockIndexProvider: mockIndexProvider{name: "probe"}}
-	if err := g.RegisterIndexProvider(p); err != nil {
+	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if p.receivedReader == nil {
 		t.Fatal("Init did not receive a indexpkg.GraphReader")
 	}
-	// Confirm the reader is a indexpkg.GraphReader (not *Core) — type assertion
-	// to *Core must FAIL because graphReaderView is unexported.
-	if _, ok := p.receivedReader.(*Core); ok {
-		t.Error("indexpkg.GraphReader should not be a *Core (would expose mutation surface)")
-	}
+	// graphReaderView is unexported and *Core no longer satisfies GraphReader
+	// at compile time (the read methods now live on the sub-Core types like
+	// NodeOps), so the previous *Core type-assertion is unreachable. Skip.
 }

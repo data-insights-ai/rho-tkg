@@ -21,7 +21,7 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 
 	ids := make([]types.NodeID, b.N)
 	for i := range ids {
-		n, err := g.AddNode([]string{"Base"}, nil)
+		n, err := g.Nodes.Add([]string{"Base"}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -36,7 +36,7 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.AddNodeLabel(ids[i], labels[i]); err != nil {
+		if err := g.Nodes.AddLabel(ids[i], labels[i]); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -51,7 +51,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 	}
 	b.Cleanup(func() { g.Close() })
 
-	n, err := g.AddNode([]string{"Base", "Extra"}, nil)
+	n, err := g.Nodes.Add([]string{"Base", "Extra"}, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.AddNodeLabel(id, "Extra"); err != nil {
+		if err := g.Nodes.AddLabel(id, "Extra"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -79,7 +79,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 	labels := make([]string, b.N)
 	for i := range ids {
 		lbl := "L" + strconv.Itoa(i%64)
-		n, err := g.AddNode([]string{"Base", lbl}, nil)
+		n, err := g.Nodes.Add([]string{"Base", lbl}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -90,7 +90,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.RemoveNodeLabel(ids[i], labels[i]); err != nil {
+		if err := g.Nodes.RemoveLabel(ids[i], labels[i]); err != nil {
 			b.Fatal(err)
 		}
 	}

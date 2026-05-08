@@ -6,7 +6,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// SearchNearestNodes returns the k nodes with vectors closest to query
+// SearchNearest returns the k nodes with vectors closest to query
 // under the index defined for label+propertyKey.
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
@@ -43,7 +43,8 @@ import (
 // post-filtering: SearchNearest returns k by raw distance, then ineligible
 // entries are dropped. Result count may be < k even if more eligible
 // candidates exist farther out — over-fetch with larger k to compensate.
-func (c *Core) SearchNearestNodes(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	c := i.c
 	if k <= 0 {
 		return nil, nil
 	}

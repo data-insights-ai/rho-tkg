@@ -7,10 +7,11 @@ import (
 
 // --- eventspkg.Event bus ---
 
-// SetEventBus attaches a synchronous eventspkg.EventBus to the graph.
+// SetSync attaches a synchronous eventspkg.EventBus to the graph.
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
-func (c *Core) SetEventBus(bus *eventspkg.EventBus) {
+func (e *EventOps) SetSync(bus *eventspkg.EventBus) {
+	c := e.c
 	c.mu.Lock()
 	if bus == nil {
 		c.events = nil
@@ -20,9 +21,10 @@ func (c *Core) SetEventBus(bus *eventspkg.EventBus) {
 	c.mu.Unlock()
 }
 
-// GetEventBus returns the attached synchronous eventspkg.EventBus, or nil if none is set
+// GetSync returns the attached synchronous eventspkg.EventBus, or nil if none is set
 // (including when an eventspkg.AsyncEventBus is attached instead).
-func (c *Core) GetEventBus() *eventspkg.EventBus {
+func (e *EventOps) GetSync() *eventspkg.EventBus {
+	c := e.c
 	c.mu.RLock()
 	ep := c.events
 	c.mu.RUnlock()
@@ -32,10 +34,11 @@ func (c *Core) GetEventBus() *eventspkg.EventBus {
 	return nil
 }
 
-// SetAsyncEventBus attaches an eventspkg.AsyncEventBus to the graph for async event delivery.
+// SetAsync attaches an eventspkg.AsyncEventBus to the graph for async event delivery.
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
-func (c *Core) SetAsyncEventBus(bus *eventspkg.AsyncEventBus) {
+func (e *EventOps) SetAsync(bus *eventspkg.AsyncEventBus) {
+	c := e.c
 	c.mu.Lock()
 	if bus == nil {
 		c.events = nil

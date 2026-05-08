@@ -87,7 +87,7 @@ func newTemporalCandidateCountingGraph(t *testing.T) (*Core, *temporalCandidateC
 func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -95,25 +95,25 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
-	updated, err := g.UpdateNode(id, map[string]any{"status": "published"})
+	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 	end := updated.Temporal().UpdatedAt
 
-	if _, err := g.GetNodesByLabelValidAt("Person", queryTime); err != nil {
+	if _, err := g.Temporal.NodesByLabelAt("Person", queryTime); err != nil {
 		t.Fatalf("GetNodesByLabelValidAt: %v", err)
 	}
-	if _, err := g.NodesByLabel("Person", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+	if _, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
 		t.Fatalf("NodesByLabel temporal storepkg.QueryOpts: %v", err)
 	}
-	if _, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime); err != nil {
+	if _, err := g.Temporal.NodesByLabelPropertyAt("Person", "status", "draft", queryTime); err != nil {
 		t.Fatalf("NodesByLabelPropertyAndTime: %v", err)
 	}
-	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+	if _, err := g.Nodes.ByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
 		t.Fatalf("NodesByLabelAndProperty temporal storepkg.QueryOpts: %v", err)
 	}
-	if _, err := g.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
+	if _, err := g.Temporal.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
 		t.Fatalf("NodesByLabelPropertyDuring: %v", err)
 	}
 
@@ -128,30 +128,30 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 // NodesByLabelAndProperty (graph.go), NodesByLabelPropertyAndTime, and
 // NodesByLabelPropertyDuring (temporal.go).
 //
-// A real property index is installed so MemoryStore.NodesByLabelAndProperty
+// A real property index is installed so MemoryStore.Nodes.ByLabelAndProperty
 // hits the indexed path rather than its label-scan fallback. The combination
 // of "property index installed" + "planner only ever calls NodesByLabelAndProperty"
 // proves that the seed comes from the tightest available index.
 func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
-	// Graph.CreatePropertyIndex is a no-op when the label isn't registered
+	// Graph.Index.CreateProperty is a no-op when the label isn't registered
 	// yet (graph.go: Lookup→nil). Add a node first so the "Person" token
 	// exists in the registry; otherwise the index is never installed and
 	// the test verifies dispatch routing only, not actual index use.
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	if err := g.CreatePropertyIndex("Person", "status"); err != nil {
+	if err := g.Index.CreateProperty("Person", "status"); err != nil {
 		t.Fatalf("CreatePropertyIndex: %v", err)
 	}
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
-	updated, err := g.UpdateNode(id, map[string]any{"status": "published"})
+	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -160,13 +160,13 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 	store.nodesByLabelCalls = 0
 	store.nodesByLabelAndPropertyCalls = 0
 
-	if _, err := g.NodesByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+	if _, err := g.Nodes.ByLabelAndProperty("Person", "status", "draft", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
 		t.Fatalf("NodesByLabelAndProperty temporal: %v", err)
 	}
-	if _, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime); err != nil {
+	if _, err := g.Temporal.NodesByLabelPropertyAt("Person", "status", "draft", queryTime); err != nil {
 		t.Fatalf("NodesByLabelPropertyAndTime: %v", err)
 	}
-	if _, err := g.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
+	if _, err := g.Temporal.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end); err != nil {
 		t.Fatalf("NodesByLabelPropertyDuring: %v", err)
 	}
 
@@ -186,29 +186,29 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
+	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	queryTime := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(r.ID()); err != nil {
+	if err := g.Rels.Delete(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	if _, err := g.GetNeighborsValidAt(a.ID(), queryTime); err != nil {
+	if _, err := g.Temporal.NeighborsAt(a.ID(), queryTime); err != nil {
 		t.Fatalf("GetNeighborsValidAt: %v", err)
 	}
-	if _, err := g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
+	if _, err := g.Rels.ByType("KNOWS", storepkg.QueryOpts{ValidAt: queryTime}); err != nil {
 		t.Fatalf("RelationshipsByType temporal storepkg.QueryOpts: %v", err)
 	}
 
@@ -226,22 +226,22 @@ func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	signal, err := g.AddNode([]string{"Signal"}, nil)
+	signal, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode Signal: %v", err)
 	}
-	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode Case: %v", err)
 	}
-	relTok, err := g.GetOrCreateRelType("LINK")
+	relTok, err := g.Resolve.GetOrCreateRelType("LINK")
 	if err != nil {
 		t.Fatalf("GetOrCreateRelType: %v", err)
 	}
 
 	startID := signal.ID()
 	endID := caseNode.ID()
-	relID := g.NextRelID()
+	relID := g.Rels.NextID()
 	r := types.NewRelationship(relID, relTok, startID, endID)
 
 	ts.MuForTest().RLock()
@@ -273,15 +273,15 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, nil)
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, nil)
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -290,14 +290,14 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	queryTime := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(relID); err != nil {
+	if err := g.Rels.Delete(relID); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
-	if err := g.DeleteNode(nodeID); err != nil {
+	if err := g.Nodes.Delete(nodeID); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	nodes, err := g.AllNodes(storepkg.QueryOpts{ValidAt: queryTime})
+	nodes, err := g.Nodes.All(storepkg.QueryOpts{ValidAt: queryTime})
 	if err != nil {
 		t.Fatalf("AllNodes ValidAt: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 		t.Fatalf("generic AllNodes missed deleted historical node at %d; got %d nodes", queryTime, len(nodes))
 	}
 
-	rels, err := g.AllRelationships(storepkg.QueryOpts{ValidAt: queryTime})
+	rels, err := g.Rels.All(storepkg.QueryOpts{ValidAt: queryTime})
 	if err != nil {
 		t.Fatalf("AllRelationships ValidAt: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 		t.Fatalf("batch failed: %+v", result.Errors)
 	}
 
-	storedNode, err := g.GetNode(a.ID())
+	storedNode, err := g.Nodes.Get(a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 		t.Fatal("batch node stored tkg_author_id as a normal property")
 	}
 
-	storedRel, err := g.GetRelationship(r.ID())
+	storedRel, err := g.Rels.Get(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -396,11 +396,11 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	g := newTestGraph(t)
 	bb := NewBatchBuilder(g)
 
-	a, err := g.AddNode([]string{"Person"}, map[string]any{"v": int64(1)})
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("seed AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, map[string]any{"v": int64(1)})
+	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("seed AddNode B: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 
 	// Mutate an endpoint between queue and execute. Endpoint hash captured at
 	// queue time would now be stale.
-	updatedA, err := g.UpdateNode(a.ID(), map[string]any{"v": int64(2)})
+	updatedA, err := g.Nodes.Update(a.ID(), map[string]any{"v": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateNode A: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 
 	// TxFrom on batch-created node must be at-or-after execute, never at
 	// queueStart.
-	storedC, err := g.GetNode(c.ID())
+	storedC, err := g.Nodes.Get(c.ID())
 	if err != nil {
 		t.Fatalf("GetNode batch C: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 
 	// TxFrom on batch-created rel must also be at-or-after execute, and
 	// FromNodeHash must reflect the post-update endpoint state.
-	storedR, err := g.GetRelationship(r.ID())
+	storedR, err := g.Rels.Get(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship batch R: %v", err)
 	}
@@ -543,13 +543,13 @@ func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, err := g.AddNode([]string{"A"}, nil)
+	n, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	t0 := g.nodeValidFrom(n)
 
-	got, err := g.GetNodesValidDuring(t0, 0)
+	got, err := g.Temporal.NodesDuring(t0, 0)
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring(t0, 0): %v", err)
 	}
@@ -565,15 +565,15 @@ func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) 
 	}
 	defer g.Close()
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	t0 := g.relValidFrom(r)
 
-	got, err := g.GetRelationshipsValidDuring(t0, 0)
+	got, err := g.Temporal.RelationshipsDuring(t0, 0)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring(t0, 0): %v", err)
 	}
@@ -618,7 +618,7 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 	}
 }
 
-// AllNodes / NodesByLabel / NodesByLabelAndProperty / RelationshipsByType /
+// All / NodesByLabel / NodesByLabelAndProperty / RelationshipsByType /
 // AllRelationships must reject opts.Depth+temporal explicitly: the
 // history-aware path enumerates IDs through ForEach* iterators that have
 // no storepkg.QueryOpts, so the underlying tiered.Store cannot honor Depth there.
@@ -634,27 +634,27 @@ func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
 	// Seed enough state that the registered label/reltype Lookup paths
 	// reach the Depth gate (the early "label/type not registered → nil"
 	// short-circuit hides the gate from the test otherwise).
-	a, _ := g.AddNode([]string{"A"}, map[string]any{"k": "v"})
-	b, _ := g.AddNode([]string{"A"}, nil)
-	if _, err := g.AddRelationship("KNOWS", a, b, nil); err != nil {
+	a, _ := g.Nodes.Add([]string{"A"}, map[string]any{"k": "v"})
+	b, _ := g.Nodes.Add([]string{"A"}, nil)
+	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	now := nowInstant()
 	opts := storepkg.QueryOpts{ValidAt: now, Depth: storepkg.DepthHot}
 
-	if _, err := g.AllNodes(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+	if _, err := g.Nodes.All(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("AllNodes(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
-	if _, err := g.AllRelationships(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+	if _, err := g.Rels.All(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("AllRelationships(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
-	if _, err := g.NodesByLabel("A", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+	if _, err := g.Nodes.ByLabel("A", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("NodesByLabel(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
-	if _, err := g.NodesByLabelAndProperty("A", "k", "v", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+	if _, err := g.Nodes.ByLabelAndProperty("A", "k", "v", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("NodesByLabelAndProperty(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
-	if _, err := g.RelationshipsByType("KNOWS", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
+	if _, err := g.Rels.ByType("KNOWS", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
 		t.Errorf("RelationshipsByType(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
 	}
 }
@@ -733,7 +733,7 @@ func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 	defer g.Close()
 
 	// Node A is created BEFORE the query starts.
-	a, err := g.AddNode([]string{"A"}, nil)
+	a, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,7 +747,7 @@ func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 	// matcher, B's vStart would land between captured and the new
 	// nowInstant() and B would slip into the result.
 	time.Sleep(3 * time.Millisecond)
-	b, err := g.AddNode([]string{"A"}, nil)
+	b, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +758,7 @@ func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 	// Use the captured upper bound explicitly; the entry point would
 	// produce the same value at query start. Pre-fix behaviour with
 	// end == 0 is exercised by TestGetNodesValidDuring_EndZero_*.
-	got, err := g.GetNodesValidDuring(t0, captured)
+	got, err := g.Temporal.NodesDuring(t0, captured)
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring: %v", err)
 	}

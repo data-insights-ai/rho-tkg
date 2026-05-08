@@ -724,8 +724,7 @@ func TestComputeNodeHash_DeeplyNestedMaps(t *testing.T) {
 		t.Fatalf("deeply nested identical maps hash differently: %q vs %q", hA, hB)
 	}
 	// Sensitivity at the leaf.
-	c := build(9)
-	c = map[string]any{"k": map[string]any{"k": "DIFFERENT"}}
+	c := map[string]any{"k": map[string]any{"k": "DIFFERENT"}}
 	if hA == hashPropOnly(t, "deep", c) {
 		t.Fatal("deep leaf change ignored")
 	}

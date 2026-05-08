@@ -77,7 +77,7 @@ func TestDiffSnapshots_InvalidRange(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := g.DiffSnapshots(tc.t1, tc.t2)
+			_, err := g.Temporal.Diff(tc.t1, tc.t2)
 			if !errors.Is(err, ErrInvalidTimeRange) {
 				t.Fatalf("expected ErrInvalidTimeRange, got %v", err)
 			}
@@ -92,7 +92,7 @@ func TestDiffSnapshots_EmptyGraph(t *testing.T) {
 	t1 := types.Instant(time.Now().UnixMilli()) - 200
 	t2 := t1 + 100
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots empty graph: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.AddNode([]string{"Thing"}, map[string]any{"k": "v"})
+	n, err := g.Nodes.Add([]string{"Thing"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 	// ValidFrom between t1 and t2 → not visible at t1, visible at t2.
 	setNodeTemporal(t, g, nid, base+150, 0)
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.AddNode([]string{"Event"}, nil)
+	n, err := g.Nodes.Add([]string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 	// ValidFrom before t1, ValidTo between t1 and t2 → visible at t1, gone at t2.
 	setNodeTemporal(t, g, nid, base+50, base+200)
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 func TestDiffSnapshots_Updated(t *testing.T) {
 	g := newDiffGraph(t)
 
-	n, err := g.AddNode([]string{"User"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -186,13 +186,13 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Update the node (its hash changes).
-	if _, err := g.UpdateNode(nid, map[string]any{"name": "Alice Updated"}); err != nil {
+	if _, err := g.Nodes.Update(nid, map[string]any{"name": "Alice Updated"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	t2 := types.Instant(time.Now().UnixMilli()) + 10
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestDiffSnapshots_Unchanged(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.AddNode([]string{"Static"}, map[string]any{"x": int64(1)})
+	n, err := g.Nodes.Add([]string{"Static"}, map[string]any{"x": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestDiffSnapshots_Unchanged(t *testing.T) {
 	// No updates → hash identical at both snapshots → should not appear in any list.
 	setNodeTemporal(t, g, n.ID(), base+50, 0)
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -248,14 +248,14 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 
 	// Both nodes valid at t1.
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
-	r, err := g.AddRelationship("LINKS", a, b, nil)
+	r, err := g.Rels.Add("LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 	// Rel ValidFrom between t1 and t2 → not visible at t1, visible at t2.
 	setRelTemporal(t, g, rid, base+150, 0)
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -286,13 +286,13 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
-	r, err := g.AddRelationship("LINKS", a, b, nil)
+	r, err := g.Rels.Add("LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 	// Rel ValidFrom before t1, ValidTo between t1 and t2.
 	setRelTemporal(t, g, rid, base+50, base+200)
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -319,9 +319,9 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	g := newDiffGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, err := g.AddRelationship("LINKS", a, b, map[string]any{"w": int64(1)})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -330,13 +330,13 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	t1 := types.Instant(time.Now().UnixMilli())
 	time.Sleep(2 * time.Millisecond)
 
-	if _, err := g.UpdateRelationship(rid, map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	t2 := types.Instant(time.Now().UnixMilli()) + 10
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 func TestNodeHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
 
-	n, _ := g.AddNode([]string{"Shared"}, nil)
+	n, _ := g.Nodes.Add([]string{"Shared"}, nil)
 	n.SetIntegrity(nil) // exercise nodeHash nil branch
 
 	if got := nodeHash(n); got != "" {
@@ -372,9 +372,9 @@ func TestNodeHash_NilIntegrity(t *testing.T) {
 // TestRelHash_NilIntegrity verifies the nil-integrity path for relationships.
 func TestRelHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("E", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("E", a, b, nil)
 	r.SetIntegrity(nil) // exercise relHash nil branch
 
 	if got := relHash(r); got != "" {
@@ -388,13 +388,13 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	g := newDiffGraph(t)
 
 	// "unchanged" — created before the diff window, not modified.
-	_, err := g.AddNode([]string{"Unchanged"}, map[string]any{"v": "same"})
+	_, err := g.Nodes.Add([]string{"Unchanged"}, map[string]any{"v": "same"})
 	if err != nil {
 		t.Fatalf("AddNode unchanged: %v", err)
 	}
 
 	// "updated" — exists at t1, properties change before t2.
-	toUpdate, err := g.AddNode([]string{"Updated"}, map[string]any{"v": "before"})
+	toUpdate, err := g.Nodes.Add([]string{"Updated"}, map[string]any{"v": "before"})
 	if err != nil {
 		t.Fatalf("AddNode toUpdate: %v", err)
 	}
@@ -403,19 +403,19 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Perform the update between t1 and t2.
-	if _, err := g.UpdateNode(toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
+	if _, err := g.Nodes.Update(toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	// "created" — added after t1.
-	created, err := g.AddNode([]string{"Created"}, nil)
+	created, err := g.Nodes.Add([]string{"Created"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode created: %v", err)
 	}
 
 	t2 := types.Instant(time.Now().UnixMilli()) + 10
 
-	diff, err := g.DiffSnapshots(t1, t2)
+	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 	defer g.Close()
 
 	// Seed a node with explicit ValidFrom so temporal queries have real work to do.
-	n, err := g.AddNode([]string{"Thing"}, nil)
+	n, err := g.Nodes.Add([]string{"Thing"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = g.DiffSnapshots(t1, t2)
+			_, _ = g.Temporal.Diff(t1, t2)
 		}()
 	}
 

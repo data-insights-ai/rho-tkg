@@ -6,6 +6,7 @@ import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 // stored in a Store-backed vector index.
 type DistanceMetric uint8
 
+// Distance metrics for vector indexes.
 const (
 	DistanceCosine DistanceMetric = iota + 1
 	DistanceEuclidean
@@ -15,6 +16,7 @@ const (
 // Zero (DepthAll) includes all tiers — backward-compatible default.
 type ShardDepth byte
 
+// Shard-depth selectors for TieredStore queries.
 const (
 	DepthAll  ShardDepth = 0 // All tiers (default, backward-compatible).
 	DepthHot  ShardDepth = 1 // Hot shard only.

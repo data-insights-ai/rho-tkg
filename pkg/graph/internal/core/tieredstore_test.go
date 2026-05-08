@@ -56,11 +56,6 @@ func tieredNodeGen(t *testing.T) *snowflake.Node {
 	return newTestGen(t, 0)
 }
 
-func tieredRelGen(t *testing.T) *snowflake.Node {
-	t.Helper()
-	return newTestGen(t, 1)
-}
-
 // --- Ontology routing tests ---
 // --- Node CRUD tests ---
 // --- Same-shard relationship tests ---
@@ -98,15 +93,15 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 	}
 
 	// Add entities to populate registries.
-	n, err := g.AddNode([]string{"Case"}, map[string]any{"name": "test"})
+	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Case"}, nil)
+	n2, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = g.AddRelationship("RELATES_TO", n, n2, nil)
+	_, err = g.Rels.Add("RELATES_TO", n, n2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,11 +195,11 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 	_ = ts
 
-	case1, _ := g.AddNode([]string{"Case"}, nil)
-	sig1, _ := g.AddNode([]string{"Signal"}, nil)
-	sig2, _ := g.AddNode([]string{"Signal"}, nil)
+	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
+	sig1, _ := g.Nodes.Add([]string{"Signal"}, nil)
+	sig2, _ := g.Nodes.Add([]string{"Signal"}, nil)
 
-	_, _ = g.AddRelationship("TRIGGERED", sig1, case1, nil)
+	_, _ = g.Rels.Add("TRIGGERED", sig1, case1, nil)
 
 	// Rotate.
 	time.Sleep(2 * time.Millisecond)
@@ -212,10 +207,10 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 	_ = ts.RotateHotShard()
 	ts.MuForTest().Unlock()
 
-	_, _ = g.AddRelationship("TRIGGERED", sig2, case1, nil)
+	_, _ = g.Rels.Add("TRIGGERED", sig2, case1, nil)
 
 	// RelationshipsByType should find rels across shards (parallel).
-	tok, _ := g.LookupRelType("TRIGGERED")
+	tok, _ := g.Resolve.LookupRelType("TRIGGERED")
 	rels, err := ts.RelationshipsByType(tok, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +225,7 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 func TestTieredStore_ArchiveNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.AddNode([]string{"Case"}, map[string]any{"name": "C001"})
+	caseNode, _ := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C001"})
 	caseID := caseNode.ID()
 
 	// Archive.
@@ -250,7 +245,7 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// GetNode should still find it (via archive routing).
-	got, err := g.GetNode(caseID)
+	got, err := g.Nodes.Get(caseID)
 	if err != nil {
 		t.Fatalf("GetNode after archive: %v", err)
 	}
@@ -272,9 +267,9 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	// topology while reflecting the corrected semantic.
 	g, ts := newTestTieredGraph(t)
 
-	case1, _ := g.AddNode([]string{"Case"}, nil)
-	case2, _ := g.AddNode([]string{"Case"}, nil)
-	rel, _ := g.AddRelationship("RELATED_TO", case1, case2, nil)
+	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
+	case2, _ := g.Nodes.Add([]string{"Case"}, nil)
+	rel, _ := g.Rels.Add("RELATED_TO", case1, case2, nil)
 
 	case1ID := case1.ID()
 	case2ID := case2.ID()
@@ -303,7 +298,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 func TestTieredStore_RestoreNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.AddNode([]string{"Case"}, map[string]any{"status": "closed"})
+	caseNode, _ := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "closed"})
 	caseID := caseNode.ID()
 
 	// Archive then restore.
@@ -325,7 +320,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// GetNode should work normally.
-	got, err := g.GetNode(caseID)
+	got, err := g.Nodes.Get(caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +338,7 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 		t.Error("refArchive should be nil initially")
 	}
 
-	caseNode, _ := g.AddNode([]string{"Case"}, nil)
+	caseNode, _ := g.Nodes.Add([]string{"Case"}, nil)
 	_ = ts.ArchiveNode(caseNode.ID())
 
 	if ts.RefArchiveForTest().Load() == nil {
@@ -355,7 +350,7 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	// Verify shardForNodeID falls back to archive.
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.AddNode([]string{"Case"}, nil)
+	caseNode, _ := g.Nodes.Add([]string{"Case"}, nil)
 	caseID := caseNode.ID()
 
 	_ = ts.ArchiveNode(caseID)
@@ -373,14 +368,14 @@ func TestTieredStore_ArchiveDepthAll(t *testing.T) {
 	// AllNodes with archive data should include archived nodes.
 	g, ts := newTestTieredGraph(t)
 
-	case1, _ := g.AddNode([]string{"Case"}, nil)
-	sig1, _ := g.AddNode([]string{"Signal"}, nil)
+	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
+	sig1, _ := g.Nodes.Add([]string{"Signal"}, nil)
 	_ = sig1
 
 	_ = ts.ArchiveNode(case1.ID())
 
 	// GetNode should find archived node.
-	got, err := g.GetNode(case1.ID())
+	got, err := g.Nodes.Get(case1.ID())
 	if err != nil {
 		t.Fatalf("GetNode for archived node: %v", err)
 	}
@@ -392,7 +387,7 @@ func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 	// ArchiveNode should fail for event nodes (not in refShard).
 	g, ts := newTestTieredGraph(t)
 
-	sigNode, _ := g.AddNode([]string{"Signal"}, nil)
+	sigNode, _ := g.Nodes.Add([]string{"Signal"}, nil)
 	err := ts.ArchiveNode(sigNode.ID())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("expected storepkg.ErrNodeNotFound for event node archive, got %v", err)
@@ -413,7 +408,7 @@ func TestGraph_ArchiveNode_NotTiered(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	gen := tieredNodeGen(t)
-	err = g.ArchiveNode(types.NodeID(gen.Generate()))
+	err = g.Admin.Archive(types.NodeID(gen.Generate()))
 	if err == nil {
 		t.Error("expected error for ArchiveNode on non-tiered.Store")
 	}
@@ -429,7 +424,7 @@ func TestGraph_RestoreNode_NotTiered(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	gen := tieredNodeGen(t)
-	err = g.RestoreNode(types.NodeID(gen.Generate()))
+	err = g.Admin.Restore(types.NodeID(gen.Generate()))
 	if err == nil {
 		t.Error("expected error for RestoreNode on non-tiered.Store")
 	}
@@ -508,8 +503,8 @@ func TestDecomposeID_ConsistentWithTemporalFilter(t *testing.T) {
 func TestTieredStore_ForceRotate_ViaGraph(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	if err := g.ForceRotate(); err != nil {
-		t.Fatalf("Graph.ForceRotate: %v", err)
+	if err := g.Admin.ForceRotate(); err != nil {
+		t.Fatalf("Graph.Admin.ForceRotate: %v", err)
 	}
 
 	// Verify a non-tiered store returns error.
@@ -519,7 +514,7 @@ func TestTieredStore_ForceRotate_ViaGraph(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g2.Close() })
 
-	if err := g2.ForceRotate(); err == nil {
+	if err := g2.Admin.ForceRotate(); err == nil {
 		t.Error("ForceRotate on non-tiered.Store should error")
 	}
 }
@@ -530,19 +525,19 @@ func TestTieredStore_AdminNotTiered(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if err := g.ForceRotate(); err == nil {
+	if err := g.Admin.ForceRotate(); err == nil {
 		t.Error("ForceRotate should fail")
 	}
-	if _, err := g.ListShards(); err == nil {
+	if _, err := g.Admin.ListShards(); err == nil {
 		t.Error("ListShards should fail")
 	}
-	if err := g.RebuildCatalog(); err == nil {
+	if err := g.Admin.RebuildCatalog(); err == nil {
 		t.Error("RebuildCatalog should fail")
 	}
-	if _, err := g.RunRepair(); err == nil {
+	if _, err := g.Admin.Repair(); err == nil {
 		t.Error("RunRepair should fail")
 	}
-	if _, err := g.VerifyShard("ref"); err == nil {
+	if _, err := g.Admin.VerifyShard("ref"); err == nil {
 		t.Error("VerifyShard should fail")
 	}
 }
@@ -553,13 +548,13 @@ func TestTieredStore_VerifyShard_Hot(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	// Add a node to the hot shard.
-	n, err := g.AddNode([]string{"Signal"}, nil)
+	n, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	_ = n
 
-	result, err := g.VerifyShard(ts.HotShardForTest().Name())
+	result, err := g.Admin.VerifyShard(ts.HotShardForTest().Name())
 	if err != nil {
 		t.Fatalf("VerifyShard: %v", err)
 	}
@@ -578,18 +573,18 @@ func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	// Add a node to hot, then rotate → becomes warm.
-	_, err := g.AddNode([]string{"Signal"}, nil)
+	_, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
 	oldHot := ts.HotShardForTest().Name()
-	if err := g.ForceRotate(); err != nil {
+	if err := g.Admin.ForceRotate(); err != nil {
 		t.Fatalf("ForceRotate: %v", err)
 	}
 
 	// First verify: should scan and return non-cached.
-	result1, err := g.VerifyShard(oldHot)
+	result1, err := g.Admin.VerifyShard(oldHot)
 	if err != nil {
 		t.Fatalf("VerifyShard first: %v", err)
 	}
@@ -601,7 +596,7 @@ func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
 	}
 
 	// Second verify: should return cached result.
-	result2, err := g.VerifyShard(oldHot)
+	result2, err := g.Admin.VerifyShard(oldHot)
 	if err != nil {
 		t.Fatalf("VerifyShard second: %v", err)
 	}
@@ -616,7 +611,7 @@ func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
 func TestTieredStore_VerifyShard_Unknown(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	_, err := g.VerifyShard("nonexistent")
+	_, err := g.Admin.VerifyShard("nonexistent")
 	if err == nil {
 		t.Error("expected error for unknown shard")
 	}
@@ -628,20 +623,20 @@ func TestTieredStore_Repair_NoOrphans(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
 	// Create a ref node and an event node with a cross-shard rel.
-	refNode, err := g.AddNode([]string{"Case"}, nil)
+	refNode, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode ref: %v", err)
 	}
-	evtNode, err := g.AddNode([]string{"Signal"}, nil)
+	evtNode, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode evt: %v", err)
 	}
-	_, err = g.AddRelationship("TRIGGERED", evtNode, refNode, nil)
+	_, err = g.Rels.Add("TRIGGERED", evtNode, refNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	result, err := g.RunRepair()
+	result, err := g.Admin.Repair()
 	if err != nil {
 		t.Fatalf("RunRepair: %v", err)
 	}
@@ -658,9 +653,9 @@ func TestTieredStore_Repair_NoOrphans(t *testing.T) {
 func TestTieredStore_Repair_ViaGraph(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	result, err := g.RunRepair()
+	result, err := g.Admin.Repair()
 	if err != nil {
-		t.Fatalf("Graph.RunRepair: %v", err)
+		t.Fatalf("Graph.Admin.Repair: %v", err)
 	}
 	if result.OrphanedInEntries != 0 || result.MissingInEntries != 0 {
 		t.Errorf("clean graph should have 0 repairs, got orphaned=%d missing=%d",
@@ -678,12 +673,12 @@ func TestGraph_DecomposeID(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n, err := g.AddNode([]string{"Test"}, nil)
+	n, err := g.Nodes.Add([]string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	c := g.DecomposeID(n.ID().SnowflakeID())
+	c := g.Admin.DecomposeID(n.ID().SnowflakeID())
 	// SnowflakeNodeID 5 → nodeGen uses 5*2=10, relGen uses 5*2+1=11.
 	if c.NodeID != 10 {
 		t.Errorf("NodeID = %d, want 10", c.NodeID)
@@ -857,11 +852,11 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.AddNode([]string{"Signal"}, nil)
+	a, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.AddNode([]string{"Signal"}, nil)
+	b, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -878,7 +873,7 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 	}
 	ts.MuForTest().Unlock()
 
-	r, err := g.AddRelationship("OBSERVED", a, b, nil)
+	r, err := g.Rels.Add("OBSERVED", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -925,11 +920,11 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.AddNode([]string{"Case"}, map[string]any{"name": "C1"})
+	n1, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.AddRelationship("LOOPS_TO", n1, n1, nil); err != nil {
+	if _, err := g.Rels.Add("LOOPS_TO", n1, n1, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -989,11 +984,11 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.AddNode([]string{"Case"}, map[string]any{"name": "C1"})
+	n1, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := g.AddRelationship("LOOPS_TO", n1, n1, nil)
+	rel, err := g.Rels.Add("LOOPS_TO", n1, n1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

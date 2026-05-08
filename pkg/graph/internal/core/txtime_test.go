@@ -23,7 +23,7 @@ func TestTxFromSetOnAdd(t *testing.T) {
 	g := newTxTimeGraph(t)
 	before := types.Instant(time.Now().UnixMilli())
 
-	n, err := g.AddNode([]string{"A"}, nil)
+	n, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -41,9 +41,9 @@ func TestTxFromSetOnAdd(t *testing.T) {
 	}
 
 	// Same for relationship
-	n2, _ := g.AddNode([]string{"B"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
 	before2 := types.Instant(time.Now().UnixMilli())
-	r, err := g.AddRelationship("REL", n, n2, nil)
+	r, err := g.Rels.Add("REL", n, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -62,13 +62,13 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	// Old version should have TxTo set; new version has a new TxFrom
 	g := newTxTimeGraph(t)
 
-	n, _ := g.AddNode([]string{"A"}, nil)
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 	origTxFrom := n.Temporal().TxFrom
 
 	time.Sleep(2 * time.Millisecond) // ensure measurable time difference
 
-	updated, err := g.UpdateNode(nid, map[string]any{"x": 1})
+	updated, err := g.Nodes.Update(nid, map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	}
 
 	// History (version 0): old version should have TxTo set
-	hist, err := g.GetNodeHistory(nid)
+	hist, err := g.Nodes.History(nid)
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -104,15 +104,15 @@ func TestTxToSetOnDelete(t *testing.T) {
 	// Deleted node's last history version should have TxTo set
 	g := newTxTimeGraph(t)
 
-	n, _ := g.AddNode([]string{"A"}, nil)
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 
-	if err := g.DeleteNode(nid); err != nil {
+	if err := g.Nodes.Delete(nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// The tombstone history entry should have TxFrom set, TxTo non-zero
-	hist, err := g.GetNodeHistory(nid)
+	hist, err := g.Nodes.History(nid)
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -133,10 +133,10 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	before := types.Instant(time.Now().UnixMilli() - 1000) // 1 second in past
-	n, _ := g.AddNode([]string{"A"}, nil)
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 
-	_, err := g.GetNodeAsOf(nid, before)
+	_, err := g.Temporal.NodeAsOf(nid, before)
 	if !errors.Is(err, ErrNoVersionAsOf) {
 		t.Errorf("expected ErrNoVersionAsOf, got %v", err)
 	}
@@ -145,12 +145,12 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 
-	n, _ := g.AddNode([]string{"A"}, nil)
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 
 	after := types.Instant(time.Now().UnixMilli() + 1000) // 1 second in future
 
-	got, err := g.GetNodeAsOf(nid, after)
+	got, err := g.Temporal.NodeAsOf(nid, after)
 	if err != nil {
 		t.Fatalf("GetNodeAsOf: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 
-	n, _ := g.AddNode([]string{"A"}, nil)
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 
 	// Record the TxFrom of the original version
@@ -171,7 +171,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Update the node
-	updated, _ := g.UpdateNode(nid, map[string]any{"x": 1})
+	updated, _ := g.Nodes.Update(nid, map[string]any{"x": 1})
 	newTxFrom := updated.Temporal().TxFrom
 
 	// Query at a time between original TxFrom and newTxFrom
@@ -180,7 +180,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 		mid = origTxFrom + 1
 	}
 
-	got, err := g.GetNodeAsOf(nid, mid)
+	got, err := g.Temporal.NodeAsOf(nid, mid)
 	if err != nil {
 		t.Fatalf("GetNodeAsOf at mid: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	g := newTxTimeGraph(t)
 
 	// Create first node
-	n1, _ := g.AddNode([]string{"A"}, nil)
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
 	_ = n1
 
 	// Record time
@@ -202,11 +202,11 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Create second node after midTime
-	n2, _ := g.AddNode([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"A"}, nil)
 	_ = n2
 
 	// GetNodesAsOf(midTime) should return only n1 (n2 didn't exist yet)
-	got, err := g.GetNodesAsOf(midTime)
+	got, err := g.Temporal.NodesAsOf(midTime)
 	if err != nil {
 		t.Fatalf("GetNodesAsOf: %v", err)
 	}
@@ -232,20 +232,20 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 func TestGetRelAsOf(t *testing.T) {
 	g := newTxTimeGraph(t)
 
-	n1, _ := g.AddNode([]string{"A"}, nil)
-	n2, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("REL", n1, n2, nil)
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("REL", n1, n2, nil)
 	rid := r.ID()
 
 	before := r.Temporal().TxFrom - 1
 
-	_, err := g.GetRelAsOf(rid, before)
+	_, err := g.Temporal.RelAsOf(rid, before)
 	if !errors.Is(err, ErrNoVersionAsOf) {
 		t.Errorf("expected ErrNoVersionAsOf before creation, got %v", err)
 	}
 
 	after := types.Instant(time.Now().UnixMilli() + 1000)
-	got, err := g.GetRelAsOf(rid, after)
+	got, err := g.Temporal.RelAsOf(rid, after)
 	if err != nil {
 		t.Fatalf("GetRelAsOf after: %v", err)
 	}

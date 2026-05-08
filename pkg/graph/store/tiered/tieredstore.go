@@ -658,17 +658,6 @@ func (ts *Store) shardForNodeID(id types.NodeID) (*BadgerStore, error) {
 	return ts.timestampToEventShard(raw)
 }
 
-// shardForNodeVersion resolves the shard that owns a node history entry.
-// When the current node still exists, shardForNodeID gives the exact owner.
-// After a reference node has been deleted, current indexes are gone and ID
-// timestamp fallback would select an event shard, so use the snapshot label.
-func (ts *Store) shardForNodeVersion(id snowflake.ID, n *types.Node) (*BadgerStore, error) {
-	if n != nil && ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
-		return ts.refShard, nil
-	}
-	return ts.shardForNodeID(types.NodeID(id))
-}
-
 // timestampToEventShard extracts the creation timestamp from a snowflake ID
 // and maps it to the correct event shard. Falls back to the hot shard if no
 // shard window matches (entity from before the oldest shard).

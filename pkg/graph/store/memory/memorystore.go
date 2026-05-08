@@ -35,13 +35,17 @@ var (
 	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
 )
 
-// QueryOpts and DistanceMetric / RelTombstone aliases for readability — the
-// canonical declarations live in pkg/graph/store (the public contract).
-type (
-	QueryOpts      = storecontract.QueryOpts
-	DistanceMetric = storecontract.DistanceMetric
-	RelTombstone   = storecontract.RelTombstone
-)
+// QueryOpts is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store (the public contract).
+type QueryOpts = storecontract.QueryOpts
+
+// DistanceMetric is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type DistanceMetric = storecontract.DistanceMetric
+
+// RelTombstone is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type RelTombstone = storecontract.RelTombstone
 
 // Store is a thread-safe in-memory Store implementation.
 // Uses maps for O(1) entity lookup and nested hash-sets for O(1) index maintenance.

@@ -6,9 +6,10 @@ import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 // start is derived from the snowflake ID timestamp if not explicitly set
 // via TemporalMetadata.ValidFrom.
 //
-// Returns types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
+// NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
 // because Allen's algebra requires finite intervals.
-func (c *Core) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
+func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
+	c := t.c
 	start = c.nodeValidFrom(n)
 	tm := n.Temporal()
 	if tm == nil || tm.ValidTo == 0 {
@@ -22,8 +23,9 @@ func (c *Core) NodeInterval(n *types.Node) (start, end types.Instant, err error)
 // start is derived from the snowflake ID timestamp if not explicitly set
 // via TemporalMetadata.ValidFrom.
 //
-// Returns types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
-func (c *Core) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
+// RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
+func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
+	c := t.c
 	start = c.relValidFrom(r)
 	tm := r.Temporal()
 	if tm == nil || tm.ValidTo == 0 {
@@ -36,12 +38,13 @@ func (c *Core) RelInterval(r *types.Relationship) (start, end types.Instant, err
 // RelateNodes classifies the Allen relation of node A's interval to node B's.
 // Both nodes must have finite intervals (ValidTo != 0); returns
 // types.ErrOpenInterval otherwise.
-func (c *Core) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
-	aStart, aEnd, err := c.NodeInterval(a)
+func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
+	c := t.c
+	aStart, aEnd, err := c.Temporal.NodeInterval(a)
 	if err != nil {
 		return 0, err
 	}
-	bStart, bEnd, err := c.NodeInterval(b)
+	bStart, bEnd, err := c.Temporal.NodeInterval(b)
 	if err != nil {
 		return 0, err
 	}
@@ -50,12 +53,13 @@ func (c *Core) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
 
 // RelateRels classifies the Allen relation of relationship A's interval
 // to relationship B's. Both must have finite intervals.
-func (c *Core) RelateRels(a, b *types.Relationship) (types.AllenRelation, error) {
-	aStart, aEnd, err := c.RelInterval(a)
+func (t *TempOps) RelateRels(a, b *types.Relationship) (types.AllenRelation, error) {
+	c := t.c
+	aStart, aEnd, err := c.Temporal.RelInterval(a)
 	if err != nil {
 		return 0, err
 	}
-	bStart, bEnd, err := c.RelInterval(b)
+	bStart, bEnd, err := c.Temporal.RelInterval(b)
 	if err != nil {
 		return 0, err
 	}

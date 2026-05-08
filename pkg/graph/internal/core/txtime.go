@@ -13,14 +13,15 @@ import (
 // transaction time.
 var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the given transaction time")
 
-// GetNodeAsOf returns the node version that was current at the given transaction time.
+// NodeAsOf returns the node version that was current at the given transaction time.
 //
 // Algorithm:
 //  1. Try current: if TxFrom > 0 && TxFrom <= txTime && TxTo == 0 → return it.
-//  2. Scan GetNodeHistory(id): find version where TxFrom > 0 && TxFrom <= txTime
+//  2. Scan Nodes.History(id): find version where TxFrom > 0 && TxFrom <= txTime
 //     && (TxTo == 0 || TxTo > txTime) → return latest matching.
 //  3. None found → ErrNoVersionAsOf.
-func (c *Core) GetNodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
+func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
+	c := t.c
 	// Try current node first.
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -57,9 +58,10 @@ func (c *Core) GetNodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, 
 	return nil, ErrNoVersionAsOf
 }
 
-// GetRelAsOf returns the relationship version that was current at the given
+// RelAsOf returns the relationship version that was current at the given
 // transaction time. Mirrors GetNodeAsOf for relationships.
-func (c *Core) GetRelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
+func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	c := t.c
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -93,11 +95,12 @@ func (c *Core) GetRelAsOf(id types.RelID, txTime types.Instant) (*types.Relation
 	return nil, ErrNoVersionAsOf
 }
 
-// GetNodesAsOf returns all nodes that existed at the given transaction time.
+// NodesAsOf returns all nodes that existed at the given transaction time.
 // Collects all known node IDs (current + history) using ForEach iterators,
 // calls GetNodeAsOf per ID, skips ErrNoVersionAsOf.
 // Returns nil, nil if no nodes existed at txTime.
-func (c *Core) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
+	c := t.c
 	// Two-phase: collect IDs under store locks, then process after lock release.
 	// Callback must NOT call store methods (B15 — lock reentrancy deadlock).
 	seen := make(map[snowflake.ID]struct{})
@@ -117,7 +120,7 @@ func (c *Core) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// Phase 2: process with store locks released — safe to call GetNodeAsOf.
 	var result []*types.Node
 	for id := range seen {
-		n, err := c.GetNodeAsOf(types.NodeID(id), txTime)
+		n, err := c.Temporal.NodeAsOf(types.NodeID(id), txTime)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				continue
@@ -129,9 +132,10 @@ func (c *Core) GetNodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	return result, nil
 }
 
-// GetRelsAsOf returns all relationships that existed at the given transaction time.
+// RelsAsOf returns all relationships that existed at the given transaction time.
 // Mirrors GetNodesAsOf for relationships.
-func (c *Core) GetRelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
+	c := t.c
 	// Two-phase: collect IDs under store locks, then process after lock release.
 	seen := make(map[snowflake.ID]struct{})
 	if err := c.store.ForEachRelID(func(id types.RelID) bool {
@@ -150,7 +154,7 @@ func (c *Core) GetRelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 	// Phase 2: process with store locks released.
 	var result []*types.Relationship
 	for id := range seen {
-		r, err := c.GetRelAsOf(types.RelID(id), txTime)
+		r, err := c.Temporal.RelAsOf(types.RelID(id), txTime)
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				continue

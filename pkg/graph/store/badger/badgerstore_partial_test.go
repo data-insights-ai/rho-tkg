@@ -39,7 +39,7 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 	// Create a relationship using partial write.
 	relGen := newTestGen(t, 1)
 	relID := relGen.Generate()
-	r := types.NewRelationship(types.RelID(relID), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+	r := types.NewRelationship(types.RelID(relID), 1, n1.ID(), n2.ID())
 	if err := bs.PutRelEntityAndOut(r); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 	// Use full PutRelationship first, then partial delete.
 	relGen := newTestGen(t, 1)
 	relID := relGen.Generate()
-	r := types.NewRelationship(types.RelID(relID), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+	r := types.NewRelationship(types.RelID(relID), 1, n1.ID(), n2.ID())
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 	// Full PutRelationship.
 	relGen := newTestGen(t, 1)
 	relID := relGen.Generate()
-	r := types.NewRelationship(types.RelID(relID), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+	r := types.NewRelationship(types.RelID(relID), 1, n1.ID(), n2.ID())
 	if err := bs.PutRelationship(r); err != nil {
 		t.Fatal(err)
 	}
@@ -240,11 +240,9 @@ func TestOutgoingRelIDs_Sorted(t *testing.T) {
 	}
 
 	relGen := newTestGen(t, 1)
-	var relIDs []snowflake.ID
 	for i := 0; i < 5; i++ {
 		relID := relGen.Generate()
-		relIDs = append(relIDs, relID)
-		r := types.NewRelationship(types.RelID(relID), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+		r := types.NewRelationship(types.RelID(relID), 1, n1.ID(), n2.ID())
 		if err := bs.PutRelationship(r); err != nil {
 			t.Fatal(err)
 		}
@@ -277,13 +275,13 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 	relGen := newTestGen(t, 1)
 
 	// Type 1 rel.
-	r1 := types.NewRelationship(types.RelID(relGen.Generate()), 1, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+	r1 := types.NewRelationship(types.RelID(relGen.Generate()), 1, n1.ID(), n2.ID())
 	if err := bs.PutRelationship(r1); err != nil {
 		t.Fatal(err)
 	}
 
 	// Type 2 rel.
-	r2 := types.NewRelationship(types.RelID(relGen.Generate()), 2, types.NodeID(n1.ID()), types.NodeID(n2.ID()))
+	r2 := types.NewRelationship(types.RelID(relGen.Generate()), 2, n1.ID(), n2.ID())
 	if err := bs.PutRelationship(r2); err != nil {
 		t.Fatal(err)
 	}

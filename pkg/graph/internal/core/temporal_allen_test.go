@@ -13,12 +13,12 @@ func TestNodeInterval_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	// Freshly created node has ValidTo == 0 (open-ended).
-	_, _, err = g.NodeInterval(n)
+	_, _, err = g.Temporal.NodeInterval(n)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("NodeInterval on open-ended node: got err=%v, want ErrOpenInterval", err)
 	}
@@ -28,19 +28,19 @@ func TestRelInterval_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, nil)
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, nil)
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	_, _, err = g.RelInterval(r)
+	_, _, err = g.Temporal.RelInterval(r)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("RelInterval on open-ended rel: got err=%v, want ErrOpenInterval", err)
 	}
@@ -50,14 +50,14 @@ func TestNodeInterval_Resolved(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	// Set explicit ValidFrom and ValidTo.
 	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 
-	start, end, err := g.NodeInterval(n)
+	start, end, err := g.Temporal.NodeInterval(n)
 	if err != nil {
 		t.Fatalf("NodeInterval: %v", err)
 	}
@@ -73,14 +73,14 @@ func TestNodeInterval_SnowflakeDerived(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	// Set only ValidTo (no explicit ValidFrom) — start should come from snowflake ID.
 	n.SetTemporal(&types.TemporalMetadata{ValidTo: 9999999999999})
 
-	start, end, err := g.NodeInterval(n)
+	start, end, err := g.Temporal.NodeInterval(n)
 	if err != nil {
 		t.Fatalf("NodeInterval: %v", err)
 	}
@@ -99,13 +99,13 @@ func TestNodeInterval_NilTemporal(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	n.SetTemporal(nil)
 
-	_, _, err = g.NodeInterval(n)
+	_, _, err = g.Temporal.NodeInterval(n)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("NodeInterval with nil temporal: got err=%v, want ErrOpenInterval", err)
 	}
@@ -116,7 +116,7 @@ func TestNodeInterval_NilTemporal(t *testing.T) {
 // makeFiniteNode creates a node via the graph and sets its interval to [from, to).
 func makeFiniteNode(t *testing.T, g *Core, from, to types.Instant) *types.Node {
 	t.Helper()
-	n, err := g.AddNode([]string{"Event"}, nil)
+	n, err := g.Nodes.Add([]string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRelateNodes_AllRelations(t *testing.T) {
 			a := makeFiniteNode(t, g, tc.aFrom, tc.aTo)
 			b := makeFiniteNode(t, g, tc.bFrom, tc.bTo)
 
-			got, err := g.RelateNodes(a, b)
+			got, err := g.Temporal.RelateNodes(a, b)
 			if err != nil {
 				t.Fatalf("RelateNodes: %v", err)
 			}
@@ -182,11 +182,11 @@ func TestRelateNodes_InverseConsistency(t *testing.T) {
 		a := makeFiniteNode(t, g, p[0], p[1])
 		b := makeFiniteNode(t, g, p[2], p[3])
 
-		ab, err := g.RelateNodes(a, b)
+		ab, err := g.Temporal.RelateNodes(a, b)
 		if err != nil {
 			t.Fatalf("RelateNodes(a,b): %v", err)
 		}
-		ba, err := g.RelateNodes(b, a)
+		ba, err := g.Temporal.RelateNodes(b, a)
 		if err != nil {
 			t.Fatalf("RelateNodes(b,a): %v", err)
 		}
@@ -201,19 +201,19 @@ func TestRelateRels_Before(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, nil)
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, nil)
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r1, err := g.AddRelationship("KNOWS", a, b, nil)
+	r1, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	r2, err := g.AddRelationship("KNOWS", a, b, nil)
+	r2, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestRelateRels_Before(t *testing.T) {
 	r1.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
 	r2.SetTemporal(&types.TemporalMetadata{ValidFrom: 300, ValidTo: 400})
 
-	got, err := g.RelateRels(r1, r2)
+	got, err := g.Temporal.RelateRels(r1, r2)
 	if err != nil {
 		t.Fatalf("RelateRels: %v", err)
 	}
@@ -235,19 +235,19 @@ func TestRelateNodes_OneOpenEnded(t *testing.T) {
 	g := newTestGraph(t)
 
 	a := makeFiniteNode(t, g, 100, 200)
-	b, err := g.AddNode([]string{"Event"}, nil)
+	b, err := g.Nodes.Add([]string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	// b has ValidTo == 0 (open-ended)
 
-	_, err = g.RelateNodes(a, b)
+	_, err = g.Temporal.RelateNodes(a, b)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("RelateNodes with one open-ended: got err=%v, want ErrOpenInterval", err)
 	}
 
 	// Also test the reverse direction.
-	_, err = g.RelateNodes(b, a)
+	_, err = g.Temporal.RelateNodes(b, a)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("RelateNodes (reversed) with one open-ended: got err=%v, want ErrOpenInterval", err)
 	}
@@ -257,19 +257,19 @@ func TestRelateRels_OneOpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, nil)
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, nil)
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r1, err := g.AddRelationship("KNOWS", a, b, nil)
+	r1, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	r2, err := g.AddRelationship("KNOWS", a, b, nil)
+	r2, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestRelateRels_OneOpenEnded(t *testing.T) {
 	r1.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
 	// r2 stays open-ended (no ValidTo set by graph layer on creation)
 
-	_, err = g.RelateRels(r1, r2)
+	_, err = g.Temporal.RelateRels(r1, r2)
 	if !errors.Is(err, types.ErrOpenInterval) {
 		t.Errorf("RelateRels with one open-ended: got err=%v, want ErrOpenInterval", err)
 	}

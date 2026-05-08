@@ -11,15 +11,15 @@ import (
 
 func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"x": int64(1)})
+	n, _ := g.Nodes.Add([]string{"Thing"}, map[string]any{"x": int64(1)})
 	id := n.ID()
 
-	_, err := g.UpdateNodeInPlace(id, map[string]any{"x": int64(2)})
+	_, err := g.Nodes.UpdateInPlace(id, map[string]any{"x": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
 
-	hist, err := g.GetNodeHistory(id)
+	hist, err := g.Nodes.History(id)
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -30,11 +30,11 @@ func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
 
 func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"v": int64(0)})
+	n, _ := g.Nodes.Add([]string{"Thing"}, map[string]any{"v": int64(0)})
 	id := n.ID()
 	origVersion := n.Version()
 
-	updated, err := g.UpdateNodeInPlace(id, map[string]any{"v": int64(1)})
+	updated, err := g.Nodes.UpdateInPlace(id, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
@@ -45,10 +45,10 @@ func TestUpdateNodeInPlace_VersionUnchanged(t *testing.T) {
 
 func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, map[string]any{"a": "old"})
+	n, _ := g.Nodes.Add([]string{"Thing"}, map[string]any{"a": "old"})
 	id := n.ID()
 
-	updated, err := g.UpdateNodeInPlace(id, map[string]any{"a": "new"})
+	updated, err := g.Nodes.UpdateInPlace(id, map[string]any{"a": "new"})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
@@ -61,11 +61,11 @@ func TestUpdateNodeInPlace_PropertiesUpdated(t *testing.T) {
 
 func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, nil)
+	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
 	id := n.ID()
 
 	// Empty updates — should return current node without any write.
-	result, err := g.UpdateNodeInPlace(id, map[string]any{})
+	result, err := g.Nodes.UpdateInPlace(id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace empty: %v", err)
 	}
@@ -77,9 +77,9 @@ func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
-	n, _ := g.AddNode([]string{"Thing"}, nil)
+	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
 	id := n.ID()
 
 	var got []eventspkg.Event
@@ -90,7 +90,7 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	// Clear events from AddNode.
 	got = nil
 
-	_, err := g.UpdateNodeInPlace(id, map[string]any{"k": "v"})
+	_, err := g.Nodes.UpdateInPlace(id, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
@@ -105,13 +105,13 @@ func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 
 func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, nil)
+	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
 	id := n.ID()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.UpdateNodeInPlaceWithContext(ctx, id, map[string]any{"k": "v"})
+	_, err := g.Nodes.UpdateInPlaceWithContext(ctx, id, map[string]any{"k": "v"})
 	if err == nil {
 		t.Error("expected error for cancelled context")
 	}
@@ -121,17 +121,17 @@ func TestUpdateNodeInPlace_WithContext_Cancelled(t *testing.T) {
 
 func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": int64(1)})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"x": int64(1)})
 	id := r.ID()
 
-	_, err := g.UpdateRelInPlace(id, map[string]any{"x": int64(2)})
+	_, err := g.Rels.UpdateInPlace(id, map[string]any{"x": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
 
-	hist, err := g.GetRelHistory(id)
+	hist, err := g.Rels.History(id)
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -142,13 +142,13 @@ func TestUpdateRelInPlace_NoHistoryEntry(t *testing.T) {
 
 func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": int64(0)})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"v": int64(0)})
 	id := r.ID()
 	origVersion := r.Version()
 
-	updated, err := g.UpdateRelInPlace(id, map[string]any{"v": int64(1)})
+	updated, err := g.Rels.UpdateInPlace(id, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
@@ -159,12 +159,12 @@ func TestUpdateRelInPlace_VersionUnchanged(t *testing.T) {
 
 func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"a": "old"})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"a": "old"})
 	id := r.ID()
 
-	updated, err := g.UpdateRelInPlace(id, map[string]any{"a": "new"})
+	updated, err := g.Rels.UpdateInPlace(id, map[string]any{"a": "new"})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
@@ -177,12 +177,12 @@ func TestUpdateRelInPlace_PropertiesUpdated(t *testing.T) {
 
 func TestUpdateRelInPlace_NoOp(t *testing.T) {
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
-	result, err := g.UpdateRelInPlace(id, map[string]any{})
+	result, err := g.Rels.UpdateInPlace(id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace empty: %v", err)
 	}
@@ -194,11 +194,11 @@ func TestUpdateRelInPlace_NoOp(t *testing.T) {
 func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	var got []eventspkg.Event
@@ -207,7 +207,7 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	})
 	got = nil // clear AddNode/AddRel events
 
-	_, err := g.UpdateRelInPlace(id, map[string]any{"k": "v"})
+	_, err := g.Rels.UpdateInPlace(id, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
@@ -223,12 +223,12 @@ func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 // Verify that UpdateNodeInPlace shares the opNodeUpdates counter.
 func TestUpdateNodeInPlace_CountedAsUpdate(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing"}, nil)
+	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
 	id := n.ID()
 
-	before := g.Stats().NodesUpdated
-	_, _ = g.UpdateNodeInPlace(id, map[string]any{"k": "v"})
-	after := g.Stats().NodesUpdated
+	before := g.Stats.Get().NodesUpdated
+	_, _ = g.Nodes.UpdateInPlace(id, map[string]any{"k": "v"})
+	after := g.Stats.Get().NodesUpdated
 	if after != before+1 {
 		t.Errorf("NodesUpdated: got %d, want %d", after, before+1)
 	}

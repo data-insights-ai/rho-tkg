@@ -6,19 +6,20 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// ArchiveNode moves a reference node and its relationships from the reference
+// Archive moves a reference node and its relationships from the reference
 // shard to the reference archive. Only available with tiered.Store.
 // Returns storepkg.ErrNodeNotFound if the node is not in the reference shard.
 //
 // Concurrency: takes c.mu.Lock — same exclusion class as a transaction.
-// ArchiveNode reads adjacency, then runs cascade; without this lock a
+// Archive reads adjacency, then runs cascade; without this lock a
 // concurrent AddRelationship between the pre-scan and the cascade can
 // create a cross-shard rel touching the soon-to-be-archived node, which
 // the pre-scan misses and the cascade then partially destroys (the
 // rel's adjacency entries on the partner shard would dangle). Archiving
 // is a rare, batch-style admin operation; serializing against all
 // writers is acceptable and mirrors the tx/batch lock discipline.
-func (c *Core) ArchiveNode(id types.NodeID) error {
+func (a *AdminOps) Archive(id types.NodeID) error {
+	c := a.c
 	if ts, ok := c.store.(*tiered.Store); ok {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -27,12 +28,13 @@ func (c *Core) ArchiveNode(id types.NodeID) error {
 	return ErrNotTieredStore
 }
 
-// RestoreNode moves a reference node and its relationships from the reference
+// Restore moves a reference node and its relationships from the reference
 // archive back to the reference shard. Only available with tiered.Store.
 // Returns storepkg.ErrNodeNotFound if the node is not in the archive.
 //
-// Concurrency: takes c.mu.Lock — see ArchiveNode for the rationale.
-func (c *Core) RestoreNode(id types.NodeID) error {
+// Concurrency: takes c.mu.Lock — see Archive for the rationale.
+func (a *AdminOps) Restore(id types.NodeID) error {
+	c := a.c
 	if ts, ok := c.store.(*tiered.Store); ok {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -43,21 +45,21 @@ func (c *Core) RestoreNode(id types.NodeID) error {
 
 // DecomposeID extracts the creation time, node ID, and sequence number from
 // a snowflake ID. Works with any store type.
-func (c *Core) DecomposeID(id snowflake.ID) IDComponents {
+func (a *AdminOps) DecomposeID(id snowflake.ID) IDComponents {
 	return DecomposeID(id)
 }
 
 // ForceRotate triggers a hot-shard rotation. Only available with tiered.Store.
-func (c *Core) ForceRotate() error {
-	if ts, ok := c.store.(*tiered.Store); ok {
+func (a *AdminOps) ForceRotate() error {
+	if ts, ok := a.c.store.(*tiered.Store); ok {
 		return ts.ForceRotate()
 	}
 	return ErrNotTieredStore
 }
 
 // ListShards returns information about all shards. Only available with tiered.Store.
-func (c *Core) ListShards() ([]tiered.ShardInfo, error) {
-	if ts, ok := c.store.(*tiered.Store); ok {
+func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
+	if ts, ok := a.c.store.(*tiered.Store); ok {
 		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
@@ -65,17 +67,17 @@ func (c *Core) ListShards() ([]tiered.ShardInfo, error) {
 
 // RebuildCatalog reconstructs the shard catalog from live state.
 // Only available with tiered.Store.
-func (c *Core) RebuildCatalog() error {
-	if ts, ok := c.store.(*tiered.Store); ok {
+func (a *AdminOps) RebuildCatalog() error {
+	if ts, ok := a.c.store.(*tiered.Store); ok {
 		return ts.RebuildCatalog()
 	}
 	return ErrNotTieredStore
 }
 
-// RunRepair scans for cross-shard consistency issues and fixes them.
+// Repair scans for cross-shard consistency issues and fixes them.
 // Only available with tiered.Store.
-func (c *Core) RunRepair() (*tiered.RepairResult, error) {
-	if ts, ok := c.store.(*tiered.Store); ok {
+func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
+	if ts, ok := a.c.store.(*tiered.Store); ok {
 		return ts.RunRepair()
 	}
 	return nil, ErrNotTieredStore
@@ -83,9 +85,9 @@ func (c *Core) RunRepair() (*tiered.RepairResult, error) {
 
 // VerifyShard runs hash chain verification on all entities in a shard.
 // Only available with tiered.Store.
-func (c *Core) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
-	if ts, ok := c.store.(*tiered.Store); ok {
-		return ts.VerifyShard(c, shardName)
+func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
+	if ts, ok := a.c.store.(*tiered.Store); ok {
+		return ts.VerifyShard(a.c.Hash, shardName)
 	}
 	return nil, ErrNotTieredStore
 }
@@ -93,7 +95,8 @@ func (c *Core) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 // Reset atomically clears all entities, indexes, history, and counters from
 // the graph while preserving registries (label and relationship type tokens).
 // Acquires the graph write lock to prevent concurrent operations.
-func (c *Core) Reset() error {
+func (a *AdminOps) Reset() error {
+	c := a.c
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.store.Clear()

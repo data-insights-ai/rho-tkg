@@ -10,11 +10,11 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// NodesByLabelAndProperty returns nodes matching the label and property value,
+// ByLabelAndProperty returns nodes matching the label and property value,
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
 //
-// Without a temporal filter, the call falls through to the store-level
+// ByLabelAndProperty a temporal filter, the call falls through to the store-level
 // property index for O(matches) lookup. When opts carries a temporal filter,
 // the candidate set is the union of (nodes currently matching label+property
 // — seeded via the same property-index lookup) and (every known history ID).
@@ -22,7 +22,8 @@ import (
 // time and the predicate re-checked against that historical version, so a
 // node whose label and property held at the requested time is included even
 // if a later version no longer matches.
-func (c *Core) NodesByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	c := n.c
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -39,7 +40,7 @@ func (c *Core) NodesByLabelAndProperty(label, key string, value any, opts storep
 	}
 	// Indexed candidate set: nodes that currently match label+property via the
 	// store-level property index (when available — falls back internally to a
-	// label scan if no property index is registered), merged with all history
+	// label scan if n property index is registered), merged with all history
 	// IDs to cover deleted/changed nodes whose historical version matched.
 	currentMatching, err := c.store.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {

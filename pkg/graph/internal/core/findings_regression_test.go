@@ -76,7 +76,7 @@ func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []
 	}
 }
 
-// Regression: VerifyNodeHashChain recomputes each version's hash with that
+// Regression: VerifyNodeChain recomputes each version's hash with that
 // version's labels — not with current's (or chain[len(chain)-1]'s when current
 // is nil). The pre-fix code (B30) extracted labels once and reused them across
 // the whole chain, silently mis-verifying any label-mutated history.
@@ -97,27 +97,27 @@ func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []
 //  3. Deleted entity. When current is nil, pre-fix fell back to
 //     chain[len(chain)-1]'s labels — same B30 bug, different branch. A
 //     legitimate label-mutated chain on a deleted node must still verify.
-func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
+func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 	t.Run("three-distinct-label-sets verifies", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.AddNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.RemoveNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
-		if err := g.AddNodeLabel(id, "C"); err != nil {
+		if err := g.Nodes.AddLabel(id, "C"); err != nil {
 			t.Fatalf("AddNodeLabel C: %v", err)
 		}
 
-		valid, err := g.VerifyNodeHashChain(id)
+		valid, err := g.Hash.VerifyNodeChain(id)
 		if err != nil {
-			t.Fatalf("VerifyNodeHashChain: %v", err)
+			t.Fatalf("VerifyNodeChain: %v", err)
 		}
 		if !valid {
 			t.Fatal("legitimate label-mutation chain must verify")
@@ -138,15 +138,15 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		}
 
 		// 1. Build a real chain: v0={A}, v1={A,B}, v2={A}.
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.AddNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.RemoveNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
 
@@ -160,11 +160,11 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 			t.Fatalf("labels.GetOrCreate(C): %v", err)
 		}
 
-		current, err := g.GetNode(id)
+		current, err := g.Nodes.Get(id)
 		if err != nil {
 			t.Fatalf("GetNode: %v", err)
 		}
-		currentLabels := g.NodeLabels(current) // ["A"]
+		currentLabels := g.Nodes.Labels(current) // ["A"]
 
 		v1Orig := ms.GetNodeHistoryEntry(id, 1)
 
@@ -181,7 +181,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		//    preFix  = original entry hashed under current's labels  ["A"]
 		//    postFix = tampered entry hashed under its own labels    ["A","C"]
 		preFixV1Hash := integrity.ComputeNodeHash(v1Orig, currentLabels)
-		postFixV1Hash := integrity.ComputeNodeHash(v1Tampered, g.NodeLabels(v1Tampered))
+		postFixV1Hash := integrity.ComputeNodeHash(v1Tampered, g.Nodes.Labels(v1Tampered))
 
 		// 5. Sanity guard: if the two hashes coincide, the test can't
 		//    discriminate — fail loudly rather than silently pass.
@@ -210,9 +210,9 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 		// Assertion: pre-fix would recompute v1 with ["A"], match preFixV1Hash,
 		// wrongly accept. Post-fix recomputes with NodeLabels(v1Tampered) =
 		// ["A","C"], mismatches, rejects.
-		valid, err := g.VerifyNodeHashChain(id)
+		valid, err := g.Hash.VerifyNodeChain(id)
 		if err != nil {
-			t.Fatalf("VerifyNodeHashChain: %v", err)
+			t.Fatalf("VerifyNodeChain: %v", err)
 		}
 		if valid {
 			t.Fatal("tampered v1 (tokens {A,C}, hash computed under current's labels) must NOT verify; pre-fix code would have accepted")
@@ -221,27 +221,27 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 
 	t.Run("deleted node with divergent history labels verifies", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.AddNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.RemoveNodeLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
-		if err := g.AddNodeLabel(id, "C"); err != nil {
+		if err := g.Nodes.AddLabel(id, "C"); err != nil {
 			t.Fatalf("AddNodeLabel C: %v", err)
 		}
-		if err := g.DeleteNode(id); err != nil {
+		if err := g.Nodes.Delete(id); err != nil {
 			t.Fatalf("DeleteNode: %v", err)
 		}
 
-		valid, err := g.VerifyNodeHashChain(id)
+		valid, err := g.Hash.VerifyNodeChain(id)
 		if err != nil {
-			t.Fatalf("VerifyNodeHashChain: %v", err)
+			t.Fatalf("VerifyNodeChain: %v", err)
 		}
 		if !valid {
 			t.Fatal("legitimate label-mutated chain on deleted node must verify (history-only path)")
@@ -250,7 +250,7 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 }
 
 // TestNodeHashChain_InspectsHashValues probes the actual hash bytes rather
-// than trusting VerifyNodeHashChain's boolean return. Catches three failure
+// than trusting VerifyNodeChain's boolean return. Catches three failure
 // modes the soft test above cannot:
 //
 //  1. ComputeNodeHash returning a constant (e.g. all zeros) — every Hash is
@@ -260,12 +260,12 @@ func TestVerifyNodeHashChain_LabelMutations(t *testing.T) {
 //  3. PrevHash not being maintained — vN's PrevHash must equal v(N-1)'s Hash.
 //
 // Walks the full chain (history + current) and verifies link integrity
-// directly, independent of VerifyNodeHashChain.
+// directly, independent of VerifyNodeChain.
 func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	g := newTestGraph(t)
 
 	// v0: genesis version.
-	n, err := g.AddNode([]string{"A"}, nil)
+	n, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -283,10 +283,10 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	v0Hash := v0.Hash
 
 	// v1: AddNodeLabel must change Hash (labels feed input) AND link PrevHash to v0.
-	if err := g.AddNodeLabel(id, "B"); err != nil {
+	if err := g.Nodes.AddLabel(id, "B"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
-	current, err := g.GetNode(id)
+	current, err := g.Nodes.Get(id)
 	if err != nil {
 		t.Fatalf("GetNode after add: %v", err)
 	}
@@ -303,10 +303,10 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	v1Hash := v1.Hash
 
 	// v2: RemoveNodeLabel must change Hash AND link PrevHash to v1.
-	if err := g.RemoveNodeLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
-	current, err = g.GetNode(id)
+	current, err = g.Nodes.Get(id)
 	if err != nil {
 		t.Fatalf("GetNode after remove: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	}
 
 	// Defense in depth: walk persisted chain (history + current) and re-verify every link.
-	history, err := g.GetNodeHistory(id)
+	history, err := g.Nodes.History(id)
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person", "Legacy"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person", "Legacy"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -351,11 +351,11 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.RemoveNodeLabel(id, "Legacy"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Legacy"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	nodes, err := g.GetNodesByLabelValidAt("Legacy", queryTime)
+	nodes, err := g.Temporal.NodesByLabelAt("Legacy", queryTime)
 	if err != nil {
 		t.Fatalf("GetNodesByLabelValidAt: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *testing.T) {
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"status": "draft"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -375,12 +375,12 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 	queryTime := g.nodeValidFrom(n)
 
 	time.Sleep(2 * time.Millisecond)
-	updated, err := g.UpdateNode(id, map[string]any{"status": "published"})
+	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	nodes, err := g.NodesByLabelPropertyAndTime("Person", "status", "draft", queryTime)
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "status", "draft", queryTime)
 	if err != nil {
 		t.Fatalf("NodesByLabelPropertyAndTime: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 	}
 
 	end := updated.Temporal().UpdatedAt
-	nodes, err = g.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end)
+	nodes, err = g.Temporal.NodesByLabelPropertyDuring("Person", "status", "draft", queryTime, end)
 	if err != nil {
 		t.Fatalf("NodesByLabelPropertyDuring: %v", err)
 	}
@@ -401,26 +401,26 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
+	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", a, b, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	queryTime := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(r.ID()); err != nil {
+	if err := g.Rels.Delete(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	neighbors, err := g.GetNeighborsValidAt(a.ID(), queryTime)
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), queryTime)
 	if err != nil {
 		t.Fatalf("GetNeighborsValidAt: %v", err)
 	}
@@ -439,14 +439,14 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 			name:   "add",
 			labels: []string{"A"},
 			mutate: func(g *Core, id types.NodeID) error {
-				return g.AddNodeLabel(id, "B")
+				return g.Nodes.AddLabel(id, "B")
 			},
 		},
 		{
 			name:   "remove",
 			labels: []string{"A", "B"},
 			mutate: func(g *Core, id types.NodeID) error {
-				return g.RemoveNodeLabel(id, "B")
+				return g.Nodes.RemoveLabel(id, "B")
 			},
 		},
 	}
@@ -454,7 +454,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := newTestGraph(t)
-			n, err := g.AddNode(tt.labels, nil)
+			n, err := g.Nodes.Add(tt.labels, nil)
 			if err != nil {
 				t.Fatalf("AddNode: %v", err)
 			}
@@ -466,7 +466,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 				t.Fatalf("label mutation: %v", err)
 			}
 
-			current, err := g.GetNode(id)
+			current, err := g.Nodes.Get(id)
 			if err != nil {
 				t.Fatalf("GetNode: %v", err)
 			}
@@ -475,7 +475,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 				t.Fatalf("current TxFrom = %v, want > original %v", currentTM, origTxFrom)
 			}
 
-			hist, err := g.GetNodeHistory(id)
+			hist, err := g.Nodes.History(id)
 			if err != nil {
 				t.Fatalf("GetNodeHistory: %v", err)
 			}
@@ -496,13 +496,13 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 	t.Run("idempotent add label", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		n, err := g.AddNode([]string{"A", "B"}, nil)
+		n, err := g.Nodes.Add([]string{"A", "B"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-		if err := g.AddNodeLabel(n.ID(), "B"); err != nil {
+		if err := g.Nodes.AddLabel(n.ID(), "B"); err != nil {
 			t.Fatalf("AddNodeLabel: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -512,13 +512,13 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 	t.Run("empty node update", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-		if _, err := g.UpdateNode(n.ID(), map[string]any{}); err != nil {
+		if _, err := g.Nodes.Update(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -528,15 +528,15 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 	t.Run("empty relationship update", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		a, _ := g.AddNode([]string{"A"}, nil)
-		b, _ := g.AddNode([]string{"B"}, nil)
-		r, err := g.AddRelationship("REL", a, b, nil)
+		a, _ := g.Nodes.Add([]string{"A"}, nil)
+		b, _ := g.Nodes.Add([]string{"B"}, nil)
+		r, err := g.Rels.Add("REL", a, b, nil)
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventRelUpdate)
 
-		if _, err := g.UpdateRelationship(r.ID(), map[string]any{}); err != nil {
+		if _, err := g.Rels.Update(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -546,13 +546,13 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 	t.Run("empty node in-place update", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-		if _, err := g.UpdateNodeInPlace(n.ID(), map[string]any{}); err != nil {
+		if _, err := g.Nodes.UpdateInPlace(n.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateNodeInPlace: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -562,15 +562,15 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 	t.Run("empty relationship in-place update", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		a, _ := g.AddNode([]string{"A"}, nil)
-		b, _ := g.AddNode([]string{"B"}, nil)
-		r, err := g.AddRelationship("REL", a, b, nil)
+		a, _ := g.Nodes.Add([]string{"A"}, nil)
+		b, _ := g.Nodes.Add([]string{"B"}, nil)
+		r, err := g.Rels.Add("REL", a, b, nil)
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventRelUpdate)
 
-		if _, err := g.UpdateRelInPlace(r.ID(), map[string]any{}); err != nil {
+		if _, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{}); err != nil {
 			t.Fatalf("UpdateRelInPlace: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -580,13 +580,13 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 
 	t.Run("compare-and-set absent delete", func(t *testing.T) {
 		g := newTestGraphForEvents(t)
-		n, err := g.AddNode([]string{"A"}, nil)
+		n, err := g.Nodes.Add([]string{"A"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-		ok, err := g.CompareAndSetProperty(n.ID(), "missing", nil, nil)
+		ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "missing", nil, nil)
 		if err != nil {
 			t.Fatalf("CompareAndSetProperty: %v", err)
 		}
@@ -602,9 +602,9 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	g := newTestGraphForEvents(t)
 	events := collectEvents(g, eventspkg.EventNodeCreate)
-	before := g.Stats()
+	before := g.Stats.Get()
 
-	n, err := g.ImportNodeWithID(context.Background(), types.NodeID(12345), []string{"Person"}, map[string]any{
+	n, err := g.Nodes.Import(context.Background(), types.NodeID(12345), []string{"Person"}, map[string]any{
 		"name":           "Alice",
 		"tkg_valid_from": int64(1000),
 		"tkg_created_at": int64(900),
@@ -629,7 +629,7 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 	if got := drain(events); len(got) != 1 || got[0].Type != eventspkg.EventNodeCreate || got[0].EntityID != types.EntityID(n.ID()) {
 		t.Fatalf("expected one eventspkg.EventNodeCreate for imported node, got %v", got)
 	}
-	after := g.Stats()
+	after := g.Stats.Get()
 	if after.NodesAdded != before.NodesAdded+1 {
 		t.Fatalf("NodesAdded = %d, want %d", after.NodesAdded, before.NodesAdded+1)
 	}
@@ -637,19 +637,19 @@ func TestImportNodeWithID_MatchesAddNodeMetadataEventsAndStats(t *testing.T) {
 
 func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t *testing.T) {
 	g := newTestGraphForEvents(t)
-	a, err := g.AddNode([]string{"A"}, nil)
+	a, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"B"}, nil)
+	b, err := g.Nodes.Add([]string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventRelCreate)
-	before := g.Stats()
+	before := g.Stats.Get()
 
-	r, err := g.ImportRelationshipWithID(context.Background(), types.RelID(54321), "REL", a, b, map[string]any{
+	r, err := g.Rels.Import(context.Background(), types.RelID(54321), "REL", a, b, map[string]any{
 		"weight":         int64(1),
 		"tkg_valid_from": int64(2000),
 		"tkg_created_at": int64(1900),
@@ -674,7 +674,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 	if got := drain(events); len(got) != 1 || got[0].Type != eventspkg.EventRelCreate || got[0].EntityID != types.EntityID(r.ID()) {
 		t.Fatalf("expected one eventspkg.EventRelCreate for imported relationship, got %v", got)
 	}
-	after := g.Stats()
+	after := g.Stats.Get()
 	if after.RelsAdded != before.RelsAdded+1 {
 		t.Fatalf("RelsAdded = %d, want %d", after.RelsAdded, before.RelsAdded+1)
 	}
@@ -704,15 +704,15 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 
-	alice, err := g.AddNode([]string{"Doc", "Pending"}, nil)
+	alice, err := g.Nodes.Add([]string{"Doc", "Pending"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode alice: %v", err)
 	}
-	bob, err := g.AddNode([]string{"Doc"}, nil)
+	bob, err := g.Nodes.Add([]string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode bob: %v", err)
 	}
-	carol, err := g.AddNode([]string{"Doc", "Pending"}, nil)
+	carol, err := g.Nodes.Add([]string{"Doc", "Pending"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode carol: %v", err)
 	}
@@ -724,13 +724,13 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	t0 := g.nodeValidFrom(carol)
 
 	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before mutations
-	if err := g.RemoveNodeLabel(aliceID, "Pending"); err != nil {
+	if err := g.Nodes.RemoveLabel(aliceID, "Pending"); err != nil {
 		t.Fatalf("RemoveNodeLabel alice: %v", err)
 	}
-	if err := g.AddNodeLabel(bobID, "Pending"); err != nil {
+	if err := g.Nodes.AddLabel(bobID, "Pending"); err != nil {
 		t.Fatalf("AddNodeLabel bob: %v", err)
 	}
-	if err := g.DeleteNode(carolID); err != nil {
+	if err := g.Nodes.Delete(carolID); err != nil {
 		t.Fatalf("DeleteNode carol: %v", err)
 	}
 	// tNow: +1 ms ensures we're strictly past the last mutation's millisecond
@@ -738,14 +738,14 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: alice and carol carry Pending; bob does not.
-	hits, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0})
+	hits, err := g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Pending@t0: %v", err)
 	}
 	assertNodeSet(t, "Pending@t0", hits, []types.NodeID{aliceID, carolID})
 
 	// At tNow: alice lost Pending, carol is gone, only bob has it.
-	hits, err = g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: tNow})
+	hits, err = g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("Pending@tNow: %v", err)
 	}
@@ -753,25 +753,25 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 
 	// During [t0, tNow): each had Pending at some overlapping moment.
 	// Requires findNodeVersionMatchingDuring to scan all overlapping versions.
-	hits, err = g.NodesByLabel("Pending", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
+	hits, err = g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
 	if err != nil {
 		t.Fatalf("Pending@[t0,tNow): %v", err)
 	}
 	assertNodeSet(t, "Pending@[t0,tNow)", hits, []types.NodeID{aliceID, bobID, carolID})
 
 	// Pagination on the temporal path: Limit + cursor walks without duplication.
-	page1, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, Limit: 1})
+	page1, err := g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, Limit: 1})
 	if err != nil || len(page1) != 1 {
 		t.Fatalf("page1: got %d nodes, err=%v; want 1, nil", len(page1), err)
 	}
-	page2, err := g.NodesByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, After: types.EntityID(page1[0].ID())})
+	page2, err := g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidAt: t0, After: types.EntityID(page1[0].ID())})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
 	}
 	assertNodeSet(t, "paginated Pending@t0", append(page1, page2...), []types.NodeID{aliceID, carolID})
 
 	// A label nobody ever wrote returns empty (and does not error).
-	hits, err = g.NodesByLabel("Phantom", storepkg.QueryOpts{ValidAt: t0})
+	hits, err = g.Nodes.ByLabel("Phantom", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Phantom@t0: %v", err)
 	}
@@ -807,19 +807,19 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 
-	alice, err := g.AddNode([]string{"Doc"}, map[string]any{"status": "draft"})
+	alice, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode alice: %v", err)
 	}
-	bob, err := g.AddNode([]string{"Doc"}, map[string]any{"status": "published"})
+	bob, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("AddNode bob: %v", err)
 	}
-	carol, err := g.AddNode([]string{"Doc"}, map[string]any{"status": "draft"})
+	carol, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode carol: %v", err)
 	}
-	dave, err := g.AddNode([]string{"Doc"}, map[string]any{"status": "draft"})
+	dave, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode dave: %v", err)
 	}
@@ -832,14 +832,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	t0 := g.nodeValidFrom(dave)
 
 	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before mutations
-	updatedAlice, err := g.UpdateNode(aliceID, map[string]any{"status": "published"})
+	updatedAlice, err := g.Nodes.Update(aliceID, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode alice: %v", err)
 	}
-	if _, err := g.UpdateNode(bobID, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Update(bobID, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("UpdateNode bob: %v", err)
 	}
-	if err := g.DeleteNode(daveID); err != nil {
+	if err := g.Nodes.Delete(daveID); err != nil {
 		t.Fatalf("DeleteNode dave: %v", err)
 	}
 	// aliceMutation: the millisecond at which alice's v0 ends and v1 begins.
@@ -849,14 +849,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: alice, carol, dave have status=draft; bob has published.
-	hits, err := g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: t0})
+	hits, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("draft@t0: %v", err)
 	}
 	assertNodeSet(t, "draft@t0", hits, []types.NodeID{aliceID, carolID, daveID})
 
 	// At tNow: alice changed, dave deleted; bob and carol have status=draft.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: tNow})
+	hits, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("draft@tNow: %v", err)
 	}
@@ -868,7 +868,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// her. Bob, carol, and dave are found by both correct and buggy
 	// implementations (carol's v0 still matches, bob's v1 matches, dave's
 	// tombstone preserves status=draft).
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
+	hits, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidStart: t0, ValidEnd: tNow})
 	if err != nil {
 		t.Fatalf("draft@[t0,tNow): %v", err)
 	}
@@ -878,14 +878,14 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// equal to aliceMutation she is on v1 (published), so draft must NOT
 	// include her. One millisecond earlier, she is still on v0, so draft MUST
 	// include her. Probes the half-open interval semantic.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation})
+	hits, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation})
 	if err != nil {
 		t.Fatalf("draft@aliceMutation: %v", err)
 	}
 	if containsNodeID(hits, aliceID) {
 		t.Errorf("draft@aliceMutation: alice present, but her v1 (published) starts at this instant")
 	}
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation - 1})
+	hits, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: aliceMutation - 1})
 	if err != nil {
 		t.Fatalf("draft@aliceMutation-1: %v", err)
 	}
@@ -894,7 +894,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	}
 
 	// Negative: a value nobody ever wrote returns empty.
-	hits, err = g.NodesByLabelAndProperty("Doc", "status", "archived", storepkg.QueryOpts{ValidAt: t0})
+	hits, err = g.Nodes.ByLabelAndProperty("Doc", "status", "archived", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("archived@t0: %v", err)
 	}
@@ -915,23 +915,23 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"P"}, nil)
+	a, err := g.Nodes.Add([]string{"P"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.AddNode([]string{"P"}, nil)
+	b, err := g.Nodes.Add([]string{"P"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r1, err := g.AddRelationship("KNOWS", a, b, nil)
+	r1, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship r1: %v", err)
 	}
-	r2, err := g.AddRelationship("WORKS_WITH", a, b, nil)
+	r2, err := g.Rels.Add("WORKS_WITH", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship r2: %v", err)
 	}
-	r3, err := g.AddRelationship("KNOWS", b, a, nil)
+	r3, err := g.Rels.Add("KNOWS", b, a, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship r3: %v", err)
 	}
@@ -943,41 +943,41 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	t0 := g.relValidFrom(r3)
 
 	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before deletes
-	if err := g.DeleteRelationship(r1ID); err != nil {
+	if err := g.Rels.Delete(r1ID); err != nil {
 		t.Fatalf("DeleteRelationship r1: %v", err)
 	}
-	if err := g.DeleteRelationship(r2ID); err != nil {
+	if err := g.Rels.Delete(r2ID); err != nil {
 		t.Fatalf("DeleteRelationship r2: %v", err)
 	}
 	// tNow: +1 ms ensures we're strictly past the last mutation's millisecond.
 	tNow := types.Instant(time.Now().UnixMilli() + 1)
 
 	// At t0: KNOWS = {r1, r3}; WORKS_WITH = {r2}.
-	got, err := g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: t0})
+	got, err := g.Rels.ByType("KNOWS", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("KNOWS@t0: %v", err)
 	}
 	assertRelSet(t, "KNOWS@t0", got, []types.RelID{r1ID, r3ID})
-	got, err = g.RelationshipsByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: t0})
+	got, err = g.Rels.ByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@t0: %v", err)
 	}
 	assertRelSet(t, "WORKS_WITH@t0", got, []types.RelID{r2ID})
 
 	// At tNow: r1 and r2 deleted; r3 survives. WORKS_WITH is empty.
-	got, err = g.RelationshipsByType("KNOWS", storepkg.QueryOpts{ValidAt: tNow})
+	got, err = g.Rels.ByType("KNOWS", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("KNOWS@tNow: %v", err)
 	}
 	assertRelSet(t, "KNOWS@tNow", got, []types.RelID{r3ID})
-	got, err = g.RelationshipsByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: tNow})
+	got, err = g.Rels.ByType("WORKS_WITH", storepkg.QueryOpts{ValidAt: tNow})
 	if err != nil {
 		t.Fatalf("WORKS_WITH@tNow: %v", err)
 	}
 	assertRelSet(t, "WORKS_WITH@tNow", got, []types.RelID{})
 
 	// A type nobody ever used returns empty.
-	got, err = g.RelationshipsByType("Phantom", storepkg.QueryOpts{ValidAt: t0})
+	got, err = g.Rels.ByType("Phantom", storepkg.QueryOpts{ValidAt: t0})
 	if err != nil {
 		t.Fatalf("Phantom@t0: %v", err)
 	}
@@ -996,7 +996,7 @@ func TestRemoveNodeLabel_PreservesHistory(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, err := g.AddNode([]string{"Person", "Admin"}, nil)
+	n, err := g.Nodes.Add([]string{"Person", "Admin"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1012,7 +1012,7 @@ func TestRemoveNodeLabel_PreservesHistory(t *testing.T) {
 	}
 
 	// Remove a label — should write version 0 to history and bump current to version 1.
-	if err := g.RemoveNodeLabel(id, "Admin"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Admin"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

@@ -20,11 +20,11 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 	defer g.Close()
 
 	// Verify we can write and read through the graph.
-	node, err := g.AddNode([]string{"Test"}, nil)
+	node, err := g.Nodes.Add([]string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	got, err := g.GetNode(node.ID())
+	got, err := g.Nodes.Get(node.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}

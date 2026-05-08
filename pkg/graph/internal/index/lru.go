@@ -11,6 +11,7 @@ import (
 // CacheStatus indicates the result of an LRU cache lookup.
 type CacheStatus int
 
+// CacheStatus values returned by LRU lookups.
 const (
 	CacheMiss    CacheStatus = iota // key not in cache
 	CacheHit                        // key found, value valid

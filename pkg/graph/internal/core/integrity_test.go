@@ -17,7 +17,7 @@ func TestComputeNodeHashDeterministic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("name", "Alice")
@@ -38,7 +38,7 @@ func TestComputeNodeHashChangesWithProperties(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n1.SetProperty("name", "Alice")
@@ -58,7 +58,7 @@ func TestComputeNodeHashChangesWithVersion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	n1.SetVersion(0)
@@ -78,7 +78,7 @@ func TestComputeNodeHashChangesWithLabels(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 
@@ -94,8 +94,8 @@ func TestComputeNodeHashLabelOrderIndependent(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
-	actorTok, _ := g.GetOrCreateLabel("Actor")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
+	actorTok, _ := g.Resolve.GetOrCreateLabel("Actor")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, []uint16{actorTok})
 
@@ -194,7 +194,7 @@ func TestHashMapPropertyDeterministic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("meta", map[string]any{
@@ -218,7 +218,7 @@ func TestHashTypeDistinction(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	// int(1) vs string("1") must produce different hashes.
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
@@ -239,7 +239,7 @@ func TestHashNestedMapDeterministic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	personTok, _ := g.GetOrCreateLabel("Person")
+	personTok, _ := g.Resolve.GetOrCreateLabel("Person")
 
 	n := types.NewNode(types.NodeID(snowflake.ID(100)), personTok, nil)
 	_ = n.SetProperty("nested", []any{
@@ -257,15 +257,15 @@ func TestHashNestedMapDeterministic(t *testing.T) {
 	}
 }
 
-// --- VerifyNodeHashChain tests ---
+// --- VerifyNodeChain tests ---
 
-func TestVerifyNodeHashChain_GenesisOnly(t *testing.T) {
+func TestVerifyNodeChain_GenesisOnly(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 
-	valid, err := g.VerifyNodeHashChain(n.ID())
+	valid, err := g.Hash.VerifyNodeChain(n.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,18 +274,18 @@ func TestVerifyNodeHashChain_GenesisOnly(t *testing.T) {
 	}
 }
 
-func TestVerifyNodeHashChain_MultipleUpdates(t *testing.T) {
+func TestVerifyNodeChain_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.UpdateNode(id, map[string]any{"name": "Bob"})
-	g.UpdateNode(id, map[string]any{"name": "Charlie"})
-	g.UpdateNode(id, map[string]any{"age": int64(30)})
+	g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(id, map[string]any{"name": "Charlie"})
+	g.Nodes.Update(id, map[string]any{"age": int64(30)})
 
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -294,11 +294,11 @@ func TestVerifyNodeHashChain_MultipleUpdates(t *testing.T) {
 	}
 }
 
-func TestVerifyNodeHashChain_TamperedHash(t *testing.T) {
+func TestVerifyNodeChain_TamperedHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Tamper with the stored hash.
@@ -306,7 +306,7 @@ func TestVerifyNodeHashChain_TamperedHash(t *testing.T) {
 	current.SetIntegrity(&types.NodeIntegrity{Hash: "tampered", PrevHash: ""})
 	_ = g.store.ReplaceNode(current)
 
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -315,14 +315,14 @@ func TestVerifyNodeHashChain_TamperedHash(t *testing.T) {
 	}
 }
 
-func TestVerifyNodeHashChain_BrokenPrevHash(t *testing.T) {
+func TestVerifyNodeChain_BrokenPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.UpdateNode(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(id, map[string]any{"name": "Bob"})
 
 	// Break the PrevHash link on the current version.
 	current, _ := g.store.GetNode(id)
@@ -330,7 +330,7 @@ func TestVerifyNodeHashChain_BrokenPrevHash(t *testing.T) {
 	current.SetIntegrity(&types.NodeIntegrity{Hash: ig.Hash, PrevHash: "broken"})
 	_ = g.store.ReplaceNode(current)
 
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -339,22 +339,22 @@ func TestVerifyNodeHashChain_BrokenPrevHash(t *testing.T) {
 	}
 }
 
-func TestVerifyNodeHashChain_NonExistent(t *testing.T) {
+func TestVerifyNodeChain_NonExistent(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
 
-	_, err := g.VerifyNodeHashChain(types.NodeID(999))
+	_, err := g.Hash.VerifyNodeChain(types.NodeID(999))
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
 }
 
-func TestVerifyNodeHashChain_NilIntegrity(t *testing.T) {
+func TestVerifyNodeChain_NilIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	// Clear integrity metadata.
@@ -362,7 +362,7 @@ func TestVerifyNodeHashChain_NilIntegrity(t *testing.T) {
 	current.SetIntegrity(nil)
 	_ = g.store.ReplaceNode(current)
 
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -371,17 +371,17 @@ func TestVerifyNodeHashChain_NilIntegrity(t *testing.T) {
 	}
 }
 
-func TestVerifyNodeHashChain_PropertyChange(t *testing.T) {
+func TestVerifyNodeChain_PropertyChange(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.UpdateNode(id, map[string]any{"name": "Bob"})
-	g.UpdateNode(id, map[string]any{"name": nil, "age": int64(25)})
+	g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(id, map[string]any{"name": nil, "age": int64(25)})
 
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -390,17 +390,17 @@ func TestVerifyNodeHashChain_PropertyChange(t *testing.T) {
 	}
 }
 
-// --- VerifyRelHashChain tests ---
+// --- VerifyRelChain tests ---
 
-func TestVerifyRelHashChain_GenesisOnly(t *testing.T) {
+func TestVerifyRelChain_GenesisOnly(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2020)})
 
-	valid, err := g.VerifyRelHashChain(r.ID())
+	valid, err := g.Hash.VerifyRelChain(r.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -409,20 +409,20 @@ func TestVerifyRelHashChain_GenesisOnly(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_MultipleUpdates(t *testing.T) {
+func TestVerifyRelChain_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
-	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})
-	g.UpdateRelationship(id, map[string]any{"weight": int64(3)})
-	g.UpdateRelationship(id, map[string]any{"note": "old friends"})
+	g.Rels.Update(id, map[string]any{"weight": int64(2)})
+	g.Rels.Update(id, map[string]any{"weight": int64(3)})
+	g.Rels.Update(id, map[string]any{"note": "old friends"})
 
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -431,20 +431,20 @@ func TestVerifyRelHashChain_MultipleUpdates(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_TamperedHash(t *testing.T) {
+func TestVerifyRelChain_TamperedHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetIntegrity(&types.RelIntegrity{Hash: "tampered", PrevHash: ""})
 	_ = g.store.ReplaceRelationship(current)
 
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -453,23 +453,23 @@ func TestVerifyRelHashChain_TamperedHash(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_BrokenPrevHash(t *testing.T) {
+func TestVerifyRelChain_BrokenPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
-	g.UpdateRelationship(id, map[string]any{"weight": int64(5)})
+	g.Rels.Update(id, map[string]any{"weight": int64(5)})
 
 	current, _ := g.store.GetRelationship(id)
 	ig := current.Integrity()
 	current.SetIntegrity(&types.RelIntegrity{Hash: ig.Hash, PrevHash: "broken"})
 	_ = g.store.ReplaceRelationship(current)
 
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -478,31 +478,31 @@ func TestVerifyRelHashChain_BrokenPrevHash(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_NonExistent(t *testing.T) {
+func TestVerifyRelChain_NonExistent(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
 
-	_, err := g.VerifyRelHashChain(types.RelID(999))
+	_, err := g.Hash.VerifyRelChain(types.RelID(999))
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
 
-func TestVerifyRelHashChain_NilIntegrity(t *testing.T) {
+func TestVerifyRelChain_NilIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetIntegrity(nil)
 	_ = g.store.ReplaceRelationship(current)
 
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -511,19 +511,19 @@ func TestVerifyRelHashChain_NilIntegrity(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_PropertyChange(t *testing.T) {
+func TestVerifyRelChain_PropertyChange(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
-	g.UpdateRelationship(id, map[string]any{"weight": int64(10)})
-	g.UpdateRelationship(id, map[string]any{"weight": nil, "note": "test"})
+	g.Rels.Update(id, map[string]any{"weight": int64(10)})
+	g.Rels.Update(id, map[string]any{"weight": nil, "note": "test"})
 
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -534,20 +534,20 @@ func TestVerifyRelHashChain_PropertyChange(t *testing.T) {
 
 // --- Truncation resilience tests ---
 
-func TestVerifyNodeHashChain_AfterTruncation(t *testing.T) {
+func TestVerifyNodeChain_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
-	g.UpdateNode(id, map[string]any{"name": "Bob"})
-	g.UpdateNode(id, map[string]any{"name": "Charlie"})
-	g.UpdateNode(id, map[string]any{"name": "Diana"})
+	g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(id, map[string]any{"name": "Charlie"})
+	g.Nodes.Update(id, map[string]any{"name": "Diana"})
 
 	// Verify before truncation.
-	valid, err := g.VerifyNodeHashChain(id)
+	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("pre-truncate: unexpected error: %v", err)
 	}
@@ -561,7 +561,7 @@ func TestVerifyNodeHashChain_AfterTruncation(t *testing.T) {
 	}
 
 	// Verify after truncation — chain[0] is no longer genesis.
-	valid, err = g.VerifyNodeHashChain(id)
+	valid, err = g.Hash.VerifyNodeChain(id)
 	if err != nil {
 		t.Fatalf("post-truncate: unexpected error: %v", err)
 	}
@@ -570,22 +570,22 @@ func TestVerifyNodeHashChain_AfterTruncation(t *testing.T) {
 	}
 }
 
-func TestVerifyRelHashChain_AfterTruncation(t *testing.T) {
+func TestVerifyRelChain_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
-	g.UpdateRelationship(id, map[string]any{"weight": int64(2)})
-	g.UpdateRelationship(id, map[string]any{"weight": int64(3)})
-	g.UpdateRelationship(id, map[string]any{"weight": int64(4)})
+	g.Rels.Update(id, map[string]any{"weight": int64(2)})
+	g.Rels.Update(id, map[string]any{"weight": int64(3)})
+	g.Rels.Update(id, map[string]any{"weight": int64(4)})
 
 	// Verify before truncation.
-	valid, err := g.VerifyRelHashChain(id)
+	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("pre-truncate: unexpected error: %v", err)
 	}
@@ -599,7 +599,7 @@ func TestVerifyRelHashChain_AfterTruncation(t *testing.T) {
 	}
 
 	// Verify after truncation — chain[0] is no longer genesis.
-	valid, err = g.VerifyRelHashChain(id)
+	valid, err = g.Hash.VerifyRelChain(id)
 	if err != nil {
 		t.Fatalf("post-truncate: unexpected error: %v", err)
 	}

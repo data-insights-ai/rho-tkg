@@ -11,15 +11,15 @@ import (
 func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"A"}, map[string]any{"old": "value"})
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"old": "value"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.AddNode([]string{"B"}, nil)
+	b, err := g.Nodes.Add([]string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.AddRelationship("REL", n, b, map[string]any{"old_weight": int64(1)})
+	r, err := g.Rels.Add("REL", n, b, map[string]any{"old_weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	gotNode, err := g.GetNode(n.ID())
+	gotNode, err := g.Nodes.Get(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatal("node old property should be deleted")
 	}
 
-	gotRel, err := g.GetRelationship(r.ID())
+	gotRel, err := g.Rels.Get(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -71,12 +71,12 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.AddNode([]string{"Case"}, nil)
+	n, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID().SnowflakeID()
-	tok, err := g.GetOrCreateLabel("User")
+	tok, err := g.Resolve.GetOrCreateLabel("User")
 	if err != nil {
 		t.Fatalf("GetOrCreateLabel: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 		t.Fatalf("AddNodeLabelToken: %v", err)
 	}
 
-	nodes, err := g.NodesByLabel("User", storepkg.QueryOpts{})
+	nodes, err := g.Nodes.ByLabel("User", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}
@@ -99,12 +99,12 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.AddNode([]string{"Case"}, nil)
+	n, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID().SnowflakeID()
-	tok, err := g.GetOrCreateLabel("User")
+	tok, err := g.Resolve.GetOrCreateLabel("User")
 	if err != nil {
 		t.Fatalf("GetOrCreateLabel: %v", err)
 	}
@@ -118,14 +118,14 @@ func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 		t.Fatalf("AddNodeLabelTokenWithHistory: %v", err)
 	}
 
-	hist, err := g.GetNodeHistory(types.NodeID(id))
+	hist, err := g.Nodes.History(types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
 	}
 	if len(hist) != 1 {
 		t.Fatalf("history entries = %d, want 1", len(hist))
 	}
-	nodes, err := g.NodesByLabel("User", storepkg.QueryOpts{})
+	nodes, err := g.Nodes.ByLabel("User", storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("NodesByLabel: %v", err)
 	}

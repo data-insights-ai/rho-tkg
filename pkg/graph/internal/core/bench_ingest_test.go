@@ -38,7 +38,7 @@ func BenchmarkSnowflakeIDGen(b *testing.B) {
 	g := benchGraph(b)
 	b.ResetTimer()
 	for b.Loop() {
-		g.NextNodeID()
+		g.Nodes.NextID()
 	}
 }
 
@@ -59,7 +59,7 @@ func BenchmarkNewNode(b *testing.B) {
 func BenchmarkComputeNodeHash(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(benchProps())
-	n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
+	n := types.NewNode(g.Nodes.NextID(), 1, nil)
 	n.SetProperties(ps)
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
@@ -71,7 +71,7 @@ func BenchmarkComputeNodeHash(b *testing.B) {
 func BenchmarkNodeDeepCopy(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(benchProps())
-	n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
+	n := types.NewNode(g.Nodes.NextID(), 1, nil)
 	n.SetProperties(ps)
 	n.SetTemporal(&types.TemporalMetadata{})
 	n.SetIntegrity(&types.NodeIntegrity{Hash: "abc123"})
@@ -88,7 +88,7 @@ func BenchmarkMemoryStorePutNode(b *testing.B) {
 	nodes := make([]*types.Node, b.N)
 	for i := range nodes {
 		ps, _ := types.NewPropertySlice(benchProps())
-		n := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
+		n := types.NewNode(g.Nodes.NextID(), 1, nil)
 		n.SetProperties(ps)
 		n.SetTemporal(&types.TemporalMetadata{})
 		n.SetIntegrity(&types.NodeIntegrity{Hash: "abc"})
@@ -105,7 +105,7 @@ func BenchmarkMemoryStorePutNode(b *testing.B) {
 func BenchmarkComputeRelHash(b *testing.B) {
 	g := benchGraph(b)
 	ps, _ := types.NewPropertySlice(map[string]any{"weight": 1})
-	r := types.NewRelationship(types.RelID(g.NextRelID()), 1, types.NodeID(100), types.NodeID(200))
+	r := types.NewRelationship(g.Rels.NextID(), 1, types.NodeID(100), types.NodeID(200))
 	r.SetProperties(ps)
 	b.ResetTimer()
 	for b.Loop() {
@@ -117,10 +117,10 @@ func BenchmarkMemoryStorePutRel(b *testing.B) {
 	ms := memory.New()
 	g := benchGraph(b)
 	// Create two anchor nodes
-	n1 := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
+	n1 := types.NewNode(g.Nodes.NextID(), 1, nil)
 	n1.SetTemporal(&types.TemporalMetadata{})
 	n1.SetIntegrity(&types.NodeIntegrity{Hash: "a"})
-	n2 := types.NewNode(types.NodeID(g.NextNodeID()), 1, nil)
+	n2 := types.NewNode(g.Nodes.NextID(), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{})
 	n2.SetIntegrity(&types.NodeIntegrity{Hash: "b"})
 	ms.PutNode(n1)
@@ -131,7 +131,7 @@ func BenchmarkMemoryStorePutRel(b *testing.B) {
 	rels := make([]*types.Relationship, b.N)
 	for i := range rels {
 		ps, _ := types.NewPropertySlice(map[string]any{"weight": 1})
-		r := types.NewRelationship(types.RelID(g.NextRelID()), 1, types.NodeID(startID), types.NodeID(endID))
+		r := types.NewRelationship(g.Rels.NextID(), 1, startID, endID)
 		r.SetProperties(ps)
 		r.SetTemporal(&types.TemporalMetadata{})
 		r.SetIntegrity(&types.RelIntegrity{Hash: "h"})
@@ -152,7 +152,7 @@ func BenchmarkAddNode(b *testing.B) {
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := g.AddNode(labels, benchProps()); err != nil {
+		if _, err := g.Nodes.Add(labels, benchProps()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -167,7 +167,7 @@ func BenchmarkAddNodeMemStore(b *testing.B) {
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := g.AddNode(labels, benchProps()); err != nil {
+		if _, err := g.Nodes.Add(labels, benchProps()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -179,13 +179,13 @@ func BenchmarkAddRelationship(b *testing.B) {
 	type pair struct{ start, end *types.Node }
 	pairs := make([]pair, b.N)
 	for i := range pairs {
-		n1, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i})
-		n2, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i + 1000000})
+		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
+		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
 		pairs[i] = pair{n1, n2}
 	}
 	b.ResetTimer()
 	for i := range b.N {
-		if _, err := g.AddRelationship("KNOWS", pairs[i].start, pairs[i].end,
+		if _, err := g.Rels.Add("KNOWS", pairs[i].start, pairs[i].end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}
@@ -201,13 +201,13 @@ func BenchmarkAddRelationshipMemStore(b *testing.B) {
 	type pair struct{ start, end *types.Node }
 	pairs := make([]pair, b.N)
 	for i := range pairs {
-		n1, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i})
-		n2, _ := g.AddNode([]string{"Person"}, map[string]any{"seq": i + 1000000})
+		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
+		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
 		pairs[i] = pair{n1, n2}
 	}
 	b.ResetTimer()
 	for i := range b.N {
-		if _, err := g.AddRelationship("KNOWS", pairs[i].start, pairs[i].end,
+		if _, err := g.Rels.Add("KNOWS", pairs[i].start, pairs[i].end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}
@@ -277,10 +277,10 @@ func BenchmarkValidateProperties(b *testing.B) {
 func BenchmarkLabelRegistryGetOrCreate(b *testing.B) {
 	g := benchGraph(b)
 	// Pre-create so it's a lookup, not a create
-	g.GetOrCreateLabel("LoadTest")
+	g.Resolve.GetOrCreateLabel("LoadTest")
 	b.ResetTimer()
 	for b.Loop() {
-		g.GetOrCreateLabel("LoadTest")
+		g.Resolve.GetOrCreateLabel("LoadTest")
 	}
 }
 

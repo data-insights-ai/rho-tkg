@@ -12,13 +12,14 @@ import (
 
 // --- Public temporal query methods ---
 
-// GetNodesValidAt returns all nodes valid at the given instant.
+// NodesAt returns all nodes valid at the given instant.
 // History-aware: includes deleted nodes that were valid at time t by consulting
 // version history in addition to current entities.
-func (c *Core) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesAt(at types.Instant) ([]*types.Node, error) {
+	c := t.c
 	var result []*types.Node
 	err := c.forEachKnownNodeID(func(id types.NodeID) error {
-		n, err := c.GetNodeAt(id, t)
+		n, err := c.Temporal.NodeAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -35,12 +36,13 @@ func (c *Core) GetNodesValidAt(t types.Instant) ([]*types.Node, error) {
 	return result, nil
 }
 
-// GetRelationshipsValidAt returns all relationships valid at the given instant.
+// RelationshipsAt returns all relationships valid at the given instant.
 // History-aware: includes deleted relationships that were valid at time t.
-func (c *Core) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelationshipsAt(at types.Instant) ([]*types.Relationship, error) {
+	c := t.c
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
-		r, err := c.GetRelAt(id, t)
+		r, err := c.Temporal.RelAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
@@ -57,10 +59,11 @@ func (c *Core) GetRelationshipsValidAt(t types.Instant) ([]*types.Relationship, 
 	return result, nil
 }
 
-// GetNodesByLabelValidAt returns all nodes with the given label that are valid
+// NodesByLabelAt returns all nodes with the given label that are valid
 // at the given instant. Returns nil if the label is not registered.
 // History-aware: includes historical versions whose label set matched at t.
-func (c *Core) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesByLabelAt(label string, at types.Instant) ([]*types.Node, error) {
+	c := t.c
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -76,7 +79,7 @@ func (c *Core) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.N
 	}
 	var result []*types.Node
 	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.GetNodeAt(id, t)
+		n, err := c.Temporal.NodeAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -94,7 +97,7 @@ func (c *Core) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.N
 	return result, nil
 }
 
-// GetNodesValidDuring returns all nodes whose validity overlaps [start, end).
+// NodesDuring returns all nodes whose validity overlaps [start, end).
 // History-aware: includes deleted or updated nodes that had any version valid
 // during the interval.
 //
@@ -103,7 +106,8 @@ func (c *Core) GetNodesByLabelValidAt(label string, t types.Instant) ([]*types.N
 // overlap predicate sees the same upper bound — avoids time drift across
 // the iteration that would otherwise let a single call return different
 // results depending on how long it ran.
-func (c *Core) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
+	c := t.c
 	end = resolveOpenEndInstant(end)
 	var result []*types.Node
 	err := c.forEachKnownNodeID(func(id types.NodeID) error {
@@ -124,11 +128,12 @@ func (c *Core) GetNodesValidDuring(start, end types.Instant) ([]*types.Node, err
 	return result, nil
 }
 
-// GetRelationshipsValidDuring returns all relationships whose validity overlaps [start, end).
+// RelationshipsDuring returns all relationships whose validity overlaps [start, end).
 // History-aware: includes deleted or updated relationships.
 //
 // end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
-func (c *Core) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelationshipsDuring(start, end types.Instant) ([]*types.Relationship, error) {
+	c := t.c
 	end = resolveOpenEndInstant(end)
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
@@ -149,7 +154,7 @@ func (c *Core) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.R
 	return result, nil
 }
 
-// GetNodeAt returns the version of a node that was valid at the given instant.
+// NodeAt returns the version of a node that was valid at the given instant.
 // Builds the full version chain (history + current) and finds the version
 // whose validity period contains t.
 //
@@ -164,9 +169,10 @@ func (c *Core) GetRelationshipsValidDuring(start, end types.Instant) ([]*types.R
 // version resolution proceeds using only the history chain. The last entry
 // in a deleted entity's history has ValidTo set (tombstone).
 //
-// Returns storepkg.ErrNodeNotFound if the node never existed (no current, no history).
+// NodeAt storepkg.ErrNodeNotFound if the node never existed (no current, no history).
 // Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
-func (c *Core) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error) {
+func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error) {
+	c := t.c
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -189,16 +195,17 @@ func (c *Core) GetNodeAt(id types.NodeID, t types.Instant) (*types.Node, error) 
 		chain = append(chain, current)
 	}
 
-	return c.resolveNodeVersionAt(chain, t)
+	return c.resolveNodeVersionAt(chain, at)
 }
 
-// GetRelAt returns the version of a relationship that was valid at the given instant.
+// RelAt returns the version of a relationship that was valid at the given instant.
 // Mirrors GetNodeAt for relationships. Handles deleted entities by consulting
 // version history when the current relationship is gone.
 //
-// Returns storepkg.ErrRelNotFound if the relationship never existed (no current, no history).
+// RelAt storepkg.ErrRelNotFound if the relationship never existed (no current, no history).
 // Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
-func (c *Core) GetRelAt(id types.RelID, t types.Instant) (*types.Relationship, error) {
+func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, error) {
+	c := t.c
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -221,21 +228,22 @@ func (c *Core) GetRelAt(id types.RelID, t types.Instant) (*types.Relationship, e
 		chain = append(chain, current)
 	}
 
-	return c.resolveRelVersionAt(chain, t)
+	return c.resolveRelVersionAt(chain, at)
 }
 
-// GetNeighborsValidAt returns all neighbor nodes reachable from nodeID via
+// NeighborsAt returns all neighbor nodes reachable from nodeID via
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant.
-func (c *Core) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
+	c := t.c
 	// Indexed candidate set: current outgoing + incoming adjacency, merged
 	// with all history rel IDs (covering deleted-rel neighbors). Avoids a
 	// full ForEachRelID scan.
-	out, err := c.OutgoingRelationships(nodeID, "")
+	out, err := c.Rels.Outgoing(nodeID, "")
 	if err != nil {
 		return nil, err
 	}
-	in, err := c.IncomingRelationships(nodeID, "")
+	in, err := c.Rels.Incoming(nodeID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +257,7 @@ func (c *Core) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*typ
 
 	neighborIDs := make(map[types.NodeID]struct{})
 	if err := c.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
-		r, err := c.GetRelAt(id, t)
+		r, err := c.Temporal.RelAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
@@ -272,7 +280,7 @@ func (c *Core) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*typ
 
 	var result []*types.Node
 	for id := range neighborIDs {
-		n, err := c.GetNodeAt(id, t)
+		n, err := c.Temporal.NodeAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				continue
@@ -287,10 +295,11 @@ func (c *Core) GetNeighborsValidAt(nodeID types.NodeID, t types.Instant) ([]*typ
 
 // --- Combined label + property + temporal queries ---
 
-// NodesByLabelPropertyAndTime returns nodes matching the label and property value
+// NodesByLabelPropertyAt returns nodes matching the label and property value
 // that are valid at the given instant. History-aware.
 // Returns nil if the label is not registered.
-func (c *Core) NodesByLabelPropertyAndTime(label, key string, value any, t types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.Instant) ([]*types.Node, error) {
+	c := t.c
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -311,7 +320,7 @@ func (c *Core) NodesByLabelPropertyAndTime(label, key string, value any, t types
 	}
 	var result []*types.Node
 	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.GetNodeAt(id, t)
+		n, err := c.Temporal.NodeAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -337,7 +346,8 @@ func (c *Core) NodesByLabelPropertyAndTime(label, key string, value any, t types
 // overlapping version had the label and property, even when a later version
 // no longer matches.
 // Returns nil if the label is not registered.
-func (c *Core) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
+func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
+	c := t.c
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -386,27 +396,29 @@ func (c *Core) NodesByLabelPropertyDuring(label, key string, value any, start, e
 
 // --- Relationship-side parity (mirrors of the Node methods above) ---
 
-// GetRelationshipsByTypeValidAt returns all relationships of the given type
+// RelationshipsByTypeAt returns all relationships of the given type
 // that are valid at the given instant. Returns nil if the type is not
 // registered.
 //
-// Thin wrapper over RelationshipsByType(typeName, storepkg.QueryOpts{ValidAt: t}) —
+// RelationshipsByTypeAt wrapper over RelationshipsByType(typeName, storepkg.QueryOpts{ValidAt: t}) —
 // the named convenience mirror of GetNodesByLabelValidAt. History-aware via
 // the generic-opts path: includes deleted relationships whose type matched
 // at t.
-func (c *Core) GetRelationshipsByTypeValidAt(relType string, t types.Instant) ([]*types.Relationship, error) {
-	return c.RelationshipsByType(relType, storepkg.QueryOpts{ValidAt: t})
+func (t *TempOps) RelationshipsByTypeAt(relType string, at types.Instant) ([]*types.Relationship, error) {
+	c := t.c
+	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at})
 }
 
-// RelationshipsByTypePropertyAndTime returns relationships matching the type
+// RelsByTypePropertyAt returns relationships matching the type
 // and property value that are valid at the given instant. History-aware.
 // Returns nil if the type is not registered.
 //
-// Mirrors NodesByLabelPropertyAndTime. There is no store-level
+// RelsByTypePropertyAt NodesByLabelPropertyAndTime. There is no store-level
 // type+property index for relationships, so candidates are seeded from the
 // type index only and the property predicate is evaluated on each historical
 // version.
-func (c *Core) RelationshipsByTypePropertyAndTime(relType, key string, value any, t types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
+	c := t.c
 	tok, ok := c.relTypes.Lookup(relType)
 	if !ok {
 		return nil, nil
@@ -428,7 +440,7 @@ func (c *Core) RelationshipsByTypePropertyAndTime(relType, key string, value any
 	}
 	var result []*types.Relationship
 	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
-		r, err := c.GetRelAt(id, t)
+		r, err := c.Temporal.RelAt(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
@@ -449,18 +461,19 @@ func (c *Core) RelationshipsByTypePropertyAndTime(relType, key string, value any
 	return result, nil
 }
 
-// RelationshipsByTypePropertyDuring returns relationships matching the type
+// RelsByTypePropertyDuring returns relationships matching the type
 // and property value whose validity overlaps [start, end). History-aware:
 // returns the relationship if any overlapping version had the type and
 // property, even when a later version no longer matches.
 // Returns nil if the type is not registered.
 //
-// Mirrors NodesByLabelPropertyDuring. Like the *AndTime variant, candidates
+// RelsByTypePropertyDuring NodesByLabelPropertyDuring. Like the *AndTime variant, candidates
 // are seeded from the type index and the property predicate is evaluated
 // per-version via findRelVersionMatchingDuring — so a relationship whose
 // property held during part of [start, end) but not on the most-recent
 // overlapping version is still included.
-func (c *Core) RelationshipsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
+	c := t.c
 	tok, ok := c.relTypes.Lookup(relType)
 	if !ok {
 		return nil, nil

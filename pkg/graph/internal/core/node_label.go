@@ -10,12 +10,13 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// AddNodeLabel adds the given label to an existing node.
+// AddLabel adds the given label to an existing node.
 // Idempotent: returns nil without bumping version or writing history if the
 // node already has the label. Validates label name length and enforces
 // MaxLabelsPerNode. Returns storepkg.ErrNodeNotFound if the node does not exist.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) AddNodeLabel(id types.NodeID, label string) error {
+func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
+	c := n.c
 	c.mu.RLock()
 	mutated, err := c.addNodeLabelInternal(id, label)
 	ep := c.events
@@ -75,7 +76,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.NodeLabels(copy)
+	nodeLabels := c.Nodes.Labels(copy)
 	hash := integrity.ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
@@ -104,9 +105,10 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	return true, nil
 }
 
-// RemoveNodeLabel removes the given label from an existing node.
+// RemoveLabel removes the given label from an existing node.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) RemoveNodeLabel(id types.NodeID, label string) error {
+func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
+	c := n.c
 	c.mu.RLock()
 	err := c.removeNodeLabelInternal(id, label)
 	ep := c.events
@@ -153,7 +155,7 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.NodeLabels(copy)
+	nodeLabels := c.Nodes.Labels(copy)
 	hash := integrity.ComputeNodeHash(copy, nodeLabels)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 

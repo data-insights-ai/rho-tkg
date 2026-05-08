@@ -989,16 +989,13 @@ func TestTieredStore_AllNodes_Pagination(t *testing.T) {
 	signalTok, _ := reg.GetOrCreate("Signal")
 
 	gen := tieredNodeGen(t)
-	var nodeIDs []snowflake.ID
 	for i := 0; i < 3; i++ {
 		n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 		_ = ts.PutNode(n)
-		nodeIDs = append(nodeIDs, n.ID().SnowflakeID())
 	}
 	for i := 0; i < 3; i++ {
 		n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 		_ = ts.PutNode(n)
-		nodeIDs = append(nodeIDs, n.ID().SnowflakeID())
 	}
 
 	// Page 1.
@@ -4132,12 +4129,12 @@ func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
 
 	// ALL nodes written before the crash must survive.
 	for i, id := range nodeIDs {
-		got, err := ts2.GetNode(types.NodeID(id))
+		got, err := ts2.GetNode(id)
 		if err != nil {
 			t.Errorf("node[%d] id=%d lost after recovery: %v", i, id, err)
 			continue
 		}
-		if got.ID() != types.NodeID(id) {
+		if got.ID() != id {
 			t.Errorf("node[%d] id mismatch: got %d, want %d", i, got.ID(), id)
 		}
 	}

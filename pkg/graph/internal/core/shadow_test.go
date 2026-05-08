@@ -14,7 +14,7 @@ func makeNodeWithMeta(t *testing.T) (*Core, *types.Node) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := g.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func makeRelWithMeta(t *testing.T) (*Core, *types.Relationship) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.AddNode([]string{"X"}, nil)
-	nB, _ := g.AddNode([]string{"X"}, nil)
-	r, err := g.AddRelationship("KNOWS", nA, nB, map[string]any{"weight": 1.5})
+	nA, _ := g.Nodes.Add([]string{"X"}, nil)
+	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	r, err := g.Rels.Add("KNOWS", nA, nB, map[string]any{"weight": 1.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,13 +73,13 @@ func TestResolveNodePropertyUserKey(t *testing.T) {
 	t.Parallel()
 
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, "name")
+	val, ok := g.Resolve.NodeProperty(n, "name")
 	if !ok || val != "Alice" {
 		t.Errorf("ResolveNodeProperty(\"name\") = (%v, %v), want (\"Alice\", true)", val, ok)
 	}
 
 	// Missing user key.
-	_, ok = g.ResolveNodeProperty(n, "missing")
+	_, ok = g.Resolve.NodeProperty(n, "missing")
 	if ok {
 		t.Error("ResolveNodeProperty(\"missing\") should return false")
 	}
@@ -89,7 +89,7 @@ func TestResolveNodePropertyLabels(t *testing.T) {
 	t.Parallel()
 
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, types.ShadowLabels)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowLabels)
 	if !ok {
 		t.Fatal("ResolveNodeProperty(tkg_labels) should return true")
 	}
@@ -106,7 +106,7 @@ func TestResolveNodePropertyType(t *testing.T) {
 	t.Parallel()
 
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, types.ShadowType)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowType)
 	if ok || val != nil {
 		t.Errorf("tkg_type on node: got (%v, %v), want (nil, false)", val, ok)
 	}
@@ -130,7 +130,7 @@ func TestResolveNodePropertyTemporal(t *testing.T) {
 		{types.ShadowDeletedAt, types.Instant(7000)},
 	}
 	for _, tc := range cases {
-		val, ok := g.ResolveNodeProperty(n, tc.key)
+		val, ok := g.Resolve.NodeProperty(n, tc.key)
 		if !ok {
 			t.Errorf("ResolveNodeProperty(%q) returned false", tc.key)
 			continue
@@ -146,17 +146,17 @@ func TestResolveNodePropertyProvenance(t *testing.T) {
 
 	g, n := makeNodeWithMeta(t)
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedBy)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedBy)
 	if !ok || val != "alice" {
 		t.Errorf("tkg_created_by = (%v, %v), want (\"alice\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveNodeProperty(n, types.ShadowUpdatedBy)
+	val, ok = g.Resolve.NodeProperty(n, types.ShadowUpdatedBy)
 	if !ok || val != "bob" {
 		t.Errorf("tkg_updated_by = (%v, %v), want (\"bob\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveNodeProperty(n, types.ShadowVersion)
+	val, ok = g.Resolve.NodeProperty(n, types.ShadowVersion)
 	if !ok || val != uint32(3) {
 		t.Errorf("tkg_version = (%v, %v), want (3, true)", val, ok)
 	}
@@ -167,12 +167,12 @@ func TestResolveNodePropertyIntegrity(t *testing.T) {
 
 	g, n := makeNodeWithMeta(t)
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowHash)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowHash)
 	if !ok || val != "abc123" {
 		t.Errorf("tkg_hash = (%v, %v), want (\"abc123\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveNodeProperty(n, types.ShadowPrevHash)
+	val, ok = g.Resolve.NodeProperty(n, types.ShadowPrevHash)
 	if !ok || val != "def456" {
 		t.Errorf("tkg_prev_hash = (%v, %v), want (\"def456\", true)", val, ok)
 	}
@@ -182,7 +182,7 @@ func TestResolveNodePropertyBaseEntity(t *testing.T) {
 	t.Parallel()
 
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, types.ShadowBaseEntity)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowBaseEntity)
 	if !ok {
 		t.Fatal("tkg_base_entity should return true")
 	}
@@ -201,8 +201,8 @@ func TestResolveNodePropertyNilTemporal(t *testing.T) {
 	// Construct node directly (bypassing AddNode) to simulate a legacy entity
 	// loaded from disk without temporal metadata. AddNode now always sets TxFrom,
 	// so the nil-temporal code path must be tested via direct construction.
-	tok, _ := g.GetOrCreateLabel("X")
-	n := types.NewNode(types.NodeID(g.NextNodeID()), tok, nil)
+	tok, _ := g.Resolve.GetOrCreateLabel("X")
+	n := types.NewNode(g.Nodes.NextID(), tok, nil)
 	// Temporal is nil — most temporal shadow keys should return (nil, false).
 	// Exception: tkg_created_at derives from snowflake ID.
 
@@ -214,14 +214,14 @@ func TestResolveNodePropertyNilTemporal(t *testing.T) {
 		types.ShadowBaseEntity,
 	}
 	for _, key := range nilKeys {
-		val, ok := g.ResolveNodeProperty(n, key)
+		val, ok := g.Resolve.NodeProperty(n, key)
 		if ok || val != nil {
 			t.Errorf("ResolveNodeProperty(%q) with nil temporal: got (%v, %v), want (nil, false)", key, val, ok)
 		}
 	}
 
 	// tkg_created_at should derive from snowflake ID even without temporal metadata.
-	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at should return true even without temporal metadata")
 	}
@@ -243,11 +243,11 @@ func TestResolveNodePropertyNilIntegrity(t *testing.T) {
 	}
 	// Construct a node directly (bypassing AddNode) to simulate a legacy
 	// entity loaded from disk without integrity metadata.
-	tok, _ := g.GetOrCreateLabel("X")
-	n := types.NewNode(types.NodeID(g.NextNodeID()), tok, nil)
+	tok, _ := g.Resolve.GetOrCreateLabel("X")
+	n := types.NewNode(g.Nodes.NextID(), tok, nil)
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
-		val, ok := g.ResolveNodeProperty(n, key)
+		val, ok := g.Resolve.NodeProperty(n, key)
 		if ok || val != nil {
 			t.Errorf("ResolveNodeProperty(%q) with nil integrity: got (%v, %v), want (nil, false)", key, val, ok)
 		}
@@ -260,7 +260,7 @@ func TestResolveRelPropertyType(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, types.ShadowType)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowType)
 	if !ok {
 		t.Fatal("tkg_type on rel should return true")
 	}
@@ -273,7 +273,7 @@ func TestResolveRelPropertyLabels(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, types.ShadowLabels)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowLabels)
 	if ok || val != nil {
 		t.Errorf("tkg_labels on rel: got (%v, %v), want (nil, false)", val, ok)
 	}
@@ -297,7 +297,7 @@ func TestResolveRelPropertyTemporal(t *testing.T) {
 		{types.ShadowDeletedAt, types.Instant(7000)},
 	}
 	for _, tc := range cases {
-		val, ok := g.ResolveRelProperty(r, tc.key)
+		val, ok := g.Resolve.RelProperty(r, tc.key)
 		if !ok {
 			t.Errorf("ResolveRelProperty(%q) returned false", tc.key)
 			continue
@@ -313,17 +313,17 @@ func TestResolveRelPropertyProvenance(t *testing.T) {
 
 	g, r := makeRelWithMeta(t)
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedBy)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedBy)
 	if !ok || val != "alice" {
 		t.Errorf("tkg_created_by = (%v, %v), want (\"alice\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveRelProperty(r, types.ShadowUpdatedBy)
+	val, ok = g.Resolve.RelProperty(r, types.ShadowUpdatedBy)
 	if !ok || val != "bob" {
 		t.Errorf("tkg_updated_by = (%v, %v), want (\"bob\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveRelProperty(r, types.ShadowVersion)
+	val, ok = g.Resolve.RelProperty(r, types.ShadowVersion)
 	if !ok || val != uint32(7) {
 		t.Errorf("tkg_version = (%v, %v), want (7, true)", val, ok)
 	}
@@ -334,12 +334,12 @@ func TestResolveRelPropertyIntegrity(t *testing.T) {
 
 	g, r := makeRelWithMeta(t)
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowHash)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowHash)
 	if !ok || val != "xyz789" {
 		t.Errorf("tkg_hash = (%v, %v), want (\"xyz789\", true)", val, ok)
 	}
 
-	val, ok = g.ResolveRelProperty(r, types.ShadowPrevHash)
+	val, ok = g.Resolve.RelProperty(r, types.ShadowPrevHash)
 	if !ok || val != "uvw012" {
 		t.Errorf("tkg_prev_hash = (%v, %v), want (\"uvw012\", true)", val, ok)
 	}
@@ -349,7 +349,7 @@ func TestResolveRelPropertyBaseEntity(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, types.ShadowBaseEntity)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowBaseEntity)
 	if !ok {
 		t.Fatal("tkg_base_entity on rel should return true")
 	}
@@ -362,7 +362,7 @@ func TestResolveRelPropertyUserKey(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, "weight")
+	val, ok := g.Resolve.RelProperty(r, "weight")
 	if !ok || val != 1.5 {
 		t.Errorf("ResolveRelProperty(\"weight\") = (%v, %v), want (1.5, true)", val, ok)
 	}
@@ -379,8 +379,8 @@ func TestResolveRelPropertyNilTemporal(t *testing.T) {
 	// a legacy entity loaded from disk without temporal metadata. AddRelationship
 	// now always sets TxFrom, so the nil-temporal code path must be tested via
 	// direct construction.
-	tok, _ := g.GetOrCreateRelType("R")
-	r := types.NewRelationship(types.RelID(g.NextRelID()), tok, types.NodeID(g.NextNodeID()), types.NodeID(g.NextNodeID()))
+	tok, _ := g.Resolve.GetOrCreateRelType("R")
+	r := types.NewRelationship(g.Rels.NextID(), tok, g.Nodes.NextID(), g.Nodes.NextID())
 
 	// Most temporal keys return (nil, false) without temporal metadata.
 	// Exception: tkg_created_at derives from snowflake ID.
@@ -392,14 +392,14 @@ func TestResolveRelPropertyNilTemporal(t *testing.T) {
 		types.ShadowBaseEntity,
 	}
 	for _, key := range nilKeys {
-		val, ok := g.ResolveRelProperty(r, key)
+		val, ok := g.Resolve.RelProperty(r, key)
 		if ok || val != nil {
 			t.Errorf("ResolveRelProperty(%q) with nil temporal: got (%v, %v), want (nil, false)", key, val, ok)
 		}
 	}
 
 	// tkg_created_at should derive from snowflake ID even without temporal metadata.
-	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at on rel should return true even without temporal metadata")
 	}
@@ -421,11 +421,11 @@ func TestResolveRelPropertyNilIntegrity(t *testing.T) {
 	}
 	// Construct a relationship directly (bypassing AddRelationship) to simulate
 	// a legacy entity loaded from disk without integrity metadata.
-	tok, _ := g.GetOrCreateRelType("R")
-	r := types.NewRelationship(types.RelID(g.NextRelID()), tok, types.NodeID(g.NextNodeID()), types.NodeID(g.NextNodeID()))
+	tok, _ := g.Resolve.GetOrCreateRelType("R")
+	r := types.NewRelationship(g.Rels.NextID(), tok, g.Nodes.NextID(), g.Nodes.NextID())
 
 	for _, key := range []string{types.ShadowHash, types.ShadowPrevHash} {
-		val, ok := g.ResolveRelProperty(r, key)
+		val, ok := g.Resolve.RelProperty(r, key)
 		if ok || val != nil {
 			t.Errorf("ResolveRelProperty(%q) with nil integrity: got (%v, %v), want (nil, false)", key, val, ok)
 		}
@@ -440,7 +440,7 @@ func TestResolveNodeCreatedAtExplicitPriority(t *testing.T) {
 	// When temporal metadata has an explicit CreatedAt, it takes priority
 	// over the snowflake-derived timestamp.
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at should return true")
 	}
@@ -457,10 +457,10 @@ func TestResolveNodeCreatedAtZeroFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _ := g.AddNode([]string{"X"}, nil)
+	n, _ := g.Nodes.Add([]string{"X"}, nil)
 	n.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowCreatedAt)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
 	}
@@ -477,7 +477,7 @@ func TestResolveRelCreatedAtExplicitPriority(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at should return true")
 	}
@@ -493,12 +493,12 @@ func TestResolveRelCreatedAtZeroFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.AddNode([]string{"X"}, nil)
-	nB, _ := g.AddNode([]string{"X"}, nil)
-	r, _ := g.AddRelationship("R", nA, nB, nil)
+	nA, _ := g.Nodes.Add([]string{"X"}, nil)
+	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	r, _ := g.Rels.Add("R", nA, nB, nil)
 	r.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowCreatedAt)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt)
 	if !ok {
 		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
 	}
@@ -515,7 +515,7 @@ func TestResolveNodePropertyUnknownShadow(t *testing.T) {
 	t.Parallel()
 
 	g, n := makeNodeWithMeta(t)
-	val, ok := g.ResolveNodeProperty(n, "tkg_unknown_key")
+	val, ok := g.Resolve.NodeProperty(n, "tkg_unknown_key")
 	if ok || val != nil {
 		t.Errorf("unknown tkg_ key: got (%v, %v), want (nil, false)", val, ok)
 	}
@@ -525,7 +525,7 @@ func TestResolveRelPropertyUnknownShadow(t *testing.T) {
 	t.Parallel()
 
 	g, r := makeRelWithMeta(t)
-	val, ok := g.ResolveRelProperty(r, "tkg_unknown_key")
+	val, ok := g.Resolve.RelProperty(r, "tkg_unknown_key")
 	if ok || val != nil {
 		t.Errorf("unknown tkg_ key: got (%v, %v), want (nil, false)", val, ok)
 	}

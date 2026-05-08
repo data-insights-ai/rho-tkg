@@ -6,6 +6,189 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **`Graph.Core()` escape hatch removed.** The experimental accessor
+  that returned the underlying `*core.Core` is gone. Use the sub-API
+  fields (`g.Nodes`, `g.Rels`, `g.Stats`, …) for everything that was
+  previously reachable through it. The full `GraphStats` snapshot
+  (operation counters + cache metrics) is now reachable as
+  `g.Stats.Get()`; the `pkg/graph/stats` package re-declares the
+  `GraphStats` struct so the sub-API import does not pull in
+  `pkg/graph/internal/core`.
+- **All 11 sub-API packages now use short, suffix-free names.** The
+  earlier "collapse temporal/events/index" change has been extended to
+  the remaining six sub-API packages:
+  - `pkg/graph/temporalapi`    -> `pkg/graph/temporal`    (collapsed; both types and API in one package)
+  - `pkg/graph/eventsapi`      -> `pkg/graph/events`
+  - `pkg/graph/indexapi`       -> `pkg/graph/index`
+  - `pkg/graph/adminapi`       -> `pkg/graph/admin`
+  - `pkg/graph/constraintsapi` -> `pkg/graph/constraints`
+  - `pkg/graph/hashapi`        -> `pkg/graph/hash`        (shadows stdlib `hash`)
+  - `pkg/graph/ioapi`          -> `pkg/graph/io`          (shadows stdlib `io`)
+  - `pkg/graph/resolveapi`     -> `pkg/graph/resolve`
+  - `pkg/graph/statsapi`       -> `pkg/graph/stats`
+  Customers that imported any of these packages must update their
+  import path and the package selector accordingly (`adminapi.API` ->
+  `admin.API`, etc.). The `g.<Field>` accessors are unchanged except
+  for `Statistics` (see next entry).
+- **`Graph.Statistics` field renamed to `Graph.Stats`.** The
+  `Statistics` workaround field name was needed only because the old
+  `Graph.Stats() GraphStats` method (removed in v3.4.0) used the same
+  identifier. With the package now named `pkg/graph/stats`, the field
+  is renamed to match. Migration: `g.Statistics.NodeCount()` ->
+  `g.Stats.NodeCount()`. The full `GraphStats` struct (atomic
+  operation counters + cache metrics) is reachable via
+  `g.Stats.Get()`.
+
+#### Stdlib aliasing for hash and io
+
+The new `pkg/graph/hash` and `pkg/graph/io` packages shadow stdlib
+`hash` and `io`. Inside the local packages no aliasing is required —
+Go resolves `hash.Hash` / `io.Reader` to the imported stdlib package.
+At consumer sites that import BOTH stdlib `"hash"` (or `"io"`) AND the
+local sub-API package, alias the local one with a `tkg` prefix:
+
+```go
+import (
+    "io"
+    tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
+)
+
+var _ tkgio.API
+```
+
+In practice few sites need the alias because customers usually reach
+the sub-API via `g.IO` / `g.Hash` (field access — no package import
+needed) and only import the package directly when they need the
+exported type.
+
+#### Migration cheat sheet
+
+```go
+// Before                         // After
+g.Statistics.NodeCount()         g.Stats.NodeCount()
+g.Statistics.AllLabelCounts()    g.Stats.AllLabelCounts()
+g.Admin.Archive(id)              g.Admin.Archive(id)               // unchanged
+g.Hash.VerifyNodeChain(id)       g.Hash.VerifyNodeChain(id)        // unchanged
+import "...tkg/v3/pkg/graph/adminapi"      ->  "...tkg/v3/pkg/graph/admin"
+import "...tkg/v3/pkg/graph/statsapi"      ->  "...tkg/v3/pkg/graph/stats"
+import "...tkg/v3/pkg/graph/hashapi"       ->  "...tkg/v3/pkg/graph/hash"
+import "...tkg/v3/pkg/graph/ioapi"         ->  "...tkg/v3/pkg/graph/io"
+adminapi.API                     admin.API
+adminapi.New(c)                  admin.New(c)
+```
+
+- **`*core.Core` implementation split into 11 sub-Core types matching the public sub-API surface (internal only).**
+  The 130+ method bodies that used to live directly on `*Core` moved
+  to dedicated `*NodeOps`, `*RelOps`, `*TempOps`, `*IndexOps`,
+  `*EventOps`, `*AdminOps`, `*ConstraintOps`, `*HashOps`, `*IOOps`,
+  `*ResolveOps`, `*StatOps` types declared in
+  `pkg/graph/internal/core/subops.go`. `*Core` is now a coordinator
+  holding these as exported fields wired in `core.New`. Method names
+  drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship →
+  RelOps.Get`, `VerifyNodeHashChain → HashOps.VerifyNodeChain`, etc.)
+  so the call chain `g.Nodes.Add()` → `nodes.API.Add()` →
+  `core.NodeOps.Add()` no longer renames the method across the
+  wrapper boundary. Each sub-API wrapper at `pkg/graph/<name>/api.go`
+  was restructured from a `Core` interface to an `Ops` interface that
+  matches the new sub-Core method shapes 1:1. **No public-API change**
+  — `*core.Core` is internal, customers only see the unchanged
+  sub-API surface (`g.Nodes.Add`, `g.Stats.Get`, etc.). Internal
+  callers (tx, batch, store wrappers) and tests were updated; the
+  `Store` / `BatchBuilder` / `GraphTx` types kept their old method
+  names because they do not expose the sub-API surface.
+- **`pkg/graph/temporalapi`, `pkg/graph/eventsapi`, `pkg/graph/indexapi` collapsed into their types-only siblings.**
+  The three sub-API packages were merged into the existing types-only
+  packages they used to forward to:
+  - `pkg/graph/temporalapi` -> `pkg/graph/temporal`
+  - `pkg/graph/eventsapi`   -> `pkg/graph/events`
+  - `pkg/graph/indexapi`    -> `pkg/graph/index`
+  Customers that imported `temporalapi.API`, `eventsapi.API`, or
+  `indexapi.API` must update their import path and rename to
+  `temporal.API`, `events.API`, or `index.API` respectively. The
+  `Graph.Temporal`, `Graph.Events`, `Graph.Index` field accessors
+  themselves are unchanged — only the underlying package names move.
+  No semantics change.
+
+### Added
+
+- **`make lint` target and `.golangci.yml` configuration** integrated
+  into `make ci` (after `vet`, before `build`). Linters enabled:
+  `errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`,
+  `revive`, `misspell`, `unconvert`, `unparam` plus `gofmt` /
+  `goimports` formatters. Dead helpers, redundant type conversions,
+  and missing doc comments fixed inline (no broad suppressions).
+
+### Security
+
+- **`toolchain go1.26.2` directive added to `go.mod`.** govulncheck flagged
+  `GO-2026-4865` (JsBraceDepth context-tracking bugs in `html/template`)
+  as a stdlib-level concern, fixed in `html/template@go1.26.2`. The
+  codebase does not import `html/template` directly — the trace runs
+  through `fmt.Sprintf`'s error formatter — so the vulnerability is
+  practically unreachable, but bumping the preferred toolchain to
+  `go1.26.2` is the documented mitigation. The `go 1.26.1` minimum
+  requirement is unchanged.
+
+### Documented
+
+- **`race_off_test.go` / `race_on_test.go` cannot collapse via
+  `runtime.RaceEnabled`** — that constant lives in the build-tagged
+  `runtime/race` internal package and is not reachable from external
+  code without using the same `//go:build race / !race` tags the pair
+  already employs. The two files retain a one-line note explaining the
+  rationale so future maintainers do not redo the experiment.
+
+### Added
+
+- **Example tests in every sub-API package.** Each of the 11 sub-API
+  packages (`nodes`, `rels`, `temporal`, `index`, `events`,
+  `constraintsapi`, `ioapi`, `adminapi`, `statsapi`, `hashapi`,
+  `resolveapi`) plus the in-package `Tx` and `Batch` sub-APIs now has
+  an `example_test.go` demonstrating the most-common operations, so
+  godoc renders idiomatic usage hints. Examples are compile-only
+  (no `// Output:` blocks because snowflake IDs are nondeterministic).
+- **`tutorials_test.go` in every tutorial directory.** Empty
+  `TestCompiles` placeholder ensures `go test ./tutorials/...` exercises
+  the build of every tutorial, catching public-API breakage immediately
+  instead of when a user runs the tutorial.
+
+### Changed
+
+- **`pkg/graph/internal/core/graph_test.go` (4970 LOC) split into themed
+  files.** Functions moved byte-identically into `graph_node_test.go`,
+  `graph_node_validation_test.go`, `graph_node_history_test.go`,
+  `graph_node_hash_test.go`, `graph_rel_test.go`,
+  `graph_rel_validation_test.go`, `graph_rel_history_test.go`,
+  `graph_rel_hash_test.go`, `graph_temporal_test.go`,
+  `graph_index_test.go`, `graph_cas_test.go`, `graph_label_test.go`,
+  `graph_lifecycle_test.go`, `graph_tx_test.go`, `graph_misc_test.go`.
+  All split files are below 1500 LOC. No test bodies were changed.
+- **`pkg/graph/store/badger/badgerstore.go` (4262 LOC) split into themed
+  files.** Methods moved byte-identically into `badgerstore.go` (struct,
+  lifecycle: `New`, `Close`, `Clear`, `loadIndexes`),
+  `badgerstore_node.go`, `badgerstore_rel.go`, `badgerstore_index.go`,
+  `badgerstore_history.go`, `badgerstore_temporal.go`,
+  `badgerstore_meta.go`, `badgerstore_flush.go`. All split files are
+  below 1500 LOC. No method bodies were changed.
+
+- **Doc cleanup post-v3.4.0**:
+  - `CLAUDE.md` and `AGENTS.md` Status lines now describe the v3.4.0
+    reality (sub-APIs are the only public surface; the 130+ direct
+    `*Graph` methods were removed). Previous wording incorrectly
+    described the change as "additive".
+  - Stale `Graph.Stats()` comments in `pkg/graph/internal/core/stats.go`
+    and `pkg/graph/statsapi/api.go` updated to point at
+    `g.Core().Stats()` (the public method was removed in v3.4.0; the
+    `Core()` escape hatch itself was subsequently removed in the same
+    Unreleased cycle, see "Changed — BREAKING" above).
+  - `README.md`, `docs/api.md`, `docs/architecture.md`,
+    `docs/persistence.md`, and `docs/design.md` updated to use the
+    `memory.Store` / `badger.Store` / `tiered.Store` names introduced
+    in v3.3.0. Historical "What's new" entries are intentionally left
+    untouched since they describe state at the time of those releases.
+
 ### Added
 
 - **Streaming `DiffSnapshotsCallback` (resolves the `TODO(v3.1.0)` in
@@ -139,10 +322,10 @@ g.VerifyRelHashChain(id)                        g.Hash.VerifyRelChain(id)
 g.SetTemporalConstraints(cs)                    g.Constraints.Set(cs)
 g.AddTemporalConstraint(c)                      g.Constraints.Add(c)
 g.TemporalConstraints()                         g.Constraints.Get()
-g.NodeCount()                                   g.Statistics.NodeCount()
-g.RelationshipCount()                           g.Statistics.RelCount()
-g.NodeCountByLabel("Person")                    g.Statistics.NodeCountByLabel("Person")
-g.AllLabelCounts()                              g.Statistics.AllLabelCounts()
+g.NodeCount()                                   g.Stats.NodeCount()
+g.RelationshipCount()                           g.Stats.RelCount()
+g.NodeCountByLabel("Person")                    g.Stats.NodeCountByLabel("Person")
+g.AllLabelCounts()                              g.Stats.AllLabelCounts()
 g.ResolveNodeProperty(n, "tkg_hash")            g.Resolve.NodeProperty(n, "tkg_hash")
 g.GetOrCreateLabel("Person")                    g.Resolve.LabelToken("Person")
 g.LookupLabel("Person")                         g.Resolve.LookupLabel("Person")
@@ -157,15 +340,15 @@ The 13 sub-API accessors:
 |----------------|--------------------------------------|---------|------------------------------------------------------------------------|
 | `g.Nodes`      | `pkg/graph/nodes`                    | 31      | Node CRUD, label, property, version chain                              |
 | `g.Rels`       | `pkg/graph/rels`                     | 30      | Relationship CRUD, adjacency, property, version chain                  |
-| `g.Temporal`   | `pkg/graph/temporalapi`              | 24      | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations    |
-| `g.Index`      | `pkg/graph/indexapi`                 | 13      | Property/vector/high-frequency index management + IndexProvider        |
-| `g.Events`     | `pkg/graph/eventsapi`                | 3       | Sync/async EventBus management                                         |
-| `g.Constraints`| `pkg/graph/constraintsapi`           | 3       | Temporal-constraint set management                                     |
-| `g.IO`         | `pkg/graph/ioapi`                    | 2       | Export / Import                                                        |
-| `g.Admin`      | `pkg/graph/adminapi`                 | 9       | Tiered-store admin (archive, repair, shards, rotate, reset)            |
-| `g.Statistics` | `pkg/graph/statsapi`                 | 6       | Count helpers (wired as `g.Statistics` to avoid colliding with the existing `g.Stats()` method that returns `GraphStats`) |
-| `g.Hash`       | `pkg/graph/hashapi`                  | 2       | Hash-chain verification                                                |
-| `g.Resolve`    | `pkg/graph/resolveapi`               | 6       | Shadow-property + registry resolution                                  |
+| `g.Temporal`   | `pkg/graph/temporal`                 | 24      | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations    |
+| `g.Index`      | `pkg/graph/index`                    | 13      | Property/vector/high-frequency index management + IndexProvider        |
+| `g.Events`     | `pkg/graph/events`                   | 3       | Sync/async EventBus management                                         |
+| `g.Constraints`| `pkg/graph/constraints`              | 3       | Temporal-constraint set management                                     |
+| `g.IO`         | `pkg/graph/io`                       | 2       | Export / Import                                                        |
+| `g.Admin`      | `pkg/graph/admin`                    | 9       | Tiered-store admin (archive, repair, shards, rotate, reset)            |
+| `g.Stats`      | `pkg/graph/stats`                    | 6       | Count helpers                                                          |
+| `g.Hash`       | `pkg/graph/hash`                     | 2       | Hash-chain verification (shadows stdlib `hash` — alias as `tkghash` if needed) |
+| `g.Resolve`    | `pkg/graph/resolve`                  | 6       | Shadow-property + registry resolution                                  |
 | `g.Tx`         | `pkg/graph` (TxAPI in subapi.go)     | 3       | Transaction begin / Run / RunContext                                   |
 | `g.Batch`      | `pkg/graph` (BatchAPI in subapi.go)  | 1       | New BatchBuilder                                                       |
 

@@ -53,15 +53,15 @@ type exportHeader struct {
 // unsupported format version.
 var ErrIncompatibleExport = errors.New("graph: incompatible export format version")
 
-// ErrIncompatibleRegistry is returned by ImportGraph when the export stream
+// ErrIncompatibleRegistry is returned by IO.Import when the export stream
 // carries a label or reltype registry that conflicts with an existing non-empty
 // registry whose token mappings differ. Importing with a mismatched registry
 // would assign wrong labels/types to all entities without any visible error.
 var ErrIncompatibleRegistry = errors.New("graph: imported registry conflicts with existing registry")
 
-// ErrCorruptExport is returned by ImportGraph when an export record contains
+// ErrCorruptExport is returned by IO.Import when an export record contains
 // structurally invalid data — e.g. a node with primary-label token 0 (reserved)
-// or a relationship with type token 0. ImportGraph reads from an arbitrary
+// or a relationship with type token 0. IO.Import reads from an arbitrary
 // io.Reader (untrusted boundary); validation must surface bad records as
 // typed errors rather than letting types.NewNode / types.NewRelationship panic
 // downstream.
@@ -71,7 +71,7 @@ var ErrCorruptExport = errors.New("graph: corrupt export record")
 // A node with 1000 max-size properties is ~66 MiB; 128 MiB gives safe headroom.
 const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 
-// ExportGraph writes a portable snapshot of the graph to w.
+// Export writes a portable snapshot of the graph to w.
 //
 // The snapshot includes every current node and relationship, their full version
 // history, and the label/reltype registries. The format is a sequence of
@@ -79,9 +79,10 @@ const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 // 4-byte big-endian body length. This layout allows forward-compatible streaming
 // without loading the whole file into memory.
 //
-// ExportGraph holds c.mu.RLock for the duration — concurrent Snapshot, Reset,
+// Export holds c.mu.RLock for the duration — concurrent Snapshot, Reset,
 // and individual Add/Update/Delete mutations are all blocked by c.mu.
-func (c *Core) ExportGraph(w io.Writer) error {
+func (o *IOOps) Export(w io.Writer) error {
+	c := o.c
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -227,7 +228,7 @@ type importRecord struct {
 	data []byte
 }
 
-// ImportGraph reads a portable graph snapshot from r and restores it into c.
+// Import reads a portable graph snapshot from r and restores it into c.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
@@ -244,9 +245,10 @@ type importRecord struct {
 // For large exports (> 1 GB) this may be significant. Users restoring multi-GB
 // graphs should use an in-memory=false BadgerStore to reduce working-set pressure.
 //
-// The caller must ensure that entity IDs in the export do not conflict with
+// Import caller must ensure that entity IDs in the export do not conflict with
 // existing IDs in the graph (typical use: import into a freshly created graph).
-func (c *Core) ImportGraph(r io.Reader) error {
+func (o *IOOps) Import(r io.Reader) error {
+	c := o.c
 	// --- Phase 1: stream all records without any lock ---
 	var records []importRecord
 	for {

@@ -60,7 +60,7 @@ func TestBatchBuilderAddNode(t *testing.T) {
 	}
 
 	// Check labels.
-	labels := g.NodeLabels(n)
+	labels := g.Nodes.Labels(n)
 	if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Actor" {
 		t.Errorf("labels = %v, want [Person Actor]", labels)
 	}
@@ -192,7 +192,7 @@ func TestBatchBuilderExecuteNodes(t *testing.T) {
 		t.Fatalf("Failed = %d, want 0; errors: %v", result.Failed, result.Errors)
 	}
 
-	count, _ := g.NodeCount()
+	count, _ := g.Nodes.Count()
 	if count != 100 {
 		t.Fatalf("NodeCount = %d, want 100", count)
 	}
@@ -228,8 +228,8 @@ func TestBatchBuilderExecuteNodesAndRels(t *testing.T) {
 	}
 
 	// Verify relationships are navigable.
-	nodeCount, _ := g.NodeCount()
-	relCount, _ := g.RelationshipCount()
+	nodeCount, _ := g.Nodes.Count()
+	relCount, _ := g.Rels.Count()
 	if nodeCount != 3 {
 		t.Fatalf("NodeCount = %d, want 3", nodeCount)
 	}
@@ -237,7 +237,7 @@ func TestBatchBuilderExecuteNodesAndRels(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 2", relCount)
 	}
 
-	outgoing, _ := g.OutgoingRelationships(n1.ID(), "")
+	outgoing, _ := g.Rels.Outgoing(n1.ID(), "")
 	if len(outgoing) != 2 {
 		t.Fatalf("OutgoingRelationships(n1) = %d, want 2", len(outgoing))
 	}
@@ -248,7 +248,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create a node via normal API.
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	}
 
 	// Verify update.
-	updated, _ := g.GetNode(id)
+	updated, _ := g.Nodes.Get(id)
 	v, _ := updated.GetProperty("name")
 	if v != "Bob" {
 		t.Errorf("name = %v, want Bob", v)
@@ -283,9 +283,9 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create nodes + relationship.
-	n1, _ := g.AddNode([]string{"Person"}, nil)
-	n2, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", n1, n2, nil)
+	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", n1, n2, nil)
 
 	b := NewBatchBuilder(g)
 	b.DeleteRelationship(r.ID())
@@ -299,11 +299,11 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 		t.Fatalf("Deleted = %d, want 2", result.Deleted)
 	}
 
-	nodeCount, _ := g.NodeCount()
+	nodeCount, _ := g.Nodes.Count()
 	if nodeCount != 1 {
 		t.Fatalf("NodeCount = %d, want 1", nodeCount)
 	}
-	relCount, _ := g.RelationshipCount()
+	relCount, _ := g.Rels.Count()
 	if relCount != 0 {
 		t.Fatalf("RelationshipCount = %d, want 0", relCount)
 	}
@@ -314,7 +314,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Pre-existing data.
-	existing, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Eve"})
+	existing, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Eve"})
 	existingID := existing.ID()
 
 	b := NewBatchBuilder(g)
@@ -355,7 +355,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 	}
 
 	// Eve deleted, Alice and Bob remain.
-	nodeCount, _ := g.NodeCount()
+	nodeCount, _ := g.Nodes.Count()
 	if nodeCount != 2 {
 		t.Fatalf("NodeCount = %d, want 2", nodeCount)
 	}
@@ -384,7 +384,7 @@ func TestBatchBuilderExecute1000Nodes(t *testing.T) {
 		t.Fatalf("Failed = %d; errors: %v", result.Failed, result.Errors)
 	}
 
-	count, _ := g.NodeCount()
+	count, _ := g.Nodes.Count()
 	if count != 1000 {
 		t.Fatalf("NodeCount = %d, want 1000", count)
 	}
@@ -399,9 +399,9 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.AddNode([]string{"Person"}, nil)
-	n2, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", n1, n2, map[string]any{"weight": 1})
+	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", n1, n2, map[string]any{"weight": 1})
 	rID := r.ID()
 
 	b := NewBatchBuilder(g)
@@ -417,7 +417,7 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 		t.Fatalf("Updated = %d, want 1", result.Updated)
 	}
 
-	updated, _ := g.GetRelationship(rID)
+	updated, _ := g.Rels.Get(rID)
 	v, _ := updated.GetProperty("weight")
 	if v != 10 {
 		t.Errorf("weight = %v, want 10", v)
@@ -452,7 +452,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create a node so we can update it.
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	nID := n.ID()
 
 	b := NewBatchBuilder(g)
@@ -486,7 +486,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	}
 
 	// Verify partial success: the valid update was applied.
-	updated, _ := g.GetNode(nID)
+	updated, _ := g.Nodes.Get(nID)
 	v, _ := updated.GetProperty("name")
 	if v != "Bob" {
 		t.Errorf("name = %v, want Bob (partial failure should not roll back successes)", v)
@@ -527,7 +527,7 @@ func TestBatchExecuteBlocksSnapshot(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 100 {
-			snap, err := g.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
+			snap, err := g.Temporal.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
 			if err != nil {
 				continue
 			}
@@ -581,7 +581,7 @@ func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 20 {
-				snap, err := g.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
+				snap, err := g.Temporal.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
 				if err != nil {
 					continue
 				}
@@ -601,7 +601,7 @@ func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
 	}
 }
 
-// --- Fix 5: BatchBuilder.AddNode — canonical labels for hash ---
+// --- Fix 5: BatchBuilder.Nodes.Add — canonical labels for hash ---
 
 func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 	// Adding a node via batch with duplicate labels ["A", "B", "A"]
@@ -618,7 +618,7 @@ func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 	batchHash := batchNode.Integrity().Hash
 
 	// Recompute with canonical labels — must match the stored hash.
-	canonicalLabels := g.NodeLabels(batchNode)
+	canonicalLabels := g.Nodes.Labels(batchNode)
 	expectedHash := integrity.ComputeNodeHash(batchNode, canonicalLabels)
 	if batchHash != expectedHash {
 		t.Errorf("batch hash = %s, recomputed = %s (labels: %v)", batchHash, expectedHash, canonicalLabels)
@@ -645,9 +645,9 @@ func TestBatchBuilder_AddNode_HashChainVerification(t *testing.T) {
 	}
 
 	id := n.ID()
-	ok, err := g.VerifyNodeHashChain(id)
+	ok, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
-		t.Fatalf("VerifyNodeHashChain: %v", err)
+		t.Fatalf("VerifyNodeChain: %v", err)
 	}
 	if !ok {
 		t.Error("hash chain verification failed for batch-created node with duplicate labels")

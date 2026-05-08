@@ -70,7 +70,7 @@ func validImportPrelude(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// runImportSafely invokes g.ImportGraph(r) and converts a panic into a t.Fatal.
+// runImportSafely invokes g.IO.Import(r) and converts a panic into a t.Fatal.
 // The contract is: ImportGraph must surface malformed input as an error, never
 // as a panic.
 func runImportSafely(t *testing.T, g *Core, r io.Reader) error {
@@ -82,7 +82,7 @@ func runImportSafely(t *testing.T, g *Core, r io.Reader) error {
 				t.Fatalf("ImportGraph panicked on malformed input: %v", rec)
 			}
 		}()
-		importErr = g.ImportGraph(r)
+		importErr = g.IO.Import(r)
 	}()
 	return importErr
 }
@@ -94,7 +94,7 @@ func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: 0, // CORRUPT — token 0 is reserved
 		Version:      0,
 	})
@@ -128,7 +128,7 @@ func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: 1,
 		ExtraLabels:  []int{2, 0, 3}, // CORRUPT — extra label token 0
 		Version:      0,
@@ -163,7 +163,7 @@ func TestImportGraph_RejectsZeroRelType(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      int64(snowflakeIDForTest()),
+		ID:      snowflakeIDForTest(),
 		RelType: 0, // CORRUPT — token 0 is reserved
 		StartID: 100,
 		EndID:   200,
@@ -198,7 +198,7 @@ func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: 0,
 		Version:      1,
 	})
@@ -230,7 +230,7 @@ func TestImportGraph_RejectsZeroRelTypeInHistory(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      int64(snowflakeIDForTest()),
+		ID:      snowflakeIDForTest(),
 		RelType: 0,
 		StartID: 100,
 		EndID:   200,
@@ -269,7 +269,7 @@ func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
 
 	// Token = 70000 doesn't fit in uint16 (max 65535).
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: 70000, // CORRUPT — out of uint16 range
 		Version:      0,
 	})
@@ -302,7 +302,7 @@ func TestImportGraph_RejectsNegativeLabelToken(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: -1, // CORRUPT — negative
 		Version:      0,
 	})
@@ -345,7 +345,7 @@ func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           int64(snowflakeIDForTest()),
+		ID:           snowflakeIDForTest(),
 		PrimaryLabel: 1,            // valid primary
 		ExtraLabels:  []int{70000}, // CORRUPT — out of uint16 range
 		Version:      0,
@@ -380,10 +380,10 @@ func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
 	t.Parallel()
 
 	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      int64(snowflakeIDForTest()),
+		ID:      snowflakeIDForTest(),
 		RelType: 70000, // CORRUPT — out of uint16 range
-		StartID: int64(snowflakeIDForTest()) + 1,
-		EndID:   int64(snowflakeIDForTest()) + 2,
+		StartID: snowflakeIDForTest() + 1,
+		EndID:   snowflakeIDForTest() + 2,
 		Version: 0,
 	})
 	if err != nil {
@@ -423,20 +423,20 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 	}
 	defer src.Close() //nolint:errcheck
 
-	caseNode, err := src.AddNode([]string{"Case", "Tagged"}, map[string]any{"k": "v"})
+	caseNode, err := src.Nodes.Add([]string{"Case", "Tagged"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalNode, err := src.AddNode([]string{"Signal"}, nil)
+	signalNode, err := src.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	if _, err := src.AddRelationship("RELATES_TO", caseNode, signalNode, nil); err != nil {
+	if _, err := src.Rels.Add("RELATES_TO", caseNode, signalNode, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	var buf bytes.Buffer
-	if err := src.ExportGraph(&buf); err != nil {
+	if err := src.IO.Export(&buf); err != nil {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
@@ -451,14 +451,14 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 		t.Fatalf("ImportGraph happy path: %v", importErr)
 	}
 
-	got, err := dst.GetNode(caseNode.InternalID())
+	got, err := dst.Nodes.Get(caseNode.InternalID())
 	if err != nil {
 		t.Fatalf("GetNode after import: %v", err)
 	}
 	if got == nil {
 		t.Fatal("imported case node missing")
 	}
-	gotSig, err := dst.GetNode(signalNode.InternalID())
+	gotSig, err := dst.Nodes.Get(signalNode.InternalID())
 	if err != nil {
 		t.Fatalf("GetNode signal after import: %v", err)
 	}
@@ -497,15 +497,15 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 	// PutRelationship Section 12 ordering writes entity+out on startShard
 	// (hot event), then in/ on endShard (ref). So the rel ENTITY lives on
 	// the hot event shard — which is the shard we'll fault-inject below.
-	signalNode, err := g.AddNode([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	caseNode, err := g.AddNode([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := g.AddRelationship("LINK", signalNode, caseNode, nil)
+	rel, err := g.Rels.Add("LINK", signalNode, caseNode, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -628,15 +628,15 @@ func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
 
 	// Build a cross-shard rel so Phase 2 enters the GetRelationship loop.
 	// (Same-shard rels short-circuit before the read.)
-	caseRef, err := g.AddNode([]string{"Case"}, nil)
+	caseRef, err := g.Nodes.Add([]string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalEvt, err := g.AddNode([]string{"Signal"}, nil)
+	signalEvt, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	rel, err := g.AddRelationship("TOUCHES", caseRef, signalEvt, nil)
+	rel, err := g.Rels.Add("TOUCHES", caseRef, signalEvt, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship cross-shard: %v", err)
 	}

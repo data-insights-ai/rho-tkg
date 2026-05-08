@@ -23,13 +23,13 @@ func TestAddNodeWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.AddNodeWithContext(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
+	_, err := g.Nodes.AddWithContext(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("AddNodeWithContext err = %v, want context.Canceled", err)
 	}
 
 	// No node should have been created.
-	count, _ := g.NodeCount()
+	count, _ := g.Nodes.Count()
 	if count != 0 {
 		t.Errorf("NodeCount = %d after cancelled add, want 0", count)
 	}
@@ -41,15 +41,15 @@ func TestAddRelWithContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 
-	_, err := g.AddRelationshipWithContext(ctx, "KNOWS", a, b, nil)
+	_, err := g.Rels.AddWithContext(ctx, "KNOWS", a, b, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("AddRelationshipWithContext err = %v, want context.Canceled", err)
 	}
 
-	count, _ := g.RelationshipCount()
+	count, _ := g.Rels.Count()
 	if count != 0 {
 		t.Errorf("RelationshipCount = %d after cancelled add, want 0", count)
 	}
@@ -58,11 +58,11 @@ func TestAddRelWithContextCancelled(t *testing.T) {
 func TestUpdateNodeWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{"name": "Bob"})
+	_, err := g.Nodes.UpdateWithContext(ctx, n.ID(), map[string]any{"name": "Bob"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("UpdateNodeWithContext err = %v, want context.Canceled", err)
 	}
@@ -71,13 +71,13 @@ func TestUpdateNodeWithContextCancelled(t *testing.T) {
 func TestUpdateRelWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": 2020})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.UpdateRelationshipWithContext(ctx, r.ID(), map[string]any{"since": 2025})
+	_, err := g.Rels.UpdateWithContext(ctx, r.ID(), map[string]any{"since": 2025})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("UpdateRelationshipWithContext err = %v, want context.Canceled", err)
 	}
@@ -86,17 +86,17 @@ func TestUpdateRelWithContextCancelled(t *testing.T) {
 func TestDeleteNodeWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := g.DeleteNodeWithContext(ctx, n.ID())
+	err := g.Nodes.DeleteWithContext(ctx, n.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("DeleteNodeWithContext err = %v, want context.Canceled", err)
 	}
 
 	// Node should still exist.
-	_, err = g.GetNode(n.ID())
+	_, err = g.Nodes.Get(n.ID())
 	if err != nil {
 		t.Errorf("GetNode after cancelled delete returned error: %v", err)
 	}
@@ -105,19 +105,19 @@ func TestDeleteNodeWithContextCancelled(t *testing.T) {
 func TestDeleteRelWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := g.DeleteRelationshipWithContext(ctx, r.ID())
+	err := g.Rels.DeleteWithContext(ctx, r.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("DeleteRelationshipWithContext err = %v, want context.Canceled", err)
 	}
 
 	// Relationship should still exist.
-	_, err = g.GetRelationship(r.ID())
+	_, err = g.Rels.Get(r.ID())
 	if err != nil {
 		t.Errorf("GetRelationship after cancelled delete returned error: %v", err)
 	}
@@ -126,11 +126,11 @@ func TestDeleteRelWithContextCancelled(t *testing.T) {
 func TestGetNodeWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.GetNodeWithContext(ctx, n.ID())
+	_, err := g.Nodes.GetWithContext(ctx, n.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetNodeWithContext err = %v, want context.Canceled", err)
 	}
@@ -139,13 +139,13 @@ func TestGetNodeWithContextCancelled(t *testing.T) {
 func TestGetRelWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := g.GetRelationshipWithContext(ctx, r.ID())
+	_, err := g.Rels.GetWithContext(ctx, r.ID())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetRelationshipWithContext err = %v, want context.Canceled", err)
 	}
@@ -158,7 +158,7 @@ func TestAddNodeWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNodeWithContext(context.Background(), []string{"Person", "Employee"}, map[string]any{"name": "Alice", "age": 30})
+	n, err := g.Nodes.AddWithContext(context.Background(), []string{"Person", "Employee"}, map[string]any{"name": "Alice", "age": 30})
 	if err != nil {
 		t.Fatalf("AddNodeWithContext error: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestAddNodeWithContextSuccess(t *testing.T) {
 		t.Fatal("AddNodeWithContext returned nil node")
 	}
 
-	labels := g.NodeLabels(n)
+	labels := g.Nodes.Labels(n)
 	if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Employee" {
 		t.Errorf("labels = %v, want [Person Employee]", labels)
 	}
@@ -182,10 +182,10 @@ func TestAddRelWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 
-	r, err := g.AddRelationshipWithContext(context.Background(), "KNOWS", a, b, map[string]any{"since": 2020})
+	r, err := g.Rels.AddWithContext(context.Background(), "KNOWS", a, b, map[string]any{"since": 2020})
 	if err != nil {
 		t.Fatalf("AddRelationshipWithContext error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestAddRelWithContextSuccess(t *testing.T) {
 		t.Fatal("AddRelationshipWithContext returned nil rel")
 	}
 
-	typeName := g.RelationshipType(r)
+	typeName := g.Rels.Type(r)
 	if typeName != "KNOWS" {
 		t.Errorf("type = %q, want KNOWS", typeName)
 	}
@@ -209,10 +209,10 @@ func TestUpdateNodeWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	updated, err := g.UpdateNodeWithContext(context.Background(), id, map[string]any{"name": "Bob", "age": 25})
+	updated, err := g.Nodes.UpdateWithContext(context.Background(), id, map[string]any{"name": "Bob", "age": 25})
 	if err != nil {
 		t.Fatalf("UpdateNodeWithContext error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestUpdateNodeWithContextSuccess(t *testing.T) {
 	}
 
 	// Verify version history was saved.
-	history, _ := g.GetNodeHistory(id)
+	history, _ := g.Nodes.History(id)
 	if len(history) != 1 {
 		t.Errorf("history len = %d, want 1", len(history))
 	}
@@ -234,12 +234,12 @@ func TestUpdateRelWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": 2020})
 	id := r.ID()
 
-	updated, err := g.UpdateRelationshipWithContext(context.Background(), id, map[string]any{"since": 2025})
+	updated, err := g.Rels.UpdateWithContext(context.Background(), id, map[string]any{"since": 2025})
 	if err != nil {
 		t.Fatalf("UpdateRelationshipWithContext error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestUpdateRelWithContextSuccess(t *testing.T) {
 	}
 
 	// Verify version history was saved.
-	history, _ := g.GetRelHistory(id)
+	history, _ := g.Rels.History(id)
 	if len(history) != 1 {
 		t.Errorf("history len = %d, want 1", len(history))
 	}
@@ -261,22 +261,22 @@ func TestDeleteNodeWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
-	err := g.DeleteNodeWithContext(context.Background(), a.ID())
+	err := g.Nodes.DeleteWithContext(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("DeleteNodeWithContext error: %v", err)
 	}
 
 	// Node and cascade-deleted rels should be gone.
-	_, err = g.GetNode(a.ID())
+	_, err = g.Nodes.Get(a.ID())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
 
-	relCount, _ := g.RelationshipCount()
+	relCount, _ := g.Rels.Count()
 	if relCount != 0 {
 		t.Errorf("RelationshipCount = %d after cascade delete, want 0", relCount)
 	}
@@ -286,16 +286,16 @@ func TestDeleteRelWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 
-	err := g.DeleteRelationshipWithContext(context.Background(), r.ID())
+	err := g.Rels.DeleteWithContext(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("DeleteRelationshipWithContext error: %v", err)
 	}
 
-	_, err = g.GetRelationship(r.ID())
+	_, err = g.Rels.Get(r.ID())
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Errorf("GetRelationship after delete: err = %v, want storepkg.ErrRelNotFound", err)
 	}
@@ -305,10 +305,10 @@ func TestGetNodeWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	got, err := g.GetNodeWithContext(context.Background(), id)
+	got, err := g.Nodes.GetWithContext(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNodeWithContext error: %v", err)
 	}
@@ -321,12 +321,12 @@ func TestGetRelWithContextSuccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": 2020})
 	id := r.ID()
 
-	got, err := g.GetRelationshipWithContext(context.Background(), id)
+	got, err := g.Rels.GetWithContext(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetRelationshipWithContext error: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestAddNodeWithContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	_, err := g.AddNodeWithContext(ctx, []string{"Person"}, nil)
+	_, err := g.Nodes.AddWithContext(ctx, []string{"Person"}, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -352,11 +352,11 @@ func TestAddNodeWithContextDeadline(t *testing.T) {
 func TestUpdateNodeWithContextDeadline(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	_, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{"x": 1})
+	_, err := g.Nodes.UpdateWithContext(ctx, n.ID(), map[string]any{"x": 1})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -365,11 +365,11 @@ func TestUpdateNodeWithContextDeadline(t *testing.T) {
 func TestDeleteNodeWithContextDeadline(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	err := g.DeleteNodeWithContext(ctx, n.ID())
+	err := g.Nodes.DeleteWithContext(ctx, n.ID())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -378,11 +378,11 @@ func TestDeleteNodeWithContextDeadline(t *testing.T) {
 func TestGetNodeWithContextDeadline(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	ctx, cancel := context.WithDeadline(context.Background(), deadlineInPast())
 	defer cancel()
 
-	_, err := g.GetNodeWithContext(ctx, n.ID())
+	_, err := g.Nodes.GetWithContext(ctx, n.ID())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -395,7 +395,7 @@ func TestAddNodeDelegatesToContext(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode error: %v", err)
 	}
@@ -411,8 +411,8 @@ func TestUpdateNodeDelegatesToContext(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	updated, err := g.UpdateNode(n.ID(), map[string]any{"name": "Bob"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	updated, err := g.Nodes.Update(n.ID(), map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateNode error: %v", err)
 	}
@@ -425,12 +425,12 @@ func TestDeleteNodeDelegatesToContext(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, nil)
-	err := g.DeleteNode(n.ID())
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	err := g.Nodes.Delete(n.ID())
 	if err != nil {
 		t.Fatalf("DeleteNode error: %v", err)
 	}
-	_, err = g.GetNode(n.ID())
+	_, err = g.Nodes.Get(n.ID())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
@@ -440,8 +440,8 @@ func TestGetNodeDelegatesToContext(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	got, err := g.GetNode(n.ID())
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	got, err := g.Nodes.Get(n.ID())
 	if err != nil {
 		t.Fatalf("GetNode error: %v", err)
 	}
@@ -456,10 +456,10 @@ func TestUpdateNodeWithContextEmptyUpdatesNoop(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	got, err := g.UpdateNodeWithContext(context.Background(), id, map[string]any{})
+	got, err := g.Nodes.UpdateWithContext(context.Background(), id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateNodeWithContext empty updates error: %v", err)
 	}
@@ -473,12 +473,12 @@ func TestUpdateRelWithContextEmptyUpdatesNoop(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": 2020})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": 2020})
 	id := r.ID()
 
-	got, err := g.UpdateRelationshipWithContext(context.Background(), id, map[string]any{})
+	got, err := g.Rels.UpdateWithContext(context.Background(), id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateRelationshipWithContext empty updates error: %v", err)
 	}
@@ -494,12 +494,12 @@ func TestAddNodeWithContextValidationError(t *testing.T) {
 	// Validation error (bad property value — struct) takes priority over context.
 	// This verifies validation runs before context checks on the store path.
 	type badStruct struct{ X int }
-	_, err := g.AddNodeWithContext(context.Background(), []string{"Person"}, map[string]any{"bad": badStruct{1}})
+	_, err := g.Nodes.AddWithContext(context.Background(), []string{"Person"}, map[string]any{"bad": badStruct{1}})
 	if err == nil {
 		t.Fatal("AddNodeWithContext with bad property should fail")
 	}
 
-	count, _ := g.NodeCount()
+	count, _ := g.Nodes.Count()
 	if count != 0 {
 		t.Errorf("NodeCount = %d after failed add, want 0", count)
 	}
@@ -518,9 +518,9 @@ func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"count": 0})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"count": 0})
 	rID := r.ID()
 
 	// Concurrent delete + update on same rel. Under -race, this would fail
@@ -532,16 +532,16 @@ func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			if idx%2 == 0 {
-				_ = g.DeleteRelationshipWithContext(context.Background(), rID)
+				_ = g.Rels.DeleteWithContext(context.Background(), rID)
 			} else {
-				_, _ = g.UpdateRelationshipWithContext(context.Background(), rID, map[string]any{"count": idx})
+				_, _ = g.Rels.UpdateWithContext(context.Background(), rID, map[string]any{"count": idx})
 			}
 		}(i)
 	}
 	wg.Wait()
 
 	// Rel should be gone (at least one delete succeeded).
-	_, err := g.GetRelationship(rID)
+	_, err := g.Rels.Get(rID)
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound after concurrent delete, got %v", err)
 	}
@@ -551,25 +551,25 @@ func TestDeleteRelWithContext_ConcurrentUpdate(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"x": 1})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"x": 1})
 	rID := r.ID()
 
 	// Delete wins, rel is gone, tombstone version exists.
-	err := g.DeleteRelationshipWithContext(context.Background(), rID)
+	err := g.Rels.DeleteWithContext(context.Background(), rID)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
 	// Verify deleted.
-	_, err = g.GetRelationship(rID)
+	_, err = g.Rels.Get(rID)
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
 
 	// Verify tombstone history preserved.
-	hist, err := g.GetRelHistory(rID)
+	hist, err := g.Rels.History(rID)
 	if err != nil {
 		t.Fatalf("GetRelHistory: %v", err)
 	}
@@ -588,9 +588,9 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"v": 0})
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"v": 0})
 	aID := a.ID()
 	rID := r.ID()
 
@@ -602,20 +602,20 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			if idx == 0 {
-				_ = g.DeleteNodeWithContext(context.Background(), aID)
+				_ = g.Nodes.DeleteWithContext(context.Background(), aID)
 			} else {
-				_, _ = g.UpdateRelationshipWithContext(context.Background(), rID, map[string]any{"v": idx})
+				_, _ = g.Rels.UpdateWithContext(context.Background(), rID, map[string]any{"v": idx})
 			}
 		}(i)
 	}
 	wg.Wait()
 
 	// Node and rel should be gone.
-	_, err := g.GetNode(aID)
+	_, err := g.Nodes.Get(aID)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
-	_, err = g.GetRelationship(rID)
+	_, err = g.Rels.Get(rID)
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
@@ -625,13 +625,13 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 	aID := a.ID()
 
 	// Pre-create some rels.
 	for range 5 {
-		_, _ = g.AddRelationship("EDGE", a, b, nil)
+		_, _ = g.Rels.Add("EDGE", a, b, nil)
 	}
 
 	var wg sync.WaitGroup
@@ -640,21 +640,21 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	// Goroutine 1: delete node (cascade deletes all rels).
 	go func() {
 		defer wg.Done()
-		_ = g.DeleteNodeWithContext(context.Background(), aID)
+		_ = g.Nodes.DeleteWithContext(context.Background(), aID)
 	}()
 
 	// Goroutine 2: try to add more rels while delete is happening.
 	go func() {
 		defer wg.Done()
 		for range 10 {
-			_, _ = g.AddRelationship("EDGE", a, b, nil)
+			_, _ = g.Rels.Add("EDGE", a, b, nil)
 		}
 	}()
 
 	wg.Wait()
 
 	// Node should be gone.
-	_, err := g.GetNode(aID)
+	_, err := g.Nodes.Get(aID)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -724,7 +724,7 @@ func TestAddNodeWithTemporal(t *testing.T) {
 	eventTime := types.Instant(time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC).UnixMilli())
 	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
 
-	n, err := g.AddNodeWithContext(context.Background(), []string{"Signal"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(context.Background(), []string{"Signal"}, map[string]any{
 		"name":           "brute-force",
 		"tkg_valid_from": int64(eventTime),
 		"tkg_valid_to":   int64(farFuture),
@@ -761,7 +761,7 @@ func TestAddNodeWithoutTemporal(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -787,10 +787,10 @@ func TestAddRelationshipWithTemporal(t *testing.T) {
 
 	eventTime := types.Instant(time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC).UnixMilli())
 
-	src, _ := g.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.1"})
-	dst, _ := g.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.2"})
+	src, _ := g.Nodes.Add([]string{"Host"}, map[string]any{"ip": "10.0.0.1"})
+	dst, _ := g.Nodes.Add([]string{"Host"}, map[string]any{"ip": "10.0.0.2"})
 
-	r, err := g.AddRelationshipWithContext(context.Background(), "CONNECTED_TO", src, dst, map[string]any{
+	r, err := g.Rels.AddWithContext(context.Background(), "CONNECTED_TO", src, dst, map[string]any{
 		"port":           int64(22),
 		"tkg_valid_from": int64(eventTime),
 		"tkg_created_at": int64(eventTime),
@@ -821,7 +821,7 @@ func TestTemporalFloat64Accepted(t *testing.T) {
 	eventTime := types.Instant(1741521600000) // 2025-03-09T12:00:00Z
 
 	// float64 — common from JSON round-trip.
-	n, err := g.AddNode([]string{"Event"}, map[string]any{
+	n, err := g.Nodes.Add([]string{"Event"}, map[string]any{
 		"tkg_valid_from": float64(eventTime),
 	})
 	if err != nil {
@@ -836,7 +836,7 @@ func TestTemporalInvalidTypeRejected(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	_, err := g.AddNode([]string{"Event"}, map[string]any{
+	_, err := g.Nodes.Add([]string{"Event"}, map[string]any{
 		"tkg_valid_from": "not-a-number",
 	})
 	if err == nil {
@@ -848,7 +848,7 @@ func TestTemporalNonIntegerFloat64Rejected(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	_, err := g.AddNode([]string{"Event"}, map[string]any{
+	_, err := g.Nodes.Add([]string{"Event"}, map[string]any{
 		"tkg_valid_from": 123.456,
 	})
 	if err == nil {
@@ -881,7 +881,7 @@ func TestBatchAddNodeWithTemporal(t *testing.T) {
 	}
 
 	// Re-read from store to verify temporal survived PutNodesBatch + DeepCopy.
-	stored, err := g.GetNodeWithContext(context.Background(), n.ID())
+	stored, err := g.Nodes.GetWithContext(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -921,7 +921,7 @@ func TestBatchAddRelationshipWithTemporal(t *testing.T) {
 		t.Fatalf("batch failed: %v", result.Errors)
 	}
 
-	stored, err := g.GetRelationshipWithContext(context.Background(), r.ID())
+	stored, err := g.Rels.GetWithContext(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}

@@ -115,7 +115,7 @@ func RegisterPropertyStructType(v any) error {
 	}
 	t := reflect.TypeOf(v)
 	elemT := t
-	if elemT.Kind() == reflect.Ptr {
+	if elemT.Kind() == reflect.Pointer {
 		elemT = elemT.Elem()
 	}
 	// Verify both contracts against the FORM ACTUALLY PASSED. Including
@@ -155,7 +155,7 @@ var (
 // type if rv is a pointer) has been registered via RegisterPropertyStructType.
 func isRegisteredPropertyStructType(rv reflect.Value) bool {
 	t := rv.Type()
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return false
 		}

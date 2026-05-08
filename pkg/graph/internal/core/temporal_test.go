@@ -21,7 +21,7 @@ func TestGetNodesValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	nodes, err := g.GetNodesValidAt(nowMs())
+	nodes, err := g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,10 +34,10 @@ func TestGetNodesValidAt_NoTemporal(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — node should be valid (ValidFrom derived from snowflake).
-	nodes, err := g.GetNodesValidAt(nowMs())
+	nodes, err := g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	// Set explicit validity: valid from 1000 to 2000.
@@ -59,7 +59,7 @@ func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Query at 1500 — should be valid.
-	nodes, err := g.GetNodesValidAt(1500)
+	nodes, err := g.Temporal.NodesAt(1500)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 	}
 
 	// Query at 500 — should be excluded (before ValidFrom).
-	nodes, err = g.GetNodesValidAt(500)
+	nodes, err = g.Temporal.NodesAt(500)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGetNodesValidAt_Expired(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	// Set ValidTo in the past.
@@ -89,7 +89,7 @@ func TestGetNodesValidAt_Expired(t *testing.T) {
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(current)
 
-	nodes, err := g.GetNodesValidAt(3000)
+	nodes, err := g.Temporal.NodesAt(3000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestGetNodesValidAt_Future(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	// Set ValidFrom far in the future.
@@ -111,7 +111,7 @@ func TestGetNodesValidAt_Future(t *testing.T) {
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: futureMs})
 	_ = g.store.ReplaceNode(current)
 
-	nodes, err := g.GetNodesValidAt(nowMs())
+	nodes, err := g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,21 +126,21 @@ func TestGetNodesValidAt_Mixed(t *testing.T) {
 	g, _ := New(Config{})
 
 	// Node A: valid at query time (no explicit temporal).
-	g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
+	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
 
 	// Node B: expired.
-	nB, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
+	nB, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
 	bCurrent, _ := g.store.GetNode(nB.ID())
 	bCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(bCurrent)
 
 	// Node C: valid at query time with explicit range.
-	nC, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "C"})
+	nC, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "C"})
 	cCurrent, _ := g.store.GetNode(nC.ID())
 	cCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 0})
 	_ = g.store.ReplaceNode(cCurrent)
 
-	nodes, err := g.GetNodesValidAt(nowMs())
+	nodes, err := g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestGetRelsValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	rels, err := g.GetRelationshipsValidAt(nowMs())
+	rels, err := g.Temporal.RelationshipsAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,16 +166,16 @@ func TestGetRelsValidAt_ExplicitValidity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(current)
 
-	rels, err := g.GetRelationshipsValidAt(1500)
+	rels, err := g.Temporal.RelationshipsAt(1500)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestGetRelsValidAt_ExplicitValidity(t *testing.T) {
 		t.Fatalf("at t=1500: expected 1 rel, got %d", len(rels))
 	}
 
-	rels, err = g.GetRelationshipsValidAt(2500)
+	rels, err = g.Temporal.RelationshipsAt(2500)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,19 +196,19 @@ func TestGetRelsValidAt_Mixed(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// Rel 1: valid (no explicit temporal).
-	g.AddRelationship("KNOWS", a, b, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	// Rel 2: expired.
-	r2, _ := g.AddRelationship("LIKES", a, b, nil)
+	r2, _ := g.Rels.Add("LIKES", a, b, nil)
 	r2Current, _ := g.store.GetRelationship(r2.ID())
 	r2Current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(r2Current)
 
-	rels, err := g.GetRelationshipsValidAt(nowMs())
+	rels, err := g.Temporal.RelationshipsAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -221,8 +221,8 @@ func TestGetNodesByLabelValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	g.GetOrCreateLabel("Person")
-	nodes, err := g.GetNodesByLabelValidAt("Person", nowMs())
+	g.Resolve.GetOrCreateLabel("Person")
+	nodes, err := g.Temporal.NodesByLabelAt("Person", nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -235,14 +235,14 @@ func TestGetNodesByLabelValidAt_Filtered(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	g.AddNode([]string{"Person"}, map[string]any{"name": "Valid"})
+	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Valid"})
 
-	nExpired, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Expired"})
+	nExpired, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Expired"})
 	ec, _ := g.store.GetNode(nExpired.ID())
 	ec.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(ec)
 
-	nodes, err := g.GetNodesByLabelValidAt("Person", nowMs())
+	nodes, err := g.Temporal.NodesByLabelAt("Person", nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestGetNodesByLabelValidAt_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	nodes, err := g.GetNodesByLabelValidAt("Unknown", nowMs())
+	nodes, err := g.Temporal.NodesByLabelAt("Unknown", nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestGetNodesValidDuring_Overlap(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -278,7 +278,7 @@ func TestGetNodesValidDuring_Overlap(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Interval [2000, 4000) overlaps [1000, 3000).
-	nodes, err := g.GetNodesValidDuring(2000, 4000)
+	nodes, err := g.Temporal.NodesDuring(2000, 4000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -299,7 +299,7 @@ func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Interval [3000, 4000) does not overlap [1000, 2000).
-	nodes, err := g.GetNodesValidDuring(3000, 4000)
+	nodes, err := g.Temporal.NodesDuring(3000, 4000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
 	// Open-ended (ValidTo=0) — overlaps any future interval.
@@ -321,7 +321,7 @@ func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	farFuture := types.Instant(time.Now().Add(365 * 24 * time.Hour).UnixMilli())
-	nodes, err := g.GetNodesValidDuring(farFuture, farFuture+1000)
+	nodes, err := g.Temporal.NodesDuring(farFuture, farFuture+1000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -334,16 +334,16 @@ func TestGetRelsValidDuring_Overlap(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 3000})
 	_ = g.store.ReplaceRelationship(current)
 
-	rels, err := g.GetRelationshipsValidDuring(2000, 4000)
+	rels, err := g.Temporal.RelationshipsDuring(2000, 4000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -356,16 +356,16 @@ func TestGetRelsValidDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(current)
 
-	rels, err := g.GetRelationshipsValidDuring(3000, 4000)
+	rels, err := g.Temporal.RelationshipsDuring(3000, 4000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -378,13 +378,13 @@ func TestGetRelsValidDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	// Rel without explicit ValidTo — open-ended.
-	g.AddRelationship("KNOWS", a, b, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	now := nowMs()
-	rels, err := g.GetRelationshipsValidDuring(now-1000, now+1000)
+	rels, err := g.Temporal.RelationshipsDuring(now-1000, now+1000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -399,10 +399,10 @@ func TestGetNodeAt_CurrentVersion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — should return the (only) version.
-	result, err := g.GetNodeAt(n.ID(), nowMs())
+	result, err := g.Temporal.NodeAt(n.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	// Record creation time.
@@ -425,12 +425,12 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	// Pause to ensure time advances (UpdatedAt will differ).
 	time.Sleep(2 * time.Millisecond)
 
-	g.UpdateNode(id, map[string]any{"name": "v1"})
+	g.Nodes.Update(id, map[string]any{"name": "v1"})
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateNode(id, map[string]any{"name": "v2"})
+	g.Nodes.Update(id, map[string]any{"name": "v2"})
 
 	// Query at creation time — should return v0 (genesis).
-	result, err := g.GetNodeAt(id, creationTime)
+	result, err := g.Temporal.NodeAt(id, creationTime)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -440,7 +440,7 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	}
 
 	// Query at current time — should return v2 (latest).
-	result, err = g.GetNodeAt(id, nowMs())
+	result, err = g.Temporal.NodeAt(id, nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -454,10 +454,10 @@ func TestGetNodeAt_BeforeCreation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// Query before the entity existed.
-	_, err := g.GetNodeAt(n.ID(), 1)
+	_, err := g.Temporal.NodeAt(n.ID(), 1)
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
@@ -467,7 +467,7 @@ func TestGetNodeAt_NotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	_, err := g.GetNodeAt(types.NodeID(999), nowMs())
+	_, err := g.Temporal.NodeAt(types.NodeID(999), nowMs())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -477,7 +477,7 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "explicit"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "explicit"})
 	id := n.ID()
 
 	// Set explicit ValidFrom/ValidTo on the node.
@@ -486,7 +486,7 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Query at t=7000 — within explicit range.
-	result, err := g.GetNodeAt(id, 7000)
+	result, err := g.Temporal.NodeAt(id, 7000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -496,13 +496,13 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 	}
 
 	// Query at t=3000 — before explicit ValidFrom.
-	_, err = g.GetNodeAt(id, 3000)
+	_, err = g.Temporal.NodeAt(id, 3000)
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("before explicit ValidFrom: expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
 
 	// Query at t=15000 — after explicit ValidTo.
-	_, err = g.GetNodeAt(id, 15000)
+	_, err = g.Temporal.NodeAt(id, 15000)
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("after explicit ValidTo: expected storepkg.ErrNoVersionValidAt, got %v", err)
 	}
@@ -514,14 +514,14 @@ func TestGetNeighborsValidAt_AllValid(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
-	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
-	c, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "C"})
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
+	c, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "C"})
 
-	g.AddRelationship("KNOWS", a, b, nil)
-	g.AddRelationship("KNOWS", c, a, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
+	g.Rels.Add("KNOWS", c, a, nil)
 
-	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -534,19 +534,19 @@ func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
-	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
-	c, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "C"})
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
+	c, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "C"})
 
-	g.AddRelationship("KNOWS", a, b, nil)
-	g.AddRelationship("KNOWS", a, c, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
+	g.Rels.Add("KNOWS", a, c, nil)
 
 	// Expire node C.
 	cCurrent, _ := g.store.GetNode(c.ID())
 	cCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(cCurrent)
 
-	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -559,17 +559,17 @@ func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "A"})
-	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "B"})
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
 
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 
 	// Expire the relationship (node B is still valid).
 	rCurrent, _ := g.store.GetRelationship(r.ID())
 	rCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(rCurrent)
 
-	neighbors, err := g.GetNeighborsValidAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -584,7 +584,7 @@ func TestSnapshot_Empty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	snap, err := g.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -600,11 +600,11 @@ func TestSnapshot_CurrentTime(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
-	snap, err := g.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -620,12 +620,12 @@ func TestSnapshot_PastTime(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	// Snapshot at t=1 (before epoch) — snowflake-derived ValidFrom will be in 2026.
-	snap, err := g.Snapshot(1)
+	snap, err := g.Temporal.Snapshot(1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -641,16 +641,16 @@ func TestSnapshot_DanglingRelExcluded(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	// Expire node B — the rel becomes dangling.
 	bCurrent, _ := g.store.GetNode(b.ID())
 	bCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(bCurrent)
 
-	snap, err := g.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -667,11 +667,11 @@ func TestSnapshot_SortedResults(t *testing.T) {
 
 	g, _ := New(Config{})
 	// Add multiple nodes — they get ascending snowflake IDs.
-	n1, _ := g.AddNode([]string{"Person"}, nil)
-	n2, _ := g.AddNode([]string{"Person"}, nil)
-	n3, _ := g.AddNode([]string{"Person"}, nil)
+	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n3, _ := g.Nodes.Add([]string{"Person"}, nil)
 
-	snap, err := g.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -700,15 +700,15 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateNode(id, map[string]any{"name": "v1"})
+	g.Nodes.Update(id, map[string]any{"name": "v1"})
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateNode(id, map[string]any{"name": "v2"})
+	g.Nodes.Update(id, map[string]any{"name": "v2"})
 	time.Sleep(2 * time.Millisecond)
-	updated, _ := g.UpdateNode(id, map[string]any{"name": "v3"})
+	updated, _ := g.Nodes.Update(id, map[string]any{"name": "v3"})
 
 	// Truncate to keep only 1 history version (v2 survives).
 	if err := g.store.TruncateNodeHistory(id, 1); err != nil {
@@ -727,7 +727,7 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	}
 
 	// Query at the surviving version's time.
-	result, err := g.GetNodeAt(id, tm.UpdatedAt)
+	result, err := g.Temporal.NodeAt(id, tm.UpdatedAt)
 	if err != nil {
 		t.Fatalf("GetNodeAt at surviving version time: %v", err)
 	}
@@ -737,7 +737,7 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	}
 
 	// Query at current time should return latest (v3).
-	result, err = g.GetNodeAt(id, nowMs())
+	result, err = g.Temporal.NodeAt(id, nowMs())
 	if err != nil {
 		t.Fatalf("GetNodeAt at now: %v", err)
 	}
@@ -754,14 +754,14 @@ func TestDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateNode(id, map[string]any{"name": "v1"})
+	g.Nodes.Update(id, map[string]any{"name": "v1"})
 
 	// Delete the node.
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -779,13 +779,13 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	beforeDelete := nowMs()
 	time.Sleep(2 * time.Millisecond)
 
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -804,7 +804,7 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 	if tm.DeletedAt == 0 {
 		t.Fatal("tombstone should have DeletedAt set")
 	}
-	if tm.DeletedAt <= types.Instant(beforeDelete) {
+	if tm.DeletedAt <= beforeDelete {
 		t.Fatalf("DeletedAt %d should be after beforeDelete %d", tm.DeletedAt, beforeDelete)
 	}
 	if tm.ValidTo == 0 {
@@ -816,16 +816,16 @@ func TestDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
+	g.Rels.Update(rid, map[string]any{"weight": int64(2)})
 
 	// Delete the relationship.
-	if err := g.DeleteRelationship(rid); err != nil {
+	if err := g.Rels.Delete(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -850,17 +850,17 @@ func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"since": int64(2020)})
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2020)})
 	rid := r.ID()
 	aid := a.ID()
 
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateRelationship(rid, map[string]any{"since": int64(2021)})
+	g.Rels.Update(rid, map[string]any{"since": int64(2021)})
 
 	// Cascade delete node A — should preserve rel history.
-	if err := g.DeleteNode(aid); err != nil {
+	if err := g.Nodes.Delete(aid); err != nil {
 		t.Fatalf("DeleteNode cascade: %v", err)
 	}
 
@@ -896,7 +896,7 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Record a time when the node existed.
@@ -904,12 +904,12 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete the node (creates tombstone with DeletedAt/ValidTo).
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// GetNodeAt at the pre-deletion time should return the node.
-	result, err := g.GetNodeAt(id, validTime)
+	result, err := g.Temporal.NodeAt(id, validTime)
 	if err != nil {
 		t.Fatalf("GetNodeAt at pre-deletion time: %v", err)
 	}
@@ -923,17 +923,17 @@ func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 	time.Sleep(2 * time.Millisecond)
 
 	// GetNodeAt after deletion should return storepkg.ErrNoVersionValidAt.
-	_, err := g.GetNodeAt(id, nowMs())
+	_, err := g.Temporal.NodeAt(id, nowMs())
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
@@ -943,22 +943,22 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Also add a node that stays alive.
-	g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 
 	validTime := nowMs()
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete Alice.
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Query at pre-deletion time — both nodes should appear.
-	nodes, err := g.GetNodesValidAt(validTime)
+	nodes, err := g.Temporal.NodesAt(validTime)
 	if err != nil {
 		t.Fatalf("GetNodesValidAt: %v", err)
 	}
@@ -967,7 +967,7 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	}
 
 	// Query at current time — only Bob should appear.
-	nodes, err = g.GetNodesValidAt(nowMs())
+	nodes, err = g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("GetNodesValidAt now: %v", err)
 	}
@@ -980,16 +980,16 @@ func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
 	time.Sleep(2 * time.Millisecond)
 
-	g.UpdateNode(id, map[string]any{"name": "v1"})
+	g.Nodes.Update(id, map[string]any{"name": "v1"})
 
 	// Query at creation time — should return v0.
-	nodes, err := g.GetNodesValidAt(creationTime)
+	nodes, err := g.Temporal.NodesAt(creationTime)
 	if err != nil {
 		t.Fatalf("GetNodesValidAt: %v", err)
 	}
@@ -1006,20 +1006,20 @@ func TestGetRelAt_Basic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
 	creationTime := g.relValidFrom(r)
 	time.Sleep(2 * time.Millisecond)
 
-	g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
+	g.Rels.Update(rid, map[string]any{"weight": int64(2)})
 	time.Sleep(2 * time.Millisecond)
-	g.UpdateRelationship(rid, map[string]any{"weight": int64(3)})
+	g.Rels.Update(rid, map[string]any{"weight": int64(3)})
 
 	// Query at creation time — should return v0 with weight=1.
-	result, err := g.GetRelAt(rid, creationTime)
+	result, err := g.Temporal.RelAt(rid, creationTime)
 	if err != nil {
 		t.Fatalf("GetRelAt at creation: %v", err)
 	}
@@ -1029,7 +1029,7 @@ func TestGetRelAt_Basic(t *testing.T) {
 	}
 
 	// Query at current time — should return latest with weight=3.
-	result, err = g.GetRelAt(rid, nowMs())
+	result, err = g.Temporal.RelAt(rid, nowMs())
 	if err != nil {
 		t.Fatalf("GetRelAt now: %v", err)
 	}
@@ -1043,20 +1043,20 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
 	validTime := nowMs()
 	time.Sleep(2 * time.Millisecond)
 
-	if err := g.DeleteRelationship(rid); err != nil {
+	if err := g.Rels.Delete(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
 	// Query at pre-deletion time — should return the rel.
-	result, err := g.GetRelAt(rid, validTime)
+	result, err := g.Temporal.RelAt(rid, validTime)
 	if err != nil {
 		t.Fatalf("GetRelAt at pre-deletion: %v", err)
 	}
@@ -1067,7 +1067,7 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 
 	// Query at current time — should return storepkg.ErrNoVersionValidAt.
 	time.Sleep(2 * time.Millisecond)
-	_, err = g.GetRelAt(rid, nowMs())
+	_, err = g.Temporal.RelAt(rid, nowMs())
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
@@ -1077,7 +1077,7 @@ func TestGetRelAt_NotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	_, err := g.GetRelAt(types.RelID(999), nowMs())
+	_, err := g.Temporal.RelAt(types.RelID(999), nowMs())
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
 	}
@@ -1087,20 +1087,20 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	validTime := nowMs()
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete the relationship via cascade (delete node a).
-	if err := g.DeleteNode(a.ID()); err != nil {
+	if err := g.Nodes.Delete(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Query at pre-deletion time — rel should appear.
-	rels, err := g.GetRelationshipsValidAt(validTime)
+	rels, err := g.Temporal.RelationshipsAt(validTime)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidAt: %v", err)
 	}
@@ -1109,7 +1109,7 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	}
 
 	// Query at current time — rel should not appear.
-	rels, err = g.GetRelationshipsValidAt(nowMs())
+	rels, err = g.Temporal.RelationshipsAt(nowMs())
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidAt now: %v", err)
 	}
@@ -1122,20 +1122,20 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
-	g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.Rels.Add("KNOWS", a, b, nil)
 
 	snapshotTime := nowMs()
 	time.Sleep(2 * time.Millisecond)
 
 	// Delete Alice — cascades to the KNOWS relationship.
-	if err := g.DeleteNode(a.ID()); err != nil {
+	if err := g.Nodes.Delete(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Snapshot at pre-deletion time — should include both nodes and the rel.
-	snap, err := g.Snapshot(snapshotTime)
+	snap, err := g.Temporal.Snapshot(snapshotTime)
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
@@ -1147,7 +1147,7 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	}
 
 	// Snapshot at current time — only Bob.
-	snap, err = g.Snapshot(nowMs())
+	snap, err = g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("Snapshot now: %v", err)
 	}
@@ -1163,18 +1163,18 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
 	time.Sleep(2 * time.Millisecond)
 
-	if err := g.DeleteNode(id); err != nil {
+	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Interval overlapping the entity's lifetime should include it.
-	nodes, err := g.GetNodesValidDuring(creationTime, nowMs())
+	nodes, err := g.Temporal.NodesDuring(creationTime, nowMs())
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring: %v", err)
 	}
@@ -1184,7 +1184,7 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 
 	// Interval entirely after deletion should not include it.
 	afterDeletion := nowMs() + 1000
-	nodes, err = g.GetNodesValidDuring(afterDeletion, afterDeletion+1000)
+	nodes, err = g.Temporal.NodesDuring(afterDeletion, afterDeletion+1000)
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring after deletion: %v", err)
 	}
@@ -1197,20 +1197,20 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, _ := g.AddRelationship("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 
 	creationTime := g.relValidFrom(r)
 	time.Sleep(2 * time.Millisecond)
 
 	rid := r.ID()
-	if err := g.DeleteRelationship(rid); err != nil {
+	if err := g.Rels.Delete(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
 	// Interval overlapping the rel's lifetime should include it.
-	rels, err := g.GetRelationshipsValidDuring(creationTime, nowMs())
+	rels, err := g.Temporal.RelationshipsDuring(creationTime, nowMs())
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring: %v", err)
 	}
@@ -1220,7 +1220,7 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 
 	// Interval entirely after deletion should not include it.
 	afterDeletion := nowMs() + 1000
-	rels, err = g.GetRelationshipsValidDuring(afterDeletion, afterDeletion+1000)
+	rels, err = g.Temporal.RelationshipsDuring(afterDeletion, afterDeletion+1000)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring after deletion: %v", err)
 	}
@@ -1237,7 +1237,7 @@ func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Set explicit validity: 1000-2000.
@@ -1246,7 +1246,7 @@ func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Query at 1500 with matching label+property → should find.
-	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 1500)
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", "Alice", 1500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1261,7 +1261,7 @@ func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -1269,7 +1269,7 @@ func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Right label+time, wrong property value.
-	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Bob", 1500)
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", "Bob", 1500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1284,7 +1284,7 @@ func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -1292,7 +1292,7 @@ func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Right label+property, wrong time (after ValidTo).
-	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 3000)
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", "Alice", 3000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1307,7 +1307,7 @@ func TestNodesByLabelPropertyAndTime_UnregisteredLabel(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	nodes, err := g.NodesByLabelPropertyAndTime("Unknown", "name", "Alice", nowMs())
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Unknown", "name", "Alice", nowMs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1322,7 +1322,7 @@ func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -1330,9 +1330,9 @@ func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Create an index — should use the indexed path.
-	_ = g.CreatePropertyIndex("Person", "name")
+	_ = g.Index.CreateProperty("Person", "name")
 
-	nodes, err := g.NodesByLabelPropertyAndTime("Person", "name", "Alice", 1500)
+	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", "Alice", 1500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1347,7 +1347,7 @@ func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	current, _ := g.store.GetNode(id)
@@ -1355,7 +1355,7 @@ func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
 	_ = g.store.ReplaceNode(current)
 
 	// Interval [1500, 2500) overlaps [1000, 2000).
-	nodes, err := g.NodesByLabelPropertyDuring("Person", "name", "Alice", 1500, 2500)
+	nodes, err := g.Temporal.NodesByLabelPropertyDuring("Person", "name", "Alice", 1500, 2500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1370,14 +1370,14 @@ func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {
 	g, _ := New(Config{})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 
 	current, _ := g.store.GetNode(n.ID())
 	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(current)
 
 	// Interval [3000, 4000) does not overlap [1000, 2000).
-	nodes, err := g.NodesByLabelPropertyDuring("Person", "name", "Alice", 3000, 4000)
+	nodes, err := g.Temporal.NodesByLabelPropertyDuring("Person", "name", "Alice", 3000, 4000)
 	if err != nil {
 		t.Fatal(err)
 	}

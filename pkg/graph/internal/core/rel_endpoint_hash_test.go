@@ -12,16 +12,16 @@ func TestFromNodeHashStoredOnAdd(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, err := g.AddNode([]string{"Start"}, nil)
+	start, err := g.Nodes.Add([]string{"Start"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.AddNode([]string{"End"}, nil)
+	end, err := g.Nodes.Add([]string{"End"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
 
-	r, err := g.AddRelationship("CONNECTS", start, end, nil)
+	r, err := g.Rels.Add("CONNECTS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -60,14 +60,14 @@ func TestEndpointHashFromShadow(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
-	r, err := g.AddRelationship("LINKS", start, end, nil)
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	fromVal, ok := g.ResolveRelProperty(r, types.ShadowFromHash)
+	fromVal, ok := g.Resolve.RelProperty(r, types.ShadowFromHash)
 	if !ok {
 		t.Error("ResolveRelProperty(tkg_from_hash) returned false")
 	}
@@ -79,7 +79,7 @@ func TestEndpointHashFromShadow(t *testing.T) {
 		t.Errorf("tkg_from_hash = %q; want %q", fromStr, start.Integrity().Hash)
 	}
 
-	toVal, ok := g.ResolveRelProperty(r, types.ShadowToHash)
+	toVal, ok := g.Resolve.RelProperty(r, types.ShadowToHash)
 	if !ok {
 		t.Error("ResolveRelProperty(tkg_to_hash) returned false")
 	}
@@ -98,16 +98,16 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"S"}, nil)
-	end, _ := g.AddNode([]string{"E"}, nil)
-	r, err := g.AddRelationship("EDGE", start, end, nil)
+	start, _ := g.Nodes.Add([]string{"S"}, nil)
+	end, _ := g.Nodes.Add([]string{"E"}, nil)
+	r, err := g.Rels.Add("EDGE", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	originalFromHash := r.Integrity().FromNodeHash
 
 	// Update the start node — its hash changes.
-	updatedStart, err := g.UpdateNode(start.ID(), map[string]any{"x": 1})
+	updatedStart, err := g.Nodes.Update(start.ID(), map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	}
 
 	// Now update the relationship — should pick up the new start node hash.
-	updated, err := g.UpdateRelationship(r.ID(), map[string]any{"label": "updated"})
+	updated, err := g.Rels.Update(r.ID(), map[string]any{"label": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -136,8 +136,8 @@ func TestEndpointHashSelfLoop(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.AddNode([]string{"Node"}, nil)
-	r, err := g.AddRelationship("SELF", n, n, nil)
+	n, _ := g.Nodes.Add([]string{"Node"}, nil)
+	r, err := g.Rels.Add("SELF", n, n, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship self-loop: %v", err)
 	}
@@ -161,12 +161,12 @@ func TestEndpointHashNotOnNode(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.AddNode([]string{"N"}, nil)
+	n, _ := g.Nodes.Add([]string{"N"}, nil)
 
-	if val, ok := g.ResolveNodeProperty(n, types.ShadowFromHash); ok || val != nil {
+	if val, ok := g.Resolve.NodeProperty(n, types.ShadowFromHash); ok || val != nil {
 		t.Errorf("expected (nil, false) for tkg_from_hash on node, got (%v, %v)", val, ok)
 	}
-	if val, ok := g.ResolveNodeProperty(n, types.ShadowToHash); ok || val != nil {
+	if val, ok := g.Resolve.NodeProperty(n, types.ShadowToHash); ok || val != nil {
 		t.Errorf("expected (nil, false) for tkg_to_hash on node, got (%v, %v)", val, ok)
 	}
 }

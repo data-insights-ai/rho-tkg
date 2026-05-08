@@ -9,6 +9,7 @@ import (
 // RecurrenceFrequency defines how often a recurrence pattern repeats.
 type RecurrenceFrequency uint8
 
+// RecurrenceFrequency values.
 const (
 	RecurrenceDaily RecurrenceFrequency = iota + 1
 	RecurrenceWeekly
@@ -19,6 +20,7 @@ const (
 // WeekdayMask is a bitmask of weekdays: bit 0 = Monday, bit 6 = Sunday.
 type WeekdayMask uint8
 
+// WeekdayMask values for individual days and common combinations.
 const (
 	MaskMonday    WeekdayMask = 1 << 0 // bit 0
 	MaskTuesday   WeekdayMask = 1 << 1
@@ -111,8 +113,8 @@ func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 		}
 
 		// Compute interval for this day.
-		intervalStart := Instant(int64(day) + int64(p.DayStart.Milliseconds()))
-		intervalEnd := Instant(int64(day) + int64(p.DayEnd.Milliseconds()))
+		intervalStart := day + Instant(p.DayStart.Milliseconds())
+		intervalEnd := day + Instant(p.DayEnd.Milliseconds())
 
 		// Clip to [from, to).
 		if intervalStart < from {

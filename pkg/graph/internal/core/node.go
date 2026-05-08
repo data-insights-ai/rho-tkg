@@ -19,20 +19,21 @@ import (
 // Node — Add (Create / Import)
 // =============================================================================
 
-// AddNodeWithContext creates a new node with the given labels and properties.
+// AddWithContext creates a new node with the given labels and properties.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) AddNodeWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+	c := n.c
 	c.mu.RLock()
-	n, err := c.addNodeInternal(ctx, labels, props)
+	node, err := c.addNodeInternal(ctx, labels, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(n.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return n, err
+	return node, err
 }
 
-// addNodeInternal is the lock-free implementation of AddNodeWithContext.
+// addNodeInternal is the lock-free implementation of NodeOps.AddWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -90,13 +91,13 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		extraTokens = append(extraTokens, tok)
 	}
 
-	id := c.NextNodeID()
-	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
+	id := c.Nodes.NextID()
+	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
 	// Hash from canonical (deduplicated) labels, not raw user input.
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
-	canonicalLabels := c.NodeLabels(n)
+	canonicalLabels := c.Nodes.Labels(n)
 	hash := integrity.ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
@@ -140,17 +141,18 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	return n, nil
 }
 
-// ImportNodeWithID creates a node with a caller-specified snowflake ID.
+// Import creates a node with a caller-specified snowflake ID.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
+func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
+	c := n.c
 	c.mu.RLock()
-	n, err := c.importNodeWithIDInternal(ctx, id, labels, props)
+	node, err := c.importNodeWithIDInternal(ctx, id, labels, props)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
-	return n, err
+	return node, err
 }
 
 // importNodeWithIDInternal is the lock-free implementation of ImportNodeWithID.
@@ -213,10 +215,10 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, storepkg.ErrNodeExists
 	}
 
-	n := types.NewNode(types.NodeID(id), primaryToken, extraTokens)
+	n := types.NewNode(id, primaryToken, extraTokens)
 	n.SetProperties(ps)
 
-	canonicalLabels := c.NodeLabels(n)
+	canonicalLabels := c.Nodes.Labels(n)
 	hash := integrity.ComputeNodeHash(n, canonicalLabels)
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
@@ -260,20 +262,21 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 // Node — Update
 // =============================================================================
 
-// UpdateNodeWithContext applies property updates to an existing node with context support.
+// UpdateWithContext applies property updates to an existing node with context support.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) UpdateNodeWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+	c := n.c
 	c.mu.RLock()
-	n, err := c.updateNodeInternal(ctx, id, updates)
+	node, err := c.updateNodeInternal(ctx, id, updates)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
-	return n, err
+	return node, err
 }
 
-// updateNodeInternal is the lock-free implementation of UpdateNodeWithContext.
+// updateNodeInternal is the lock-free implementation of NodeOps.UpdateWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -281,7 +284,7 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	}
 
 	if len(updates) == 0 {
-		return c.GetNodeWithContext(ctx, id)
+		return c.Nodes.GetWithContext(ctx, id)
 	}
 
 	// Extract reserved provenance fields before validation.
@@ -383,7 +386,7 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	// Set TxFrom on the new version (this is the commit time of the new version).
 	tm.TxFrom = now
 
-	nodeLabels := c.NodeLabels(current)
+	nodeLabels := c.Nodes.Labels(current)
 	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
@@ -407,28 +410,30 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	return current, nil
 }
 
-// UpdateNodeInPlace applies property updates to a node without creating a version history entry.
+// UpdateInPlace applies property updates to a node without creating a version history entry.
 // Version number is NOT incremented. PrevHash in the integrity chain is preserved.
 // Use for high-frequency counter updates where history accumulation is undesirable.
 // Returns storepkg.ErrNodeNotFound if the node does not exist. Empty updates map is a no-op.
-func (c *Core) UpdateNodeInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
-	return c.UpdateNodeInPlaceWithContext(context.Background(), id, updates)
+func (n *NodeOps) UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
+	c := n.c
+	return c.Nodes.UpdateInPlaceWithContext(context.Background(), id, updates)
 }
 
-// UpdateNodeInPlaceWithContext applies property updates to a node without history.
+// UpdateInPlaceWithContext applies property updates to a node without history.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) UpdateNodeInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+	c := n.c
 	c.mu.RLock()
-	n, err := c.updateNodeInPlaceInternal(ctx, id, updates)
+	node, err := c.updateNodeInPlaceInternal(ctx, id, updates)
 	ep := c.events
 	c.mu.RUnlock()
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
-	return n, err
+	return node, err
 }
 
-// updateNodeInPlaceInternal is the lock-free implementation of UpdateNodeInPlaceWithContext.
+// updateNodeInPlaceInternal is the lock-free implementation of NodeOps.UpdateInPlaceWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -436,7 +441,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 
 	if len(updates) == 0 {
-		return c.GetNodeWithContext(ctx, id)
+		return c.Nodes.GetWithContext(ctx, id)
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
@@ -512,7 +517,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 	tm.UpdatedAt = now
 
-	nodeLabels := c.NodeLabels(current)
+	nodeLabels := c.Nodes.Labels(current)
 	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
@@ -533,21 +538,23 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 // Node — Read / Delete
 // =============================================================================
 
-// GetNodeWithContext retrieves a node by snowflake ID with context support.
-func (c *Core) GetNodeWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
+// GetWithContext retrieves a node by snowflake ID with context support.
+func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
+	c := n.c
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	n, err := c.store.GetNode(id)
+	node, err := c.store.GetNode(id)
 	if err == nil {
 		c.opNodeReads.Add(1)
 	}
-	return n, err
+	return node, err
 }
 
-// DeleteNodeWithContext atomically removes a node and all connected relationships.
+// DeleteWithContext atomically removes a node and all connected relationships.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) DeleteNodeWithContext(ctx context.Context, id types.NodeID) error {
+func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error {
+	c := n.c
 	c.mu.RLock()
 	err := c.deleteNodeInternal(ctx, id)
 	ep := c.events
@@ -558,7 +565,7 @@ func (c *Core) DeleteNodeWithContext(ctx context.Context, id types.NodeID) error
 	return err
 }
 
-// deleteNodeInternal is the lock-free implementation of DeleteNodeWithContext.
+// deleteNodeInternal is the lock-free implementation of NodeOps.DeleteWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //
 // Two-phase locking with TOCTOU retry:
@@ -627,7 +634,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 		}
 
 		// Adjacency stable — perform deletion under full lock.
-		err = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2)
+		err = c.deleteNodeLocked(id, current, outRels2, inRels2)
 		c.entityLocks.UnlockMany(allIDs)
 		return err
 	}
@@ -683,7 +690,7 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // Builds tombstones for all connected rels and the node, then issues a single
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
-func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) error {
+func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) error {
 	now := types.Instant(time.Now().UnixMilli())
 
 	// Build relationship tombstones (dedup self-loops).

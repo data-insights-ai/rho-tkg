@@ -14,18 +14,18 @@ import (
 func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	n, err := g.AddNode([]string{"User", "Admin"}, nil)
+	n, err := g.Nodes.Add([]string{"User", "Admin"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
-	if err := g.RemoveNodeLabel(id, "Admin"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Admin"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.GetNode(id)
-	if g.NodeHasLabel(updated, "Admin") {
+	updated, _ := g.Nodes.Get(id)
+	if g.Nodes.HasLabel(updated, "Admin") {
 		t.Error("label 'Admin' still present after removal from tiered.Store")
 	}
 }
@@ -35,14 +35,14 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	label := "User"
 	key := "embedding"
 
-	n1, _ := g.AddNode([]string{label}, map[string]any{key: []float32{1, 0, 0}})
-	n2, _ := g.AddNode([]string{label}, map[string]any{key: []float32{0, 1, 0}})
+	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0, 0}})
+	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1, 0}})
 
-	if err := g.CreateVectorIndex(label, key, 3, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.SearchNearestNodes(label, key, []float32{1, 0, 0}, 2, storepkg.QueryOpts{})
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0, 0}, 2, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -56,9 +56,9 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 
 func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	g.AddNode([]string{"User"}, nil)
-	g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
-	err := g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
+	g.Nodes.Add([]string{"User"}, nil)
+	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
+	err := g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
 	if !errors.Is(err, ErrVectorIndexExists) {
 		t.Errorf("expected ErrVectorIndexExists, got %v", err)
 	}
@@ -66,12 +66,12 @@ func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 
 func TestTieredStore_VectorIndex_Drop(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	g.AddNode([]string{"User"}, nil)
-	g.CreateVectorIndex("User", "v", 2, storepkg.DistanceCosine)
-	if err := g.DropVectorIndex("User", "v"); err != nil {
+	g.Nodes.Add([]string{"User"}, nil)
+	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
+	if err := g.Index.DropVector("User", "v"); err != nil {
 		t.Fatalf("DropVectorIndex: %v", err)
 	}
-	_, err := g.SearchNearestNodes("User", "v", []float32{1, 0}, 1, storepkg.QueryOpts{})
+	_, err := g.Index.SearchNearest("User", "v", []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if !errors.Is(err, ErrVectorIndexNotFound) {
 		t.Errorf("expected ErrVectorIndexNotFound after drop, got %v", err)
 	}

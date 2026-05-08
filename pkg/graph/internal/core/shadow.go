@@ -4,11 +4,12 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// ResolveNodeProperty resolves a property key on a node.
+// NodeProperty resolves a property key on a node.
 // For non-tkg_ keys, delegates to the node's PropertySlice.
 // For tkg_ shadow keys, resolves from the node's metadata via the graph layer.
 // Returns (nil, false) for unknown shadow keys or inapplicable keys (e.g., tkg_type on a node).
-func (c *Core) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
+func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
+	c := r.c
 	if !types.IsShadowKey(key) {
 		return n.GetProperty(key)
 	}
@@ -16,7 +17,7 @@ func (c *Core) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
 	switch key {
 	// Structural
 	case types.ShadowLabels:
-		return c.NodeLabels(n), true
+		return c.Nodes.Labels(n), true
 	case types.ShadowType:
 		return nil, false // rel-only
 
@@ -117,13 +118,14 @@ func (c *Core) ResolveNodeProperty(n *types.Node, key string) (any, bool) {
 	}
 }
 
-// ResolveRelProperty resolves a property key on a relationship.
+// RelProperty resolves a property key on a relationship.
 // For non-tkg_ keys, delegates to the relationship's PropertySlice.
 // For tkg_ shadow keys, resolves from the relationship's metadata via the graph layer.
 // Returns (nil, false) for unknown shadow keys or inapplicable keys (e.g., tkg_labels on a rel).
-func (c *Core) ResolveRelProperty(r *types.Relationship, key string) (any, bool) {
+func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool) {
+	c := r.c
 	if !types.IsShadowKey(key) {
-		return r.GetProperty(key)
+		return rel.GetProperty(key)
 	}
 
 	switch key {
@@ -131,104 +133,104 @@ func (c *Core) ResolveRelProperty(r *types.Relationship, key string) (any, bool)
 	case types.ShadowLabels:
 		return nil, false // node-only
 	case types.ShadowType:
-		return c.RelationshipType(r), true
+		return c.Rels.Type(rel), true
 
 	// Temporal
 	case types.ShadowValidFrom:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.ValidFrom, true
 		}
 		return nil, false
 	case types.ShadowValidTo:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.ValidTo, true
 		}
 		return nil, false
 	case types.ShadowTxFrom:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.TxFrom, true
 		}
 		return nil, false
 	case types.ShadowTxTo:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.TxTo, true
 		}
 		return nil, false
 	case types.ShadowCreatedAt:
-		if tm := r.Temporal(); tm != nil && tm.CreatedAt != 0 {
+		if tm := rel.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return types.Instant(c.relIDGen.CreatedAt(r.ID().SnowflakeID()).UnixMilli()), true
+		return types.Instant(c.relIDGen.CreatedAt(rel.ID().SnowflakeID()).UnixMilli()), true
 	case types.ShadowUpdatedAt:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.UpdatedAt, true
 		}
 		return nil, false
 	case types.ShadowDeletedAt:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.DeletedAt, true
 		}
 		return nil, false
 
 	// Provenance
 	case types.ShadowCreatedBy:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.CreatedBy, true
 		}
 		return nil, false
 	case types.ShadowUpdatedBy:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.UpdatedBy, true
 		}
 		return nil, false
 	case types.ShadowVersion:
-		return r.Version(), true
+		return rel.Version(), true
 
 	// Integrity
 	case types.ShadowHash:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.Hash, true
 		}
 		return nil, false
 	case types.ShadowPrevHash:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.PrevHash, true
 		}
 		return nil, false
 	case types.ShadowFromHash:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.FromNodeHash, true
 		}
 		return nil, false
 	case types.ShadowToHash:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.ToNodeHash, true
 		}
 		return nil, false
 	case types.ShadowAuthorID:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.AuthorID, true
 		}
 		return nil, false
 	case types.ShadowSignature:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.Signature, true
 		}
 		return nil, false
 	case types.ShadowAuthorizedBy:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.AuthorizedBy, true
 		}
 		return nil, false
 	case types.ShadowAuthLevel:
-		if ig := r.Integrity(); ig != nil {
+		if ig := rel.Integrity(); ig != nil {
 			return ig.AuthorizationLevel, true
 		}
 		return nil, false
 
 	// Version chain
 	case types.ShadowBaseEntity:
-		if tm := r.Temporal(); tm != nil {
+		if tm := rel.Temporal(); tm != nil {
 			return tm.BaseEntityID().SnowflakeID(), true
 		}
 		return nil, false

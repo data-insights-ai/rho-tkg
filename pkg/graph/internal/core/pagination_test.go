@@ -217,13 +217,13 @@ func TestGraphNodesByLabel_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 10 {
-		_, err := g.AddNode([]string{"Person"}, map[string]any{"i": i})
+		_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"i": i})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := g.NodesByLabel("Person", storepkg.QueryOpts{Limit: 3})
+	got, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{Limit: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,13 +241,13 @@ func TestGraphAllNodes_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 5 {
-		_, err := g.AddNode([]string{fmt.Sprintf("Type%d", i)}, nil)
+		_, err := g.Nodes.Add([]string{fmt.Sprintf("Type%d", i)}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := g.AllNodes(storepkg.QueryOpts{Limit: 2})
+	got, err := g.Nodes.All(storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,13 +265,13 @@ func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 5 {
-		_, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "i": i})
+		_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "i": i})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := g.NodesByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{Limit: 2})
+	got, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

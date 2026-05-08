@@ -65,7 +65,7 @@ func TestExportGraph_HistoryBoundedMemory(t *testing.T) {
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
 
-	if err := g.ExportGraph(io.Discard); err != nil {
+	if err := g.IO.Export(io.Discard); err != nil {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 

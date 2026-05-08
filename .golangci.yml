@@ -1,0 +1,51 @@
+version: "2"
+run:
+  timeout: 5m
+  go: "1.26"
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+  settings:
+    revive:
+      rules:
+        - name: exported
+          arguments: ["disableStutteringCheck"]
+        - name: package-comments
+          disabled: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment   # too noisy for type-design tradeoffs
+        - shadow           # `if err := ...; err != nil` is idiomatic Go
+    staticcheck:
+      checks:
+        - all
+        - "-ST1000"   # missing package comment — noisy for internal packages
+        - "-ST1023"   # redundant type — too noisy for explicit error declarations
+        - "-QF1011"   # redundant type in declaration — same noise as ST1023
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+          - revive
+      - path: pkg/graph/internal/core/
+        text: "should have comment or be unexported"
+      - path: pkg/graph/store/tiered/
+        text: "should have comment or be unexported"
+      - path: pkg/graph/store/badger/
+        text: "should have comment or be unexported"
+formatters:
+  enable:
+    - gofmt
+    - goimports

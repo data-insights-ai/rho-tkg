@@ -12,7 +12,7 @@ func TestAuthorIDSetOnAdd_Node(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 		"name":          "Alice",
 		"tkg_author_id": "alice@example.com",
 	})
@@ -43,9 +43,9 @@ func TestAuthorIDSetOnAdd_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
-	r, err := g.AddRelationship("KNOWS", start, end, map[string]any{
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("KNOWS", start, end, map[string]any{
 		"tkg_author_id": "bob@example.com",
 	})
 	if err != nil {
@@ -71,7 +71,7 @@ func TestSignatureSetOnAdd_Node(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("fake-sig-bytes")
-	n, err := g.AddNode([]string{"Doc"}, map[string]any{
+	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{
 		"tkg_signature": sig,
 	})
 	if err != nil {
@@ -95,10 +95,10 @@ func TestSignatureSetOnAdd_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
 	sig := []byte("rel-signature")
-	r, err := g.AddRelationship("LINKS", start, end, map[string]any{
+	r, err := g.Rels.Add("LINKS", start, end, map[string]any{
 		"tkg_signature": sig,
 	})
 	if err != nil {
@@ -120,9 +120,9 @@ func TestAuthorIDPreservedOnUpdate(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.AddNode([]string{"User"}, nil)
+	n, _ := g.Nodes.Add([]string{"User"}, nil)
 
-	updated, err := g.UpdateNode(n.ID(), map[string]any{
+	updated, err := g.Nodes.Update(n.ID(), map[string]any{
 		"score":         42,
 		"tkg_author_id": "updater@example.com",
 	})
@@ -151,11 +151,11 @@ func TestAuthorIDViaShadow_Node(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.AddNode([]string{"X"}, map[string]any{
+	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{
 		"tkg_author_id": "shadow-user",
 	})
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowAuthorID)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowAuthorID)
 	if !ok {
 		t.Error("ResolveNodeProperty(tkg_author_id) returned false")
 	}
@@ -170,11 +170,11 @@ func TestSignatureViaShadow_Node(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("test-sig")
-	n, _ := g.AddNode([]string{"X"}, map[string]any{
+	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{
 		"tkg_signature": sig,
 	})
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowSignature)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowSignature)
 	if !ok {
 		t.Error("ResolveNodeProperty(tkg_signature) returned false")
 	}
@@ -189,13 +189,13 @@ func TestAuthorIDViaShadow_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("R", start, end, map[string]any{
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("R", start, end, map[string]any{
 		"tkg_author_id": "rel-author",
 	})
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowAuthorID)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowAuthorID)
 	if !ok {
 		t.Error("ResolveRelProperty(tkg_author_id) returned false")
 	}
@@ -209,14 +209,14 @@ func TestSignatureViaShadow_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
 	sig := []byte("rel-sig")
-	r, _ := g.AddRelationship("R", start, end, map[string]any{
+	r, _ := g.Rels.Add("R", start, end, map[string]any{
 		"tkg_signature": sig,
 	})
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowSignature)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowSignature)
 	if !ok {
 		t.Error("ResolveRelProperty(tkg_signature) returned false")
 	}
@@ -232,7 +232,7 @@ func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.AddNode([]string{"Plain"}, map[string]any{"x": 1})
+	n, _ := g.Nodes.Add([]string{"Plain"}, map[string]any{"x": 1})
 	ig := n.Integrity()
 	if ig == nil {
 		t.Fatal("Integrity nil")
@@ -244,9 +244,9 @@ func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
 		t.Errorf("Signature = %v; want nil", ig.Signature)
 	}
 
-	start, _ := g.AddNode([]string{"A"}, nil)
-	end, _ := g.AddNode([]string{"B"}, nil)
-	r, _ := g.AddRelationship("R", start, end, nil)
+	start, _ := g.Nodes.Add([]string{"A"}, nil)
+	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("R", start, end, nil)
 	rig := r.Integrity()
 	if rig == nil {
 		t.Fatal("rel Integrity nil")
@@ -267,8 +267,8 @@ func TestProvenanceDoesNotAffectHash(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	// Two nodes with identical user properties but different AuthorID.
-	n1, _ := g.AddNode([]string{"Item"}, map[string]any{"val": 1})
-	n2, _ := g.AddNode([]string{"Item"}, map[string]any{
+	n1, _ := g.Nodes.Add([]string{"Item"}, map[string]any{"val": 1})
+	n2, _ := g.Nodes.Add([]string{"Item"}, map[string]any{
 		"val":           1,
 		"tkg_author_id": "signer",
 	})

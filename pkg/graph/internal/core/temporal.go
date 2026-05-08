@@ -63,18 +63,6 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 	return true
 }
 
-// isRelValidAt checks if a relationship is valid at the given instant.
-func (c *Core) isRelValidAt(r *types.Relationship, t types.Instant) bool {
-	from := c.relValidFrom(r)
-	if from > t {
-		return false
-	}
-	if tm := r.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return tm.ValidTo > t
-	}
-	return true
-}
-
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
 	for i := len(chain) - 1; i >= 0; i-- {
@@ -324,7 +312,7 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if opts.ValidAt != 0 {
-		n, err := c.GetNodeAt(id, opts.ValidAt)
+		n, err := c.Temporal.NodeAt(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}
@@ -339,7 +327,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if opts.ValidAt != 0 {
-		r, err := c.GetRelAt(id, opts.ValidAt)
+		r, err := c.Temporal.RelAt(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}
@@ -459,16 +447,17 @@ func (c *Core) getRelVersionDuring(id types.RelID, start, end types.Instant) (*t
 // Snapshot returns a complete graph state at the given instant.
 // Relationships are only included if both endpoints are valid at t.
 // Acquires c.mu.RLock to prevent torn reads from concurrent Batch execution.
-func (c *Core) Snapshot(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
+func (t *TempOps) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error) {
+	c := t.c
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.snapshotAt(t)
+	return c.snapshotAt(at)
 }
 
 // snapshotAt computes the graph snapshot at t. It does not acquire c.mu;
 // callers that require strong snapshot consistency should hold c.mu.RLock.
 func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
-	nodes, err := c.GetNodesValidAt(t)
+	nodes, err := c.Temporal.NodesAt(t)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +468,7 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 		nodeSet[n.ID().SnowflakeID()] = struct{}{}
 	}
 
-	allRels, err := c.GetRelationshipsValidAt(t)
+	allRels, err := c.Temporal.RelationshipsAt(t)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +496,7 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // Diff
 // =============================================================================
 
-// DiffSnapshots returns the set of entity changes between t1 and t2.
+// Diff returns the set of entity changes between t1 and t2.
 // Entities valid at T2 but not T1 → Created.
 // Entities valid at both but with different integrity hash → Updated.
 // Entities valid at T1 but not T2 → Deleted.
@@ -522,7 +511,8 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // accumulate into a SnapshotDiff. The callback path resolves each entity
 // version on demand instead of materialising two full snapshots, so the
 // peak working set is one entity at a time plus the dedup ID set.
-func (c *Core) DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
+func (t *TempOps) Diff(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
+	c := t.c
 	diff := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
 	handlers := temporalpkg.DiffHandlers{
 		OnNodeCreated: func(after *types.Node) error {
@@ -550,13 +540,13 @@ func (c *Core) DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, e
 			return nil
 		},
 	}
-	if err := c.DiffSnapshotsCallback(t1, t2, handlers); err != nil {
+	if err := c.Temporal.DiffCallback(t1, t2, handlers); err != nil {
 		return nil, err
 	}
 	return diff, nil
 }
 
-// DiffSnapshotsCallback streams entity changes between t1 (older) and t2
+// DiffCallback streams entity changes between t1 (older) and t2
 // (newer) via handler callbacks instead of materialising two full
 // GraphSnapshot values. RAM usage is bounded by O(|distinct entity IDs| × 16B
 // for the dedup set) plus the working memory for one entity version pair at
@@ -570,19 +560,20 @@ func (c *Core) DiffSnapshots(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, e
 // additionally subject to endpoint filtering: a relationship is treated as
 // "present at t" only when both its start and end nodes are valid at t.
 // This matches the snapshotAt rel-endpoint filter exactly and preserves
-// behavioural parity with DiffSnapshots.
+// behavioural parity with Temporal.Diff.
 //
 // nil handler fields are skipped cleanly. Returning a non-nil error from
 // any handler halts iteration and returns that error. Order of delivery is
 // implementation-defined; do not rely on it.
 //
-// Returns ErrInvalidTimeRange if t1 == 0, t2 == 0, or t1 >= t2.
-func (c *Core) DiffSnapshotsCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error {
+// DiffCallback ErrInvalidTimeRange if t1 == 0, t2 == 0, or t1 >= t2.
+func (t *TempOps) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error {
+	c := t.c
 	if t1 == 0 || t2 == 0 || t1 >= t2 {
 		return ErrInvalidTimeRange
 	}
 
-	// No c.mu.RLock: matches DiffSnapshots semantics. A concurrent backdated
+	// No c.mu.RLock: matches Temporal.Diff semantics. A concurrent backdated
 	// write that commits between the per-entity GetNodeAt calls may appear
 	// as a spurious Created/Deleted entry — same trade-off as before.
 
@@ -662,7 +653,7 @@ func (c *Core) DiffSnapshotsCallback(t1, t2 types.Instant, h temporalpkg.DiffHan
 // from a real I/O error without sprinkling errors.Is checks at every call
 // site.
 func (c *Core) lookupNodeAtForDiff(id types.NodeID, t types.Instant) (*types.Node, error) {
-	n, err := c.GetNodeAt(id, t)
+	n, err := c.Temporal.NodeAt(id, t)
 	if err != nil {
 		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 			return nil, nil
@@ -679,7 +670,7 @@ func (c *Core) lookupNodeAtForDiff(id types.NodeID, t types.Instant) (*types.Nod
 // absent at t or either endpoint is missing. All other errors are
 // propagated.
 func (c *Core) lookupRelAtForDiff(id types.RelID, t types.Instant) (*types.Relationship, error) {
-	r, err := c.GetRelAt(id, t)
+	r, err := c.Temporal.RelAt(id, t)
 	if err != nil {
 		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 			return nil, nil
@@ -709,7 +700,7 @@ func (c *Core) lookupRelAtForDiff(id types.RelID, t types.Instant) (*types.Relat
 // error propagates so a transient backend failure does not silently
 // reclassify entities as "deleted" in the diff stream.
 func (c *Core) nodeExistsAt(id types.NodeID, t types.Instant) (bool, error) {
-	if _, err := c.GetNodeAt(id, t); err != nil {
+	if _, err := c.Temporal.NodeAt(id, t); err != nil {
 		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 			return false, nil
 		}

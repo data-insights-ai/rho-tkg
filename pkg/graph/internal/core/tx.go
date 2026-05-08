@@ -78,7 +78,7 @@ func (c *Core) BeginTx() *GraphTx {
 }
 
 // AddNode creates a new node within the transaction.
-// The node ID is tracked for rollback. Delegates to Graph.AddNode.
+// The node ID is tracked for rollback. Delegates to Graph.Nodes.Add.
 func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -102,7 +102,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 }
 
 // AddRelationship creates a new relationship within the transaction.
-// The relationship ID is tracked for rollback. Delegates to Graph.AddRelationship.
+// The relationship ID is tracked for rollback. Delegates to Graph.Rels.Add.
 func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -126,7 +126,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 }
 
 // ImportNodeWithID creates a node with a caller-specified snowflake ID within the transaction.
-// The node ID is tracked for rollback. Delegates to Graph.ImportNodeWithID.
+// The node ID is tracked for rollback. Delegates to Graph.Nodes.Import.
 func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -150,7 +150,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 }
 
 // ImportRelationshipWithID creates a relationship with a caller-specified snowflake ID within the transaction.
-// The relationship ID is tracked for rollback. Delegates to Graph.ImportRelationshipWithID.
+// The relationship ID is tracked for rollback. Delegates to Graph.Rels.Import.
 func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -175,7 +175,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 
 // UpdateNode applies property updates to a node within the transaction.
 // Snapshots the pre-mutation state on first mutation (for rollback).
-// Delegates the actual update to Graph.UpdateNode.
+// Delegates the actual update to Graph.Nodes.Update.
 func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -211,7 +211,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 
 // UpdateRelationship applies property updates to a relationship within the transaction.
 // Snapshots the pre-mutation state on first mutation (for rollback).
-// Delegates the actual update to Graph.UpdateRelationship.
+// Delegates the actual update to Graph.Rels.Update.
 func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	tx.mu.Lock()
 	if tx.done {
@@ -267,7 +267,7 @@ func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error 
 
 // DeleteNode removes a node and all connected relationships within the transaction.
 // Snapshots the node and all cascade-deleted relationships for rollback.
-// Delegates the actual deletion to Graph.DeleteNode.
+// Delegates the actual deletion to Graph.Nodes.Delete.
 func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	tx.mu.Lock()
 	if tx.done {
@@ -326,7 +326,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 }
 
 // DeleteRelationship removes a relationship within the transaction.
-// Snapshots the relationship for rollback. Delegates to Graph.DeleteRelationship.
+// Snapshots the relationship for rollback. Delegates to Graph.Rels.Delete.
 func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	tx.mu.Lock()
 	if tx.done {

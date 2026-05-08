@@ -26,7 +26,7 @@ func TestAuthorizedBySetOnAdd_Node(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"User"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"User"}, map[string]any{
 		"name":              "alice",
 		"tkg_authorized_by": "admin",
 	})
@@ -56,16 +56,16 @@ func TestAuthorizedBySetOnAdd_Rel(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n1, err := g.AddNodeWithContext(ctx, []string{"A"}, nil)
+	n1, err := g.Nodes.AddWithContext(ctx, []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNodeWithContext n1: %v", err)
 	}
-	n2, err := g.AddNodeWithContext(ctx, []string{"B"}, nil)
+	n2, err := g.Nodes.AddWithContext(ctx, []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNodeWithContext n2: %v", err)
 	}
 
-	r, err := g.AddRelationshipWithContext(ctx, "KNOWS", n1, n2, map[string]any{
+	r, err := g.Rels.AddWithContext(ctx, "KNOWS", n1, n2, map[string]any{
 		"since":             2024,
 		"tkg_authorized_by": "policy-engine",
 	})
@@ -94,7 +94,7 @@ func TestAuthLevelSetOnAdd_Node(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Service"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Service"}, map[string]any{
 		"tkg_auth_level": uint8(3),
 	})
 	if err != nil {
@@ -122,16 +122,16 @@ func TestAuthLevelSetOnAdd_Rel(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n1, err := g.AddNodeWithContext(ctx, []string{"X"}, nil)
+	n1, err := g.Nodes.AddWithContext(ctx, []string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNodeWithContext n1: %v", err)
 	}
-	n2, err := g.AddNodeWithContext(ctx, []string{"Y"}, nil)
+	n2, err := g.Nodes.AddWithContext(ctx, []string{"Y"}, nil)
 	if err != nil {
 		t.Fatalf("AddNodeWithContext n2: %v", err)
 	}
 
-	r, err := g.AddRelationshipWithContext(ctx, "LINKS", n1, n2, map[string]any{
+	r, err := g.Rels.AddWithContext(ctx, "LINKS", n1, n2, map[string]any{
 		"tkg_auth_level": uint8(5),
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func TestAuthLevelAcceptsInt_Node(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Widget"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Widget"}, map[string]any{
 		"tkg_auth_level": int(2),
 	})
 	if err != nil {
@@ -183,14 +183,14 @@ func TestAuthzPreservedOnUpdate(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Doc"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Doc"}, map[string]any{
 		"tkg_authorized_by": "original_admin",
 	})
 	if err != nil {
 		t.Fatalf("AddNodeWithContext: %v", err)
 	}
 
-	updated, err := g.UpdateNodeWithContext(ctx, n.ID(), map[string]any{
+	updated, err := g.Nodes.UpdateWithContext(ctx, n.ID(), map[string]any{
 		"tkg_authorized_by": "new_admin",
 		"rev":               1,
 	})
@@ -215,14 +215,14 @@ func TestAuthzViaShadow_Node(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Thing"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Thing"}, map[string]any{
 		"tkg_authorized_by": "shadow-test",
 	})
 	if err != nil {
 		t.Fatalf("AddNodeWithContext: %v", err)
 	}
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowAuthorizedBy)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowAuthorizedBy)
 	if !ok {
 		t.Fatal("ResolveNodeProperty(tkg_authorized_by) returned ok=false")
 	}
@@ -240,17 +240,17 @@ func TestAuthzViaShadow_Rel(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n1, _ := g.AddNodeWithContext(ctx, []string{"P"}, nil)
-	n2, _ := g.AddNodeWithContext(ctx, []string{"Q"}, nil)
+	n1, _ := g.Nodes.AddWithContext(ctx, []string{"P"}, nil)
+	n2, _ := g.Nodes.AddWithContext(ctx, []string{"Q"}, nil)
 
-	r, err := g.AddRelationshipWithContext(ctx, "EDGE", n1, n2, map[string]any{
+	r, err := g.Rels.AddWithContext(ctx, "EDGE", n1, n2, map[string]any{
 		"tkg_authorized_by": "rel-shadow-test",
 	})
 	if err != nil {
 		t.Fatalf("AddRelationshipWithContext: %v", err)
 	}
 
-	val, ok := g.ResolveRelProperty(r, types.ShadowAuthorizedBy)
+	val, ok := g.Resolve.RelProperty(r, types.ShadowAuthorizedBy)
 	if !ok {
 		t.Fatal("ResolveRelProperty(tkg_authorized_by) returned ok=false")
 	}
@@ -268,14 +268,14 @@ func TestAuthLevelViaShadow_Node(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Gizmo"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Gizmo"}, map[string]any{
 		"tkg_auth_level": uint8(7),
 	})
 	if err != nil {
 		t.Fatalf("AddNodeWithContext: %v", err)
 	}
 
-	val, ok := g.ResolveNodeProperty(n, types.ShadowAuthLevel)
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowAuthLevel)
 	if !ok {
 		t.Fatal("ResolveNodeProperty(tkg_auth_level) returned ok=false")
 	}
@@ -293,7 +293,7 @@ func TestNoAuthz_DefaultsZero(t *testing.T) {
 	g := newAuthzGraph(t)
 	ctx := context.Background()
 
-	n, err := g.AddNodeWithContext(ctx, []string{"Plain"}, map[string]any{
+	n, err := g.Nodes.AddWithContext(ctx, []string{"Plain"}, map[string]any{
 		"x": 1,
 	})
 	if err != nil {

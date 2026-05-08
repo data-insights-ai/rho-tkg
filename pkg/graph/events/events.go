@@ -17,6 +17,7 @@ import (
 // EventType classifies a graph lifecycle event.
 type EventType uint8
 
+// Event types — one per Graph mutation kind.
 const (
 	EventNodeCreate EventType = iota + 1
 	EventNodeUpdate
@@ -30,6 +31,7 @@ const (
 // Zero value is PriorityNormal — all existing Event{} literals remain valid.
 type EventPriority uint8
 
+// Priority levels for AsyncEventBus delivery ordering.
 const (
 	PriorityNormal   EventPriority = iota // 0 — zero value, backward-compatible
 	PriorityHigh                          // 1

@@ -62,7 +62,9 @@ After confirming the implementation is correct and the issue isn't duplicated el
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.4.0 | Sub-API accessors on `*Graph` (Option 3, additive): the 130+ public methods are now grouped under 13 sub-API fields — `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Statistics`, `g.Hash`, `g.Resolve` (each in its own `pkg/graph/<name>api/` package), plus `g.Tx` and `g.Batch` (in-package `TxAPI` / `BatchAPI` types in `pkg/graph/subapi.go`, because they wrap pkg/graph-private `*GraphTx` / `*BatchBuilder`). Every existing `*Graph` method continues to work unchanged — sub-APIs are a strict superset of the surface. v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends with renames `MemoryStore→memory.Store`/`NewMemoryStore→memory.New`, `BadgerStore→badger.Store`/`BadgerStoreConfig→badger.Config`/`NewBadgerStore→badger.New`, `TieredStore→tiered.Store`/`TieredStoreConfig→tiered.Config`/`NewTieredStore→tiered.New`), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for the full migration guide.
+Status: v3.4.0 (post-cleanup) | Thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 13 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. The 130+ methods that used to live on `*Graph` were **removed** in v3.4.0 — call them via the sub-APIs (e.g. `g.Nodes.Add(...)` instead of the old `g.AddNode(...)`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`. The post-v3.4.0 cleanup additionally renamed every `*api`-suffixed sub-API package to its short form (`adminapi`→`admin`, `constraintsapi`→`constraints`, `hashapi`→`hash`, `ioapi`→`io`, `resolveapi`→`resolve`, `statsapi`→`stats`) and the `Statistics` field to `Stats`. v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends — types renamed `MemoryStore→memory.Store`/`NewMemoryStore→memory.New`, `BadgerStore→badger.Store`/`BadgerStoreConfig→badger.Config`/`NewBadgerStore→badger.New`, `TieredStore→tiered.Store`/`TieredStoreConfig→tiered.Config`/`NewTieredStore→tiered.New`), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for the full migration guide.
+
+**Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 
 ## Build & Test Commands
 
@@ -74,8 +76,9 @@ make test-race      # race detector — always run for concurrent code
 make test-integration  # integration tests (long-running)
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
-make ci             # full pipeline: fmt-check + vet + build + test-race + security + vulncheck
+make ci             # full pipeline: fmt-check + vet + lint + build + test-race + security + vulncheck
 make fmt            # format code
+make lint           # golangci-lint (errcheck, govet, staticcheck, revive, ...)
 make security       # gosec static analysis
 make vulncheck      # govulncheck for known CVEs
 ```
@@ -128,7 +131,7 @@ After v3.4.0 (Option 3), `pkg/graph/` is a thin façade. The `Graph` type holds 
 
 | File | Purpose |
 |---|---|
-| `graph.go` | `Graph` thin façade (118 LOC): holds `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`, `Core` (escape hatch). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
+| `graph.go` | `Graph` thin façade: holds `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`. They live in `pkg/graph` itself (not a sibling package) because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types defined inside `pkg/graph/internal/core`. `TxAPI.Run` / `TxAPI.RunContext` add closure-style helpers. |
 | `errors.go` | Public sentinel re-exports — store sentinels (`ErrNodeNotFound`, …, 12 entries), vector-index sentinels (`ErrVectorIndexExists`, …), registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`), index-provider sentinels (`ErrIndexProviderExists`, …). Canonical declarations in `internal/core/core.go`. |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — compile-and-run smoke test exercising every sub-API accessor end-to-end. |
@@ -144,21 +147,21 @@ Each package declares a local `Core` interface listing only the methods its wrap
 |---------|----------------|---------|
 | `pkg/graph/nodes` | `g.Nodes` | Node CRUD, label, property, version chain (~31 wrappers). |
 | `pkg/graph/rels` | `g.Rels` | Relationship CRUD, adjacency, property, version chain (~30 wrappers). |
-| `pkg/graph/temporalapi` | `g.Temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations (~24 wrappers). Named `temporalapi` to coexist with the `pkg/graph/temporal` types package (Option A — holds `GraphSnapshot`, `SnapshotDiff`, constraint types). |
-| `pkg/graph/indexapi` | `g.Index` | Property / vector / high-frequency index management + `SearchNearest` + IndexProvider registration (~13 wrappers). Named `indexapi` to coexist with the `pkg/graph/index` types package (Option A — holds `IndexProvider`, `Initializable`, `GraphReader`). |
-| `pkg/graph/eventsapi` | `g.Events` | Sync / async EventBus management (~3 wrappers). |
-| `pkg/graph/constraintsapi` | `g.Constraints` | Temporal-constraint set management (~3 wrappers). |
-| `pkg/graph/ioapi` | `g.IO` | Export / Import (~2 wrappers). |
-| `pkg/graph/adminapi` | `g.Admin` | Tiered-store admin: archive, repair, shards, rotate, reset, decompose-id (~9 wrappers). |
-| `pkg/graph/statsapi` | `g.Statistics` | Count helpers (~6 wrappers). Field name `Statistics` to avoid colliding with the (now-removed) `Graph.Stats() GraphStats` method. |
-| `pkg/graph/hashapi` | `g.Hash` | Hash-chain verification (~2 wrappers). |
-| `pkg/graph/resolveapi` | `g.Resolve` | Shadow-property + registry resolution (~6 wrappers). |
+| `pkg/graph/temporal` | `g.Temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations (~24 wrappers). The temporal types (`GraphSnapshot`, `SnapshotDiff`, constraint types) live in the same package. |
+| `pkg/graph/index` | `g.Index` | Property / vector / high-frequency index management + `SearchNearest` + IndexProvider registration (~13 wrappers). The index types (`IndexProvider`, `Initializable`, `GraphReader`) live in the same package. |
+| `pkg/graph/events` | `g.Events` | Sync / async EventBus management (~3 wrappers). The `EventBus` / `AsyncEventBus` types live in the same package. |
+| `pkg/graph/constraints` | `g.Constraints` | Temporal-constraint set management (~3 wrappers). |
+| `pkg/graph/io` | `g.IO` | Export / Import (~2 wrappers). Shadows stdlib `io` — alias as `tkgio` at consumer sites that also need stdlib `io`. |
+| `pkg/graph/admin` | `g.Admin` | Tiered-store admin: archive, repair, shards, rotate, reset, decompose-id (~9 wrappers). |
+| `pkg/graph/stats` | `g.Stats` | Count helpers (~6 wrappers). |
+| `pkg/graph/hash` | `g.Hash` | Hash-chain verification (~2 wrappers). Shadows stdlib `hash` — alias as `tkghash` at consumer sites that also need stdlib `hash`. |
+| `pkg/graph/resolve` | `g.Resolve` | Shadow-property + registry resolution (~6 wrappers). |
 
 In addition: `g.Tx` (`*TxAPI`) and `g.Batch` (`*BatchAPI`) are in-package types in `pkg/graph/subapi.go` (they wrap `*GraphTx` / `*BatchBuilder` types declared in `internal/core`).
 
-### `pkg/graph/<types-package>/` types-only public packages (v3.3.0)
+### `pkg/graph/<types-package>/` public types packages (v3.3.0)
 
-These are sibling public packages from Option A — they hold types customers need to reference (return types from sub-API methods, parameter types, sentinels). They do NOT have methods on Graph; they're pure type declarations.
+These are sibling public packages from Option A — they hold types customers need to reference (return types from sub-API methods, parameter types, sentinels). The post-v3.4.0 cleanup additionally collapsed three matching `*api` siblings into `pkg/graph/{temporal,index,events}`, so those three packages now expose both the types **and** the sub-API `API` struct customers reach through `g.Temporal` / `g.Index` / `g.Events`. The other entries below are still pure type declarations.
 
 | Package | Purpose |
 |---|---|
@@ -166,16 +169,16 @@ These are sibling public packages from Option A — they hold types customers ne
 | `pkg/graph/store/memory` | `memory.Store`, `memory.New()` — in-memory backend. |
 | `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()` — Badger v4 backend. |
 | `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`, 4 sentinels. |
-| `pkg/graph/events` | `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, `NewEventBus`, `NewAsyncEventBus`. |
-| `pkg/graph/index` | `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, IndexProvider sentinels. |
-| `pkg/graph/temporal` | `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, 7 constraint sentinels. |
+| `pkg/graph/events` | Types: `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, `NewEventBus`, `NewAsyncEventBus`. Sub-API: `events.API` (reached via `g.Events`). |
+| `pkg/graph/index` | Types: `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, IndexProvider sentinels. Sub-API: `index.API` (reached via `g.Index`). |
+| `pkg/graph/temporal` | Types: `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, 7 constraint sentinels. Sub-API: `temporal.API` (reached via `g.Temporal`). |
 | `pkg/graph/ontology` | `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`, `ClassReference`. |
 
 ### `pkg/graph/internal/*` subpackages
 
 | Package | Purpose |
 |---|---|
-| `internal/core` | (v3.4.0) `Core` type holding all unexported state (mu, store, registries, locks, generators, indexProviders, etc.) plus all 130+ method bodies that previously lived on `*Graph`. The thin `*Graph` façade in pkg/graph/ wraps a `*core.Core`. ~7.5K LOC of implementation across 27 files; ~28K LOC of internal tests across 53 test files. |
+| `internal/core` | (v3.4.0 + post-cleanup) `Core` type holding shared unexported state (mu, store, registries, locks, generators, indexProviders, …) plus 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `subops.go`. Sub-Core types hold a `c *Core` back-reference; method bodies live on the sub-Core types. Wired in `core.New` as exported fields (`c.Nodes`, `c.Rels`, …) so the wrapper packages can satisfy each sub-API's local `Ops` interface. The thin `*Graph` façade in pkg/graph/ wraps a `*core.Core` and constructs `nodes.New(c.Nodes)`, `rels.New(c.Rels)`, etc. Method names on sub-Core types drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`, `VerifyNodeHashChain → HashOps.VerifyNodeChain`, etc.) so the call chain is uniform across the wrapper boundary. ~7.5K LOC of implementation across ~30 files; ~28K LOC of internal tests across 53 test files. |
 | `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. Imported by `internal/locks`, `internal/storeutil`, `internal/core`, `pkg/graph/store/{badger,tiered}`. |
 | `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | `Manager` — 256-shard entity-lock manager, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
@@ -298,7 +301,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Tx event buffering**: During a transaction (`txEventBuffer != nil`), `publishEvent` appends to a buffer instead of dispatching. On `Commit`, events are published after `g.mu.Unlock()` so handlers can safely call Graph read methods. On `Rollback`, buffered events are discarded — subscribers never see rolled-back mutations.
 - **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). `Close()` drains all pending events before stopping workers. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
 - **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` worker uses non-blocking drain per level (Critical first) before blocking select.
-- **StoreStats opt-in**: Type-asserted in `Graph.Stats()` — avoids polluting the `Store` interface.
+- **StoreStats opt-in**: Type-asserted in `(*Core).Stats()` (reachable via `g.Stats.Get()`) — avoids polluting the `Store` interface.
 - **Atomic operation counters**: 8 `atomic.Int64` fields on Graph — incremented after every successful store write.
 
 ### Vector Indexes

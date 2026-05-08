@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.4.0 | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.3.0 change: 13 sub-API accessors on `*Graph` — `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Statistics`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Additive: every existing `*Graph` method continues to work unchanged. v3.3.0 baseline (audience-based public sub-package layout) still applies: `pkg/graph/store`, `pkg/graph/store/{memory,badger,tiered}`, `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for migration details.
+Status: v3.4.0 (post-cleanup) | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.3.0 change: thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 13 sub-API field accessors (`g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`). The 130+ methods that historically lived directly on `*Graph` were **removed** — call them via the sub-APIs (e.g. `g.Nodes.Add(...)` instead of `g.AddNode(...)`). Post-v3.4.0 cleanup additionally renamed `*api` sub-API packages to their short forms (`adminapi→admin`, `constraintsapi→constraints`, `hashapi→hash`, `ioapi→io`, `resolveapi→resolve`, `statsapi→stats`) and the `Graph.Statistics` field to `Graph.Stats`. Stdlib aliasing convention: `pkg/graph/hash` and `pkg/graph/io` shadow stdlib — alias the local one as `tkghash`/`tkgio` at consumer sites that also need stdlib `hash`/`io`. Internal architecture: `*core.Core` is a coordinator holding 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `pkg/graph/internal/core/subops.go`. The 130+ method bodies live on the sub-Core types; method names drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`) so the call chain `g.Nodes.Add → nodes.API.Add → core.NodeOps.Add` is uniform. Sub-API wrappers in `pkg/graph/<name>/api.go` use a local `Ops` interface matching the sub-Core method shapes 1:1. v3.3.0 baseline (audience-based public sub-package layout) still applies: `pkg/graph/store`, `pkg/graph/store/{memory,badger,tiered}`, `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for migration details.
 
 ## Build & Test Commands
 
@@ -33,8 +33,9 @@ make bench-graph-production-small  # production-shaped graph benchmark suite
 make bench-graph-production-large  # large stress graph benchmark suite
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
-make ci             # full pipeline: fmt-check + vet + build + test-race + security + vulncheck
+make ci             # full pipeline: fmt-check + vet + lint + build + test-race + security + vulncheck
 make fmt            # format code
+make lint           # golangci-lint (errcheck, govet, staticcheck, revive, ...)
 make security       # gosec static analysis
 make vulncheck      # govulncheck for known CVEs
 ```
@@ -212,7 +213,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Tx event buffering**: During a transaction (`txEventBuffer != nil`), `publishEvent` appends to a buffer instead of dispatching. On `Commit`, events are published after `g.mu.Unlock()` so handlers can safely call Graph read methods. On `Rollback`, buffered events are discarded — subscribers never see rolled-back mutations.
 - **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). `Close()` drains all pending events before stopping workers. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
 - **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` worker uses non-blocking drain per level (Critical first) before blocking select.
-- **StoreStats opt-in**: Type-asserted in `Graph.Stats()` — avoids polluting the `Store` interface.
+- **StoreStats opt-in**: Type-asserted in `(*Core).Stats()` (reachable via `g.Stats.Get()`) — avoids polluting the `Store` interface.
 - **Atomic operation counters**: 8 `atomic.Int64` fields on Graph — incremented after every successful store write.
 
 ### Vector Indexes

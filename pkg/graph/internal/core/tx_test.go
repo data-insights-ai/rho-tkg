@@ -50,8 +50,8 @@ func TestGraphTx_CommitPersists(t *testing.T) {
 	}
 
 	// Verify entities persisted.
-	nc, _ := g.NodeCount()
-	rc, _ := g.RelationshipCount()
+	nc, _ := g.Nodes.Count()
+	rc, _ := g.Rels.Count()
 	if nc != 2 {
 		t.Errorf("node count: got %d, want 2", nc)
 	}
@@ -86,8 +86,8 @@ func TestGraphTx_RollbackDeletes(t *testing.T) {
 	}
 
 	// Verify everything is gone.
-	nc, _ := g.NodeCount()
-	rc, _ := g.RelationshipCount()
+	nc, _ := g.Nodes.Count()
+	rc, _ := g.Rels.Count()
 	if nc != 0 {
 		t.Errorf("node count after rollback: got %d, want 0", nc)
 	}
@@ -214,7 +214,7 @@ func TestGraphTx_RollbackLeavesNoHistory(t *testing.T) {
 	}
 
 	// No history should exist for rolled-back entities.
-	history, err := g.GetNodeHistory(nodeID)
+	history, err := g.Nodes.History(nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestGraphTx_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// This should block until the tx is committed.
-		_, _ = g.AllNodes(storepkg.QueryOpts{})
+		_, _ = g.Nodes.All(storepkg.QueryOpts{})
 		close(done)
 	}()
 
@@ -256,7 +256,7 @@ func TestGraphTx_ConcurrentAccess(t *testing.T) {
 
 	// Verify the node was visible after commit.
 	_ = n
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc != 1 {
 		t.Errorf("after concurrent commit: node count=%d, want 1", nc)
 	}
@@ -303,7 +303,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	}
 
 	_ = updated
-	got, err := g.GetNode(nodeID)
+	got, err := g.Nodes.Get(nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.GetNode(nodeID)
+	got, err := g.Nodes.Get(nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	}
 
 	// Both updates should be reverted — original state restored.
-	got, err := g.GetNode(nodeID)
+	got, err := g.Nodes.Get(nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,15 +397,15 @@ func TestGraphTx_DeleteNode_Commit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.AddRelationship("KNOWS", n1, n2, nil); err != nil {
+	if _, err := g.Rels.Add("KNOWS", n1, n2, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -418,8 +418,8 @@ func TestGraphTx_DeleteNode_Commit(t *testing.T) {
 	}
 
 	// Node and cascade-deleted relationship should be gone.
-	nc, _ := g.NodeCount()
-	rc, _ := g.RelationshipCount()
+	nc, _ := g.Nodes.Count()
+	rc, _ := g.Rels.Count()
 	if nc != 1 {
 		t.Errorf("node count after delete commit: got %d, want 1", nc)
 	}
@@ -432,15 +432,15 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.AddRelationship("KNOWS", n1, n2, nil); err != nil {
+	if _, err := g.Rels.Add("KNOWS", n1, n2, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -453,8 +453,8 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	}
 
 	// Node and cascade-deleted relationship should be restored.
-	nc, _ := g.NodeCount()
-	rc, _ := g.RelationshipCount()
+	nc, _ := g.Nodes.Count()
+	rc, _ := g.Rels.Count()
 	if nc != 2 {
 		t.Errorf("node count after rollback: got %d, want 2", nc)
 	}
@@ -463,7 +463,7 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	}
 
 	// Verify the node's properties are intact.
-	got, err := g.GetNode(n1.ID())
+	got, err := g.Nodes.Get(n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -477,15 +477,15 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.AddRelationship("KNOWS", n1, n2, map[string]any{"since": int64(2020)})
+	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"since": int64(2020)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,12 +500,12 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 	}
 
 	// Relationship should be restored.
-	rc, _ := g.RelationshipCount()
+	rc, _ := g.Rels.Count()
 	if rc != 1 {
 		t.Errorf("rel count after rollback: got %d, want 1", rc)
 	}
 
-	got, err := g.GetRelationship(relID)
+	got, err := g.Rels.Get(relID)
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -532,7 +532,7 @@ func TestGraphTx_CreateThenDelete_Rollback(t *testing.T) {
 	}
 
 	// Nothing should exist — create+delete in same tx, rolled back = nothing.
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc != 0 {
 		t.Errorf("node count: got %d, want 0", nc)
 	}
@@ -542,7 +542,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +560,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	}
 
 	// Pre-existing node should be restored to original state.
-	got, err := g.GetNode(nodeID)
+	got, err := g.Nodes.Get(nodeID)
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.GetNode(nodeID)
+	got, err := g.Nodes.Get(nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,15 +602,15 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.AddRelationship("KNOWS", n1, n2, map[string]any{"weight": int64(5)})
+	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"weight": int64(5)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,7 +624,7 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.GetRelationship(relID)
+	got, err := g.Rels.Get(relID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,17 +638,17 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nodeID := n.ID()
 
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.AddRelationship("KNOWS", n, n2, nil)
+	r, err := g.Rels.Add("KNOWS", n, n2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,7 +680,7 @@ func TestTxGetNode(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +704,7 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, nil)
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,11 +723,11 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,11 +745,11 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	}
 
 	// Verify relationship persisted.
-	rc, _ := g.RelationshipCount()
+	rc, _ := g.Rels.Count()
 	if rc != 1 {
 		t.Errorf("rel count after commit: got %d, want 1", rc)
 	}
-	got, err := g.GetRelationship(r.ID())
+	got, err := g.Rels.Get(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -763,11 +763,11 @@ func TestTxAddRelationshipByID_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +782,7 @@ func TestTxAddRelationshipByID_Rollback(t *testing.T) {
 	}
 
 	// Relationship should be gone after rollback.
-	rc, _ := g.RelationshipCount()
+	rc, _ := g.Rels.Count()
 	if rc != 0 {
 		t.Errorf("rel count after rollback: got %d, want 0", rc)
 	}
@@ -792,11 +792,11 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,7 +836,7 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 
 	// Should still have exactly 1 relationship.
-	rc, _ := g.RelationshipCount()
+	rc, _ := g.Rels.Count()
 	if rc != 1 {
 		t.Errorf("rel count: got %d, want 1", rc)
 	}
@@ -846,11 +846,11 @@ func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.AddNode([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.AddNode([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,7 +871,7 @@ func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
 	}
 
 	// Should be absent after rollback.
-	rc, _ := g.RelationshipCount()
+	rc, _ := g.Rels.Count()
 	if rc != 0 {
 		t.Errorf("rel count after rollback: got %d, want 0", rc)
 	}
@@ -883,7 +883,7 @@ func TestGraphReset_Empty(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	if err := g.Reset(); err != nil {
+	if err := g.Admin.Reset(); err != nil {
 		t.Fatalf("Reset empty graph: %v", err)
 	}
 }
@@ -892,16 +892,16 @@ func TestGraphReset_ClearsEntities(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	_, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := g.Reset(); err != nil {
+	if err := g.Admin.Reset(); err != nil {
 		t.Fatal(err)
 	}
 
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc != 0 {
 		t.Errorf("node count after reset: %d, want 0", nc)
 	}
@@ -912,17 +912,17 @@ func TestGraphReset_PreservesRegistries(t *testing.T) {
 	g := newTxTestGraph(t)
 
 	// Register some labels and types.
-	_, err := g.AddNode([]string{"Person"}, nil)
+	_, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := g.Reset(); err != nil {
+	if err := g.Admin.Reset(); err != nil {
 		t.Fatal(err)
 	}
 
 	// The "Person" label should still be registered.
-	tok, ok := g.LookupLabel("Person")
+	tok, ok := g.Resolve.LookupLabel("Person")
 	if !ok {
 		t.Fatal("label 'Person' should survive Reset")
 	}
@@ -935,23 +935,23 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Update to create version history.
-	_, err = g.UpdateNode(n.ID(), map[string]any{"name": "Bob"})
+	_, err = g.Nodes.Update(n.ID(), map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := g.Reset(); err != nil {
+	if err := g.Admin.Reset(); err != nil {
 		t.Fatal(err)
 	}
 
 	// History should be cleared.
-	history, err := g.GetNodeHistory(n.ID())
+	history, err := g.Nodes.History(n.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -981,11 +981,11 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 	defer g.Close()
 
 	// Create two nodes before the transaction so we can add a relationship.
-	n1, err := g.AddNode([]string{"A"}, nil)
+	n1, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n1: %v", err)
 	}
-	n2, err := g.AddNode([]string{"B"}, nil)
+	n2, err := g.Nodes.Add([]string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n2: %v", err)
 	}
@@ -1063,7 +1063,7 @@ func TestMutationBlockedDuringTx(t *testing.T) {
 	go func() {
 		// This AddNode must block until tx commits because it acquires g.mu.RLock
 		// which is blocked by the tx's g.mu.Lock.
-		_, err2 := g.AddNode([]string{"B"}, nil)
+		_, err2 := g.Nodes.Add([]string{"B"}, nil)
 		if err2 != nil {
 			t.Errorf("standalone AddNode: %v", err2)
 		}
@@ -1088,7 +1088,7 @@ func TestMutationBlockedDuringTx(t *testing.T) {
 		t.Fatal("standalone AddNode did not unblock after tx commit")
 	}
 
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc != 2 {
 		t.Errorf("node count: got %d, want 2", nc)
 	}
@@ -1107,7 +1107,7 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 
 	// Pre-create some nodes.
 	for i := 0; i < 10; i++ {
-		_, err := g.AddNode([]string{"Item"}, map[string]any{"idx": i})
+		_, err := g.Nodes.Add([]string{"Item"}, map[string]any{"idx": i})
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
@@ -1120,7 +1120,7 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				_, _ = g.AddNode([]string{"Item"}, map[string]any{"idx": j + 100})
+				_, _ = g.Nodes.Add([]string{"Item"}, map[string]any{"idx": j + 100})
 			}
 		}()
 	}
@@ -1129,14 +1129,14 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				_, _ = g.AllNodes(storepkg.QueryOpts{})
+				_, _ = g.Nodes.All(storepkg.QueryOpts{})
 			}
 		}()
 	}
 	wg.Wait()
 
 	// If the race detector didn't fire, concurrency is safe.
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc < 10 {
 		t.Errorf("node count: got %d, want >= 10", nc)
 	}
@@ -1153,7 +1153,7 @@ func TestTxCommitPublishesBufferedEvents(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
 	var mu sync.Mutex
 	var received []eventspkg.Event
@@ -1219,7 +1219,7 @@ func TestTxRollbackNoEvents(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
 	var count atomic.Int64
 	bus.Subscribe(func(e eventspkg.Event) {
@@ -1243,7 +1243,7 @@ func TestTxRollbackNoEvents(t *testing.T) {
 	}
 
 	// Verify node was actually rolled back.
-	nc, _ := g.NodeCount()
+	nc, _ := g.Nodes.Count()
 	if nc != 0 {
 		t.Errorf("node count after rollback: got %d, want 0", nc)
 	}
@@ -1260,13 +1260,13 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
 	var handlerOK atomic.Bool
 	bus.Subscribe(func(e eventspkg.Event) {
 		if e.Type == eventspkg.EventNodeCreate {
 			// This must not deadlock — g.mu must be unlocked at this point.
-			n, err := g.GetNode(types.NodeID(e.EntityID))
+			n, err := g.Nodes.Get(types.NodeID(e.EntityID))
 			if err == nil && n != nil {
 				handlerOK.Store(true)
 			}
@@ -1299,7 +1299,7 @@ func TestBatchEventsNotBuffered(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
 	var count atomic.Int64
 	bus.Subscribe(func(e eventspkg.Event) {
@@ -1307,7 +1307,7 @@ func TestBatchEventsNotBuffered(t *testing.T) {
 	})
 
 	// Standalone mutation (not in tx) — should emit immediately.
-	_, err = g.AddNode([]string{"Person"}, nil)
+	_, err = g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

@@ -24,35 +24,47 @@ type BadgerStoreConfig = badger.Config
 // cascade-delete coordination.
 type RelDeleteInfo = badger.RelDeleteInfo
 
-// QueryOpts / ShardDepth / DistanceMetric / RelTombstone are the Store
-// contract opaques used throughout Store. Canonical declarations
-// live in pkg/graph/store (the public contract).
-type (
-	QueryOpts      = storecontract.QueryOpts
-	ShardDepth     = storecontract.ShardDepth
-	DistanceMetric = storecontract.DistanceMetric
-	RelTombstone   = storecontract.RelTombstone
-)
+// QueryOpts is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type QueryOpts = storecontract.QueryOpts
 
-// EntityClass and OntologyMapping classify labels for shard routing.
-// Public type lives in pkg/graph/ontology; aliased here so tieredstore
-// internals keep their unqualified identifiers.
-type (
-	EntityClass     = ontology.EntityClass
-	OntologyMapping = ontology.OntologyMapping
-)
+// ShardDepth is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type ShardDepth = storecontract.ShardDepth
 
+// DistanceMetric is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type DistanceMetric = storecontract.DistanceMetric
+
+// RelTombstone is a Store-contract alias; canonical declaration lives in
+// pkg/graph/store.
+type RelTombstone = storecontract.RelTombstone
+
+// EntityClass classifies a label for shard routing. Alias of
+// pkg/graph/ontology.EntityClass.
+type EntityClass = ontology.EntityClass
+
+// OntologyMapping classifies labels for shard routing. Alias of
+// pkg/graph/ontology.OntologyMapping.
+type OntologyMapping = ontology.OntologyMapping
+
+// EntityClass values — aliases of the canonical declarations in
+// pkg/graph/ontology.
 const (
 	ClassEvent     = ontology.ClassEvent
 	ClassReference = ontology.ClassReference
 )
 
+// ShardDepth values — aliases of the canonical declarations in
+// pkg/graph/store.
 const (
 	DepthAll  = storecontract.DepthAll
 	DepthHot  = storecontract.DepthHot
 	DepthWarm = storecontract.DepthWarm
 )
 
+// DistanceMetric values — aliases of the canonical declarations in
+// pkg/graph/store.
 const (
 	DistanceCosine    = storecontract.DistanceCosine
 	DistanceEuclidean = storecontract.DistanceEuclidean

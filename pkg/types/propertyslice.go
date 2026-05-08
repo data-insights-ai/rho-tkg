@@ -155,7 +155,7 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 	// Pointer and Struct are accepted if the type has been registered via
 	// RegisterPropertyStructType (e.g. for spatial geometry types). This is
 	// the opt-in extension point; unregistered structs/pointers are rejected.
-	case reflect.Ptr, reflect.Struct:
+	case reflect.Pointer, reflect.Struct:
 		if isRegisteredPropertyStructType(rv) {
 			return nil
 		}

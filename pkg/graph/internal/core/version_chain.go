@@ -13,26 +13,28 @@ import (
 
 // --- Version chain navigation ---
 
-// GetPreviousNodeVersion returns the version immediately before the given version.
+// PreviousVersion returns the version immediately before the given version.
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
-func (c *Core) GetPreviousNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
+func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node, error) {
+	c := n.c
 	if version == 0 {
 		return nil, nil
 	}
-	n, err := c.store.GetNodeVersion(id, version-1)
+	node, err := c.store.GetNodeVersion(id, version-1)
 	if errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, nil
 	}
-	return n, err
+	return node, err
 }
 
-// GetNextNodeVersion returns the version immediately after the given version.
+// NextVersion returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current node (which may be version+1).
-func (c *Core) GetNextNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
-	n, err := c.store.GetNodeVersion(id, version+1)
+func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, error) {
+	c := n.c
+	node, err := c.store.GetNodeVersion(id, version+1)
 	if err == nil {
-		return n, nil
+		return node, nil
 	}
 	if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, err
@@ -51,10 +53,11 @@ func (c *Core) GetNextNodeVersion(id types.NodeID, version uint32) (*types.Node,
 	return nil, nil
 }
 
-// CloseNodeVersion sets ValidTo on the current node to t, marking it temporally
+// CloseVersion sets ValidTo on the current node to t, marking it temporally
 // expired without deleting it or incrementing its version number.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) CloseNodeVersion(id types.NodeID, t types.Instant) error {
+func (n *NodeOps) CloseVersion(id types.NodeID, t types.Instant) error {
+	c := n.c
 	c.mu.RLock()
 	err := c.closeNodeVersionInternal(id, t)
 	ep := c.events
@@ -93,7 +96,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.PrevHash
 	}
-	nodeLabels := c.NodeLabels(current)
+	nodeLabels := c.Nodes.Labels(current)
 	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
@@ -103,26 +106,28 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	return nil
 }
 
-// GetPreviousRelVersion returns the version immediately before the given version.
+// PreviousVersion returns the version immediately before the given version.
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
-func (c *Core) GetPreviousRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+	c := r.c
 	if version == 0 {
 		return nil, nil
 	}
-	r, err := c.store.GetRelVersion(id, version-1)
+	rel, err := c.store.GetRelVersion(id, version-1)
 	if errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, nil
 	}
-	return r, err
+	return rel, err
 }
 
-// GetNextRelVersion returns the version immediately after the given version.
+// NextVersion returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current relationship (which may be version+1).
-func (c *Core) GetNextRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
-	r, err := c.store.GetRelVersion(id, version+1)
+func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+	c := r.c
+	rel, err := c.store.GetRelVersion(id, version+1)
 	if err == nil {
-		return r, nil
+		return rel, nil
 	}
 	if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return nil, err
@@ -141,10 +146,11 @@ func (c *Core) GetNextRelVersion(id types.RelID, version uint32) (*types.Relatio
 	return nil, nil
 }
 
-// CloseRelVersion sets ValidTo on the current relationship to t, marking it
+// CloseVersion sets ValidTo on the current relationship to t, marking it
 // temporally expired without deleting it or incrementing its version number.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) CloseRelVersion(id types.RelID, t types.Instant) error {
+func (r *RelOps) CloseVersion(id types.RelID, t types.Instant) error {
+	c := r.c
 	c.mu.RLock()
 	err := c.closeRelVersionInternal(id, t)
 	ep := c.events
@@ -183,7 +189,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.PrevHash
 	}
-	relTypeName := c.RelationshipType(current)
+	relTypeName := c.Rels.Type(current)
 	hash := integrity.ComputeRelHash(current, relTypeName)
 	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
 

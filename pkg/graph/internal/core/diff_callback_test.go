@@ -101,64 +101,64 @@ func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 
 	base := types.Instant(time.Now().UnixMilli())
 	t1 := base + 100
-	t2 := base + 500
+	var t2 types.Instant
 
 	// Unchanged node (visible at both t1 and t2, never modified).
-	unchangedN, _ := g.AddNode([]string{"Unchanged"}, map[string]any{"k": "v"})
+	unchangedN, _ := g.Nodes.Add([]string{"Unchanged"}, map[string]any{"k": "v"})
 	setNodeTemporal(t, g, unchangedN.ID(), base+50, 0)
 
 	// Created node (only visible at t2).
-	createdN, _ := g.AddNode([]string{"Created"}, map[string]any{"k": "v"})
+	createdN, _ := g.Nodes.Add([]string{"Created"}, map[string]any{"k": "v"})
 	setNodeTemporal(t, g, createdN.ID(), base+150, 0)
 
 	// Deleted node (visible at t1 only).
-	deletedN, _ := g.AddNode([]string{"Deleted"}, nil)
+	deletedN, _ := g.Nodes.Add([]string{"Deleted"}, nil)
 	setNodeTemporal(t, g, deletedN.ID(), base+50, base+200)
 
 	// Updated node — explicit pre-/post- versions via UpdateNode in the
 	// diff window.
-	updatedN, _ := g.AddNode([]string{"User"}, map[string]any{"name": "Alice"})
+	updatedN, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
 	setNodeTemporal(t, g, updatedN.ID(), base+50, 0)
 	// Sleep so UpdatedAt > t1.
 	for types.Instant(time.Now().UnixMilli()) <= t1 {
 		time.Sleep(time.Millisecond)
 	}
-	if _, err := g.UpdateNode(updatedN.ID(), map[string]any{"name": "Alice 2"}); err != nil {
+	if _, err := g.Nodes.Update(updatedN.ID(), map[string]any{"name": "Alice 2"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	// Relationships: created, deleted, updated, unchanged.
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
-	unchangedR, _ := g.AddRelationship("LINKS", a, b, map[string]any{"w": int64(1)})
+	unchangedR, _ := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
 	setRelTemporal(t, g, unchangedR.ID(), base+50, 0)
 
-	createdR, _ := g.AddRelationship("LINKS", a, b, nil)
+	createdR, _ := g.Rels.Add("LINKS", a, b, nil)
 	setRelTemporal(t, g, createdR.ID(), base+150, 0)
 
-	deletedR, _ := g.AddRelationship("LINKS", a, b, nil)
+	deletedR, _ := g.Rels.Add("LINKS", a, b, nil)
 	setRelTemporal(t, g, deletedR.ID(), base+50, base+200)
 
-	updatedR, _ := g.AddRelationship("LINKS", a, b, map[string]any{"w": int64(1)})
+	updatedR, _ := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
 	setRelTemporal(t, g, updatedR.ID(), base+50, 0)
-	if _, err := g.UpdateRelationship(updatedR.ID(), map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(updatedR.ID(), map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	t2 = types.Instant(time.Now().UnixMilli()) + 10
 
 	// Materialised path.
-	want, err := g.DiffSnapshots(t1, t2)
+	want, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
 
 	// Streaming path.
 	got := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
-	if err := g.DiffSnapshotsCallback(t1, t2, accumulatingHandlers(got)); err != nil {
+	if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(got)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback: %v", err)
 	}
 
@@ -226,14 +226,14 @@ func TestDiffSnapshotsCallback_TwoPhase(t *testing.T) {
 	tEnd := tMid + 1_000
 
 	// Create in state X.
-	n, err := g.AddNode([]string{"User"}, map[string]any{"v": "X"})
+	n, err := g.Nodes.Add([]string{"User"}, map[string]any{"v": "X"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
 	// Trigger the X→Y update: the genesis (X) is pushed to history, the
 	// current version becomes Y.
-	if _, err := g.UpdateNode(n.ID(), map[string]any{"v": "Y"}); err != nil {
+	if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": "Y"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -246,7 +246,7 @@ func TestDiffSnapshotsCallback_TwoPhase(t *testing.T) {
 	// At t1=t0 → state X. At t2=tMid+50 → state Y. Both visible →
 	// OnNodeUpdated(X, Y).
 	got1 := &temporalpkg.SnapshotDiff{}
-	if err := g.DiffSnapshotsCallback(t0, tMid+50, accumulatingHandlers(got1)); err != nil {
+	if err := g.Temporal.DiffCallback(t0, tMid+50, accumulatingHandlers(got1)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback w1: %v", err)
 	}
 	if len(got1.NodesUpdated) != 1 {
@@ -266,7 +266,7 @@ func TestDiffSnapshotsCallback_TwoPhase(t *testing.T) {
 	// --- Window 2: [tMid+50, tEnd+50) ---
 	// At t1 → state Y. At t2 → no version (ValidTo=tEnd) → OnNodeDeleted(Y).
 	got2 := &temporalpkg.SnapshotDiff{}
-	if err := g.DiffSnapshotsCallback(tMid+50, tEnd+50, accumulatingHandlers(got2)); err != nil {
+	if err := g.Temporal.DiffCallback(tMid+50, tEnd+50, accumulatingHandlers(got2)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback w2: %v", err)
 	}
 	if len(got2.NodesDeleted) != 1 {
@@ -286,7 +286,7 @@ func TestDiffSnapshotsCallback_TwoPhase(t *testing.T) {
 	// pre-delete version (rule-15: history-aware queries must surface the
 	// version visible at the queried instant, not the most-recent one).
 	got3 := &temporalpkg.SnapshotDiff{}
-	if err := g.DiffSnapshotsCallback(t0, tEnd+50, accumulatingHandlers(got3)); err != nil {
+	if err := g.Temporal.DiffCallback(t0, tEnd+50, accumulatingHandlers(got3)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback w3: %v", err)
 	}
 	if len(got3.NodesDeleted) != 1 {
@@ -373,7 +373,7 @@ func TestDiffSnapshotsCallback_HandlerAbort(t *testing.T) {
 
 	base := types.Instant(time.Now().UnixMilli())
 	for i := 0; i < 5; i++ {
-		n, _ := g.AddNode([]string{"X"}, nil)
+		n, _ := g.Nodes.Add([]string{"X"}, nil)
 		setNodeTemporal(t, g, n.ID(), base+150, 0)
 	}
 
@@ -392,7 +392,7 @@ func TestDiffSnapshotsCallback_HandlerAbort(t *testing.T) {
 		},
 	}
 
-	err := g.DiffSnapshotsCallback(t1, t2, handlers)
+	err := g.Temporal.DiffCallback(t1, t2, handlers)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wantErr, got %v", err)
 	}
@@ -411,21 +411,21 @@ func TestDiffSnapshotsCallback_NilHandlers(t *testing.T) {
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
-	n1, _ := g.AddNode([]string{"X"}, nil)
+	n1, _ := g.Nodes.Add([]string{"X"}, nil)
 	setNodeTemporal(t, g, n1.ID(), base+150, 0) // Created
 
-	n2, _ := g.AddNode([]string{"X"}, nil)
+	n2, _ := g.Nodes.Add([]string{"X"}, nil)
 	setNodeTemporal(t, g, n2.ID(), base+50, base+200) // Deleted
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
-	r, _ := g.AddRelationship("E", a, b, nil)
+	r, _ := g.Rels.Add("E", a, b, nil)
 	setRelTemporal(t, g, r.ID(), base+150, 0) // Rel created
 
 	// Empty handler set — nothing should fire, no panic.
-	if err := g.DiffSnapshotsCallback(base+100, base+300, temporalpkg.DiffHandlers{}); err != nil {
+	if err := g.Temporal.DiffCallback(base+100, base+300, temporalpkg.DiffHandlers{}); err != nil {
 		t.Fatalf("DiffSnapshotsCallback all-nil: %v", err)
 	}
 }
@@ -452,7 +452,7 @@ func TestDiffSnapshotsCallback_EmptyGraph(t *testing.T) {
 	t1 := types.Instant(time.Now().UnixMilli()) - 1000
 	t2 := t1 + 100
 
-	if err := g.DiffSnapshotsCallback(t1, t2, handlers); err != nil {
+	if err := g.Temporal.DiffCallback(t1, t2, handlers); err != nil {
 		t.Fatalf("DiffSnapshotsCallback empty: %v", err)
 	}
 	if calls != 0 {
@@ -482,7 +482,7 @@ func TestDiffSnapshotsCallback_InvalidRange(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := g.DiffSnapshotsCallback(tc.t1, tc.t2, temporalpkg.DiffHandlers{})
+			err := g.Temporal.DiffCallback(tc.t1, tc.t2, temporalpkg.DiffHandlers{})
 			if !errors.Is(err, ErrInvalidTimeRange) {
 				t.Fatalf("expected ErrInvalidTimeRange, got %v", err)
 			}
@@ -505,19 +505,19 @@ func TestDiffSnapshotsCallback_RelEndpointFilter(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 500
 
-	a, _ := g.AddNode([]string{"A"}, nil)
-	b, _ := g.AddNode([]string{"B"}, nil)
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
 	// b expires between t1 and t2.
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, base+300)
 
-	r, _ := g.AddRelationship("E", a, b, nil)
+	r, _ := g.Rels.Add("E", a, b, nil)
 	// Rel itself spans the whole window — only the endpoint expiration
 	// causes the rel to be considered "absent" at t2.
 	setRelTemporal(t, g, r.ID(), base+50, 0)
 
 	got := &temporalpkg.SnapshotDiff{}
-	if err := g.DiffSnapshotsCallback(t1, t2, accumulatingHandlers(got)); err != nil {
+	if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(got)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback: %v", err)
 	}
 
@@ -544,7 +544,7 @@ func TestDiffSnapshotsCallback_RelEndpointFilter(t *testing.T) {
 	}
 
 	// Cross-check parity with the materialised path.
-	want, err := g.DiffSnapshots(t1, t2)
+	want, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
@@ -597,7 +597,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	base := types.Instant(time.Now().UnixMilli()) - 100_000
 
 	for i := 0; i < nUnchanged; i++ {
-		nd, err := g.AddNode([]string{"Stable"}, map[string]any{"v": int64(i)})
+		nd, err := g.Nodes.Add([]string{"Stable"}, map[string]any{"v": int64(i)})
 		if err != nil {
 			t.Fatalf("AddNode stable %d: %v", i, err)
 		}
@@ -605,7 +605,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	}
 	updateIDs := make([]types.NodeID, 0, nUpdates)
 	for i := 0; i < nUpdates; i++ {
-		nd, err := g.AddNode([]string{"Mut"}, map[string]any{"v": int64(i)})
+		nd, err := g.Nodes.Add([]string{"Mut"}, map[string]any{"v": int64(i)})
 		if err != nil {
 			t.Fatalf("AddNode mut %d: %v", i, err)
 		}
@@ -618,7 +618,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	for i, id := range updateIDs {
-		if _, err := g.UpdateNode(id, map[string]any{"v": int64(i + 1_000_000)}); err != nil {
+		if _, err := g.Nodes.Update(id, map[string]any{"v": int64(i + 1_000_000)}); err != nil {
 			t.Fatalf("UpdateNode %d: %v", i, err)
 		}
 	}
@@ -664,7 +664,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	}
 
 	matTotal, matPeak := measureAlloc(func() {
-		d, err := g.DiffSnapshots(t1, t2)
+		d, err := g.Temporal.Diff(t1, t2)
 		if err != nil {
 			t.Fatalf("DiffSnapshots: %v", err)
 		}
@@ -672,7 +672,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	})
 	cbTotal, cbPeak := measureAlloc(func() {
 		d := &temporalpkg.SnapshotDiff{}
-		if err := g.DiffSnapshotsCallback(t1, t2, accumulatingHandlers(d)); err != nil {
+		if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(d)); err != nil {
 			t.Fatalf("DiffSnapshotsCallback: %v", err)
 		}
 		_ = d
@@ -685,12 +685,12 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	}
 
 	// Behavioural sanity: both paths must agree on the diff shape.
-	want, err := g.DiffSnapshots(t1, t2)
+	want, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
 		t.Fatalf("DiffSnapshots: %v", err)
 	}
 	got := &temporalpkg.SnapshotDiff{}
-	if err := g.DiffSnapshotsCallback(t1, t2, accumulatingHandlers(got)); err != nil {
+	if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(got)); err != nil {
 		t.Fatalf("DiffSnapshotsCallback: %v", err)
 	}
 	if len(want.NodesUpdated) != len(got.NodesUpdated) {

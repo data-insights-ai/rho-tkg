@@ -131,7 +131,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 		if i%10 == 0 {
 			labels = []string{"Person", "Customer"}
 		}
-		n, err := g.AddNode(labels, productionProps(i))
+		n, err := g.Nodes.Add(labels, productionProps(i))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -142,7 +142,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 	relIDs := make([]types.RelID, 0, nodeCount*fanout+hubDegree)
 	for i := 0; i < nodeCount; i++ {
 		for j := 1; j <= fanout; j++ {
-			r, err := g.AddRelationship("FOLLOWS", nodes[i], nodes[(i+j)%nodeCount], map[string]any{
+			r, err := g.Rels.Add("FOLLOWS", nodes[i], nodes[(i+j)%nodeCount], map[string]any{
 				"weight": j,
 				"kind":   "regular",
 			})
@@ -153,7 +153,7 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 		}
 	}
 	for i := 1; i <= hubDegree; i++ {
-		r, err := g.AddRelationship("MENTIONS", nodes[0], nodes[i], map[string]any{
+		r, err := g.Rels.Add("MENTIONS", nodes[0], nodes[i], map[string]any{
 			"weight": i % 7,
 			"kind":   "hub",
 		})
@@ -163,13 +163,13 @@ func newGraphProductionFixture(b *testing.B, nodeCount, fanout, hubDegree int) g
 		relIDs = append(relIDs, r.ID())
 	}
 
-	if err := g.CreatePropertyIndex("Person", "group"); err != nil {
+	if err := g.Index.CreateProperty("Person", "group"); err != nil {
 		b.Fatal(err)
 	}
-	if err := g.CreateTemporalIndex("Person"); err != nil {
+	if err := g.Index.CreateTemporal("Person"); err != nil {
 		b.Fatal(err)
 	}
-	if err := g.CreateVectorIndex("Person", "embedding", 4, storepkg.DistanceEuclidean); err != nil {
+	if err := g.Index.CreateVector("Person", "embedding", 4, storepkg.DistanceEuclidean); err != nil {
 		b.Fatal(err)
 	}
 
@@ -194,7 +194,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("NodesByLabelPage1000", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabel("Person", storepkg.QueryOpts{Limit: 1000})
+			nodes, err := f.g.Nodes.ByLabel("Person", storepkg.QueryOpts{Limit: 1000})
 			if err != nil || len(nodes) != 1000 {
 				b.Fatalf("NodesByLabel: len=%d err=%v", len(nodes), err)
 			}
@@ -204,7 +204,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("RelationshipsByTypePage1000", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.RelationshipsByType("FOLLOWS", storepkg.QueryOpts{Limit: 1000})
+			rels, err := f.g.Rels.ByType("FOLLOWS", storepkg.QueryOpts{Limit: 1000})
 			if err != nil || len(rels) != 1000 {
 				b.Fatalf("RelationshipsByType: len=%d err=%v", len(rels), err)
 			}
@@ -214,7 +214,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("AllNodesPage1024", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.AllNodes(storepkg.QueryOpts{Limit: 1024})
+			nodes, err := f.g.Nodes.All(storepkg.QueryOpts{Limit: 1024})
 			if err != nil || len(nodes) != 1024 {
 				b.Fatalf("AllNodes: len=%d err=%v", len(nodes), err)
 			}
@@ -224,7 +224,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("AllRelationshipsPage1024", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.AllRelationships(storepkg.QueryOpts{Limit: 1024})
+			rels, err := f.g.Rels.All(storepkg.QueryOpts{Limit: 1024})
 			if err != nil || len(rels) != 1024 {
 				b.Fatalf("AllRelationships: len=%d err=%v", len(rels), err)
 			}
@@ -235,7 +235,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 		ids := f.nodeIDs[:1000]
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.GetNodesByIDs(ids)
+			nodes, err := f.g.Nodes.GetByIDs(ids)
 			if err != nil || len(nodes) != len(ids) {
 				b.Fatalf("GetNodesByIDs: len=%d err=%v", len(nodes), err)
 			}
@@ -246,7 +246,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 		ids := f.relIDs[:1000]
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.GetRelationshipsByIDs(ids)
+			rels, err := f.g.Rels.GetByIDs(ids)
 			if err != nil || len(rels) != len(ids) {
 				b.Fatalf("GetRelationshipsByIDs: len=%d err=%v", len(rels), err)
 			}
@@ -256,7 +256,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("HighDegreeOutgoingHub", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.OutgoingRelationships(f.hubID, "")
+			rels, err := f.g.Rels.Outgoing(f.hubID, "")
 			if err != nil || len(rels) < hubDegree {
 				b.Fatalf("OutgoingRelationships: len=%d err=%v", len(rels), err)
 			}
@@ -267,7 +267,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 		ids := f.nodeIDs[:128]
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.OutgoingRelationshipsForNodes(ids, "FOLLOWS")
+			rels, err := f.g.Rels.OutgoingForNodes(ids, "FOLLOWS")
 			if err != nil || len(rels) != len(ids) {
 				b.Fatalf("OutgoingRelationshipsForNodes: len=%d err=%v", len(rels), err)
 			}
@@ -278,7 +278,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 		ids := f.nodeIDs[1:129]
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.IncomingRelationshipsForNodes(ids, "FOLLOWS")
+			rels, err := f.g.Rels.IncomingForNodes(ids, "FOLLOWS")
 			if err != nil || len(rels) != len(ids) {
 				b.Fatalf("IncomingRelationshipsForNodes: len=%d err=%v", len(rels), err)
 			}
@@ -288,7 +288,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("PropertyIndexTenant", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabelAndProperty("Person", "group", f.groupValue, storepkg.QueryOpts{Limit: 64})
+			nodes, err := f.g.Nodes.ByLabelAndProperty("Person", "group", f.groupValue, storepkg.QueryOpts{Limit: 64})
 			if err != nil || len(nodes) != 64 {
 				b.Fatalf("NodesByLabelAndProperty: len=%d err=%v", len(nodes), err)
 			}
@@ -299,7 +299,7 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 		query := []float32{1, 2, 3, 4}
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.SearchNearestNodes("Person", "embedding", query, 20, storepkg.QueryOpts{})
+			nodes, err := f.g.Index.SearchNearest("Person", "embedding", query, 20, storepkg.QueryOpts{})
 			if err != nil || len(nodes) != 20 {
 				b.Fatalf("SearchNearestNodes: len=%d err=%v", len(nodes), err)
 			}
@@ -309,11 +309,11 @@ func BenchmarkGraphProduction_LargeGraphReads_MemoryStore(b *testing.B) {
 	b.Run("StatsAndCounts", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_ = f.g.Stats()
-			if _, err := f.g.AllLabelCounts(); err != nil {
+			_ = f.g.Stats.Get()
+			if _, err := f.g.Stats.AllLabelCounts(); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := f.g.AllRelTypeCounts(); err != nil {
+			if _, err := f.g.Stats.AllRelTypeCounts(); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -340,7 +340,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 	nodes := make([]*types.Node, 0, nodeCount)
 	nodeIDs := make([]types.NodeID, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
-		n, err := g.AddNode([]string{"Account"}, map[string]any{
+		n, err := g.Nodes.Add([]string{"Account"}, map[string]any{
 			"account": i,
 			"day":     0,
 			"balance": i * 100,
@@ -354,7 +354,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 
 	relIDs := make([]types.RelID, 0, nodeCount)
 	for i := 0; i < nodeCount; i++ {
-		r, err := g.AddRelationship("ACCOUNT_LINK", nodes[i], nodes[(i+1)%nodeCount], map[string]any{
+		r, err := g.Rels.Add("ACCOUNT_LINK", nodes[i], nodes[(i+1)%nodeCount], map[string]any{
 			"day":    0,
 			"amount": i * 10,
 		})
@@ -363,10 +363,10 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 		}
 		relIDs = append(relIDs, r.ID())
 	}
-	if err := g.CreatePropertyIndex("Account", "account"); err != nil {
+	if err := g.Index.CreateProperty("Account", "account"); err != nil {
 		b.Fatal(err)
 	}
-	if err := g.CreateTemporalIndex("Account"); err != nil {
+	if err := g.Index.CreateTemporal("Account"); err != nil {
 		b.Fatal(err)
 	}
 
@@ -375,7 +375,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 
 	for day := 1; day <= historyDays; day++ {
 		for i, id := range nodeIDs {
-			if _, err := g.UpdateNode(id, map[string]any{
+			if _, err := g.Nodes.Update(id, map[string]any{
 				"day":     day,
 				"balance": i*100 + day,
 			}); err != nil {
@@ -383,7 +383,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 			}
 		}
 		for i, id := range relIDs {
-			if _, err := g.UpdateRelationship(id, map[string]any{
+			if _, err := g.Rels.Update(id, map[string]any{
 				"day":    day,
 				"amount": i*10 + day,
 			}); err != nil {
@@ -392,12 +392,12 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 		}
 	}
 
-	current, err := g.GetNode(nodeIDs[0])
+	current, err := g.Nodes.Get(nodeIDs[0])
 	if err != nil {
 		b.Fatal(err)
 	}
 	asOf := current.Temporal().TxFrom
-	currentRel, err := g.GetRelationship(relIDs[0])
+	currentRel, err := g.Rels.Get(relIDs[0])
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodeHistoryVersions", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			history, err := f.g.GetNodeHistory(f.updatedID)
+			history, err := f.g.Nodes.History(f.updatedID)
 			if err != nil || len(history) != f.historyLen {
 				b.Fatalf("GetNodeHistory: len=%d err=%v", len(history), err)
 			}
@@ -431,7 +431,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodeAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			n, err := f.g.GetNodeAt(f.updatedID, f.queryTime)
+			n, err := f.g.Temporal.NodeAt(f.updatedID, f.queryTime)
 			if err != nil || n == nil {
 				b.Fatalf("GetNodeAt: %v", err)
 			}
@@ -441,7 +441,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodeAsOfCurrent", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			n, err := f.g.GetNodeAsOf(f.updatedID, f.asOfTime)
+			n, err := f.g.Temporal.NodeAsOf(f.updatedID, f.asOfTime)
 			if err != nil || n == nil {
 				b.Fatalf("GetNodeAsOf: %v", err)
 			}
@@ -451,7 +451,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("NodesByLabelValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabel("Account", storepkg.QueryOpts{ValidAt: f.queryTime, Limit: len(f.nodeIDs)})
+			nodes, err := f.g.Nodes.ByLabel("Account", storepkg.QueryOpts{ValidAt: f.queryTime, Limit: len(f.nodeIDs)})
 			if err != nil || len(nodes) != len(f.nodeIDs) {
 				b.Fatalf("NodesByLabel ValidAt: len=%d err=%v", len(nodes), err)
 			}
@@ -461,7 +461,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("NodesByLabelAndPropertyValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.NodesByLabelAndProperty("Account", "account", 0, storepkg.QueryOpts{ValidAt: f.queryTime, Limit: 1})
+			nodes, err := f.g.Nodes.ByLabelAndProperty("Account", "account", 0, storepkg.QueryOpts{ValidAt: f.queryTime, Limit: 1})
 			if err != nil || len(nodes) != 1 {
 				b.Fatalf("NodesByLabelAndProperty ValidAt: len=%d err=%v", len(nodes), err)
 			}
@@ -471,7 +471,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodesByLabelValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.GetNodesByLabelValidAt("Account", f.queryTime)
+			nodes, err := f.g.Temporal.NodesByLabelAt("Account", f.queryTime)
 			if err != nil || len(nodes) != len(f.nodeIDs) {
 				b.Fatalf("GetNodesByLabelValidAt: len=%d err=%v", len(nodes), err)
 			}
@@ -481,7 +481,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodesValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.GetNodesValidAt(f.queryTime)
+			nodes, err := f.g.Temporal.NodesAt(f.queryTime)
 			if err != nil || len(nodes) == 0 {
 				b.Fatalf("GetNodesValidAt: len=%d err=%v", len(nodes), err)
 			}
@@ -491,7 +491,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetNodesAsOfCurrent", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := f.g.GetNodesAsOf(f.asOfTime)
+			nodes, err := f.g.Temporal.NodesAsOf(f.asOfTime)
 			if err != nil || len(nodes) == 0 {
 				b.Fatalf("GetNodesAsOf: len=%d err=%v", len(nodes), err)
 			}
@@ -501,7 +501,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetRelationshipHistoryVersions", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			history, err := f.g.GetRelHistory(f.updatedRel)
+			history, err := f.g.Rels.History(f.updatedRel)
 			if err != nil || len(history) != f.historyLen {
 				b.Fatalf("GetRelHistory: len=%d err=%v", len(history), err)
 			}
@@ -511,7 +511,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetRelationshipAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			r, err := f.g.GetRelAt(f.updatedRel, f.queryTime)
+			r, err := f.g.Temporal.RelAt(f.updatedRel, f.queryTime)
 			if err != nil || r == nil {
 				b.Fatalf("GetRelAt: %v", err)
 			}
@@ -521,7 +521,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetRelAsOfCurrent", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			r, err := f.g.GetRelAsOf(f.updatedRel, f.relAsOf)
+			r, err := f.g.Temporal.RelAsOf(f.updatedRel, f.relAsOf)
 			if err != nil || r == nil {
 				b.Fatalf("GetRelAsOf: %v", err)
 			}
@@ -531,7 +531,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("RelationshipsByTypeValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.RelationshipsByType("ACCOUNT_LINK", storepkg.QueryOpts{ValidAt: f.queryTime, Limit: len(f.relIDs)})
+			rels, err := f.g.Rels.ByType("ACCOUNT_LINK", storepkg.QueryOpts{ValidAt: f.queryTime, Limit: len(f.relIDs)})
 			if err != nil || len(rels) != len(f.relIDs) {
 				b.Fatalf("RelationshipsByType ValidAt: len=%d err=%v", len(rels), err)
 			}
@@ -541,7 +541,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetRelationshipsValidAtGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.GetRelationshipsValidAt(f.queryTime)
+			rels, err := f.g.Temporal.RelationshipsAt(f.queryTime)
 			if err != nil || len(rels) == 0 {
 				b.Fatalf("GetRelationshipsValidAt: len=%d err=%v", len(rels), err)
 			}
@@ -551,7 +551,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("GetRelsAsOfCurrent", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.GetRelsAsOf(f.relAsOf)
+			rels, err := f.g.Temporal.RelsAsOf(f.relAsOf)
 			if err != nil || len(rels) == 0 {
 				b.Fatalf("GetRelsAsOf: len=%d err=%v", len(rels), err)
 			}
@@ -561,7 +561,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 	b.Run("SnapshotGenesis", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			snapshot, err := f.g.Snapshot(f.queryTime)
+			snapshot, err := f.g.Temporal.Snapshot(f.queryTime)
 			if err != nil || snapshot.NodeCount == 0 {
 				b.Fatalf("Snapshot: nodes=%d err=%v", snapshot.NodeCount, err)
 			}
@@ -572,7 +572,7 @@ func BenchmarkGraphProduction_HistoricalDailyUpdates_MemoryStore(b *testing.B) {
 func BenchmarkGraphProduction_ExportImport_MemoryStore(b *testing.B) {
 	f := newGraphProductionFixture(b, productionExportNodes(b), productionExportFanout(b), 256)
 	var exportBytes bytes.Buffer
-	if err := f.g.ExportGraph(&exportBytes); err != nil {
+	if err := f.g.IO.Export(&exportBytes); err != nil {
 		b.Fatal(err)
 	}
 	payload := exportBytes.Bytes()
@@ -581,7 +581,7 @@ func BenchmarkGraphProduction_ExportImport_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			var out bytes.Buffer
-			if err := f.g.ExportGraph(&out); err != nil {
+			if err := f.g.IO.Export(&out); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -594,7 +594,7 @@ func BenchmarkGraphProduction_ExportImport_MemoryStore(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if err := g.ImportGraph(bytes.NewReader(payload)); err != nil {
+			if err := g.IO.Import(bytes.NewReader(payload)); err != nil {
 				_ = g.Close()
 				b.Fatal(err)
 			}
@@ -611,12 +611,12 @@ func BenchmarkGraphProduction_Events_MemoryStore(b *testing.B) {
 		bus.Subscribe(func(eventspkg.Event) {
 			count.Add(1)
 		})
-		g.SetEventBus(bus)
+		g.Events.SetSync(bus)
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.AddNode([]string{"EventNode"}, map[string]any{"seq": i}); err != nil {
+			if _, err := g.Nodes.Add([]string{"EventNode"}, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -631,12 +631,12 @@ func BenchmarkGraphProduction_Events_MemoryStore(b *testing.B) {
 		})
 		b.Cleanup(func() { bus.Close() })
 		bus.Subscribe(func(eventspkg.Event) {})
-		g.SetAsyncEventBus(bus)
+		g.Events.SetAsync(bus)
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.AddNode([]string{"AsyncEventNode"}, map[string]any{"seq": i}); err != nil {
+			if _, err := g.Nodes.Add([]string{"AsyncEventNode"}, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -675,7 +675,7 @@ func BenchmarkGraphProduction_BatchAndTxWriteShapes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		ids := make([]types.NodeID, batchSize)
 		for i := range ids {
-			n, err := g.AddNode([]string{"TxPerson"}, productionProps(i))
+			n, err := g.Nodes.Add([]string{"TxPerson"}, productionProps(i))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -701,30 +701,30 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 	g := newBaselineTieredGraph(b)
 	cases := make([]*types.Node, productionTieredCases(b))
 	for i := range cases {
-		n, err := g.AddNode([]string{"Case"}, map[string]any{"seq": i})
+		n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"seq": i})
 		if err != nil {
 			b.Fatal(err)
 		}
 		cases[i] = n
 	}
 	for i := 0; i < productionTieredWarmSignals(b); i++ {
-		if _, err := g.AddNode([]string{"Signal"}, map[string]any{"seq": i, "phase": "warm"}); err != nil {
+		if _, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i, "phase": "warm"}); err != nil {
 			b.Fatal(err)
 		}
 	}
-	if err := g.ForceRotate(); err != nil {
+	if err := g.Admin.ForceRotate(); err != nil {
 		b.Fatal(err)
 	}
 	signals := make([]*types.Node, productionTieredHotSignals(b))
 	for i := range signals {
-		n, err := g.AddNode([]string{"Signal"}, map[string]any{"seq": i, "phase": "hot"})
+		n, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i, "phase": "hot"})
 		if err != nil {
 			b.Fatal(err)
 		}
 		signals[i] = n
 	}
 	for i, signal := range signals {
-		if _, err := g.AddRelationship("ABOUT", signal, cases[i%len(cases)], map[string]any{"seq": i}); err != nil {
+		if _, err := g.Rels.Add("ABOUT", signal, cases[i%len(cases)], map[string]any{"seq": i}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -732,7 +732,7 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 	b.Run("NodesByLabelDepthAll", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := g.NodesByLabel("Signal", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthAll})
+			nodes, err := g.Nodes.ByLabel("Signal", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthAll})
 			if err != nil || len(nodes) != 1000 {
 				b.Fatalf("NodesByLabel storepkg.DepthAll: len=%d err=%v", len(nodes), err)
 			}
@@ -742,7 +742,7 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 	b.Run("NodesByLabelDepthHot", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			nodes, err := g.NodesByLabel("Signal", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthHot})
+			nodes, err := g.Nodes.ByLabel("Signal", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthHot})
 			if err != nil || len(nodes) != 1000 {
 				b.Fatalf("NodesByLabel storepkg.DepthHot: len=%d err=%v", len(nodes), err)
 			}
@@ -752,7 +752,7 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 	b.Run("RelationshipsByTypeDepthAll", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := g.RelationshipsByType("ABOUT", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthAll})
+			rels, err := g.Rels.ByType("ABOUT", storepkg.QueryOpts{Limit: 1000, Depth: storepkg.DepthAll})
 			if err != nil || len(rels) != 1000 {
 				b.Fatalf("RelationshipsByType: len=%d err=%v", len(rels), err)
 			}
@@ -765,7 +765,7 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 			cas    *types.Node
 		}, b.N)
 		for i := range pairs {
-			signal, err := g.AddNode([]string{"Signal"}, map[string]any{"seq": i, "phase": "bench"})
+			signal, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i, "phase": "bench"})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -777,7 +777,7 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.AddRelationship("ABOUT_BENCH", pairs[i].signal, pairs[i].cas, map[string]any{"seq": i}); err != nil {
+			if _, err := g.Rels.Add("ABOUT_BENCH", pairs[i].signal, pairs[i].cas, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -790,37 +790,37 @@ func BenchmarkGraphProduction_PublicMethodSurface_MemoryStore(b *testing.B) {
 	b.Run("RegistryAndResolution", func(b *testing.B) {
 		node := f.nodes[0]
 		rel := f.relIDs[0]
-		relationship, err := f.g.GetRelationship(rel)
+		relationship, err := f.g.Rels.Get(rel)
 		if err != nil {
 			b.Fatal(err)
 		}
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := f.g.GetOrCreateLabel("Person"); err != nil {
+			if _, err := f.g.Resolve.GetOrCreateLabel("Person"); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := f.g.GetOrCreateRelType("FOLLOWS"); err != nil {
+			if _, err := f.g.Resolve.GetOrCreateRelType("FOLLOWS"); err != nil {
 				b.Fatal(err)
 			}
-			_ = f.g.NodeLabels(node)
-			_ = f.g.NodePrimaryLabel(node)
-			_ = f.g.NodeHasLabel(node, "Person")
-			_ = f.g.RelationshipType(relationship)
-			_ = f.g.RelationshipHasType(relationship, "FOLLOWS")
+			_ = f.g.Nodes.Labels(node)
+			_ = f.g.Nodes.PrimaryLabel(node)
+			_ = f.g.Nodes.HasLabel(node, "Person")
+			_ = f.g.Rels.Type(relationship)
+			_ = f.g.Rels.HasType(relationship, "FOLLOWS")
 		}
 	})
 
 	b.Run("VersionNavigation", func(b *testing.B) {
 		id := f.nodeIDs[0]
-		if _, err := f.g.UpdateNode(id, map[string]any{"status": "versioned"}); err != nil {
+		if _, err := f.g.Nodes.Update(id, map[string]any{"status": "versioned"}); err != nil {
 			b.Fatal(err)
 		}
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := f.g.GetPreviousNodeVersion(id, 1); err != nil {
+			if _, err := f.g.Nodes.PreviousVersion(id, 1); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := f.g.GetNextNodeVersion(id, 0); err != nil {
+			if _, err := f.g.Nodes.NextVersion(id, 0); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -831,7 +831,7 @@ func BenchmarkGraphProduction_PublicMethodSurface_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		i := 0
 		for b.Loop() {
-			if _, err := f.g.GetNodeWithContext(ctx, f.nodeIDs[i%len(f.nodeIDs)]); err != nil {
+			if _, err := f.g.Nodes.GetWithContext(ctx, f.nodeIDs[i%len(f.nodeIDs)]); err != nil {
 				b.Fatal(err)
 			}
 			i++

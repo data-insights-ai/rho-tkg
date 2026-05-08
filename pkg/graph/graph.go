@@ -3,7 +3,7 @@
 // As of v3.4.0 the 130+ public methods that historically lived directly on
 // *Graph have been removed. Customers must reach the implementation through
 // the sub-API accessors: g.Nodes.Add(...), g.Rels.Add(...), g.Temporal.NodesAt(...),
-// etc. The list below is the complete public surface on *Graph itself:
+// etc. The complete public surface on *Graph itself is:
 //
 //	New(cfg Config) (*Graph, error)
 //	(*Graph).Close() error
@@ -12,18 +12,18 @@
 package graph
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/adminapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraintsapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/eventsapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hashapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/indexapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/admin"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraints"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hash"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/core"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/ioapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/nodes"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/rels"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolveapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/statsapi"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporalapi"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolve"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/stats"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 )
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.
@@ -34,15 +34,15 @@ type Graph struct {
 
 	Nodes       *nodes.API
 	Rels        *rels.API
-	Temporal    *temporalapi.API
-	Index       *indexapi.API
-	Events      *eventsapi.API
-	Constraints *constraintsapi.API
-	IO          *ioapi.API
-	Admin       *adminapi.API
-	Statistics  *statsapi.API
-	Hash        *hashapi.API
-	Resolve     *resolveapi.API
+	Temporal    *temporal.API
+	Index       *index.API
+	Events      *events.API
+	Constraints *constraints.API
+	IO          *io.API
+	Admin       *admin.API
+	Stats       *stats.API
+	Hash        *hash.API
+	Resolve     *resolve.API
 	Tx          *TxAPI
 	Batch       *BatchAPI
 }
@@ -87,17 +87,17 @@ func New(cfg Config) (*Graph, error) {
 		return nil, err
 	}
 	g := &Graph{core: c}
-	g.Nodes = nodes.New(c)
-	g.Rels = rels.New(c)
-	g.Temporal = temporalapi.New(c)
-	g.Index = indexapi.New(c)
-	g.Events = eventsapi.New(c)
-	g.Constraints = constraintsapi.New(c)
-	g.IO = ioapi.New(c)
-	g.Admin = adminapi.New(c)
-	g.Statistics = statsapi.New(c)
-	g.Hash = hashapi.New(c)
-	g.Resolve = resolveapi.New(c)
+	g.Nodes = nodes.New(c.Nodes)
+	g.Rels = rels.New(c.Rels)
+	g.Temporal = temporal.New(c.Temporal)
+	g.Index = index.New(c.Index)
+	g.Events = events.New(c.Events)
+	g.Constraints = constraints.New(c.Constraints)
+	g.IO = io.New(c.IO)
+	g.Admin = admin.New(c.Admin)
+	g.Stats = stats.New(c.Stats)
+	g.Hash = hash.New(c.Hash)
+	g.Resolve = resolve.New(c.Resolve)
 	g.Tx = &TxAPI{c: c}
 	g.Batch = &BatchAPI{c: c}
 	return g, nil
@@ -105,10 +105,6 @@ func New(cfg Config) (*Graph, error) {
 
 // Close flushes registries (when applicable) and closes the underlying store.
 func (g *Graph) Close() error { return g.core.Close() }
-
-// Core returns the internal *core.Core. Used by package-internal helpers and
-// transitionally by tests; not part of the stable customer surface.
-func (g *Graph) Core() *core.Core { return g.core }
 
 // NewBatchBuilder constructs a BatchBuilder bound to g. Equivalent to g.Batch.New().
 func NewBatchBuilder(g *Graph) *BatchBuilder { return core.NewBatchBuilder(g.core) }

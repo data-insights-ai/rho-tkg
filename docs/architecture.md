@@ -23,12 +23,12 @@ License: Apache-2.0
                           |
             +-------------+-------------+
             |             |             |
-       MemoryStore   BadgerStore   TieredStore
+       memory.Store  badger.Store  tiered.Store
                                        |
                      +-----------------+-----------------+
                      |                 |                 |
                   refShard        refArchive      eventShards
-                (BadgerStore)   (lazy-open)    map[string]*eventShard
+                (badger.Store)  (lazy-open)    map[string]*eventShard
                                                  +-- hot  (read-write)
                                                  +-- warm (read-only)
                                                  +-- cold (lazy-open, idle-close)
@@ -36,9 +36,9 @@ License: Apache-2.0
 
 **Graph** is the sole external API. It owns the registries, dual snowflake generators, the Store, and an entity lock manager. All string resolution, referential integrity, and temporal query logic live here.
 
-**Store** is a pure persistence interface (59 methods). Three implementations: MemoryStore (testing), BadgerStore (single-instance persistent), TieredStore (multi-shard persistent).
+**Store** is a pure persistence interface (59 methods). Three implementations: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent).
 
-**Vector indexes** live at the Store level (per-Store in MemoryStore/BadgerStore, per-TieredStore -- not per-shard). In-memory brute-force k-NN with Cosine and Euclidean distance metrics. Protected by a dedicated `vectorIdxMu sync.RWMutex`. Not persisted -- rebuilt from node properties on restart. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`).
+**Vector indexes** live at the Store level (per-Store in `memory.Store`/`badger.Store`, per-`tiered.Store` -- not per-shard). In-memory brute-force k-NN with Cosine and Euclidean distance metrics. Protected by a dedicated `vectorIdxMu sync.RWMutex`. Not persisted -- rebuilt from node properties on restart. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`).
 
 ---
 
@@ -129,29 +129,27 @@ All mutations enforce `ValidationLimits` (5 configurable limits with defaults). 
 
 ### Sub-API Accessors (v3.4.0)
 
-The 130+ methods on `*Graph` are also reachable through 13 sub-API field accessors. Customers can use either form; the sub-API form gives discoverable tab-completion (`g.Nodes.`, `g.Rels.`, etc. instead of an alphabetic dump of every method on `g.`).
+The 130+ implementation methods on `*core.Core` are reachable through 13 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, `Core` (escape hatch) plus the 13 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0 — callers must go through the sub-APIs.
 
 | Field | Package | Wraps |
 |-------|---------|-------|
 | `g.Nodes` | `pkg/graph/nodes` | Node CRUD + label/property/version helpers |
 | `g.Rels` | `pkg/graph/rels` | Relationship CRUD + adjacency/property/version helpers |
-| `g.Temporal` | `pkg/graph/temporalapi` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations |
-| `g.Index` | `pkg/graph/indexapi` | Property/vector/high-frequency index management + IndexProvider |
-| `g.Events` | `pkg/graph/eventsapi` | Sync/async EventBus install + retrieval |
-| `g.Constraints` | `pkg/graph/constraintsapi` | Temporal-constraint set management |
-| `g.IO` | `pkg/graph/ioapi` | Export / Import |
-| `g.Admin` | `pkg/graph/adminapi` | Tiered-store admin (archive, repair, shards, rotate, reset, decompose-id) |
-| `g.Statistics` | `pkg/graph/statsapi` | Count helpers (named `Statistics` because `g.Stats()` already exists) |
-| `g.Hash` | `pkg/graph/hashapi` | Hash-chain verification |
-| `g.Resolve` | `pkg/graph/resolveapi` | Shadow-property + registry resolution |
+| `g.Temporal` | `pkg/graph/temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations |
+| `g.Index` | `pkg/graph/index` | Property/vector/high-frequency index management + IndexProvider |
+| `g.Events` | `pkg/graph/events` | Sync/async EventBus install + retrieval |
+| `g.Constraints` | `pkg/graph/constraints` | Temporal-constraint set management |
+| `g.IO` | `pkg/graph/io` | Export / Import (shadows stdlib `io` — alias as `tkgio` if both are imported) |
+| `g.Admin` | `pkg/graph/admin` | Tiered-store admin (archive, repair, shards, rotate, reset, decompose-id) |
+| `g.Stats` | `pkg/graph/stats` | Count helpers |
+| `g.Hash` | `pkg/graph/hash` | Hash-chain verification (shadows stdlib `hash` — alias as `tkghash` if both are imported) |
+| `g.Resolve` | `pkg/graph/resolve` | Shadow-property + registry resolution |
 | `g.Tx` | `pkg/graph/subapi.go` (in-package `TxAPI`) | `Begin()` / `Run(fn)` / `RunContext(ctx, fn)` |
 | `g.Batch` | `pkg/graph/subapi.go` (in-package `BatchAPI`) | `New()` returns a `*BatchBuilder` |
 
-Each sub-API package declares its own local `Core` interface listing only the methods it forwards to. `*Graph` satisfies each `Core` implicitly (no explicit declaration required), which lets sub-API packages stay independent of `pkg/graph` and avoids the import cycle that would otherwise be needed to wire `*nodes.API` (etc.) as fields on `Graph`. Wrappers are 1-2 lines, single indirect dispatch each. The benchmark gate measured no regression vs v3.3.0 (geomean +0.4% sec/op, +0.0% allocs/op, well within the 2% tolerance).
+Each sub-API package declares its own local `Core` interface listing only the methods it forwards to. `*core.Core` satisfies each `Core` implicitly (no explicit declaration required), which lets sub-API packages stay independent of `pkg/graph/internal/core` while still type-checking the wiring at compile time. Wrappers are 1-2 lines, single indirect dispatch each. The `temporal`, `index`, and `events` sub-APIs were collapsed into their existing types-only sibling packages in v3.4.0 post-cleanup (previously `pkg/graph/{temporalapi,indexapi,eventsapi}`).
 
-`g.Tx` and `g.Batch` are in-package types because their wrapped values (`*GraphTx`, `*BatchBuilder`) live in `pkg/graph` and can't be moved into a sibling package without either re-homing the underlying types or accepting an import cycle.
-
-The sub-APIs are additive: every existing `*Graph` method continues to work unchanged. Customers can migrate at their own pace.
+`g.Tx` and `g.Batch` are in-package types because their wrapped values (`*GraphTx`, `*BatchBuilder`) live in `pkg/graph/internal/core` and can't be moved into a sibling sub-API package without either re-homing the underlying types or accepting an import cycle.
 
 ### Temporal Queries
 
@@ -249,7 +247,7 @@ const (
 
 ---
 
-## MemoryStore (`pkg/graph/memorystore.go`)
+## memory.Store (`pkg/graph/store/memory/memorystore.go`)
 
 Thread-safe in-memory Store. Single `sync.RWMutex` protects all maps.
 
@@ -273,7 +271,19 @@ relHistory   map[snowflake.ID]map[uint32]*types.Relationship
 
 ---
 
-## BadgerStore (`pkg/graph/badgerstore.go`)
+## badger.Store (`pkg/graph/store/badger/`)
+
+The implementation is split across themed files (none over 1500 LOC):
+
+- `badgerstore.go` — Store struct, sentinel-error aliases, `New`, `Close`, `Clear`, `loadIndexes`.
+- `badgerstore_node.go` — node CRUD (`PutNode`, `GetNode`, `DeleteNode`, `ReplaceNode`, label-token mutations) plus node queries and node-batch ops.
+- `badgerstore_rel.go` — relationship CRUD plus rel queries (`Outgoing*`, `Incoming*`) and rel-batch ops.
+- `badgerstore_index.go` — property / temporal / high-frequency / vector index management.
+- `badgerstore_history.go` — version history methods, including the cursor-paginated `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`.
+- `badgerstore_temporal.go` — temporal-filter helpers (`filter*ByTemporalPeek`, `fetch*WithTemporalFilter`).
+- `badgerstore_meta.go` — counts, registry persistence, cache hit/miss accessors.
+- `badgerstore_flush.go` — async write batch + flush loop + dirty tracking.
+
 
 Persistent Store using Badger v4 with async batch persistence.
 
@@ -341,7 +351,7 @@ All IDs stored as big-endian uint64 for correct sort order and temporal clusteri
 
 ---
 
-## TieredStore (`pkg/graph/tieredstore.go` + `_read.go` + `_write.go`)
+## tiered.Store (`pkg/graph/store/tiered/tieredstore.go` + `_read.go` + `_write.go`)
 
 Multi-shard Store routing entities across a reference shard and time-windowed event shards.
 
@@ -702,14 +712,14 @@ After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds 
 |---------|----------------|---------|
 | `pkg/graph/nodes` | `g.Nodes` | ~31 wrappers — node CRUD, label, property, version chain. |
 | `pkg/graph/rels` | `g.Rels` | ~30 wrappers — relationship CRUD, adjacency, property, version chain. |
-| `pkg/graph/temporalapi` | `g.Temporal` | ~24 wrappers — point-in-time, interval, bitemporal, snapshot/diff, Allen relations. |
-| `pkg/graph/indexapi` | `g.Index` | ~13 wrappers — property/vector/high-frequency index management + IndexProvider. |
-| `pkg/graph/eventsapi` | `g.Events` | ~3 wrappers — sync/async EventBus management. |
-| `pkg/graph/constraintsapi` | `g.Constraints` | ~3 wrappers — temporal-constraint set management. |
-| `pkg/graph/ioapi` | `g.IO` | ~2 wrappers — Export / Import. |
-| `pkg/graph/adminapi` | `g.Admin` | ~9 wrappers — tiered-store admin (archive, repair, shards, rotate, reset). |
-| `pkg/graph/statsapi` | `g.Statistics` | ~6 wrappers — count helpers. |
-| `pkg/graph/hashapi` | `g.Hash` | ~2 wrappers — hash-chain verification. |
-| `pkg/graph/resolveapi` | `g.Resolve` | ~6 wrappers — shadow-property + registry resolution. |
+| `pkg/graph/temporal` | `g.Temporal` | ~24 wrappers — point-in-time, interval, bitemporal, snapshot/diff, Allen relations. Coexists with the temporal types (`GraphSnapshot`, `SnapshotDiff`, …) in the same package. |
+| `pkg/graph/index` | `g.Index` | ~13 wrappers — property/vector/high-frequency index management + IndexProvider. Coexists with `IndexProvider`, `Initializable`, `GraphReader` in the same package. |
+| `pkg/graph/events` | `g.Events` | ~3 wrappers — sync/async EventBus management. Coexists with `EventBus`, `AsyncEventBus`, `Event`, … in the same package. |
+| `pkg/graph/constraints` | `g.Constraints` | ~3 wrappers — temporal-constraint set management. |
+| `pkg/graph/io` | `g.IO` | ~2 wrappers — Export / Import. Shadows stdlib `io`; alias as `tkgio` at consumer sites that also need stdlib `io`. |
+| `pkg/graph/admin` | `g.Admin` | ~9 wrappers — tiered-store admin (archive, repair, shards, rotate, reset). |
+| `pkg/graph/stats` | `g.Stats` | ~6 wrappers — count helpers. |
+| `pkg/graph/hash` | `g.Hash` | ~2 wrappers — hash-chain verification. Shadows stdlib `hash`; alias as `tkghash` at consumer sites that also need stdlib `hash`. |
+| `pkg/graph/resolve` | `g.Resolve` | ~6 wrappers — shadow-property + registry resolution. |
 
 `g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.

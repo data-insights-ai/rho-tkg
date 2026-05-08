@@ -13,7 +13,6 @@ package main
 
 import (
 	"fmt"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"log"
 	"math/rand"
 	"os"
@@ -23,9 +22,9 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -107,7 +106,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	bs, err := badger.New(badger.Config{Dir: tmpDir})
 	if err != nil {

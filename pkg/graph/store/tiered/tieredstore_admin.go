@@ -243,14 +243,14 @@ func (ts *Store) RebuildCatalog() error {
 
 // HashChainVerifier is the dependency-inverted interface that VerifyShard uses
 // to run per-entity hash-chain verification. The Graph layer (pkg/graph)
-// satisfies it via Graph.VerifyNodeHashChain / Graph.VerifyRelHashChain.
+// satisfies it via Graph.Hash.VerifyNodeChain / Graph.Hash.VerifyRelChain.
 //
 // The interface lets Store call into the Graph layer for label/type
 // resolution without taking a hard import dependency on pkg/graph (which would
 // be a circular import).
 type HashChainVerifier interface {
-	VerifyNodeHashChain(id types.NodeID) (bool, error)
-	VerifyRelHashChain(id types.RelID) (bool, error)
+	VerifyNodeChain(id types.NodeID) (bool, error)
+	VerifyRelChain(id types.RelID) (bool, error)
 }
 
 // VerifyShard runs hash chain verification on all entities in the named shard.
@@ -297,7 +297,7 @@ func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResu
 
 	// Verify each node.
 	for _, id := range nodeIDs {
-		ok, err := g.VerifyNodeHashChain(types.NodeID(id))
+		ok, err := g.VerifyNodeChain(id)
 		if err != nil {
 			return nil, fmt.Errorf("graph: verify node %d: %w", id, err)
 		}
@@ -310,7 +310,7 @@ func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResu
 
 	// Verify each relationship.
 	for _, id := range relIDs {
-		ok, err := g.VerifyRelHashChain(types.RelID(id))
+		ok, err := g.VerifyRelChain(id)
 		if err != nil {
 			return nil, fmt.Errorf("graph: verify rel %d: %w", id, err)
 		}

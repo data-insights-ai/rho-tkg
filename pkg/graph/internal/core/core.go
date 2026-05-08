@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
@@ -59,6 +58,20 @@ type Core struct {
 	opRelReads    atomic.Int64
 	opRelUpdates  atomic.Int64
 	opRelDeletes  atomic.Int64
+
+	// Sub-Core groupings — narrow operation surfaces that mirror the public
+	// sub-API field grouping on *graph.Graph. Wired in New().
+	Nodes       *NodeOps
+	Rels        *RelOps
+	Temporal    *TempOps
+	Index       *IndexOps
+	Events      *EventOps
+	Admin       *AdminOps
+	Constraints *ConstraintOps
+	Hash        *HashOps
+	IO          *IOOps
+	Resolve     *ResolveOps
+	Stats       *StatOps
 }
 
 // =============================================================================
@@ -147,10 +160,7 @@ func DecomposeID(id snowflake.ID) IDComponents {
 	return snowflakepkg.DecomposeID(id)
 }
 
-var (
-	snowflakeEpoch  time.Time        = snowflakepkg.Epoch
-	snowflakeLayout snowflake.Layout = snowflakepkg.Layout
-)
+var snowflakeEpoch = snowflakepkg.Epoch
 
 // =============================================================================
 // Lifecycle
@@ -217,6 +227,17 @@ func New(config Config) (*Core, error) {
 		validation:     v,
 		indexProviders: make(map[string]*indexProviderEntry),
 	}
+	c.Nodes = &NodeOps{c: c}
+	c.Rels = &RelOps{c: c}
+	c.Temporal = &TempOps{c: c}
+	c.Index = &IndexOps{c: c}
+	c.Events = &EventOps{c: c}
+	c.Admin = &AdminOps{c: c}
+	c.Constraints = &ConstraintOps{c: c}
+	c.Hash = &HashOps{c: c}
+	c.IO = &IOOps{c: c}
+	c.Resolve = &ResolveOps{c: c}
+	c.Stats = &StatOps{c: c}
 
 	if config.Store == nil && config.BadgerDir != "" {
 		if strings.TrimSpace(config.BadgerDir) == "" {

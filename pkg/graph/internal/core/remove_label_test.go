@@ -11,34 +11,34 @@ import (
 
 func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person", "Employee"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person", "Employee"}, nil)
 	id := n.ID()
 
-	if err := g.RemoveNodeLabel(id, "Employee"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Employee"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.GetNode(id)
-	if g.NodeHasLabel(updated, "Employee") {
+	updated, _ := g.Nodes.Get(id)
+	if g.Nodes.HasLabel(updated, "Employee") {
 		t.Error("label 'Employee' still present after removal")
 	}
-	if !g.NodeHasLabel(updated, "Person") {
+	if !g.Nodes.HasLabel(updated, "Person") {
 		t.Error("primary label 'Person' should remain")
 	}
 }
 
 func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Primary", "Secondary"}, nil)
+	n, _ := g.Nodes.Add([]string{"Primary", "Secondary"}, nil)
 	id := n.ID()
 
-	if err := g.RemoveNodeLabel(id, "Primary"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Primary"); err != nil {
 		t.Fatalf("RemoveNodeLabel primary: %v", err)
 	}
 
-	updated, _ := g.GetNode(id)
+	updated, _ := g.Nodes.Get(id)
 	// After removing primary, "Secondary" should be promoted.
-	labels := g.NodeLabels(updated)
+	labels := g.Nodes.Labels(updated)
 	if len(labels) != 1 || labels[0] != "Secondary" {
 		t.Errorf("labels after primary removal = %v, want [Secondary]", labels)
 	}
@@ -46,10 +46,10 @@ func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 
 func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Solo"}, nil)
+	n, _ := g.Nodes.Add([]string{"Solo"}, nil)
 	id := n.ID()
 
-	err := g.RemoveNodeLabel(id, "Solo")
+	err := g.Nodes.RemoveLabel(id, "Solo")
 	if !errors.Is(err, ErrLastLabel) {
 		t.Errorf("expected ErrLastLabel, got %v", err)
 	}
@@ -57,10 +57,10 @@ func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 
 func TestRemoveNodeLabel_LabelNotFoundError(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add([]string{"Person"}, nil)
 	id := n.ID()
 
-	err := g.RemoveNodeLabel(id, "Ghost")
+	err := g.Nodes.RemoveLabel(id, "Ghost")
 	if !errors.Is(err, ErrLabelNotFound) {
 		t.Errorf("expected ErrLabelNotFound, got %v", err)
 	}
@@ -70,9 +70,9 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 	g, _ := New(Config{})
 
 	// Register the label so Lookup() succeeds.
-	_, _ = g.GetOrCreateLabel("Person")
+	_, _ = g.Resolve.GetOrCreateLabel("Person")
 
-	err := g.RemoveNodeLabel(999, "Person")
+	err := g.Nodes.RemoveLabel(999, "Person")
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -80,18 +80,18 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 
 func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 	origHash := ""
 	if ig := n.Integrity(); ig != nil {
 		origHash = ig.Hash
 	}
 
-	if err := g.RemoveNodeLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.GetNode(id)
+	updated, _ := g.Nodes.Get(id)
 	newHash := ""
 	if ig := updated.Integrity(); ig != nil {
 		newHash = ig.Hash
@@ -106,19 +106,19 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 
 func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.AddNode([]string{"Thing", "Tag"}, nil)
+	n, _ := g.Nodes.Add([]string{"Thing", "Tag"}, nil)
 	id := n.ID()
 
-	before, _ := g.NodesByLabel("Tag", storepkg.QueryOpts{})
+	before, _ := g.Nodes.ByLabel("Tag", storepkg.QueryOpts{})
 	if len(before) == 0 {
 		t.Fatal("expected node in Tag label index before removal")
 	}
 
-	if err := g.RemoveNodeLabel(id, "Tag"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "Tag"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	after, _ := g.NodesByLabel("Tag", storepkg.QueryOpts{})
+	after, _ := g.Nodes.ByLabel("Tag", storepkg.QueryOpts{})
 	for _, node := range after {
 		if node.ID() == id {
 			t.Error("node still found in 'Tag' label index after removal")
@@ -129,9 +129,9 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
-	n, _ := g.AddNode([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 
 	var events []eventspkg.Event
@@ -140,7 +140,7 @@ func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	})
 	events = nil // clear AddNode event
 
-	if err := g.RemoveNodeLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

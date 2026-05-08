@@ -8,7 +8,7 @@ For the full product with Cypher queries, Vadalog reasoning, and an HTTP server,
 
 | Layer | Repository | What it provides |
 |---|---|---|
-| **tkg/v3** (this repo) | `rho/tkg/v3` | Graph types, registries, MemoryStore, BadgerStore, TieredStore, entity locks |
+| **tkg/v3** (this repo) | `rho/tkg/v3` | Graph types, registries, `memory.Store`, `badger.Store`, `tiered.Store`, entity locks |
 | **tkgd-v3** | `rho/tkgd-v3` | Cypher engine, Vadalog reasoning, HTTP server, REST API |
 
 ## Module
@@ -27,7 +27,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 - [API & Core Types](docs/api.md) — Graph layer, registries, validation limits, temporal queries, transactions, and shadow properties.
 - [Architecture & Concurrency](docs/architecture.md) — System boundaries, entity lock managers, multi-phase iteration, and thread safety.
-- [Persistence](docs/persistence.md) — Storage interfaces, BadgerStore, and TieredStore multi-shard persistence.
+- [Persistence](docs/persistence.md) — Storage interfaces, `badger.Store`, and `tiered.Store` multi-shard persistence.
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
@@ -148,11 +148,14 @@ make bench-graph-production-small  # production-shaped graph benchmark suite
 make bench-graph-production-large  # large stress graph benchmark suite
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
-make ci             # full pipeline: fmt-check + vet + build + test-race + security + vulncheck
+make ci             # full pipeline: fmt-check + vet + lint + build + test-race + security + vulncheck
 make fmt            # format code
+make lint           # golangci-lint (errcheck, govet, staticcheck, revive, ...)
 make security       # gosec static analysis
 make vulncheck      # govulncheck for known CVEs
 ```
+
+Linting via `make lint` (golangci-lint) is part of CI.
 
 Run a single test:
 
@@ -168,9 +171,9 @@ Progressive tutorials in `tutorials/`, each a standalone `main.go`:
 |----------|-------|
 | `001_basic_graph` | Create nodes, relationships, and query the graph |
 | `002_temporal` | Temporal metadata (ValidFrom/ValidTo, CreatedAt, UpdatedAt) |
-| `003_badger_persistence` | On-disk BadgerStore, close/reopen, registry persistence |
+| `003_badger_persistence` | On-disk `badger.Store`, close/reopen, registry persistence |
 | `004_full_features` | Update operations, version history, hash chain integrity |
-| `005_performance` | Benchmark MemoryStore vs BadgerStore (throughput, memory, storage) |
+| `005_performance` | Benchmark `memory.Store` vs `badger.Store` (throughput, memory, storage) |
 
 Run any tutorial: `go run ./tutorials/001_basic_graph/`
 

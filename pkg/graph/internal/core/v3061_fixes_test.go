@@ -32,7 +32,7 @@ func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	defer g.Close()
 
 	sig := []byte{0xAA}
-	n, err := g.AddNode([]string{"Person"}, map[string]any{
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{
 		"name":          "Alice",
 		"tkg_signature": sig,
 	})
@@ -122,7 +122,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	defer g.Close()
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
 	var wg sync.WaitGroup
 	const N = 20
@@ -133,7 +133,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.AddNode([]string{"Person"}, nil)
+				g.Nodes.Add([]string{"Person"}, nil)
 			}
 		}()
 	}
@@ -143,8 +143,8 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for j := 0; j < 50; j++ {
-			g.SetEventBus(bus)
-			g.SetEventBus(nil)
+			g.Events.SetSync(bus)
+			g.Events.SetSync(nil)
 		}
 	}()
 
@@ -165,8 +165,8 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	var wg sync.WaitGroup
 	const N = 20
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// Writers: AddRelationship (reads constraints).
 	for i := 0; i < N; i++ {
@@ -174,7 +174,7 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.AddRelationship("KNOWS", a, b, nil)
+				g.Rels.Add("KNOWS", a, b, nil)
 			}
 		}()
 	}
@@ -187,8 +187,8 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 			Kind: temporalpkg.ConstraintRelWithinEndpoints,
 		})
 		for j := 0; j < 50; j++ {
-			g.SetTemporalConstraints(cs)
-			g.SetTemporalConstraints(temporalpkg.ConstraintSet{})
+			g.Constraints.Set(cs)
+			g.Constraints.Set(temporalpkg.ConstraintSet{})
 		}
 	}()
 
@@ -207,23 +207,23 @@ func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	defer g.Close()
 
 	bus := eventspkg.NewEventBus()
-	g.SetEventBus(bus)
+	g.Events.SetSync(bus)
 
-	// Sync handler calls g.GetNode inside the callback.
+	// Sync handler calls g.Nodes.Get inside the callback.
 	var handlerNodeID types.EntityID
 	bus.Subscribe(func(e eventspkg.Event) {
 		if e.Type == eventspkg.EventNodeCreate {
 			// This would deadlock if publishEvent ran under g.mu.RLock
 			// because GetNodeWithContext doesn't acquire g.mu.RLock,
 			// but more complex handlers calling write methods would.
-			_, _ = g.GetNode(types.NodeID(e.EntityID))
+			_, _ = g.Nodes.Get(types.NodeID(e.EntityID))
 			handlerNodeID = e.EntityID
 		}
 	})
 
 	done := make(chan struct{})
 	go func() {
-		n, err := g.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 		if err != nil {
 			t.Errorf("AddNode failed: %v", err)
 		}
@@ -311,8 +311,8 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	defer g.Close()
 
 	// Create nodes outside tx.
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	relID := snowflake.ID(999999)
 
@@ -337,14 +337,14 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// Verify exists.
-	got, err := g.GetRelationship(types.RelID(relID))
+	got, err := g.Rels.Get(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("GetRelationship after commit: %v", err)
 	}
 	_ = got
 
 	// Import duplicate — should fail.
-	_, err = g.ImportRelationshipWithID(context.Background(), types.RelID(relID), "KNOWS", a, b, nil)
+	_, err = g.Rels.Import(context.Background(), types.RelID(relID), "KNOWS", a, b, nil)
 	if !errors.Is(err, storepkg.ErrRelExists) {
 		t.Fatalf("expected storepkg.ErrRelExists, got %v", err)
 	}
@@ -361,13 +361,13 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// New rel should not exist.
-	_, err = g.GetRelationship(types.RelID(newRelID))
+	_, err = g.Rels.Get(types.RelID(newRelID))
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound after rollback, got %v", err)
 	}
 
 	// Original rel should still exist.
-	_, err = g.GetRelationship(types.RelID(relID))
+	_, err = g.Rels.Get(types.RelID(relID))
 	if err != nil {
 		t.Fatalf("original rel lost after rollback: %v", err)
 	}
@@ -382,11 +382,11 @@ func TestGetRelsAsOf(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// Create rel.
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,14 +397,14 @@ func TestGetRelsAsOf(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 
 	// Update rel — creates history entry.
-	r2, err := g.UpdateRelationship(rid, map[string]any{"weight": int64(2)})
+	r2, err := g.Rels.Update(rid, map[string]any{"weight": int64(2)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	txFrom2 := r2.Temporal().TxFrom
 
 	// Query between txFrom1 and txFrom2 — should get v0.
-	rels, err := g.GetRelsAsOf(txFrom1)
+	rels, err := g.Temporal.RelsAsOf(txFrom1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	}
 
 	// Query at txFrom2 — should get v1.
-	rels2, err := g.GetRelsAsOf(txFrom2)
+	rels2, err := g.Temporal.RelsAsOf(txFrom2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,20 +452,20 @@ func TestCreateDropTemporalIndex(t *testing.T) {
 	defer g.Close()
 
 	// Register the label.
-	g.AddNode([]string{"eventspkg.Event"}, nil)
+	g.Nodes.Add([]string{"eventspkg.Event"}, nil)
 
 	// Create temporal index.
-	if err := g.CreateTemporalIndex("eventspkg.Event"); err != nil {
+	if err := g.Index.CreateTemporal("eventspkg.Event"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Drop.
-	if err := g.DropTemporalIndex("eventspkg.Event"); err != nil {
+	if err := g.Index.DropTemporal("eventspkg.Event"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second drop should error.
-	err = g.DropTemporalIndex("eventspkg.Event")
+	err = g.Index.DropTemporal("eventspkg.Event")
 	if err == nil {
 		t.Fatal("second DropTemporalIndex should fail")
 	}
@@ -481,20 +481,20 @@ func TestDropHighFrequencyIndex(t *testing.T) {
 	defer g.Close()
 
 	// Register the label.
-	g.AddNode([]string{"Metric"}, nil)
+	g.Nodes.Add([]string{"Metric"}, nil)
 
 	// Create HF index.
-	if err := g.CreateHighFrequencyIndex("Metric", time.Hour); err != nil {
+	if err := g.Index.CreateHighFrequency("Metric", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
 	// Drop.
-	if err := g.DropHighFrequencyIndex("Metric"); err != nil {
+	if err := g.Index.DropHighFrequency("Metric"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second drop should error.
-	err = g.DropHighFrequencyIndex("Metric")
+	err = g.Index.DropHighFrequency("Metric")
 	if err == nil {
 		t.Fatal("second DropHighFrequencyIndex should fail")
 	}

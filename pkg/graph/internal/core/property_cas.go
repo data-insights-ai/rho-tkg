@@ -16,13 +16,15 @@ import (
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
 // Value comparison uses reflect.DeepEqual — type must match exactly (int(42) != int64(42)).
-func (c *Core) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
-	return c.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
+func (n *NodeOps) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
+	c := n.c
+	return c.Nodes.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
 }
 
 // CompareAndSetPropertyWithContext is the context-aware variant of CompareAndSetProperty.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (c *Core) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
+func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
+	c := n.c
 	c.mu.RLock()
 	ok, mutated, err := c.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
 	ep := c.events
@@ -131,7 +133,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	}
 	tm.TxFrom = now
 
-	nodeLabels := c.NodeLabels(current)
+	nodeLabels := c.Nodes.Labels(current)
 	hash := integrity.ComputeNodeHash(current, nodeLabels)
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:     hash,

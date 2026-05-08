@@ -41,7 +41,7 @@ func TestBatchBuilder_LargeNodeBatch(t *testing.T) {
 		t.Fatalf("Failed = %d, want 0 (errors: %v)", result.Failed, result.Errors)
 	}
 
-	n, err := g.NodeCount()
+	n, err := g.Nodes.Count()
 	if err != nil {
 		t.Fatalf("NodeCount: %v", err)
 	}
@@ -92,11 +92,11 @@ func TestBatchBuilder_NodesAndRelationships(t *testing.T) {
 		t.Fatalf("Created = %d, want %d", result.Created, nodeCount+relCount)
 	}
 
-	nc, err := g.NodeCount()
+	nc, err := g.Nodes.Count()
 	if err != nil {
 		t.Fatalf("NodeCount: %v", err)
 	}
-	rc, err := g.RelationshipCount()
+	rc, err := g.Rels.Count()
 	if err != nil {
 		t.Fatalf("RelationshipCount: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 	// Pre-populate some nodes for reads to target.
 	preNodes := make([]*types.Node, 100)
 	for i := range 100 {
-		n, err := g.AddNode([]string{"Pre"}, map[string]any{"idx": i})
+		n, err := g.Nodes.Add([]string{"Pre"}, map[string]any{"idx": i})
 		if err != nil {
 			t.Fatalf("AddNode pre: %v", err)
 		}
@@ -142,7 +142,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 			defer wg.Done()
 			id := preNodes[rID%len(preNodes)].ID()
 			for range 50 {
-				if _, err := g.GetNode(id); err != nil {
+				if _, err := g.Nodes.Get(id); err != nil {
 					errCh <- fmt.Errorf("reader %d GetNode: %v", rID, err)
 					return
 				}

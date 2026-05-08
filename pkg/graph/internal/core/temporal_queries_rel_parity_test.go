@@ -21,15 +21,15 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.AddNode([]string{"Person"}, nil)
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.AddNode([]string{"Person"}, nil)
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"since": "2020"})
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": "2020"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -38,14 +38,14 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 
 	// Phase 2: mutate after t0.
 	time.Sleep(2 * time.Millisecond)
-	if _, err := g.UpdateRelationship(id, map[string]any{"since": "2024"}); err != nil {
+	if _, err := g.Rels.Update(id, map[string]any{"since": "2024"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	// Querying at the pre-mutation instant must still return the rel — the
 	// type didn't change, so this primarily exercises the history-aware
 	// chain (covers deleted-rel + closed-out version cases too).
-	got, err := g.GetRelationshipsByTypeValidAt("KNOWS", queryTime)
+	got, err := g.Temporal.RelationshipsByTypeAt("KNOWS", queryTime)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt: %v", err)
 	}
@@ -73,22 +73,22 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	c, _ := g.AddNode([]string{"Person"}, nil)
-	d, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	c, _ := g.Nodes.Add([]string{"Person"}, nil)
+	d, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// Two KNOWS rels live at t0; one is later deleted, one survives.
-	rKept, err := g.AddRelationship("KNOWS", a, b, nil)
+	rKept, err := g.Rels.Add("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rKept: %v", err)
 	}
-	rDeleted, err := g.AddRelationship("KNOWS", c, d, nil)
+	rDeleted, err := g.Rels.Add("KNOWS", c, d, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rDeleted: %v", err)
 	}
 	// One LIKES rel should never appear in KNOWS results.
-	rOtherType, err := g.AddRelationship("LIKES", a, b, nil)
+	rOtherType, err := g.Rels.Add("LIKES", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rOtherType: %v", err)
 	}
@@ -98,11 +98,11 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(rDeleted.ID()); err != nil {
+	if err := g.Rels.Delete(rDeleted.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	got, err := g.GetRelationshipsByTypeValidAt("KNOWS", t0)
+	got, err := g.Temporal.RelationshipsByTypeAt("KNOWS", t0)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	}
 
 	// Phantom type returns nil/empty.
-	phantom, err := g.GetRelationshipsByTypeValidAt("Phantom", t0)
+	phantom, err := g.Temporal.RelationshipsByTypeAt("Phantom", t0)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt phantom: %v", err)
 	}
@@ -131,9 +131,9 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -141,11 +141,11 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	queryTime := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if _, err := g.UpdateRelationship(id, map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(id, map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, err := g.RelationshipsByTypePropertyAndTime("KNOWS", "status", "draft", queryTime)
+	got, err := g.Temporal.RelsByTypePropertyAt("KNOWS", "status", "draft", queryTime)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 
 	// Negative assertion: querying with the post-mutation value at t0 must
 	// NOT include the rel — at t0 the value was still "draft".
-	got, err = g.RelationshipsByTypePropertyAndTime("KNOWS", "status", "published", queryTime)
+	got, err = g.Temporal.RelsByTypePropertyAt("KNOWS", "status", "published", queryTime)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime (published @ t0): %v", err)
 	}
@@ -170,15 +170,15 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// rDraft: "draft" at t0, mutated to "published" later (must be in result).
-	rDraft, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	rDraft, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	// rPublished: "published" from creation (must NOT be in result for "draft").
-	rPublished, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "published"})
+	rPublished, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "published"})
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
-	rOtherType, _ := g.AddRelationship("LIKES", a, b, map[string]any{"status": "draft"})
+	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
 
 	t0 := g.relValidFrom(rDraft)
 	if v := g.relValidFrom(rPublished); v < t0 {
@@ -189,11 +189,11 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	if _, err := g.UpdateRelationship(rDraft.ID(), map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, err := g.RelationshipsByTypePropertyAndTime("KNOWS", "status", "draft", t0)
+	got, err := g.Temporal.RelsByTypePropertyAt("KNOWS", "status", "draft", t0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	}
 
 	// Phantom value: returns empty (PropertyValueKey of nil → "").
-	phantomVal, err := g.RelationshipsByTypePropertyAndTime("KNOWS", "status", nil, t0)
+	phantomVal, err := g.Temporal.RelsByTypePropertyAt("KNOWS", "status", nil, t0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime nil value: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	}
 
 	// Phantom type: nil/empty.
-	phantomType, err := g.RelationshipsByTypePropertyAndTime("Phantom", "status", "draft", t0)
+	phantomType, err := g.Temporal.RelsByTypePropertyAt("Phantom", "status", "draft", t0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime phantom type: %v", err)
 	}
@@ -234,26 +234,26 @@ func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// rKnows: KNOWS with status=draft (must be in result).
-	rKnows, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	rKnows, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	// rLikes: LIKES with same property value, then mutated → forces it into
 	// the rel-history index, so its ID appears in forEachRelCandidateID's
 	// union when querying KNOWS. The HasTypeTokenRaw filter must reject it.
-	rLikes, _ := g.AddRelationship("LIKES", a, b, map[string]any{"status": "draft"})
+	rLikes, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
 	t0 := g.relValidFrom(rKnows)
 	if v := g.relValidFrom(rLikes); v < t0 {
 		t0 = v
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	if _, err := g.UpdateRelationship(rLikes.ID(), map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(rLikes.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship rLikes: %v", err)
 	}
 
-	got, err := g.RelationshipsByTypePropertyAndTime("KNOWS", "status", "draft", t0)
+	got, err := g.Temporal.RelsByTypePropertyAt("KNOWS", "status", "draft", t0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime: %v", err)
 	}
@@ -271,9 +271,9 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -281,11 +281,11 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 	t0 := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	if err := g.DeleteRelationship(id); err != nil {
+	if err := g.Rels.Delete(id); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	got, err := g.RelationshipsByTypePropertyAndTime("KNOWS", "status", "draft", t0)
+	got, err := g.Temporal.RelsByTypePropertyAt("KNOWS", "status", "draft", t0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyAndTime (deleted): %v", err)
 	}
@@ -306,10 +306,10 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 	start := g.relValidFrom(r)
 
 	time.Sleep(2 * time.Millisecond)
-	updated, err := g.UpdateRelationship(id, map[string]any{"status": "published"})
+	updated, err := g.Rels.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 	// earlier portion of the interval.
 	end := updated.Temporal().UpdatedAt + 1000
 
-	got, err := g.RelationshipsByTypePropertyDuring("KNOWS", "status", "draft", start, end)
+	got, err := g.Temporal.RelsByTypePropertyDuring("KNOWS", "status", "draft", start, end)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyDuring: %v", err)
 	}
@@ -343,15 +343,15 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
 	// rDraft: had status=draft during the interval, then mutated.
-	rDraft, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	rDraft, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	// rNever: never had status=draft (always published).
-	rNever, _ := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "published"})
+	rNever, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "published"})
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
-	rOtherType, _ := g.AddRelationship("LIKES", a, b, map[string]any{"status": "draft"})
+	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
 
 	start := g.relValidFrom(rDraft)
 	if v := g.relValidFrom(rNever); v < start {
@@ -362,13 +362,13 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	updated, err := g.UpdateRelationship(rDraft.ID(), map[string]any{"status": "published"})
+	updated, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 	end := updated.Temporal().UpdatedAt + 1000
 
-	got, err := g.RelationshipsByTypePropertyDuring("KNOWS", "status", "draft", start, end)
+	got, err := g.Temporal.RelsByTypePropertyDuring("KNOWS", "status", "draft", start, end)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyDuring: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	}
 
 	// Phantom type returns empty.
-	phantom, err := g.RelationshipsByTypePropertyDuring("Phantom", "status", "draft", start, end)
+	phantom, err := g.Temporal.RelsByTypePropertyDuring("Phantom", "status", "draft", start, end)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyDuring phantom type: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	}
 
 	// Nil property value returns empty.
-	nilVal, err := g.RelationshipsByTypePropertyDuring("KNOWS", "status", nil, start, end)
+	nilVal, err := g.Temporal.RelsByTypePropertyDuring("KNOWS", "status", nil, start, end)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyDuring nil value: %v", err)
 	}
@@ -406,17 +406,17 @@ func TestRelationshipsByTypePropertyDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, _ := g.AddNode([]string{"Person"}, nil)
-	b, _ := g.AddNode([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 
-	r, err := g.AddRelationship("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	id := r.ID()
 	start := g.relValidFrom(r)
 
-	got, err := g.RelationshipsByTypePropertyDuring("KNOWS", "status", "draft", start, 0)
+	got, err := g.Temporal.RelsByTypePropertyDuring("KNOWS", "status", "draft", start, 0)
 	if err != nil {
 		t.Fatalf("RelationshipsByTypePropertyDuring open-ended: %v", err)
 	}

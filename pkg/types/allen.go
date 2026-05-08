@@ -20,6 +20,7 @@ var (
 // The zero value is invalid (catches uninitialized usage).
 type AllenRelation uint8
 
+// Allen's 13 interval relations.
 const (
 	Before       AllenRelation = iota + 1 // A ends strictly before B starts
 	After                                 // A starts strictly after B ends

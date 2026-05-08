@@ -7,25 +7,28 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// AddTemporalConstraint appends a constraint to the current constraint set.
-// Constraints are checked at relationship write time (AddRelationship, ImportRelationshipWithID).
+// Add appends a constraint to the current constraint set.
+// Constraints are checked at relationship write time.
 // Typically called once at startup before any writes.
-func (c *Core) AddTemporalConstraint(constraint temporalpkg.TemporalConstraint) {
+func (co *ConstraintOps) Add(constraint temporalpkg.TemporalConstraint) {
+	c := co.c
 	c.mu.Lock()
 	c.constraints = c.constraints.Add(constraint)
 	c.mu.Unlock()
 }
 
-// SetTemporalConstraints replaces the entire constraint set.
+// Set replaces the entire constraint set.
 // Pass an empty ConstraintSet to remove all constraints.
-func (c *Core) SetTemporalConstraints(cs ConstraintSet) {
+func (co *ConstraintOps) Set(cs ConstraintSet) {
+	c := co.c
 	c.mu.Lock()
 	c.constraints = cs
 	c.mu.Unlock()
 }
 
-// TemporalConstraints returns the current constraint set (defensive copy).
-func (c *Core) TemporalConstraints() ConstraintSet {
+// Get returns the current constraint set (defensive copy).
+func (co *ConstraintOps) Get() ConstraintSet {
+	c := co.c
 	c.mu.RLock()
 	cs := c.constraints
 	c.mu.RUnlock()
@@ -67,12 +70,14 @@ func (c *Core) validateProperties(props map[string]any) error {
 	return nil
 }
 
-// NextNodeID generates a unique typed ID for a new node.
-func (c *Core) NextNodeID() types.NodeID {
+// NextID generates a unique typed ID for a new node.
+func (n *NodeOps) NextID() types.NodeID {
+	c := n.c
 	return types.NodeID(c.nodeIDGen.Generate())
 }
 
-// NextRelID generates a unique typed ID for a new relationship.
-func (c *Core) NextRelID() types.RelID {
+// NextID generates a unique typed ID for a new relationship.
+func (r *RelOps) NextID() types.RelID {
+	c := r.c
 	return types.RelID(c.relIDGen.Generate())
 }

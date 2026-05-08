@@ -1,0 +1,180 @@
+package core
+
+import (
+	"fmt"
+	"testing"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+)
+
+func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create, update, close.
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	n, _ := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.ID()
+
+	_, err = g1.Nodes.Update(id, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	// Reopen and verify updated value persisted.
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	got, err := g2.Nodes.Get(id)
+	if err != nil {
+		t.Fatalf("GetNode after reopen: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("persisted name = %v, want Bob", v)
+	}
+	if got.Version() != 1 {
+		t.Fatalf("persisted version = %d, want 1", got.Version())
+	}
+}
+
+func TestGraphUpdateNodeSavesHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: memory.New()})
+	defer g.Close()
+
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.ID()
+
+	// Update: should save version 0 (pre-mutation) to history.
+	_, err := g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	history, err := g.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("len(history) = %d, want 1", len(history))
+	}
+	if history[0].Version() != 0 {
+		t.Errorf("history[0].Version() = %d, want 0", history[0].Version())
+	}
+	hv, ok := history[0].GetProperty("name")
+	if !ok || hv != "Alice" {
+		t.Fatalf("history[0] name = %v, want Alice", hv)
+	}
+}
+
+func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: memory.New()})
+	defer g.Close()
+
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.ID()
+
+	for i := 1; i <= 5; i++ {
+		_, err := g.Nodes.Update(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+		if err != nil {
+			t.Fatalf("UpdateNode %d: %v", i, err)
+		}
+	}
+
+	history, err := g.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 5 {
+		t.Fatalf("len(history) = %d, want 5", len(history))
+	}
+}
+
+func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: memory.New()})
+	defer g.Close()
+
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.ID()
+
+	for i := 1; i <= 3; i++ {
+		g.Nodes.Update(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+	}
+
+	history, _ := g.Nodes.History(id)
+	for i := 0; i < len(history)-1; i++ {
+		if history[i].Version() >= history[i+1].Version() {
+			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
+				i, history[i].Version(), i+1, history[i+1].Version())
+		}
+	}
+}
+
+func TestGraphDeleteNodePreservesHistory(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Store: memory.New()})
+	defer g.Close()
+
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.ID()
+
+	g.Nodes.Update(id, map[string]any{"name": "v1"})
+	g.Nodes.Update(id, map[string]any{"name": "v2"})
+
+	if err := g.Nodes.Delete(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	// History is preserved — v0 pre-mutation, v1 pre-mutation, + tombstone at v2.
+	history, _ := g.Nodes.History(id)
+	if len(history) < 3 {
+		t.Fatalf("expected at least 3 preserved history entries, got %d", len(history))
+	}
+}
+
+// ─── Version history — Relationship ─────────────────────────────────────────
+
+func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	g1, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 1: %v", err)
+	}
+	n, _ := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	id := n.ID()
+
+	g1.Nodes.Update(id, map[string]any{"name": "v1"})
+
+	if err := g1.Nodes.Delete(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if err := g1.Close(); err != nil {
+		t.Fatalf("Close 1: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("New 2: %v", err)
+	}
+	defer g2.Close()
+
+	// History is preserved after delete (v0 pre-mutation + tombstone).
+	history, _ := g2.Nodes.History(id)
+	if len(history) < 2 {
+		t.Fatalf("expected preserved history after reopen, got %d", len(history))
+	}
+}

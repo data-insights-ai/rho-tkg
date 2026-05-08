@@ -19,45 +19,45 @@ import (
 type graphReaderView struct{ g *Core }
 
 func (r graphReaderView) GetNode(id types.NodeID) (*types.Node, error) {
-	return r.g.GetNode(id)
+	return r.g.Nodes.Get(id)
 }
 
 func (r graphReaderView) GetRelationship(id types.RelID) (*types.Relationship, error) {
-	return r.g.GetRelationship(id)
+	return r.g.Rels.Get(id)
 }
 
 func (r graphReaderView) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	return r.g.NodesByLabel(label, opts)
+	return r.g.Nodes.ByLabel(label, opts)
 }
 
 func (r graphReaderView) RelationshipsByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
-	return r.g.RelationshipsByType(typeName, opts)
+	return r.g.Rels.ByType(typeName, opts)
 }
 
 func (r graphReaderView) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
-	return r.g.AllNodes(opts)
+	return r.g.Nodes.All(opts)
 }
 
 func (r graphReaderView) AllRelationships(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
-	return r.g.AllRelationships(opts)
+	return r.g.Rels.All(opts)
 }
 
-func (r graphReaderView) NodeCount() (int, error)         { return r.g.NodeCount() }
-func (r graphReaderView) RelationshipCount() (int, error) { return r.g.RelationshipCount() }
+func (r graphReaderView) NodeCount() (int, error)         { return r.g.Nodes.Count() }
+func (r graphReaderView) RelationshipCount() (int, error) { return r.g.Rels.Count() }
 
 func (r graphReaderView) OutgoingRelationships(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
-	return r.g.OutgoingRelationships(nodeID, typeName)
+	return r.g.Rels.Outgoing(nodeID, typeName)
 }
 
 func (r graphReaderView) IncomingRelationships(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
-	return r.g.IncomingRelationships(nodeID, typeName)
+	return r.g.Rels.Incoming(nodeID, typeName)
 }
 
 // legacyAdapter wraps an indexpkg.LegacyIndexProvider so it can be stored
 // uniformly alongside new-shape IndexProviders. Forwards OnEvent(ev) to
 // the legacy provider's OnEvent(ev, g) where g is a GraphReader.
 type legacyAdapter struct {
-	legacy indexpkg.LegacyIndexProvider
+	legacy indexpkg.LegacyIndexProvider //nolint:staticcheck // intentional bridge for the deprecated provider shape
 	reader indexpkg.GraphReader
 }
 
@@ -89,7 +89,7 @@ type subscribeFunc func(eventspkg.EventHandler) func()
 // eventspkg.EventBus if none is attached. Caller must hold c.mu.Lock.
 //
 // The returned subscribe func captures the bus reference at call time, so
-// later calls to SetEventBus / SetAsyncEventBus do not affect already
+// later calls to Events.SetSync / Events.SetAsync do not affect already
 // subscribed providers. This matches the behaviour external callers
 // observed before the redesign.
 func (c *Core) resolveSubscribeLocked() (subscribeFunc, error) {
@@ -107,12 +107,12 @@ func (c *Core) resolveSubscribeLocked() (subscribeFunc, error) {
 	}
 }
 
-// RegisterIndexProvider wires p into the graph's event dispatch.
+// RegisterProvider wires p into the graph's event dispatch.
 //
 // If no event publisher is attached, a synchronous eventspkg.EventBus is
 // created and attached so the provider receives events. External callers
 // who already manage an eventspkg.AsyncEventBus or a pre-existing
-// eventspkg.EventBus should attach it (SetAsyncEventBus / SetEventBus)
+// eventspkg.EventBus should attach it (Events.SetAsync / Events.SetSync)
 // before registering — both publisher types are supported.
 //
 // If p also implements indexpkg.Initializable, Init is called synchronously
@@ -131,11 +131,12 @@ func (c *Core) resolveSubscribeLocked() (subscribeFunc, error) {
 // concurrent Register("name") calls could both pass the dup check and
 // produce orphaned subscriptions.
 //
-// Init runs OUTSIDE c.mu so the bulk-load callback may freely call back
+// RegisterProvider runs OUTSIDE c.mu so the bulk-load callback may freely call back
 // into the GraphReader without re-entering the lock. Events fired
 // concurrently with Init may or may not be observed by the provider —
 // see indexpkg.Initializable for the recommended idempotency pattern.
-func (c *Core) RegisterIndexProvider(p indexpkg.IndexProvider) error {
+func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
+	c := i.c
 	if p == nil {
 		return fmt.Errorf("graph: index provider is nil")
 	}
@@ -181,13 +182,13 @@ func (c *Core) RegisterIndexProvider(p indexpkg.IndexProvider) error {
 	return nil
 }
 
-// RegisterLegacyIndexProvider registers a provider that uses the legacy
+// RegisterLegacyProvider registers a provider that uses the legacy
 // OnEvent(eventspkg.Event, indexpkg.GraphReader) shape. Internally the
 // provider is wrapped in an adapter that satisfies the new IndexProvider
 // interface.
 //
 // All semantics (auto-bus creation, sync/async support, duplicate-name
-// rejection, race safety) match RegisterIndexProvider. Legacy providers
+// rejection, race safety) match IndexOps.RegisterProvider. Legacy providers
 // cannot use Initializable — the adapter does not implement it because
 // the old API never had a bulk-load hook. Callers needing bulk-load
 // should migrate to the new IndexProvider interface.
@@ -195,18 +196,20 @@ func (c *Core) RegisterIndexProvider(p indexpkg.IndexProvider) error {
 // Deprecated: Migrate providers to indexpkg.IndexProvider (and optionally
 // Initializable). This entry point will be removed in a future major
 // version.
-func (c *Core) RegisterLegacyIndexProvider(p indexpkg.LegacyIndexProvider) error {
+func (i *IndexOps) RegisterLegacyProvider(p indexpkg.LegacyIndexProvider) error {
+	c := i.c
 	if p == nil {
 		return fmt.Errorf("graph: index provider is nil")
 	}
-	return c.RegisterIndexProvider(&legacyAdapter{legacy: p, reader: graphReaderView{g: c}})
+	return i.RegisterProvider(&legacyAdapter{legacy: p, reader: graphReaderView{g: c}})
 }
 
-// UnregisterIndexProvider detaches the provider by name and calls its
+// UnregisterProvider detaches the provider by name and calls its
 // Close. Returns indexpkg.ErrIndexProviderNotFound if not registered.
 // Close errors are returned; the provider is removed from the registry
 // either way.
-func (c *Core) UnregisterIndexProvider(name string) error {
+func (i *IndexOps) UnregisterProvider(name string) error {
+	c := i.c
 	c.mu.Lock()
 	entry, ok := c.indexProviders[name]
 	if !ok {
@@ -220,10 +223,11 @@ func (c *Core) UnregisterIndexProvider(name string) error {
 	return entry.provider.Close()
 }
 
-// IndexProviders returns the names of registered providers in
+// Providers returns the names of registered providers in
 // lexicographic order. Stable ordering helps with admin UIs and snapshot
 // tests.
-func (c *Core) IndexProviders() []string {
+func (i *IndexOps) Providers() []string {
+	c := i.c
 	c.mu.RLock()
 	out := make([]string, 0, len(c.indexProviders))
 	for name := range c.indexProviders {

@@ -5,6 +5,7 @@ import "time"
 // TimeGranularity defines the granularity level for temporal rounding operations.
 type TimeGranularity uint8
 
+// TimeGranularity levels for temporal rounding (finest to coarsest).
 const (
 	GranMillisecond TimeGranularity = iota + 1
 	GranSecond

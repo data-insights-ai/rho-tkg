@@ -110,7 +110,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 //   - live entities are gone
 //   - history tombstones are present in the underlying shard's Badger DB
 //
-// Note: tiered.Store.GetNodeVersion/GetRelVersion use shardForNodeID/shardForRelID
+// Note: tiered.Store.Nodes.GetVersion/GetRelVersion use shardForNodeID/shardForRelID
 // which resolve shards via in-memory presence. After deletion, the shard cannot be
 // resolved via the high-level routing. We access the underlying shard directly
 // (refShard for "User" reference entities) to verify history was written.
@@ -121,15 +121,15 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	// Add reference nodes (go to refShard) and a rel between them.
-	nA, err := g.AddNode([]string{"User"}, map[string]any{"name": "alice"})
+	nA, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nB, err := g.AddNode([]string{"User"}, map[string]any{"name": "bob"})
+	nB, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.AddRelationship("KNOWS", nA, nB, nil)
+	r, err := g.Rels.Add("KNOWS", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	relVersion := r.Version()
 
 	// Delete nA — cascades the rel.
-	if err := g.DeleteNode(nodeID); err != nil {
+	if err := g.Nodes.Delete(nodeID); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -161,7 +161,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 
 	nodeHist, err := ts.RefShardForTest().GetNodeVersion(nodeID, nodeVersion)
 	if err != nil {
-		t.Fatalf("refShard.GetNodeVersion: %v", err)
+		t.Fatalf("refShard.Nodes.GetVersion: %v", err)
 	}
 	if nodeHist.Temporal() == nil || nodeHist.Temporal().DeletedAt == 0 {
 		t.Error("node tombstone DeletedAt not set in tiered.Store/refShard history")

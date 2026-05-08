@@ -9,15 +9,16 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// VerifyNodeHashChain verifies the full hash chain for a node.
+// VerifyNodeChain verifies the full hash chain for a node.
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the node never existed (no current entity AND no history).
 //
-// Handles deleted entities: if the current node is gone (storepkg.ErrNodeNotFound) but
+// VerifyNodeChain deleted entities: if the current node is gone (storepkg.ErrNodeNotFound) but
 // history exists, verifies the history chain alone. Labels are extracted from
 // the last history entry's internal tokens.
-func (c *Core) VerifyNodeHashChain(id types.NodeID) (bool, error) {
+func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
+	c := h.c
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return false, err
@@ -65,7 +66,7 @@ func (c *Core) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 		// Hash recomputation below still verifies content integrity.
 
 		// Recompute hash and compare with stored.
-		labels := c.NodeLabels(entry)
+		labels := c.Nodes.Labels(entry)
 		computed := integrity.ComputeNodeHash(entry, labels)
 		if ig.Hash != computed {
 			return false, nil
@@ -75,14 +76,15 @@ func (c *Core) VerifyNodeHashChain(id types.NodeID) (bool, error) {
 	return true, nil
 }
 
-// VerifyRelHashChain verifies the full hash chain for a relationship.
+// VerifyRelChain verifies the full hash chain for a relationship.
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
 // mismatch or broken PrevHash link is detected. Returns (false, err) on I/O
 // failure or if the relationship never existed (no current AND no history).
 //
-// Handles deleted entities: if the current relationship is gone (storepkg.ErrRelNotFound)
+// VerifyRelChain deleted entities: if the current relationship is gone (storepkg.ErrRelNotFound)
 // but history exists, verifies the history chain alone.
-func (c *Core) VerifyRelHashChain(id types.RelID) (bool, error) {
+func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
+	c := h.c
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return false, err
@@ -110,7 +112,7 @@ func (c *Core) VerifyRelHashChain(id types.RelID) (bool, error) {
 	if typeSource == nil {
 		typeSource = chain[len(chain)-1]
 	}
-	typeName := c.RelationshipType(typeSource)
+	typeName := c.Rels.Type(typeSource)
 
 	for i, entry := range chain {
 		ig := entry.Integrity()
