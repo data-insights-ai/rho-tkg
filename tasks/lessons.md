@@ -929,6 +929,121 @@ Three rules:
 
 ---
 
+## B45. Property Validation Must Match Hash, Copy, and Wire Support
+
+```
+BAD:  validateReflectValue accepts any recursively safe map shape
+      // map[int]string passes validation
+      // appendPropertyValue only handles map[string]any/map[string]string
+      // mutation path panics later during integrity hashing
+
+GOOD: validation allowlist == supported data-plane set
+      // every accepted type has:
+      // - validation coverage
+      // - deep-copy semantics
+      // - deterministic hash encoding
+      // - wire tag/reconstruction, or explicit custom-type support
+```
+
+The property layer is not the only contract boundary. A value is safe only if every downstream consumer can process it without panics or type-fidelity loss. When adding or broadening accepted property types, audit `PropertySlice.Set`, `DeepCopy`, integrity hashing, store wire conversion, index keying, import/export, and persistence round-trips in the same change.
+
+For registered custom types, track the accepted runtime form. A pointer-only type registered as `(*T)(nil)` must not cause non-pointer `T{}` values to be accepted unless `T{}` itself implements the required contracts.
+
+**History:** Found during the 2026-05-08 maintainability review. The validation allowlist accepted map shapes that `appendPropertyValue` and wire tagging did not support, and pointer-form custom registration could still allow unsafe value-form storage.
+
+---
+
+## B46. Transaction Convenience Wrappers Must Be Panic-Safe
+
+```
+BAD:  tx := BeginTx()
+      if err := fn(tx); err != nil {
+          _ = tx.Rollback()
+          return err
+      }
+      return tx.Commit()
+
+GOOD: tx := BeginTx()
+      committed := false
+      defer func() {
+          if !committed {
+              rollback and preserve/report its error
+          }
+      }()
+      run callback, commit, set committed
+```
+
+Any helper that owns a transaction lock must release it on every path: success, returned error, context cancellation, and panic. Do not discard rollback errors when the API contract promises to report them. Use a `defer` guard and tests that intentionally panic inside the callback, then verify later graph operations are not blocked.
+
+**History:** Found during the 2026-05-08 maintainability review. `TxAPI.Run` / `RunContext` called the user callback without a panic-safe rollback guard and ignored rollback errors.
+
+---
+
+## B47. `err == nil { ... }` After a Read Is Not the Same as Tolerating One Sentinel
+
+```
+BAD:  if n, err := store.GetNode(id); err == nil {
+          ig := n.Integrity()
+          rel.FromNodeHash = ig.Hash
+      }
+      // every non-nil err — including disk fault, corrupt entry,
+      // operational I/O failure — is silently dropped, and the
+      // relationship gets written with empty FromNodeHash.
+
+GOOD: n, err := store.GetNode(id)
+      if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+          return fmt.Errorf("graph: refresh start-node hash: %w", err)
+      }
+      if err == nil {
+          rel.FromNodeHash = n.Integrity().Hash
+      }
+```
+
+When a read is "best effort because the entity might be gone", spell out *which* sentinel encodes "gone" and surface every other error. `err == nil { use }` (or `if err != nil { continue }`) is not "tolerant of expected absence" — it is "silent on every operational failure", and there is no way for an operator to detect the resulting partial integrity record.
+
+This pattern recurs whenever code refreshes one entity's view of another — endpoint hashes, denormalised counts, cached cross-shard data. Every site that swallows non-sentinel errors must either explicitly enumerate the sentinels it tolerates or report the error.
+
+**History:** Found during the 2026-05-08 maintainability review (F5). `updateRelationshipInternal` and `BatchBuilder.runRels` both wrote relationships with empty endpoint hashes whenever the endpoint `GetNode` returned any non-nil error, including operational store failures. Pinned by tests in `pkg/graph/internal/core/f5_endpoint_hash_error_test.go` (standalone update path) and the same file's batch-path case (BatchError surfaced with `errors.Is`).
+
+---
+
+## B48. Tolerated-on-Rebuild Errors Must Be Counted, Not Continued
+
+```
+BAD:  for nodeID := range labelIdx[token] {
+          n, err := loadNodeFromBadger(txn, nodeID)
+          if err != nil {
+              continue // tolerate missing/corrupt during rebuild
+          }
+          // ...
+      }
+
+GOOD: counter atomic.Int64; logger badgerv4.Logger
+      for nodeID := range labelIdx[token] {
+          n, err := loadNodeFromBadger(txn, nodeID)
+          if err != nil {
+              counter.Add(1)
+              if logger != nil {
+                  logger.Warningf("graph: index rebuild skipped node %d (label %d): %v",
+                      rawID, token, err)
+              }
+              continue
+          }
+          // ...
+      }
+      // Public accessor: IndexRebuildStats() returns counters so an
+      // operator/admin tool can detect a degraded rebuild and trigger
+      // an explicit repair.
+```
+
+`continue` inside a startup loop is fine for a single-row blip but catastrophic in aggregate: if 30% of rows are missing because an index file was truncated, the store opens with silently degraded indexes and downstream queries return wrong results without any signal. Convert "tolerate" to "count + warn + report" so that operators can diagnose and trigger a repair pass.
+
+The same shape applies to any rebuild loop: replay logs, snapshot loaders, recovery passes. If a comment ever says "tolerate missing during rebuild", a counter and an accessor must accompany it.
+
+**History:** Found during the 2026-05-08 maintainability review (F9). `BadgerStore.loadIndexes` silently dropped every loadNodeFromBadger failure across both the property-index and temporal-index rebuild loops. Pinned by `pkg/graph/store/badger/f9_index_rebuild_diagnostics_test.go` (corrupts the entity row but leaves the label-index keys, then asserts `IndexRebuildStats().PropertySkipped`/`TemporalSkipped` and the warning count).
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

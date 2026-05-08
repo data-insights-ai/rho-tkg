@@ -1,0 +1,358 @@
+// Package memory provides memory.Store — the thread-safe in-memory
+// implementation of the pkg/graph/store.Store interface. Used as the
+// default backend by pkg/graph and also as a building block in tests.
+package memory
+
+import (
+	"fmt"
+
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// PutRelationship stores a relationship and indexes its type and adjacency.
+// Returns ErrNodeNotFound if start or end node does not exist.
+// Returns ErrRelExists if a relationship with the same ID already exists.
+func (ms *Store) PutRelationship(r *types.Relationship) error {
+	id := r.ID()
+	startID := r.StartNodeID()
+	endID := r.EndNodeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Verify endpoints exist.
+	if _, ok := ms.nodes[startID]; !ok {
+		return ErrNodeNotFound
+	}
+	if _, ok := ms.nodes[endID]; !ok {
+		return ErrNodeNotFound
+	}
+
+	if _, exists := ms.rels[id]; exists {
+		return ErrRelExists
+	}
+
+	ms.rels[id] = r.DeepCopy()
+
+	// Type index.
+	tv := r.TypeToken().Value()
+	if ms.typeIdx[tv] == nil {
+		ms.typeIdx[tv] = make(map[types.RelID]struct{})
+	}
+	ms.typeIdx[tv][id] = struct{}{}
+
+	// Adjacency: outgoing.
+	if ms.outIdx[startID] == nil {
+		ms.outIdx[startID] = make(map[types.RelID]struct{})
+	}
+	ms.outIdx[startID][id] = struct{}{}
+
+	// Adjacency: incoming.
+	if ms.inIdx[endID] == nil {
+		ms.inIdx[endID] = make(map[types.RelID]struct{})
+	}
+	ms.inIdx[endID][id] = struct{}{}
+
+	return nil
+}
+
+// GetRelationship retrieves a relationship by its snowflake ID.
+// Returns ErrRelNotFound if the relationship does not exist.
+func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	r, ok := ms.rels[rid]
+	if !ok {
+		return nil, ErrRelNotFound
+	}
+	return r.DeepCopy(), nil
+}
+
+// ReplaceRelationship overwrites an existing relationship's data in-place.
+// Returns ErrRelNotFound if the relationship does not exist.
+// No index changes — type and endpoints are immutable after creation.
+func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
+	id := r.ID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.rels[id]; !exists {
+		return ErrRelNotFound
+	}
+	ms.rels[id] = r.DeepCopy()
+	return nil
+}
+
+// DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
+// Returns ErrRelNotFound if the relationship does not exist.
+func (ms *Store) DeleteRelationship(rid types.RelID) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	return ms.deleteRelLocked(rid)
+}
+
+// deleteRelLocked removes a relationship and cleans up indexes.
+// Caller must hold ms.mu write lock.
+func (ms *Store) deleteRelLocked(id types.RelID) error {
+	r, ok := ms.rels[id]
+	if !ok {
+		return ErrRelNotFound
+	}
+
+	// Type index cleanup.
+	tv := r.TypeToken().Value()
+	if set, exists := ms.typeIdx[tv]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.typeIdx, tv)
+		}
+	}
+
+	// Adjacency cleanup — O(1) delete from hash sets.
+	startID := r.StartNodeID()
+	if set, exists := ms.outIdx[startID]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.outIdx, startID)
+		}
+	}
+
+	endID := r.EndNodeID()
+	if set, exists := ms.inIdx[endID]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.inIdx, endID)
+		}
+	}
+
+	delete(ms.rels, id)
+	return nil
+}
+
+// OutgoingRelationships returns relationships starting from the given node.
+// If typeToken is 0, returns all outgoing; otherwise filters by type.
+// Results are sorted by snowflake.ID for deterministic output.
+// Store never returns an error.
+func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	set := ms.outIdx[nid]
+	if len(set) == 0 {
+		return nil, nil
+	}
+	result := make([]*types.Relationship, 0, len(set))
+	for relID := range set {
+		r, ok := ms.rels[relID]
+		if !ok {
+			continue
+		}
+		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			result = append(result, r.DeepCopy())
+		}
+	}
+	storepkg.SortRelsByID(result)
+	return result, nil
+}
+
+// OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
+// in a single batched operation under one read lock.
+func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
+		return nil, nil
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
+	for _, nid := range typedNodeIDs {
+		if _, done := result[nid]; done {
+			continue // deduplicate input
+		}
+		set := ms.outIdx[nid]
+		if len(set) == 0 {
+			continue
+		}
+		rels := make([]*types.Relationship, 0, len(set))
+		for relID := range set {
+			r, ok := ms.rels[relID]
+			if !ok {
+				continue
+			}
+			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+				rels = append(rels, r.DeepCopy())
+			}
+		}
+		if len(rels) > 0 {
+			storepkg.SortRelsByID(rels)
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// IncomingRelationships returns relationships ending at the given node.
+// If typeToken is 0, returns all incoming; otherwise filters by type.
+// Results are sorted by snowflake.ID for deterministic output.
+// Store never returns an error.
+func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	set := ms.inIdx[nid]
+	if len(set) == 0 {
+		return nil, nil
+	}
+	result := make([]*types.Relationship, 0, len(set))
+	for relID := range set {
+		r, ok := ms.rels[relID]
+		if !ok {
+			continue
+		}
+		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			result = append(result, r.DeepCopy())
+		}
+	}
+	storepkg.SortRelsByID(result)
+	return result, nil
+}
+
+// IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
+// in a single batched operation under one read lock.
+func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if len(typedNodeIDs) == 0 {
+		return nil, nil
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
+	for _, nid := range typedNodeIDs {
+		if _, done := result[nid]; done {
+			continue // deduplicate input
+		}
+		set := ms.inIdx[nid]
+		if len(set) == 0 {
+			continue
+		}
+		rels := make([]*types.Relationship, 0, len(set))
+		for relID := range set {
+			r, ok := ms.rels[relID]
+			if !ok {
+				continue
+			}
+			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+				rels = append(rels, r.DeepCopy())
+			}
+		}
+		if len(rels) > 0 {
+			storepkg.SortRelsByID(rels)
+			result[nid] = rels
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// PutRelationshipsBatch stores multiple relationships atomically using two-phase validation.
+// Phase 1: check endpoints exist, check for duplicate rel IDs.
+// Phase 2: deep-copy each, store, update type + adjacency indexes.
+// Any failure → error, zero mutations. Nil/empty input → nil error.
+func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if len(rels) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — endpoints exist, no duplicates.
+	seen := make(map[types.RelID]struct{}, len(rels))
+	for _, r := range rels {
+		id := r.ID()
+		startID := r.StartNodeID()
+		endID := r.EndNodeID()
+
+		if _, exists := ms.nodes[startID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := ms.nodes[endID]; !exists {
+			return ErrNodeNotFound
+		}
+		if _, exists := ms.rels[id]; exists {
+			return ErrRelExists
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("graph: duplicate relationship ID %d in batch", id)
+		}
+		seen[id] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, r := range rels {
+		id := r.ID()
+		startID := r.StartNodeID()
+		endID := r.EndNodeID()
+
+		ms.rels[id] = r.DeepCopy()
+
+		tv := r.TypeToken().Value()
+		if ms.typeIdx[tv] == nil {
+			ms.typeIdx[tv] = make(map[types.RelID]struct{})
+		}
+		ms.typeIdx[tv][id] = struct{}{}
+
+		if ms.outIdx[startID] == nil {
+			ms.outIdx[startID] = make(map[types.RelID]struct{})
+		}
+		ms.outIdx[startID][id] = struct{}{}
+
+		if ms.inIdx[endID] == nil {
+			ms.inIdx[endID] = make(map[types.RelID]struct{})
+		}
+		ms.inIdx[endID][id] = struct{}{}
+	}
+
+	return nil
+}
+
+// DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
+// Phase 1: check all IDs exist.
+// Phase 2: delete each via deleteRelLocked (handles type/adjacency/history cleanup).
+// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	if len(typedIDs) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	// Phase 1: validate — all must exist.
+	for _, id := range typedIDs {
+		if _, exists := ms.rels[id]; !exists {
+			return ErrRelNotFound
+		}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for _, id := range typedIDs {
+		// deleteRelLocked can't fail here (verified existence above, holding write lock).
+		_ = ms.deleteRelLocked(id)
+	}
+
+	return nil
+}

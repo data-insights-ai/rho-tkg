@@ -173,6 +173,17 @@ type Store struct {
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
+	// Index-rebuild diagnostics — record count of node entries that the
+	// loadIndexes pass tolerated as missing/corrupt. Surfaced via
+	// IndexRebuildStats so operators can detect partially rebuilt indexes
+	// instead of the previous silent skip (F9 in the maintainability review).
+	indexRebuildPropertySkips atomic.Int64
+	indexRebuildTemporalSkips atomic.Int64
+
+	// logger is captured from cfg.Logger so loadIndexes can warn about
+	// skipped node records during the rebuild. Nil means no logging.
+	logger badgerv4.Logger
+
 	// High-frequency indexes — in-memory only. Not persisted; rebuilt via CreateHighFrequencyIndex after restart.
 	hfIndexes map[uint16]*indexpkg.HighFrequencyIndex
 
@@ -289,6 +300,7 @@ func New(cfg Config) (*Store, error) {
 		stopCh:          make(chan struct{}),
 		flushDone:       make(chan struct{}),
 		gcDone:          make(chan struct{}),
+		logger:          cfg.Logger,
 	}
 
 	if err := bs.loadIndexes(); err != nil {
@@ -445,7 +457,16 @@ func (bs *Store) loadIndexes() error {
 							rawID := nodeID.SnowflakeID()
 							n, nerr := bs.loadNodeFromBadger(txn, rawID)
 							if nerr != nil {
-								continue // tolerate missing/corrupt during rebuild
+								// Tolerate missing/corrupt during rebuild,
+								// but record + warn (F9). Operators can
+								// inspect via IndexRebuildStats() and trigger
+								// an explicit repair pass if the count is
+								// nonzero.
+								bs.indexRebuildPropertySkips.Add(1)
+								if bs.logger != nil {
+									bs.logger.Warningf("graph: property-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, nerr)
+								}
+								continue
 							}
 							if val, found := n.GetProperty(def.PropertyKey); found {
 								idx.Add(rawID, val)
@@ -472,7 +493,13 @@ func (bs *Store) loadIndexes() error {
 							rawID := nodeID.SnowflakeID()
 							n, nerr := bs.loadNodeFromBadger(txn, rawID)
 							if nerr != nil {
-								continue // tolerate missing/corrupt during rebuild
+								// Tolerate missing/corrupt during rebuild,
+								// but record + warn (F9).
+								bs.indexRebuildTemporalSkips.Add(1)
+								if bs.logger != nil {
+									bs.logger.Warningf("graph: temporal-index rebuild skipped node %d (label %d): %v", rawID, tok, nerr)
+								}
+								continue
 							}
 							from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
 							ti.Add(rawID, from, to)
@@ -590,4 +617,23 @@ func (bs *Store) Close() error {
 		err = errors.Join(err, bs.db.Close())
 	})
 	return err
+}
+
+// IndexRebuildStats reports the number of node entries that the loadIndexes
+// pass (called once at Open) tolerated as missing or corrupt while rebuilding
+// the property and temporal in-memory indexes. A nonzero count after a fresh
+// Open means the persisted indexes are degraded — operators should run an
+// explicit repair pass before relying on index-backed queries.
+type IndexRebuildStats struct {
+	PropertySkipped int64
+	TemporalSkipped int64
+}
+
+// IndexRebuildStats returns the diagnostic counters captured during the last
+// loadIndexes pass. Zero means a clean rebuild.
+func (bs *Store) IndexRebuildStats() IndexRebuildStats {
+	return IndexRebuildStats{
+		PropertySkipped: bs.indexRebuildPropertySkips.Load(),
+		TemporalSkipped: bs.indexRebuildTemporalSkips.Load(),
+	}
 }

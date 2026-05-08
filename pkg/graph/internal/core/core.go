@@ -39,7 +39,7 @@ type Core struct {
 	relTypes      *registrypkg.RelTypeRegistry
 	nodeIDGen     *snowflake.Node
 	relIDGen      *snowflake.Node
-	store         storepkg.Store
+	store         storepkg.MandatoryStore
 	entityLocks   *locks.Manager
 	validation    ValidationLimits
 	constraints   ConstraintSet
@@ -132,8 +132,16 @@ type ValidationLimits struct {
 
 // Config holds configuration for the Core.
 type Config struct {
-	SnowflakeNodeID      int64
-	Store                storepkg.Store
+	SnowflakeNodeID int64
+	// Store is the persistence backend. The accepted type is the
+	// MandatoryStore composite (the union of always-required capabilities
+	// from pkg/graph/store/capabilities.go); optional capabilities
+	// (PropertyIndex / TemporalIndex / VectorIndex / HighFrequencyIndex)
+	// are type-asserted at the call sites that need them and produce
+	// ErrCapabilityNotSupported when missing. Every in-tree backend
+	// (memory.Store, badger.Store, tiered.Store) satisfies the full
+	// composition.
+	Store                storepkg.MandatoryStore
 	BadgerDir            string
 	BadgerInMemory       bool
 	Validation           ValidationLimits

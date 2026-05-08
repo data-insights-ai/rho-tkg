@@ -653,7 +653,7 @@ func mustIncomingRelationships(t *testing.T, g *Core, id types.NodeID, typeName 
 	return rels
 }
 
-func mustStoreNodeHistoryIDs(t *testing.T, store storepkg.Store) []types.NodeID {
+func mustStoreNodeHistoryIDs(t *testing.T, store storepkg.MandatoryStore) []types.NodeID {
 	t.Helper()
 	ids, err := store.AllNodeHistoryIDs()
 	if err != nil {
@@ -662,7 +662,7 @@ func mustStoreNodeHistoryIDs(t *testing.T, store storepkg.Store) []types.NodeID 
 	return ids
 }
 
-func mustStoreRelHistoryIDs(t *testing.T, store storepkg.Store) []types.RelID {
+func mustStoreRelHistoryIDs(t *testing.T, store storepkg.MandatoryStore) []types.RelID {
 	t.Helper()
 	ids, err := store.AllRelHistoryIDs()
 	if err != nil {
@@ -671,7 +671,7 @@ func mustStoreRelHistoryIDs(t *testing.T, store storepkg.Store) []types.RelID {
 	return ids
 }
 
-func idsToNodes(t *testing.T, store storepkg.Store, ids []types.NodeID) []*types.Node {
+func idsToNodes(t *testing.T, store storepkg.MandatoryStore, ids []types.NodeID) []*types.Node {
 	t.Helper()
 	nodes := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
@@ -687,7 +687,7 @@ func idsToNodes(t *testing.T, store storepkg.Store, ids []types.NodeID) []*types
 	return nodes
 }
 
-func idsToRels(t *testing.T, store storepkg.Store, ids []types.RelID) []*types.Relationship {
+func idsToRels(t *testing.T, store storepkg.MandatoryStore, ids []types.RelID) []*types.Relationship {
 	t.Helper()
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {

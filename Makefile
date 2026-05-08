@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover vet fmt fmt-check lint security vulncheck check ci clean
+.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover cover-gate vet fmt fmt-check lint security vulncheck check ci clean
 
 # Build (verify compilation)
 build:
@@ -79,6 +79,17 @@ cover:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
+# Coverage gate: fails if total ./pkg/... coverage falls below COVER_MIN
+# (default 80, project rule). Wrappers in the sub-API accessors are pinned by
+# pkg/graph/subapi_smoke_test.go and pkg/graph/subapi_smoke_extra_test.go;
+# the gate exists so a future regression in a non-wrapper package surfaces
+# instead of silently lowering the floor.
+COVER_MIN ?= 80
+cover-gate:
+	@go test -short -count=1 -coverpkg=./pkg/... -coverprofile=coverage.pkg.out ./pkg/... > /dev/null
+	@total=$$(go tool cover -func=coverage.pkg.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
+	awk -v t=$$total -v min=$(COVER_MIN) 'BEGIN { if (t+0 < min+0) { printf "coverage gate: total=%s%% < min=%s%% — failing\n", t, min; exit 1 } else { printf "coverage gate: total=%s%% >= min=%s%% — ok\n", t, min } }'
+
 # Run go vet
 vet:
 	go vet ./...
@@ -87,9 +98,11 @@ vet:
 fmt:
 	gofmt -w .
 
-# Verify formatting (fails if any file needs formatting)
+# Verify formatting (fails if any file needs formatting). Skips .claude/
+# (agent worktree copies — not part of the source tree).
 fmt-check:
-	@test -z "$$(gofmt -l .)" || (echo "Files need formatting:"; gofmt -l .; exit 1)
+	@unformatted=$$(gofmt -l . | grep -v '^\.claude/' || true); \
+		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
 
 # Run golangci-lint
 lint:
@@ -107,8 +120,8 @@ vulncheck:
 check: vet build test
 
 # Full CI pipeline
-ci: fmt-check vet lint build test-race security vulncheck
+ci: fmt-check vet lint build test-race security vulncheck cover-gate
 
 # Clean generated files
 clean:
-	rm -f coverage.out coverage.html
+	rm -f coverage.out coverage.html coverage.pkg.out

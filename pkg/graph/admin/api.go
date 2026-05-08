@@ -1,7 +1,10 @@
 // Package admin is a sub-API accessor for tiered-store admin operations
 // (archive/restore, repair, shard inspection, force-rotate, migration).
-// All methods return ErrNotTieredStore when the graph is not backed by a
-// tiered.Store.
+// The tiered-only methods (Archive, Restore, ForceRotate, ListShards,
+// RebuildCatalog, Repair, VerifyShard) return ErrNotTieredStore when the
+// graph is not backed by a tiered.Store. Reset and DecomposeID work on
+// every backend: Reset forwards to store.Clear and DecomposeID is a pure
+// snowflake-ID helper.
 package admin
 
 import (

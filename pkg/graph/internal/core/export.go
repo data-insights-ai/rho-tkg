@@ -1,10 +1,12 @@
 package core
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"time"
 
@@ -222,57 +224,87 @@ func (o *IOOps) Export(w io.Writer) error {
 	return nil
 }
 
-// importRecord holds one decoded record from the export stream.
-type importRecord struct {
-	tag  byte
-	data []byte
-}
-
 // Import reads a portable graph snapshot from r and restores it into c.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
 // and the import continues without error (idempotent registry behaviour).
 //
-// Two-phase implementation:
-//   - Phase 1 (no lock): all records are read from r into a []importRecord buffer.
-//     io.Reader I/O can be slow (file, network); holding c.mu.Lock for its duration
-//     would block all Add/Update/Query callers for potentially minutes.
-//   - Phase 2 (under c.mu.Lock): the buffer is processed — msgpack deserialization
-//   - store writes. No I/O under the lock; only CPU + in-memory store ops.
+// Two-phase implementation with a disk-backed staging buffer:
+//   - Phase 1 (no lock): all records are streamed from r into a temporary file
+//     (os.CreateTemp). io.Reader I/O can be slow (file, network); holding
+//     c.mu.Lock for its duration would block all Add/Update/Query callers for
+//     potentially minutes. Memory stays bounded — one record body at a time
+//     (capped by maxExportRecordSize) plus a fixed I/O buffer.
+//   - Phase 2 (under c.mu.Lock): the staging file is rewound and re-read
+//     record-by-record. Only CPU deserialization + in-memory store ops happen
+//     here. No network reads under the lock; the staging file is on local
+//     disk so reads do not stall on remote latency.
 //
-// Memory: the entire export is buffered in RAM before the write lock is acquired.
-// For large exports (> 1 GB) this may be significant. Users restoring multi-GB
-// graphs should use an in-memory=false BadgerStore to reduce working-set pressure.
+// Memory: O(maxExportRecordSize) regardless of export size. Disk: the staging
+// file is sized to match the export and is removed via defer at function exit.
+//
+// Phase-1 errors leave the graph state unchanged. Phase-2 errors may leave a
+// partially populated graph — the import is best-effort under the lock and
+// not transactional. Callers requiring transactional restore must drive
+// Import into a fresh graph and swap stores on success.
 //
 // Import caller must ensure that entity IDs in the export do not conflict with
 // existing IDs in the graph (typical use: import into a freshly created graph).
 func (o *IOOps) Import(r io.Reader) error {
 	c := o.c
-	// --- Phase 1: stream all records without any lock ---
-	var records []importRecord
+
+	// --- Phase 1: stream all records into a temp staging file (no lock) ---
+	staging, err := os.CreateTemp("", "tkg-import-*.stage")
+	if err != nil {
+		return fmt.Errorf("import: create staging file: %w", err)
+	}
+	stagingPath := staging.Name()
+	defer func() {
+		_ = staging.Close()
+		_ = os.Remove(stagingPath)
+	}()
+
+	bw := bufio.NewWriterSize(staging, 1<<20) // 1 MiB write buffer
 	for {
-		tag, data, err := readExportRecord(r)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
+		tag, data, rerr := readExportRecord(r)
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) {
 				break // clean end of stream
 			}
-			return fmt.Errorf("import: read record: %w", err)
+			return fmt.Errorf("import: read record: %w", rerr)
 		}
-		records = append(records, importRecord{tag: tag, data: data})
+		if werr := writeExportRecord(bw, tag, data); werr != nil {
+			return fmt.Errorf("import: stage record: %w", werr)
+		}
+	}
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("import: flush staging: %w", err)
+	}
+	if _, err := staging.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("import: rewind staging: %w", err)
 	}
 
-	// --- Phase 2: process buffered records under write lock ---
-	// Only CPU deserialization + in-memory store writes happen here.
-	// No io.Reader reads, no network or file I/O under the lock.
+	// --- Phase 2: replay staged records under write lock ---
+	// Reads are from a local temp file (bounded latency, no network) so the
+	// time-under-lock cost is dominated by deserialization + store writes,
+	// not I/O. A buffered reader keeps the actual disk syscalls cheap.
+	br := bufio.NewReaderSize(staging, 1<<20)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, rec := range records {
-		switch rec.tag {
+	for {
+		tag, data, rerr := readExportRecord(br)
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) {
+				break
+			}
+			return fmt.Errorf("import: replay staging: %w", rerr)
+		}
+		switch tag {
 		case exportTagHeader:
 			var hdr exportHeader
-			if err := msgpack.Unmarshal(rec.data, &hdr); err != nil {
+			if err := msgpack.Unmarshal(data, &hdr); err != nil {
 				return fmt.Errorf("import: unmarshal header: %w", err)
 			}
 			if hdr.Version != exportFormatVersion {
@@ -281,7 +313,7 @@ func (o *IOOps) Import(r io.Reader) error {
 
 		case exportTagRegistry:
 			var reg tiered.RegistryFileData
-			if err := msgpack.Unmarshal(rec.data, &reg); err != nil {
+			if err := msgpack.Unmarshal(data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
 			}
 			if err := c.labels.ImportNames(reg.Labels); err != nil {
@@ -305,7 +337,7 @@ func (o *IOOps) Import(r io.Reader) error {
 
 		case exportTagNode:
 			var wn storeutil.NodeWire
-			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
+			if err := msgpack.Unmarshal(data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
@@ -318,7 +350,7 @@ func (o *IOOps) Import(r io.Reader) error {
 
 		case exportTagNodeHist:
 			var wn storeutil.NodeWire
-			if err := msgpack.Unmarshal(rec.data, &wn); err != nil {
+			if err := msgpack.Unmarshal(data, &wn); err != nil {
 				return fmt.Errorf("import: unmarshal node history: %w", err)
 			}
 			if err := validateNodeWire(&wn); err != nil {
@@ -332,7 +364,7 @@ func (o *IOOps) Import(r io.Reader) error {
 
 		case exportTagRel:
 			var wr storeutil.RelWire
-			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
+			if err := msgpack.Unmarshal(data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {
@@ -345,7 +377,7 @@ func (o *IOOps) Import(r io.Reader) error {
 
 		case exportTagRelHist:
 			var wr storeutil.RelWire
-			if err := msgpack.Unmarshal(rec.data, &wr); err != nil {
+			if err := msgpack.Unmarshal(data, &wr); err != nil {
 				return fmt.Errorf("import: unmarshal rel history: %w", err)
 			}
 			if err := validateRelWire(&wr); err != nil {

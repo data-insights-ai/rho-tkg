@@ -16,4 +16,11 @@ var (
 	ErrTemporalIndexNotFound = errors.New("graph: temporal index not found")
 	ErrTxDone                = errors.New("graph: transaction already committed or rolled back")
 	ErrStoreClosed           = errors.New("graph: store already closed")
+
+	// ErrCapabilityNotSupported is returned by graph operations that depend
+	// on an optional Store capability when the configured backend does not
+	// implement it. Callers MUST use errors.Is(err, ErrCapabilityNotSupported)
+	// — the wrapping message identifies the missing capability for
+	// diagnostics, but the sentinel is the contract.
+	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
 )

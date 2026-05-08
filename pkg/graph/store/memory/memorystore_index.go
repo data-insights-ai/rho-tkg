@@ -1,0 +1,335 @@
+// Package memory provides memory.Store — the thread-safe in-memory
+// implementation of the pkg/graph/store.Store interface. Used as the
+// default backend by pkg/graph and also as a building block in tests.
+package memory
+
+import (
+	"log/slog"
+	"sort"
+	"time"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// --- Property indexes ---
+
+// CreatePropertyIndex creates a property index for the given label token and property key.
+// Scans all existing nodes with that label to populate the index.
+// Returns ErrIndexExists if the index already exists.
+func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if _, exists := ms.propertyIndexes[key]; exists {
+		return ErrIndexExists
+	}
+
+	idx := indexpkg.NewPropertyIndex()
+
+	// Populate from existing nodes with this label.
+	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n := ms.nodes[nodeID]
+			if n == nil {
+				continue
+			}
+			if val, found := n.GetProperty(propertyKey); found {
+				idx.Add(nodeID.SnowflakeID(), val)
+			}
+		}
+	}
+
+	ms.propertyIndexes[key] = idx
+	return nil
+}
+
+// DropPropertyIndex removes a property index.
+// Returns ErrIndexNotFound if the index does not exist.
+func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if _, exists := ms.propertyIndexes[key]; !exists {
+		return ErrIndexNotFound
+	}
+
+	delete(ms.propertyIndexes, key)
+	return nil
+}
+
+// --- Temporal indexes ---
+
+// CreateTemporalIndex creates a temporal interval index on nodes with the given label token.
+// Scans existing nodes with that label to populate the index.
+// Returns ErrTemporalIndexExists if an index already exists for this label.
+func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	ti := indexpkg.NewTemporalIndex()
+	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n := ms.nodes[nodeID]
+			if n == nil {
+				continue
+			}
+			rawID := nodeID.SnowflakeID()
+			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+			ti.Add(rawID, from, to)
+		}
+	}
+
+	ms.temporalIndexes[labelToken] = ti
+	return nil
+}
+
+// DropTemporalIndex removes a temporal index for the given label token.
+// Returns ErrTemporalIndexNotFound if no index exists.
+func (ms *Store) DropTemporalIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(ms.temporalIndexes, labelToken)
+	return nil
+}
+
+// --- High-frequency indexes ---
+
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
+// with the given label token. Only one temporal index type can exist per label —
+// returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
+// exists for this label.
+func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+	if _, exists := ms.hfIndexes[labelToken]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	ms.hfIndexes[labelToken] = indexpkg.NewHighFrequencyIndex(bucketSize, 0)
+	return nil
+}
+
+// DropHighFrequencyIndex removes the high-frequency index for the given label token.
+// Returns ErrTemporalIndexNotFound if no high-frequency index exists.
+func (ms *Store) DropHighFrequencyIndex(labelToken uint16) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if _, exists := ms.hfIndexes[labelToken]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(ms.hfIndexes, labelToken)
+	return nil
+}
+
+// CreateVectorIndex creates a vector similarity index for nodes with the given label token,
+// on the given property key, expecting vectors of length dims.
+// Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
+func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if _, exists := ms.vectorIndexes[key]; exists {
+		return ErrVectorIndexExists
+	}
+	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric}
+	ms.vectorIndexes[key] = vi
+
+	// Populate from existing nodes.
+	for id, n := range ms.nodes {
+		if !n.HasLabelTokenRaw(labelToken) {
+			continue
+		}
+		val, ok := n.GetProperty(propertyKey)
+		if !ok {
+			continue
+		}
+		vec, ok := indexpkg.ToFloat32Slice(val)
+		if !ok {
+			continue
+		}
+		_ = vi.Add(id.SnowflakeID(), vec) // dimension mismatch: skip entry, index is still usable
+	}
+	return nil
+}
+
+// DropVectorIndex removes a vector index.
+// Returns ErrVectorIndexNotFound if the index does not exist.
+func (ms *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if _, exists := ms.vectorIndexes[key]; !exists {
+		return ErrVectorIndexNotFound
+	}
+	delete(ms.vectorIndexes, key)
+	return nil
+}
+
+// SearchNearestNodes returns the k nodes with vectors closest to query
+// under the index defined for labelToken+propertyKey.
+// Results are ordered by ascending distance (closest first).
+// Returns ErrVectorIndexNotFound if no index exists.
+// Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns nil, nil if the index exists but has no entries.
+//
+// The opts parameter is intentionally unused: Store is single-tier,
+// so Depth has no meaning, and temporal filtering is applied by the Graph
+// layer via searchNearestFiltered before this path is taken. The parameter
+// is required by the Store interface contract.
+func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, _ QueryOpts) ([]*types.Node, error) {
+	ms.mu.RLock()
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	vi, exists := ms.vectorIndexes[key]
+	ms.mu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+
+	ids, err := vi.SearchNearest(query, k, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		if n, ok := ms.nodes[types.NodeID(id)]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// SearchNearestFiltered is the package-internal entry point used by the
+// Graph layer to perform vector search with an eligibility filter applied
+// BEFORE the k-cut. The filter is invoked under the vector index read lock,
+// so it must NOT call back into the store (deadlock).
+//
+// Returns raw snowflake.IDs in ascending distance order; the caller is
+// responsible for resolving entities (current or historical version).
+func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	ms.mu.RLock()
+	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	vi, exists := ms.vectorIndexes[key]
+	ms.mu.RUnlock()
+
+	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	return vi.SearchNearest(query, k, filter)
+}
+
+// NodesByLabelAndProperty returns nodes matching the label and property value,
+// with optional pagination and temporal filtering. Uses the property index if
+// one exists; falls back to label scan + property filter.
+// Results are sorted by snowflake.ID for deterministic output.
+func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
+	if idx, ok := ms.propertyIndexes[key]; ok {
+		// Indexed path: collect matching IDs, sort, temporal filter, paginate, then fetch.
+		// propertyIndex returns raw snowflake.IDs (Tier D handoff).
+		matchSet := idx.Lookup(value)
+		if len(matchSet) == 0 {
+			return nil, nil
+		}
+		ids := make([]types.NodeID, 0, len(matchSet))
+		for id := range matchSet {
+			ids = append(ids, types.NodeID(id))
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+		ids = ms.filterNodeIDsByTemporal(ids, opts)
+
+		ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
+		if len(ids) == 0 {
+			return nil, nil
+		}
+
+		result := make([]*types.Node, 0, len(ids))
+		for _, id := range ids {
+			if n, ok := ms.nodes[id]; ok {
+				result = append(result, n.DeepCopy())
+			}
+		}
+		return result, nil
+	}
+
+	// Fallback: label scan + property filter.
+	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
+		"labelToken", labelToken, "propertyKey", propKey)
+	labelIDs := ms.labelIdx[labelToken]
+	if len(labelIDs) == 0 {
+		return nil, nil
+	}
+
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+
+	// Collect matching IDs from label scan.
+	var matchIDs []types.NodeID
+	for id := range labelIDs {
+		n, ok := ms.nodes[id]
+		if !ok {
+			continue
+		}
+		if v, found := n.GetProperty(propKey); found {
+			if indexpkg.PropertyValueKey(v) == targetKey {
+				matchIDs = append(matchIDs, id)
+			}
+		}
+	}
+
+	if len(matchIDs) == 0 {
+		return nil, nil
+	}
+	sort.Slice(matchIDs, func(i, j int) bool { return matchIDs[i] < matchIDs[j] })
+
+	// Temporal pre-filter.
+	matchIDs = ms.filterNodeIDsByTemporal(matchIDs, opts)
+
+	matchIDs = storepkg.PaginateNodeIDs(matchIDs, opts.After, opts.Limit)
+	if len(matchIDs) == 0 {
+		return nil, nil
+	}
+
+	result := make([]*types.Node, 0, len(matchIDs))
+	for _, id := range matchIDs {
+		if n, ok := ms.nodes[id]; ok {
+			result = append(result, n.DeepCopy())
+		}
+	}
+	return result, nil
+}

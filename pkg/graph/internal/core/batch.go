@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -440,21 +442,51 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 		b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
+		// Endpoint hash refresh: ErrNodeNotFound is silent (the endpoint
+		// was deleted while we held only the rel lock); any other store
+		// error is operational and must surface as a per-rel BatchError
+		// rather than letting the rel be written with stale or empty
+		// endpoint hashes (F5 in the maintainability review).
+		endpointReadFailed := func(endpoint string, err error) {
+			b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "AddRelationship",
+				ID:  types.EntityID(pr.rel.ID()),
+				Err: fmt.Errorf("graph: batch rel %s-node hash refresh: %w", endpoint, err),
+			})
+		}
+
 		// Self-loop fast path: a single GetNode covers both endpoints.
 		if pr.startID == pr.endID {
-			if n, err := b.g.store.GetNode(pr.startID); err == nil {
+			n, err := b.g.store.GetNode(pr.startID)
+			if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+				endpointReadFailed("self-loop endpoint", err)
+				continue
+			}
+			if err == nil {
 				if ig := n.Integrity(); ig != nil {
 					pr.relIntegrity.FromNodeHash = ig.Hash
 					pr.relIntegrity.ToNodeHash = ig.Hash
 				}
 			}
 		} else {
-			if startNode, err := b.g.store.GetNode(pr.startID); err == nil {
+			startNode, sErr := b.g.store.GetNode(pr.startID)
+			if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
+				endpointReadFailed("start", sErr)
+				continue
+			}
+			if sErr == nil {
 				if sIg := startNode.Integrity(); sIg != nil {
 					pr.relIntegrity.FromNodeHash = sIg.Hash
 				}
 			}
-			if endNode, err := b.g.store.GetNode(pr.endID); err == nil {
+			endNode, eErr := b.g.store.GetNode(pr.endID)
+			if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
+				endpointReadFailed("end", eErr)
+				continue
+			}
+			if eErr == nil {
 				if eIg := endNode.Integrity(); eIg != nil {
 					pr.relIntegrity.ToNodeHash = eIg.Hash
 				}

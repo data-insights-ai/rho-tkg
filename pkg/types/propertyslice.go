@@ -15,6 +15,12 @@ var ErrReservedPrefix = errors.New("types: property key uses reserved tkg_ prefi
 // Graph databases store data, not application memory references.
 var ErrUnsupportedValueType = errors.New("types: unsupported property value type")
 
+// ErrUnsupportedMapType is returned when a property value is a map whose
+// key/value type is not supported by hashing and wire serialization. Only
+// map[string]any and map[string]string are accepted; everything else would
+// either panic at hash time or fail to round-trip through msgpack export.
+var ErrUnsupportedMapType = errors.New("types: unsupported map type — only map[string]any and map[string]string are supported")
+
 // ErrMaxDepthExceeded is returned when a property value exceeds the maximum
 // nesting depth. This prevents stack overflow from self-referential or
 // excessively deep structures.
@@ -141,16 +147,31 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 		if rv.IsNil() {
 			return nil
 		}
-		iter := rv.MapRange()
-		for iter.Next() {
-			if err := validateReflectValue(iter.Key(), depth+1); err != nil {
-				return err
-			}
-			if err := validateReflectValue(iter.Value(), depth+1); err != nil {
-				return err
-			}
+		// Only map[string]any and map[string]string are accepted because they
+		// are the only shapes the hash and wire layers support. Any other
+		// shape (e.g. map[int]string) would pass validation, then panic at
+		// hash time when the entity is added — see appendPropertyValue's
+		// type switch in pkg/graph/internal/integrity/integrity.go.
+		mt := rv.Type()
+		if mt.Key().Kind() != reflect.String {
+			return fmt.Errorf("%w: %s", ErrUnsupportedMapType, mt)
 		}
-		return nil
+		switch mt.Elem().Kind() {
+		case reflect.Interface:
+			// map[string]any — recurse into values.
+			iter := rv.MapRange()
+			for iter.Next() {
+				if err := validateReflectValue(iter.Value(), depth+1); err != nil {
+					return err
+				}
+			}
+			return nil
+		case reflect.String:
+			// map[string]string — values are always safe.
+			return nil
+		default:
+			return fmt.Errorf("%w: %s", ErrUnsupportedMapType, mt)
+		}
 
 	// Pointer and Struct are accepted if the type has been registered via
 	// RegisterPropertyStructType (e.g. for spatial geometry types). This is

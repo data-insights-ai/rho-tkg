@@ -17,7 +17,11 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.CreatePropertyIndex(tok, propertyKey)
+	cap, err := c.propertyIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.CreatePropertyIndex(tok, propertyKey)
 }
 
 // DropProperty removes a property index.
@@ -29,7 +33,11 @@ func (i *IndexOps) DropProperty(label, propertyKey string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.DropPropertyIndex(tok, propertyKey)
+	cap, err := c.propertyIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.DropPropertyIndex(tok, propertyKey)
 }
 
 // CreateTemporal creates a temporal index on nodes with the given label.
@@ -42,7 +50,11 @@ func (i *IndexOps) CreateTemporal(label string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.CreateTemporalIndex(tok)
+	cap, err := c.temporalIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.CreateTemporalIndex(tok)
 }
 
 // DropTemporal removes a temporal index for the given label.
@@ -54,7 +66,11 @@ func (i *IndexOps) DropTemporal(label string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.DropTemporalIndex(tok)
+	cap, err := c.temporalIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.DropTemporalIndex(tok)
 }
 
 // --- High-frequency indexes ---
@@ -73,7 +89,11 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 	if !ok {
 		return nil
 	}
-	return c.store.CreateHighFrequencyIndex(tok, bucketSize)
+	cap, err := c.highFrequencyIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.CreateHighFrequencyIndex(tok, bucketSize)
 }
 
 // DropHighFrequency removes the high-frequency temporal index for the given label.
@@ -85,7 +105,11 @@ func (i *IndexOps) DropHighFrequency(label string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.DropHighFrequencyIndex(tok)
+	cap, err := c.highFrequencyIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.DropHighFrequencyIndex(tok)
 }
 
 // --- Vector indexes ---
@@ -100,7 +124,11 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 	if !ok {
 		return nil
 	}
-	return c.store.CreateVectorIndex(tok, propertyKey, dims, metric)
+	cap, err := c.vectorIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.CreateVectorIndex(tok, propertyKey, dims, metric)
 }
 
 // DropVector removes a vector index.
@@ -112,5 +140,9 @@ func (i *IndexOps) DropVector(label, propertyKey string) error {
 	if !ok {
 		return nil
 	}
-	return c.store.DropVectorIndex(tok, propertyKey)
+	cap, err := c.vectorIndexCap()
+	if err != nil {
+		return err
+	}
+	return cap.DropVectorIndex(tok, propertyKey)
 }

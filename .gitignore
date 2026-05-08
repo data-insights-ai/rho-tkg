@@ -34,3 +34,6 @@ tutorials/002_temporal/002_temporal
 tutorials/003_badger_persistence/003_badger_persistence
 tutorials/004_full_features/004_full_features
 tutorials/005_performance/005_performance
+cov.out
+.claude/
+coverage.pkg.out

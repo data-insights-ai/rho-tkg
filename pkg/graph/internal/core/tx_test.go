@@ -965,7 +965,7 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 // deleteRelPanicStore wraps a Store and panics on DeleteRelationship.
 // This simulates a store panic during the "delete created rels" rollback phase.
 type deleteRelPanicStore struct {
-	storepkg.Store
+	storepkg.MandatoryStore
 }
 
 func (s *deleteRelPanicStore) DeleteRelationship(_ types.RelID) error {

@@ -28,8 +28,12 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if !ok {
 		return nil, nil
 	}
+	piCap, err := c.propertyIndexCap()
+	if err != nil {
+		return nil, err
+	}
 	if !hasTemporalFilter(opts) {
-		return c.store.NodesByLabelAndProperty(tok, key, value, opts)
+		return piCap.NodesByLabelAndProperty(tok, key, value, opts)
 	}
 	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
@@ -42,7 +46,7 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	// store-level property index (when available — falls back internally to a
 	// label scan if n property index is registered), merged with all history
 	// IDs to cover deleted/changed nodes whose historical version matched.
-	currentMatching, err := c.store.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	currentMatching, err := piCap.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}

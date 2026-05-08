@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — Maintainability review (2026-05-08)
+
+- **`TxAPI.Run` / `RunContext` are now panic-safe.** A panic inside the
+  user callback used to leak the graph write lock and silently drop any
+  rollback error. Both wrappers now use a `defer` guard that runs
+  `Rollback` on every non-success path and joins any rollback error
+  with the caller's. Pinned by `pkg/graph/tx_run_test.go`.
+- **Property validation now matches what hashing and the wire format
+  support.** Maps with non-string keys and concrete `[]any{}`-style
+  value-form maps are rejected at `Set`/`NewPropertySlice` rather than
+  panicking later in the integrity hash. Pointer-only registered
+  custom property types now reject value-form storage at validation.
+- **Documented isolation contract.** `docs/architecture.md` no longer
+  implies snapshot isolation. Read APIs do NOT acquire `g.mu` and
+  concurrent reads can observe a transaction's already-applied (and
+  possibly rolled-back) mutations.
+- **Relationship endpoint hash refresh propagates errors.** The
+  standalone update path and the batch path used to swallow every
+  non-nil error from the endpoint `GetNode`, writing relationships
+  with empty `FromNodeHash`/`ToNodeHash` on operational failures. Both
+  paths now distinguish `ErrNodeNotFound` (silent — endpoint was
+  cascade-deleted) from any other error (surfaced).
+- **`IO.Import` memory is bounded.** Phase 1 streams records to an
+  `os.CreateTemp("tkg-import-*.stage")` staging file instead of an
+  in-memory buffer. Memory use is `O(maxExportRecordSize)` regardless
+  of export size.
+- **`Store` decomposed into capability interfaces.** The 65-method
+  contract is now an embedded composition of 13 narrower capabilities
+  in `pkg/graph/store/capabilities.go`. Four optional capabilities
+  (`PropertyIndexCapability`, `TemporalIndexCapability`,
+  `VectorIndexCapability`, `HighFrequencyIndexCapability`) can be
+  omitted by future backends; the graph layer's internal store field
+  is `MandatoryStore` and call sites that need an optional capability
+  type-assert and surface a new `ErrCapabilityNotSupported` sentinel
+  on miss. Per-backend compile-time assertions live in
+  `{memory,badger,tiered}/capabilities.go`. Public contract unchanged
+  — every in-tree backend still satisfies the full composition.
+- **Backend file splits.** `memorystore.go` 1925 LOC → 119 + 5
+  satellites; `tieredstore.go` 1237 → 532 + 3; `tieredstore_read.go`
+  1787 → 190 + 4; `tieredstore_write.go` 1545 → base + 5. Moves-only,
+  byte-identical bodies.
+- **Badger index-rebuild diagnostics.** `loadIndexes` silent skips
+  replaced with `IndexRebuildStats().PropertySkipped` /
+  `TemporalSkipped` counters and per-skip `Warningf` log entries; new
+  `(*badger.Store).IndexRebuildStats()` accessor.
+- **Sub-API wrapper coverage.** Every wrapper in the 13 sub-API
+  accessor packages is now invoked by
+  `pkg/graph/subapi_smoke_test.go` +
+  `pkg/graph/subapi_smoke_extra_test.go`. Total `./pkg/...` coverage
+  is 86.6%. New `make cover-gate` target enforces a configurable floor
+  (default 80%); `make ci` runs it.
+
+Lessons logged to `tasks/lessons.md`: B45 (property validation must
+match hash/wire/copy), B46 (transaction wrappers must be panic-safe),
+B47 (`err == nil { use }` is not the same as tolerating one sentinel),
+B48 (tolerated-on-rebuild errors must be counted, not continued).
+
 ### Changed — BREAKING
 
 - **`Graph.Core()` escape hatch removed.** The experimental accessor

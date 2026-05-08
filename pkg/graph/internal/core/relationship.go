@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -555,12 +556,25 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if sn, sErr := c.store.GetNode(current.StartNodeID()); sErr == nil {
+	// Endpoint hash refresh: only ErrNodeNotFound is silent (the endpoint
+	// was deleted out from under us; FromNodeHash/ToNodeHash stay empty).
+	// Any other store error is operational — surface it instead of writing
+	// a relationship with stale or empty endpoint hashes (F5 in the
+	// maintainability review).
+	sn, sErr := c.store.GetNode(current.StartNodeID())
+	if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
+		return nil, fmt.Errorf("graph: refresh start-node hash: %w", sErr)
+	}
+	if sErr == nil {
 		if sIg := sn.Integrity(); sIg != nil {
 			relIG.FromNodeHash = sIg.Hash
 		}
 	}
-	if en, eErr := c.store.GetNode(current.EndNodeID()); eErr == nil {
+	en, eErr := c.store.GetNode(current.EndNodeID())
+	if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
+		return nil, fmt.Errorf("graph: refresh end-node hash: %w", eErr)
+	}
+	if eErr == nil {
 		if eIg := en.Integrity(); eIg != nil {
 			relIG.ToNodeHash = eIg.Hash
 		}

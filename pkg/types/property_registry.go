@@ -152,7 +152,16 @@ var (
 )
 
 // isRegisteredPropertyStructType reports whether rv's type (or the element
-// type if rv is a pointer) has been registered via RegisterPropertyStructType.
+// type if rv is a pointer) has been registered via RegisterPropertyStructType
+// AND whether the runtime form actually implements HashableValue + DeepCopier.
+//
+// The interface check is the F3 fix: registering the typed-nil pointer of a
+// type whose methods live on the pointer receiver only (`(*T)(nil)`) records
+// elemT in the registry, but a later `ps.Set("x", T{})` would otherwise be
+// accepted by the type-level lookup. The stored value would then fail the
+// runtime `v.(HashableValue)` assertion in appendPropertyValue and trip the
+// panic branch. Checking the runtime form here fails fast at validation time
+// instead, so the bug never reaches the hash/wire layer.
 func isRegisteredPropertyStructType(rv reflect.Value) bool {
 	t := rv.Type()
 	if t.Kind() == reflect.Pointer {
@@ -164,7 +173,22 @@ func isRegisteredPropertyStructType(rv reflect.Value) bool {
 	propertyStructRegistryMu.RLock()
 	_, ok := propertyStructRegistry[t]
 	propertyStructRegistryMu.RUnlock()
-	return ok
+	if !ok {
+		return false
+	}
+	// rv.Interface() requires an exported, addressable value. validateReflectValue
+	// is invoked from the reflect.ValueOf(propValue) entry point so rv is
+	// addressable for any value the caller supplies through Set; the assertion
+	// returns ok=false for pointer-receiver methods on a non-pointer rv,
+	// which is exactly what we need to catch.
+	iv := rv.Interface()
+	if _, hashable := iv.(HashableValue); !hashable {
+		return false
+	}
+	if _, copyable := iv.(DeepCopier); !copyable {
+		return false
+	}
+	return true
 }
 
 // RegisteredPropertyStructTypes returns the names of all registered custom

@@ -4,7 +4,15 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/core"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
+
+// ErrCapabilityNotSupported is the capability-missing sentinel — returned
+// (wrapped with the missing-capability name) when a graph operation needs
+// an optional Store capability that the configured backend does not
+// implement. Callers MUST check via errors.Is(err, ErrCapabilityNotSupported);
+// the wrapping message is diagnostic only.
+var ErrCapabilityNotSupported = storepkg.ErrCapabilityNotSupported
 
 // Vector-index sentinel errors. Returned from the index sub-API.
 var (

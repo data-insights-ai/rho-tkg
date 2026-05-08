@@ -52,8 +52,12 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	if !ok {
 		return nil, nil
 	}
+	viCap, err := c.vectorIndexCap()
+	if err != nil {
+		return nil, err
+	}
 	if !hasTemporalFilter(opts) {
-		nodes, err := c.store.SearchNearestNodes(tok, propertyKey, query, k, opts)
+		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +84,7 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 		// We can still apply temporal filtering after-the-fact, accepting
 		// the ordering caveat that a near-but-ineligible candidate could
 		// crowd out farther-but-eligible candidates from the top-k.
-		nodes, err := c.store.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{})
+		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{})
 		if err != nil {
 			return nil, err
 		}

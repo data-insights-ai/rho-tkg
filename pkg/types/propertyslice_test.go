@@ -476,11 +476,14 @@ func TestDeepCopyReflectFallbackIsIndependent(t *testing.T) {
 		}
 	})
 
-	t.Run("nested_map_with_slice_values", func(t *testing.T) {
+	t.Run("nested_map_with_slice_values_via_reflect_fallback", func(t *testing.T) {
 		t.Parallel()
 
-		var ps PropertySlice
-		_ = ps.Set("nested", map[int][]string{1: {"a", "b"}})
+		// PropertySlice.Set now rejects non-string-keyed maps (F2), but
+		// DeepCopy still uses reflect for any map shape because legacy data
+		// or future-extended types might surface a Property whose value
+		// bypassed Set. Construct the slice directly to exercise that path.
+		ps := PropertySlice{{Key: "nested", Value: map[int][]string{1: {"a", "b"}}}}
 
 		cp := ps.DeepCopy()
 		copiedVal, _ := cp.Get("nested")
@@ -524,8 +527,10 @@ func TestDeepCopyReflectMapWithNilValuePreservesKey(t *testing.T) {
 	t.Parallel()
 
 	// map[int]any hits the reflect path (not the explicit map[string]any case).
-	var ps PropertySlice
-	_ = ps.Set("m", map[int]any{1: "one", 2: nil})
+	// Set now rejects non-string-keyed maps (F2), so construct the slice
+	// directly to keep exercising the reflect deep-copy fallback for legacy
+	// or future-extended values that bypass Set.
+	ps := PropertySlice{{Key: "m", Value: map[int]any{1: "one", 2: nil}}}
 
 	cp := ps.DeepCopy()
 	copiedVal, ok := cp.Get("m")
@@ -956,15 +961,26 @@ func TestValidateRejectsAnyWrappedInvalidType(t *testing.T) {
 
 // ─── Map key type validation ────────────────────────────────────────────────
 
-func TestValidateAcceptsNonStringMapKeys(t *testing.T) {
+// TestValidateRejectsNonStringMapKeys covers F2: maps whose key type is not
+// `string` cannot be hashed by appendPropertyValue (which only handles
+// map[string]any and map[string]string), so Set must reject them up front
+// instead of admitting a value that later panics during entity hashing.
+func TestValidateRejectsNonStringMapKeys(t *testing.T) {
 	t.Parallel()
 
 	var ps PropertySlice
-	if err := ps.Set("intkeys", map[int]string{1: "one", 2: "two"}); err != nil {
-		t.Fatalf("Set should accept map[int]string, got: %v", err)
+	err := ps.Set("intkeys", map[int]string{1: "one", 2: "two"})
+	if err == nil {
+		t.Fatal("Set should reject map[int]string (F2)")
+	}
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedMapType) = false; err = %v", err)
 	}
 }
 
+// TestValidateRejectsMapWithInvalidKeyType keeps the original assertion that
+// struct-keyed maps are rejected; the error class is now ErrUnsupportedMapType
+// because the key-type check fires before the recursive value walk.
 func TestValidateRejectsMapWithInvalidKeyType(t *testing.T) {
 	t.Parallel()
 
@@ -974,8 +990,24 @@ func TestValidateRejectsMapWithInvalidKeyType(t *testing.T) {
 	if err == nil {
 		t.Fatal("Set should reject map with struct key type")
 	}
-	if !errors.Is(err, ErrUnsupportedValueType) {
-		t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedMapType) = false; err = %v", err)
+	}
+}
+
+// TestValidateRejectsConcreteValueMaps covers map[string]X for X != any,string.
+// Hash and wire only know map[string]any and map[string]string; everything
+// else is rejected up front so callers can't later trip the hash panic path.
+func TestValidateRejectsConcreteValueMaps(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	err := ps.Set("concrete", map[string]int{"a": 1})
+	if err == nil {
+		t.Fatal("Set should reject map[string]int (F2)")
+	}
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Errorf("errors.Is(err, ErrUnsupportedMapType) = false; err = %v", err)
 	}
 }
 

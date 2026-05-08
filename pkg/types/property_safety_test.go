@@ -256,3 +256,35 @@ func TestF1F2_RegisterAcceptsHashableAndCopyableType(t *testing.T) {
 		t.Errorf("pointer form rejected: %v", err)
 	}
 }
+
+// TestF3_PointerRegistrationRejectsValueFormAtSet covers F3 from the
+// maintainability review. Registering `(*pointerOnlyMethods)(nil)` is
+// correct (the type's methods are on the pointer receiver), but the
+// pre-fix isRegisteredPropertyStructType only checked the element type
+// against the registry, so a later ps.Set("x", pointerOnlyMethods{}) was
+// silently accepted — and would later panic in the hash path because the
+// non-addressable value form does not satisfy v.(HashableValue).
+//
+// Post-fix, validateReflectValue must reject the value form even after
+// pointer-form registration. Pointer-form Set must still succeed.
+func TestF3_PointerRegistrationRejectsValueFormAtSet(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType((*pointerOnlyMethods)(nil)); err != nil {
+		t.Fatalf("registering pointer form: %v", err)
+	}
+
+	var ps PropertySlice
+
+	// Value form: must be rejected at validation time. Even though the
+	// element type is registered, the value form (T{}) does not satisfy
+	// HashableValue / DeepCopier — only *T does — so accepting it would
+	// admit a property that later panics during entity hashing.
+	if err := ps.Set("bad", pointerOnlyMethods{X: 1}); err == nil {
+		t.Fatal("Set must reject value form when methods are pointer-receiver only (F3)")
+	}
+
+	// Pointer form: must still be accepted.
+	if err := ps.Set("ok", &pointerOnlyMethods{X: 2}); err != nil {
+		t.Errorf("Set rejected valid pointer-form value: %v", err)
+	}
+}

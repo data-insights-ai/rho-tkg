@@ -36,7 +36,7 @@ License: Apache-2.0
 
 **Graph** is the sole external API. It owns the registries, dual snowflake generators, the Store, and an entity lock manager. All string resolution, referential integrity, and temporal query logic live here.
 
-**Store** is a pure persistence interface (59 methods). Three implementations: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent).
+**Store** is a pure persistence interface composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`. The mandatory composition (`MandatoryStore` — Lifecycle, NodeCRUD, RelationshipCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration) is what the graph layer depends on. Four optional capabilities (PropertyIndex, TemporalIndex, VectorIndex, HighFrequencyIndex) are type-asserted at the call sites that need them and surface `ErrCapabilityNotSupported` when a backend omits them. Three in-tree implementations satisfy the full composition: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent).
 
 **Vector indexes** live at the Store level (per-Store in `memory.Store`/`badger.Store`, per-`tiered.Store` -- not per-shard). In-memory brute-force k-NN with Cosine and Euclidean distance metrics. Protected by a dedicated `vectorIdxMu sync.RWMutex`. Not persisted -- rebuilt from node properties on restart. Auto-maintained across all mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`).
 
@@ -129,7 +129,7 @@ All mutations enforce `ValidationLimits` (5 configurable limits with defaults). 
 
 ### Sub-API Accessors (v3.4.0)
 
-The 130+ implementation methods on `*core.Core` are reachable through 13 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, `Core` (escape hatch) plus the 13 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0 — callers must go through the sub-APIs.
+The 130+ implementation methods on `*core.Core` are reachable through 13 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 13 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0 — callers must go through the sub-APIs. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal.
 
 | Field | Package | Wraps |
 |-------|---------|-------|
@@ -182,7 +182,9 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 ### Transaction and Mutation Isolation
 
-`Graph.mu` (`sync.RWMutex`) serializes tx/batch (Lock) vs standalone mutations and reads (RLock). All 13 exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()` at entry. `BeginTx` and `BatchBuilder.Execute` acquire `g.mu.Lock()`, blocking all standalone mutations. `GraphTx` and `BatchBuilder` call unexported `*Internal` variants (lock-free) directly under `g.mu.Lock()`. Individual temporal query methods do NOT acquire `mu` (avoids reentrancy deadlock when Snapshot calls them).
+`Graph.mu` (`sync.RWMutex`) serializes **writes** against tx/batch. All exported mutation methods (`*WithContext`, `RemoveNodeLabel`, `CloseNodeVersion`, `CloseRelVersion`) acquire `g.mu.RLock()` at entry. `BeginTx` and `BatchBuilder.Execute` acquire `g.mu.Lock()`, blocking all standalone mutations. `GraphTx` and `BatchBuilder` call unexported `*Internal` variants (lock-free) directly under `g.mu.Lock()`.
+
+**Read isolation is NOT provided.** Read APIs (`Nodes.Get`, `Rels.Get`, `Nodes.ByLabel`, every temporal query) do not acquire `g.mu` — partly to avoid reentrancy deadlocks when `Snapshot` composes other reads, partly because the read paths have no commit boundary they could observe. A standalone read concurrent with an open `GraphTx` therefore observes the transaction's already-applied mutations, including ones that may later be rolled back. Callers that need committed-only state must serialize their own reads with respect to writers, e.g. by gating reads behind the same lock that runs `Tx.Run`.
 
 ### Hash Chain Integrity
 
@@ -192,7 +194,7 @@ This replaced the pre-v3.0.31 approach of materializing all IDs into slices (`al
 
 ## Store Interface (`pkg/graph/store.go`)
 
-59 methods. Pure persistence contract -- no string resolution, no referential integrity, no shadow properties.
+Pure persistence contract — no string resolution, no referential integrity, no shadow properties. The interface is composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`; consult `pkg/graph/store/store.go` for the full embedding and method count. The graph layer depends on `MandatoryStore` (the always-required subset); optional capabilities are type-asserted on demand.
 
 ### Query Control
 
@@ -675,7 +677,7 @@ After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds 
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | `Graph` thin façade (118 LOC): `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`, `Core` (escape hatch). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
+| `graph.go` | `Graph` thin façade: `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`, kept in-package because they wrap `*GraphTx` / `*BatchBuilder` declared in `internal/core`. |
 | `errors.go` | Public sentinel re-exports: 12 store sentinels, vector-index sentinels, registry sentinels, IndexProvider sentinels. Canonical declarations in `internal/core/core.go`. |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end. |
