@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"time"
 
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -224,7 +225,20 @@ func (o *IOOps) Export(w io.Writer) error {
 	return nil
 }
 
-// Import reads a portable graph snapshot from r and restores it into c.
+// ErrImportSizeLimit is returned by Import when the staging file would
+// exceed ImportOptions.MaxStagedBytes during Phase 1. The graph state
+// is unchanged when this error is returned.
+var ErrImportSizeLimit = errors.New("graph: import staging exceeds MaxStagedBytes")
+
+// Import reads a portable graph snapshot from r using default options
+// (platform default temp dir, no size cap). See ImportWithOptions for
+// the option-bearing variant.
+func (o *IOOps) Import(r io.Reader) error {
+	return o.ImportWithOptions(r, tkgio.ImportOptions{})
+}
+
+// ImportWithOptions reads a portable graph snapshot from r and restores
+// it into c, honouring the staging-directory and size-cap options.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
@@ -232,10 +246,12 @@ func (o *IOOps) Export(w io.Writer) error {
 //
 // Two-phase implementation with a disk-backed staging buffer:
 //   - Phase 1 (no lock): all records are streamed from r into a temporary file
-//     (os.CreateTemp). io.Reader I/O can be slow (file, network); holding
-//     c.mu.Lock for its duration would block all Add/Update/Query callers for
-//     potentially minutes. Memory stays bounded — one record body at a time
-//     (capped by maxExportRecordSize) plus a fixed I/O buffer.
+//     under opts.StagingDir (default: platform temp dir). io.Reader I/O can be
+//     slow (file, network); holding c.mu.Lock for its duration would block all
+//     Add/Update/Query callers for potentially minutes. Memory stays bounded —
+//     one record body at a time (capped by maxExportRecordSize) plus a fixed
+//     I/O buffer. If opts.MaxStagedBytes > 0 and the staging size would exceed
+//     it, Phase 1 returns ErrImportSizeLimit and the graph is unchanged.
 //   - Phase 2 (under c.mu.Lock): the staging file is rewound and re-read
 //     record-by-record. Only CPU deserialization + in-memory store ops happen
 //     here. No network reads under the lock; the staging file is on local
@@ -251,11 +267,11 @@ func (o *IOOps) Export(w io.Writer) error {
 //
 // Import caller must ensure that entity IDs in the export do not conflict with
 // existing IDs in the graph (typical use: import into a freshly created graph).
-func (o *IOOps) Import(r io.Reader) error {
+func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 	c := o.c
 
 	// --- Phase 1: stream all records into a temp staging file (no lock) ---
-	staging, err := os.CreateTemp("", "tkg-import-*.stage")
+	staging, err := os.CreateTemp(opts.StagingDir, "tkg-import-*.stage")
 	if err != nil {
 		return fmt.Errorf("import: create staging file: %w", err)
 	}
@@ -266,6 +282,7 @@ func (o *IOOps) Import(r io.Reader) error {
 	}()
 
 	bw := bufio.NewWriterSize(staging, 1<<20) // 1 MiB write buffer
+	var staged int64
 	for {
 		tag, data, rerr := readExportRecord(r)
 		if rerr != nil {
@@ -274,9 +291,17 @@ func (o *IOOps) Import(r io.Reader) error {
 			}
 			return fmt.Errorf("import: read record: %w", rerr)
 		}
+		// Each staged record is 5 bytes of header + len(data) bytes
+		// of body. The size cap is checked BEFORE writing so a large
+		// final record cannot push the staged total above the cap.
+		recordSize := int64(5 + len(data))
+		if opts.MaxStagedBytes > 0 && staged+recordSize > opts.MaxStagedBytes {
+			return fmt.Errorf("%w: would-be %d bytes > cap %d", ErrImportSizeLimit, staged+recordSize, opts.MaxStagedBytes)
+		}
 		if werr := writeExportRecord(bw, tag, data); werr != nil {
 			return fmt.Errorf("import: stage record: %w", werr)
 		}
+		staged += recordSize
 	}
 	if err := bw.Flush(); err != nil {
 		return fmt.Errorf("import: flush staging: %w", err)

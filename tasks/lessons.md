@@ -1044,6 +1044,135 @@ The same shape applies to any rebuild loop: replay logs, snapshot loaders, recov
 
 ---
 
+## B49. Mutating Admin APIs Belong in the Graph Exclusion Domain
+
+If an admin method can rotate shards, clear stores, rebuild durable topology,
+repair indexes, archive data, or otherwise mutate store-visible state, it must
+take the same graph-level exclusion lock as tx/batch/reset unless the method's
+contract explicitly allows concurrent graph mutations and tests prove the
+interleavings.
+
+```
+BAD:  func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
+          return ts.RunRepair() // mutates in/ indexes outside c.mu
+      }
+
+GOOD: func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
+          c.mu.Lock()
+          defer c.mu.Unlock()
+          return ts.RunRepair()
+      }
+```
+
+Store-local locks protect store internals, not graph-level invariants. A repair
+scan that reads a relationship and later recreates an incoming index entry can
+race a graph delete unless the graph mutation lock excludes the delete. A reset
+that snapshots shards can race a rotation unless both operations share the same
+exclusion domain.
+
+Audit rule: grep `AdminOps` methods for calls into tiered store mutators. Reads
+may use store-local snapshot/pin rules; mutators need `c.mu.Lock()` or a written,
+tested concurrency contract.
+
+**History:** Found during the 2026-05-08 maintainability review round 2
+(R2-F1). `AdminOps.Reset` held `c.mu.Lock`, but `AdminOps.ForceRotate` and
+`AdminOps.Repair` bypassed it. `tiered.Store.Clear` already documented that a
+concurrent rotation could leave a new hot shard uncleared, and `RunRepair` could
+recreate an incoming index entry after a concurrent relationship delete removed
+it.
+
+## B50. Every Secondary Lock Needs an Immediate Defer
+
+Graph-level panic safety is not enough. If a method takes a secondary entity
+lock, shard pin, archive checkout, or any other non-graph lock, the unlock/release
+must be established immediately after acquisition in the smallest practical
+scope.
+
+```
+BAD:  locks.LockTwo(a, b)
+      n, err := store.GetNode(id) // panic leaks LockTwo
+      if err != nil {
+          locks.UnlockTwo(a, b)
+          return err
+      }
+      err = store.PutRelationship(r)
+      locks.UnlockTwo(a, b)
+
+GOOD: func() error {
+          locks.LockTwo(a, b)
+          defer locks.UnlockTwo(a, b)
+          n, err := store.GetNode(id)
+          if err != nil {
+              return err
+          }
+          return store.PutRelationship(r)
+      }()
+```
+
+This applies even when the store interface normally returns errors instead of
+panicking. Custom stores, test doubles, and low-level runtime panics still exist,
+and a leaked sharded entity lock blocks unrelated future operations that hash to
+the same shard.
+
+**History:** Found during the 2026-05-08 maintainability review round 2
+(R2-F3). `BatchBuilder.Execute` had a panic-safe defer for `g.mu`, but its
+per-relationship `LockTwo` used manual unlock branches around `GetNode` and
+`PutRelationship`. A panic in either store call would release `g.mu` while
+leaking endpoint locks.
+
+## B51. Optional Capabilities Must Separate Correctness From Acceleration
+
+Do not put a correctness-level query in the same optional interface as an
+acceleration/index-management feature if the graph layer can implement a correct
+fallback from mandatory primitives.
+
+```
+BAD:  type PropertyIndexCapability interface {
+          CreatePropertyIndex(...)
+          DropPropertyIndex(...)
+          NodesByLabelAndProperty(...) // correctness-level query
+      }
+
+GOOD: type PropertyQueryCapability interface {
+          NodesByLabelAndProperty(...)
+      }
+      type PropertyIndexManagementCapability interface {
+          CreatePropertyIndex(...)
+          DropPropertyIndex(...)
+      }
+      // or: graph layer falls back to NodesByLabel + property filter.
+```
+
+Optional should mean "the feature is unavailable", not "the optimized path is
+unavailable". If mandatory store methods can answer the query correctly, prefer
+a slower fallback over `ErrCapabilityNotSupported`.
+
+**History:** Found during the 2026-05-08 maintainability review round 2
+(R2-F4). Mandatory-only stores could add/update/read nodes, but
+`g.Nodes.ByLabelAndProperty` returned `ErrCapabilityNotSupported` because the
+query was bundled into `PropertyIndexCapability` with create/drop index methods,
+even though in-tree stores already fall back to label scans when no property
+index exists.
+
+## B52. Public Docs Must Be Compiled Against the Current Public Surface
+
+When the public API changes, docs must be updated in the same change and should
+prefer examples that are compiled by tests or copied from example tests. A stale
+doc example is not harmless in a library repo: downstream users and future
+maintainers design against it.
+
+Audit rule after public API moves: grep docs for the old method names and old
+package paths, not just source files. In this repo, the old `g.AddNode` direct
+method shape should not survive in `docs/api.md`, `docs/SPEC.md`, README, or
+architecture docs after the sub-API move.
+
+**History:** Found during the 2026-05-08 maintainability review round 2
+(R2-F7). Source code exposed the v3.4 thin facade (`g.Nodes.Add`, `g.IO.Import`,
+`g.Admin.Reset`), while `docs/api.md` and `docs/SPEC.md` still documented direct
+`Graph` methods and Cypher/product examples from a different layer.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

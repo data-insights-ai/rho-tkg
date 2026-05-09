@@ -440,71 +440,86 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			}
 		}
 
-		b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
+		// Wrap the per-rel work in a closure so the endpoint locks are
+		// released by defer on every exit path — including a panic from
+		// a custom Store's GetNode/PutRelationship. Without the defer,
+		// a panic would unwind past the per-rel UnlockTwo and leak the
+		// shard lock for the rest of the process lifetime.
+		//
+		// Returns the PutRelationship outcome via outErr so the caller
+		// can roll back TxFrom and account success/failure outside the
+		// locked region.
+		var (
+			outErr  error
+			refresh error
+			txNow   types.Instant
+		)
+		func() {
+			b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
+			defer b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
-		// Endpoint hash refresh: ErrNodeNotFound is silent (the endpoint
-		// was deleted while we held only the rel lock); any other store
-		// error is operational and must surface as a per-rel BatchError
-		// rather than letting the rel be written with stale or empty
-		// endpoint hashes (F5 in the maintainability review).
-		endpointReadFailed := func(endpoint string, err error) {
-			b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
+			// Endpoint hash refresh: ErrNodeNotFound is silent (the
+			// endpoint was deleted while we held only the rel lock);
+			// any other store error is operational and must surface
+			// as a per-rel BatchError rather than letting the rel be
+			// written with stale or empty endpoint hashes (F5).
+			if pr.startID == pr.endID {
+				n, err := b.g.store.GetNode(pr.startID)
+				if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+					refresh = fmt.Errorf("graph: batch rel self-loop endpoint hash refresh: %w", err)
+					return
+				}
+				if err == nil {
+					if ig := n.Integrity(); ig != nil {
+						pr.relIntegrity.FromNodeHash = ig.Hash
+						pr.relIntegrity.ToNodeHash = ig.Hash
+					}
+				}
+			} else {
+				startNode, sErr := b.g.store.GetNode(pr.startID)
+				if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
+					refresh = fmt.Errorf("graph: batch rel start-node hash refresh: %w", sErr)
+					return
+				}
+				if sErr == nil {
+					if sIg := startNode.Integrity(); sIg != nil {
+						pr.relIntegrity.FromNodeHash = sIg.Hash
+					}
+				}
+				endNode, eErr := b.g.store.GetNode(pr.endID)
+				if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
+					refresh = fmt.Errorf("graph: batch rel end-node hash refresh: %w", eErr)
+					return
+				}
+				if eErr == nil {
+					if eIg := endNode.Integrity(); eIg != nil {
+						pr.relIntegrity.ToNodeHash = eIg.Hash
+					}
+				}
+			}
+			// SetIntegrity is a no-op against the same pointer the
+			// rel already holds, but keep the call so the queue-time
+			// alias is not load-bearing.
+			pr.rel.SetIntegrity(pr.relIntegrity)
+
+			txNow = nowInstant()
+			pr.temporal.TxFrom = txNow
+			pr.rel.SetTemporal(pr.temporal)
+
+			outErr = b.g.store.PutRelationship(pr.rel)
+		}()
+
+		if refresh != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
 				ID:  types.EntityID(pr.rel.ID()),
-				Err: fmt.Errorf("graph: batch rel %s-node hash refresh: %w", endpoint, err),
+				Err: refresh,
 			})
+			continue
 		}
 
-		// Self-loop fast path: a single GetNode covers both endpoints.
-		if pr.startID == pr.endID {
-			n, err := b.g.store.GetNode(pr.startID)
-			if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
-				endpointReadFailed("self-loop endpoint", err)
-				continue
-			}
-			if err == nil {
-				if ig := n.Integrity(); ig != nil {
-					pr.relIntegrity.FromNodeHash = ig.Hash
-					pr.relIntegrity.ToNodeHash = ig.Hash
-				}
-			}
-		} else {
-			startNode, sErr := b.g.store.GetNode(pr.startID)
-			if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
-				endpointReadFailed("start", sErr)
-				continue
-			}
-			if sErr == nil {
-				if sIg := startNode.Integrity(); sIg != nil {
-					pr.relIntegrity.FromNodeHash = sIg.Hash
-				}
-			}
-			endNode, eErr := b.g.store.GetNode(pr.endID)
-			if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
-				endpointReadFailed("end", eErr)
-				continue
-			}
-			if eErr == nil {
-				if eIg := endNode.Integrity(); eIg != nil {
-					pr.relIntegrity.ToNodeHash = eIg.Hash
-				}
-			}
-		}
-		// SetIntegrity is a no-op against the same pointer the rel already
-		// holds, but keep the call so the queue-time alias is not load-bearing
-		// — a future refactor that copies pendingRel.relIntegrity does not need
-		// to also remember to call SetIntegrity here.
-		pr.rel.SetIntegrity(pr.relIntegrity)
-
-		txNow := nowInstant()
-		pr.temporal.TxFrom = txNow
-		pr.rel.SetTemporal(pr.temporal)
-
-		err := b.g.store.PutRelationship(pr.rel)
-		b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
-
+		err := outErr
 		if err != nil {
 			// Roll back the in-memory TxFrom stamp on failure — same
 			// reason as the node path above. The stamp aliases the

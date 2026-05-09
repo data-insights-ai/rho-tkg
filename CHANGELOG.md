@@ -6,6 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — Maintainability review round 2 (2026-05-08)
+
+- **Admin mutators now serialise against tx/batch.** `g.Admin.ForceRotate`,
+  `RebuildCatalog`, and `Repair` take `c.mu.Lock`; `ListShards` and
+  `VerifyShard` take `c.mu.RLock`. Previously these bypassed the graph
+  write lock, so `Reset` could race a concurrent `ForceRotate` (R2-F1).
+- **Hot-shard rotation is transactional around catalog persist.**
+  `RotateHotShard` now opens the new badger shard, snapshots the
+  catalog, applies tentative catalog mutations, persists, and only then
+  switches the live `hotShard` pointer. On `catalog.Save` failure the
+  in-memory catalog is restored from the snapshot, the new shard is
+  closed and removed, and live topology is unchanged. Previously a
+  Save failure left the running process with a switched-over hotShard
+  but a durable catalog describing the old topology — split-brain on
+  restart (R2-F2). New helpers: `ShardCatalog.snapshotShards()` /
+  `restoreShards(snapshot)`.
+- **Public mutation surface is panic-safe.** Every public mutation
+  entry point on `g.Nodes`, `g.Rels`, `g.Constraints`, the version-chain
+  helpers, and the property-CAS helpers is wrapped with a defer-backed
+  `RUnlock` via the new `(*Core).runUnderRLock(fn)` /
+  `runUnderLock(fn)` helpers. Includes the `BatchBuilder.Execute`
+  per-relationship endpoint locks (`LockTwo`/`UnlockTwo`) and the
+  two-phase `deleteNodeInternal` (Phase A node lock, Phase B
+  `LockMany`) — both now release on every panic path. Previously a
+  panic from a custom Store could leak the graph read lock or the
+  shard locks for the rest of the process lifetime, deadlocking
+  `Close` and any subsequent mutation hashing to the same shard
+  (R2-F3, generalised across 20 sites).
+- **`g.Nodes.ByLabelAndProperty` works on mandatory-only backends.**
+  The capability split previously bundled the correctness-level query
+  with optional index management; backends that satisfied
+  `MandatoryStore` but not `PropertyIndexCapability` got
+  `ErrCapabilityNotSupported`. The graph layer now falls back to a
+  label scan + property filter via the mandatory `NodesByLabel` surface
+  when the optional capability is absent. Index management
+  (`g.Index.CreateProperty` / `DropProperty`) remains optional and
+  still surfaces the typed sentinel (R2-F4).
+- **Vector search top-k correctness is preserved on backends that
+  cannot pre-filter.** `FilteredVectorSearchCapability` is now a
+  public optional capability in `pkg/graph/store`. Backends that
+  implement it get pre-filter semantics (top-k taken from the
+  eligible-only set); backends that do not get iterative over-fetch
+  (`k → 2k → 4k …` up to 65536) until either k eligible results are
+  accumulated or the backend is exhausted. Previously the same public
+  API silently returned fewer than k results when the nearest k
+  vectors were all temporally ineligible (R2-F5).
+- **`g.IO.ImportWithOptions(r, ImportOptions)` for staging control.**
+  New `io.ImportOptions{StagingDir, MaxStagedBytes}` lets callers
+  redirect the per-import temp file off the platform default temp
+  volume and bound the staged-disk usage. `MaxStagedBytes > 0` causes
+  Phase 1 to surface the new `core.ErrImportSizeLimit` sentinel before
+  any live mutation (R2-F6). `g.IO.Import(r)` keeps prior behaviour
+  via default options.
+- **Public docs realigned with the v3.4 sub-API surface.** `docs/api.md`
+  and `docs/SPEC.md` rewritten to reference `g.Nodes.*` / `g.Rels.*` /
+  `g.IO.*` / `g.Admin.*` / `g.Tx.*` / `g.Batch.*` / `g.Resolve.*` /
+  etc. instead of the removed direct `Graph.AddNode` style methods.
+  Cypher integration is now correctly described as a downstream
+  (`rho/tkgd-v3`) concern, not a feature of this library.
+  `docs/architecture.md` "Two-Phase Operations" updated: batch is per-
+  operation result reporting, not all-or-nothing (R2-F7).
+
+Lessons logged to `tasks/lessons.md`: B49 (mutating admin must join
+exclusion domain), B50 (every secondary lock needs an immediate
+defer), B51 (optional capabilities must separate correctness from
+acceleration), B52 (public docs must be compiled against the current
+public surface).
+
 ### Changed — Maintainability review (2026-05-08)
 
 - **`TxAPI.Run` / `RunContext` are now panic-safe.** A panic inside the

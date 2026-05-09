@@ -58,10 +58,10 @@ func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, err
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CloseVersion(id types.NodeID, t types.Instant) error {
 	c := n.c
-	c.mu.RLock()
-	err := c.closeNodeVersionInternal(id, t)
-	ep := c.events
-	c.mu.RUnlock()
+	var err error
+	ep := c.runUnderRLock(func() {
+		err = c.closeNodeVersionInternal(id, t)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -151,10 +151,10 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CloseVersion(id types.RelID, t types.Instant) error {
 	c := r.c
-	c.mu.RLock()
-	err := c.closeRelVersionInternal(id, t)
-	ep := c.events
-	c.mu.RUnlock()
+	var err error
+	ep := c.runUnderRLock(func() {
+		err = c.closeRelVersionInternal(id, t)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}

@@ -16,85 +16,140 @@
 | `HashableValue` | Interface (`HashBytes() []byte`) that custom property struct types implement to participate in node/relationship integrity hashing. Register the type via `RegisterPropertyStructType(v any)`. Treat `HashBytes` like a wire format — once any property of the type has been written, you cannot change the encoding without breaking every existing hash chain that contains the value. List registered types via `RegisteredPropertyStructTypes() []string`. |
 | `NodeID` / `RelID` / `EntityID` | Typed wrappers around `snowflake.ID` (`type NodeID snowflake.ID`, etc.). Boundary accessor: `(NodeID).SnowflakeID() snowflake.ID`. `EntityID` is the type-agnostic wrapper used by `Event.EntityID`, `BatchError.ID`, `QueryOpts.After`, and `TemporalMetadata.BaseEntityID`. Zero-value semantics: literal `0` is the universal sentinel for "unset" across the API. |
 
-## Graph Layer (`pkg/graph`)
+## Graph Layer (`pkg/graph`) — v3.4 sub-API surface
 
-| Type | Purpose |
-|------|---------|
-| `Graph` | Central graph layer — owns registries, dual snowflake generators, store, entity management (`AddNode`/`AddRelationship`/`UpdateNode`/`UpdateRelationship`/`DeleteNode`), convenience property methods, shadow resolution, string resolution |
-| `Store` | Persistence interface — CRUD, index/adjacency/bulk queries with cursor-based pagination (`QueryOpts`), lazy ForEach iterators (`ForEachNodeID`, `ForEachRelID`, `ForEachNodeHistoryID`, `ForEachRelHistoryID`), batch operations (`PutNodesBatch`, `PutRelationshipsBatch`, `DeleteNodesBatch`, `DeleteRelationshipsBatch`), counts, `Close()` |
-| `BatchBuilder` | Fluent API for queuing graph operations with eager validation and deferred persistence — `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Execute` |
-| `memory.Store` | Thread-safe in-memory `Store` with hash-set adjacency indexes for O(1) insert/delete, no-op `Close()` |
-| `badger.Store` | Persistent `Store` using Badger v4 with msgpack serialization, fixed-width binary keys, label/type/adjacency indexes, LRU caches with dirty tracking. Optional `ReadOnly` mode for warm/cold shards |
-| `tiered.Store` | Multi-shard `Store` routing entities across ref shard + time-windowed event shards by ontology classification. Hot→warm→cold shard rotation, warm recovery on restart, lazy-open cold shards, depth-aware reads, cross-shard relationships |
-| `GraphTx` | Mutation transaction — holds graph write lock, tracks created/updated/deleted entities, supports commit and snapshot-based rollback (full CRUD) |
-| `OntologyMapping` | Classifies labels as `ClassReference` (long-lived) or `ClassEvent` (time-windowed, default). Lazy token cache backed by label registry |
-| `ShardCatalog` | JSON-persisted catalog of all shards — tracks time windows, tiers, labels, rel types, verification status. Atomic write via write-tmp + rename |
-| `labelRegistry` | Thread-safe bidirectional label string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
-| `relTypeRegistry` | Thread-safe bidirectional relationship type string ↔ uint16 token mapping (persisted to Badger or registry file on `Close()`) |
-| `IndexProvider` | Plugin interface for out-of-tree indexes (`Name() string`, `OnEvent(ev Event, g *Graph)`, `Close() error`). Register via `g.RegisterIndexProvider(p)` / detach via `g.UnregisterIndexProvider(name)` / list via `g.IndexProviders() []string`. Auto-creates a sync `EventBus` if none attached; rejects `AsyncEventBus`. `Graph.Close()` closes all registered providers (errors joined). Sentinels: `ErrIndexProviderExists`, `ErrIndexProviderNotFound`, `ErrIndexProviderEmptyName`. Used by tkgd's spatial R-tree. |
+`*graph.Graph` is a thin façade. Its only direct methods are `New(Config) (*Graph, error)` and `Close() error`. Everything else is reached through 13 sub-API field accessors on the Graph value:
 
-Entity management: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `AddRelationshipByID(typeName, startID, endID, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `UpdateNodeInPlace(id, updates)`, `UpdateRelInPlace(id, updates)`, `DeleteNode(id)` (cascade), `DeleteRelationship(id)`, `RemoveNodeLabel(id, label)`. `UpdateNodeInPlace` / `UpdateRelInPlace` mutate the current entity in-place (no version bump, no history entry) — for correcting metadata without creating a new version. `RemoveNodeLabel` removes a label from a node's label set; returns `ErrLastLabel` if it is the only label, `ErrLabelNotFound` if not present.
+| Field | Package | Purpose |
+|-------|---------|---------|
+| `g.Nodes` | `pkg/graph/nodes` | Node CRUD, property/label mutation, version chain, queries |
+| `g.Rels` | `pkg/graph/rels` | Relationship CRUD, adjacency, property mutation, version chain |
+| `g.Temporal` | `pkg/graph/temporal` | Point-in-time, interval, bitemporal queries; snapshot/diff; Allen relations |
+| `g.Index` | `pkg/graph/index` | Property / temporal / high-frequency / vector index management; vector search; IndexProvider registration |
+| `g.Events` | `pkg/graph/events` | Sync / async EventBus management |
+| `g.Constraints` | `pkg/graph/constraints` | Temporal-constraint set management |
+| `g.IO` | `pkg/graph/io` | Export, Import, ImportWithOptions (StagingDir, MaxStagedBytes) |
+| `g.Admin` | `pkg/graph/admin` | Archive/Restore, ForceRotate, ListShards, RebuildCatalog, Repair, VerifyShard, Reset, DecomposeID |
+| `g.Stats` | `pkg/graph/stats` | NodeCount, RelCount, NodeCountByLabel, RelCountByType, AllLabelCounts, AllRelTypeCounts, full GraphStats snapshot |
+| `g.Hash` | `pkg/graph/hash` | VerifyNodeChain, VerifyRelChain (shadows stdlib `hash` — alias as `tkghash` at consumer sites that also import stdlib `hash`) |
+| `g.Resolve` | `pkg/graph/resolve` | NodeProperty / RelProperty (shadow keys), LabelToken / RelTypeToken (GetOrCreate), LookupLabel / LookupRelType |
+| `g.Tx` | `pkg/graph` (in-package) | BeginTx, Run(fn), RunContext(ctx, fn) — panic-safe |
+| `g.Batch` | `pkg/graph` (in-package) | New() returns a *BatchBuilder for queue-then-Execute |
 
-High-throughput relationship creation: `AddRelationshipByID(typeName, startID, endID, props)` / `AddRelationshipByIDWithContext(ctx, typeName, startID, endID, props)` creates a relationship using endpoint `snowflake.ID` values directly, without fetching the endpoint nodes. This eliminates the two `GetNode` + `DeepCopy` calls per relationship that `AddRelationship` requires. Trade-offs: `FromNodeHash` / `ToNodeHash` in `RelIntegrity` are left empty (no endpoint integrity capture), and temporal constraints against endpoint nodes are not checked. Use `AddRelationship` when endpoint integrity hashing or temporal constraint validation is required.
+`Store` / `memory.Store` / `badger.Store` / `tiered.Store` types live in `pkg/graph/store{,/memory,/badger,/tiered}`. The Store interface is composed from capability sub-interfaces in `pkg/graph/store/capabilities.go` — the graph layer depends on `MandatoryStore` (Lifecycle, NodeCRUD, RelCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration). Optional capabilities (`PropertyIndexCapability`, `TemporalIndexCapability`, `VectorIndexCapability`, `HighFrequencyIndexCapability`, `FilteredVectorSearchCapability`) are type-asserted at the call sites that need them and surface `ErrCapabilityNotSupported` when a backend omits them. The graph layer falls back to label-scan + property filter for `g.Nodes.ByLabelAndProperty` when `PropertyIndexCapability` is absent (correctness, not just acceleration).
 
-Convenience methods: `SetNodeProperty(id, key, value)`, `DeleteNodeProperty(id, key)`, `SetRelationshipProperty(id, key, value)`, `DeleteRelationshipProperty(id, key)`.
+### Entity management
 
-Atomic compare-and-swap: `CompareAndSetProperty(id, key, expected, newVal)` / `CompareAndSetPropertyWithContext(ctx, id, key, expected, newVal)` atomically compares a node property's current value against `expected` and swaps it to `newVal` if they match. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "property must not exist"; `newVal == nil` means "delete the property". Value comparison uses `reflect.DeepEqual` — type must match exactly (`int(42) != int64(42)`). Successful CAS bumps version, writes history, and updates temporal metadata, following the same pattern as `UpdateNode`.
+- `g.Nodes.Add(labels, props)` / `g.Nodes.AddWithContext(ctx, labels, props)` / `g.Nodes.Import(ctx, id, labels, props)` (caller-supplied ID).
+- `g.Rels.Add(typeName, start, end, props)` / `AddWithContext(...)` / `AddByID(typeName, startID, endID, props)` / `AddByIDWithContext(...)` / `AddByIDIfAbsent(typeName, startID, endID, props)` / `AddByIDIfAbsentWithContext(...)` / `Import(ctx, id, typeName, start, end, props)`.
+- `g.Nodes.Update(id, updates)` / `UpdateWithContext(ctx, ...)` / `g.Rels.Update(...)` and `UpdateWithContext`.
+- `g.Nodes.UpdateInPlace(id, updates)` / `UpdateInPlaceWithContext(...)` and rel mirrors. In-place updates mutate without a version bump or history entry — for correcting metadata.
+- `g.Nodes.Delete(id)` (cascade) / `DeleteWithContext(ctx, id)`. `g.Rels.Delete(id)` / `DeleteWithContext`.
+- `g.Nodes.AddLabel(id, label)` / `RemoveLabel(id, label)` (`ErrLastLabel` if it is the only label, `ErrLabelNotFound` if not present).
+- High-throughput rel creation: `g.Rels.AddByID*` skips the two endpoint `GetNode` + `DeepCopy` calls. Trade-off: `FromNodeHash`/`ToNodeHash` are empty (no endpoint integrity capture), and temporal constraints against endpoint nodes are not checked.
 
-Resolution methods: `NodeLabels(n)`, `NodePrimaryLabel(n)`, `NodeHasLabel(n, label)`, `RelationshipType(r)`, `RelationshipHasType(r, typ)`.
+### Properties
 
-Shadow resolution: `ResolveNodeProperty(n, key)`, `ResolveRelProperty(r, key)` — dispatches all 21 `tkg_*` keys with nil-guards.
+- `g.Nodes.SetProperty(id, key, value)` / `DeleteProperty(id, key)` / `g.Rels.SetProperty(...)` / `DeleteProperty`.
+- `g.Nodes.CompareAndSetProperty(id, key, expected, newVal)` / `CompareAndSetPropertyWithContext(...)` — atomic CAS. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "must not exist"; `newVal == nil` means "delete". Comparison is `reflect.DeepEqual` — types must match exactly. Successful CAS bumps version, writes history, updates temporal metadata.
 
-Registry methods: `GetOrCreateLabel(name)`, `GetOrCreateRelType(name)`, `LookupLabel(name)`, `LookupRelType(name)`.
+### Resolution
 
-Store queries: `GetNode(id)`, `GetRelationship(id)`, `NodesByLabel(label, opts)`, `RelationshipsByType(typeName, opts)`, `OutgoingRelationships(nodeID, typeName)`, `IncomingRelationships(nodeID, typeName)`, `NodeCount()`, `RelationshipCount()`. Five unbounded query methods accept `QueryOpts{Limit, After, ValidAt, ValidStart, ValidEnd, Depth}` for cursor-based pagination, temporal push-down, and shard-depth filtering; zero values mean "return all / no filter / all tiers". `Depth` controls which `tiered.Store` shard tiers to include: `DepthAll` (default), `DepthHot`, `DepthWarm`; ignored by `memory.Store`/`badger.Store`.
+- Label/type helpers: `g.Nodes.Labels(n)`, `g.Nodes.PrimaryLabel(n)`, `g.Nodes.HasLabel(n, label)`, `g.Rels.Type(r)`, `g.Rels.HasType(r, typ)`.
+- Shadow-property resolution (21 `tkg_*` keys): `g.Resolve.NodeProperty(n, key)`, `g.Resolve.RelProperty(r, key)`.
+- Registry: `g.Resolve.LabelToken(name)` / `RelTypeToken(name)` (GetOrCreate), `g.Resolve.LookupLabel(name)` / `LookupRelType(name)` (no creation).
 
-Bulk queries: `AllNodes(opts)`, `AllRelationships(opts)`, `GetNodesByIDs(ids)`, `GetRelationshipsByIDs(ids)` — all return results sorted by snowflake.ID; missing IDs are silently skipped.
+### Reads
 
-Batch operations: `NewBatchBuilder(g)` creates a builder that queues operations with eager validation. Call `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)`, `DeleteRelationship(id)` to queue operations. Call `Execute()` to persist all operations in order (creates → updates → deletes). Returns a `BatchResult` with counts and per-operation errors. Store-level batch methods (`PutNodesBatch`, `DeleteNodesBatch`, etc.) use two-phase validate-then-apply for atomicity.
+- Single-entity: `g.Nodes.Get(id)` / `GetWithContext(ctx, id)` / `g.Rels.Get(id)` / `GetWithContext`.
+- Bulk: `g.Nodes.GetByIDs(ids)` / `g.Rels.GetByIDs(ids)` (sorted ascending, missing IDs silently skipped).
+- Label/type: `g.Nodes.ByLabel(label, opts)` / `g.Rels.ByType(typeName, opts)`.
+- Adjacency: `g.Rels.Outgoing(nodeID, typeName)` / `Incoming(...)` / `OutgoingForNodes(nodeIDs, typeName)` / `IncomingForNodes(...)`. Empty `typeName` matches all types.
+- All: `g.Nodes.All(opts)` / `g.Rels.All(opts)`.
+- Property: `g.Nodes.ByLabelAndProperty(label, key, value, opts)` — uses the property index when present (R2-F4 graph-layer fallback scans label set + filters property when `PropertyIndexCapability` is absent).
+- Counts: `g.Nodes.Count()` / `g.Rels.Count()` / `g.Nodes.CountByLabel(label)` / `g.Rels.CountByType(typeName)`. Statistics surface: `g.Stats.NodeCount()`, `RelCount()`, `NodeCountByLabel`, `RelCountByType`, `AllLabelCounts()`, `AllRelTypeCounts()`, full `g.Stats.Get()` snapshot (counters + Badger cache metrics).
+- `QueryOpts{Limit, After, ValidAt, ValidStart, ValidEnd, Depth}`: cursor pagination, temporal push-down, and shard-depth filtering. Zero values mean "all". `Depth` (`tiered.Store` only) is `DepthAll`/`DepthHot`/`DepthWarm`; ignored by `memory.Store`/`badger.Store`. Combining a temporal filter with `Depth != DepthAll` returns `ErrDepthTemporalUnsupported`.
 
-Temporal queries: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)` — point-in-time queries. `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)` — interval queries. `GetNodeAt(id, t)`, `GetRelAt(id, t)` — version-specific queries. `GetNeighborsValidAt(nodeID, t)` — temporal neighbor traversal. `Snapshot(t)` — full graph state at a point in time (endpoints-filtered). All temporal queries are history-aware (include deleted entities via lazy ForEach iterators — no slice materialization, ~83% memory reduction vs pre-v3.0.31). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
+### Batch operations
 
-Version chain navigation: `GetPreviousNodeVersion(id, version)` / `GetNextNodeVersion(id, version)` — navigate the version chain by stepping one version backward or forward. Return nil, nil when the requested version does not exist (genesis has no predecessor; the current tip has no successor). `GetNextNodeVersion` checks the history store first, then falls back to the current entity (which may itself be the next version). `CloseNodeVersion(id, t)` / `CloseRelVersion(id, t)` — set `ValidTo` on the current entity in-place without incrementing its version or creating a history entry. Returns `ErrAlreadyClosed` if `ValidTo` is already set. Rel mirrors: `GetPreviousRelVersion`, `GetNextRelVersion`, `CloseRelVersion`.
+`g.Batch.New()` returns a `*BatchBuilder` that queues operations with eager validation. Queue methods: `AddNode(labels, props)`, `AddRelationship(typeName, start, end, props)`, `UpdateNode(id, updates)`, `UpdateRelationship(id, updates)`, `DeleteNode(id)`, `DeleteRelationship(id)`. Call `Execute()` to persist all queued operations in order (creates → updates → deletes).
 
-Event system: `NewEventBus()` creates a synchronous dispatcher. `bus.Subscribe(handler)` registers an `EventHandler` (type `func(Event)`) and returns an idempotent unsubscribe function. `Event` carries `Type EventType`, `EntityID snowflake.ID`, `Timestamp types.Instant`, and `Priority EventPriority`. Six event types: `EventNodeCreate`, `EventNodeUpdate`, `EventNodeDelete`, `EventRelCreate`, `EventRelUpdate`, `EventRelDelete`. Internal priorities: creates → `PriorityHigh`, deletes → `PriorityCritical`, updates → `PriorityNormal`. Handlers are invoked synchronously after each successful store write, outside the EventBus lock (prevents deadlocks when handlers re-enter the Graph). Attach to a graph with `g.SetEventBus(bus)`. No-op when no bus is set. Hook points: `AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `CloseNodeVersion`, `CloseRelVersion`.
+`Execute()` is **per-operation reporting, not all-or-nothing**: it returns `*BatchResult{Created, Updated, Deleted, Failed, Errors []BatchError}` and a typically-`nil` error (only structural failures bubble up; per-op failures are recorded in `Errors`). Callers MUST inspect `result.Failed` and `result.Errors`. The endpoint-lock window for relationship creation is panic-safe via a defer-backed UnlockTwo (R2-F3).
 
-For async delivery, use `NewAsyncEventBus(AsyncEventBusConfig{Workers, QueueSize, Backpressure})` instead. Workers drain a per-priority queue pool (one channel per `EventPriority` level), decoupling slow handler latency from write latency. Three backpressure strategies: `BackpressureBlock` (caller blocks until queue drains), `BackpressureDropOldest` (evict oldest event), `BackpressureDropLatest` (discard new event). Attach with `g.SetAsyncEventBus(bus)`. Call `bus.Close()` to drain all remaining events and stop workers. Five `EventPriority` levels: `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Workers drain in Critical→High→Normal→Low→Deferred order.
+### Temporal queries (`g.Temporal`)
 
-Snapshot diff: `DiffSnapshots(t1, t2)` compares two temporal snapshots and returns a `*SnapshotDiff` with `NodesCreated`, `NodesUpdated` (as `[]NodeUpdate{Before, After}`), `NodesDeleted`, `RelsCreated`, `RelsUpdated` (as `[]RelUpdate{Before, After}`), `RelsDeleted`. Classification: entity present only at t2 → Created; present only at t1 → Deleted; present at both with a different integrity hash → Updated; same hash → Unchanged (omitted). Does not hold `g.mu.RLock` — trades strong isolation for non-blocking writes (a concurrent backdated write between the two snapshot reads may appear as a spurious Created/Deleted entry). Returns `ErrInvalidTimeRange` if t1 ≥ t2 or either is zero.
+- Point-in-time: `g.Temporal.NodeAt(id, t)`, `RelAt(id, t)`, `NodesAt(t)`, `RelationshipsAt(t)`, `NodesByLabelAt(label, t)`, `RelationshipsByTypeAt(relType, t)`, `NeighborsAt(nodeID, t)`, `NodesByLabelPropertyAt(label, key, value, t)`, `RelsByTypePropertyAt(relType, key, value, t)`.
+- Interval: `NodesDuring(start, end)`, `RelationshipsDuring(start, end)`, `NodesByLabelPropertyDuring(label, key, value, start, end)`, `RelsByTypePropertyDuring(relType, key, value, start, end)`.
+- Bitemporal (transaction time): `NodeAsOf(id, txTime)`, `RelAsOf(id, txTime)`, `NodesAsOf(txTime)`, `RelsAsOf(txTime)`. Returns `ErrNoVersionAsOf` if no version was committed at or before `txTime`.
+- Snapshot/Diff: `Snapshot(t) (*GraphSnapshot, error)` (full graph state at `t`, endpoints-filtered). `Diff(t1, t2) (*SnapshotDiff, error)` returns `NodesCreated`, `NodesUpdated [{Before, After}]`, `NodesDeleted`, `RelsCreated`, `RelsUpdated`, `RelsDeleted`. `DiffCallback(t1, t2, handlers)` streams the same diff via `DiffHandlers` (each handler optional).
+- Allen relations: `NodeInterval(n)`, `RelInterval(r)`, `RelateNodes(a, b)`, `RelateRels(a, b)` — return `(start, end Instant, err error)` for the interval helpers and `AllenRelation` for the relation helpers. Allen relations require finite intervals (ValidTo != 0).
 
-Combined queries: `NodesByLabelPropertyAndTime(label, key, value, t)` — history-aware label/property point-in-time filter. `NodesByLabelPropertyDuring(label, key, value, start, end)` — history-aware label/property interval filter.
+All temporal queries are history-aware (include deleted entities via lazy ForEach iterators). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
 
-Hash chain verification: `VerifyNodeHashChain(id)`, `VerifyRelHashChain(id)` — verify the full hash chain for an entity's version history. Handles deleted entities (verifies history chain alone when current entity is gone). Returns `(true, nil)` if valid.
+### Version chain navigation
 
-Transactions: `BeginTx()` starts a mutation transaction holding the graph write lock. `tx.AddNode(labels, props)`, `tx.AddRelationship(typeName, start, end, props)` — create entities and track IDs. `tx.AddRelationshipByID(typeName, startID, endID, props)` — create relationship by endpoint snowflake IDs (high-throughput, no endpoint node fetch). `tx.AddRelationshipByIDIfAbsent(typeName, startID, endID, props)` — atomic check-then-create by endpoint IDs; returns `(rel, created, err)` where `created=false` if the relationship already exists. `tx.GetNode(id)` — read a node within the transaction (safe, tx holds write lock). `tx.UpdateNode(id, updates)`, `tx.UpdateRelationship(id, updates)` — snapshot pre-mutation state then apply. `tx.SetNodeProperty(id, key, value)`, `tx.DeleteNodeProperty(id, key)`, `tx.SetRelationshipProperty(id, key, value)`, `tx.DeleteRelationshipProperty(id, key)` — convenience wrappers. `tx.DeleteNode(id)` (cascade), `tx.DeleteRelationship(id)` — snapshot before deletion. `tx.Commit()` releases the lock. `tx.Rollback()` restores all mutations in reverse order: deleted entities are re-created, updates are reverted to snapshots, created entities are deleted. `tx.CreatedNodeIDs()`, `tx.CreatedRelIDs()` for inspection.
+- `g.Nodes.History(id)` / `g.Rels.History(id)` — full version chain.
+- `g.Nodes.PreviousVersion(id, version)` / `NextVersion(id, version)` and rel mirrors. Return `nil, nil` when the requested version does not exist.
+- `g.Nodes.CloseVersion(id, t)` / `g.Rels.CloseVersion(id, t)` — set `ValidTo` on the current entity in-place without incrementing its version or creating a history entry. Returns `ErrAlreadyClosed` if `ValidTo` is already set.
 
-Reset: `Reset()` atomically clears all entities, indexes, history, and counters while preserving label and relationship type registries.
+### Events (`g.Events`)
 
-Export/Import: `ExportGraph(w io.Writer)` writes a portable format-independent snapshot to `w` — header, label/reltype registries, all current nodes and relationships, and their full version history. Wire format: length-prefixed msgpack record stream with 1-byte type tags; forward-compatible (unknown tags are skipped on import). Holds `g.mu.RLock` for a consistent snapshot. `ImportGraph(r io.Reader)` reads the stream and restores into the graph, holding `g.mu.Lock`. Registry import is idempotent when the existing token mappings are identical to the export (safe re-import). Returns `ErrIncompatibleExport` on format version mismatch; returns `ErrIncompatibleRegistry` when the existing registry maps tokens differently from the export (importing would corrupt all entity labels or relationship types). Per-record allocations are capped at 128 MiB. Use for backup, migration across store versions, or seeding test fixtures.
+- Sync bus: `bus := events.NewEventBus()`, `g.Events.SetSync(bus)`, `g.Events.GetSync()`. `bus.Subscribe(handler)` returns an idempotent unsubscribe. Handlers run synchronously after each successful store write, outside the bus lock.
+- Async bus: `bus := events.NewAsyncEventBus(AsyncEventBusConfig{Workers, QueueSize, Backpressure})`, `g.Events.SetAsync(bus)`. Three backpressure strategies: `BackpressureBlock`, `BackpressureDropOldest`, `BackpressureDropLatest`. Worker drains in Critical→High→Normal→Low→Deferred priority order. `bus.Close()` drains pending events and stops workers.
+- Six event types: `EventNodeCreate`, `EventNodeUpdate`, `EventNodeDelete`, `EventRelCreate`, `EventRelUpdate`, `EventRelDelete`. Internal priorities: creates → `PriorityHigh`, deletes → `PriorityCritical`, updates → `PriorityNormal`. Five priority levels (zero value = `PriorityNormal`).
 
-Statistics: `NodeCountByLabel(label)`, `RelCountByType(typeName)`, `AllLabelCounts()`, `AllRelTypeCounts()` — O(1) cardinality statistics for all labels and relationship types. `memory.Store` uses existing index sizes; `badger.Store` maintains `sync.Map` + `atomic.Int64` counters.
+### Hash chain verification (`g.Hash`)
 
-Property indexes: `CreatePropertyIndex(label, propertyKey)`, `DropPropertyIndex(label, propertyKey)` — create/drop in-memory property indexes. `NodesByLabelAndProperty(label, key, value, opts)` — O(1) indexed lookup with cursor-based pagination when a property index exists; falls back to O(N) full label scan with per-node property comparison otherwise (emits `slog.Debug` hint with `labelToken` and `propertyKey`). Indexes are automatically maintained across all node mutation paths and persist across `badger.Store` restarts. In `tiered.Store`, property indexes are restricted to reference entities (`ErrEventPropertyIndex` for event labels).
+- `g.Hash.VerifyNodeChain(id) (bool, error)` / `VerifyRelChain(id) (bool, error)`. Tolerates deleted entities (verifies history alone when current entity is gone).
 
-Temporal indexes: `CreateTemporalIndex(label)`, `DropTemporalIndex(label)` — create/drop in-memory interval indexes accelerating `NodesByLabel` when a temporal filter (`ValidAt` or `ValidStart`/`ValidEnd`) is set. Uses a sorted-slice interval index with lazy sort (`sortIfDirty` + `sortMu` for concurrent-read safety) and O(log n) range filtering. When a temporal index exists and a filter is active, `NodesByLabel` uses the index fast path instead of scanning all label entries. Indexes are automatically maintained across all node mutation paths and persist across `badger.Store` restarts (label tokens stored, index data rebuilt from nodes on startup). `tiered.Store` creates the index on all active shards and propagates it to new hot shards on rotation.
+### Transactions (`g.Tx`) and the imperative tx surface
 
-High-frequency temporal indexes: `CreateHighFrequencyIndex(label, bucketSize)`, `DropHighFrequencyIndex(label)` — an alternative to the sorted-slice temporal index for labels under high write rates (thousands of events/sec). Uses time-bucketed storage: bucket index = `(validFrom - origin) / bucketSize`. Insertion is O(1) amortized; range queries visit O(buckets_in_range) buckets. Only one temporal index type can exist per label at a time — drop the existing index before switching. Not persisted; must be re-created after restart. `tiered.Store` fans out to all active shards.
+- Functional form: `g.Tx.Run(func(tx *graph.GraphTx) error { ... })` / `g.Tx.RunContext(ctx, fn)`. Panic-safe — a panic inside fn rolls the tx back via defer and propagates the panic; rollback errors are joined with the caller's error via `errors.Join`.
+- Imperative form: `tx := g.Tx.Begin()`. Methods on `*GraphTx`:
+  - Mutations: `AddNode`, `AddRelationship`, `AddRelationshipByID`, `AddRelationshipByIDIfAbsent` (returns `(rel, created, err)`), `UpdateNode`, `UpdateRelationship`, `SetNodeProperty`, `DeleteNodeProperty`, `SetRelationshipProperty`, `DeleteRelationshipProperty`, `DeleteNode` (cascade), `DeleteRelationship`.
+  - Reads: `GetNode(id)` (safe inside tx — tx holds the write lock).
+  - Lifecycle: `Commit()` releases the lock and dispatches buffered events. `Rollback()` restores all mutations in reverse order (deleted entities re-created from snapshots, updates reverted, created entities deleted) and discards buffered events. Sentinel: `ErrTxDone`.
+  - Inspection: `CreatedNodeIDs()`, `CreatedRelIDs()`.
 
-Transaction-time queries (bitemporality): `GetNodeAsOf(id, txTime)`, `GetRelAsOf(id, txTime)` — return the entity version that was committed at or before `txTime` (based on `TxFrom`/`TxTo`, which are populated automatically on all mutations). `GetNodesAsOf(txTime)`, `GetRelsAsOf(txTime)` — scan all known entity IDs (current + history) and return those with a version active at `txTime`. Returns `ErrNoVersionAsOf` when no version was recorded at the given transaction time.
+### Indexes (`g.Index`)
 
-Vector indexes: `CreateVectorIndex(label, propertyKey, dims, metric)`, `DropVectorIndex(label, propertyKey)` — create/drop in-memory brute-force k-NN indexes on nodes with the given label and a `[]float32` property. `metric` is `DistanceCosine` or `DistanceEuclidean`. `SearchNearestNodes(label, propertyKey, query []float32, k int, opts)` returns the `k` closest nodes in ranked order. Returns `ErrVectorIndexExists` / `ErrVectorIndexNotFound` / `ErrDimensionMismatch` on error. Indexes are maintained automatically across all node mutation paths; not persisted across restarts (rebuilt from properties on startup is not automatic — recreate the index after reopening).
+- Property: `g.Index.CreateProperty(label, propertyKey)` / `DropProperty(label, propertyKey)`. `g.Nodes.ByLabelAndProperty(label, key, value, opts)` uses the index when present, falls back to label scan + property filter otherwise (R2-F4).
+- Temporal interval: `g.Index.CreateTemporal(label)` / `DropTemporal(label)`. Accelerates `g.Nodes.ByLabel(label, opts)` when a temporal filter is set.
+- High-frequency temporal: `g.Index.CreateHighFrequency(label, bucketSize)` / `DropHighFrequency(label)`. Time-bucketed alternative for high-write-rate event labels. Only one temporal index type per label at a time. Not persisted.
+- Vector: `g.Index.CreateVector(label, propertyKey, dims, metric)` / `DropVector(label, propertyKey)`. `g.Index.SearchNearest(label, propertyKey, query []float32, k int, opts)` returns the top-k nearest nodes. Under temporal filters, the graph pre-filters when the backend implements `FilteredVectorSearchCapability`; otherwise iterative over-fetch escalates k until k eligible results are accumulated or the backend is exhausted (R2-F5). `metric` is `DistanceCosine` or `DistanceEuclidean`. Errors: `ErrVectorIndexExists`, `ErrVectorIndexNotFound`, `ErrDimensionMismatch`.
+- IndexProvider plugin: `g.Index.RegisterProvider(p)` / `RegisterLegacyProvider(lp)` (deprecated) / `UnregisterProvider(name)` / `Providers() []string`. Auto-creates a sync `events.EventBus` if none attached. Sentinels: `ErrIndexProviderExists`, `ErrIndexProviderNotFound`, `ErrIndexProviderEmptyName`.
 
-Temporal constraints: `AddTemporalConstraint(c)`, `SetTemporalConstraints(cs)`, `TemporalConstraints()` — configure write-time enforcement rules. `TemporalConstraint{Kind: ConstraintRelWithinEndpoints}` enforces that a relationship's validity interval is contained within the intersection of both endpoint nodes' validity. Checked during `AddRelationship` and `ImportRelationshipWithID`. Violations return errors wrapping `ErrTemporalConstraint`; the specific cause (e.g., `ErrRelBeforeStartNode`, `ErrRelAfterEndNode`, `ErrRelExceedsStartNodeValidity`) is accessible via `errors.Is`. Zero value `ConstraintSet` means no constraints.
+### Constraints (`g.Constraints`)
 
-Validation limits: `Config.Validation` accepts a `ValidationLimits` struct with configurable maximums: `MaxLabelsPerNode` (default 50), `MaxPropertiesPerEntity` (default 1000), `MaxPropertyKeyLength` (default 256), `MaxPropertyValueSize` (default 65536), `MaxNameLength` (default 256). `AllowSelfLoops bool` (default `false`) — when false, `AddRelationship` and `ImportRelationshipWithID` reject self-loop relationships (start == end) with `ErrSelfLoop`; set to `true` to permit them. Enforced at all graph entry points. Zero values use defaults.
+- `g.Constraints.Add(c)`, `Set(cs)`, `Get()`. `TemporalConstraint{Kind: ConstraintRelWithinEndpoints}` enforces that a relationship's validity is contained within both endpoint nodes' validity. Checked during relationship creation and import. Errors wrap `ErrTemporalConstraint` (sub-sentinels: `ErrRelBeforeStartNode`, `ErrRelAfterEndNode`, `ErrRelExceedsStartNodeValidity`, etc.).
 
-Archive: `ArchiveNode(id)` moves a reference node and its relationships from the reference shard to the archive (`tiered.Store` only). `RestoreNode(id)` moves it back.
+### IO (`g.IO`)
 
-Admin & repair (`tiered.Store` only): `ForceRotate()` triggers a safe hot-shard rotation with internal locking. `ListShards()` returns `[]ShardInfo` with live counts from open stores. `RebuildCatalog()` reconstructs the shard catalog from live state. `VerifyShard(name)` runs hash chain verification with immutable-shard caching. `RunRepair()` scans for cross-shard split-write inconsistencies and fixes orphaned/missing in/ entries.
+- `g.IO.Export(w io.Writer) error` — length-prefixed msgpack record stream with 1-byte type tags. Forward-compatible (unknown tags skipped on import). Holds `g.mu.RLock` for a consistent snapshot.
+- `g.IO.Import(r io.Reader) error` — defaults to platform temp dir for staging, no size cap.
+- `g.IO.ImportWithOptions(r io.Reader, opts io.ImportOptions) error` — `ImportOptions{StagingDir, MaxStagedBytes}`. Memory is `O(maxExportRecordSize)` regardless of export size; staging file is sized to match the export and removed via defer at exit. Phase-1 errors (read, staging-disk write, MaxStagedBytes exceeded) leave graph state unchanged. Phase-2 (replay) errors may leave a partially populated graph — for transactional restore, import into a fresh graph and swap stores on success. Sentinels: `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, `ErrImportSizeLimit`, `ErrCorruptExport`. Per-record allocations capped at 128 MiB.
 
-ID decomposition: `DecomposeID(id)` extracts `IDComponents{CreatedAt, NodeID, Sequence}` from any snowflake ID (works with all store types).
+### Admin (`g.Admin`, `tiered.Store`-only unless noted)
 
-Migration: `MigrateFromBadger(src, dst, labels)` copies all entities from a single `badger.Store` to a `tiered.Store` with automatic ontology-based routing.
+- `g.Admin.Archive(id)` / `Restore(id)` — move a reference node and its rels between the reference shard and the archive (under `g.mu.Lock`).
+- `g.Admin.ForceRotate()` — transactional hot-shard rotation: opens the new shard + temporal indexes, snapshots the catalog, mutates catalog in-memory, persists; on Save failure, restores the catalog snapshot, closes + removes the new shard, returns the error (R2-F2).
+- `g.Admin.ListShards()` — `[]ShardInfo` with live counts (under `g.mu.RLock`).
+- `g.Admin.RebuildCatalog()` — reconstruct the shard catalog from live state (under `g.mu.Lock`).
+- `g.Admin.Repair()` — scan + fix cross-shard split-write inconsistencies (under `g.mu.Lock`, R2-F1).
+- `g.Admin.VerifyShard(name)` — hash chain verification with immutable-shard caching (under `g.mu.RLock`).
+- `g.Admin.Reset()` — clears all entities, indexes, history, counters; preserves registries. Works on every backend (forwards to `store.Clear`).
+- `g.Admin.DecomposeID(id snowflake.ID) IDComponents{CreatedAt, NodeID, Sequence}` — works with any store type.
 
-Lifecycle: `Close()` saves registries (`badger.Store` or `tiered.Store`), then calls `store.Close()` on every Store implementation. `memory.Store.Close()` returns nil. `tiered.Store.Close()` saves catalog, closes all event shards, reference shard, and archive. Always call `Close()` when done — it is safe to call multiple times.
+Non-tiered backends return `ErrNotTieredStore` from the seven tiered-only methods.
+
+### Migration
+
+- `tiered.MigrateFromBadger(src *badger.Store, dst *tiered.Store, labels OntologyMapping) error` — copy all entities from a single badger.Store to a tiered.Store with automatic ontology-based routing.
+
+### Validation limits
+
+- `Config.Validation` accepts `ValidationLimits{MaxLabelsPerNode, MaxPropertiesPerEntity, MaxPropertyKeyLength, MaxPropertyValueSize, MaxNameLength, AllowSelfLoops}`. Defaults: 50 / 1000 / 256 / 65536 / 256 / false. `AllowSelfLoops=false` causes `g.Rels.Add` and `g.Rels.Import` to reject self-loops with `ErrSelfLoop`. Zero values use defaults.
+
+### Lifecycle
+
+- `g.Close() error` — saves registries (badger.Store / tiered.Store), then calls `store.Close()`. `tiered.Store.Close()` saves catalog and closes all event shards plus the reference shard and archive. Idempotent — safe to call multiple times.

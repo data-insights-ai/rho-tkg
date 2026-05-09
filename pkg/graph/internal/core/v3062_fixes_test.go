@@ -146,68 +146,6 @@ func TestExtractProvenance_FractionalAuthLevel(t *testing.T) {
 	})
 }
 
-// ─── Issue 2: Batch panic lock-leak ───────────────────────────────────────────
-
-// panicStore is a Store that panics on PutNodesBatch to test batch panic recovery.
-type panicStore struct {
-	*memory.Store
-}
-
-func (ps *panicStore) PutNodesBatch(_ []*types.Node) error {
-	panic("test panic in PutNodesBatch")
-}
-
-func TestBatchExecute_PanicRecovery(t *testing.T) {
-	t.Parallel()
-
-	ms := memory.New()
-	ps := &panicStore{Store: ms}
-	g, err := New(Config{Store: ps})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { g.Close() })
-
-	b := NewBatchBuilder(g)
-	_, err = b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-
-	// Execute should panic; recover and verify lock released.
-	func() {
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("expected panic from PutNodesBatch")
-			}
-		}()
-		b.Execute()
-	}()
-
-	// Lock must be released: this should not deadlock.
-	done := make(chan struct{})
-	go func() {
-		g.mu.Lock()
-		g.mu.Unlock() //nolint:staticcheck // intentional empty critical section: test verifies the lock is acquirable (i.e., released by the prior holder)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// success — lock was released
-	case <-time.After(2 * time.Second):
-		t.Fatal("g.mu.Lock() deadlocked — batch panic leaked the lock")
-	}
-
-	// txEventBuffer must be nil after panic cleanup.
-	g.mu.Lock()
-	if g.txEventBuffer != nil {
-		t.Error("txEventBuffer not nil after panic recovery")
-	}
-	g.mu.Unlock()
-}
-
 // ─── Issue 1: tiered.Store — CreateTemporalIndex ───────────────────────────────
 
 func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {

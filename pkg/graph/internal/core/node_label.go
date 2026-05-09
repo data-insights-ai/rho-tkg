@@ -17,10 +17,13 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
 	c := n.c
-	c.mu.RLock()
-	mutated, err := c.addNodeLabelInternal(id, label)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		mutated bool
+		err     error
+	)
+	ep := c.runUnderRLock(func() {
+		mutated, err = c.addNodeLabelInternal(id, label)
+	})
 	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -109,10 +112,10 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
 	c := n.c
-	c.mu.RLock()
-	err := c.removeNodeLabelInternal(id, label)
-	ep := c.events
-	c.mu.RUnlock()
+	var err error
+	ep := c.runUnderRLock(func() {
+		err = c.removeNodeLabelInternal(id, label)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}

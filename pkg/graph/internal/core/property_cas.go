@@ -25,10 +25,14 @@ func (n *NodeOps) CompareAndSetProperty(id types.NodeID, key string, expected, n
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
-	c.mu.RLock()
-	ok, mutated, err := c.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		ok      bool
+		mutated bool
+		err     error
+	)
+	ep := c.runUnderRLock(func() {
+		ok, mutated, err = c.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
+	})
 	if ok && mutated && err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}

@@ -20,13 +20,17 @@ import (
 // =============================================================================
 
 // AddWithContext creates a new node with the given labels and properties.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
 func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
-	c.mu.RLock()
-	node, err := c.addNodeInternal(ctx, labels, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		node *types.Node
+		err  error
+	)
+	ep := c.runUnderRLock(func() {
+		node, err = c.addNodeInternal(ctx, labels, props)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -142,13 +146,17 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 }
 
 // Import creates a node with a caller-specified snowflake ID.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
 func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
-	c.mu.RLock()
-	node, err := c.importNodeWithIDInternal(ctx, id, labels, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		node *types.Node
+		err  error
+	)
+	ep := c.runUnderRLock(func() {
+		node, err = c.importNodeWithIDInternal(ctx, id, labels, props)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -263,13 +271,17 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 // =============================================================================
 
 // UpdateWithContext applies property updates to an existing node with context support.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
 func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
-	c.mu.RLock()
-	node, err := c.updateNodeInternal(ctx, id, updates)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		node *types.Node
+		err  error
+	)
+	ep := c.runUnderRLock(func() {
+		node, err = c.updateNodeInternal(ctx, id, updates)
+	})
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -420,13 +432,17 @@ func (n *NodeOps) UpdateInPlace(id types.NodeID, updates map[string]any) (*types
 }
 
 // UpdateInPlaceWithContext applies property updates to a node without history.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
 func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
-	c.mu.RLock()
-	node, err := c.updateNodeInPlaceInternal(ctx, id, updates)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		node *types.Node
+		err  error
+	)
+	ep := c.runUnderRLock(func() {
+		node, err = c.updateNodeInPlaceInternal(ctx, id, updates)
+	})
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -552,13 +568,14 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 }
 
 // DeleteWithContext atomically removes a node and all connected relationships.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
 func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error {
 	c := n.c
-	c.mu.RLock()
-	err := c.deleteNodeInternal(ctx, id)
-	ep := c.events
-	c.mu.RUnlock()
+	var err error
+	ep := c.runUnderRLock(func() {
+		err = c.deleteNodeInternal(ctx, id)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityCritical})
 	}
@@ -580,63 +597,89 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 
 	const maxRetries = 10
 	for range maxRetries {
+		// Phase A: read under node lock only. The closure pattern keeps
+		// the lock under defer so a panic from a custom Store does not
+		// leak the shard lock.
+		var (
+			allIDs    []snowflake.ID
+			current   *types.Node
+			phaseAErr error
+		)
+		func() {
+			c.entityLocks.LockEntity(id.SnowflakeID())
+			defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
-		// Phase A: read under node lock only.
-		c.entityLocks.LockEntity(id.SnowflakeID())
-
-		if err := checkCtx(ctx); err != nil {
-			c.entityLocks.UnlockEntity(id.SnowflakeID())
-			return err
+			if err := checkCtx(ctx); err != nil {
+				phaseAErr = err
+				return
+			}
+			n, err := c.store.GetNode(id)
+			if err != nil {
+				phaseAErr = err
+				return
+			}
+			outRels, err := c.store.OutgoingRelationships(id, 0)
+			if err != nil {
+				phaseAErr = err
+				return
+			}
+			inRels, err := c.store.IncomingRelationships(id, 0)
+			if err != nil {
+				phaseAErr = err
+				return
+			}
+			current = n
+			allIDs = collectDeleteIDs(id.SnowflakeID(), outRels, inRels)
+		}()
+		if phaseAErr != nil {
+			return phaseAErr
 		}
-
-		current, err := c.store.GetNode(id)
-		if err != nil {
-			c.entityLocks.UnlockEntity(id.SnowflakeID())
-			return err
-		}
-
-		outRels, err := c.store.OutgoingRelationships(id, 0)
-		if err != nil {
-			c.entityLocks.UnlockEntity(id.SnowflakeID())
-			return err
-		}
-		inRels, err := c.store.IncomingRelationships(id, 0)
-		if err != nil {
-			c.entityLocks.UnlockEntity(id.SnowflakeID())
-			return err
-		}
-
-		allIDs := collectDeleteIDs(id.SnowflakeID(), outRels, inRels)
-		c.entityLocks.UnlockEntity(id.SnowflakeID())
 
 		// Phase B: lock ALL entities (node + rels), re-verify adjacency.
-		c.entityLocks.LockMany(allIDs)
+		// Same closure pattern — panic during the re-read or delete must
+		// not leak LockMany.
+		var (
+			phaseBErr error
+			retry     bool
+			done      bool
+		)
+		func() {
+			c.entityLocks.LockMany(allIDs)
+			defer c.entityLocks.UnlockMany(allIDs)
 
-		// Re-read adjacency under full lock to detect TOCTOU changes.
-		outRels2, err := c.store.OutgoingRelationships(id, 0)
-		if err != nil {
-			c.entityLocks.UnlockMany(allIDs)
-			return err
-		}
-		inRels2, err := c.store.IncomingRelationships(id, 0)
-		if err != nil {
-			c.entityLocks.UnlockMany(allIDs)
-			return err
-		}
+			outRels2, err := c.store.OutgoingRelationships(id, 0)
+			if err != nil {
+				phaseBErr = err
+				return
+			}
+			inRels2, err := c.store.IncomingRelationships(id, 0)
+			if err != nil {
+				phaseBErr = err
+				return
+			}
 
-		allIDs2 := collectDeleteIDs(id.SnowflakeID(), outRels2, inRels2)
-		if !sameIDSet(allIDs, allIDs2) {
-			// Adjacency changed — retry. Yield the goroutine so the competing
-			// rel-writer can commit before we re-read adjacency.
-			c.entityLocks.UnlockMany(allIDs)
+			allIDs2 := collectDeleteIDs(id.SnowflakeID(), outRels2, inRels2)
+			if !sameIDSet(allIDs, allIDs2) {
+				// Adjacency changed — retry after releasing locks.
+				retry = true
+				return
+			}
+
+			phaseBErr = c.deleteNodeLocked(id, current, outRels2, inRels2)
+			done = true
+		}()
+		if retry {
 			runtime.Gosched()
 			continue
 		}
-
-		// Adjacency stable — perform deletion under full lock.
-		err = c.deleteNodeLocked(id, current, outRels2, inRels2)
-		c.entityLocks.UnlockMany(allIDs)
-		return err
+		if done {
+			return phaseBErr
+		}
+		// phaseB returned without committing or retrying — propagate the
+		// error.
+		if phaseBErr != nil {
+			return phaseBErr
+		}
 	}
 
 	return fmt.Errorf("graph: delete node %d: adjacency changed after %d retries", id, maxRetries)

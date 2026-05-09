@@ -308,13 +308,10 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 	if targetKey == "" {
 		return nil, nil
 	}
-	piCap, err := c.propertyIndexCap()
-	if err != nil {
-		return nil, err
-	}
-	// Seed candidates from the property index (falls back to a label scan
-	// inside the store when no property index covers (label, key)).
-	currentMatching, err := piCap.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	// Seed candidates from the property index when present, label scan
+	// + property filter otherwise. Both produce a correct candidate
+	// set; the index path is just faster.
+	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -363,13 +360,9 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 	// Resolve open-ended end once for the whole iteration — see
 	// GetNodesValidDuring.
 	end = resolveOpenEndInstant(end)
-	piCap, err := c.propertyIndexCap()
-	if err != nil {
-		return nil, err
-	}
-	// Seed candidates from the property index (falls back to a label scan
-	// inside the store when no property index covers (label, key)).
-	currentMatching, err := piCap.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	// Seed candidates from the property index when present, label scan
+	// + property filter otherwise.
+	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}

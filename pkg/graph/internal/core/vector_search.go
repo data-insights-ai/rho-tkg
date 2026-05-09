@@ -77,43 +77,75 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 		return err == nil
 	}
 
-	store, ok := c.store.(filteredVectorSearchStore)
-	if !ok {
-		// Defensive fallback: an external Store implementation that
-		// does not implement the package-internal filtered-search hook.
-		// We can still apply temporal filtering after-the-fact, accepting
-		// the ordering caveat that a near-but-ineligible candidate could
-		// crowd out farther-but-eligible candidates from the top-k.
-		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{})
+	if store, ok := c.store.(storepkg.FilteredVectorSearchCapability); ok {
+		// Pre-filtered fast path: the backend pushes the eligibility
+		// predicate into the search BEFORE the k-cut, so the returned
+		// top-k is taken from the eligible-only set.
+		ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
 		if err != nil {
 			return nil, err
 		}
-		return resolveTemporalVectorMatches(c, nodes, opts, pred, opts.After, opts.Limit), nil
+		resolved := make([]*types.Node, 0, len(ids))
+		for _, id := range ids {
+			n, err := c.findNodeVersionForOpts(types.NodeID(id), opts, pred)
+			if err != nil {
+				// Filter passed earlier but resolution lost the
+				// version (e.g. concurrent mutation). Skip silently.
+				continue
+			}
+			resolved = append(resolved, n)
+		}
+		return paginateNearestNodes(resolved, opts.After, opts.Limit), nil
 	}
 
-	ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
-	if err != nil {
-		return nil, err
-	}
-	resolved := make([]*types.Node, 0, len(ids))
-	for _, id := range ids {
-		n, err := c.findNodeVersionForOpts(types.NodeID(id), opts, pred)
+	// Iterative over-fetch fallback for external backends that do not
+	// satisfy FilteredVectorSearchCapability. Each iteration re-asks for a
+	// larger top-k from the unfiltered backend search, then drops
+	// temporally-ineligible matches. Stops when:
+	//   - we have ≥ k eligible results, or
+	//   - the backend returns the same number of raw matches as last
+	//     time (the index is exhausted), or
+	//   - the over-fetch ceiling is reached.
+	//
+	// Without this loop, a single SearchNearestNodes(k) call could return
+	// 0 eligible results if the nearest k vectors all happen to be
+	// temporally ineligible, even when farther-but-eligible candidates
+	// exist. The loop preserves correctness at the cost of repeated
+	// server-side work; backends that can pre-filter should implement
+	// FilteredVectorSearchCapability to avoid the loop entirely.
+	const overfetchCeiling = 1 << 16 // 65536 — bounded so a misbehaving backend cannot loop forever
+	resolved := make([]*types.Node, 0, k)
+	lastRaw := -1
+	rawK := k
+	for rawK <= overfetchCeiling {
+		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, rawK, storepkg.QueryOpts{})
 		if err != nil {
-			// Filter passed earlier but resolution lost the version
-			// (e.g. concurrent mutation). Skip silently.
-			continue
+			return nil, err
 		}
-		resolved = append(resolved, n)
+		resolved = resolved[:0]
+		for _, n := range nodes {
+			if n2, ferr := c.findNodeVersionForOpts(n.ID(), opts, pred); ferr == nil {
+				resolved = append(resolved, n2)
+				if len(resolved) >= k {
+					break
+				}
+			}
+		}
+		if len(resolved) >= k {
+			break
+		}
+		if len(nodes) == lastRaw {
+			// Backend returned no new candidates — index exhausted.
+			break
+		}
+		if len(nodes) < rawK {
+			// Backend returned fewer than asked — also exhausted.
+			break
+		}
+		lastRaw = len(nodes)
+		rawK *= 2
 	}
 	return paginateNearestNodes(resolved, opts.After, opts.Limit), nil
-}
-
-// filteredVectorSearchStore is the package-internal hook that lets the Graph
-// layer push a filter into the vector-index search BEFORE the k-cut. All
-// concrete Store impls in this package satisfy it; external Stores can
-// implement it to opt into correct top-k semantics under temporal filters.
-type filteredVectorSearchStore interface {
-	SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error)
 }
 
 // paginateNearestNodes applies cursor pagination to a distance-ordered slice.

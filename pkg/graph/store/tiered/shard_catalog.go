@@ -97,6 +97,36 @@ func (sc *ShardCatalog) AddShard(entry ShardEntry) {
 	sc.Shards = append(sc.Shards, entry)
 }
 
+// snapshotShards returns a deep copy of the current Shards slice. Used by
+// transactional mutators (e.g. RotateHotShard) that need to roll back
+// in-memory catalog mutations when a subsequent Save() fails.
+func (sc *ShardCatalog) snapshotShards() []ShardEntry {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	out := make([]ShardEntry, len(sc.Shards))
+	for i := range sc.Shards {
+		out[i] = sc.Shards[i]
+		// Defensive copy of the slice fields so a later mutation on the
+		// live catalog cannot bleed into the snapshot.
+		if sc.Shards[i].Labels != nil {
+			out[i].Labels = append([]string(nil), sc.Shards[i].Labels...)
+		}
+		if sc.Shards[i].RelTypes != nil {
+			out[i].RelTypes = append([]string(nil), sc.Shards[i].RelTypes...)
+		}
+	}
+	return out
+}
+
+// restoreShards replaces the catalog's Shards slice with the given snapshot.
+// Pair with snapshotShards() to wrap a sequence of catalog mutations in a
+// transactional "save-or-roll-back" block.
+func (sc *ShardCatalog) restoreShards(snapshot []ShardEntry) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.Shards = snapshot
+}
+
 // GetShard looks up a shard by name.
 func (sc *ShardCatalog) GetShard(name string) (*ShardEntry, bool) {
 	sc.mu.RLock()

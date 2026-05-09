@@ -50,16 +50,30 @@ func (a *AdminOps) DecomposeID(id snowflake.ID) IDComponents {
 }
 
 // ForceRotate triggers a hot-shard rotation. Only available with tiered.Store.
+//
+// Concurrency: takes c.mu.Lock — ForceRotate mutates live shard topology and
+// must be in the same exclusion class as Reset/Archive/Restore. Without
+// this lock, Reset (which takes c.mu.Lock) can race ForceRotate's
+// snapshot-then-clear and miss the new hot shard.
 func (a *AdminOps) ForceRotate() error {
-	if ts, ok := a.c.store.(*tiered.Store); ok {
+	c := a.c
+	if ts, ok := c.store.(*tiered.Store); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		return ts.ForceRotate()
 	}
 	return ErrNotTieredStore
 }
 
 // ListShards returns information about all shards. Only available with tiered.Store.
+//
+// Concurrency: takes c.mu.RLock — read-only inspection that must observe a
+// consistent topology, so it joins the tx/batch exclusion class as a reader.
 func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
-	if ts, ok := a.c.store.(*tiered.Store); ok {
+	c := a.c
+	if ts, ok := c.store.(*tiered.Store); ok {
+		c.mu.RLock()
+		defer c.mu.RUnlock()
 		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
@@ -67,8 +81,15 @@ func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
 
 // RebuildCatalog reconstructs the shard catalog from live state.
 // Only available with tiered.Store.
+//
+// Concurrency: takes c.mu.Lock — rewrites the persisted catalog and must
+// not race a concurrent ForceRotate or any tx/batch that could change shard
+// state mid-rebuild.
 func (a *AdminOps) RebuildCatalog() error {
-	if ts, ok := a.c.store.(*tiered.Store); ok {
+	c := a.c
+	if ts, ok := c.store.(*tiered.Store); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		return ts.RebuildCatalog()
 	}
 	return ErrNotTieredStore
@@ -76,8 +97,17 @@ func (a *AdminOps) RebuildCatalog() error {
 
 // Repair scans for cross-shard consistency issues and fixes them.
 // Only available with tiered.Store.
+//
+// Concurrency: takes c.mu.Lock — Phase 2 of repair reads a relationship
+// from one shard and may recreate a missing incoming-index entry on
+// another shard. Without the graph lock, a concurrent rel delete that
+// removes the entity and incoming entry between Repair's read and write
+// re-creates an orphaned incoming entry that the delete just removed.
 func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
-	if ts, ok := a.c.store.(*tiered.Store); ok {
+	c := a.c
+	if ts, ok := c.store.(*tiered.Store); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		return ts.RunRepair()
 	}
 	return nil, ErrNotTieredStore
@@ -85,9 +115,17 @@ func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
 
 // VerifyShard runs hash chain verification on all entities in a shard.
 // Only available with tiered.Store.
+//
+// Concurrency: takes c.mu.RLock — verification reads hash chains over an
+// extended iteration. Without an RLock a concurrent Update could surface
+// a half-written hash chain. Multiple verifications can proceed in
+// parallel; only writers are blocked.
 func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
-	if ts, ok := a.c.store.(*tiered.Store); ok {
-		return ts.VerifyShard(a.c.Hash, shardName)
+	c := a.c
+	if ts, ok := c.store.(*tiered.Store); ok {
+		c.mu.RLock()
+		defer c.mu.RUnlock()
+		return ts.VerifyShard(c.Hash, shardName)
 	}
 	return nil, ErrNotTieredStore
 }

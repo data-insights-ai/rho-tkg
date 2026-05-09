@@ -580,7 +580,12 @@ Distilled from real bugs across 13+ review rounds. Full details in `tasks/lesson
 
 ### Two-Phase Operations
 
-Multi-step mutations are all-or-nothing. Phase 1: read everything, fail fast. Phase 2: apply everything, no error exits. Used by: `DeleteNodeCascade`, batch operations, `CreatePropertyIndex`.
+Multi-step mutations split work into a read/validate phase and an apply phase. The two phases differ in their error contract:
+
+- **All-or-nothing**: `DeleteNodeCascade` (preflight reads adjacency under all locks, then applies under the same lock — no partial state) and `CreatePropertyIndex` (placeholder install + dirty-map tracking + atomic install — see `tasks/lessons.md` A4).
+- **Best-effort with per-operation error reporting**: `BatchBuilder.Execute` runs Phase 2 against each queued operation; failures are recorded as `BatchError` entries on the returned `BatchResult` rather than aborting the batch. The batch always returns `nil` from `Execute` itself (the per-op outcomes live in the result). Callers MUST inspect `result.Failed` and `result.Errors`.
+
+Used by: `DeleteNodeCascade`, `CreatePropertyIndex` (all-or-nothing); `BatchBuilder.Execute` (per-op result reporting).
 
 ### Async Persistence with Last-Write-Wins
 

@@ -22,10 +22,13 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, err := c.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel *types.Relationship
+		err error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, err = c.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -164,10 +167,13 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 // constraint validation against endpoint nodes is required.
 func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, err := c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel *types.Relationship
+		err error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, err = c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -293,10 +299,14 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 // temporal constraint checks against endpoint nodes).
 func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, created, err := c.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel     *types.Relationship
+		created bool
+		err     error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, created, err = c.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
+	})
 	if err == nil && created {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -425,10 +435,13 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, err := c.updateRelationshipInternal(ctx, id, updates)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel *types.Relationship
+		err error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, err = c.updateRelationshipInternal(ctx, id, updates)
+	})
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -606,10 +619,13 @@ func (r *RelOps) UpdateInPlace(id types.RelID, updates map[string]any) (*types.R
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, err := c.updateRelInPlaceInternal(ctx, id, updates)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel *types.Relationship
+		err error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, err = c.updateRelInPlaceInternal(ctx, id, updates)
+	})
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -738,10 +754,10 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
 	c := r.c
-	c.mu.RLock()
-	err := c.deleteRelationshipInternal(ctx, id)
-	ep := c.events
-	c.mu.RUnlock()
+	var err error
+	ep := c.runUnderRLock(func() {
+		err = c.deleteRelationshipInternal(ctx, id)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityCritical})
 	}
@@ -793,10 +809,13 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
-	c.mu.RLock()
-	rel, err := c.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
-	ep := c.events
-	c.mu.RUnlock()
+	var (
+		rel *types.Relationship
+		err error
+	)
+	ep := c.runUnderRLock(func() {
+		rel, err = c.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+	})
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}

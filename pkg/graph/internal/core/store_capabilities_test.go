@@ -43,18 +43,33 @@ func newMandatoryOnlyGraph(t *testing.T) *Core {
 func TestCapability_PropertyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
-	if _, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+	alice, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
 		t.Fatalf("seed Add: %v", err)
 	}
+	if _, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"}); err != nil {
+		t.Fatalf("seed Add Bob: %v", err)
+	}
 
+	// Index management remains optional and surfaces the typed sentinel.
 	if err := g.Index.CreateProperty("Person", "name"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateProperty err = %v, want ErrCapabilityNotSupported", err)
 	}
 	if err := g.Index.DropProperty("Person", "name"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropProperty err = %v, want ErrCapabilityNotSupported", err)
 	}
-	if _, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-		t.Errorf("ByLabelAndProperty err = %v, want ErrCapabilityNotSupported", err)
+
+	// The query itself is correctness-level and MUST work on any backend
+	// that satisfies MandatoryStore — the graph layer falls back to a
+	// label scan + property filter when PropertyIndexCapability is
+	// absent. This is the R2-F4 fix: the optional capability is the
+	// acceleration, not the query semantics.
+	got, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabelAndProperty err = %v, want nil (fallback must answer the query)", err)
+	}
+	if len(got) != 1 || got[0].ID() != alice.ID() {
+		t.Errorf("ByLabelAndProperty returned %+v, want exactly [%d]", got, alice.ID())
 	}
 }
 

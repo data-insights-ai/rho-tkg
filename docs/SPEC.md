@@ -14,7 +14,7 @@
 
 This specification replaces string-based entity IDs, labels, and relationship types with compact internal representations: snowflake `int64` for entity IDs and `uint16` tokens for labels and relationship types. All internal types are unexported. Users interact exclusively through string-based public APIs.
 
-A core architectural decision: **Node and Relationship are pure data structs with no back-references to the graph.** String resolution for labels and types is performed exclusively by the Graph layer or Cypher engine, which own the registries.
+A core architectural decision: **Node and Relationship are pure data structs with no back-references to the graph.** String resolution for labels and types is performed exclusively by the Graph layer (or any downstream consumer that holds a `*graph.Graph` reference and goes through `g.Resolve` / `g.Nodes.Labels` / `g.Rels.Type`).
 
 **Goals:**
 - Reduce per-node structural overhead from ~73B to ~18B (75% reduction)
@@ -167,7 +167,7 @@ type Config struct {
 
 **Node and Relationship never hold references to the Graph, registries, or any external resolver.** They are pure data containers that hold tokens internally and never resolve them to strings themselves.
 
-String resolution is **always** the responsibility of the layer that owns the registry: the Graph layer, the Cypher engine, or the REST/gRPC serialization layer.
+String resolution is **always** the responsibility of the layer that owns the registry: the Graph layer, or any downstream consumer that holds a `*graph.Graph` reference (e.g., `rho/tkgd-v3`'s Cypher engine, a REST/gRPC serialization layer).
 
 ### 4.2 Rationale
 
@@ -190,9 +190,9 @@ There are exactly three consumers that need string labels/types. All three alrea
 
 | Consumer | Has registry? | Resolution method |
 |----------|--------------|-------------------|
-| **Graph layer** | Yes (owns registries) | `graph.NodeLabels(n)`, `graph.RelType(r)` |
-| **Cypher engine** | Yes (holds graph ref) | `graph.ResolveNodeProperty(n, key)` |
-| **REST/gRPC API** | Yes (holds graph ref) | `graph.NodeLabels(n)` before JSON encoding |
+| **Graph layer (this library)** | Yes (owns registries) | `g.Nodes.Labels(n)`, `g.Rels.Type(r)`, `g.Resolve.NodeProperty(n, key)` |
+| **Downstream Cypher engine** (`rho/tkgd-v3`) | Yes (holds *graph.Graph ref) | Same `g.Resolve.*` / `g.Nodes.*` / `g.Rels.*` accessors |
+| **REST/gRPC API** | Yes (holds *graph.Graph ref) | `g.Nodes.Labels(n)` before JSON encoding |
 
 All internal operations — index lookups, label matching, adjacency traversal, hash computation — work with tokens directly. String resolution is a **presentation concern**, not a data concern.
 
@@ -512,14 +512,16 @@ meta/reltype_tokens  -> msgpack([]string)
 
 ---
 
-## 11. Cypher Engine Integration
+## 11. Token Resolution Patterns (for downstream query engines)
+
+This library does not ship a query language. Downstream engines (notably `rho/tkgd-v3`'s Cypher engine) integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes.ByLabel` / `g.Rels.ByType` for token-driven queries.
 
 ### 11.1 Label Matching (resolve once per query)
 
 ```go
-tok, exists := graph.labels.Lookup("Person")
-if !exists {
-    return emptyResult  // label never registered -> skip scan
+tok, ok := g.Resolve.LookupLabel("Person")
+if !ok {
+    return nil, nil // label never registered → empty result
 }
 // Per candidate: node.HasLabelToken(tok) — integer comparison
 ```
@@ -527,81 +529,78 @@ if !exists {
 ### 11.2 Label Disjunction (`:Person|Company`)
 
 ```go
-toks := make([]labelToken, 0, 2)
+var tokens []uint16
 for _, label := range []string{"Person", "Company"} {
-    if tok, ok := graph.labels.Lookup(label); ok {
-        toks = append(toks, tok)
+    if tok, ok := g.Resolve.LookupLabel(label); ok {
+        tokens = append(tokens, tok)
     }
 }
+// Per candidate: any(node.HasLabelToken(tok) for tok in tokens).
 ```
 
 ### 11.3 Type Matching
 
 ```go
-tok, exists := graph.relTypes.Lookup("KNOWS")
-if !exists { return emptyResult }
+tok, ok := g.Resolve.LookupRelType("KNOWS")
+if !ok { return nil, nil }
 // Per candidate: rel.HasTypeToken(tok)
 ```
 
-### 11.4 Property Access
+### 11.4 Property Access (incl. shadow keys)
 
 ```go
-val, ok := graph.ResolveNodeProperty(node, "name")        // user property
-val, ok := graph.ResolveNodeProperty(node, "tkg_labels")   // shadow property
+val, ok := g.Resolve.NodeProperty(node, "name")       // user property
+val, ok := g.Resolve.NodeProperty(node, "tkg_labels") // shadow property
 ```
 
-### 11.5 Cypher `id()` Function
+### 11.5 Entity IDs
 
-**Removed.** No user-accessible entity ID. Use property-based lookups:
+`tkg/v3` does not expose a user-supplied identity for nodes or relationships. Identity is the snowflake ID (typed `NodeID` / `RelID`). Property-based lookups via `g.Nodes.ByLabelAndProperty` are the recommended pattern for application-level identity:
 
-```cypher
-// REMOVED
-WHERE id(n) = "user:alice"
-
-// REPLACEMENT
-WHERE n.external_id = "user:alice"
+```go
+matches, err := g.Nodes.ByLabelAndProperty("User", "external_id", "user:alice", store.QueryOpts{})
 ```
 
 ---
 
-## 12. Public API
+## 12. Public API (v3.4 sub-API surface)
+
+`tkg/v3` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 13 sub-API field accessors. Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
 
 ### 12.1 Node Creation
 
 ```go
-// BEFORE (v0.9.x)
-node := api.CreateNode("user:1", []string{"User"}, map[string]any{"name": "Alice"})
-tkg.AddNode(node)
-
-// AFTER (v1.0)
-node, err := tkg.AddNode([]string{"User"}, map[string]any{"name": "Alice"})
-// Snowflake ID assigned automatically, never exposed
+g, err := graph.New(graph.Config{Store: memory.New()})
+// ...
+n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
+// Snowflake ID assigned automatically; n.ID() is the typed wrapper.
+// Context-aware variant: g.Nodes.AddWithContext(ctx, labels, props).
 ```
 
 ### 12.2 Relationship Creation
 
 ```go
-// BEFORE
-rel := api.CreateRelationship("rel:1", "KNOWS", "user:1", "user:2", nil)
-
-// AFTER — via Cypher
-result, _ := tkg.ExecuteCypher(ctx, `
-    MATCH (a:User {name: "Alice"}), (b:User {name: "Bob"})
-    CREATE (a)-[:KNOWS]->(b)
-`)
+a, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
+b, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Bob"})
+r, err := g.Rels.Add("KNOWS", a, b, nil)
+// High-throughput variant (skips endpoint fetch — no FromNodeHash/ToNodeHash):
+//   g.Rels.AddByID("KNOWS", a.ID(), b.ID(), nil)
+// Atomic check-then-create:
+//   g.Rels.AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), nil)
 ```
 
 ### 12.3 Node Retrieval
 
 ```go
-// BEFORE
-node, found := tkg.GetNode("user:1")
+// By ID:
+n, err := g.Nodes.Get(a.ID())
 
-// AFTER — via Cypher or Graph API
-result, _ := tkg.ExecuteCypher(ctx, `MATCH (n:User {name: "Alice"}) RETURN n`)
+// By label + property (uses the property index when present, falls back to
+// label scan + property filter when PropertyIndexCapability is absent):
+matches, err := g.Nodes.ByLabelAndProperty("User", "name", "Alice", store.QueryOpts{})
 
-// Or programmatic:
-nodes := graph.FindNodes("User", "name", "Alice")
+// All nodes carrying a label:
+users, err := g.Nodes.ByLabel("User", store.QueryOpts{})
 ```
 
 ---

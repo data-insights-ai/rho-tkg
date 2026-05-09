@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -14,58 +15,121 @@ import (
 
 // RotateHotShard demotes the current hot shard to warm and creates a new hot shard.
 // Caller must hold ts.mu.Lock.
+//
+// Persistence order is transactional: the new badger shard is opened, the
+// catalog is mutated in-memory, and the catalog is persisted to disk
+// BEFORE any live in-memory topology mutation (hotShard pointer switch,
+// eventShards map insert, oldHot tier flip, warm→cold demotions). If the
+// persist fails, the in-memory catalog is rolled back from a snapshot, the
+// new badger shard is closed and removed, and the live topology is left
+// untouched. Without this discipline, a Save failure would leave the
+// process running with a switched-over hotShard but a durable catalog
+// describing the old topology — split-brain on restart.
 func (ts *Store) RotateHotShard() error {
 	oldHot := ts.hotShard
 	now := time.Now()
 
-	// Flush pending writes to the old hot shard.
+	// Flush pending writes to the old hot shard. Failure here is benign:
+	// no live state has changed yet.
 	if err := oldHot.store.Flush(); err != nil {
 		return fmt.Errorf("graph: flush hot shard before rotation: %w", err)
 	}
 
-	// Mark old hot as warm. Adjust timeEnd to the actual rotation time so that
-	// entities created during this shard's tenure still resolve correctly via
-	// snowflake ID timestamp extraction.
-	oldHot.tier = TierWarm
-	oldHot.readOnly = true
-	// Align boundary to millisecond precision + 1ms: snowflake IDs encode time at
-	// millisecond resolution. Adding 1ms ensures entities created in the same
-	// millisecond as the rotation (which are in the old shard) resolve correctly.
+	// Align boundary to millisecond precision + 1ms: snowflake IDs encode
+	// time at millisecond resolution. Adding 1ms ensures entities created
+	// in the same millisecond as the rotation (which are in the old
+	// shard) resolve correctly.
 	boundary := now.Truncate(time.Millisecond).Add(time.Millisecond)
-	oldHot.timeEnd = boundary
-	ts.catalog.UpdateShardTier(oldHot.name, TierWarm)
-	ts.catalog.UpdateShardTimeEnd(oldHot.name, boundary)
 
-	// Create new hot shard.
+	// Compute the new shard's name and on-disk location. If the computed
+	// name collides with the old hot shard (rotation within the same
+	// window — forced rotation or edge timing), append a disambiguating
+	// suffix.
 	newName := shardWindowName(now, ts.shardWindow)
-	windowStart := boundary // new shard starts at next ms after rotation (contiguous)
+	windowStart := boundary
 	windowEnd := shardWindowStart(now, ts.shardWindow).Add(ts.shardWindow)
-
-	// If the computed name collides with the old hot shard (rotation within
-	// the same window — can happen with forced rotation or edge timing),
-	// append a disambiguating suffix.
 	if _, exists := ts.eventShards[newName]; exists {
 		newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
 	}
-
 	newDir := newName
 	if !ts.inMemory {
 		newDir = filepath.Join("events", newName)
 	}
+
+	// Open the new shard's badger store. Failure here is also benign:
+	// the catalog has not been mutated yet.
 	newStore, err := ts.openBadgerStore(newDir, false)
 	if err != nil {
 		return fmt.Errorf("graph: open new hot shard: %w", err)
 	}
 
-	// Set up temporal indexes on the new hot shard before it begins accepting writes.
+	// Set up temporal indexes on the new hot shard before it begins
+	// accepting writes.
 	ts.tempIdxMu.Lock()
 	for _, tok := range ts.tempIdxLabels {
-		// Errors other than ErrTemporalIndexExists are unexpected on a fresh shard.
+		// Errors other than ErrTemporalIndexExists are unexpected on a
+		// fresh shard.
 		if err := newStore.CreateTemporalIndex(tok); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
 			slog.Error("graph: create temporal index on new hot shard", "token", tok, "error", err)
 		}
 	}
 	ts.tempIdxMu.Unlock()
+
+	// Snapshot the catalog before any mutation so we can roll back if
+	// Save() fails. After this point, every catalog mutation is
+	// considered tentative until persisted.
+	catalogSnapshot := ts.catalog.snapshotShards()
+
+	// Compute warm→cold demotions. Captured separately so the live
+	// EventShard.tier flip can be applied only after the catalog persists.
+	var coldDemotions []*EventShard
+	if ts.coldAfter > 0 {
+		coldThreshold := now.Add(-ts.coldAfter)
+		for _, es := range ts.eventShards {
+			if es.tier == TierWarm && es.timeEnd.Before(coldThreshold) {
+				coldDemotions = append(coldDemotions, es)
+			}
+		}
+	}
+
+	// Tentative catalog mutations (in-memory only).
+	ts.catalog.UpdateShardTier(oldHot.name, TierWarm)
+	ts.catalog.UpdateShardTimeEnd(oldHot.name, boundary)
+	ts.catalog.AddShard(ShardEntry{
+		Name:      newName,
+		Kind:      ShardEvent,
+		Tier:      TierHot,
+		Path:      newDir,
+		TimeStart: windowStart,
+		TimeEnd:   windowEnd,
+	})
+	for _, es := range coldDemotions {
+		ts.catalog.UpdateShardTier(es.name, TierCold)
+	}
+
+	// Persist the catalog. On failure, undo every tentative catalog
+	// mutation, close + remove the new badger shard, and return the
+	// error. Live in-memory topology has NOT been touched yet, so no
+	// rollback is needed there.
+	if !ts.inMemory {
+		if err := ts.catalog.Save(); err != nil {
+			ts.catalog.restoreShards(catalogSnapshot)
+			if cerr := newStore.Close(); cerr != nil {
+				slog.Error("graph: rollback close new hot shard", "shard", newName, "error", cerr)
+			}
+			if !ts.inMemory {
+				if rerr := os.RemoveAll(filepath.Join(ts.dataDir, newDir)); rerr != nil {
+					slog.Error("graph: rollback remove new hot shard files", "dir", newDir, "error", rerr)
+				}
+			}
+			return fmt.Errorf("graph: save catalog after rotation: %w", err)
+		}
+	}
+
+	// Catalog persisted. From here we commit the live in-memory topology.
+	oldHot.tier = TierWarm
+	oldHot.readOnly = true
+	oldHot.timeEnd = boundary
 
 	newES := &EventShard{
 		name:      newName,
@@ -79,33 +143,11 @@ func (ts *Store) RotateHotShard() error {
 	ts.eventShards[newName] = newES
 	ts.hotShard = newES
 
-	// Register in catalog and persist.
-	ts.catalog.AddShard(ShardEntry{
-		Name:      newName,
-		Kind:      ShardEvent,
-		Tier:      TierHot,
-		Path:      newDir,
-		TimeStart: windowStart,
-		TimeEnd:   windowEnd,
-	})
-
-	// Demote warm shards to cold if they exceed ColdAfter threshold.
-	if ts.coldAfter > 0 {
-		coldThreshold := now.Add(-ts.coldAfter)
-		for _, es := range ts.eventShards {
-			if es.tier == TierWarm && es.timeEnd.Before(coldThreshold) {
-				es.tier = TierCold
-				ts.catalog.UpdateShardTier(es.name, TierCold)
-				// Do NOT close the store here — let idle-close handle it safely
-				// (avoids closing while in-flight reads hold pointers from snapshots).
-			}
-		}
-	}
-
-	if !ts.inMemory {
-		if err := ts.catalog.Save(); err != nil {
-			return fmt.Errorf("graph: save catalog after rotation: %w", err)
-		}
+	for _, es := range coldDemotions {
+		es.tier = TierCold
+		// Do NOT close the store here — let idle-close handle it safely
+		// (avoids closing while in-flight reads hold pointers from
+		// snapshots).
 	}
 
 	return nil

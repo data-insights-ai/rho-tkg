@@ -14,26 +14,27 @@ import (
 // with optional pagination. Resolves the label name to a token.
 // Returns nil if the label is not registered.
 //
-// ByLabelAndProperty a temporal filter, the call falls through to the store-level
-// property index for O(matches) lookup. When opts carries a temporal filter,
-// the candidate set is the union of (nodes currently matching label+property
-// — seeded via the same property-index lookup) and (every known history ID).
-// Each candidate is then resolved to its version overlapping the requested
-// time and the predicate re-checked against that historical version, so a
-// node whose label and property held at the requested time is included even
-// if a later version no longer matches.
+// Without a temporal filter, the call falls through to the store-level
+// property index for O(matches) lookup when the backend implements
+// PropertyIndexCapability; otherwise the graph layer falls back to a
+// label-scan + property filter using the mandatory NodesByLabel surface.
+// The fallback is correctness-preserving (every in-tree backend already
+// applies the same scan-and-filter internally when no property index
+// covers the (label, key) pair). When opts carries a temporal filter,
+// the candidate set is the union of (nodes currently matching
+// label+property — seeded via the same path) and (every known history
+// ID). Each candidate is then resolved to its version overlapping the
+// requested time and the predicate re-checked against that historical
+// version, so a node whose label and property held at the requested
+// time is included even if a later version no longer matches.
 func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	piCap, err := c.propertyIndexCap()
-	if err != nil {
-		return nil, err
-	}
 	if !hasTemporalFilter(opts) {
-		return piCap.NodesByLabelAndProperty(tok, key, value, opts)
+		return c.nodesByLabelAndProperty(tok, key, value, opts)
 	}
 	if opts.Depth != storepkg.DepthAll {
 		return nil, ErrDepthTemporalUnsupported
@@ -42,11 +43,10 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if targetKey == "" {
 		return nil, nil
 	}
-	// Indexed candidate set: nodes that currently match label+property via the
-	// store-level property index (when available — falls back internally to a
-	// label scan if n property index is registered), merged with all history
-	// IDs to cover deleted/changed nodes whose historical version matched.
-	currentMatching, err := piCap.NodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	// Indexed (or fallback-scanned) candidate set: nodes that currently
+	// match label+property, merged with all history IDs to cover
+	// deleted/changed nodes whose historical version matched.
+	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {
 		return nil, err
 	}

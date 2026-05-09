@@ -3,7 +3,10 @@ package core
 import (
 	"fmt"
 
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Capability accessors — type-assert the store field against an optional
@@ -47,4 +50,44 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 		return nil, fmt.Errorf("%w: HighFrequencyIndexCapability", storepkg.ErrCapabilityNotSupported)
 	}
 	return cap, nil
+}
+
+// nodesByLabelAndProperty answers the (label-token, property-key, value)
+// query whether or not the underlying store implements
+// PropertyIndexCapability. When the capability is present, the call
+// delegates to the store's optimised NodesByLabelAndProperty path. When
+// absent, the graph layer falls back to a label scan + property filter
+// over the mandatory NodesByLabel + property comparison. Every in-tree
+// backend already applies the same scan-and-filter internally when no
+// property index covers (label, key); replicating it here ensures
+// out-of-tree mandatory-only backends still get the correct semantics —
+// the optional capability is index management (acceleration), not query
+// correctness.
+func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if cap, ok := c.store.(storepkg.PropertyIndexCapability); ok {
+		return cap.NodesByLabelAndProperty(tok, key, value, opts)
+	}
+	// Fallback: label scan + property filter. Pagination is applied
+	// after filtering since the property predicate can drop arbitrary
+	// elements; pre-filter pagination would over-count toward Limit.
+	pageOpts := opts
+	pageOpts.After = 0
+	pageOpts.Limit = 0
+	candidates, err := c.store.NodesByLabel(tok, pageOpts)
+	if err != nil {
+		return nil, err
+	}
+	wantKey := indexpkg.PropertyValueKey(value)
+	out := make([]*types.Node, 0, len(candidates))
+	for _, n := range candidates {
+		v, found := n.GetProperty(key)
+		if !found {
+			continue
+		}
+		if indexpkg.PropertyValueKey(v) != wantKey {
+			continue
+		}
+		out = append(out, n)
+	}
+	return storeutil.PaginateNodes(out, opts.After, opts.Limit), nil
 }
