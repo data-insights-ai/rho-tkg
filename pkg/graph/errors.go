@@ -34,6 +34,7 @@ var (
 	ErrZeroID                   = core.ErrZeroID
 	ErrNotTieredStore           = core.ErrNotTieredStore
 	ErrAlreadyClosed            = core.ErrAlreadyClosed
+	ErrGraphClosed              = core.ErrGraphClosed
 	ErrInvalidTimeRange         = core.ErrInvalidTimeRange
 	ErrLabelNotFound            = core.ErrLabelNotFound
 	ErrLastLabel                = core.ErrLastLabel
@@ -45,3 +46,25 @@ var (
 	ErrNameTooLong              = core.ErrNameTooLong
 	ErrSelfLoop                 = core.ErrSelfLoop
 )
+
+// IO sentinels (R4-F8). Re-exported so external callers can write
+// `errors.Is(err, ErrImportSizeLimit)` without dipping into internal/core.
+// Mirrored on pkg/graph/io as well — pick whichever import the caller
+// already has.
+var (
+	ErrIncompatibleExport   = core.ErrIncompatibleExport
+	ErrIncompatibleRegistry = core.ErrIncompatibleRegistry
+	ErrCorruptExport        = core.ErrCorruptExport
+	ErrImportSizeLimit      = core.ErrImportSizeLimit
+)
+
+// ErrNoVersionAsOf is the bitemporal sentinel returned by g.Temporal.NodeAsOf
+// / RelAsOf when no version was committed at or before the supplied
+// transaction time.
+var ErrNoVersionAsOf = core.ErrNoVersionAsOf
+
+// ErrTxDone is the transaction-completion sentinel returned by g.Tx.Run /
+// RunContext / the imperative *GraphTx methods when the transaction has
+// already committed or rolled back. Aliases store.ErrTxDone so external
+// callers can use either qualifier.
+var ErrTxDone = storepkg.ErrTxDone

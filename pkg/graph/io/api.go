@@ -1,7 +1,37 @@
 // Package io is a sub-API accessor for graph export/import.
 package io
 
-import "io"
+import (
+	"errors"
+	"io"
+)
+
+// Sentinel errors surfaced by Import / ImportWithOptions. The same
+// values are re-exported from pkg/graph (graph.ErrImportSizeLimit,
+// etc.) — callers that already import pkg/graph/io can use the
+// `tkgio.Err*` qualifier directly to keep `errors.Is` checks tidy.
+var (
+	// ErrImportSizeLimit is returned during Phase 1 when the staging
+	// file would exceed ImportOptions.MaxStagedBytes. Graph state is
+	// unchanged on this error.
+	ErrImportSizeLimit = errors.New("graph: import staging exceeds MaxStagedBytes")
+
+	// ErrIncompatibleExport is returned when the export format
+	// version on the wire differs from the runtime's
+	// exportFormatVersion. Phase 1 surfaces it from header parsing.
+	ErrIncompatibleExport = errors.New("graph: incompatible export format version")
+
+	// ErrIncompatibleRegistry is returned when an existing non-empty
+	// registry maps tokens differently from the export's registry.
+	// Idempotent re-import (identical mappings) is silent.
+	ErrIncompatibleRegistry = errors.New("graph: imported registry conflicts with existing registry")
+
+	// ErrCorruptExport wraps every structural-validity failure on
+	// import (token 0 in primary label, token outside [1, 65535],
+	// etc.). Distinct from ErrIncompatibleExport: the format version
+	// matches but a record is malformed.
+	ErrCorruptExport = errors.New("graph: corrupt export record")
+)
 
 // ImportOptions configures the staging behaviour of IO.Import.
 //

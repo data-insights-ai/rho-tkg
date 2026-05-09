@@ -133,7 +133,11 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 	g := newTestGraph(t)
 	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	// Set start node's ValidFrom to the far future at creation time so the
+	// store-side state seen by the constraint check (R4-F5) reflects it.
+	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_from": types.Instant(9_999_999_999_999),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +145,6 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set start node's ValidFrom to the far future — rel's snowflake-derived from
-	// is approximately "now" relative to the epoch (~few billion ms), which is less
-	// than 9_999_999_999_999.
-	a.SetTemporal(&types.TemporalMetadata{ValidFrom: 9_999_999_999_999})
 
 	_, err = g.Rels.Add("LINK", a, b, nil)
 	if err == nil {
@@ -168,13 +167,14 @@ func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	// End node valid from the far future — persisted via shadow props so the
+	// store-side state seen by the constraint check (R4-F5) reflects it.
+	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_from": types.Instant(9_999_999_999_999),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// End node valid from the far future.
-	b.SetTemporal(&types.TemporalMetadata{ValidFrom: 9_999_999_999_999})
 
 	_, err = g.Rels.Add("LINK", a, b, nil)
 	if err == nil {
@@ -193,7 +193,10 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	g := newTestGraph(t)
 	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	// Start node expired at t=1ms — persisted via shadow props (R4-F5).
+	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_to": types.Instant(1),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,9 +204,6 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Start node expired at t=1ms. Rel's snowflake-derived from is ~now >> 1.
-	a.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
 	_, err = g.Rels.Add("LINK", a, b, nil)
 	if err == nil {
@@ -226,13 +226,13 @@ func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	// End node expired at t=1ms — persisted via shadow props (R4-F5).
+	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_to": types.Instant(1),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// End node expired at t=1ms.
-	b.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
 	_, err = g.Rels.Add("LINK", a, b, nil)
 	if err == nil {
@@ -345,7 +345,10 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 	g := newTestGraph(t)
 	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	// Start node expired — persisted via shadow props (R4-F5).
+	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_to": types.Instant(1),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,8 +356,6 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Start node expired.
-	a.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
 	_, err = g.Rels.Add("LINK", a, b, nil)
 	if err == nil {
@@ -380,12 +381,13 @@ func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	// End node expired — persisted via shadow props (R4-F5).
+	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		"tkg_valid_to": types.Instant(1),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// End node expired.
-	b.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
 	relID := g.Rels.NextID()
 	_, err = g.Rels.Import(context.Background(), relID, "LINK", a, b, nil)

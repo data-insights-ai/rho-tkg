@@ -59,9 +59,12 @@ func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, err
 func (n *NodeOps) CloseVersion(id types.NodeID, t types.Instant) error {
 	c := n.c
 	var err error
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		err = c.closeNodeVersionInternal(id, t)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -152,9 +155,12 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 func (r *RelOps) CloseVersion(id types.RelID, t types.Instant) error {
 	c := r.c
 	var err error
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		err = c.closeRelVersionInternal(id, t)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}

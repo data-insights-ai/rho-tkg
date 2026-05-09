@@ -174,6 +174,15 @@ type AsyncEventBus struct {
 	queues       [numPriorityLevels]chan Event // one channel per priority level
 	backpressure BackpressureStrategy
 
+	// wakeupCh coalesces "events available" signals (R4-F16). Each
+	// Publish does a non-blocking send to wakeupCh after enqueueing so
+	// idle workers can wake up; the workers then ALWAYS consume via
+	// the priority-ordered scan, never directly from a per-priority
+	// queue in the blocking-select branch. Buffered with cap 1 so
+	// repeated Publishes coalesce into a single wake-up while the
+	// worker is busy.
+	wakeupCh chan struct{}
+
 	wg        sync.WaitGroup
 	stopCh    chan struct{}
 	closeOnce sync.Once
@@ -193,6 +202,7 @@ func NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus {
 		handlers:     make(map[int]EventHandler),
 		backpressure: cfg.Backpressure,
 		stopCh:       make(chan struct{}),
+		wakeupCh:     make(chan struct{}, 1),
 	}
 	for i := range ab.queues {
 		ab.queues[i] = make(chan Event, cfg.QueueSize)
@@ -226,6 +236,12 @@ func (ab *AsyncEventBus) Subscribe(h EventHandler) func() {
 
 // Publish enqueues an event for async delivery into the per-priority queue.
 // Behavior when the target queue is full is determined by BackpressureStrategy.
+//
+// After a successful enqueue (or a successful drop-oldest replacement),
+// signals the worker via the coalescing wakeupCh so the worker re-runs
+// the priority-ordered scan and dispatches in strict priority order
+// (R4-F16). The signal is non-blocking; workers already running their
+// scan will discover the new event without an extra wake.
 func (ab *AsyncEventBus) Publish(e Event) {
 	p := e.Priority
 	if int(p) >= numPriorityLevels {
@@ -237,12 +253,14 @@ func (ab *AsyncEventBus) Publish(e Event) {
 	case BackpressureBlock:
 		select {
 		case q <- e:
+			ab.signalWakeup()
 		case <-ab.stopCh:
 		}
 	case BackpressureDropOldest:
 		for {
 			select {
 			case q <- e:
+				ab.signalWakeup()
 				return
 			default:
 				select {
@@ -258,9 +276,21 @@ func (ab *AsyncEventBus) Publish(e Event) {
 	case BackpressureDropLatest:
 		select {
 		case q <- e:
+			ab.signalWakeup()
 		default:
 			// Queue full — discard this event
 		}
+	}
+}
+
+// signalWakeup pokes the worker via the coalescing wakeupCh. Buffered
+// cap 1 means repeated Publishes against an already-pending wake-up
+// collapse into a single signal; the worker observes there is work and
+// re-runs the priority-ordered drain.
+func (ab *AsyncEventBus) signalWakeup() {
+	select {
+	case ab.wakeupCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -273,10 +303,16 @@ var priorityOrder = [numPriorityLevels]EventPriority{
 	PriorityDeferred,
 }
 
-// worker drains per-priority queues in priority order and invokes handlers.
+// worker drains per-priority queues in strict priority order via a
+// non-blocking scan; when all queues are empty it blocks ONLY on
+// stopCh + wakeupCh (R4-F16). Critically, the blocking branch never
+// receives an event directly — it only learns "events are now
+// available" and loops back to the priority scan. This guarantees
+// that when multiple priority queues become ready together, the
+// scan picks the highest-priority one even though Go's select on
+// multiple ready channels is pseudo-random.
+//
 // Priority ordering: Critical > High > Normal > Low > Deferred.
-// Go's select does not guarantee order when multiple channels are ready, so a
-// non-blocking check per priority implements the strict drain order.
 func (ab *AsyncEventBus) worker() {
 	defer ab.wg.Done()
 	for {
@@ -303,21 +339,14 @@ func (ab *AsyncEventBus) worker() {
 		}
 
 		if !served {
-			// All queues empty — block until any event or stop signal arrives.
+			// All queues empty — wait for a wake-up or stop. Drain any
+			// pending wake-up signal that accumulated while we were
+			// dispatching; the next iteration runs the priority scan.
 			select {
 			case <-ab.stopCh:
 				ab.drainAll()
 				return
-			case e := <-ab.queues[PriorityCritical]:
-				ab.dispatch(e)
-			case e := <-ab.queues[PriorityHigh]:
-				ab.dispatch(e)
-			case e := <-ab.queues[PriorityNormal]:
-				ab.dispatch(e)
-			case e := <-ab.queues[PriorityLow]:
-				ab.dispatch(e)
-			case e := <-ab.queues[PriorityDeferred]:
-				ab.dispatch(e)
+			case <-ab.wakeupCh:
 			}
 		}
 	}

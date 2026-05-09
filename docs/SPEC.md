@@ -722,22 +722,28 @@ users, err := g.Nodes.ByLabel("User", store.QueryOpts{})
 - History: 100 versions of one node, prefix scan in version order
 - Key ordering: verify snowflake IDs sort chronologically as big-endian bytes
 
-### Phase 4: Cypher & Graph API Integration
+### Phase 4: Graph API Integration (historical — Cypher / api/api.go are NOT in this repo)
 
-**Files:**
-- `pkg/graph/graph.go` — NodeLabels(), NodeHasLabel(), RelationshipType(), ResolveNodeProperty(), ResolveRelProperty()
-- `pkg/cypher/engine.go` — registry-aware label/type matching, property access via graph
-- `pkg/cypher/match.go` — token-based candidate filtering
-- `pkg/api/api.go` — new AddNode/AddRelationship signatures
+> **Note (R4-F18):** Phase 4 originally tracked a Cypher engine and HTTP/gRPC
+> API. Those concerns moved to `rho/tkgd-v3` during the v3.0 split — this
+> repository (`rho/tkg/v3`) is a pure library. The bullets below describe
+> the resolver and graph-API surface that remain here; pkg/cypher/ and
+> pkg/api/ are intentionally absent. See CLAUDE.md > Project Overview for
+> the canonical scope statement.
+
+**Files (in this repo):**
+- `pkg/graph/internal/core/resolution.go` — NodeLabels, NodePrimaryLabel, NodeHasLabel, RelationshipType, RelationshipHasType, ResolveNodeProperty, ResolveRelProperty (all 21 shadow keys)
+- `pkg/graph/resolve/api.go` — public sub-API surface (`g.Resolve.*`)
+
+**Files (moved to rho/tkgd-v3):**
+- Cypher engine, query plan, AST — superseded by tkgd-v3.
+- HTTP/gRPC API — superseded by tkgd-v3.
 
 **Tests:**
-- Graph API: NodeLabels(), NodePrimaryLabel(), NodeHasLabel()
-- Graph API: RelationshipType(), RelationshipHasType()
-- Graph API: ResolveNodeProperty() for all 15 shadow keys
-- Graph API: ResolveRelProperty() for tkg_type + all shared shadow keys
-- Cypher: MATCH (n:Person), MATCH (n:Person|Company), MATCH ()-[:KNOWS]->()
-- Cypher: nonexistent label/type returns empty result
-- Cypher: tkg_id, tkg_start_id, tkg_end_id do NOT resolve
+- Graph API: NodeLabels, NodePrimaryLabel, NodeHasLabel
+- Graph API: RelationshipType, RelationshipHasType
+- Graph API: ResolveNodeProperty for all 21 shadow keys
+- Graph API: ResolveRelProperty for `tkg_type` + all shared shadow keys
 
 ---
 

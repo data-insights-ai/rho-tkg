@@ -24,6 +24,19 @@ import (
 // Execute order: create nodes → create rels → update nodes → update rels →
 // delete rels → delete nodes. Nodes before rels (endpoints must exist),
 // deletes last (don't delete something that's about to be updated).
+//
+// Queue-time side effects (R4-F13): AddNode and AddRelationship allocate
+// label/rel-type registry tokens and consume snowflake IDs at queue time.
+// This is intentional — the entity returned from AddNode is the same
+// pointer eventually persisted by Execute, so callers can chain
+// AddRelationship using the queued node's ID. The trade-off is that a
+// queued-but-never-Executed batch permanently registers the labels/types
+// it touched and skips IDs from the snowflake sequence. Validation
+// rejections (label-name format, property limits, self-loop) run BEFORE
+// token allocation per R4-F14, so only validation-PASSING-but-abandoned
+// batches leak. Callers concerned about registry pollution should call
+// Execute (even with the empty-result variant) rather than abandoning a
+// builder.
 type BatchBuilder struct {
 	g           *Core
 	nodes       []pendingNode
@@ -216,11 +229,6 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
 	}
 
-	typeToken, err := b.g.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
-	}
-
 	startID := startNode.ID()
 	endID := endNode.ID()
 
@@ -230,6 +238,13 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	// through batch execution.
 	if startID == endID && !b.g.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
+	}
+
+	// R4-F14: allocate rel-type token AFTER the self-loop rejection so a
+	// rejected queue call does not pollute the rel-type registry.
+	typeToken, err := b.g.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
 	}
 
 	id := b.g.Rels.NextID()
@@ -450,19 +465,25 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// can roll back TxFrom and account success/failure outside the
 		// locked region.
 		var (
-			outErr  error
-			refresh error
-			txNow   types.Instant
+			outErr     error
+			refresh    error
+			constraint error
+			txNow      types.Instant
 		)
 		func() {
 			b.g.entityLocks.LockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 			defer b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
-			// Endpoint hash refresh: ErrNodeNotFound is silent (the
-			// endpoint was deleted while we held only the rel lock);
-			// any other store error is operational and must surface
-			// as a per-rel BatchError rather than letting the rel be
-			// written with stale or empty endpoint hashes (F5).
+			// Endpoint hash refresh + temporal-constraint check.
+			// ErrNodeNotFound is silent (the endpoint was deleted
+			// while we held only the rel lock); any other store
+			// error is operational and must surface as a per-rel
+			// BatchError rather than letting the rel be written with
+			// stale or empty endpoint hashes (F5). Both endpoints
+			// are also fed into checkTemporalConstraints so the
+			// batch path enforces the same invariants as
+			// addRelationshipInternal (R4-F6).
+			var startNode, endNode *types.Node
 			if pr.startID == pr.endID {
 				n, err := b.g.store.GetNode(pr.startID)
 				if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -474,27 +495,31 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 						pr.relIntegrity.FromNodeHash = ig.Hash
 						pr.relIntegrity.ToNodeHash = ig.Hash
 					}
+					startNode = n
+					endNode = n
 				}
 			} else {
-				startNode, sErr := b.g.store.GetNode(pr.startID)
+				sn, sErr := b.g.store.GetNode(pr.startID)
 				if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
 					refresh = fmt.Errorf("graph: batch rel start-node hash refresh: %w", sErr)
 					return
 				}
 				if sErr == nil {
-					if sIg := startNode.Integrity(); sIg != nil {
+					if sIg := sn.Integrity(); sIg != nil {
 						pr.relIntegrity.FromNodeHash = sIg.Hash
 					}
+					startNode = sn
 				}
-				endNode, eErr := b.g.store.GetNode(pr.endID)
+				en, eErr := b.g.store.GetNode(pr.endID)
 				if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
 					refresh = fmt.Errorf("graph: batch rel end-node hash refresh: %w", eErr)
 					return
 				}
 				if eErr == nil {
-					if eIg := endNode.Integrity(); eIg != nil {
+					if eIg := en.Integrity(); eIg != nil {
 						pr.relIntegrity.ToNodeHash = eIg.Hash
 					}
+					endNode = en
 				}
 			}
 			// SetIntegrity is a no-op against the same pointer the
@@ -506,6 +531,17 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			pr.temporal.TxFrom = txNow
 			pr.rel.SetTemporal(pr.temporal)
 
+			// R4-F6: enforce temporal constraints when both
+			// endpoints are live. If either endpoint has been
+			// deleted (cascade-out) we let the existing rel-write
+			// fail with the standard endpoint-missing semantics.
+			if startNode != nil && endNode != nil {
+				if cErr := b.g.checkTemporalConstraints(pr.rel, startNode, endNode); cErr != nil {
+					constraint = cErr
+					return
+				}
+			}
+
 			outErr = b.g.store.PutRelationship(pr.rel)
 		}()
 
@@ -515,6 +551,23 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				Op:  "AddRelationship",
 				ID:  types.EntityID(pr.rel.ID()),
 				Err: refresh,
+			})
+			continue
+		}
+
+		if constraint != nil {
+			// R4-F6: temporal-constraint failures must roll back the
+			// TxFrom stamp on the caller-visible *types.Relationship
+			// just like operational failures below — the rel was
+			// never persisted, so its in-memory tx time must not
+			// outlive the batch.
+			pr.temporal.TxFrom = 0
+			pr.rel.SetTemporal(pr.temporal)
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "AddRelationship",
+				ID:  types.EntityID(pr.rel.ID()),
+				Err: constraint,
 			})
 			continue
 		}

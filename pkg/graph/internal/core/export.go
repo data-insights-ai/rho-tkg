@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -52,23 +53,16 @@ type exportHeader struct {
 	RelCount   int64 `msgpack:"rc"`
 }
 
-// ErrIncompatibleExport is returned when the export stream carries an
-// unsupported format version.
-var ErrIncompatibleExport = errors.New("graph: incompatible export format version")
-
-// ErrIncompatibleRegistry is returned by IO.Import when the export stream
-// carries a label or reltype registry that conflicts with an existing non-empty
-// registry whose token mappings differ. Importing with a mismatched registry
-// would assign wrong labels/types to all entities without any visible error.
-var ErrIncompatibleRegistry = errors.New("graph: imported registry conflicts with existing registry")
-
-// ErrCorruptExport is returned by IO.Import when an export record contains
-// structurally invalid data — e.g. a node with primary-label token 0 (reserved)
-// or a relationship with type token 0. IO.Import reads from an arbitrary
-// io.Reader (untrusted boundary); validation must surface bad records as
-// typed errors rather than letting types.NewNode / types.NewRelationship panic
-// downstream.
-var ErrCorruptExport = errors.New("graph: corrupt export record")
+// IO sentinels — canonical declarations live in pkg/graph/io so external
+// callers can use `errors.Is(err, tkgio.ErrIncompatibleExport)` without
+// importing internal/core. Aliasing here keeps internal references on
+// the short identifier while the exported identity sits in the public
+// package (R4-F8).
+var (
+	ErrIncompatibleExport   = tkgio.ErrIncompatibleExport
+	ErrIncompatibleRegistry = tkgio.ErrIncompatibleRegistry
+	ErrCorruptExport        = tkgio.ErrCorruptExport
+)
 
 // maxExportRecordSize caps the per-record allocation in readExportRecord.
 // A node with 1000 max-size properties is ~66 MiB; 128 MiB gives safe headroom.
@@ -82,8 +76,16 @@ const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 // 4-byte big-endian body length. This layout allows forward-compatible streaming
 // without loading the whole file into memory.
 //
-// Export holds c.mu.RLock for the duration — concurrent Snapshot, Reset,
-// and individual Add/Update/Delete mutations are all blocked by c.mu.
+// Export holds c.mu.RLock for the duration. That excludes tx/batch (which
+// take c.mu.Lock) and Reset (which takes c.mu.Lock), but does NOT exclude
+// individual Add/Update/Delete mutations, which also use c.mu.RLock and
+// can interleave with Export's reads (R4-F4). The streamed snapshot is
+// therefore best-effort: header counts, current entities, history
+// records, and relationship records can each be observed at slightly
+// different points along the standalone-mutation timeline. Callers that
+// require a strongly consistent snapshot should drive Export from
+// inside a tx/batch (which takes the write lock) or pre-commit a
+// snapshot via the Temporal sub-API.
 func (o *IOOps) Export(w io.Writer) error {
 	c := o.c
 	c.mu.RLock()
@@ -225,10 +227,10 @@ func (o *IOOps) Export(w io.Writer) error {
 	return nil
 }
 
-// ErrImportSizeLimit is returned by Import when the staging file would
-// exceed ImportOptions.MaxStagedBytes during Phase 1. The graph state
-// is unchanged when this error is returned.
-var ErrImportSizeLimit = errors.New("graph: import staging exceeds MaxStagedBytes")
+// ErrImportSizeLimit is the canonical IO size-cap sentinel — declared in
+// pkg/graph/io and aliased here so internal references stay on the short
+// identifier (R4-F8).
+var ErrImportSizeLimit = tkgio.ErrImportSizeLimit
 
 // Import reads a portable graph snapshot from r using default options
 // (platform default temp dir, no size cap). See ImportWithOptions for
@@ -318,6 +320,17 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// R4-F11: track whether we've seen a header and a registry before
+	// any tokenized entity record. Tokenized records (nodes / rels and
+	// their histories) reference label/rel-type tokens that resolve
+	// through the registry — without a compatible registry import, the
+	// imported entities have unresolvable labels/types and label/type
+	// queries cannot find them.
+	var (
+		seenHeader   bool
+		seenRegistry bool
+	)
+
 	for {
 		tag, data, rerr := readExportRecord(br)
 		if rerr != nil {
@@ -335,8 +348,12 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 			if hdr.Version != exportFormatVersion {
 				return fmt.Errorf("%w: got %d, want %d", ErrIncompatibleExport, hdr.Version, exportFormatVersion)
 			}
+			seenHeader = true
 
 		case exportTagRegistry:
+			if !seenHeader {
+				return fmt.Errorf("%w: registry record before header", ErrCorruptExport)
+			}
 			var reg tiered.RegistryFileData
 			if err := msgpack.Unmarshal(data, &reg); err != nil {
 				return fmt.Errorf("import: unmarshal registry: %w", err)
@@ -359,59 +376,20 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 					return fmt.Errorf("import: reltype registry: %w", ErrIncompatibleRegistry)
 				}
 			}
+			seenRegistry = true
 
-		case exportTagNode:
-			var wn storeutil.NodeWire
-			if err := msgpack.Unmarshal(data, &wn); err != nil {
-				return fmt.Errorf("import: unmarshal node: %w", err)
+		case exportTagNode, exportTagNodeHist, exportTagRel, exportTagRelHist:
+			// R4-F11: tokenized entity records require a header AND a
+			// registry to be replayed first. Otherwise the entity is
+			// stored with token IDs that resolve to empty strings.
+			if !seenHeader {
+				return fmt.Errorf("%w: entity record before header", ErrCorruptExport)
 			}
-			if err := validateNodeWire(&wn); err != nil {
-				return fmt.Errorf("import: node %d: %w", wn.ID, err)
+			if !seenRegistry {
+				return fmt.Errorf("%w: entity record before registry", ErrCorruptExport)
 			}
-			n := storeutil.WireToNode(wn)
-			if err := c.store.PutNode(n); err != nil && !errors.Is(err, storepkg.ErrNodeExists) {
-				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
-			}
-
-		case exportTagNodeHist:
-			var wn storeutil.NodeWire
-			if err := msgpack.Unmarshal(data, &wn); err != nil {
-				return fmt.Errorf("import: unmarshal node history: %w", err)
-			}
-			if err := validateNodeWire(&wn); err != nil {
-				return fmt.Errorf("import: node history %d: %w", wn.ID, err)
-			}
-			n := storeutil.WireToNode(wn)
-			id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
-			if err := c.store.PutNodeVersion(id, n.Version(), n); err != nil {
-				return fmt.Errorf("import: put node history %d v%d: %w", wn.ID, n.Version(), err)
-			}
-
-		case exportTagRel:
-			var wr storeutil.RelWire
-			if err := msgpack.Unmarshal(data, &wr); err != nil {
-				return fmt.Errorf("import: unmarshal rel: %w", err)
-			}
-			if err := validateRelWire(&wr); err != nil {
-				return fmt.Errorf("import: rel %d: %w", wr.ID, err)
-			}
-			rel := storeutil.WireToRel(wr)
-			if err := c.store.PutRelationship(rel); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
-				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
-			}
-
-		case exportTagRelHist:
-			var wr storeutil.RelWire
-			if err := msgpack.Unmarshal(data, &wr); err != nil {
-				return fmt.Errorf("import: unmarshal rel history: %w", err)
-			}
-			if err := validateRelWire(&wr); err != nil {
-				return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
-			}
-			rel := storeutil.WireToRel(wr)
-			id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
-			if err := c.store.PutRelVersion(id, rel.Version(), rel); err != nil {
-				return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
+			if err := importEntityRecord(c, tag, data); err != nil {
+				return err
 			}
 
 		default:
@@ -420,6 +398,131 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 	}
 
 	return nil
+}
+
+// importEntityRecord dispatches the four entity record tags to their
+// respective Put paths. Extracted from ImportWithOptions so the header
+// and registry preconditions for each tag can be enforced uniformly.
+//
+// R4-F12: duplicate current entities are rejected unless the existing
+// entity is byte-identical to the one being replayed (idempotent
+// re-import). Without this guard, a caller could overwrite history
+// onto a current entity that has different content, producing a hybrid
+// graph that never existed in either source.
+func importEntityRecord(c *Core, tag uint8, data []byte) error {
+	switch tag {
+	case exportTagNode:
+		var wn storeutil.NodeWire
+		if err := msgpack.Unmarshal(data, &wn); err != nil {
+			return fmt.Errorf("import: unmarshal node: %w", err)
+		}
+		if err := validateNodeWire(&wn); err != nil {
+			return fmt.Errorf("import: node %d: %w", wn.ID, err)
+		}
+		n := storeutil.WireToNode(wn)
+		if err := c.store.PutNode(n); err != nil {
+			if !errors.Is(err, storepkg.ErrNodeExists) {
+				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
+			}
+			// R4-F12: duplicate node — accept only if existing content matches.
+			existing, gerr := c.store.GetNode(n.ID())
+			if gerr != nil {
+				return fmt.Errorf("import: load existing node %d for conflict check: %w", wn.ID, gerr)
+			}
+			if !nodeWireMatches(existing, &wn) {
+				return fmt.Errorf("import: node %d: %w", wn.ID, ErrCorruptExport)
+			}
+		}
+
+	case exportTagNodeHist:
+		var wn storeutil.NodeWire
+		if err := msgpack.Unmarshal(data, &wn); err != nil {
+			return fmt.Errorf("import: unmarshal node history: %w", err)
+		}
+		if err := validateNodeWire(&wn); err != nil {
+			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
+		}
+		n := storeutil.WireToNode(wn)
+		id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
+		if err := c.store.PutNodeVersion(id, n.Version(), n); err != nil {
+			return fmt.Errorf("import: put node history %d v%d: %w", wn.ID, n.Version(), err)
+		}
+
+	case exportTagRel:
+		var wr storeutil.RelWire
+		if err := msgpack.Unmarshal(data, &wr); err != nil {
+			return fmt.Errorf("import: unmarshal rel: %w", err)
+		}
+		if err := validateRelWire(&wr); err != nil {
+			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
+		}
+		rel := storeutil.WireToRel(wr)
+		if err := c.store.PutRelationship(rel); err != nil {
+			if !errors.Is(err, storepkg.ErrRelExists) {
+				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
+			}
+			// R4-F12: duplicate rel — accept only if existing content matches.
+			existing, gerr := c.store.GetRelationship(rel.ID())
+			if gerr != nil {
+				return fmt.Errorf("import: load existing rel %d for conflict check: %w", wr.ID, gerr)
+			}
+			if !relWireMatches(existing, &wr) {
+				return fmt.Errorf("import: rel %d: %w", wr.ID, ErrCorruptExport)
+			}
+		}
+
+	case exportTagRelHist:
+		var wr storeutil.RelWire
+		if err := msgpack.Unmarshal(data, &wr); err != nil {
+			return fmt.Errorf("import: unmarshal rel history: %w", err)
+		}
+		if err := validateRelWire(&wr); err != nil {
+			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
+		}
+		rel := storeutil.WireToRel(wr)
+		id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
+		if err := c.store.PutRelVersion(id, rel.Version(), rel); err != nil {
+			return fmt.Errorf("import: put rel history %d v%d: %w", wr.ID, rel.Version(), err)
+		}
+	}
+	return nil
+}
+
+// nodeWireMatches returns true if the in-store node has the same
+// serialized representation as the wire record. We compare the
+// canonical msgpack form rather than walking individual fields so the
+// invariant is "byte-identical export wire" rather than "fields the
+// reviewer happened to think of".
+func nodeWireMatches(existing *types.Node, want *storeutil.NodeWire) bool {
+	if existing == nil {
+		return false
+	}
+	got := storeutil.NodeToWire(existing)
+	gotBytes, err := msgpack.Marshal(&got)
+	if err != nil {
+		return false
+	}
+	wantBytes, err := msgpack.Marshal(want)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(gotBytes, wantBytes)
+}
+
+func relWireMatches(existing *types.Relationship, want *storeutil.RelWire) bool {
+	if existing == nil {
+		return false
+	}
+	got := storeutil.RelToWire(existing)
+	gotBytes, err := msgpack.Marshal(&got)
+	if err != nil {
+		return false
+	}
+	wantBytes, err := msgpack.Marshal(want)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(gotBytes, wantBytes)
 }
 
 // validateNodeWire defends the import boundary against malformed node records.

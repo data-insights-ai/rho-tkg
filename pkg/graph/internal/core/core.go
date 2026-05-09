@@ -47,6 +47,7 @@ type Core struct {
 	txEventBuffer *[]eventspkg.Event
 	mu            sync.RWMutex
 	closeOnce     sync.Once
+	closed        atomic.Bool
 
 	indexProviders map[string]*indexProviderEntry
 
@@ -84,6 +85,7 @@ var (
 	ErrZeroID                   = errors.New("graph: zero ID is not valid for import")
 	ErrNotTieredStore           = errors.New("graph: operation requires tiered.Store")
 	ErrAlreadyClosed            = errors.New("graph: entity already closed")
+	ErrGraphClosed              = errors.New("graph: graph is closed")
 	ErrInvalidTimeRange         = errors.New("graph: invalid time range")
 	ErrLabelNotFound            = errors.New("graph: node does not have the specified label")
 	ErrLastLabel                = errors.New("graph: cannot remove the last label from a node")
@@ -282,26 +284,88 @@ func New(config Config) (*Core, error) {
 
 	c.store = store
 
-	if ts, ok := store.(*tiered.Store); ok {
-		ts.SetLabelRegistry(c.labels)
-		if _, err := ts.LoadLabelRegistry(c.labels); err != nil {
-			_ = ts.Close()
-			return nil, fmt.Errorf("graph: load label registry: %w", err)
+	// Registry rehydration for caller-injected stores. The Core-
+	// constructed badger.Store path above already loads registries; the
+	// inject path also has to (R4-F1). Without this, opening an
+	// existing badger.Store separately and passing it via
+	// `Config{Store: bs}` would start the graph with empty in-memory
+	// registries even though the persisted entities use tokenised
+	// labels and reltypes — Close would then save the empty registry
+	// state back over the persisted mappings.
+	//
+	// Two interface shapes exist in-tree because badger and tiered
+	// landed at different times — badger.Store returns (bool, error)
+	// from its loaders while tiered.Store returns (int, error). Both
+	// are matched here so the rehydration is dispatched by capability
+	// rather than concrete type.
+	if config.Store != nil {
+		if lr, ok := store.(badgerRegistryLoader); ok {
+			if _, err := lr.LoadLabelRegistry(c.labels); err != nil {
+				return nil, fmt.Errorf("graph: load label registry from injected store: %w", err)
+			}
+			if _, err := lr.LoadRelTypeRegistry(c.relTypes); err != nil {
+				return nil, fmt.Errorf("graph: load reltype registry from injected store: %w", err)
+			}
 		}
-		if _, err := ts.LoadRelTypeRegistry(c.relTypes); err != nil {
-			_ = ts.Close()
-			return nil, fmt.Errorf("graph: load reltype registry: %w", err)
+		if ts, ok := store.(*tiered.Store); ok {
+			ts.SetLabelRegistry(c.labels)
+			if _, err := ts.LoadLabelRegistry(c.labels); err != nil {
+				return nil, fmt.Errorf("graph: load label registry from injected tiered store: %w", err)
+			}
+			if _, err := ts.LoadRelTypeRegistry(c.relTypes); err != nil {
+				return nil, fmt.Errorf("graph: load reltype registry from injected tiered store: %w", err)
+			}
 		}
 	}
 
 	return c, nil
 }
 
+// badgerRegistryLoader matches the badger.Store rehydration shape.
+// Backends that persist registries with the same `(found bool, err
+// error)` signature as badger satisfy this interface and get
+// automatic rehydration on graph construction. Tiered stores have a
+// different signature and are dispatched by concrete type just above.
+type badgerRegistryLoader interface {
+	LoadLabelRegistry(*registrypkg.LabelRegistry) (bool, error)
+	LoadRelTypeRegistry(*registrypkg.RelTypeRegistry) (bool, error)
+}
+
 // Close saves registries (if Badger) and closes the underlying store.
+//
+// Close is serialized against in-flight standalone mutations and reads
+// (R4-F3). The closed-state flag is set BEFORE acquiring c.mu.Lock so
+// that any RLock acquired after Close releases its Lock observes
+// closed=true and short-circuits with ErrGraphClosed (see
+// runUnderRLock). Provider drain happens under c.mu.Lock so it cannot
+// race with concurrent RegisterProvider; provider Close is then run
+// outside the lock so a slow Close cannot block the lifecycle lock.
 func (c *Core) Close() error {
 	var closeErr error
 	c.closeOnce.Do(func() {
-		closeErr = errors.Join(closeErr, c.closeIndexProviders())
+		c.closed.Store(true)
+
+		// Drain in-flight RLock holders. New mutations that win the
+		// race to RLock between Store and Lock observe closed=true via
+		// the defer-protected check inside runUnderRLock and return
+		// ErrGraphClosed without touching the store.
+		c.mu.Lock()
+		entries := make([]*indexProviderEntry, 0, len(c.indexProviders))
+		for _, e := range c.indexProviders {
+			entries = append(entries, e)
+		}
+		c.indexProviders = make(map[string]*indexProviderEntry)
+		c.mu.Unlock()
+
+		// Provider Close runs outside the lifecycle lock — providers
+		// may flush/close their own backends and we do not want to
+		// hold the graph lock for that latency.
+		for _, e := range entries {
+			e.unsubscribe()
+			if err := e.provider.Close(); err != nil {
+				closeErr = errors.Join(closeErr, fmt.Errorf("index provider %q close: %w", e.provider.Name(), err))
+			}
+		}
 
 		if rp, ok := c.store.(registriesPersister); ok {
 			if err := rp.SaveRegistries(c.labels, c.relTypes); err != nil {

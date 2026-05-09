@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
@@ -26,9 +27,12 @@ func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode,
 		rel *types.Relationship
 		err error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, err = c.addRelationshipInternal(ctx, typeName, startNode, endNode, props)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -72,11 +76,6 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
 	startID := startNode.ID()
 	endID := endNode.ID()
 
@@ -88,10 +87,34 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		return nil, err
 	}
 
+	// R4-F14: allocate rel-type token AFTER the self-loop and other
+	// cheap rejection gates so a rejected create does not pollute the
+	// rel-type registry.
+	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship type: %w", err)
+	}
+
 	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
 	// Lock ordering: ascending shard index — deadlock-free.
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+
+	// Fetch live endpoints from the store under the endpoint locks so
+	// hash refresh and temporal-constraint checks see the current
+	// state, not whatever the caller happened to hold (R4-F5). Stale
+	// caller pointers can otherwise record FromNodeHash/ToNodeHash
+	// values that were never true at write time, and bypass
+	// ConstraintRelWithinEndpoints by checking against an
+	// out-of-date validity window.
+	liveStart, err := c.store.GetNode(startID)
+	if err != nil {
+		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+	}
+	liveEnd, err := c.store.GetNode(endID)
+	if err != nil {
+		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
+	}
 
 	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
@@ -110,10 +133,10 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := startNode.Integrity(); startIg != nil {
+	if startIg := liveStart.Integrity(); startIg != nil {
 		ig.FromNodeHash = startIg.Hash
 	}
-	if endIg := endNode.Integrity(); endIg != nil {
+	if endIg := liveEnd.Integrity(); endIg != nil {
 		ig.ToNodeHash = endIg.Hash
 	}
 	r.SetIntegrity(ig)
@@ -139,7 +162,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		}
 	}
 
-	if err := c.checkTemporalConstraints(r, startNode, endNode); err != nil {
+	if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
 		return nil, err
 	}
 
@@ -171,9 +194,12 @@ func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startI
 		rel *types.Relationship
 		err error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, err = c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -214,17 +240,20 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
 	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
+	}
+
+	// R4-F14: allocate rel-type token AFTER the self-loop / context
+	// rejection gates so a rejected create does not pollute the
+	// rel-type registry.
+	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
 
 	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
@@ -304,9 +333,12 @@ func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string
 		created bool
 		err     error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, created, err = c.addRelationshipByIDIfAbsentInternal(ctx, typeName, startID, endID, props)
 	})
+	if closeErr != nil {
+		return nil, false, closeErr
+	}
 	if err == nil && created {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -348,17 +380,20 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		return nil, false, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, false, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, false, ErrSelfLoop
 	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
+	}
+
+	// R4-F14: allocate rel-type token AFTER the self-loop / context
+	// rejection gates so a rejected create does not pollute the
+	// rel-type registry.
+	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: relationship type: %w", err)
 	}
 
 	// Lock both endpoints — serializes with concurrent Add/Delete on same endpoints.
@@ -439,9 +474,12 @@ func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates 
 		rel *types.Relationship
 		err error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, err = c.updateRelationshipInternal(ctx, id, updates)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -489,9 +527,24 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		return nil, err
 	}
 
-	// Phase 2: Entity lock on rel ID only — property changes don't affect adjacency.
-	c.entityLocks.LockEntity(id.SnowflakeID())
-	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
+	// Phase 2: Acquire rel + both endpoint locks together. We need a peek
+	// to discover the (immutable) endpoint IDs; we then re-acquire all three
+	// locks via LockMany so the endpoint hash refresh below cannot race a
+	// concurrent UpdateNode on either endpoint (R4-F7). Rel endpoints never
+	// change after creation, so the peek-without-lock is benign — even if
+	// the rel is replaced between peek and LockMany, the new version still
+	// has the same start/end IDs. We re-fetch `current` under the proper
+	// locks for a stable mutation snapshot.
+	peek, err := c.store.GetRelationship(id)
+	if err != nil {
+		return nil, err
+	}
+	startID := peek.StartNodeID()
+	endID := peek.EndNodeID()
+
+	allIDs := []snowflake.ID{id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID()}
+	c.entityLocks.LockMany(allIDs)
+	defer c.entityLocks.UnlockMany(allIDs)
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -623,9 +676,12 @@ func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, u
 		rel *types.Relationship
 		err error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, err = c.updateRelInPlaceInternal(ctx, id, updates)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -755,9 +811,12 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
 	c := r.c
 	var err error
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		err = c.deleteRelationshipInternal(ctx, id)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityCritical})
 	}
@@ -813,9 +872,12 @@ func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, st
 		rel *types.Relationship
 		err error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		rel, err = c.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -858,17 +920,19 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
 	startID := startNode.ID()
 	endID := endNode.ID()
 
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
 	}
+
+	// R4-F14: Defer registry-token allocation until after the cheap
+	// validation gates (self-loop, ID==0, nil endpoints) so a rejected
+	// import does not pollute the relationship-type registry. The
+	// collision probe and endpoint-lock-protected GetNode below are
+	// the remaining failure paths; collision allocation pollution is
+	// avoided by probing BEFORE GetOrCreate.
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -878,9 +942,33 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	// Check for collision.
+	// Check for collision (R4-F14, R4-F15). Probe BEFORE allocating
+	// the rel-type token so a duplicate import never pollutes the
+	// registry. Probe must surface non-not-found errors instead of
+	// silently treating them as absence — operational store failures
+	// must not be hidden by the import path.
 	if _, err := c.store.GetRelationship(id); err == nil {
 		return nil, storepkg.ErrRelExists
+	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
+		return nil, fmt.Errorf("graph: rel-id collision probe: %w", err)
+	}
+
+	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship type: %w", err)
+	}
+
+	// Fetch live endpoints under the endpoint locks (R4-F5). The
+	// caller-supplied `startNode`/`endNode` pointers are advisory —
+	// only their IDs are load-bearing for routing. Hashes and
+	// constraint checks must use the current persisted state.
+	liveStart, err := c.store.GetNode(startID)
+	if err != nil {
+		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+	}
+	liveEnd, err := c.store.GetNode(endID)
+	if err != nil {
+		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 	}
 
 	r := types.NewRelationship(id, typeToken, startID, endID)
@@ -895,10 +983,10 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := startNode.Integrity(); startIg != nil {
+	if startIg := liveStart.Integrity(); startIg != nil {
 		ig.FromNodeHash = startIg.Hash
 	}
-	if endIg := endNode.Integrity(); endIg != nil {
+	if endIg := liveEnd.Integrity(); endIg != nil {
 		ig.ToNodeHash = endIg.Hash
 	}
 	r.SetIntegrity(ig)
@@ -920,7 +1008,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		tm.CreatedAt = createdAt
 	}
 
-	if err := c.checkTemporalConstraints(r, startNode, endNode); err != nil {
+	if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
 		return nil, err
 	}
 

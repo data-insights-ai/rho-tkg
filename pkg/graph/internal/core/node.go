@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -28,9 +29,12 @@ func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map
 		node *types.Node
 		err  error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		node, err = c.addNodeInternal(ctx, labels, props)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -154,9 +158,12 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 		node *types.Node
 		err  error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		node, err = c.importNodeWithIDInternal(ctx, id, labels, props)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityHigh})
 	}
@@ -204,6 +211,17 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, fmt.Errorf("graph: node properties: %w", err)
 	}
 
+	// Check for collision BEFORE allocating registry tokens (R4-F14).
+	// Allocating tokens up-front pollutes the registry on duplicate-ID
+	// rejection. Probe must surface non-not-found errors instead of
+	// silently treating them as absence (R4-F15) — operational store
+	// failures must not be hidden by the import path.
+	if _, err := c.store.GetNode(id); err == nil {
+		return nil, storepkg.ErrNodeExists
+	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return nil, fmt.Errorf("graph: node-id collision probe: %w", err)
+	}
+
 	primaryToken, err := c.labels.GetOrCreate(labels[0])
 	if err != nil {
 		return nil, fmt.Errorf("graph: primary label: %w", err)
@@ -216,11 +234,6 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 			return nil, fmt.Errorf("graph: extra label %q: %w", label, err)
 		}
 		extraTokens = append(extraTokens, tok)
-	}
-
-	// Check for collision before creating.
-	if _, err := c.store.GetNode(id); err == nil {
-		return nil, storepkg.ErrNodeExists
 	}
 
 	n := types.NewNode(id, primaryToken, extraTokens)
@@ -279,9 +292,12 @@ func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, update
 		node *types.Node
 		err  error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		node, err = c.updateNodeInternal(ctx, id, updates)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -440,9 +456,12 @@ func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID,
 		node *types.Node
 		err  error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		node, err = c.updateNodeInPlaceInternal(ctx, id, updates)
 	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil && len(updates) > 0 {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -573,9 +592,12 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error {
 	c := n.c
 	var err error
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		err = c.deleteNodeInternal(ctx, id)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeDelete, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityCritical})
 	}

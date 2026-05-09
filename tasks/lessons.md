@@ -1171,6 +1171,392 @@ architecture docs after the sub-API move.
 `g.Admin.Reset`), while `docs/api.md` and `docs/SPEC.md` still documented direct
 `Graph` methods and Cypher/product examples from a different layer.
 
+## B53. Transaction Lifecycle Guards Must Cover the Whole Operation
+
+A transaction's "done" check is not atomic if the method releases its lifecycle
+mutex before mutating the store and recording rollback state.
+
+```
+BAD:  tx.mu.Lock()
+      if tx.done { tx.mu.Unlock(); return ErrTxDone }
+      tx.mu.Unlock()
+      n := writeNode()
+      tx.mu.Lock()
+      tx.createdNodes = append(tx.createdNodes, n.ID())
+      tx.mu.Unlock()
+
+GOOD: lifecycle guard covers write + rollback-log update, or Commit/Rollback
+      wait for in-flight operations before setting done/releasing g.mu.
+```
+
+Rollback must never observe a partially tracked operation. If a create has
+written to the store but is not yet in `createdNodes`, rollback can complete,
+release the graph lock, and leave the supposedly rolled-back entity alive.
+
+Audit rule: every transaction method that checks `done` and then mutates must
+be reviewed as a check-then-act race against `Commit` and `Rollback`. Either
+document the transaction handle as not safe for concurrent use, like
+`BatchBuilder`, or make lifecycle operations wait for all in-flight methods.
+
+**History:** Found during the 2026-05-09 maintainability review round 3
+(R3-F1). `GraphTx.AddNode` released `tx.mu` after the `done` check, then wrote
+the node and appended to `createdNodes` later. A concurrent `Rollback` could set
+`done`, clear `txEventBuffer`, iterate an incomplete rollback log, and release
+`g.mu` while the node creation was still in flight.
+
+## B54. Documented Sentinel Errors Must Be Publicly Reachable
+
+If public docs tell callers to use `errors.Is`, the sentinel must be exported
+from a public package that those callers can import.
+
+```
+BAD:  // docs/api.md: Sentinels: ErrImportSizeLimit
+      package internal/core
+      var ErrImportSizeLimit = errors.New(...)
+
+GOOD: package graph
+      var ErrImportSizeLimit = core.ErrImportSizeLimit
+      // docs say: errors.Is(err, graph.ErrImportSizeLimit)
+```
+
+Internal-only sentinels are fine for internal tests, but they are not an API
+contract. External callers cannot import `internal/core`, so a documented
+sentinel that only exists there forces string matching.
+
+Audit rule after adding a public error: grep docs for the error name, then grep
+public packages for a re-export with the same name or an explicitly documented
+qualified name.
+
+**History:** Found during the 2026-05-09 maintainability review round 3
+(R3-F2). `IO.ImportWithOptions` returned `core.ErrImportSizeLimit`, and
+`docs/api.md` advertised all import/export sentinels, but none of
+`ErrImportSizeLimit`, `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, or
+`ErrCorruptExport` were exported from `pkg/graph` or `pkg/graph/io`.
+
+## B55. Empty Canonical Keys Mean Unsupported, Not Equal
+
+When a canonicalization helper returns the empty string to mean "not indexable"
+or "unsupported", never compare empty strings as a match.
+
+```
+BAD:  want := PropertyValueKey(query)
+      if PropertyValueKey(candidate) == want { match() }
+
+GOOD: want := PropertyValueKey(query)
+      if want == "" { return nil }
+      if PropertyValueKey(candidate) == want { match() }
+```
+
+The empty key is a control signal, not a value. Treating it as a value collapses
+all unsupported types into one equivalence class: maps equal slices equal
+structs equal nil queries.
+
+Audit rule: every fallback or scan path that mirrors an index lookup must copy
+the index's unsupported-value behavior, including early returns for sentinel
+canonical keys.
+
+**History:** Found during the 2026-05-09 maintainability review round 3
+(R3-F3). The graph-layer mandatory-store fallback for
+`NodesByLabelAndProperty` compared `PropertyValueKey` outputs but did not guard
+`wantKey == ""`, so an unindexed slice query could match every node with any
+unindexable property value for the same key.
+
+## B56. Bounded Over-Fetch Loops Need Ceiling Edge Tests
+
+When a fallback repeatedly asks a backend for larger top-k result sets, test the
+initial value, the last value before the ceiling, the ceiling itself, and values
+above the ceiling.
+
+```
+BAD:  rawK := k
+      for rawK <= ceiling {
+          search(rawK)
+          rawK *= 2
+      }
+
+GOOD: rawK := min(k, ceiling)
+      for {
+          search(rawK)
+          if done || rawK == ceiling { break }
+          rawK = min(rawK*2, ceiling)
+      }
+```
+
+Otherwise the loop can skip the final ceiling-sized fetch or skip the loop
+entirely for large valid inputs. A bounded fallback should return a clear error,
+a documented capped result, or a correct result within the cap; returning empty
+silently is almost never acceptable.
+
+**History:** Found during the 2026-05-09 maintainability review round 3
+(R3-F4). The temporal vector-search fallback started with `rawK := k` and only
+ran while `rawK <= 65536`. For `k > 65536` it returned no results, and near the
+ceiling it could double past 65536 without performing the final capped search.
+
+## B57. Injected Stores Need the Same Rehydration Path as Constructed Stores
+
+```
+BAD:  if cfg.Store == nil { load registries from newly-created Badger }
+      c.store = cfg.Store // injected persistent stores skip registry load
+
+GOOD: c.store = store
+      if loader, ok := store.(registryLoader); ok {
+          loader.LoadLabelRegistry(labels)
+          loader.LoadRelTypeRegistry(relTypes)
+      }
+```
+
+Persistence lifecycle code must not distinguish between "store we constructed"
+and "store the caller injected" once the concrete store carries graph metadata.
+If `Close` will persist registries for a store, `New` must also load them for
+that same store shape.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F1). Injected `*badger.Store` values skipped registry loading but still had
+registries saved on `Close`, risking empty/new token maps overwriting persisted
+metadata.
+
+## B58. Close Must Join the Same Exclusion Domain as Public Operations
+
+```
+BAD:  closeOnce.Do(func() {
+          store.Close()
+      })
+
+GOOD: closeOnce.Do(func() {
+          mu.Lock()
+          closed = true
+          drain lifecycle state
+          mu.Unlock()
+          close drained resources
+      })
+```
+
+`Close` is a mutation of process-wide graph state. It needs a closed flag and
+must serialize with public operations that use the graph/store/provider
+lifecycle. Idempotence via `sync.Once` is necessary but not sufficient.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F3). `Core.Close` did not take the graph lock for the close lifecycle and
+had no closed-state gate, so it could race live operations and provider
+registration.
+
+## B59. A Read Lock Is Not a Snapshot Lock When Writers Also Use RLock
+
+```
+BAD:  // Holds RLock, so individual mutations are blocked.
+      mu.RLock()
+      export()
+
+GOOD: // Holds RLock, so tx/batch are blocked; standalone mutations also hold
+      // RLock and can still interleave.
+```
+
+Before documenting consistency, check every writer path against the exact lock
+mode. An `RWMutex` read lock only excludes writers that take `Lock`; it does not
+exclude other paths that also take `RLock`.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F4). Export, Snapshot, and VerifyShard comments claimed standalone
+mutations were blocked by `RLock`, but standalone mutations use `RLock` too.
+
+## B60. Relationship Write-Time Metadata Must Use Live Endpoints Under Endpoint Locks
+
+```
+BAD:  LockTwo(start.ID, end.ID)
+      rel.FromNodeHash = callerStart.Integrity().Hash
+
+GOOD: LockTwo(startID, endID)
+      start := store.GetNode(startID)
+      end := store.GetNode(endID)
+      rel.FromNodeHash = start.Integrity().Hash
+      checkTemporalConstraints(rel, start, end)
+```
+
+Caller-held entity pointers are snapshots, not authoritative write-time state.
+Any relationship metadata or constraint that promises to reflect endpoint state
+at creation/update time must fetch endpoints after acquiring endpoint locks.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F5, R4-F7). Relationship create/import used caller-provided endpoint nodes
+after locking, while relationship update refreshed endpoint hashes without
+locking endpoints.
+
+## B61. Batch Paths Must Enforce the Same Invariants as Standalone Paths
+
+```
+BAD:  standalone AddRelationship checks constraint
+      batch Execute only PutRelationship
+
+GOOD: every create/update/delete invariant has a parity test across
+      standalone, tx, batch, and import surfaces.
+```
+
+Batch is an execution surface, not a reduced semantic mode. If a validation,
+constraint, hash update, index update, or event rule applies to the standalone
+path, grep for the batch and tx surfaces before calling the fix complete.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F6). Batch relationship creation bypassed temporal constraints even though
+standalone relationship creation and import enforced them.
+
+## B62. Registry Token Allocation Should Happen After Failure-Prone Validation
+
+```
+BAD:  token := registry.GetOrCreate(name)
+      if invalid { return err }
+
+GOOD: if invalid { return err }
+      token := registry.GetOrCreate(name)
+```
+
+Registry tokens are persistent capacity. Do not allocate them before checks that
+can reject the operation, such as self-loop validation, ID collision checks, or
+context cancellation. If allocation must happen early, document the side effect
+and test it deliberately.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F13, R4-F14, R4-F15). Batch queue methods and import paths allocated label
+or relationship-type tokens before Execute, before self-loop rejection, or
+before duplicate-ID rejection.
+
+## B63. Import Replay Needs Structural Order and Conflict Checks
+
+```
+BAD:  accept node records before registry
+      ignore ErrNodeExists
+
+GOOD: require compatible header + registry before tokenized records
+      ignore duplicate current records only when the existing entity is identical
+```
+
+Importers are public data boundaries. Being panic-safe is not enough; replay
+must reject streams that would create semantically unreachable graph state and
+must distinguish idempotent replay from conflicting current data.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F11, R4-F12). IO import accepted tokenized records without a registry and
+silently skipped duplicate current entities even when their content could
+differ.
+
+## B64. Lifecycle Close Needs a Closed-State Gate, Not Just sync.Once
+
+```
+BAD:  Close() { closeOnce.Do(closeProviders + saveRegistries + closeStore) }
+      // post-close mutation slips through, hits the closed store with
+      // backend-specific errors
+
+GOOD: Close() {
+        closeOnce.Do(func() {
+            c.closed.Store(true)
+            c.mu.Lock()  // drain in-flight readers
+            ... drain providers under Lock ...
+            c.mu.Unlock()
+            ... save registries / close store outside lock ...
+        })
+      }
+      // every public mutation entry-point checks c.closed under c.mu.RLock
+      // and returns ErrGraphClosed before touching the store
+```
+
+`sync.Once` only prevents double-close; it does NOT serialize Close with
+in-flight operations or stop new operations from arriving after teardown
+starts. A close-state gate (atomic bool) plus a graph-level lock that
+drains readers gives both semantic guarantees: existing ops finish before
+teardown; post-close ops fail with one canonical sentinel
+(ErrGraphClosed) instead of backend-specific noise.
+
+**Why:** Without the gate, post-close behavior depends on backend.
+MemoryStore can succeed quietly with stale state; BadgerStore can fail
+with cryptic closed-DB errors; TieredStore can return mid-shard-shutdown
+errors. Customers see different errors for the same logical condition.
+
+**How to apply:** Any "lifecycle teardown" code (Close, Shutdown, Stop)
+should set the gate first, drain via Lock second, and free resources
+third. Public entry points should check the gate AFTER acquiring the
+shared lock so the gate read can never observe stale state.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F3). Core.Close was not serialized with live operations; provider
+registration could win the race after the close path drained the
+provider map.
+
+## B65. Tx Methods Hold Their Own Mutex for the Whole Call
+
+```
+BAD:  tx.mu.Lock(); if tx.done { unlock; return ErrTxDone }; tx.mu.Unlock()
+      ... long-running mutation ...
+      tx.mu.Lock(); tx.createdNodes = append(...); tx.mu.Unlock()
+      // Commit/Rollback can fire in the gap, miss the new node, leave
+      // a half-committed tx.
+
+GOOD: tx.mu.Lock(); defer tx.mu.Unlock()
+      if tx.done { return ErrTxDone }
+      ... mutation under tx.mu ...
+      tx.createdNodes = append(...)
+      // Commit/Rollback now serialize against the whole method.
+```
+
+A tx that releases its own mutex around the mutation is not actually
+serializable across goroutines — Commit/Rollback can interleave and
+either miss creations (rolled-back createdNodes was empty when it
+shouldn't be) or commit a torn pendingEvents slice. The fix is one
+critical section per public method: take tx.mu at the top with defer
+Unlock, run the mutation under it, append rollback metadata while still
+holding tx.mu.
+
+**Why:** Internal helpers like snapshotNode that themselves take tx.mu
+become deadlocks when the caller holds tx.mu. The recipe is to keep
+ONE locked variant per helper (snapshotNodeLocked) and require the
+caller to hold tx.mu, not to introduce nested locking.
+
+**How to apply:** When adding a tx method, the body must be `tx.mu.Lock(); 
+defer tx.mu.Unlock(); if tx.done { return ErrTxDone }; ...`. Helper
+functions called from inside a tx method must be `*Locked` (caller holds
+tx.mu) — never re-lock.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F2). The 11 tx mutation methods plus GetNode released tx.mu around
+the inner mutation, leaving a Commit/Rollback race window.
+
+## B66. Collision Probes Must Distinguish Not-Found From Other Store Errors
+
+```
+BAD:  if _, err := store.GetNode(id); err == nil { return ErrExists }
+      // any other err treated as "not found", proceed to create
+
+GOOD: switch err := store.GetNode(id); {
+      case err == nil:
+          return ErrExists
+      case !errors.Is(err, ErrNodeNotFound):
+          return fmt.Errorf("collision probe: %w", err)
+      }
+      // proceed to create
+```
+
+A collision probe that swallows non-not-found errors lets operational
+store failures (timeout, IO error, closed DB) masquerade as
+"no duplicate" — the import path then constructs the entity, allocates
+registry tokens, and attempts a Put that may surface the original error
+in a more confusing form (or worse, silently succeed against a partially
+broken store). Surfacing the probe error preserves diagnostic clarity
+and avoids R4-F14-style registry pollution from the doomed code path.
+
+**Why:** Internal-only stores like memory tend to return ErrNodeNotFound
+or success cleanly, masking the gap. External stores (custom backends,
+network-attached caches) can legitimately return wrapped network or
+encoding errors that are NOT ErrNodeNotFound; treating them as absence
+is a silent-failure pattern.
+
+**How to apply:** Any GetX(id) used as a "does this entity exist?"
+gate must be a 3-way switch: nil → exists, ErrXNotFound → does not
+exist, anything else → propagate. Wrapping errors in fmt.Errorf with %w
+keeps `errors.Is` working at the caller while preserving the original
+error chain.
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F15). Node and rel import collision probes treated every non-nil
+error other than nil as absence.
+
 ---
 
 # Tier C — Reference

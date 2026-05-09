@@ -116,10 +116,11 @@ func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
 // VerifyShard runs hash chain verification on all entities in a shard.
 // Only available with tiered.Store.
 //
-// Concurrency: takes c.mu.RLock — verification reads hash chains over an
-// extended iteration. Without an RLock a concurrent Update could surface
-// a half-written hash chain. Multiple verifications can proceed in
-// parallel; only writers are blocked.
+// Concurrency: takes c.mu.RLock. That excludes tx/batch but NOT
+// individual standalone mutations (which also use c.mu.RLock — R4-F4).
+// Best-effort verification: a concurrent Update can therefore surface a
+// half-written hash chain. For strict consistency, drive VerifyShard
+// from inside a tx (which holds the write lock).
 func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 	c := a.c
 	if ts, ok := c.store.(*tiered.Store); ok {

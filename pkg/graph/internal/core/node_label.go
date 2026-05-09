@@ -21,9 +21,12 @@ func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
 		mutated bool
 		err     error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		mutated, err = c.addNodeLabelInternal(id, label)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
@@ -113,9 +116,12 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
 	c := n.c
 	var err error
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		err = c.removeNodeLabelInternal(id, label)
 	})
+	if closeErr != nil {
+		return closeErr
+	}
 	if err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}

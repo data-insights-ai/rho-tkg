@@ -36,13 +36,16 @@ import (
 // been mutated since t, ranking does not reflect the t-state vector and
 // the top-k may differ from a hypothetical "rank by t-vector" query.
 //
-// External-Store fallback caveat: package-internal Store implementations
-// (MemoryStore/BadgerStore/tiered.Store) push the eligibility filter into
-// the search before the k-cut via filteredVectorSearchStore. An external
-// Store implementation that does NOT satisfy that hook falls back to
-// post-filtering: SearchNearest returns k by raw distance, then ineligible
-// entries are dropped. Result count may be < k even if more eligible
-// candidates exist farther out — over-fetch with larger k to compensate.
+// External-Store fallback caveat: in-tree Store implementations
+// (memory.Store/badger.Store/tiered.Store) implement
+// FilteredVectorSearchCapability and push the eligibility filter into the
+// search before the k-cut. An external Store implementation that does NOT
+// satisfy that capability instead drives an iterative over-fetch loop in
+// the graph layer (k → 2k → 4k …, clamped to overfetchCeiling = 65536)
+// until k eligible results accumulate or the backend exhausts. The
+// over-fetch is bounded — for k > overfetchCeiling, the result is at
+// most overfetchCeiling eligible matches; backends that can serve more
+// should implement FilteredVectorSearchCapability.
 func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := i.c
 	if k <= 0 {
@@ -99,25 +102,38 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	}
 
 	// Iterative over-fetch fallback for external backends that do not
-	// satisfy FilteredVectorSearchCapability. Each iteration re-asks for a
-	// larger top-k from the unfiltered backend search, then drops
+	// satisfy FilteredVectorSearchCapability. Each iteration re-asks for
+	// a larger top-k from the unfiltered backend search, then drops
 	// temporally-ineligible matches. Stops when:
 	//   - we have ≥ k eligible results, or
 	//   - the backend returns the same number of raw matches as last
 	//     time (the index is exhausted), or
-	//   - the over-fetch ceiling is reached.
+	//   - the iteration just queried the ceiling and still came up
+	//     short.
 	//
-	// Without this loop, a single SearchNearestNodes(k) call could return
-	// 0 eligible results if the nearest k vectors all happen to be
-	// temporally ineligible, even when farther-but-eligible candidates
-	// exist. The loop preserves correctness at the cost of repeated
-	// server-side work; backends that can pre-filter should implement
-	// FilteredVectorSearchCapability to avoid the loop entirely.
+	// Without this loop, a single SearchNearestNodes(k) call could
+	// return 0 eligible results if the nearest k vectors all happen to
+	// be temporally ineligible, even when farther-but-eligible
+	// candidates exist. The loop preserves correctness at the cost of
+	// repeated server-side work; backends that can pre-filter should
+	// implement FilteredVectorSearchCapability to avoid the loop
+	// entirely.
+	//
+	// Ceiling discipline (R4-F10): the probe size is clamped to
+	// overfetchCeiling on every iteration. For k > overfetchCeiling the
+	// loop still runs at least one iteration at the ceiling — without
+	// the clamp, the entry condition rawK <= overfetchCeiling would
+	// skip the loop entirely and return an empty result. The doubling
+	// step also clamps so the final iteration always probes the
+	// ceiling instead of jumping past it.
 	const overfetchCeiling = 1 << 16 // 65536 — bounded so a misbehaving backend cannot loop forever
 	resolved := make([]*types.Node, 0, k)
 	lastRaw := -1
 	rawK := k
-	for rawK <= overfetchCeiling {
+	if rawK > overfetchCeiling {
+		rawK = overfetchCeiling
+	}
+	for {
 		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, rawK, storepkg.QueryOpts{})
 		if err != nil {
 			return nil, err
@@ -142,8 +158,15 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 			// Backend returned fewer than asked — also exhausted.
 			break
 		}
+		if rawK == overfetchCeiling {
+			// Already probed the ceiling; nothing more to ask for.
+			break
+		}
 		lastRaw = len(nodes)
 		rawK *= 2
+		if rawK > overfetchCeiling {
+			rawK = overfetchCeiling
+		}
 	}
 	return paginateNearestNodes(resolved, opts.After, opts.Limit), nil
 }
@@ -186,12 +209,12 @@ func paginateNearestNodes(nodes []*types.Node, after types.EntityID, limit int) 
 	return out
 }
 
-// resolveTemporalVectorMatches is the fallback path used when the store does
-// not implement filteredVectorSearchStore. It applies the temporal filter
-// after-the-fact: each candidate is resolved to its version at the requested
-// time and ineligible entries are dropped. Ordering caveat: a near candidate
-// that fails eligibility may crowd a farther eligible one out of the top-k;
-// callers in this fallback path should over-fetch via larger k.
+// resolveTemporalVectorMatches resolves each candidate node to its
+// version under opts and paginates the eligible subset. Test-only — the
+// production temporal-vector path now lives inline in SearchNearest's
+// iterative over-fetch loop. Retained because the existing test suite
+// exercises the after-the-fact resolution semantics directly; do not use
+// from new production code.
 func resolveTemporalVectorMatches(g *Core, candidates []*types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
 	resolved := make([]*types.Node, 0, len(candidates))
 	for _, cand := range candidates {

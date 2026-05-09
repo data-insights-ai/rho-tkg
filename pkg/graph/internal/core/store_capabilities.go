@@ -63,9 +63,23 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 // out-of-tree mandatory-only backends still get the correct semantics —
 // the optional capability is index management (acceleration), not query
 // correctness.
+//
+// Empty-key contract (R4-F9): `indexpkg.PropertyValueKey` returns "" for
+// values it cannot canonicalise (slices, maps, nested structs without a
+// custom `HashableValue` etc.). The in-tree backends (and the property
+// index itself) treat such queries as "no matches"; the graph-layer
+// fallback must do the same — otherwise every candidate whose stored
+// value is also unindexable canonicalises to "" and matches falsely.
 func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if cap, ok := c.store.(storepkg.PropertyIndexCapability); ok {
 		return cap.NodesByLabelAndProperty(tok, key, value, opts)
+	}
+	wantKey := indexpkg.PropertyValueKey(value)
+	if wantKey == "" {
+		// The query value itself is not canonicalisable — by contract,
+		// no matches. Mirrors memory.Store / badger.Store internal
+		// guards before their fallback scans.
+		return nil, nil
 	}
 	// Fallback: label scan + property filter. Pagination is applied
 	// after filtering since the property predicate can drop arbitrary
@@ -77,14 +91,19 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 	if err != nil {
 		return nil, err
 	}
-	wantKey := indexpkg.PropertyValueKey(value)
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
 		v, found := n.GetProperty(key)
 		if !found {
 			continue
 		}
-		if indexpkg.PropertyValueKey(v) != wantKey {
+		gotKey := indexpkg.PropertyValueKey(v)
+		if gotKey == "" {
+			// Stored value is also unindexable; refuse to claim
+			// equality through the empty sentinel.
+			continue
+		}
+		if gotKey != wantKey {
 			continue
 		}
 		out = append(out, n)

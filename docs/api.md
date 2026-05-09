@@ -125,7 +125,7 @@ All temporal queries are history-aware (include deleted entities via lazy ForEac
 
 ### IO (`g.IO`)
 
-- `g.IO.Export(w io.Writer) error` — length-prefixed msgpack record stream with 1-byte type tags. Forward-compatible (unknown tags skipped on import). Holds `g.mu.RLock` for a consistent snapshot.
+- `g.IO.Export(w io.Writer) error` — length-prefixed msgpack record stream with 1-byte type tags. Forward-compatible (unknown tags skipped on import). Holds `g.mu.RLock` — best-effort: excludes tx/batch but standalone mutations also hold RLock and can interleave with Export's reads. Drive Export from inside a tx for a strict snapshot.
 - `g.IO.Import(r io.Reader) error` — defaults to platform temp dir for staging, no size cap.
 - `g.IO.ImportWithOptions(r io.Reader, opts io.ImportOptions) error` — `ImportOptions{StagingDir, MaxStagedBytes}`. Memory is `O(maxExportRecordSize)` regardless of export size; staging file is sized to match the export and removed via defer at exit. Phase-1 errors (read, staging-disk write, MaxStagedBytes exceeded) leave graph state unchanged. Phase-2 (replay) errors may leave a partially populated graph — for transactional restore, import into a fresh graph and swap stores on success. Sentinels: `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, `ErrImportSizeLimit`, `ErrCorruptExport`. Per-record allocations capped at 128 MiB.
 

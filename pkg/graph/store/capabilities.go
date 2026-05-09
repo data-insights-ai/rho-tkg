@@ -187,19 +187,18 @@ type VectorIndexCapability interface {
 
 // FilteredVectorSearchCapability is OPTIONAL but strongly recommended for
 // any backend that exposes vector search under temporal filters or any
-// other graph-layer eligibility predicate. Without it, the graph falls
-// back to top-k-then-filter — which can return fewer than k results
-// even when eligible candidates exist farther out. With it, the
-// graph pushes the eligibility filter into the search BEFORE the k-cut
-// so the top-k is taken from the eligible-only set.
+// other graph-layer eligibility predicate. With it, the graph pushes the
+// eligibility filter into the search BEFORE the k-cut so the top-k is
+// taken from the eligible-only set.
 //
-// Backends that cannot natively pre-filter still expose useful
-// behaviour through `SearchNearestNodes`; the graph-layer fallback
-// performs iterative over-fetch (call with k, then 2k, then 4k …) up
-// to a bounded ceiling until k eligible results are accumulated or the
-// backend is exhausted. The fallback preserves correctness at the
-// cost of repeated server-side work, which is why this capability
-// exists as a first-class opt-in.
+// Backends that cannot natively pre-filter still expose useful behaviour
+// through `SearchNearestNodes`; the graph-layer fallback performs
+// iterative over-fetch (k → 2k → 4k …, clamped to the package-internal
+// overfetchCeiling = 65536) until k eligible results are accumulated or
+// the backend exhausts. For k > overfetchCeiling, the fallback returns
+// at most overfetchCeiling eligible matches; backends that need to serve
+// larger k correctly should implement this capability so the graph can
+// skip the loop and rely on the backend's pre-filtered top-k.
 //
 // snowflake.ID is the raw entity-ID type used by the predicate so the
 // hook is independent of the typed NodeID/RelID wrappers.

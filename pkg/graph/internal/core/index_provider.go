@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 
@@ -146,6 +145,10 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 	}
 
 	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		return ErrGraphClosed
+	}
 	if _, exists := c.indexProviders[name]; exists {
 		c.mu.Unlock()
 		return fmt.Errorf("%w: %q", indexpkg.ErrIndexProviderExists, name)
@@ -236,27 +239,4 @@ func (i *IndexOps) Providers() []string {
 	c.mu.RUnlock()
 	sort.Strings(out)
 	return out
-}
-
-// closeIndexProviders closes all registered providers and clears the
-// registry. Called from Graph.Close before the store is closed. Errors
-// from individual Close calls are joined; all providers are attempted
-// regardless of earlier failures.
-func (c *Core) closeIndexProviders() error {
-	c.mu.Lock()
-	entries := make([]*indexProviderEntry, 0, len(c.indexProviders))
-	for _, e := range c.indexProviders {
-		entries = append(entries, e)
-	}
-	c.indexProviders = make(map[string]*indexProviderEntry)
-	c.mu.Unlock()
-
-	var err error
-	for _, e := range entries {
-		e.unsubscribe()
-		if cerr := e.provider.Close(); cerr != nil {
-			err = errors.Join(err, fmt.Errorf("index provider %q close: %w", e.provider.Name(), cerr))
-		}
-	}
-	return err
 }

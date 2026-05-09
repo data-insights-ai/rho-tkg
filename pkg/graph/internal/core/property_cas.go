@@ -30,9 +30,12 @@ func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types
 		mutated bool
 		err     error
 	)
-	ep := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLock(func() {
 		ok, mutated, err = c.compareAndSetPropertyInternal(ctx, id, key, expected, newVal)
 	})
+	if closeErr != nil {
+		return false, closeErr
+	}
 	if ok && mutated && err == nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
 	}
