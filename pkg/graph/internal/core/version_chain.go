@@ -66,7 +66,7 @@ func (n *NodeOps) CloseVersion(id types.NodeID, t types.Instant) error {
 		return closeErr
 	}
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }
@@ -162,7 +162,7 @@ func (r *RelOps) CloseVersion(id types.RelID, t types.Instant) error {
 		return closeErr
 	}
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }

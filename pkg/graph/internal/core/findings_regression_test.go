@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"testing"
-	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -342,6 +341,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 
 func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	n, err := g.Nodes.Add([]string{"Person", "Legacy"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -350,7 +350,6 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Nodes.RemoveLabel(id, "Legacy"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
@@ -366,6 +365,7 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 
 func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *testing.T) {
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
@@ -374,7 +374,6 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
-	time.Sleep(2 * time.Millisecond)
 	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
@@ -400,6 +399,7 @@ func TestNodesByLabelPropertyTemporalQueries_UseHistoricalPropertyVersion(t *tes
 
 func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
@@ -415,7 +415,6 @@ func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 	}
 	queryTime := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Rels.Delete(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -454,6 +453,7 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := newTestGraph(t)
+			useTestClock(t, g)
 			n, err := g.Nodes.Add(tt.labels, nil)
 			if err != nil {
 				t.Fatalf("AddNode: %v", err)
@@ -461,7 +461,6 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 			id := n.ID()
 			origTxFrom := n.Temporal().TxFrom
 
-			time.Sleep(2 * time.Millisecond)
 			if err := tt.mutate(g, id); err != nil {
 				t.Fatalf("label mutation: %v", err)
 			}
@@ -703,6 +702,7 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 //	carol ┤ Pending ────► (deleted) ✗
 func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
+	clk := useTestClock(t, g)
 
 	alice, err := g.Nodes.Add([]string{"Doc", "Pending"}, nil)
 	if err != nil {
@@ -723,7 +723,6 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	// t0: carol was created last, so her snowflake time is within v0 of all three.
 	t0 := g.nodeValidFrom(carol)
 
-	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before mutations
 	if err := g.Nodes.RemoveLabel(aliceID, "Pending"); err != nil {
 		t.Fatalf("RemoveNodeLabel alice: %v", err)
 	}
@@ -733,9 +732,10 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	if err := g.Nodes.Delete(carolID); err != nil {
 		t.Fatalf("DeleteNode carol: %v", err)
 	}
-	// tNow: +1 ms ensures we're strictly past the last mutation's millisecond
-	// timestamp, so post-mutation versions overlap [t0, tNow).
-	tNow := types.Instant(time.Now().UnixMilli() + 1)
+	// tNow: deterministic instant strictly after every mutation under the
+	// test clock — Peek returns the next millisecond the clock would
+	// hand out, which is past the last mutation's UpdatedAt.
+	tNow := clk.PeekInstant()
 
 	// At t0: alice and carol carry Pending; bob does not.
 	hits, err := g.Nodes.ByLabel("Pending", storepkg.QueryOpts{ValidAt: t0})
@@ -806,6 +806,7 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 // half-open semantic of the version interval.
 func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
+	clk := useTestClock(t, g)
 
 	alice, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
@@ -831,7 +832,6 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// t0: dave was created last, so his snowflake time is within v0 of all four.
 	t0 := g.nodeValidFrom(dave)
 
-	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before mutations
 	updatedAlice, err := g.Nodes.Update(aliceID, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode alice: %v", err)
@@ -845,8 +845,10 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 	// aliceMutation: the millisecond at which alice's v0 ends and v1 begins.
 	// Used for the boundary assertion below.
 	aliceMutation := updatedAlice.Temporal().UpdatedAt
-	// tNow: +1 ms ensures we're strictly past the last mutation's millisecond.
-	tNow := types.Instant(time.Now().UnixMilli() + 1)
+	// tNow: deterministic instant strictly after every mutation under the
+	// test clock — Peek returns the next millisecond the clock would
+	// hand out, which is past the last mutation's UpdatedAt.
+	tNow := clk.PeekInstant()
 
 	// At t0: alice, carol, dave have status=draft; bob has published.
 	hits, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{ValidAt: t0})
@@ -914,6 +916,7 @@ func TestNodesByLabelAndProperty_TemporalOpts_Adversarial(t *testing.T) {
 //	r3  ┤ KNOWS (still alive) ──────┤
 func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
+	clk := useTestClock(t, g)
 
 	a, err := g.Nodes.Add([]string{"P"}, nil)
 	if err != nil {
@@ -942,15 +945,16 @@ func TestRelationshipsByType_TemporalOpts_Adversarial(t *testing.T) {
 	// t0: r3 was created last, so its snowflake time is within v0 of all three.
 	t0 := g.relValidFrom(r3)
 
-	time.Sleep(2 * time.Millisecond) // give v0 a non-zero duration before deletes
 	if err := g.Rels.Delete(r1ID); err != nil {
 		t.Fatalf("DeleteRelationship r1: %v", err)
 	}
 	if err := g.Rels.Delete(r2ID); err != nil {
 		t.Fatalf("DeleteRelationship r2: %v", err)
 	}
-	// tNow: +1 ms ensures we're strictly past the last mutation's millisecond.
-	tNow := types.Instant(time.Now().UnixMilli() + 1)
+	// tNow: deterministic instant strictly after every mutation under the
+	// test clock — Peek returns the next millisecond the clock would
+	// hand out, which is past the last mutation's UpdatedAt.
+	tNow := clk.PeekInstant()
 
 	// At t0: KNOWS = {r1, r3}; WORKS_WITH = {r2}.
 	got, err := g.Rels.ByType("KNOWS", storepkg.QueryOpts{ValidAt: t0})

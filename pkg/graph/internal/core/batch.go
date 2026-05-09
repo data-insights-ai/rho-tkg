@@ -381,7 +381,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// reflects when the batch actually commits, not when AddNode was
 		// queued. Mirrors addNodeInternal which stamps TxFrom inside the
 		// single function call window.
-		txNow := nowInstant()
+		txNow := b.g.now()
 		for _, pn := range b.nodes {
 			pn.temporal.TxFrom = txNow
 			pn.node.SetTemporal(pn.temporal)
@@ -527,7 +527,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// alias is not load-bearing.
 			pr.rel.SetIntegrity(pr.relIntegrity)
 
-			txNow = nowInstant()
+			txNow = b.g.now()
 			pr.temporal.TxFrom = txNow
 			pr.rel.SetTemporal(pr.temporal)
 
@@ -606,7 +606,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pu.id), nowInstant(), eventspkg.PriorityNormal)
+			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -622,7 +622,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Updated++
-			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), nowInstant(), eventspkg.PriorityNormal)
+			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
 		}
 	}
 
@@ -637,7 +637,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
+			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
 		}
 	}
 
@@ -652,7 +652,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			})
 		} else {
 			result.Deleted++
-			b.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), nowInstant(), eventspkg.PriorityCritical)
+			b.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
 		}
 	}
 

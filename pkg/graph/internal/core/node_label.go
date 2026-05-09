@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"time"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 
@@ -28,7 +27,7 @@ func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
 		return closeErr
 	}
 	if err == nil && mutated {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }
@@ -87,7 +86,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := types.Instant(time.Now().UnixMilli())
+	now := c.now()
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)
@@ -123,7 +122,7 @@ func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
 		return closeErr
 	}
 	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
 }
@@ -169,7 +168,7 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := types.Instant(time.Now().UnixMilli())
+	now := c.now()
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)

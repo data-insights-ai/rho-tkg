@@ -1557,6 +1557,52 @@ error chain.
 (R4-F15). Node and rel import collision probes treated every non-nil
 error other than nil as absence.
 
+## B67. Tests Must Use the Per-Core Mock Clock, Not Wall-Clock Sleeps
+
+```
+BAD:  queryTime := g.nodeValidFrom(n)
+      time.Sleep(2 * time.Millisecond)        // flaky: 2ms isn't always enough on loaded CI
+      g.Nodes.Update(id, ...)
+      tNow := types.Instant(time.Now().UnixMilli() + 1)
+
+GOOD: clk := useTestClock(t, g)
+      queryTime := g.nodeValidFrom(n)        // snowflake-derived, real time
+      g.Nodes.Update(id, ...)                 // UpdatedAt comes from clk, monotonic
+      tNow := clk.PeekInstant()              // strictly after the last mutation
+```
+
+Wall-clock sleeps in tests are a CI flake risk: 2ms can collapse to one
+millisecond under load, leaving Update's UpdatedAt equal to the prior
+queryTime and the temporal query reading the post-mutation state.
+The fix is a per-Core mockable clock (R4-F20). Every mutation calls
+c.now(), which consults c.clock — defaulting to time.Now in
+production, but swappable to a deterministic monotonic counter in
+tests via useTestClock(t, g).
+
+**Why:** time.Sleep(2 * time.Millisecond) does not guarantee a 2ms
+advance — it only guarantees AT LEAST 2ms of wall-clock time has
+passed, which can be 0ms-of-millisecond-storage if the process gets
+scheduled out and back within the same millisecond bucket. The mock
+clock advances by exactly 1ms per call, so two consecutive c.now()
+results are always strictly increasing.
+
+**How to apply:** In every new test, call useTestClock(t, g) right
+after newTestGraph(t). Capture the returned *testClock if you need
+clk.PeekInstant() (the next instant the clock will hand out, useful
+for "tNow" anchors) or clk.Advance(d) (skip a validity window in one
+step). Existing tests that still use time.Sleep continue to work in
+production-clock mode — migration is per-test, opt-in.
+
+**Migration patterns:**
+  - `time.Sleep(2 * time.Millisecond)` → delete (the clock advances itself)
+  - `tNow := types.Instant(time.Now().UnixMilli() + 1)` → `tNow := clk.PeekInstant()`
+  - `time.Sleep(d)` for "skip a validity window" → `clk.Advance(d)`
+
+**History:** Found during the 2026-05-09 maintainability review round 4
+(R4-F20). 126 wall-clock sleep call sites in the test suite. Per-Core
+clock added with useTestClock helper; migration of high-sleep test
+files began in this commit and continues incrementally.
+
 ---
 
 # Tier C — Reference

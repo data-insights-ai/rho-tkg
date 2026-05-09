@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
@@ -48,6 +49,16 @@ type Core struct {
 	mu            sync.RWMutex
 	closeOnce     sync.Once
 	closed        atomic.Bool
+
+	// clock is the time source used by every mutation path that stamps
+	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
+	// time.Now in New(); test helpers swap it for a deterministic
+	// counter so two consecutive mutations yield strictly-increasing
+	// timestamps without the wall-clock sleeps that otherwise flake on
+	// loaded CI hardware (R4-F20). Only ever read from goroutines that
+	// hold the appropriate Core lock — the value is set once in New
+	// and (in tests) replaced under exclusive access.
+	clock func() time.Time
 
 	indexProviders map[string]*indexProviderEntry
 
@@ -236,6 +247,7 @@ func New(config Config) (*Core, error) {
 		entityLocks:    locks.NewManager(),
 		validation:     v,
 		indexProviders: make(map[string]*indexProviderEntry),
+		clock:          time.Now,
 	}
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}

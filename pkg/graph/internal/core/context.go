@@ -9,9 +9,27 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
-// nowInstant returns the current time as a types.Instant (Unix milliseconds).
+// nowInstant returns the current wall-clock time as a types.Instant (Unix
+// milliseconds). Used by code paths that have no Core handle (notably
+// the package-level test helpers and bootstrap paths). Mutation paths
+// inside Core MUST use c.now() instead — that path consults c.clock,
+// which tests can override (R4-F20).
 func nowInstant() types.Instant {
 	return types.Instant(time.Now().UnixMilli())
+}
+
+// now returns the current time according to c.clock, as a
+// types.Instant (Unix milliseconds). Defaults to time.Now in
+// production. Tests swap c.clock for a deterministic counter so two
+// consecutive mutations yield strictly-increasing timestamps without
+// the wall-clock sleeps that flake on loaded CI hardware (R4-F20).
+//
+// Callers in mutation paths (TxFrom / UpdatedAt / DeletedAt) and event
+// timestamp paths use this method; only a handful of test-bootstrap
+// call sites still use the package-level nowInstant, where the
+// per-Core clock is unavailable.
+func (c *Core) now() types.Instant {
+	return types.Instant(c.clock().UnixMilli())
 }
 
 // checkCtx performs a non-blocking context cancellation check.

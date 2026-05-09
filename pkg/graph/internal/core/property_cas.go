@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"time"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 
@@ -37,7 +36,7 @@ func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types
 		return false, closeErr
 	}
 	if ok && mutated && err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: nowInstant(), Priority: eventspkg.PriorityNormal})
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return ok, err
 }
@@ -122,7 +121,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 
 	current.SetVersion(current.Version() + 1)
 
-	now := types.Instant(time.Now().UnixMilli())
+	now := c.now()
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
