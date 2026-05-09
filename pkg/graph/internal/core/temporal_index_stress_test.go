@@ -23,7 +23,7 @@ func TestBatchBuilder_LargeNodeBatch(t *testing.T) {
 	g := newTestGraph(t)
 
 	const count = 2000
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	for i := range count {
 		label := fmt.Sprintf("Label%d", i%10)
 		if _, err := b.AddNode([]string{label}, map[string]any{"idx": i, "score": i % 100}); err != nil {
@@ -61,7 +61,7 @@ func TestBatchBuilder_NodesAndRelationships(t *testing.T) {
 		relCount  = 400
 	)
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
 		n, err := b.AddNode([]string{"Entity"}, map[string]any{"idx": i})
@@ -125,7 +125,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 	}
 
 	// Build a batch of 500 nodes.
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	for i := range 500 {
 		if _, err := b.AddNode([]string{"Batch"}, map[string]any{"idx": i}); err != nil {
 			t.Fatalf("b.AddNode: %v", err)

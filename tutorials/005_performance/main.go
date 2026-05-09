@@ -293,7 +293,10 @@ func main() {
 	singleNodeOps := int64(float64(batchBenchN) / singleDur.Seconds())
 
 	// BatchBuilder: queue all nodes (validation + ID gen), then Execute.
-	b := graph.NewBatchBuilder(gSingle)
+	b, err := graph.NewBatchBuilder(gSingle)
+	if err != nil {
+		log.Fatalf("NewBatchBuilder: %v", err)
+	}
 	for i := range batchBenchN {
 		if _, err := b.AddNode([]string{"Batch"}, map[string]any{"idx": i}); err != nil {
 			log.Fatalf("batch AddNode: %v", err)

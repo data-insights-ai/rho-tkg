@@ -15,8 +15,9 @@ import (
 // TxAPI is the transaction sub-API accessor on Graph.Tx.
 type TxAPI struct{ c *core.Core }
 
-// Begin opens a new transaction. Forwards to (*core.Core).BeginTx.
-func (a *TxAPI) Begin() *GraphTx { return a.c.BeginTx() }
+// Begin opens a new transaction. Returns ErrGraphClosed if the graph
+// has already been closed.
+func (a *TxAPI) Begin() (*GraphTx, error) { return a.c.BeginTx() }
 
 // Run executes fn within a transaction. Commits if fn returns nil,
 // otherwise rolls back. The returned error is fn's error joined with any
@@ -27,7 +28,10 @@ func (a *TxAPI) Begin() *GraphTx { return a.c.BeginTx() }
 // callback would leave c.mu held forever, deadlocking every subsequent
 // mutation, transaction, and read.
 func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
-	tx := a.c.BeginTx()
+	tx, err := a.c.BeginTx()
+	if err != nil {
+		return err
+	}
 	committed := false
 	defer func() {
 		if committed {
@@ -58,7 +62,10 @@ func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	tx := a.c.BeginTx()
+	tx, err := a.c.BeginTx()
+	if err != nil {
+		return err
+	}
 	committed := false
 	defer func() {
 		if committed {
@@ -91,4 +98,7 @@ func errTxDoneSentinel() error { return storepkg.ErrTxDone }
 type BatchAPI struct{ c *core.Core }
 
 // New constructs a fresh BatchBuilder bound to the underlying graph.
-func (a *BatchAPI) New() *BatchBuilder { return core.NewBatchBuilder(a.c) }
+// Returns ErrGraphClosed if the graph has already been closed.
+func (a *BatchAPI) New() (*BatchBuilder, error) {
+	return core.NewBatchBuilder(a.c)
+}

@@ -174,6 +174,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 // t1 and t2 appears in NodesUpdated.
 func TestDiffSnapshots_Updated(t *testing.T) {
 	g := newDiffGraph(t)
+	clk := useTestClock(t, g)
 
 	n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -181,16 +182,17 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	}
 	nid := n.ID()
 
-	// t1 captures state BEFORE the update.
-	t1 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// t1 captures state BEFORE the update. Advance the clock so the
+	// Update's UpdatedAt is strictly greater than t1 (R5-F10).
+	t1 := clk.PeekInstant()
+	clk.Advance(2 * time.Millisecond)
 
 	// Update the node (its hash changes).
 	if _, err := g.Nodes.Update(nid, map[string]any{"name": "Alice Updated"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	t2 := types.Instant(time.Now().UnixMilli()) + 10
+	t2 := clk.PeekInstant() + 10
 
 	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
@@ -318,6 +320,7 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 // between t1 and t2 appears in RelsUpdated.
 func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	g := newDiffGraph(t)
+	clk := useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"A"}, nil)
 	b, _ := g.Nodes.Add([]string{"B"}, nil)
@@ -327,14 +330,14 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	}
 	rid := r.ID()
 
-	t1 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	t1 := clk.PeekInstant()
+	clk.Advance(2 * time.Millisecond)
 
 	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	t2 := types.Instant(time.Now().UnixMilli()) + 10
+	t2 := clk.PeekInstant() + 10
 
 	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
@@ -386,6 +389,7 @@ func TestRelHash_NilIntegrity(t *testing.T) {
 // and unchanged entities each appear in the correct diff category.
 func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	g := newDiffGraph(t)
+	clk := useTestClock(t, g)
 
 	// "unchanged" — created before the diff window, not modified.
 	_, err := g.Nodes.Add([]string{"Unchanged"}, map[string]any{"v": "same"})
@@ -399,21 +403,27 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 		t.Fatalf("AddNode toUpdate: %v", err)
 	}
 
-	t1 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// t1 captured before Update; clock advance widens the gap so the
+	// Update's UpdatedAt > t1 (R5-F10).
+	t1 := clk.PeekInstant()
+	clk.Advance(2 * time.Millisecond)
 
 	// Perform the update between t1 and t2.
 	if _, err := g.Nodes.Update(toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	// "created" — added after t1.
-	created, err := g.Nodes.Add([]string{"Created"}, nil)
+	// "created" — explicit ValidFrom past t1 so the Diff classifies it
+	// as created within the [t1, t2) window. Without explicit
+	// ValidFrom the snowflake-derived value is wall-clock-now which is
+	// before the test-clock-derived t1.
+	createdValidFrom := clk.PeekInstant()
+	created, err := g.Nodes.Add([]string{"Created"}, map[string]any{"tkg_valid_from": createdValidFrom})
 	if err != nil {
 		t.Fatalf("AddNode created: %v", err)
 	}
 
-	t2 := types.Instant(time.Now().UnixMilli()) + 10
+	t2 := clk.PeekInstant() + 10
 
 	diff, err := g.Temporal.Diff(t1, t2)
 	if err != nil {
@@ -476,7 +486,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tx := g.BeginTx()
+			tx, _ := g.BeginTx()
 			_, _ = tx.AddNode([]string{"Concurrent"}, nil)
 			_ = tx.Commit()
 		}()

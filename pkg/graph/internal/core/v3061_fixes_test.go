@@ -317,7 +317,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	relID := snowflake.ID(999999)
 
 	// Import node+rel in tx, commit, verify exists.
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	nodeID := snowflake.ID(888888)
 	c, err := tx.ImportNodeWithID(context.Background(), types.NodeID(nodeID), []string{"Place"}, map[string]any{"name": "Berlin"})
 	if err != nil {
@@ -350,7 +350,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// Rollback: create new rel in tx, rollback, verify original persists.
-	tx2 := g.BeginTx()
+	tx2, _ := g.BeginTx()
 	newRelID := snowflake.ID(777777)
 	_, err = tx2.ImportRelationshipWithID(context.Background(), types.RelID(newRelID), "LIKES", a, b, nil)
 	if err != nil {
@@ -381,6 +381,7 @@ func TestGetRelsAsOf(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
+	clk := useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -393,8 +394,9 @@ func TestGetRelsAsOf(t *testing.T) {
 	rid := r.ID()
 	txFrom1 := r.Temporal().TxFrom
 
-	// Small delay to ensure different timestamp.
-	time.Sleep(2 * time.Millisecond)
+	// Widen the gap between txFrom1 and the Update's TxFrom so
+	// "as-of txFrom1" cleanly resolves to v0 (R5-F10).
+	clk.Advance(2 * time.Millisecond)
 
 	// Update rel — creates history entry.
 	r2, err := g.Rels.Update(rid, map[string]any{"weight": int64(2)})

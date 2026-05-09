@@ -32,7 +32,10 @@ func ExampleTxAPI_Begin() {
 	}
 	defer g.Close()
 
-	tx := g.Tx.Begin()
+	tx, err := g.Tx.Begin()
+	if err != nil {
+		panic(err)
+	}
 	if _, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
 		_ = tx.Rollback()
 		panic(err)
@@ -69,7 +72,10 @@ func ExampleBatchAPI_New() {
 	}
 	defer g.Close()
 
-	bb := g.Batch.New()
+	bb, err := g.Batch.New()
+	if err != nil {
+		panic(err)
+	}
 	if _, err := bb.AddNode([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
 		panic(err)
 	}

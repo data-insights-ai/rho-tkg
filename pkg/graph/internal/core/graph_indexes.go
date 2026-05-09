@@ -13,6 +13,9 @@ import (
 // Returns nil if the label has never been registered (nothing to index).
 func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -29,6 +32,9 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 // Returns nil if the label has never been registered.
 func (i *IndexOps) DropProperty(label, propertyKey string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -46,6 +52,9 @@ func (i *IndexOps) DropProperty(label, propertyKey string) error {
 // Returns nil if the label has never been registered.
 func (i *IndexOps) CreateTemporal(label string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -62,6 +71,9 @@ func (i *IndexOps) CreateTemporal(label string) error {
 // Returns nil if the label has never been registered.
 func (i *IndexOps) DropTemporal(label string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -85,6 +97,9 @@ func (i *IndexOps) DropTemporal(label string) error {
 // Not persisted: the index must be rebuilt via CreateHighFrequency after restart.
 func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -101,6 +116,9 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 // Returns storepkg.ErrTemporalIndexNotFound if no high-frequency index exists.
 func (i *IndexOps) DropHighFrequency(label string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -120,6 +138,9 @@ func (i *IndexOps) DropHighFrequency(label string) error {
 // Returns ErrVectorIndexExists if the index already exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil
@@ -136,6 +157,9 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 // Returns ErrVectorIndexNotFound if the index does not exist.
 func (i *IndexOps) DropVector(label, propertyKey string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil

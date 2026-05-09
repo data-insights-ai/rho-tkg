@@ -128,7 +128,7 @@ func TestGraphTx_ImportNodeWithID(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	defer tx.Rollback()
 
 	id := snowflake.ID(55555)
@@ -167,7 +167,7 @@ func TestGraphTx_ImportNodeWithID_Rollback(t *testing.T) {
 
 	id := snowflake.ID(77777)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	_, err := tx.ImportNodeWithID(context.Background(), types.NodeID(id), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("ImportNodeWithID: %v", err)

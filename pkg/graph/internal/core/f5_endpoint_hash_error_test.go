@@ -147,7 +147,7 @@ func TestBatch_EndpointReadFailure_RecordsBatchError(t *testing.T) {
 		t.Fatalf("AddNode C: %v", err)
 	}
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	rFail, err := bb.AddRelationship("KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("queue rFail: %v", err)

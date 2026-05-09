@@ -24,7 +24,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.SetNodeProperty(n.ID(), "new", "set"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("SetNodeProperty: %v", err)

@@ -61,14 +61,19 @@ func TestR4_AsyncEventBus_StrictPriorityOrder_AfterIdleWake(t *testing.T) {
 		// the goroutine being scheduled.
 		time.Sleep(2 * time.Millisecond)
 
-		// Enqueue Low and Critical back-to-back. Pre-fix, Go's select
-		// on the blocking branch could fire on whichever was enqueued
-		// first (Low). Post-fix, the worker only learns "events are
-		// available" via wakeupCh and the priority scan picks Critical.
-		ab.Publish(Event{Priority: PriorityLow})
-		ab.Publish(Event{Priority: PriorityCritical})
-		ab.Publish(Event{Priority: PriorityHigh})
-		ab.Publish(Event{Priority: PriorityNormal})
+		// PublishBatch atomically enqueues all four events under the
+		// bus's publish mutex and signals the worker exactly once at
+		// the end. The worker therefore sees every event in queues
+		// when it scans and dispatches in strict priority order.
+		// Sequential Publish calls would race: the worker can wake
+		// from the first signal and dispatch Low before later events
+		// land, which is exactly what the round-5 review caught.
+		ab.PublishBatch(
+			Event{Priority: PriorityLow},
+			Event{Priority: PriorityCritical},
+			Event{Priority: PriorityHigh},
+			Event{Priority: PriorityNormal},
+		)
 
 		// Wait for the first dispatch.
 		select {

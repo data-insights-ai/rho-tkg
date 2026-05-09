@@ -209,20 +209,3 @@ func paginateNearestNodes(nodes []*types.Node, after types.EntityID, limit int) 
 	return out
 }
 
-// resolveTemporalVectorMatches resolves each candidate node to its
-// version under opts and paginates the eligible subset. Test-only — the
-// production temporal-vector path now lives inline in SearchNearest's
-// iterative over-fetch loop. Retained because the existing test suite
-// exercises the after-the-fact resolution semantics directly; do not use
-// from new production code.
-func resolveTemporalVectorMatches(g *Core, candidates []*types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
-	resolved := make([]*types.Node, 0, len(candidates))
-	for _, cand := range candidates {
-		n, err := g.findNodeVersionForOpts(cand.ID(), opts, pred)
-		if err != nil {
-			continue
-		}
-		resolved = append(resolved, n)
-	}
-	return paginateNearestNodes(resolved, after, limit)
-}

@@ -118,11 +118,11 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `AddNode(labels, props)` | `g.mu.RLock()` | Validate, generate ID, compute hash (genesis), store |
 | `AddRelationship(type, start, end, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Validate endpoints exist; reject self-loops when `AllowSelfLoops=false` (`ErrSelfLoop`); generate ID, hash, store |
 | `UpdateNode(id, updates)` | `g.mu.RLock()` + `LockEntity(id)` | Deep-copy pre-mutation, apply updates, bump version, `ReplaceNodeWithHistory` |
-| `UpdateRelationship(id, updates)` | `g.mu.RLock()` + `LockEntity(id)` | Same pattern as UpdateNode |
+| `UpdateRelationship(id, updates)` | `g.mu.RLock()` + `LockMany(relID, startID, endID)` | Deep-copy pre-mutation, apply updates, bump version. Locks both endpoints (in addition to the rel itself) so the FromNodeHash/ToNodeHash refresh cannot interleave with a concurrent endpoint UpdateNode (R4-F7) |
 | `DeleteNode(id)` | `LockMany(node + all rels)` | Two-phase TOCTOU: read adjacency, lock all, re-verify, build `[]RelTombstone`, single atomic `DeleteNodeWithHistory` call |
 | `DeleteRelationship(id)` | `LockEntity(id)` | Build tombstone, single atomic `DeleteRelWithHistory` call |
-| `AddRelationshipByID(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Create relationship using endpoint snowflake IDs directly. Skips endpoint fetch, endpoint hash capture, and temporal constraint checks against endpoints. High-throughput path |
-| `AddRelationshipByIDIfAbsent(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Atomic check-then-create: returns existing relationship if same type+endpoints already connected, otherwise creates. Same trade-offs as `AddRelationshipByID`. Returns `(rel, created, err)` |
+| `AddRelationshipByID(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Create relationship using endpoint snowflake IDs directly. Fast path skips endpoint fetch, endpoint hash capture, and constraint check when no graph-level constraints are configured. When `ConstraintRelWithinEndpoints` (or any endpoint-dependent constraint) is set, the live endpoints are fetched under the lock and the constraint is enforced — silent bypass via this entry point is not possible (R5-F7) |
+| `AddRelationshipByIDIfAbsent(type, startID, endID, props)` | `g.mu.RLock()` + `LockTwo(start, end)` | Atomic check-then-create: returns existing relationship if same type+endpoints already connected, otherwise creates. Same constraint behaviour as `AddRelationshipByID`. Returns `(rel, created, err)` |
 | `GetNode(id)` | none (read-only via store) | Retrieve a single node by snowflake ID |
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Context-aware variants (`*WithContext`) add cancellation checks at critical points. Non-context methods delegate with `context.Background()`.

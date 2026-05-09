@@ -412,7 +412,7 @@ func BenchmarkGraphBaseline_BatchAndTx_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		b.ReportAllocs()
 		for b.Loop() {
-			batch := NewBatchBuilder(g)
+			batch, _ := NewBatchBuilder(g)
 			for i := 0; i < baselineBatchSize; i++ {
 				if _, err := batch.AddNode([]string{"BatchNode"}, baselineNodeProps(i)); err != nil {
 					b.Fatal(err)
@@ -429,7 +429,7 @@ func BenchmarkGraphBaseline_BatchAndTx_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		b.ReportAllocs()
 		for b.Loop() {
-			tx := g.BeginTx()
+			tx, _ := g.BeginTx()
 			for i := 0; i < baselineBatchSize; i++ {
 				if _, err := tx.AddNode([]string{"TxNode"}, baselineNodeProps(i)); err != nil {
 					_ = tx.Rollback()

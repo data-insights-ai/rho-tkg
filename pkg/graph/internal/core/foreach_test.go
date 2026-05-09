@@ -29,7 +29,9 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 	nodeID := n.ID()
-	time.Sleep(2 * time.Millisecond)
+	// vStart <= t (inclusive) means querying at the same millisecond
+	// as the node's snowflake-derived ValidFrom still matches — no
+	// wall-clock sleep needed (R5-F10).
 	now := types.Instant(time.Now().UnixMilli())
 
 	// GetNodesValidAt should find Alice.
@@ -53,7 +55,6 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	time.Sleep(2 * time.Millisecond)
 	now2 := types.Instant(time.Now().UnixMilli())
 
 	// GetRelationshipsValidAt should find the rel.

@@ -22,6 +22,9 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		rel *types.Relationship
 		err error
@@ -217,6 +220,9 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 // Returns storepkg.ErrRelNotFound if the relationship does not exist. Empty updates map is a no-op.
 func (r *RelOps) UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.Rels.UpdateInPlaceWithContext(context.Background(), id, updates)
 }
 
@@ -224,6 +230,9 @@ func (r *RelOps) UpdateInPlace(id types.RelID, updates map[string]any) (*types.R
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		rel *types.Relationship
 		err error

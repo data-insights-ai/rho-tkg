@@ -416,17 +416,17 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	// Record creation time.
 	creationTime := g.nodeValidFrom(n)
 
-	// Pause to ensure time advances (UpdatedAt will differ).
-	time.Sleep(2 * time.Millisecond)
-
+	// Test clock advances 1ms per c.now() call, so consecutive Updates
+	// always produce distinct UpdatedAt values without wall-clock sleeps
+	// (R5-F10).
 	g.Nodes.Update(id, map[string]any{"name": "v1"})
-	time.Sleep(2 * time.Millisecond)
 	g.Nodes.Update(id, map[string]any{"name": "v2"})
 
 	// Query at creation time — should return v0 (genesis).
@@ -439,8 +439,12 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 		t.Fatalf("at creation time: expected name=v0, got %v", name)
 	}
 
-	// Query at current time — should return v2 (latest).
-	result, err = g.Temporal.NodeAt(id, nowMs())
+	// Query strictly after the last Update's UpdatedAt — should return
+	// v2 (latest). Using clk.PeekInstant() rather than nowMs() because
+	// the test clock advances independently of the wall clock; querying
+	// at a wall-clock "now" would land before the test-clock-derived
+	// UpdatedAt of v1/v2 and resolve to v0.
+	result, err = g.Temporal.NodeAt(id, clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -700,14 +704,14 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	time.Sleep(2 * time.Millisecond)
+	// Test clock advances 1ms per c.now() call — Updates produce
+	// distinct UpdatedAt values without wall-clock sleeps (R5-F10).
 	g.Nodes.Update(id, map[string]any{"name": "v1"})
-	time.Sleep(2 * time.Millisecond)
 	g.Nodes.Update(id, map[string]any{"name": "v2"})
-	time.Sleep(2 * time.Millisecond)
 	updated, _ := g.Nodes.Update(id, map[string]any{"name": "v3"})
 
 	// Truncate to keep only 1 history version (v2 survives).
@@ -736,8 +740,11 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 		t.Fatalf("expected name=v2 at surviving version time, got %v", name)
 	}
 
-	// Query at current time should return latest (v3).
-	result, err = g.Temporal.NodeAt(id, nowMs())
+	// Query strictly after the last Update — should return latest (v3).
+	// clk.PeekInstant() rather than nowMs() because the test clock is
+	// at wall-time + 1s (see useTestClock); v3's UpdatedAt is on the
+	// test clock, so wall-time nowMs() would land before it.
+	result, err = g.Temporal.NodeAt(id, clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetNodeAt at now: %v", err)
 	}
@@ -754,10 +761,10 @@ func TestDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	time.Sleep(2 * time.Millisecond)
 	g.Nodes.Update(id, map[string]any{"name": "v1"})
 
 	// Delete the node.
@@ -779,11 +786,13 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
+	// nowMs() is wall clock; the test clock is wall + 1s so any
+	// subsequent c.now()-driven DeletedAt is strictly greater (R5-F10).
 	beforeDelete := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
@@ -816,12 +825,12 @@ func TestDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
-	time.Sleep(2 * time.Millisecond)
 	g.Rels.Update(rid, map[string]any{"weight": int64(2)})
 
 	// Delete the relationship.
@@ -850,13 +859,13 @@ func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2020)})
 	rid := r.ID()
 	aid := a.ID()
 
-	time.Sleep(2 * time.Millisecond)
 	g.Rels.Update(rid, map[string]any{"since": int64(2021)})
 
 	// Cascade delete node A — should preserve rel history.
@@ -896,12 +905,14 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	// Record a time when the node existed.
+	// Record a time when the node existed. nowMs() is wall-clock; the
+	// test clock is wall + 1s so the subsequent Delete's ValidTo is
+	// strictly greater than validTime (R5-F10).
 	validTime := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	// Delete the node (creates tombstone with DeletedAt/ValidTo).
 	if err := g.Nodes.Delete(id); err != nil {
@@ -923,17 +934,19 @@ func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
-	time.Sleep(2 * time.Millisecond)
 
-	// GetNodeAt after deletion should return storepkg.ErrNoVersionValidAt.
-	_, err := g.Temporal.NodeAt(id, nowMs())
+	// GetNodeAt after deletion should return ErrNoVersionValidAt.
+	// Query at the test clock (strictly after the Delete's ValidTo,
+	// which was stamped from the test clock) — wall-clock nowMs() lands
+	// before the test-clock ValidTo and would still see the live node.
+	_, err := g.Temporal.NodeAt(id, clk.PeekInstant())
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
@@ -943,6 +956,7 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
@@ -950,7 +964,6 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 
 	validTime := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	// Delete Alice.
 	if err := g.Nodes.Delete(id); err != nil {
@@ -966,8 +979,9 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 		t.Fatalf("expected 2 nodes at pre-deletion time, got %d", len(nodes))
 	}
 
-	// Query at current time — only Bob should appear.
-	nodes, err = g.Temporal.NodesAt(nowMs())
+	// Query strictly after Alice's Delete (test-clock-stamped ValidTo)
+	// — only Bob should appear.
+	nodes, err = g.Temporal.NodesAt(clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetNodesValidAt now: %v", err)
 	}
@@ -980,11 +994,11 @@ func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
-	time.Sleep(2 * time.Millisecond)
 
 	g.Nodes.Update(id, map[string]any{"name": "v1"})
 
@@ -1006,16 +1020,15 @@ func TestGetRelAt_Basic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
 	creationTime := g.relValidFrom(r)
-	time.Sleep(2 * time.Millisecond)
 
 	g.Rels.Update(rid, map[string]any{"weight": int64(2)})
-	time.Sleep(2 * time.Millisecond)
 	g.Rels.Update(rid, map[string]any{"weight": int64(3)})
 
 	// Query at creation time — should return v0 with weight=1.
@@ -1028,8 +1041,9 @@ func TestGetRelAt_Basic(t *testing.T) {
 		t.Fatalf("expected weight=1, got %v", w)
 	}
 
-	// Query at current time — should return latest with weight=3.
-	result, err = g.Temporal.RelAt(rid, nowMs())
+	// Query strictly after the last Update (test-clock-stamped
+	// UpdatedAt) — should return latest with weight=3.
+	result, err = g.Temporal.RelAt(rid, clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetRelAt now: %v", err)
 	}
@@ -1043,13 +1057,13 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
 	validTime := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	if err := g.Rels.Delete(rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
@@ -1065,9 +1079,9 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 		t.Fatalf("expected weight=1, got %v", w)
 	}
 
-	// Query at current time — should return storepkg.ErrNoVersionValidAt.
-	time.Sleep(2 * time.Millisecond)
-	_, err = g.Temporal.RelAt(rid, nowMs())
+	// Query strictly after the Delete (test-clock-stamped ValidTo) —
+	// expects ErrNoVersionValidAt.
+	_, err = g.Temporal.RelAt(rid, clk.PeekInstant())
 	if !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 		t.Fatalf("expected storepkg.ErrNoVersionValidAt after deletion, got %v", err)
 	}
@@ -1087,12 +1101,12 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	g.Rels.Add("KNOWS", a, b, nil)
 
 	validTime := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	// Delete the relationship via cascade (delete node a).
 	if err := g.Nodes.Delete(a.ID()); err != nil {
@@ -1108,8 +1122,8 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 		t.Fatalf("expected 1 rel at pre-deletion time, got %d", len(rels))
 	}
 
-	// Query at current time — rel should not appear.
-	rels, err = g.Temporal.RelationshipsAt(nowMs())
+	// Query strictly after the cascade delete — rel should not appear.
+	rels, err = g.Temporal.RelationshipsAt(clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidAt now: %v", err)
 	}
@@ -1122,12 +1136,12 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.Rels.Add("KNOWS", a, b, nil)
 
 	snapshotTime := nowMs()
-	time.Sleep(2 * time.Millisecond)
 
 	// Delete Alice — cascades to the KNOWS relationship.
 	if err := g.Nodes.Delete(a.ID()); err != nil {
@@ -1146,8 +1160,8 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 		t.Fatalf("expected 1 rel in snapshot, got %d", snap.RelCount)
 	}
 
-	// Snapshot at current time — only Bob.
-	snap, err = g.Temporal.Snapshot(nowMs())
+	// Snapshot strictly after the cascade delete — only Bob.
+	snap, err = g.Temporal.Snapshot(clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("Snapshot now: %v", err)
 	}
@@ -1163,18 +1177,20 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	creationTime := g.nodeValidFrom(n)
-	time.Sleep(2 * time.Millisecond)
 
 	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// Interval overlapping the entity's lifetime should include it.
-	nodes, err := g.Temporal.NodesDuring(creationTime, nowMs())
+	// End of interval must be strictly after the test-clock-stamped
+	// ValidTo so the lifetime fully covers the interval.
+	nodes, err := g.Temporal.NodesDuring(creationTime, clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring: %v", err)
 	}
@@ -1183,7 +1199,7 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 	}
 
 	// Interval entirely after deletion should not include it.
-	afterDeletion := nowMs() + 1000
+	afterDeletion := clk.PeekInstant() + 1000
 	nodes, err = g.Temporal.NodesDuring(afterDeletion, afterDeletion+1000)
 	if err != nil {
 		t.Fatalf("GetNodesValidDuring after deletion: %v", err)
@@ -1197,12 +1213,12 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
+	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 
 	creationTime := g.relValidFrom(r)
-	time.Sleep(2 * time.Millisecond)
 
 	rid := r.ID()
 	if err := g.Rels.Delete(rid); err != nil {
@@ -1210,7 +1226,7 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	}
 
 	// Interval overlapping the rel's lifetime should include it.
-	rels, err := g.Temporal.RelationshipsDuring(creationTime, nowMs())
+	rels, err := g.Temporal.RelationshipsDuring(creationTime, clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring: %v", err)
 	}
@@ -1219,7 +1235,7 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	}
 
 	// Interval entirely after deletion should not include it.
-	afterDeletion := nowMs() + 1000
+	afterDeletion := clk.PeekInstant() + 1000
 	rels, err = g.Temporal.RelationshipsDuring(afterDeletion, afterDeletion+1000)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring after deletion: %v", err)

@@ -14,7 +14,7 @@ func TestGraphTx_RollbackDeletes(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -50,7 +50,7 @@ func TestGraphTx_RollbackEmpty(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback empty tx: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestGraphTx_DoubleRollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestGraphTx_AddAfterRollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestGraphTx_CommitThenRollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestGraphTx_RollbackThenCommit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestGraphTx_RollbackLeavesNoHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, nil)
 	if err != nil {
@@ -148,7 +148,7 @@ func TestGraphTx_CreateThenDelete_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	n, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Temp"})
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +177,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Bob"}); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	}
 	relID := r.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestTxRollbackNoEvents(t *testing.T) {
 		count.Add(1)
 	})
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	_, err = tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {

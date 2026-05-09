@@ -6,6 +6,141 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — Maintainability review round 5 (2026-05-09)
+
+- **Post-close protection extended to every public sub-API entry
+  point.** `*core.Core.checkOpen()` is the single primitive every
+  sub-Core method calls before contacting the store, registries, or
+  indexes. 30+ public APIs (Nodes/Rels reads, ByLabel/All/Count
+  variants, Temporal point/interval queries, Snapshot, IO Export,
+  Hash verification, Index management, Stats, Admin, Constraints,
+  BeginTx, Batch.New, every BatchBuilder queue method, and
+  Batch.Execute) now uniformly return `ErrGraphClosed` instead of
+  racing the lifecycle teardown. `BatchBuilder.DeleteNode` /
+  `DeleteRelationship` now return `error` so the close gate has a
+  surface to report on (R5-F1, R5-F5).
+- **Strict-snapshot APIs added on `*GraphTx`.** Round 4 told callers
+  to "drive Export from inside a tx" for a strict snapshot, but
+  `sync.RWMutex` is not reentrant — the standalone `(*IOOps).Export`
+  takes RLock while the tx already holds Lock, deadlocking the
+  caller. The fix is real: `(*GraphTx).Export(w)`,
+  `(*GraphTx).Snapshot(at)`, and `(*GraphTx).VerifyShard(name)` call
+  lock-free internal variants (`exportLocked`, `snapshotAt`,
+  `verifyShardLocked`) under the transaction's already-held write
+  lock. The standalone documentation now points to the tx-scoped
+  methods as the strict path (R5-F2).
+- **Import validates label/reltype tokens against the registry.**
+  `ImportWithOptions` rejects entity records whose `PrimaryLabel`,
+  `ExtraLabels[i]`, or `RelType` token exceeds the imported
+  registry's `Len()`. Pre-fix, a corrupt or hostile export carrying
+  out-of-range tokens imported successfully and every label/type
+  query against the entity silently resolved to "" (R5-F3).
+- **History records get the same idempotent / conflict-rejection
+  contract as current entities (R4-F12).** `PutNodeVersion` /
+  `PutRelVersion` silently overwrite, so the import path now reads
+  the existing version first; identical content is skipped, divergent
+  content is rejected with `ErrCorruptExport`. Re-importing a graph's
+  own export remains the supported idempotent workflow (R5-F4).
+- **`AddByID` / `AddByIDIfAbsent` enforce graph-level constraints.**
+  When `ConstraintRelWithinEndpoints` (or any endpoint-dependent
+  constraint) is configured on the graph, the ByID variants
+  transparently fetch the live endpoints under the endpoint lock and
+  run the same constraint check that `Rels.Add` runs. The fast path
+  (no fetch, empty endpoint hashes) survives unchanged when no
+  constraint is set, so existing high-throughput callers see no
+  regression. Silent constraint bypass via the ByID entry point is
+  no longer possible (R5-F7).
+- **Rel-type token allocation deferred past every endpoint-fetch
+  failure path.** Round 4 (R4-F14) deferred allocation past cheap
+  validation gates; round 5 pushes it past the operational store
+  failures too. `addRelationshipInternal` allocates only after both
+  GetNode calls succeed; `importRelWithIDInternal` allocates only
+  after the collision probe AND the live-endpoint fetches succeed;
+  `addRelationshipByIDIfAbsentInternal` uses `Lookup` to skip the
+  duplicate-existence check entirely when the type is unknown,
+  allocating only on the create path. The remaining unavoidable
+  pollution path (PutRelationship store-write failure) is documented
+  inline because the rel object literally needs the token at
+  construction time (R5-F6).
+- **Async event bus exposes `PublishBatch(events ...Event)`.** A
+  single `publishMu`-protected enqueue lets a publisher insert N
+  events into the priority-queue array atomically before the worker
+  is woken up, restoring strict global priority ordering under
+  bursty publishes. Sequential `Publish` calls do not guarantee
+  ordering (and never did under burst); the strict-ordering test
+  was migrated to the new API and now passes 100/100 iterations
+  (R5-F12).
+- **`TestExportGraph_HistoryBoundedMemory` is no longer flaky.**
+  The export retains nothing past return; the test was misreading
+  transient cursor state as retention. Forcing GC after the export
+  call (`runtime.GC(); runtime.GC()`) makes the retained-heap delta
+  measurement deterministic. 20 consecutive runs pass.
+- **`resolveTemporalVectorMatches` moved out of production.** The
+  test-only helper now lives in `vector_correctness_test.go` and
+  no longer compiles into the production binary (R5-F11).
+- **Production files split for review-by-feature (R5-F9).** Eight files
+  greater than 568 LOC carved into behavior-aligned siblings without
+  changing exported APIs:
+  - `pkg/graph/internal/core/batch.go` 727 → `batch.go` 114 +
+    `batch_queue.go` 277 + `batch_execute.go` 355.
+  - `pkg/graph/internal/core/export.go` 707 → `export.go` 275 +
+    `import.go` 449 (wire format / Export path vs. Import +
+    per-record validators).
+  - `pkg/graph/internal/storeutil/wire.go` 657 → `wire.go` 283 +
+    `wire_value.go` 382 (entity converters vs. property type-tag
+    reconstruction).
+  - `pkg/graph/store/tiered/tieredstore_read_history.go` 568 → 341 +
+    `tieredstore_read_history_rel.go` 240 (node-history vs.
+    rel-history).
+  - `pkg/graph/store/tiered/tieredstore_read_bulk.go` 603 → 317 +
+    `tieredstore_read_bulk_rel.go` 297.
+  - `pkg/graph/store/badger/badgerstore_rel.go` 761 → `badgerstore_rel.go`
+    299 + `badgerstore_rel_query.go` 322 + `badgerstore_rel_batch.go`
+    161 (CRUD vs. query vs. batch).
+  - `pkg/graph/store/badger/badgerstore_node.go` 964 →
+    `badgerstore_node.go` 448 + `badgerstore_node_query.go` 262 +
+    `badgerstore_node_batch.go` 279.
+  - `pkg/graph/store/badger/badgerstore_history.go` 1109 → 105
+    (shared helpers) + `badgerstore_history_node.go` 562 +
+    `badgerstore_history_rel.go` 393.
+- **Wall-clock sleep migration in tests (R5-F10).** 64 of 121
+  `time.Sleep` calls eliminated via three reusable patterns:
+  - `useTestClock(t, g)` + `clk.PeekInstant()` for "after-mutation"
+    query anchors — works wherever the c.now()-driven UpdatedAt or
+    TxFrom is what the test was waiting on.
+  - `clk.Advance(d)` to widen the gap between UpdatedAt values so a
+    midpoint anchor lands strictly between two versions.
+  - Explicit `tkg_valid_from` on Add to pin temporal ordering when
+    the test was relying on wall-clock-spread snowflake IDs (vector
+    eligibility tests, diff-window tests).
+
+  Files now at 0 sleeps: `temporal_test.go` (22→0),
+  `temporal_queries_rel_parity_test.go` (8→0),
+  `findings_extra_regression_test.go` (6→0), `txtime_test.go` (3→0),
+  `vector_correctness_test.go` (14→0), `diff_test.go` (3→0),
+  `graph_temporal_test.go` (2→0), `foreach_test.go` (2→0),
+  `diff_callback_test.go` (2→0), `v3061_fixes_test.go` (1→0),
+  `bench_production_test.go` (1→0).
+
+  The remaining ~57 sleeps test genuinely wall-clock-scheduled
+  behaviour: tiered-store hot/warm/cold shard rotation depends on
+  wall-clock shard window boundaries; async event bus tests assert
+  worker dispatch latency; badger flush tests wait for the auto-flush
+  goroutine; production code in `tieredstore.go` waits on
+  `activeReqs` to drain on Close. Migrating these would require
+  injecting a clock into the snowflake generator (cross-repo) and the
+  shard rotation scheduler (intrusive) — accepted as out of scope for
+  R5-F10.
+- **Documentation drift corrected.** The `UpdateRelationship` lock
+  table in `docs/architecture.md` reflects the actual `LockMany(rel,
+  start, end)` triple instead of the obsolete `LockEntity(id)`
+  single-lock; `docs/design.md` now describes `NodeID` / `RelID` /
+  `EntityID` as the customer-facing exported wrapper types (the
+  pre-v3.4.0 unexported aliases are noted as historical). The
+  misleading "hold c.mu.RLock for strong consistency" advice on
+  `TempOps.Snapshot` was replaced in round 4 with the correct
+  `(*GraphTx).Snapshot` reference (R5-F8).
+
 ### Changed — Maintainability review round 2 (2026-05-08)
 
 - **Admin mutators now serialise against tx/batch.** `g.Admin.ForceRotate`,

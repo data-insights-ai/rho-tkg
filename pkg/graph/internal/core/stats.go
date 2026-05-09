@@ -89,6 +89,9 @@ func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels
 // Labels with zero nodes are omitted.
 func (s *StatOps) AllLabelCounts() (map[string]int, error) {
 	c := s.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	names := c.labels.ExportNames()
 	result := make(map[string]int)
 	// Skip index 0 (reserved empty string).
@@ -108,6 +111,9 @@ func (s *StatOps) AllLabelCounts() (map[string]int, error) {
 // for all registered types. Types with zero relationships are omitted.
 func (s *StatOps) AllRelTypeCounts() (map[string]int, error) {
 	c := s.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	names := c.relTypes.ExportNames()
 	result := make(map[string]int)
 	// Skip index 0 (reserved empty string).

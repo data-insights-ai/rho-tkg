@@ -22,7 +22,7 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 	}
 	relID := r.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.DeleteRelationship(relID); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	}
 	relID := r.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if _, err := tx.UpdateRelationship(relID, map[string]any{"weight": int64(99)}); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestTxAddRelationshipByID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	r, err := tx.AddRelationshipByID("KNOWS", n1.ID(), n2.ID(), map[string]any{"since": int64(2024)})
 	if err != nil {
 		t.Fatalf("AddRelationshipByID: %v", err)
@@ -135,7 +135,7 @@ func TestTxAddRelationshipByID_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	_, err = tx.AddRelationshipByID("KNOWS", n1.ID(), n2.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddRelationshipByID: %v", err)
@@ -167,7 +167,7 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	id2 := n2.ID()
 
 	// First: create in tx and commit.
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	r, created, err := tx.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationshipByIDIfAbsent: %v", err)
@@ -183,7 +183,7 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 
 	// Second: same call should find existing and return created=false.
-	tx2 := g.BeginTx()
+	tx2, _ := g.BeginTx()
 	r2, created2, err := tx2.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
 	if err != nil {
 		t.Fatalf("second AddRelationshipByIDIfAbsent: %v", err)
@@ -221,7 +221,7 @@ func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
 	id2 := n2.ID()
 
 	// Create in tx then rollback.
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	_, created, err := tx.AddRelationshipByIDIfAbsent("KNOWS", id1, id2, nil)
 	if err != nil {
 		t.Fatal(err)

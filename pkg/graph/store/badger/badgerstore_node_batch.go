@@ -1,0 +1,279 @@
+package badger
+
+import (
+	"errors"
+	"fmt"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/vmihailenco/msgpack/v5"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// Node batch writes + cascade-delete (R5-F9 split out from badgerstore_node.go).
+
+func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
+	_, corruptErr, err := bs.cascadeDeleteLocked(nid)
+	if err != nil {
+		return err
+	}
+	if corruptErr == nil && bs.syncWrites {
+		return bs.flush()
+	}
+	return corruptErr
+}
+
+// cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade.
+// Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock
+// so that the caller can append additional ops (e.g. tombstone history) before releasing.
+// Returns (toDelete, corruptErr, fatalErr):
+//   - fatalErr != nil: aborted with no mutations applied.
+//   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
+//   - Otherwise: clean success.
+func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, error) {
+	id := nid.SnowflakeID()
+	if _, exists := bs.nodeIDs[nid]; !exists {
+		return nil, nil, ErrNodeNotFound
+	}
+
+	// Collect all connected relIDs (dedup self-loops).
+	relIDs := make(map[types.RelID]struct{})
+	for relID := range bs.outIdx[nid] {
+		relIDs[relID] = struct{}{}
+	}
+	for relID := range bs.inIdx[nid] {
+		relIDs[relID] = struct{}{}
+	}
+
+	// Phase 1 — Preflight: read all relationship metadata before any mutations.
+	// If any read fails (corruption), we abort without partial state changes.
+	toDelete := make([]RelDeleteInfo, 0, len(relIDs))
+	for relID := range relIDs {
+		r, err := bs.getRelLocked(relID)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue // tolerate already-deleted rels
+			}
+			return nil, nil, fmt.Errorf("graph: cascade read relationship: %w", err)
+		}
+		toDelete = append(toDelete, RelDeleteInfo{
+			ID:      relID.SnowflakeID(),
+			RelType: r.TypeToken().Value(),
+			StartID: r.StartNodeID().SnowflakeID(),
+			EndID:   r.EndNodeID().SnowflakeID(),
+		})
+	}
+
+	// Phase 2 — Apply: all mutations use pre-read data, no reads, cannot fail.
+	for _, info := range toDelete {
+		bs.deleteRelByInfo(info)
+	}
+
+	// Get node data for label cleanup.
+	n, err := bs.getNodeLocked(nid)
+	if err != nil {
+		// Node was in nodeIDs but can't be loaded (data corruption or cache miss
+		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
+		// ALL label sets to prevent orphaned index entries (perma-leak).
+		// O(L) where L is total distinct labels — bounded, corruption-only path.
+		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
+		for tok, set := range bs.labelIdx {
+			if _, exists := set[nid]; exists {
+				delete(set, nid)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
+				ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
+				bs.getOrCreateLabelCounter(tok).Add(-1)
+			}
+		}
+		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
+		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+
+		bs.nodeCache.MarkDeleted(id)
+		delete(bs.nodeIDs, nid)
+		bs.appendOps(ops...)
+		bs.nodeCount.Add(-1)
+		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
+	}
+
+	// Build delete ops for node.
+	ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
+
+	// Remove label index entries.
+	allTokens := collectNodeLabelTokens(n)
+	for _, tok := range allTokens {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
+		if set, exists := bs.labelIdx[tok]; exists {
+			delete(set, nid)
+			if len(set) == 0 {
+				delete(bs.labelIdx, tok)
+			}
+		}
+		bs.getOrCreateLabelCounter(tok).Add(-1)
+	}
+
+	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
+
+	// Update in-memory state.
+	bs.nodeCache.MarkDeleted(id)
+	delete(bs.nodeIDs, nid)
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(-1)
+
+	return toDelete, nil, nil
+}
+
+// cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
+// Used by DeleteNodeCascade — same contract as before the refactor.
+func (bs *Store) cascadeDeleteLocked(nid types.NodeID) ([]RelDeleteInfo, error, error) {
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	return bs.cascadeDeleteInner(nid)
+}
+
+// PutNodesBatch stores multiple nodes atomically using two-phase validation.
+// Phase 1: check for duplicates vs existing store AND within the batch.
+// Phase 2: serialize, cache, index, and queue each for async flush.
+// Any duplicate → error, zero mutations. Nil/empty input → nil error.
+func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	// Pre-serialize all nodes outside the lock.
+	type nodeData struct {
+		nid  types.NodeID
+		id   snowflake.ID
+		data []byte
+	}
+	serialized := make([]nodeData, len(nodes))
+	for i, n := range nodes {
+		w := storepkg.NodeToWire(n)
+		data, err := msgpack.Marshal(w)
+		if err != nil {
+			return fmt.Errorf("graph: marshal node: %w", err)
+		}
+		nid := n.InternalID()
+		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data}
+	}
+
+	bs.idxMu.Lock()
+
+	// Phase 1: validate — no duplicates in store or within batch.
+	seen := make(map[types.NodeID]struct{}, len(nodes))
+	for _, nd := range serialized {
+		if _, exists := bs.nodeIDs[nd.nid]; exists {
+			bs.idxMu.Unlock()
+			return ErrNodeExists
+		}
+		if _, exists := seen[nd.nid]; exists {
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: duplicate node ID %d in batch", nd.id)
+		}
+		seen[nd.nid] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
+	for i, n := range nodes {
+		nd := serialized[i]
+
+		bs.nodeCache.Put(nd.id, n.DeepCopy())
+		bs.nodeIDs[nd.nid] = struct{}{}
+
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
+		for _, tok := range n.AllLabelTokens() {
+			tv := tok.Value()
+			if bs.labelIdx[tv] == nil {
+				bs.labelIdx[tv] = make(map[types.NodeID]struct{})
+			}
+			bs.labelIdx[tv][nd.nid] = struct{}{}
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tv, nd.id)})
+			bs.getOrCreateLabelCounter(tv).Add(1)
+		}
+		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
+		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
+		indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, nd.id)
+	}
+
+	bs.appendOps(ops...)
+	bs.nodeCount.Add(int64(len(nodes)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
+// Phase 1: check all IDs exist, pre-read node data for label cleanup.
+// Phase 2: remove from cache, indexes, queue delete ops.
+// Missing ID → ErrNodeNotFound, zero mutations. Nil/empty input → nil error.
+func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
+	if len(typedIDs) == 0 {
+		return nil
+	}
+
+	bs.idxMu.Lock()
+
+	// Phase 1: validate — all must exist + pre-read for label cleanup.
+	nodeData := make([]*types.Node, len(typedIDs))
+	for i, nid := range typedIDs {
+		if _, exists := bs.nodeIDs[nid]; !exists {
+			bs.idxMu.Unlock()
+			return ErrNodeNotFound
+		}
+		n, err := bs.getNodeLocked(nid)
+		if err != nil {
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: batch read node %d: %w", nid.SnowflakeID(), err)
+		}
+		nodeData[i] = n
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	for i, nid := range typedIDs {
+		n := nodeData[i]
+		id := nid.SnowflakeID()
+
+		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
+
+		allTokens := collectNodeLabelTokens(n)
+		for _, tok := range allTokens {
+			ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
+			if set, exists := bs.labelIdx[tok]; exists {
+				delete(set, nid)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
+			}
+			bs.getOrCreateLabelCounter(tok).Add(-1)
+		}
+
+		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
+		bs.nodeCache.MarkDeleted(id)
+		delete(bs.nodeIDs, nid)
+		bs.appendOps(ops...)
+	}
+
+	bs.nodeCount.Add(-int64(len(typedIDs)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// loadNodeFromBadger reads and unmarshals a node within an existing Badger transaction.
+// Does not interact with the LRU cache. Used during loadIndexes where the cache is
+// not yet populated and concurrent access has not started.

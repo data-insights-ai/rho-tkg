@@ -28,7 +28,7 @@ func TestGraphTx_CommitPersists(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestGraphTx_DoubleCommit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestGraphTx_AddAfterCommit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestGraphTx_ConcurrentAccess(t *testing.T) {
 
 	// BeginTx holds the write lock. Another goroutine trying to do
 	// something that needs the lock should block until commit/rollback.
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, nil)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestGraphTx_CreatedIDs(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, nil)
 	if err != nil {
@@ -257,7 +257,7 @@ func TestMutationBlockedDuringTx(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	// Create a node inside the tx to prove it works.
 	_, err = tx.AddNode([]string{"A"}, nil)
@@ -372,7 +372,7 @@ func TestTxCommitPublishesBufferedEvents(t *testing.T) {
 		mu.Unlock()
 	})
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	n, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
@@ -442,7 +442,7 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 		}
 	})
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	_, err = tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("tx.AddNode: %v", err)

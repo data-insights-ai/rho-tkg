@@ -19,7 +19,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	updated, err := tx.UpdateNode(nodeID, map[string]any{"name": "Alicia"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
@@ -49,7 +49,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Alicia"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if _, err := tx.UpdateNode(nodeID, map[string]any{"name": "Bob"}); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestGraphTx_DeleteNode_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.DeleteNode(n1.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.DeleteNode(n1.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.SetNodeProperty(nodeID, "age", int64(42)); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestTxGetNode(t *testing.T) {
 	}
 	nodeID := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	got, err := tx.GetNode(nodeID)
 	if err != nil {
 		t.Fatalf("GetNode in tx: %v", err)
@@ -246,7 +246,7 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}

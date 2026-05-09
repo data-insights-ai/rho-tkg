@@ -75,7 +75,7 @@ func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("LINK", a, b, nil); err != nil {
 		t.Fatalf("BatchBuilder.AddRelationship: %v", err)
 	}

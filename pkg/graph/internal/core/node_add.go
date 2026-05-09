@@ -22,6 +22,9 @@ import (
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error
@@ -151,6 +154,9 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error

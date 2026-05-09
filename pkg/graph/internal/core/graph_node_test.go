@@ -1052,7 +1052,7 @@ func TestNodeCountByLabel_BatchAdd(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 	batch.AddNode([]string{"Animal"}, nil)
 	batch.AddNode([]string{"Animal"}, nil)
 	batch.AddNode([]string{"Animal", "Pet"}, nil)

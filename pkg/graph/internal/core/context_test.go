@@ -861,7 +861,7 @@ func TestBatchAddNodeWithTemporal(t *testing.T) {
 	g := newTestGraph(t)
 
 	eventTime := types.Instant(1741521600000)
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 
 	n, err := batch.AddNode([]string{"Alert"}, map[string]any{
 		"name":           "suspicious",
@@ -902,7 +902,7 @@ func TestBatchAddRelationshipWithTemporal(t *testing.T) {
 	g := newTestGraph(t)
 
 	eventTime := types.Instant(1741521600000)
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 
 	src, _ := batch.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.1"})
 	dst, _ := batch.AddNode([]string{"Host"}, map[string]any{"ip": "10.0.0.2"})

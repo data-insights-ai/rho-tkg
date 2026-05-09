@@ -106,8 +106,12 @@ func New(cfg Config) (*Graph, error) {
 // Close flushes registries (when applicable) and closes the underlying store.
 func (g *Graph) Close() error { return g.core.Close() }
 
-// NewBatchBuilder constructs a BatchBuilder bound to g. Equivalent to g.Batch.New().
-func NewBatchBuilder(g *Graph) *BatchBuilder { return core.NewBatchBuilder(g.core) }
+// NewBatchBuilder constructs a BatchBuilder bound to g. Equivalent to
+// g.Batch.New(). Returns ErrGraphClosed if the graph has already been
+// closed.
+func NewBatchBuilder(g *Graph) (*BatchBuilder, error) {
+	return core.NewBatchBuilder(g.core)
+}
 
 // DecomposeID extracts creation time, node ID, sequence number from a
 // snowflake ID. Pure helper; does not touch any graph instance.

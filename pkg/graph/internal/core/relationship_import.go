@@ -21,6 +21,9 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		rel *types.Relationship
 		err error
@@ -80,12 +83,12 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, ErrSelfLoop
 	}
 
-	// R4-F14: Defer registry-token allocation until after the cheap
-	// validation gates (self-loop, ID==0, nil endpoints) so a rejected
-	// import does not pollute the relationship-type registry. The
-	// collision probe and endpoint-lock-protected GetNode below are
-	// the remaining failure paths; collision allocation pollution is
-	// avoided by probing BEFORE GetOrCreate.
+	// R4-F14 / R5-F6: defer registry-token allocation until after the
+	// cheap validation gates (self-loop, ID==0, nil endpoints), the
+	// collision probe, AND the live-endpoint fetches. Every operational
+	// failure path that can reject the import must run before we touch
+	// the rel-type registry, so a rejected import never leaves a
+	// permanent type registration behind.
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -106,11 +109,6 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, fmt.Errorf("graph: rel-id collision probe: %w", err)
 	}
 
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-
 	// Fetch live endpoints under the endpoint locks (R4-F5). The
 	// caller-supplied `startNode`/`endNode` pointers are advisory —
 	// only their IDs are load-bearing for routing. Hashes and
@@ -122,6 +120,13 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	liveEnd, err := c.store.GetNode(endID)
 	if err != nil {
 		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
+	}
+
+	// R5-F6: only allocate the rel-type token now that every cheap and
+	// operational rejection gate has been cleared.
+	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
 
 	r := types.NewRelationship(id, typeToken, startID, endID)

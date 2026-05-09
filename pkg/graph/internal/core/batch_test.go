@@ -28,7 +28,7 @@ func newTestGraph(t *testing.T) *Core {
 func TestBatchBuilderAddNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	n, err := b.AddNode([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": 30})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestBatchBuilderAddNode(t *testing.T) {
 func TestBatchBuilderAddNodeInvalidLabels(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	_, err := b.AddNode(nil, nil)
 	if !errors.Is(err, ErrNoLabels) {
@@ -85,7 +85,7 @@ func TestBatchBuilderAddNodeInvalidLabels(t *testing.T) {
 func TestBatchBuilderAddNodeInvalidProps(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	_, err := b.AddNode([]string{"Person"}, map[string]any{"tkg_secret": "bad"})
 	if err == nil {
@@ -96,7 +96,7 @@ func TestBatchBuilderAddNodeInvalidProps(t *testing.T) {
 func TestBatchBuilderAddRelationship(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	n1, _ := b.AddNode([]string{"Person"}, nil)
 	n2, _ := b.AddNode([]string{"Person"}, nil)
@@ -126,7 +126,7 @@ func TestBatchBuilderAddRelationship(t *testing.T) {
 func TestBatchBuilderAddRelNilEndpoint(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	n1, _ := b.AddNode([]string{"Person"}, nil)
 
@@ -144,7 +144,7 @@ func TestBatchBuilderAddRelNilEndpoint(t *testing.T) {
 func TestBatchBuilderUpdateNodeInvalidKey(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	err := b.UpdateNode(types.NodeID(1), map[string]any{"tkg_version": 5})
 	if err == nil {
@@ -155,7 +155,7 @@ func TestBatchBuilderUpdateNodeInvalidKey(t *testing.T) {
 func TestBatchBuilderExecuteEmpty(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	result, err := b.Execute()
 	if err != nil {
@@ -172,7 +172,7 @@ func TestBatchBuilderExecuteEmpty(t *testing.T) {
 func TestBatchBuilderExecuteNodes(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	for i := 0; i < 100; i++ {
 		_, err := b.AddNode([]string{"Person"}, map[string]any{"index": i})
@@ -201,7 +201,7 @@ func TestBatchBuilderExecuteNodes(t *testing.T) {
 func TestBatchBuilderExecuteNodesAndRels(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	n1, _ := b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	n2, _ := b.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
@@ -254,7 +254,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	}
 	id := n.ID()
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	if err := b.UpdateNode(id, map[string]any{"name": "Bob", "age": 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
 	r, _ := g.Rels.Add("KNOWS", n1, n2, nil)
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	b.DeleteRelationship(r.ID())
 	b.DeleteNode(n1.ID())
 
@@ -317,7 +317,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 	existing, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Eve"})
 	existingID := existing.ID()
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	// Add new nodes.
 	n1, _ := b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
@@ -364,7 +364,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 func TestBatchBuilderExecute1000Nodes(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	for i := 0; i < 1000; i++ {
 		_, err := b.AddNode([]string{"Item"}, map[string]any{"index": i})
@@ -404,7 +404,7 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 	r, _ := g.Rels.Add("KNOWS", n1, n2, map[string]any{"weight": 1})
 	rID := r.ID()
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	if err := b.UpdateRelationship(rID, map[string]any{"weight": 10}); err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 func TestBatchBuilderUpdateRelInvalidKey(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	err := b.UpdateRelationship(types.RelID(1), map[string]any{"tkg_type": "bad"})
 	if err == nil {
@@ -455,7 +455,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	nID := n.ID()
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 
 	// Valid update.
 	if err := b.UpdateNode(nID, map[string]any{"name": "Bob"}); err != nil {
@@ -509,7 +509,7 @@ func TestBatchExecuteBlocksSnapshot(t *testing.T) {
 	// Goroutine 1: execute batch.
 	go func() {
 		defer wg.Done()
-		b := NewBatchBuilder(g)
+		b, _ := NewBatchBuilder(g)
 		for range batchSize {
 			_, err := b.AddNode([]string{"Item"}, nil)
 			if err != nil {
@@ -562,7 +562,7 @@ func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			b := NewBatchBuilder(g)
+			b, _ := NewBatchBuilder(g)
 			for range nodesPerBatch {
 				if _, err := b.AddNode([]string{"Stress"}, nil); err != nil {
 					errCh <- err
@@ -610,7 +610,7 @@ func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	batchNode, err := b.AddNode([]string{"A", "B", "A"}, map[string]any{"key": "val"})
 	if err != nil {
 		t.Fatalf("batch AddNode: %v", err)
@@ -630,7 +630,7 @@ func TestBatchBuilder_AddNode_HashChainVerification(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	n, err := b.AddNode([]string{"Person", "Person", "Actor"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("batch AddNode: %v", err)

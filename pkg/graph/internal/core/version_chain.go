@@ -17,6 +17,9 @@ import (
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
 func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if version == 0 {
 		return nil, nil
 	}
@@ -32,6 +35,9 @@ func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node,
 // Checks history first, then falls back to the current node (which may be version+1).
 func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	node, err := c.store.GetNodeVersion(id, version+1)
 	if err == nil {
 		return node, nil
@@ -58,6 +64,9 @@ func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, err
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CloseVersion(id types.NodeID, t types.Instant) error {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
 		err = c.closeNodeVersionInternal(id, t)
@@ -113,6 +122,9 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 // Returns nil, nil if version == 0 or if the predecessor does not exist in history.
 func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if version == 0 {
 		return nil, nil
 	}
@@ -128,6 +140,9 @@ func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relatio
 // Checks history first, then falls back to the current relationship (which may be version+1).
 func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	rel, err := c.store.GetRelVersion(id, version+1)
 	if err == nil {
 		return rel, nil
@@ -154,6 +169,9 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CloseVersion(id types.RelID, t types.Instant) error {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
 		err = c.closeRelVersionInternal(id, t)

@@ -1605,6 +1605,155 @@ files began in this commit and continues incrementally.
 
 ---
 
+## B68. Strict Snapshots Need a Tx-Scoped API, Not Just Doc Advice
+
+```
+BAD:  // Doc: "for a strict snapshot, drive Export from inside g.Tx.Run"
+      g.Tx.Run(func(tx *core.GraphTx) error {
+          return g.IO.Export(w)              // deadlocks: IOOps.Export takes RLock,
+                                              // tx already holds Lock, RWMutex isn't reentrant
+      })
+
+GOOD: g.Tx.Run(func(tx *core.GraphTx) error {
+          return tx.Export(w)                 // tx-scoped method, calls exportLocked
+                                              // directly under the already-held write lock
+      })
+```
+
+`sync.RWMutex` is not reentrant. If a tx holds `c.mu.Lock` and the
+caller invokes a standalone API that takes `c.mu.RLock`, the standalone
+method blocks forever waiting for the lock the same goroutine holds.
+"Drive X from inside a tx for a strict snapshot" was a deadlock trap
+disguised as documentation.
+
+The fix is a real code path: `(*GraphTx).Export(w)`,
+`(*GraphTx).Snapshot(at)`, and `(*GraphTx).VerifyShard(name)` call
+lock-free `*Locked` internal variants under the transaction's already-
+held write lock. The standalone APIs document the tx-scoped methods as
+the strict path.
+
+**Why:** A user reading "strict snapshot via tx" cannot tell from the
+doc that the standalone method takes RLock. They will write the
+documented pattern, hit a non-deterministic deadlock under load, and
+spend hours diagnosing it. Code that "just works" beats documentation
+that warns about hidden side effects.
+
+**How to apply:** When a strict variant of a read-only API needs to
+exclude all writers, expose it as a tx-scoped method that calls a
+lock-free `*Locked` internal helper. Never document "drive X from
+inside g.Tx.Run for stricter X" if X holds RLock — refactor the
+internal so X has a lock-free variant the tx can call.
+
+**History:** Found during the 2026-05-09 maintainability review round 5
+(R5-F2). The R4 round had introduced the doc advice as a quick fix
+without testing that it actually worked.
+
+---
+
+## B69. ByID High-Throughput Paths Must Still Honor Configured Constraints
+
+```
+BAD:  // Rels.AddByID skips the live-endpoint fetch unconditionally.
+      // ConstraintRelWithinEndpoints is silently bypassed even when the
+      // user has configured it on the graph — the constraint becomes
+      // "checked when you happen to use the slow path".
+
+GOOD: if c.constraints.Len() > 0 {
+          liveStart, err = c.store.GetNode(startID)            // fetch under endpoint lock
+          if err != nil { return ..., err }
+          liveEnd, err = c.store.GetNode(endID)
+          if err != nil { return ..., err }
+      }
+      // ... construct rel ...
+      if liveStart != nil && liveEnd != nil {
+          if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
+              return ..., err
+          }
+      }
+```
+
+The "high-throughput ByID path" is the right shape ONLY when no
+constraint is in scope. The moment a graph configures
+`ConstraintRelWithinEndpoints`, every relationship-creation entry
+point — including the ByID variants — must enforce it. Otherwise a
+caller who configures the constraint but happens to write through
+AddByID gets silent bypass and believes their invariant is enforced.
+
+**Why:** A user configures a constraint once at graph init. They
+expect the constraint to apply to every rel-create call. Branching
+the enforcement on which entry point the caller chose is a
+correctness bug, not a performance feature. The fast path must be
+"fast when there's nothing to check", not "fast at the cost of the
+configured constraint".
+
+**How to apply:** Any high-throughput public API that skips a
+graph-level invariant must gate the skip on the invariant being
+absent. Use `c.constraints.Len() > 0` (or the equivalent
+state-set predicate) as the conditional fetch trigger. The cost is
+zero when no constraint is configured (the existing fast path), and
+correct when one is.
+
+**History:** Found during the 2026-05-09 maintainability review round 5
+(R5-F7). The ByID variants had been documented as "skips temporal
+constraints" since R4-F6 — that was a workaround disguised as a
+contract. Round 5 made the contract real.
+
+---
+
+## B70. Registry Pollution Must Be Deferred Past Every Operational Failure
+
+```
+BAD:  typeToken, err := c.relTypes.GetOrCreate(typeName)         // ← side effect
+      if err != nil { return ... }
+      c.entityLocks.LockTwo(...)                                  // can panic in custom Manager
+      defer c.entityLocks.UnlockTwo(...)
+      liveStart, err := c.store.GetNode(startID)                  // can fail operationally
+      if err != nil { return ... }                                  // → token already registered!
+
+GOOD: c.entityLocks.LockTwo(...)
+      defer c.entityLocks.UnlockTwo(...)
+      liveStart, err := c.store.GetNode(startID)
+      if err != nil { return ... }                                  // → no token allocated
+      liveEnd, err := c.store.GetNode(endID)
+      if err != nil { return ... }
+      typeToken, err := c.relTypes.GetOrCreate(typeName)         // allocate only after every
+      if err != nil { return ... }                                  //   non-trivial failure cleared
+```
+
+A token allocation is a permanent side effect. Every failure path that
+runs *after* allocation but *before* the entity is committed leaves the
+registry permanently polluted. R4-F14 deferred allocation past cheap
+validation gates (self-loop, ID==0, duplicate ID); R5-F6 finishes the
+job for the operational failure paths (store errors, missing endpoints,
+context cancellation between entry and store write).
+
+For paths that need the token before the rel object can be constructed
+(the ByID create path, the IfAbsent create path), the unavoidable
+remainder is the `PutRelationship` failure path. Document it inline
+rather than pretending it's cheap.
+
+**Why:** A user who tries to create a relationship with an unknown type
+to nodes that turn out to be missing should not see the type
+permanently registered as a side effect of their failed call.
+Otherwise `g.Stats.RelTypeCount()` reports types that have no
+corresponding edges, exports leak the dead names, and `Lookup`
+succeeds for relationships that were never written.
+
+**How to apply:** Walk every public mutation that consults a
+side-effecting registry. Identify the "point of no rollback" — the
+last failure path before the entity is committed. Push the side
+effect to immediately before that point. Document any unavoidable
+remainder inline. For IfAbsent-style APIs, prefer
+`registry.Lookup(name)` (no side effect) over
+`registry.GetOrCreate(name)` when a lookup-only result is enough to
+satisfy the read.
+
+**History:** Found during the 2026-05-09 maintainability review round 5
+(R5-F6). R4-F14 had moved the allocation past validation gates;
+operational failures were still polluting.
+
+---
+
 # Tier C — Reference
 
 ## C1. Verification Must Handle Deleted Entities

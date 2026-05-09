@@ -55,7 +55,7 @@ func TestR4_RejectedBatchAddRel_DoesNotAllocateRelTypeToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("REJECTED_BATCH_TYPE", n, n, nil); !errors.Is(err, ErrSelfLoop) {
 		t.Fatalf("expected ErrSelfLoop, got %v", err)
 	}

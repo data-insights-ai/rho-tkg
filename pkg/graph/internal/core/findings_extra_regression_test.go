@@ -17,7 +17,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
@@ -86,6 +85,7 @@ func newTemporalCandidateCountingGraph(t *testing.T) (*Core, *temporalCandidateC
 // rather than degrading to ForEachNodeID/ForEachRelID over every entity.
 func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
+	useTestClock(t, g)
 
 	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
@@ -94,7 +94,6 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
-	time.Sleep(2 * time.Millisecond)
 	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
@@ -134,6 +133,7 @@ func TestHistoryAwareIndexedNodeQueries_DoNotScanAllCurrentIDs(t *testing.T) {
 // proves that the seed comes from the tightest available index.
 func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
+	useTestClock(t, g)
 
 	// Graph.Index.CreateProperty is a no-op when the label isn't registered
 	// yet (graph.go: Lookup→nil). Add a node first so the "Person" token
@@ -150,7 +150,6 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
-	time.Sleep(2 * time.Millisecond)
 	updated, err := g.Nodes.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
@@ -185,6 +184,7 @@ func TestHistoryAwarePropertyTemporalQueries_UsePropertyIndexCandidates(t *testi
 // merge with history IDs, never falling back to ForEachRelID over every rel.
 func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 	g, store := newTemporalCandidateCountingGraph(t)
+	useTestClock(t, g)
 
 	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
@@ -200,7 +200,6 @@ func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 	}
 	queryTime := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Rels.Delete(r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -272,6 +271,7 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 // current IDs with history IDs and resolve each via GetNodeAt/GetRelAt.
 func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
@@ -289,7 +289,6 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	relID := r.ID()
 	queryTime := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Rels.Delete(relID); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -324,7 +323,8 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 // extracting tkg_ keys before the property-validation step.
 func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 	g := newTestGraph(t)
-	b := NewBatchBuilder(g)
+	useTestClock(t, g)
+	b, _ := NewBatchBuilder(g)
 
 	a, err := b.AddNode([]string{"A"}, map[string]any{
 		"tkg_author_id":  "node-author",
@@ -394,7 +394,8 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 //     between AddRelationship and Execute is reflected.
 func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	g := newTestGraph(t)
-	bb := NewBatchBuilder(g)
+	useTestClock(t, g)
+	bb, _ := NewBatchBuilder(g)
 
 	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"v": int64(1)})
 	if err != nil {
@@ -424,7 +425,6 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	expectedFromHash := updatedA.Integrity().Hash
 
 	// Sleep to make sure execute time is meaningfully after queue time.
-	time.Sleep(2 * time.Millisecond)
 	beforeExecute := nowInstant()
 
 	if _, err := bb.Execute(); err != nil {
@@ -484,7 +484,7 @@ func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 		t.Fatalf("New graph: %v", err)
 	}
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	a, err := bb.AddNode([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("batch AddNode A: %v", err)
@@ -596,7 +596,7 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 	}
 	defer g.Close()
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	n, err := bb.AddNode([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
@@ -672,7 +672,7 @@ func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *t
 	}
 	defer g.Close()
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	a, err := bb.AddNode([]string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -742,17 +742,20 @@ func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 	// Compute the upper bound the way the entry-point helper does.
 	captured := nowInstant() + 1
 
-	// Sleep just long enough that nowInstant() advances past `captured`,
-	// then create node B. If end were re-evaluated per-ID inside the
-	// matcher, B's vStart would land between captured and the new
-	// nowInstant() and B would slip into the result.
-	time.Sleep(3 * time.Millisecond)
-	b, err := g.Nodes.Add([]string{"A"}, nil)
+	// Pin node B's vStart strictly past `captured` via explicit
+	// ValidFrom rather than waiting for the wall clock to advance
+	// (R5-F10). This eliminates the test's wall-clock sleep without
+	// changing what's being verified: the test wants a node whose
+	// vStart > captured, regardless of how that ordering is achieved.
+	b, err := g.Nodes.Add([]string{"A"}, map[string]any{
+		"tkg_valid_from": captured + 10,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if g.nodeValidFrom(b) <= captured {
-		t.Skip("clock did not advance enough for the test scenario")
+		t.Fatalf("explicit ValidFrom did not exceed captured: vStart=%d, captured=%d",
+			g.nodeValidFrom(b), captured)
 	}
 
 	// Use the captured upper bound explicitly; the entry point would

@@ -19,6 +19,9 @@ import (
 // the last history entry's internal tokens.
 func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 	c := h.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return false, err
@@ -85,6 +88,9 @@ func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 // but history exists, verifies the history chain alone.
 func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 	c := h.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return false, err

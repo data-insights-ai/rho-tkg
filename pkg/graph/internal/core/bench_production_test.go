@@ -335,6 +335,7 @@ type graphHistoryProductionFixture struct {
 func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixture {
 	b.Helper()
 	g := newBaselineMemoryGraph(b)
+	clk := useTestClock(b, g)
 	nodeCount := productionHistoryNodes(b)
 	historyDays := productionHistoryDays(b)
 	nodes := make([]*types.Node, 0, nodeCount)
@@ -371,7 +372,7 @@ func newGraphHistoryProductionFixture(b *testing.B) graphHistoryProductionFixtur
 	}
 
 	queryTime := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	clk.Advance(2 * time.Millisecond)
 
 	for day := 1; day <= historyDays; day++ {
 		for i, id := range nodeIDs {
@@ -650,7 +651,7 @@ func BenchmarkGraphProduction_BatchAndTxWriteShapes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		b.ReportAllocs()
 		for b.Loop() {
-			batch := NewBatchBuilder(g)
+			batch, _ := NewBatchBuilder(g)
 			nodes := make([]*types.Node, batchSize)
 			for i := range nodes {
 				n, err := batch.AddNode([]string{"BatchPerson"}, productionProps(i))
@@ -683,7 +684,7 @@ func BenchmarkGraphProduction_BatchAndTxWriteShapes_MemoryStore(b *testing.B) {
 		}
 		b.ReportAllocs()
 		for b.Loop() {
-			tx := g.BeginTx()
+			tx, _ := g.BeginTx()
 			for i, id := range ids {
 				if _, err := tx.UpdateNode(id, map[string]any{"score": i}); err != nil {
 					_ = tx.Rollback()

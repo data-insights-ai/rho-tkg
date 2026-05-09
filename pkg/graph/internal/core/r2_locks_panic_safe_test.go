@@ -106,7 +106,7 @@ func TestBatch_PanicInGetNode_DoesNotLeakEndpointLocks(t *testing.T) {
 	// Arm the panic and run a batch that touches a→b. The closure
 	// inside batch.go's rel loop must release the LockTwo via defer.
 	store.armed = true
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {
 		t.Fatalf("queue rel: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestBatch_PanicInPutRelationship_DoesNotLeakEndpointLocks(t *testing.T) {
 	}
 
 	store.armed = true
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {
 		t.Fatalf("queue rel: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestBatch_EndpointNotFound_StillRunsToCompletion(t *testing.T) {
 	a, _ := g.Nodes.Add([]string{"A"}, nil)
 	b, _ := g.Nodes.Add([]string{"B"}, nil)
 
-	bb := NewBatchBuilder(g)
+	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {
 		t.Fatalf("queue rel: %v", err)
 	}

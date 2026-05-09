@@ -75,22 +75,26 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 	label := "Vec"
 	key := "v"
 
-	// Phase 1 (t0 era): create 4 "old" nodes far from origin.
-	old1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
-	old2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{11, 0}})
-	old3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{12, 0}})
-	old4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{13, 0}})
+	// Pin temporal ordering via explicit tkg_valid_from rather than
+	// wall-clock sleeps (R5-F10): old nodes get small ValidFroms,
+	// t0 falls in the gap, new nodes get ValidFroms past t0.
+	const (
+		tOld = types.Instant(1)
+		t0   = types.Instant(100)
+		tNew = types.Instant(200)
+	)
 
-	// Snapshot t0 — strictly after old nodes, strictly before new nodes.
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// Phase 1 (t0 era): create 4 "old" nodes far from origin.
+	old1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}, "tkg_valid_from": tOld})
+	old2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{11, 0}, "tkg_valid_from": tOld})
+	old3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{12, 0}, "tkg_valid_from": tOld})
+	old4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{13, 0}, "tkg_valid_from": tOld})
 
 	// Phase 2 (post-t0): create 3 "new" nodes very close to origin (smaller distance
 	// to query [0, 0] than any old node). These did NOT exist at t0.
-	new1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
-	new2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}})
-	new3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.2, 0}})
+	new1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
+	new2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}, "tkg_valid_from": tNew})
+	new3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.2, 0}, "tkg_valid_from": tNew})
 	_ = new1
 	_ = new2
 	_ = new3
@@ -138,6 +142,7 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	clk := useTestClock(t, g)
 
 	label := "Doc"
 	key := "v"
@@ -147,9 +152,13 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// t0 falls between v0's snowflake-derived vStart (≈ wall now) and
+	// the Update's UpdatedAt (= clk.PeekInstant() at Update time). The
+	// test clock starts at wall+1s, so any clk-derived value beats the
+	// snowflake timestamp by orders of magnitude — no wall-clock sleep
+	// needed (R5-F10). PeekInstant()-1 keeps t0 strictly less than the
+	// Update's UpdatedAt while staying past v0.vStart.
+	t0 := clk.PeekInstant() - 1
 
 	// Mutate property after t0 — vector unchanged so ranking is stable.
 	if _, err := g.Nodes.Update(n.ID(), map[string]any{"status": "final"}); err != nil {
@@ -204,6 +213,8 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 	label := "Doc"
 	key := "v"
 
+	clk := useTestClock(t, g)
+
 	a, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
@@ -213,9 +224,10 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 		t.Fatalf("AddNode B: %v", err)
 	}
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// t0 falls between the snowflake-derived vStart of A and B (≈ wall
+	// now) and A's Update UpdatedAt (= test-clock value, ≫ wall). See
+	// TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion (R5-F10).
+	t0 := clk.PeekInstant() - 1
 
 	// Mutate A's vector AFTER t0 so it becomes the closest by current vector
 	// while its t0 historical vector (10,0) is the farthest.
@@ -270,15 +282,19 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	label := "Vec"
 	key := "v"
 
-	// Pre-t0 node: far from query.
+	// Pre-t0 node: far from query. Snowflake-derived ValidFrom ≈ wall now.
 	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{5, 5}})
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
+	// pre's snowflake-derived ValidFrom ≈ wall now ≪ t0, and post's
+	// explicit ValidFrom > t0.
+	const (
+		t0   = types.Instant(1_900_000_000_000) // ≫ wall-now wall_t
+		tNew = t0 + 1
+	)
 
 	// Post-t0 node: exactly at query — would dominate without temporal filter.
-	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
+	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -480,11 +496,13 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 	label, key := "Doc", "v"
 	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
+	const (
+		t0   = types.Instant(1_900_000_000_000)
+		tNew = t0 + 1
+	)
 
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -512,11 +530,12 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 	label, key := "User", "v"
 	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	const (
+		t0   = types.Instant(1_900_000_000_000)
+		tNew = t0 + 1
+	)
 
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}}) // closer but post-t0
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -536,6 +555,24 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 
 // --- resolveTemporalVectorMatches + paginateNearestNodes edge-case coverage ---
 
+// resolveTemporalVectorMatches is a test-only helper that mirrors the
+// pre-iterative-over-fetch temporal-vector resolution semantics. The
+// production temporal-vector path now lives inline in SearchNearest's
+// over-fetch loop; this helper is retained so the tests in this file
+// can drive the after-the-fact resolution behaviour directly. Lives in
+// _test.go so it never compiles into the production binary (R5-F11).
+func resolveTemporalVectorMatches(g *Core, candidates []*types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
+	resolved := make([]*types.Node, 0, len(candidates))
+	for _, cand := range candidates {
+		n, err := g.findNodeVersionForOpts(cand.ID(), opts, pred)
+		if err != nil {
+			continue
+		}
+		resolved = append(resolved, n)
+	}
+	return paginateNearestNodes(resolved, after, limit)
+}
+
 // TestResolveTemporalVectorMatches_FiltersAndPaginates calls the fallback
 // directly, covering the post-filter pagination path including the case
 // where the cursor ID is not present in the result set.
@@ -548,11 +585,12 @@ func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
 	pre2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{2, 0}})
 	pre3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{3, 0}})
 
-	time.Sleep(2 * time.Millisecond)
-	t0 := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	const (
+		t0   = types.Instant(1_900_000_000_000)
+		tNew = t0 + 1
+	)
 
-	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
+	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 
 	tok, _ := g.labels.Lookup(label)
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
@@ -796,7 +834,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 
 	// Batch-insert two more nodes into the pre-existing index.
 	// This tests the PutNodesBatch → addNodeToVectorIndexes path.
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	nA, err := b.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("batch AddNode A: %v", err)

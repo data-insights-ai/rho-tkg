@@ -136,6 +136,9 @@ func (c *Core) resolveSubscribeLocked() (subscribeFunc, error) {
 // see indexpkg.Initializable for the recommended idempotency pattern.
 func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	if p == nil {
 		return fmt.Errorf("graph: index provider is nil")
 	}
@@ -201,6 +204,9 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 // version.
 func (i *IndexOps) RegisterLegacyProvider(p indexpkg.LegacyIndexProvider) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	if p == nil {
 		return fmt.Errorf("graph: index provider is nil")
 	}
@@ -213,6 +219,9 @@ func (i *IndexOps) RegisterLegacyProvider(p indexpkg.LegacyIndexProvider) error 
 // either way.
 func (i *IndexOps) UnregisterProvider(name string) error {
 	c := i.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	entry, ok := c.indexProviders[name]
 	if !ok {

@@ -17,16 +17,27 @@ import (
 
 // Snapshot returns a complete graph state at the given instant.
 // Relationships are only included if both endpoints are valid at t.
-// Acquires c.mu.RLock to prevent torn reads from concurrent Batch execution.
+//
+// Takes c.mu.RLock for the duration. The RLock excludes tx/batch but
+// NOT individual standalone mutations (which also take RLock), so
+// concurrent writers can interleave between the node and rel reads.
+// For a strict snapshot (no concurrent writers at all), call
+// (*GraphTx).Snapshot from inside g.Tx.Run; the tx already holds
+// c.mu.Lock and the underlying snapshotAt runs without re-entering
+// the lock.
 func (t *TempOps) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.snapshotAt(at)
 }
 
-// snapshotAt computes the graph snapshot at t. It does not acquire c.mu;
-// callers that require strong snapshot consistency should hold c.mu.RLock.
+// snapshotAt computes the graph snapshot at t without acquiring any
+// graph-level lock. Caller must hold c.mu.RLock OR c.mu.Lock — the
+// standalone path uses RLock, the tx path uses Lock.
 func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 	nodes, err := c.Temporal.NodesAt(t)
 	if err != nil {
@@ -84,6 +95,9 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // peak working set is one entity at a time plus the dedup ID set.
 func (t *TempOps) Diff(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	diff := &temporalpkg.SnapshotDiff{T1: t1, T2: t2}
 	handlers := temporalpkg.DiffHandlers{
 		OnNodeCreated: func(after *types.Node) error {
@@ -140,6 +154,9 @@ func (t *TempOps) Diff(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) 
 // DiffCallback ErrInvalidTimeRange if t1 == 0, t2 == 0, or t1 >= t2.
 func (t *TempOps) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) error {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	if t1 == 0 || t2 == 0 || t1 >= t2 {
 		return ErrInvalidTimeRange
 	}

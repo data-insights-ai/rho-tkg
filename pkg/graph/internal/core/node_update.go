@@ -19,6 +19,9 @@ import (
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error
@@ -175,6 +178,9 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 // Returns storepkg.ErrNodeNotFound if the node does not exist. Empty updates map is a no-op.
 func (n *NodeOps) UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.Nodes.UpdateInPlaceWithContext(context.Background(), id, updates)
 }
 
@@ -183,6 +189,9 @@ func (n *NodeOps) UpdateInPlace(id types.NodeID, updates map[string]any) (*types
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error

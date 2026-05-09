@@ -2,7 +2,6 @@ package core
 
 import (
 	"testing"
-	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -20,6 +19,7 @@ import (
 func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, err := g.Nodes.Add([]string{"Person"}, nil)
 	if err != nil {
@@ -37,7 +37,6 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 	queryTime := g.relValidFrom(r)
 
 	// Phase 2: mutate after t0.
-	time.Sleep(2 * time.Millisecond)
 	if _, err := g.Rels.Update(id, map[string]any{"since": "2024"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -72,6 +71,7 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -97,7 +97,6 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 		t0 = v
 	}
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Rels.Delete(rDeleted.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -130,6 +129,7 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -140,7 +140,6 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	id := r.ID()
 	queryTime := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	if _, err := g.Rels.Update(id, map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -169,6 +168,7 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -188,7 +188,6 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 		t0 = v
 	}
 
-	time.Sleep(2 * time.Millisecond)
 	if _, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -233,6 +232,7 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -248,7 +248,6 @@ func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 		t0 = v
 	}
 
-	time.Sleep(2 * time.Millisecond)
 	if _, err := g.Rels.Update(rLikes.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship rLikes: %v", err)
 	}
@@ -270,6 +269,7 @@ func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -280,7 +280,6 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 	id := r.ID()
 	t0 := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	if err := g.Rels.Delete(id); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
@@ -305,6 +304,7 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -316,7 +316,6 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 	id := r.ID()
 	start := g.relValidFrom(r)
 
-	time.Sleep(2 * time.Millisecond)
 	updated, err := g.Rels.Update(id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
@@ -342,6 +341,7 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)
@@ -361,7 +361,6 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 		start = v
 	}
 
-	time.Sleep(2 * time.Millisecond)
 	updated, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
@@ -405,6 +404,7 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 func TestRelationshipsByTypePropertyDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, nil)
 	b, _ := g.Nodes.Add([]string{"Person"}, nil)

@@ -17,6 +17,9 @@ import (
 // Value comparison uses reflect.DeepEqual — type must match exactly (int(42) != int64(42)).
 func (n *NodeOps) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
 	return c.Nodes.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
 }
 
@@ -24,6 +27,9 @@ func (n *NodeOps) CompareAndSetProperty(id types.NodeID, key string, expected, n
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
 	var (
 		ok      bool
 		mutated bool

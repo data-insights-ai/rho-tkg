@@ -17,6 +17,9 @@ import (
 // version history in addition to current entities.
 func (t *TempOps) NodesAt(at types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	err := c.forEachKnownNodeID(func(id types.NodeID) error {
 		n, err := c.Temporal.NodeAt(id, at)
@@ -40,6 +43,9 @@ func (t *TempOps) NodesAt(at types.Instant) ([]*types.Node, error) {
 // History-aware: includes deleted relationships that were valid at time t.
 func (t *TempOps) RelationshipsAt(at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
 		r, err := c.Temporal.RelAt(id, at)
@@ -64,6 +70,9 @@ func (t *TempOps) RelationshipsAt(at types.Instant) ([]*types.Relationship, erro
 // History-aware: includes historical versions whose label set matched at t.
 func (t *TempOps) NodesByLabelAt(label string, at types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -108,6 +117,9 @@ func (t *TempOps) NodesByLabelAt(label string, at types.Instant) ([]*types.Node,
 // results depending on how long it ran.
 func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	end = resolveOpenEndInstant(end)
 	var result []*types.Node
 	err := c.forEachKnownNodeID(func(id types.NodeID) error {
@@ -134,6 +146,9 @@ func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 // end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
 func (t *TempOps) RelationshipsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	end = resolveOpenEndInstant(end)
 	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
@@ -173,6 +188,9 @@ func (t *TempOps) RelationshipsDuring(start, end types.Instant) ([]*types.Relati
 // Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
 func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -206,6 +224,9 @@ func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error)
 // Returns storepkg.ErrNoVersionValidAt if no version covers the given time.
 func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -236,6 +257,9 @@ func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, 
 // themselves are also valid at that instant.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	// Indexed candidate set: current outgoing + incoming adjacency, merged
 	// with all history rel IDs (covering deleted-rel neighbors). Avoids a
 	// full ForEachRelID scan.
@@ -300,6 +324,9 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 // Returns nil if the label is not registered.
 func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -349,6 +376,9 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 // Returns nil if the label is not registered.
 func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -407,6 +437,9 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 // at t.
 func (t *TempOps) RelationshipsByTypeAt(relType string, at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.Rels.ByType(relType, storepkg.QueryOpts{ValidAt: at})
 }
 
@@ -420,6 +453,9 @@ func (t *TempOps) RelationshipsByTypeAt(relType string, at types.Instant) ([]*ty
 // version.
 func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.relTypes.Lookup(relType)
 	if !ok {
 		return nil, nil
@@ -475,6 +511,9 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 // overlapping version is still included.
 func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.relTypes.Lookup(relType)
 	if !ok {
 		return nil, nil

@@ -225,7 +225,7 @@ func BenchmarkAddNodeTx(b *testing.B) {
 		if i+count > b.N {
 			count = b.N - i
 		}
-		tx := g.BeginTx()
+		tx, _ := g.BeginTx()
 		for j := range count {
 			seq := i + j
 			if _, err := tx.AddNode(labels, map[string]any{"seq": seq, "group": fmt.Sprintf("g%d", seq%10)}); err != nil {

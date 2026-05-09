@@ -3,7 +3,6 @@ package core
 import (
 	"sync"
 	"testing"
-	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
@@ -222,13 +221,13 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	clk := useTestClock(t, g)
 
 	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	id := n.ID()
 
-	validTime := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	validTime := nowMs() // wall-clock: before any test-clock-stamped Delete (R5-F10)
 
 	if err := g.Nodes.Delete(id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
@@ -243,8 +242,8 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 		t.Fatalf("expected 2 nodes at pre-deletion time, got %d", len(nodes))
 	}
 
-	// Query at current time — only Bob.
-	nodes, err = g.Temporal.NodesAt(types.Instant(time.Now().UnixMilli()))
+	// Query strictly after Delete (test-clock-stamped ValidTo).
+	nodes, err = g.Temporal.NodesAt(clk.PeekInstant())
 	if err != nil {
 		t.Fatalf("GetNodesValidAt now: %v", err)
 	}
@@ -262,13 +261,13 @@ func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	useTestClock(t, g)
 
 	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
 	g.Rels.Add("KNOWS", a, b, nil)
 
-	snapshotTime := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	snapshotTime := nowMs() // wall-clock: before test-clock-stamped Delete (R5-F10)
 
 	if err := g.Nodes.Delete(a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)

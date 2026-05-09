@@ -9,7 +9,7 @@ func TestBatchAddNodeTooManyLabels(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
 
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 	_, err := batch.AddNode([]string{"A", "B"}, nil)
 	if err == nil {
 		t.Fatal("expected error for too many labels in batch")
@@ -23,7 +23,7 @@ func TestBatchAddRelationshipTypeNameTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 3}})
 
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 	n, _ := batch.AddNode([]string{"X"}, nil)
 	m, _ := batch.AddNode([]string{"X"}, nil)
 	_, err := batch.AddRelationship("TOOLONG", n, m, nil)
@@ -41,7 +41,7 @@ func TestBatchUpdateNodePropertyKeyTooLong(t *testing.T) {
 
 	n, _ := g.Nodes.Add([]string{"X"}, nil)
 
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 	err := batch.UpdateNode(n.ID(), map[string]any{"toolong": "v"})
 	if err == nil {
 		t.Fatal("expected error for key too long in batch update")
@@ -59,7 +59,7 @@ func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
 	b, _ := g.Nodes.Add([]string{"X"}, nil)
 	r, _ := g.Rels.Add("REL", a, b, nil)
 
-	batch := NewBatchBuilder(g)
+	batch, _ := NewBatchBuilder(g)
 	err := batch.UpdateRelationship(r.ID(), map[string]any{"k": "toolong"})
 	if err == nil {
 		t.Fatal("expected error for value too large in batch update")

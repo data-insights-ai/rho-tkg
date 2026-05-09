@@ -322,7 +322,7 @@ func TestBatchExecute_ConcurrentAccess(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Run batch execute.
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	result, err := b.Execute()
 	if err != nil {

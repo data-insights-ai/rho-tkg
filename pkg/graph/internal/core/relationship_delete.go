@@ -15,6 +15,9 @@ import (
 // GetWithContext retrieves a relationship by snowflake ID with context support.
 func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -29,6 +32,9 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
 		err = c.deleteRelationshipInternal(ctx, id)

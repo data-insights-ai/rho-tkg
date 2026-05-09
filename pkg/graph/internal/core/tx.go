@@ -65,15 +65,22 @@ type GraphTx struct {
 	done          bool
 }
 
-// BeginTx starts a new mutation transaction.
-// Acquires the graph write lock, blocking concurrent standalone mutations,
-// Batch, and Snapshot operations. The lock is released on Commit() or Rollback().
-// Events are buffered and published after Commit (or discarded on Rollback).
-func (c *Core) BeginTx() *GraphTx {
+// BeginTx starts a new mutation transaction. Returns ErrGraphClosed if
+// the graph has already been closed.
+//
+// On success, BeginTx acquires the graph write lock, blocking concurrent
+// standalone mutations, Batch, and Snapshot operations. The lock is
+// released on Commit() or Rollback(). Events are buffered and published
+// after Commit (or discarded on Rollback).
+func (c *Core) BeginTx() (*GraphTx, error) {
 	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		return nil, ErrGraphClosed
+	}
 	tx := &GraphTx{g: c, snapshotSet: make(map[snowflake.ID]bool)}
 	c.txEventBuffer = &tx.pendingEvents
-	return tx
+	return tx, nil
 }
 
 // =============================================================================
@@ -146,11 +153,11 @@ func (tx *GraphTx) Commit() error {
 	// Release the write lock before publishing — handlers can call Graph methods.
 	tx.g.mu.Unlock()
 
-	// Publish buffered events outside all locks.
-	if ep != nil {
-		for _, e := range events {
-			ep.Publish(e)
-		}
+	// Publish buffered events outside all locks. PublishBatch is
+	// atomic on AsyncEventBus, so all tx events land in priority
+	// order even if other goroutines are publishing concurrently.
+	if ep != nil && len(events) > 0 {
+		ep.PublishBatch(events...)
 	}
 	return nil
 }

@@ -15,12 +15,18 @@ import (
 // Get retrieves a node by snowflake ID.
 func (n *NodeOps) Get(id types.NodeID) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.Nodes.GetWithContext(context.Background(), id)
 }
 
 // Get retrieves a relationship by snowflake ID.
 func (r *RelOps) Get(id types.RelID) (*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.Rels.GetWithContext(context.Background(), id)
 }
 
@@ -34,6 +40,9 @@ func (r *RelOps) Get(id types.RelID) (*types.Relationship, error) {
 // store-level label index for O(matches) lookup.
 func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -86,6 +95,9 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 // temporal filter, the call falls through to the store-level type index.
 func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	tok, ok := c.relTypes.Lookup(typeName)
 	if !ok {
 		return nil, nil
@@ -132,6 +144,9 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 // relationships of that type are returned (nil if the type is not registered).
 func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var tok uint16
 	if typeName != "" {
 		t, ok := c.relTypes.Lookup(typeName)
@@ -150,6 +165,9 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 // Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
 func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
@@ -171,6 +189,9 @@ func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 // Unregistered typeName returns nil, nil. nil/empty nodeIDs returns nil, nil.
 func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
@@ -190,6 +211,9 @@ func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 // relationships of that type are returned (nil if the type is not registered).
 func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	var tok uint16
 	if typeName != "" {
 		t, ok := c.relTypes.Lookup(typeName)
@@ -204,12 +228,18 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 // Count returns the number of nodes in the store.
 func (n *NodeOps) Count() (int, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
 	return c.store.NodeCount()
 }
 
 // Count returns the number of relationships in the store.
 func (r *RelOps) Count() (int, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
 	return c.store.RelationshipCount()
 }
 
@@ -222,6 +252,9 @@ func (r *RelOps) Count() (int, error) {
 // is preserved.
 func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if !hasTemporalFilter(opts) {
 		return c.store.AllNodes(opts)
 	}
@@ -257,6 +290,9 @@ func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 // path is preserved.
 func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if !hasTemporalFilter(opts) {
 		return c.store.AllRelationships(opts)
 	}
@@ -285,12 +321,18 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 // GetByIDs returns nodes matching the given IDs. Missing IDs are skipped.
 func (n *NodeOps) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.store.GetNodesByIDs(ids)
 }
 
 // GetByIDs returns relationships matching the given IDs. Missing IDs are skipped.
 func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	return c.store.GetRelationshipsByIDs(ids)
 }
 
@@ -300,6 +342,9 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // Returns 0 if the label has never been registered.
 func (n *NodeOps) CountByLabel(label string) (int, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return 0, nil
@@ -311,6 +356,9 @@ func (n *NodeOps) CountByLabel(label string) (int, error) {
 // Returns 0 if the type has never been registered.
 func (r *RelOps) CountByType(typeName string) (int, error) {
 	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
 	tok, ok := c.relTypes.Lookup(typeName)
 	if !ok {
 		return 0, nil

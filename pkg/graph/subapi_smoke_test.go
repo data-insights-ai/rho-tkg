@@ -138,7 +138,10 @@ func TestSubAPISmoke(t *testing.T) {
 	}
 
 	// Batch
-	bb := g.Batch.New()
+	bb, err := g.Batch.New()
+	if err != nil {
+		t.Fatalf("Batch.New: %v", err)
+	}
 	if _, err := bb.AddNode([]string{"Org"}, map[string]any{"name": "BDS"}); err != nil {
 		t.Fatalf("Batch.AddNode: %v", err)
 	}

@@ -19,15 +19,19 @@ func newTxTimeGraph(t *testing.T) *Core {
 }
 
 func TestTxFromSetOnAdd(t *testing.T) {
-	// TxFrom should be set on new node and rel
+	// TxFrom should be set on new node and rel. The test asserts
+	// "TxFrom is captured between two clock samples bracketing Add" —
+	// works equally well with the injected test clock (which is what
+	// c.now() consults).
 	g := newTxTimeGraph(t)
-	before := types.Instant(time.Now().UnixMilli())
+	clk := useTestClock(t, g)
+	before := clk.PeekInstant()
 
 	n, err := g.Nodes.Add([]string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	after := types.Instant(time.Now().UnixMilli())
+	after := clk.PeekInstant()
 
 	tm := n.Temporal()
 	if tm == nil {
@@ -42,12 +46,12 @@ func TestTxFromSetOnAdd(t *testing.T) {
 
 	// Same for relationship
 	n2, _ := g.Nodes.Add([]string{"B"}, nil)
-	before2 := types.Instant(time.Now().UnixMilli())
+	before2 := clk.PeekInstant()
 	r, err := g.Rels.Add("REL", n, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	after2 := types.Instant(time.Now().UnixMilli())
+	after2 := clk.PeekInstant()
 
 	rtm := r.Temporal()
 	if rtm == nil {
@@ -61,12 +65,14 @@ func TestTxFromSetOnAdd(t *testing.T) {
 func TestTxToSetOnUpdate(t *testing.T) {
 	// Old version should have TxTo set; new version has a new TxFrom
 	g := newTxTimeGraph(t)
+	useTestClock(t, g)
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
 	origTxFrom := n.Temporal().TxFrom
 
-	time.Sleep(2 * time.Millisecond) // ensure measurable time difference
+	// Test clock advances 1ms per c.now() call — Update gets a strictly
+	// greater TxFrom without a wall-clock sleep (R5-F10).
 
 	updated, err := g.Nodes.Update(nid, map[string]any{"x": 1})
 	if err != nil {
@@ -103,6 +109,7 @@ func TestTxToSetOnUpdate(t *testing.T) {
 func TestTxToSetOnDelete(t *testing.T) {
 	// Deleted node's last history version should have TxTo set
 	g := newTxTimeGraph(t)
+	useTestClock(t, g)
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
@@ -131,6 +138,7 @@ func TestTxToSetOnDelete(t *testing.T) {
 
 func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 	g := newTxTimeGraph(t)
+	useTestClock(t, g)
 
 	before := types.Instant(time.Now().UnixMilli() - 1000) // 1 second in past
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
@@ -144,6 +152,7 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 
 func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
+	useTestClock(t, g)
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
@@ -161,6 +170,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 
 func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
@@ -168,7 +178,9 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	// Record the TxFrom of the original version
 	origTxFrom := n.Temporal().TxFrom
 
-	time.Sleep(2 * time.Millisecond)
+	// Widen the gap between origTxFrom and newTxFrom so the test's
+	// midpoint lands strictly between them (R5-F10).
+	clk.Advance(2 * time.Millisecond)
 
 	// Update the node
 	updated, _ := g.Nodes.Update(nid, map[string]any{"x": 1})
@@ -192,14 +204,19 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 
 func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
 
-	// Create first node
+	// Create first node — TxFrom comes from the test clock.
 	n1, _ := g.Nodes.Add([]string{"A"}, nil)
 	_ = n1
 
-	// Record time
-	midTime := types.Instant(time.Now().UnixMilli())
-	time.Sleep(2 * time.Millisecond)
+	// Capture midTime AFTER n1's c.now(). Then advance the clock by
+	// 1ms so n2's TxFrom is strictly greater than midTime. Without
+	// the explicit Advance, the next c.now() would return PeekInstant()
+	// itself and n2.TxFrom == midTime, breaking the "n2 NOT returned"
+	// assertion.
+	midTime := clk.PeekInstant()
+	clk.Advance(1 * time.Millisecond)
 
 	// Create second node after midTime
 	n2, _ := g.Nodes.Add([]string{"A"}, nil)
@@ -231,6 +248,7 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 
 func TestGetRelAsOf(t *testing.T) {
 	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
 
 	n1, _ := g.Nodes.Add([]string{"A"}, nil)
 	n2, _ := g.Nodes.Add([]string{"B"}, nil)
@@ -244,7 +262,11 @@ func TestGetRelAsOf(t *testing.T) {
 		t.Errorf("expected ErrNoVersionAsOf before creation, got %v", err)
 	}
 
-	after := types.Instant(time.Now().UnixMilli() + 1000)
+	// "after" must lie strictly after the rel's TxFrom on the test
+	// clock. PeekInstant() returns the next instant the clock will
+	// hand out (≥ TxFrom + 1ms here since c.now() advanced past
+	// TxFrom on the Add path).
+	after := clk.PeekInstant() + 1000
 	got, err := g.Temporal.RelAsOf(rid, after)
 	if err != nil {
 		t.Fatalf("GetRelAsOf after: %v", err)

@@ -1,0 +1,161 @@
+package badger
+
+import (
+	"fmt"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/vmihailenco/msgpack/v5"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+// Relationship batch writes (R5-F9 split out from badgerstore_rel.go).
+
+func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if len(rels) == 0 {
+		return nil
+	}
+
+	// Pre-serialize all relationships outside the lock.
+	type relData struct {
+		rid      types.RelID
+		startNID types.NodeID
+		endNID   types.NodeID
+		id       snowflake.ID
+		startID  snowflake.ID
+		endID    snowflake.ID
+		relType  uint16
+		data     []byte
+	}
+	serialized := make([]relData, len(rels))
+	for i, r := range rels {
+		w := storepkg.RelToWire(r)
+		data, err := msgpack.Marshal(w)
+		if err != nil {
+			return fmt.Errorf("graph: marshal relationship: %w", err)
+		}
+		rid := r.InternalID()
+		startNID := r.StartNodeID()
+		endNID := r.EndNodeID()
+		serialized[i] = relData{
+			rid:      rid,
+			startNID: startNID,
+			endNID:   endNID,
+			id:       rid.SnowflakeID(),
+			startID:  startNID.SnowflakeID(),
+			endID:    endNID.SnowflakeID(),
+			relType:  r.TypeToken().Value(),
+			data:     data,
+		}
+	}
+
+	bs.idxMu.Lock()
+
+	// Phase 1: validate — endpoints exist, no duplicates.
+	seen := make(map[types.RelID]struct{}, len(rels))
+	for _, rd := range serialized {
+		if _, exists := bs.nodeIDs[rd.startNID]; !exists {
+			bs.idxMu.Unlock()
+			return ErrNodeNotFound
+		}
+		if _, exists := bs.nodeIDs[rd.endNID]; !exists {
+			bs.idxMu.Unlock()
+			return ErrNodeNotFound
+		}
+		if _, exists := bs.relIDs[rd.rid]; exists {
+			bs.idxMu.Unlock()
+			return ErrRelExists
+		}
+		if _, exists := seen[rd.rid]; exists {
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: duplicate relationship ID %d in batch", rd.id)
+		}
+		seen[rd.rid] = struct{}{}
+	}
+
+	// Phase 2: apply — all validated, safe to mutate.
+	ops := make([]writeOp, 0, len(rels)*4) // entity + type + out + in
+	for i, r := range rels {
+		rd := serialized[i]
+
+		bs.relCache.Put(rd.id, r.DeepCopy())
+		bs.relIDs[rd.rid] = struct{}{}
+
+		if bs.typeIdx[rd.relType] == nil {
+			bs.typeIdx[rd.relType] = make(map[types.RelID]struct{})
+		}
+		bs.typeIdx[rd.relType][rd.rid] = struct{}{}
+
+		if bs.outIdx[rd.startNID] == nil {
+			bs.outIdx[rd.startNID] = make(map[types.RelID]struct{})
+		}
+		bs.outIdx[rd.startNID][rd.rid] = struct{}{}
+
+		if bs.inIdx[rd.endNID] == nil {
+			bs.inIdx[rd.endNID] = make(map[types.RelID]uint16)
+		}
+		bs.inIdx[rd.endNID][rd.rid] = rd.relType
+
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.OutKey(rd.startID, rd.relType, rd.endID, rd.id)})
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.InKey(rd.endID, rd.relType, rd.startID, rd.id)})
+		bs.getOrCreateTypeCounter(rd.relType).Add(1)
+	}
+
+	bs.appendOps(ops...)
+	bs.relCount.Add(int64(len(rels)))
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
+// Phase 1: check all IDs exist, pre-read relationship metadata.
+// Phase 2: delete via deleteRelByInfo (mutation-only), clean up history.
+// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	if len(typedIDs) == 0 {
+		return nil
+	}
+
+	bs.idxMu.Lock()
+
+	// Phase 1: validate — all must exist + pre-read metadata.
+	infos := make([]RelDeleteInfo, len(typedIDs))
+	for i, rid := range typedIDs {
+		if _, exists := bs.relIDs[rid]; !exists {
+			bs.idxMu.Unlock()
+			return ErrRelNotFound
+		}
+		r, err := bs.getRelLocked(rid)
+		if err != nil {
+			bs.idxMu.Unlock()
+			return fmt.Errorf("graph: batch read relationship %d: %w", rid.SnowflakeID(), err)
+		}
+		infos[i] = RelDeleteInfo{
+			ID:      rid.SnowflakeID(),
+			RelType: r.TypeToken().Value(),
+			StartID: r.StartNodeID().SnowflakeID(),
+			EndID:   r.EndNodeID().SnowflakeID(),
+		}
+	}
+
+	// Phase 2: apply — all validated, mutations cannot fail.
+	for _, info := range infos {
+		bs.deleteRelByInfo(info)
+	}
+
+	bs.idxMu.Unlock()
+
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+// AllRelIDs returns the IDs of all current relationships, with optional pagination.
+// Returns only IDs — no entity deserialization or deep copy. O(N) in relIDs map size.

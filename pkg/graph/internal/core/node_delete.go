@@ -20,6 +20,9 @@ import (
 // GetWithContext retrieves a node by snowflake ID with context support.
 func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -35,6 +38,9 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error {
 	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
 		err = c.deleteNodeInternal(ctx, id)

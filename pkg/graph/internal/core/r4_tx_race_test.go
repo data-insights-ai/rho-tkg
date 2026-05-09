@@ -36,7 +36,7 @@ func TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace(t *testing.T) {
 	const adders = 4
 	const perGoroutine = 50
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	// Track which nodes successfully reported success — they must all
 	// be reflected in CreatedNodeIDs OR they were created after
@@ -90,7 +90,7 @@ func TestR4_GraphTx_AddNodeAfterRollback_AlwaysErrTxDone(t *testing.T) {
 	g := newTestGraph(t)
 	defer g.Close()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("initial rollback: %v", err)
 	}

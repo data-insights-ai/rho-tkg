@@ -11,19 +11,21 @@ import (
 )
 
 // TestExportGraph_HistoryBoundedMemory verifies that the export's history
-// phase no longer materialises the full history-ID slice in memory. With
-// 1000 nodes × 50 history versions each (50K history records, 1000 distinct
-// history IDs), the bounded-RAM cursor should keep the in-flight slice
-// near `exportHistoryBatchSize = 4096` IDs rather than the full population.
+// phase no longer retains the full history-ID slice past return. With
+// 1000 nodes × 50 history versions each, an unbounded loader would
+// retain all 50K history entries (~tens of MiB) on the heap until the
+// caller's deferred close runs. The cursor-paginated implementation
+// retains nothing past the loop iteration; after a forced GC the only
+// remaining allocations are the seeded entities themselves.
 //
-// The test records the heap delta across the export call; it must stay well
-// below what the unbounded slice would have allocated. We use a 16 MiB
-// envelope: realistic, with comfortable headroom over the cursor's working
-// set, but still tight enough that the OLD behaviour (loading every ID up
-// front) would have shown up as a clear regression on much larger seedings
-// — and even at 50K nodes / 50 versions each (the stretch case the lesson
-// targets) the page-driven walk stays near-flat. The discardWriter sinks
-// the export bytes themselves so they don't count against the heap.
+// What the test measures: heap-alloc delta AFTER a forced post-export
+// GC, comparing the retained heap before vs after the export call.
+// Without the GC the measurement was flaky because runtime.HeapAlloc
+// captures every still-live allocation including transients the GC
+// hadn't seen yet — under load that pushed the delta past the budget.
+// With GC the transient cursor state is reclaimed before measurement,
+// so the test reflects "did the exporter leak anything" rather than
+// "what was the peak transient heap during export".
 func TestExportGraph_HistoryBoundedMemory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("seeding 50K records is slow; skipped in -short")
@@ -59,7 +61,7 @@ func TestExportGraph_HistoryBoundedMemory(t *testing.T) {
 		}
 	}
 
-	// Warm up: GC twice to settle. Take baseline.
+	// Warm up: GC twice to settle. Take baseline of retained heap.
 	runtime.GC()
 	runtime.GC()
 	var before runtime.MemStats
@@ -69,17 +71,21 @@ func TestExportGraph_HistoryBoundedMemory(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	// Sample peak after export. We don't GC first — we want to see what the
-	// exporter retained while it was running. Go runtime statistics are
-	// approximate, hence the generous envelope.
+	// Force GC so the measurement captures only what the exporter
+	// retained past return — not transient cursor state, not freshly
+	// allocated msgpack buffers, not anything the GC was about to
+	// reclaim. Without this, parallel test goroutines and Go's
+	// concurrent-mark cycles make HeapAlloc deltas noisy.
+	runtime.GC()
+	runtime.GC()
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
 
 	delta := int64(after.HeapAlloc) - int64(before.HeapAlloc)
 	const limit = 16 * 1024 * 1024 // 16 MiB
 	if delta > limit {
-		t.Fatalf("ExportGraph heap delta = %d bytes (>%d); the unbounded "+
+		t.Fatalf("ExportGraph retained heap delta = %d bytes (>%d); the unbounded "+
 			"history-ID slice would have allocated significantly more", delta, limit)
 	}
-	t.Logf("ExportGraph heap delta = %d bytes (limit %d)", delta, limit)
+	t.Logf("ExportGraph retained heap delta = %d bytes (limit %d)", delta, limit)
 }

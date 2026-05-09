@@ -229,7 +229,7 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.AddNodeLabel: %v", err)
@@ -249,7 +249,7 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.AddNodeLabel: %v", err)
@@ -269,7 +269,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.AddNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.AddNodeLabel: %v", err)
@@ -292,7 +292,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.RemoveNodeLabel: %v", err)
@@ -319,7 +319,7 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.RemoveNodeLabel: %v", err)
@@ -355,7 +355,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("tx.RemoveNodeLabel: %v", err)
@@ -375,7 +375,7 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"Solo"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	defer tx.Rollback()
 
 	err := tx.RemoveNodeLabel(id, "Solo")
@@ -389,7 +389,7 @@ func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
 	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}

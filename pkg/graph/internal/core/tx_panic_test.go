@@ -40,7 +40,7 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 		t.Fatalf("AddNode n2: %v", err)
 	}
 
-	tx := g.BeginTx()
+	tx, _ := g.BeginTx()
 
 	// Create a relationship inside the transaction so tx.createdRels is non-empty.
 	_, err = tx.AddRelationship("LINKS", n1, n2, nil)
@@ -75,7 +75,7 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		tx2 := g.BeginTx()
+		tx2, _ := g.BeginTx()
 		_ = tx2.Commit()
 	}()
 
@@ -109,7 +109,7 @@ func TestBatchExecute_PanicRecovery(t *testing.T) {
 	}
 	t.Cleanup(func() { g.Close() })
 
-	b := NewBatchBuilder(g)
+	b, _ := NewBatchBuilder(g)
 	_, err = b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)

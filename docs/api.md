@@ -81,7 +81,7 @@
 - Point-in-time: `g.Temporal.NodeAt(id, t)`, `RelAt(id, t)`, `NodesAt(t)`, `RelationshipsAt(t)`, `NodesByLabelAt(label, t)`, `RelationshipsByTypeAt(relType, t)`, `NeighborsAt(nodeID, t)`, `NodesByLabelPropertyAt(label, key, value, t)`, `RelsByTypePropertyAt(relType, key, value, t)`.
 - Interval: `NodesDuring(start, end)`, `RelationshipsDuring(start, end)`, `NodesByLabelPropertyDuring(label, key, value, start, end)`, `RelsByTypePropertyDuring(relType, key, value, start, end)`.
 - Bitemporal (transaction time): `NodeAsOf(id, txTime)`, `RelAsOf(id, txTime)`, `NodesAsOf(txTime)`, `RelsAsOf(txTime)`. Returns `ErrNoVersionAsOf` if no version was committed at or before `txTime`.
-- Snapshot/Diff: `Snapshot(t) (*GraphSnapshot, error)` (full graph state at `t`, endpoints-filtered). `Diff(t1, t2) (*SnapshotDiff, error)` returns `NodesCreated`, `NodesUpdated [{Before, After}]`, `NodesDeleted`, `RelsCreated`, `RelsUpdated`, `RelsDeleted`. `DiffCallback(t1, t2, handlers)` streams the same diff via `DiffHandlers` (each handler optional).
+- Snapshot/Diff: `Snapshot(t) (*GraphSnapshot, error)` (full graph state at `t`, endpoints-filtered). `tx.Snapshot(t)` is the strict variant on `*GraphTx` — runs under the tx's write lock so no concurrent mutation can interleave between the node and rel reads. `Diff(t1, t2) (*SnapshotDiff, error)` returns `NodesCreated`, `NodesUpdated [{Before, After}]`, `NodesDeleted`, `RelsCreated`, `RelsUpdated`, `RelsDeleted`. `DiffCallback(t1, t2, handlers)` streams the same diff via `DiffHandlers` (each handler optional).
 - Allen relations: `NodeInterval(n)`, `RelInterval(r)`, `RelateNodes(a, b)`, `RelateRels(a, b)` — return `(start, end Instant, err error)` for the interval helpers and `AllenRelation` for the relation helpers. Allen relations require finite intervals (ValidTo != 0).
 
 All temporal queries are history-aware (include deleted entities via lazy ForEach iterators). Nodes without explicit temporal metadata derive valid-from from their snowflake ID timestamp.
@@ -125,7 +125,8 @@ All temporal queries are history-aware (include deleted entities via lazy ForEac
 
 ### IO (`g.IO`)
 
-- `g.IO.Export(w io.Writer) error` — length-prefixed msgpack record stream with 1-byte type tags. Forward-compatible (unknown tags skipped on import). Holds `g.mu.RLock` — best-effort: excludes tx/batch but standalone mutations also hold RLock and can interleave with Export's reads. Drive Export from inside a tx for a strict snapshot.
+- `g.IO.Export(w io.Writer) error` — length-prefixed msgpack record stream with 1-byte type tags. Forward-compatible (unknown tags skipped on import). Holds `g.mu.RLock` — best-effort: excludes tx/batch but standalone mutations also hold RLock and can interleave with Export's reads.
+- `tx.Export(w io.Writer) error` — strict snapshot variant on `*GraphTx`. Runs under the transaction's write lock (no concurrent writers can interleave). Same wire format as `g.IO.Export`. Use when a torn-write-free export matters; the standalone path is fine for backups where eventual consistency is acceptable.
 - `g.IO.Import(r io.Reader) error` — defaults to platform temp dir for staging, no size cap.
 - `g.IO.ImportWithOptions(r io.Reader, opts io.ImportOptions) error` — `ImportOptions{StagingDir, MaxStagedBytes}`. Memory is `O(maxExportRecordSize)` regardless of export size; staging file is sized to match the export and removed via defer at exit. Phase-1 errors (read, staging-disk write, MaxStagedBytes exceeded) leave graph state unchanged. Phase-2 (replay) errors may leave a partially populated graph — for transactional restore, import into a fresh graph and swap stores on success. Sentinels: `ErrIncompatibleExport`, `ErrIncompatibleRegistry`, `ErrImportSizeLimit`, `ErrCorruptExport`. Per-record allocations capped at 128 MiB.
 
@@ -136,7 +137,7 @@ All temporal queries are history-aware (include deleted entities via lazy ForEac
 - `g.Admin.ListShards()` — `[]ShardInfo` with live counts (under `g.mu.RLock`).
 - `g.Admin.RebuildCatalog()` — reconstruct the shard catalog from live state (under `g.mu.Lock`).
 - `g.Admin.Repair()` — scan + fix cross-shard split-write inconsistencies (under `g.mu.Lock`, R2-F1).
-- `g.Admin.VerifyShard(name)` — hash chain verification with immutable-shard caching (under `g.mu.RLock`).
+- `g.Admin.VerifyShard(name)` — hash chain verification with immutable-shard caching (under `g.mu.RLock`). For a strict check (no concurrent writers at all), call `tx.VerifyShard(name)` from inside `g.Tx.Run` — runs under the tx's write lock.
 - `g.Admin.Reset()` — clears all entities, indexes, history, counters; preserves registries. Works on every backend (forwards to `store.Clear`).
 - `g.Admin.DecomposeID(id snowflake.ID) IDComponents{CreatedAt, NodeID, Sequence}` — works with any store type.
 

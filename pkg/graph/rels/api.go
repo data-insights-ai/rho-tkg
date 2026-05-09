@@ -70,21 +70,35 @@ func (a *API) AddWithContext(ctx context.Context, typeName string, startNode, en
 }
 
 // AddByID creates a relationship by node IDs.
+//
+// Fast path when no graph-level constraints are configured: skips
+// the live-endpoint fetch, leaving FromNodeHash/ToNodeHash empty in
+// the resulting RelIntegrity. When ConstraintRelWithinEndpoints (or
+// any other endpoint-dependent constraint) is active on the graph,
+// AddByID transparently fetches the live endpoints and enforces the
+// constraint — the constraint cannot be silently bypassed by choosing
+// the ByID entry point.
 func (a *API) AddByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	return a.ops.AddByID(typeName, startID, endID, props)
 }
 
 // AddByIDWithContext creates a relationship by node IDs honoring ctx.
+// Same constraint behaviour as AddByID: the configured constraint set
+// is always enforced; the live-endpoint fetch is skipped only when no
+// endpoint-dependent constraints are configured.
 func (a *API) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	return a.ops.AddByIDWithContext(ctx, typeName, startID, endID, props)
 }
 
 // AddByIDIfAbsent creates a relationship if the (start,end,type) triple does not already exist.
+// Same constraint behaviour as AddByID: the configured constraint set
+// is always enforced when present.
 func (a *API) AddByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	return a.ops.AddByIDIfAbsent(typeName, startID, endID, props)
 }
 
 // AddByIDIfAbsentWithContext is the context-aware variant of AddByIDIfAbsent.
+// Same constraint behaviour as AddByID.
 func (a *API) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	return a.ops.AddByIDIfAbsentWithContext(ctx, typeName, startID, endID, props)
 }

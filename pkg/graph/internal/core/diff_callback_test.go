@@ -98,6 +98,7 @@ func relIDSet(rs []*types.Relationship) map[snowflake.ID]struct{} {
 // identical SnapshotDiff to the materialised DiffSnapshots.
 func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 	g := newDiffGraph(t)
+	useTestClock(t, g)
 
 	base := types.Instant(time.Now().UnixMilli())
 	t1 := base + 100
@@ -116,13 +117,10 @@ func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 	setNodeTemporal(t, g, deletedN.ID(), base+50, base+200)
 
 	// Updated node — explicit pre-/post- versions via UpdateNode in the
-	// diff window.
+	// diff window. Test clock c.now() = wall + 1s ≫ t1, so the
+	// Update's UpdatedAt is automatically past t1 (R5-F10).
 	updatedN, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
 	setNodeTemporal(t, g, updatedN.ID(), base+50, 0)
-	// Sleep so UpdatedAt > t1.
-	for types.Instant(time.Now().UnixMilli()) <= t1 {
-		time.Sleep(time.Millisecond)
-	}
 	if _, err := g.Nodes.Update(updatedN.ID(), map[string]any{"name": "Alice 2"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -148,7 +146,10 @@ func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	t2 = types.Instant(time.Now().UnixMilli()) + 10
+	// t2 anchored relative to base (not wall-clock now) so it stays
+	// strictly after t1 = base+100 without depending on wall-clock
+	// progression (R5-F10).
+	t2 = base + 1_000
 
 	// Materialised path.
 	want, err := g.Temporal.Diff(t1, t2)
@@ -589,6 +590,7 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 		t.Skip("RAM bound test is allocator-sensitive; skipped under -race")
 	}
 	g := newDiffGraph(t)
+	useTestClock(t, g)
 
 	const (
 		nUnchanged = 20_000
@@ -614,15 +616,14 @@ func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
 	}
 
 	t1 := types.Instant(time.Now().UnixMilli())
-	for types.Instant(time.Now().UnixMilli()) <= t1 {
-		time.Sleep(time.Millisecond)
-	}
+	// Test clock c.now() = wall + 1s ≫ t1 — Update's UpdatedAt is
+	// automatically past t1 with no wall-clock wait (R5-F10).
 	for i, id := range updateIDs {
 		if _, err := g.Nodes.Update(id, map[string]any{"v": int64(i + 1_000_000)}); err != nil {
 			t.Fatalf("UpdateNode %d: %v", i, err)
 		}
 	}
-	t2 := types.Instant(time.Now().UnixMilli()) + 10
+	t2 := types.Instant(time.Now().UnixMilli()) + 1_000_000_000 // way past test-clock UpdatedAt
 
 	// measureAlloc returns (totalAllocDelta, peakHeapInuseAboveBaseline)
 	// during fn. peakHeapInuse is sampled from a watcher goroutine.
