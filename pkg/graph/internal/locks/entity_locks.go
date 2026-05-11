@@ -79,6 +79,45 @@ func (lm *Manager) UnlockTwo(a, b snowflake.ID) {
 	lm.shards[sa].Unlock()
 }
 
+// LockThree acquires locks for three entities in ascending shard order
+// (deadlock-free). Duplicate shard indices are locked only once.
+func (lm *Manager) LockThree(a, b, c snowflake.ID) {
+	shards, n := uniqueSortedThreeShards(a, b, c)
+	for i := 0; i < n; i++ {
+		lm.shards[shards[i]].Lock()
+	}
+}
+
+// UnlockThree releases locks for three entities in reverse shard order.
+func (lm *Manager) UnlockThree(a, b, c snowflake.ID) {
+	shards, n := uniqueSortedThreeShards(a, b, c)
+	for i := n - 1; i >= 0; i-- {
+		lm.shards[shards[i]].Unlock()
+	}
+}
+
+func uniqueSortedThreeShards(a, b, c snowflake.ID) ([3]uint8, int) {
+	shards := [3]uint8{ShardIndex(a)}
+	n := 1
+	insertUniqueShard := func(s uint8) {
+		for i := 0; i < n; i++ {
+			if shards[i] == s {
+				return
+			}
+		}
+		j := n
+		for j > 0 && shards[j-1] > s {
+			shards[j] = shards[j-1]
+			j--
+		}
+		shards[j] = s
+		n++
+	}
+	insertUniqueShard(ShardIndex(b))
+	insertUniqueShard(ShardIndex(c))
+	return shards, n
+}
+
 // LockMany acquires locks for multiple entities in ascending shard order (deadlock-free).
 // Deduplicates shard indices so each shard is locked at most once.
 func (lm *Manager) LockMany(ids []snowflake.ID) {

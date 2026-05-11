@@ -38,6 +38,24 @@ func differentShardIDs(t *testing.T) (snowflake.ID, snowflake.ID) {
 	}
 }
 
+func threeDifferentShardIDs(t *testing.T) (snowflake.ID, snowflake.ID, snowflake.ID) {
+	t.Helper()
+	gen := newTestGen(t, 0)
+	var ids [3]snowflake.ID
+	seen := make(map[uint8]struct{}, 3)
+	for n := 0; n < len(ids); {
+		id := gen.Generate()
+		shard := ShardIndex(id)
+		if _, ok := seen[shard]; ok {
+			continue
+		}
+		seen[shard] = struct{}{}
+		ids[n] = id
+		n++
+	}
+	return ids[0], ids[1], ids[2]
+}
+
 // ─── Basic lock/unlock ──────────────────────────────────────────────────────
 
 func TestEntityLockManagerSingleLock(t *testing.T) {
@@ -73,6 +91,23 @@ func TestEntityLockManagerLockTwoReverseOrder(t *testing.T) {
 	a, b := differentShardIDs(t)
 	lm.LockTwo(b, a)
 	lm.UnlockTwo(b, a)
+}
+
+func TestEntityLockManagerLockThree(t *testing.T) {
+	t.Parallel()
+	lm := NewManager()
+	a, b, c := threeDifferentShardIDs(t)
+	lm.LockThree(c, a, b)
+	lm.UnlockThree(c, a, b)
+}
+
+func TestEntityLockManagerLockThreeSameShard(t *testing.T) {
+	t.Parallel()
+	lm := NewManager()
+
+	id := snowflake.ID(99)
+	lm.LockThree(id, id, id)
+	lm.UnlockThree(id, id, id)
 }
 
 // ─── Shard index ────────────────────────────────────────────────────────────
@@ -137,6 +172,34 @@ func TestEntityLockManagerNoDeadlock(t *testing.T) {
 		for range iterations {
 			lm.LockTwo(b, a)
 			lm.UnlockTwo(b, a)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestEntityLockManagerLockThreeNoDeadlock(t *testing.T) {
+	t.Parallel()
+	lm := NewManager()
+	a, b, c := threeDifferentShardIDs(t)
+
+	const iterations = 1000
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			lm.LockThree(a, b, c)
+			lm.UnlockThree(a, b, c)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			lm.LockThree(c, b, a)
+			lm.UnlockThree(c, b, a)
 		}
 	}()
 

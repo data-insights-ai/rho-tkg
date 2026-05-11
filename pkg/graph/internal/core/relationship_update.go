@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
@@ -73,7 +72,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 
 	// Phase 2: Acquire rel + both endpoint locks together. We need a peek
 	// to discover the (immutable) endpoint IDs; we then re-acquire all three
-	// locks via LockMany so the endpoint hash refresh below cannot race a
+	// locks together so the endpoint hash refresh below cannot race a
 	// concurrent UpdateNode on either endpoint (R4-F7). Rel endpoints never
 	// change after creation, so the peek-without-lock is benign — even if
 	// the rel is replaced between peek and LockMany, the new version still
@@ -86,9 +85,8 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	startID := peek.StartNodeID()
 	endID := peek.EndNodeID()
 
-	allIDs := []snowflake.ID{id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID()}
-	c.entityLocks.LockMany(allIDs)
-	defer c.entityLocks.UnlockMany(allIDs)
+	c.entityLocks.LockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
