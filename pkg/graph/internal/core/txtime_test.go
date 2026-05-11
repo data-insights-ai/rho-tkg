@@ -353,6 +353,29 @@ func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	}
 }
 
+func TestNodesAsOfReturnsSortedByID(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	for i := 0; i < 64; i++ {
+		if _, err := g.Nodes.Add([]string{"SortedNode"}, map[string]any{"i": int64(i)}); err != nil {
+			t.Fatalf("AddNode %d: %v", i, err)
+		}
+	}
+	nodes, err := g.Temporal.NodesAsOf(clk.PeekInstant())
+	if err != nil {
+		t.Fatalf("NodesAsOf: %v", err)
+	}
+	if len(nodes) != 64 {
+		t.Fatalf("len(NodesAsOf) = %d, want 64", len(nodes))
+	}
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i-1].ID() > nodes[i].ID() {
+			t.Fatalf("NodesAsOf order[%d:%d] = %d > %d", i-1, i, nodes[i-1].ID(), nodes[i].ID())
+		}
+	}
+}
+
 func TestRelAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
@@ -434,6 +457,37 @@ func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
 	for _, got := range rels {
 		if got.ID() == rid {
 			t.Fatalf("RelsAsOf after cascade delete included relationship %d", rid)
+		}
+	}
+}
+
+func TestRelsAsOfReturnsSortedByID(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	a, err := g.Nodes.Add([]string{"SortedEndpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"SortedEndpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	for i := 0; i < 64; i++ {
+		if _, err := g.Rels.Add("SORTED_REL", a, b, map[string]any{"i": int64(i)}); err != nil {
+			t.Fatalf("AddRelationship %d: %v", i, err)
+		}
+	}
+	rels, err := g.Temporal.RelsAsOf(clk.PeekInstant())
+	if err != nil {
+		t.Fatalf("RelsAsOf: %v", err)
+	}
+	if len(rels) != 64 {
+		t.Fatalf("len(RelsAsOf) = %d, want 64", len(rels))
+	}
+	for i := 1; i < len(rels); i++ {
+		if rels[i-1].ID() > rels[i].ID() {
+			t.Fatalf("RelsAsOf order[%d:%d] = %d > %d", i-1, i, rels[i-1].ID(), rels[i].ID())
 		}
 	}
 }

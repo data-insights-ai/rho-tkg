@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — Transaction-time query ordering (2026-05-11)
+
+- **`NodesAsOf` and `RelsAsOf` now return deterministic ID-sorted results.**
+  The memory-store transaction-time query path and the graph-layer fallback for
+  stores without native transaction-time queries now sort by entity ID instead
+  of exposing Go map iteration order.
+
 ### Fixed — Transaction rollback same-ID replacement (2026-05-11)
 
 - **Rollback preserves pre-transaction entities when caller-specified imports

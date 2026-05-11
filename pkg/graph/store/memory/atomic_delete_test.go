@@ -291,6 +291,72 @@ func TestDeleteNodeWithHistory_NodeAsOfBeforeDeleteHidesFutureDeleteMarkers(t *t
 	}
 }
 
+func TestNodesAsOfReturnsSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	defer ms.Close() //nolint:errcheck
+
+	for i := 64; i >= 1; i-- {
+		n := types.NewNode(types.NodeID(i), 1, nil)
+		n.SetTemporal(&types.TemporalMetadata{TxFrom: 1})
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode %d: %v", i, err)
+		}
+	}
+
+	nodes, err := ms.NodesAsOf(1)
+	if err != nil {
+		t.Fatalf("NodesAsOf: %v", err)
+	}
+	if len(nodes) != 64 {
+		t.Fatalf("len(NodesAsOf) = %d, want 64", len(nodes))
+	}
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i-1].ID() > nodes[i].ID() {
+			t.Fatalf("NodesAsOf order[%d:%d] = %d > %d", i-1, i, nodes[i-1].ID(), nodes[i].ID())
+		}
+	}
+}
+
+func TestRelsAsOfReturnsSortedByID(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	defer ms.Close() //nolint:errcheck
+
+	a := types.NewNode(types.NodeID(1), 1, nil)
+	b := types.NewNode(types.NodeID(2), 1, nil)
+	a.SetTemporal(&types.TemporalMetadata{TxFrom: 1})
+	b.SetTemporal(&types.TemporalMetadata{TxFrom: 1})
+	if err := ms.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ms.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+	for i := 64; i >= 1; i-- {
+		r := types.NewRelationship(types.RelID(i), 1, a.ID(), b.ID())
+		r.SetTemporal(&types.TemporalMetadata{TxFrom: 1})
+		if err := ms.PutRelationship(r); err != nil {
+			t.Fatalf("PutRelationship %d: %v", i, err)
+		}
+	}
+
+	rels, err := ms.RelsAsOf(1)
+	if err != nil {
+		t.Fatalf("RelsAsOf: %v", err)
+	}
+	if len(rels) != 64 {
+		t.Fatalf("len(RelsAsOf) = %d, want 64", len(rels))
+	}
+	for i := 1; i < len(rels); i++ {
+		if rels[i-1].ID() > rels[i].ID() {
+			t.Fatalf("RelsAsOf order[%d:%d] = %d > %d", i-1, i, rels[i-1].ID(), rels[i].ID())
+		}
+	}
+}
+
 func TestDeleteNodeWithHistory_EmptyRelTombstones(t *testing.T) {
 	t.Parallel()
 

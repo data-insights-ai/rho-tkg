@@ -679,6 +679,9 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	if len(result) == 0 {
 		return nil, nil
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID() < result[j].ID()
+	})
 	return result, nil
 }
 
@@ -709,6 +712,9 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	if len(result) == 0 {
 		return nil, nil
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID() < result[j].ID()
+	})
 	return result, nil
 }
 

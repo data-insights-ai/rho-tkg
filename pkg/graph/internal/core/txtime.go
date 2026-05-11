@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"sort"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -157,6 +158,7 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			for _, n := range nodes {
 				nodeVisibleAtTxTime(n, txTime)
 			}
+			sortNodesByID(nodes)
 			result = nodes
 			return nil
 		}
@@ -175,7 +177,13 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			return err
 		}
 
+		ids := make([]snowflake.ID, 0, len(seen))
 		for id := range seen {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+		for _, id := range ids {
 			n, err := c.nodeAsOfLocked(types.NodeID(id), txTime)
 			if err != nil {
 				if errors.Is(err, ErrNoVersionAsOf) {
@@ -211,6 +219,7 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 			for _, r := range rels {
 				relVisibleAtTxTime(r, txTime)
 			}
+			sortRelsByID(rels)
 			result = rels
 			return nil
 		}
@@ -229,7 +238,13 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 			return err
 		}
 
+		ids := make([]snowflake.ID, 0, len(seen))
 		for id := range seen {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+		for _, id := range ids {
 			r, err := c.relAsOfLocked(types.RelID(id), txTime)
 			if err != nil {
 				if errors.Is(err, ErrNoVersionAsOf) {
@@ -245,6 +260,18 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+func sortNodesByID(nodes []*types.Node) {
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].ID() < nodes[j].ID()
+	})
+}
+
+func sortRelsByID(rels []*types.Relationship) {
+	sort.Slice(rels, func(i, j int) bool {
+		return rels[i].ID() < rels[j].ID()
+	})
 }
 
 func nodeVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {

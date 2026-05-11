@@ -211,3 +211,14 @@ transaction. Rollback must restore the pre-transaction row and must not later
 delete it as a created row. Keep create/delete rollback logs keyed by
 pre-transaction existence, not only by the operation name that produced the
 current row.
+
+## 18. Map-Backed Query Results Need Explicit Ordering
+
+```
+BAD:  for id := range seen { append(result, load(id)) }
+GOOD: ids := sortedKeys(seen); for _, id := range ids { append(result, load(id)) }
+```
+
+Any public query assembled from maps or dedup sets must sort by entity ID before
+returning. Store and graph query surfaces should not expose Go map iteration
+order, even when the logical result set is correct.
