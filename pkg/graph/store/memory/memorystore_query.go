@@ -200,8 +200,8 @@ func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return 0, err
 	}
-	if err := storecontract.ValidateLabelToken(token); err != nil {
-		return 0, err
+	if token == 0 {
+		return 0, storecontract.ValidateLabelToken(token)
 	}
 	return len(ms.labelIdx[token]), nil
 }
@@ -214,8 +214,8 @@ func (ms *Store) RelCountByType(token uint16) (int, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return 0, err
 	}
-	if err := storecontract.ValidateRelTypeToken(token); err != nil {
-		return 0, err
+	if token == 0 {
+		return 0, storecontract.ValidateRelTypeToken(token)
 	}
 	return len(ms.typeIdx[token]), nil
 }

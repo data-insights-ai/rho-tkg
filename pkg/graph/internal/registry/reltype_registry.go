@@ -6,30 +6,37 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // RelTypeRegistry maps relationship type strings to uint16 tokens and back.
 // Token 0 is reserved as the zero/invalid value and is never assigned.
 // Thread-safe via RWMutex with double-check on write miss.
 type RelTypeRegistry struct {
-	initOnce  sync.Once
-	mu        sync.RWMutex
-	toToken   map[string]uint16
-	toName    []string // index 0 = "" (reserved)
-	nextToken uint16   // starts at 1
-	warnOnce  sync.Once
+	initOnce    sync.Once
+	initialized atomic.Bool
+	mu          sync.RWMutex
+	toToken     map[string]uint16
+	toName      []string // index 0 = "" (reserved)
+	nextToken   uint16   // starts at 1
+	warnOnce    sync.Once
 }
 
 // NewRelTypeRegistry creates a relationship type registry with token 0 reserved.
 func NewRelTypeRegistry() *RelTypeRegistry {
-	return &RelTypeRegistry{
+	r := &RelTypeRegistry{
 		toToken:   make(map[string]uint16),
 		toName:    []string{""}, // index 0 reserved
 		nextToken: 1,
 	}
+	r.initialized.Store(true)
+	return r
 }
 
 func (r *RelTypeRegistry) ensureInitialized() {
+	if r.initialized.Load() {
+		return
+	}
 	r.initOnce.Do(func() {
 		if len(r.toName) == 0 {
 			r.toName = []string{""}
@@ -43,6 +50,7 @@ func (r *RelTypeRegistry) ensureInitialized() {
 		if r.nextToken == 0 && len(r.toName) > 0 {
 			r.nextToken = uint16(len(r.toName)) // #nosec G115 — registry state is capacity-bounded by import/allocation paths.
 		}
+		r.initialized.Store(true)
 	})
 }
 

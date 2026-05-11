@@ -75,8 +75,8 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return nil, err
 	}
-	if err := storecontract.ValidateRelID(rid); err != nil {
-		return nil, err
+	if rid <= 0 {
+		return nil, storecontract.ValidateRelID(rid)
 	}
 
 	r, ok := ms.rels[rid]

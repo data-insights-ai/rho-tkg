@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — Read-path performance pass (2026-05-11)
+
+- **Hot read and resolver paths avoid unnecessary helper overhead.**
+  Graph read helpers no longer route through mutation/event dispatch setup,
+  no-error ID allocators skip the graph lifecycle lock while preserving
+  post-close zero results, initialized registries and MemoryStore instances
+  skip repeated `sync.Once` checks on normal hot paths, and MemoryStore valid
+  read/count calls avoid invoking full validator helpers unless an input is
+  malformed.
+
 ### Fixed — Transaction-time deleted entity visibility (2026-05-11)
 
 - **Transaction-time queries preserve deleted entities before deletion.**

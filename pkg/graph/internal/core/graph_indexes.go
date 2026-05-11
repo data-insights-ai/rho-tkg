@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
@@ -266,13 +265,7 @@ func (c *Core) validateIndexLabel(label string) error {
 }
 
 func (c *Core) validateIndexName(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return ErrEmptyName
-	}
-	if err := c.validateName(name); err != nil {
-		return err
-	}
-	return nil
+	return c.validateName(name)
 }
 
 func (c *Core) validateIndexPropertyKey(propertyKey string) error {

@@ -57,8 +57,8 @@ func (ms *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return nil, err
 	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return nil, err
+	if nid <= 0 {
+		return nil, storecontract.ValidateNodeID(nid)
 	}
 
 	n, ok := ms.nodes[nid]
@@ -77,8 +77,8 @@ func (ms *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return "", err
 	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return "", err
+	if nid <= 0 {
+		return "", storecontract.ValidateNodeID(nid)
 	}
 
 	n, ok := ms.nodes[nid]
@@ -100,11 +100,11 @@ func (ms *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, s
 	if err := ms.checkOpenLocked(); err != nil {
 		return "", "", err
 	}
-	if err := storecontract.ValidateNodeID(startID); err != nil {
-		return "", "", err
+	if startID <= 0 {
+		return "", "", storecontract.ValidateNodeID(startID)
 	}
-	if err := storecontract.ValidateNodeID(endID); err != nil {
-		return "", "", err
+	if endID <= 0 {
+		return "", "", storecontract.ValidateNodeID(endID)
 	}
 
 	start, ok := ms.nodes[startID]

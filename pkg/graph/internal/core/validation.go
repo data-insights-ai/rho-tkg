@@ -248,8 +248,6 @@ func (c *Core) validateProperties(props map[string]any) error {
 // NextID generates a unique typed ID for a new node.
 func (n *NodeOps) NextID() types.NodeID {
 	c := n.c
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	if c.closed.Load() {
 		return 0
 	}
@@ -259,8 +257,6 @@ func (n *NodeOps) NextID() types.NodeID {
 // NextID generates a unique typed ID for a new relationship.
 func (r *RelOps) NextID() types.RelID {
 	c := r.c
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 	if c.closed.Load() {
 		return 0
 	}

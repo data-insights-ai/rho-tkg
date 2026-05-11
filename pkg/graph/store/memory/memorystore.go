@@ -50,11 +50,12 @@ type RelTombstone = storecontract.RelTombstone
 // usable empty store; maps are initialized lazily at the lifecycle gate.
 // Uses maps for O(1) entity lookup and nested hash-sets for O(1) index maintenance.
 type Store struct {
-	initOnce sync.Once
-	mu       sync.RWMutex
-	closed   bool
-	nodes    map[types.NodeID]*types.Node
-	rels     map[types.RelID]*types.Relationship
+	initOnce    sync.Once
+	mu          sync.RWMutex
+	initialized bool
+	closed      bool
+	nodes       map[types.NodeID]*types.Node
+	rels        map[types.RelID]*types.Relationship
 
 	// Label index: labelToken → set of node IDs.
 	labelIdx map[uint16]map[types.NodeID]struct{}
@@ -129,6 +130,7 @@ func (ms *Store) ensureInitialized() {
 		if ms.vectorIndexes == nil {
 			ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 		}
+		ms.initialized = true
 	})
 }
 
@@ -183,6 +185,8 @@ func (ms *Store) checkOpenLocked() error {
 	if ms.closed {
 		return ErrStoreClosed
 	}
-	ms.ensureInitialized()
+	if !ms.initialized {
+		ms.ensureInitialized()
+	}
 	return nil
 }

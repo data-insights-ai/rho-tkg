@@ -38,12 +38,10 @@ func (c *Core) runUnderRLock(fn func()) (eventspkg.Publisher, error) {
 // registry-mutating helpers use this so Close drains them before closing the
 // underlying store or persisting registries.
 func (c *Core) readUnderRLock(fn func() error) error {
-	var err error
-	_, closeErr := c.runUnderRLock(func() {
-		err = fn()
-	})
-	if closeErr != nil {
-		return closeErr
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
 	}
-	return err
+	return fn()
 }
