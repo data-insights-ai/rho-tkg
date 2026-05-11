@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -157,6 +158,67 @@ func TestMemoryStorePutGetRelationship(t *testing.T) {
 	}
 	if got.ID() != r.ID() {
 		t.Fatal("GetRelationship() returned relationship with different ID")
+	}
+}
+
+func TestMemoryStorePutGeneratedRelationshipWithEndpointHashes(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nA.SetIntegrity(&types.NodeIntegrity{Hash: "start-hash"})
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	nB.SetIntegrity(&types.NodeIntegrity{Hash: "end-hash"})
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
+	r.SetIntegrity(&types.RelIntegrity{Hash: "rel-hash"})
+	fromHash, toHash, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
+	if err != nil {
+		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
+	}
+	if fromHash != "start-hash" || toHash != "end-hash" {
+		t.Fatalf("returned endpoint hashes = %q, %q; want start-hash, end-hash", fromHash, toHash)
+	}
+	if ig := r.Integrity(); ig == nil || ig.FromNodeHash != "start-hash" || ig.ToNodeHash != "end-hash" {
+		t.Fatalf("input relationship integrity = %+v; want captured endpoint hashes", ig)
+	}
+
+	got, err := ms.GetRelationship(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if ig := got.Integrity(); ig == nil || ig.FromNodeHash != "start-hash" || ig.ToNodeHash != "end-hash" {
+		t.Fatalf("stored relationship integrity = %+v; want captured endpoint hashes", ig)
+	}
+}
+
+func TestMemoryStorePutGeneratedRelationshipWithEndpointHashesDuplicate(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
+	if _, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID); err != nil {
+		t.Fatalf("initial PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
+	}
+	dup := types.NewRelationship(r.ID(), 5, nA.ID(), nB.ID())
+	_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(dup, generatedcreate.FreshGraphID)
+	if !errors.Is(err, ErrRelExists) {
+		t.Fatalf("duplicate PutRelationshipGeneratedIDWithEndpointHashes = %v, want ErrRelExists", err)
 	}
 }
 

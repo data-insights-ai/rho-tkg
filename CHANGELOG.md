@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — MemoryStore generated relationship create fast path (2026-05-11)
+
+- **MemoryStore relationship creates can capture endpoint hashes during the
+  generated-ID write.**
+  The graph-generated `AddRelationship` path now uses a MemoryStore capability
+  that verifies endpoints, captures their current integrity hashes, and persists
+  the relationship under one store lock instead of taking a separate endpoint
+  hash read before the write.
+
 ### Fixed — Transaction-time query ordering (2026-05-11)
 
 - **`NodesAsOf` and `RelsAsOf` now return deterministic ID-sorted results.**

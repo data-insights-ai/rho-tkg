@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -64,6 +65,79 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	ms.inIdx[endID][id] = struct{}{}
 
 	return nil
+}
+
+// PutRelationshipGeneratedIDWithEndpointHashes stores a graph-generated
+// relationship while capturing live endpoint hashes under the same store lock.
+func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof generatedcreate.Proof) (string, string, error) {
+	if !proof.Valid() {
+		if err := ms.PutRelationship(r); err != nil {
+			return "", "", err
+		}
+		if ig := r.Integrity(); ig != nil {
+			return ig.FromNodeHash, ig.ToNodeHash, nil
+		}
+		return "", "", nil
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return "", "", err
+	}
+	id := r.ID()
+	startID := r.StartNodeID()
+	endID := r.EndNodeID()
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return "", "", err
+	}
+
+	start, ok := ms.nodes[startID]
+	if !ok {
+		return "", "", ErrNodeNotFound
+	}
+	end, ok := ms.nodes[endID]
+	if !ok {
+		return "", "", ErrNodeNotFound
+	}
+	if _, exists := ms.rels[id]; exists {
+		return "", "", ErrRelExists
+	}
+
+	fromHash := nodeIntegrityHash(start)
+	toHash := fromHash
+	if startID != endID {
+		toHash = nodeIntegrityHash(end)
+	}
+
+	ig := r.Integrity()
+	if ig == nil {
+		ig = &types.RelIntegrity{}
+		r.SetIntegrity(ig)
+	}
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
+
+	ms.rels[id] = r.DeepCopy()
+
+	tv := r.TypeToken().Value()
+	if ms.typeIdx[tv] == nil {
+		ms.typeIdx[tv] = make(map[types.RelID]struct{})
+	}
+	ms.typeIdx[tv][id] = struct{}{}
+
+	if ms.outIdx[startID] == nil {
+		ms.outIdx[startID] = make(map[types.RelID]struct{})
+	}
+	ms.outIdx[startID][id] = struct{}{}
+
+	if ms.inIdx[endID] == nil {
+		ms.inIdx[endID] = make(map[types.RelID]struct{})
+	}
+	ms.inIdx[endID][id] = struct{}{}
+
+	return fromHash, toHash, nil
 }
 
 // GetRelationship retrieves a relationship by its snowflake ID.

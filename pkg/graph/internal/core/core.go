@@ -19,6 +19,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
@@ -37,26 +38,27 @@ import (
 // Core is the central graph implementation. Customers see *graph.Graph, which
 // is a thin facade holding *Core plus sub-API accessors.
 type Core struct {
-	labels         *registrypkg.LabelRegistry
-	relTypes       *registrypkg.RelTypeRegistry
-	nodeIDGen      *snowflake.Node
-	relIDGen       *snowflake.Node
-	store          storepkg.MandatoryStore
-	endpointHash   storepkg.EndpointIntegrityHashCapability
-	nodeHash       storepkg.NodeIntegrityHashCapability
-	txTimeQuery    storepkg.TransactionTimeQueryCapability
-	historyTrim    storepkg.HistoryRollbackTrimCapability
-	entityLocks    *locks.Manager
-	validation     ValidationLimits
-	constraints    ConstraintSet
-	events         eventspkg.Publisher
-	txEventBuffer  *[]eventspkg.Event
-	mu             sync.RWMutex
-	registryMu     sync.Mutex
-	relTypeCache   map[string]uint16
-	relTypeCacheMu sync.RWMutex
-	closeOnce      sync.Once
-	closed         atomic.Bool
+	labels            *registrypkg.LabelRegistry
+	relTypes          *registrypkg.RelTypeRegistry
+	nodeIDGen         *snowflake.Node
+	relIDGen          *snowflake.Node
+	store             storepkg.MandatoryStore
+	endpointHash      storepkg.EndpointIntegrityHashCapability
+	endpointHashWrite generatedcreate.RelationshipEndpointHashCapability
+	nodeHash          storepkg.NodeIntegrityHashCapability
+	txTimeQuery       storepkg.TransactionTimeQueryCapability
+	historyTrim       storepkg.HistoryRollbackTrimCapability
+	entityLocks       *locks.Manager
+	validation        ValidationLimits
+	constraints       ConstraintSet
+	events            eventspkg.Publisher
+	txEventBuffer     *[]eventspkg.Event
+	mu                sync.RWMutex
+	registryMu        sync.Mutex
+	relTypeCache      map[string]uint16
+	relTypeCacheMu    sync.RWMutex
+	closeOnce         sync.Once
+	closed            atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -187,6 +189,22 @@ type Config struct {
 // ValidationDefaults returns the resolved validation limits (for testing).
 func (c *Core) ValidationDefaults() ValidationLimits {
 	return c.validation
+}
+
+func nativeRelationshipEndpointHashWrite(store storepkg.MandatoryStore) generatedcreate.RelationshipEndpointHashCapability {
+	cap, ok := store.(generatedcreate.RelationshipEndpointHashCapability)
+	if !ok {
+		return nil
+	}
+	// Wrapper stores often embed an in-tree backend but override PutRelationship
+	// for instrumentation or fault injection. Do not route around that override
+	// through an embedded generated-create method.
+	switch store.(type) {
+	case *memory.Store, *tiered.Store:
+		return cap
+	default:
+		return nil
+	}
 }
 
 // =============================================================================
@@ -344,6 +362,7 @@ func New(config Config) (*Core, error) {
 
 	c.store = store
 	c.endpointHash, _ = store.(storepkg.EndpointIntegrityHashCapability)
+	c.endpointHashWrite = nativeRelationshipEndpointHashWrite(store)
 	c.nodeHash, _ = store.(storepkg.NodeIntegrityHashCapability)
 	c.txTimeQuery, _ = store.(storepkg.TransactionTimeQueryCapability)
 	c.historyTrim, _ = store.(storepkg.HistoryRollbackTrimCapability)

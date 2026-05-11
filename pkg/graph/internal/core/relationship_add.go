@@ -125,7 +125,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		fromHash = nodeIntegrityHash(liveStart)
 		toHash = nodeIntegrityHash(liveEnd)
 	} else {
-		if _, ok := c.store.(generatedcreate.RelationshipEndpointHashCapability); ok {
+		if c.endpointHashWrite != nil {
 			storeCanCaptureEndpointHashes = true
 		} else {
 			fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
@@ -190,7 +190,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	}
 
 	if storeCanCaptureEndpointHashes {
-		fromHash, toHash, _, err = putGeneratedRelationshipWithEndpointHashes(c.store, r)
+		fromHash, toHash, err = c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
 		if err != nil {
 			return nil, finishRelType(err)
 		}
@@ -376,7 +376,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		fromHash = nodeIntegrityHash(liveStart)
 		toHash = nodeIntegrityHash(liveEnd)
 	} else {
-		if _, ok := c.store.(generatedcreate.RelationshipEndpointHashCapability); ok {
+		if c.endpointHashWrite != nil {
 			storeCanCaptureEndpointHashes = true
 		} else {
 			fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
@@ -436,7 +436,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	}
 
 	if storeCanCaptureEndpointHashes {
-		fromHash, toHash, _, err = putGeneratedRelationshipWithEndpointHashes(c.store, r)
+		fromHash, toHash, err = c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
 		if err != nil {
 			return nil, finishRelType(err)
 		}

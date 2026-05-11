@@ -31,15 +31,6 @@ func putGeneratedRelationship(store relationshipPutter, r *types.Relationship) e
 	return store.PutRelationship(r)
 }
 
-func putGeneratedRelationshipWithEndpointHashes(store relationshipPutter, r *types.Relationship) (string, string, bool, error) {
-	generated, ok := store.(generatedcreate.RelationshipEndpointHashCapability)
-	if !ok {
-		return "", "", false, nil
-	}
-	fromHash, toHash, err := generated.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
-	return fromHash, toHash, true, err
-}
-
 func putGeneratedNodesBatch(store nodeBatchPutter, nodes []*types.Node) error {
 	if generated, ok := store.(generatedcreate.Capability); ok {
 		return generated.PutNodesBatchGeneratedID(nodes, generatedcreate.FreshGraphID)
