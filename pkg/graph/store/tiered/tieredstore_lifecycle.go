@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -10,6 +11,9 @@ import (
 // For hot/warm shards: zero overhead (direct pointer return).
 // For cold shards: acquires shardMu, opens BadgerStore if nil, updates lastAccess.
 func (es *EventShard) getStore(ts *Store) (*BadgerStore, error) {
+	if err := ts.backgroundError(); err != nil {
+		return nil, err
+	}
 	if es.tier != TierCold {
 		return es.store, nil // hot/warm: zero overhead
 	}
@@ -36,6 +40,9 @@ func (es *EventShard) getStore(ts *Store) (*BadgerStore, error) {
 // For cold shards: acquires shardMu, opens if nil, increments activeReqs while
 // still holding the lock to prevent TOCTOU race with closeIdleShards.
 func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
+	if err := ts.backgroundError(); err != nil {
+		return nil, err
+	}
 	// Refuse new checkouts after Close has been initiated. Close drains
 	// activeReqs per shard before es.store.Close(), so a checkout that
 	// races past the drain would see its store closed under it. The
@@ -81,6 +88,40 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	store := es.store
 	es.shardMu.Unlock()
 	return store, nil
+}
+
+// checkoutStoreIfOpen pins a shard only if its BadgerStore is already open.
+// Unlike checkoutStore, it never lazy-opens a closed cold shard. This is used
+// by negative-path probes where waking every cold shard would turn a cheap
+// create into a full historical scan.
+func (es *EventShard) checkoutStoreIfOpen(ts *Store) (*BadgerStore, bool, error) {
+	if err := ts.backgroundError(); err != nil {
+		return nil, false, err
+	}
+	if es.tier != TierCold {
+		store, err := es.checkoutStore(ts)
+		return store, err == nil, err
+	}
+
+	es.shardMu.Lock()
+	if ts.closed.Load() {
+		es.shardMu.Unlock()
+		return nil, false, ErrStoreClosed
+	}
+	if es.store == nil {
+		es.shardMu.Unlock()
+		return nil, false, nil
+	}
+	es.activeReqs.Add(1)
+	es.lastAccess.Store(time.Now().UnixMilli())
+	store := es.store
+	es.shardMu.Unlock()
+
+	if ts.closed.Load() {
+		es.activeReqs.Add(-1)
+		return nil, false, ErrStoreClosed
+	}
+	return store, true, nil
 }
 
 // checkinStore decrements activeReqs, signalling that the caller is done
@@ -178,7 +219,11 @@ func (ts *Store) closeIdleShards() {
 	for _, es := range coldShards {
 		es.shardMu.Lock()
 		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
-			_ = es.store.Close() // idle eviction; Close error can't be surfaced to any caller
+			if err := es.store.Close(); err != nil {
+				wrapped := fmt.Errorf("graph: idle-close cold shard %s: %w", es.name, err)
+				ts.recordBackgroundError(wrapped)
+				slog.Error("tiered cold shard idle-close failed", "shard", es.name, "err", err)
+			}
 			es.store = nil
 		}
 		es.shardMu.Unlock()

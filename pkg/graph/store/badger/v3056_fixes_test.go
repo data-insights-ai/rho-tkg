@@ -57,3 +57,41 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 		t.Error("node still present after DeleteNode")
 	}
 }
+
+func TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 9910, 1, nil)
+	putTestNode(t, bs, 9920, 1, nil)
+	putTestRel(t, bs, 9930, 3, 9910, 9920)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	bs.RelCacheForTest().ResetForTest()
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		bs.LockIdxMuRForTest()
+		close(locked)
+		<-release
+		bs.UnlockIdxMuRForTest()
+	}()
+	<-locked
+
+	go func() {
+		done <- bs.DeleteRelationship(types.RelID(9930))
+	}()
+
+	time.Sleep(5 * time.Millisecond)
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	if _, err := bs.GetRelationship(types.RelID(9930)); err == nil {
+		t.Fatal("relationship still present after DeleteRelationship")
+	}
+}

@@ -32,9 +32,10 @@ type IntervalEntry struct {
 // The O(n) query bound is acceptable for v3 (small-to-medium label sets).
 // A future version may augment with maxTo for O(log n + k) stabbing queries.
 type TemporalIndex struct {
-	sortMu  sync.Mutex      // serialises concurrent sort transitions under RLock
-	Entries []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
-	dirty   bool            // true when entries have been appended but not yet sorted
+	sortMu   sync.Mutex      // serialises concurrent sort transitions under RLock
+	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
+	dirty    bool            // true when entries have been appended but not yet sorted
+	Building bool            // true while CreateTemporalIndex is still backfilling
 }
 
 // NewTemporalIndex allocates an empty temporal index.
@@ -47,6 +48,9 @@ func NewTemporalIndex() *TemporalIndex {
 // Appends unsorted and marks dirty; sorting is deferred to the first query.
 // Must be called under the store's write lock.
 func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
+	if ti == nil {
+		return
+	}
 	// Remove any existing entry for id first.
 	ti.Remove(id)
 
@@ -59,6 +63,9 @@ func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 // modified since the last sort. Called at the start of every query.
 // sortMu serialises concurrent callers holding only the store's read lock.
 func (ti *TemporalIndex) sortIfDirty() {
+	if ti == nil {
+		return
+	}
 	ti.sortMu.Lock()
 	defer ti.sortMu.Unlock()
 	if !ti.dirty {
@@ -76,6 +83,9 @@ func (ti *TemporalIndex) sortIfDirty() {
 // Remove deletes the entry for id. Linear scan — O(n).
 // No-op if id is not present.
 func (ti *TemporalIndex) Remove(id snowflake.ID) {
+	if ti == nil {
+		return
+	}
 	for i, e := range ti.Entries {
 		if e.ID == id {
 			ti.Entries = append(ti.Entries[:i], ti.Entries[i+1:]...)
@@ -91,7 +101,7 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 // then scans leftward from that position collecting matches.
 // Returns a sorted slice of IDs.
 func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
-	if len(ti.Entries) == 0 {
+	if ti == nil || len(ti.Entries) == 0 {
 		return nil
 	}
 	ti.sortIfDirty()
@@ -121,7 +131,7 @@ func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 //
 // Returns a sorted slice of IDs.
 func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
-	if len(ti.Entries) == 0 {
+	if ti == nil || len(ti.Entries) == 0 {
 		return nil
 	}
 	ti.sortIfDirty()
@@ -148,6 +158,9 @@ func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
 
 // Len returns the number of entries in the index.
 func (ti *TemporalIndex) Len() int {
+	if ti == nil {
+		return 0
+	}
 	return len(ti.Entries)
 }
 
@@ -195,6 +208,8 @@ func RemoveNodeFromTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node
 // Caller must hold the store's write lock.
 func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflake.ID) {
 	for _, ti := range idxs {
-		ti.Remove(id)
+		if ti != nil {
+			ti.Remove(id)
+		}
 	}
 }

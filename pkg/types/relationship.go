@@ -37,10 +37,9 @@ type Relationship struct {
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
+// Token 0 is reserved; callers that pass it receive a relationship that Store
+// write validation rejects instead of a panic.
 func NewRelationship(id RelID, relType uint16, startID, endID NodeID) *Relationship {
-	if relType == 0 {
-		panic("types: relationship type token 0 is reserved")
-	}
 	return &Relationship{
 		id:      id,
 		relType: relTypeToken(relType),
@@ -51,57 +50,87 @@ func NewRelationship(id RelID, relType uint16, startID, endID NodeID) *Relations
 
 // ID returns the relationship's typed ID.
 func (r *Relationship) ID() RelID {
+	if r == nil {
+		return 0
+	}
 	return r.id
 }
 
 // InternalID is the legacy accessor kept for migration; prefer ID().
 // Will be removed once all callsites have switched.
 func (r *Relationship) InternalID() RelID {
+	if r == nil {
+		return 0
+	}
 	return r.id
 }
 
 // TypeToken returns the relationship type token.
 func (r *Relationship) TypeToken() relTypeToken {
+	if r == nil {
+		return 0
+	}
 	return r.relType
 }
 
 // HasTypeToken returns true if this relationship has the given type token.
 // Token 0 always returns false — it is the reserved zero/invalid value.
 func (r *Relationship) HasTypeToken(tok relTypeToken) bool {
-	return tok != 0 && r.relType == tok
+	return r != nil && tok != 0 && r.relType == tok
 }
 
 // HasTypeTokenRaw checks if this relationship has the given type token using
 // a raw uint16 value. This is the zero-allocation path for the graph layer.
 // Token 0 always returns false.
 func (r *Relationship) HasTypeTokenRaw(tok uint16) bool {
-	return tok != 0 && uint16(r.relType) == tok
+	return r != nil && tok != 0 && uint16(r.relType) == tok
 }
 
 // StartNodeID returns the source node's opaque internal ID.
 func (r *Relationship) StartNodeID() NodeID {
+	if r == nil {
+		return 0
+	}
 	return r.startID
 }
 
 // EndNodeID returns the target node's opaque internal ID.
 func (r *Relationship) EndNodeID() NodeID {
+	if r == nil {
+		return 0
+	}
 	return r.endID
 }
 
-// SetProperties replaces the relationship's property slice with a pre-built one.
-// Use NewPropertySlice to build a validated, sorted slice in O(N log N).
-func (r *Relationship) SetProperties(ps PropertySlice) {
-	r.properties = ps
+// SetProperties replaces the relationship's property slice.
+// The input is validated, canonicalized by key, and deep-copied before being
+// installed. If a key appears more than once, the last value wins.
+func (r *Relationship) SetProperties(ps PropertySlice) error {
+	if r == nil {
+		return ErrNilRelationship
+	}
+	canonical, err := canonicalPropertySlice(ps)
+	if err != nil {
+		return err
+	}
+	r.properties = canonical
+	return nil
 }
 
 // SetProperty sets a property on the relationship.
 // Returns an error if the key has the reserved "tkg_" prefix.
 func (r *Relationship) SetProperty(key string, value any) error {
+	if r == nil {
+		return ErrNilRelationship
+	}
 	return r.properties.Set(key, value)
 }
 
 // GetProperty returns the value for the given property key and whether it exists.
 func (r *Relationship) GetProperty(key string) (any, bool) {
+	if r == nil {
+		return nil, false
+	}
 	return r.properties.Get(key)
 }
 
@@ -109,31 +138,49 @@ func (r *Relationship) GetProperty(key string) (any, bool) {
 // Returns true if the key was found and removed, false if it was not present.
 // Returns an error if the key has the reserved "tkg_" prefix.
 func (r *Relationship) DeleteProperty(key string) (bool, error) {
+	if r == nil {
+		return false, ErrNilRelationship
+	}
 	return r.properties.Delete(key)
 }
 
 // PropertyCount returns the number of properties on the relationship without copying.
 func (r *Relationship) PropertyCount() int {
+	if r == nil {
+		return 0
+	}
 	return r.properties.Len()
 }
 
 // Properties returns a copy of the relationship's property slice.
 func (r *Relationship) Properties() PropertySlice {
+	if r == nil {
+		return nil
+	}
 	return r.properties.DeepCopy()
 }
 
 // PropertiesMap returns the relationship's properties as a map.
 func (r *Relationship) PropertiesMap() map[string]any {
+	if r == nil {
+		return nil
+	}
 	return r.properties.ToMap()
 }
 
 // Version returns the relationship's version number (default 0).
 func (r *Relationship) Version() uint32 {
+	if r == nil {
+		return 0
+	}
 	return r.version
 }
 
 // SetVersion sets the relationship's version number.
 func (r *Relationship) SetVersion(v uint32) {
+	if r == nil {
+		return
+	}
 	r.version = v
 }
 
@@ -142,11 +189,17 @@ func (r *Relationship) SetVersion(v uint32) {
 // mutation access, so no defensive copy is made. Callers outside the graph layer
 // should treat it as read-only.
 func (r *Relationship) Temporal() *TemporalMetadata {
+	if r == nil {
+		return nil
+	}
 	return r.temporal
 }
 
 // SetTemporal sets the relationship's temporal metadata.
 func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
+	if r == nil {
+		return
+	}
 	r.temporal = tm
 }
 
@@ -155,11 +208,17 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 // mutation access, so no defensive copy is made. Callers outside the graph layer
 // should treat it as read-only.
 func (r *Relationship) Integrity() *RelIntegrity {
+	if r == nil {
+		return nil
+	}
 	return r.integrity
 }
 
 // SetIntegrity sets the relationship's integrity metadata.
 func (r *Relationship) SetIntegrity(ig *RelIntegrity) {
+	if r == nil {
+		return
+	}
 	r.integrity = ig
 }
 
@@ -167,6 +226,9 @@ func (r *Relationship) SetIntegrity(ig *RelIntegrity) {
 // All nested reference types (properties, temporal, integrity) are deep-copied
 // so mutations to the copy never affect the original.
 func (r *Relationship) DeepCopy() *Relationship {
+	if r == nil {
+		return nil
+	}
 	cp := &Relationship{
 		id:      r.id,
 		startID: r.startID,

@@ -4,8 +4,31 @@ import (
 	"fmt"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type staleFirstNodeSnapshotStore struct {
+	storepkg.MandatoryStore
+	target types.NodeID
+	stale  *types.Node
+	gets   int
+}
+
+func (s *staleFirstNodeSnapshotStore) GetNode(id types.NodeID) (*types.Node, error) {
+	n, err := s.MandatoryStore.GetNode(id)
+	if err != nil {
+		return nil, err
+	}
+	if id == s.target {
+		s.gets++
+		if s.gets == 1 && s.stale != nil {
+			return s.stale.DeepCopy(), nil
+		}
+	}
+	return n, nil
+}
 
 func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
 	t.Parallel()
@@ -74,6 +97,44 @@ func TestGraphUpdateNodeSavesHistory(t *testing.T) {
 	hv, ok := history[0].GetProperty("name")
 	if !ok || hv != "Alice" {
 		t.Fatalf("history[0] name = %v, want Alice", hv)
+	}
+}
+
+func TestGraphDeleteNodeReReadsNodeForTombstoneHistory(t *testing.T) {
+	t.Parallel()
+	store := &staleFirstNodeSnapshotStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "stale"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	stale := n.DeepCopy()
+	updated, err := g.Nodes.Update(n.ID(), map[string]any{"name": "fresh"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	store.target = n.ID()
+	store.stale = stale
+	if err := g.Nodes.Delete(n.ID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	tombstone, err := g.store.GetNodeVersion(n.ID(), updated.Version())
+	if err != nil {
+		t.Fatalf("GetNodeVersion(%d): %v", updated.Version(), err)
+	}
+	got, ok := tombstone.GetProperty("name")
+	if !ok || got != "fresh" {
+		t.Fatalf("delete tombstone name = %v, want fresh", got)
+	}
+	if tombstone.Temporal() == nil || tombstone.Temporal().DeletedAt == 0 {
+		t.Fatal("delete tombstone missing DeletedAt")
 	}
 }
 

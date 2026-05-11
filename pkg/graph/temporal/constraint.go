@@ -1,5 +1,7 @@
 package temporal
 
+import "fmt"
+
 // TemporalConstraintKind identifies the type of temporal constraint enforced at write time.
 type TemporalConstraintKind uint8
 
@@ -21,6 +23,17 @@ const (
 // TemporalConstraint is a single temporal invariant checked at write time.
 type TemporalConstraint struct {
 	Kind TemporalConstraintKind
+}
+
+// Validate rejects unknown temporal constraint kinds before they can be
+// installed on a graph.
+func (c TemporalConstraint) Validate() error {
+	switch c.Kind {
+	case ConstraintRelWithinEndpoints:
+		return nil
+	default:
+		return fmt.Errorf("%w: %w: kind %d", ErrTemporalConstraint, ErrInvalidTemporalConstraint, c.Kind)
+	}
 }
 
 // ConstraintSet is an immutable-by-convention ordered set of TemporalConstraints.
@@ -45,6 +58,16 @@ func (cs ConstraintSet) Add(c TemporalConstraint) ConstraintSet {
 	return ConstraintSet{items: items}
 }
 
+// Validate rejects any unknown temporal constraint kind in the set.
+func (cs ConstraintSet) Validate() error {
+	for i, c := range cs.items {
+		if err := c.Validate(); err != nil {
+			return fmt.Errorf("constraint[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // Len returns the number of constraints in the set.
 func (cs ConstraintSet) Len() int {
 	return len(cs.items)
@@ -64,6 +87,9 @@ func (cs ConstraintSet) Items() []TemporalConstraint {
 // ForEach calls fn for each constraint without allocating a copy of the slice.
 // Returns the first non-nil error returned by fn, stopping iteration.
 func (cs ConstraintSet) ForEach(fn func(TemporalConstraint) error) error {
+	if fn == nil {
+		return fmt.Errorf("%w: %w: nil constraint callback", ErrTemporalConstraint, ErrInvalidTemporalConstraint)
+	}
 	for _, c := range cs.items {
 		if err := fn(c); err != nil {
 			return err

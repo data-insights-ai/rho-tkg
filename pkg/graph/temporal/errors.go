@@ -14,6 +14,7 @@ import "errors"
 // All are wrapped with ErrTemporalConstraint so callers can use errors.Is on either.
 var (
 	ErrTemporalConstraint          = errors.New("graph: temporal constraint violated")
+	ErrInvalidTemporalConstraint   = errors.New("graph: invalid temporal constraint")
 	ErrRelBeforeStartNode          = errors.New("graph: relationship starts before start node is valid")
 	ErrRelBeforeEndNode            = errors.New("graph: relationship starts before end node is valid")
 	ErrRelAfterStartNode           = errors.New("graph: relationship starts after start node has expired")

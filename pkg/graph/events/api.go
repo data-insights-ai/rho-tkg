@@ -3,10 +3,12 @@
 // post-cleanup from the previous pkg/graph/eventsapi sibling.
 package events
 
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
+
 // Ops is the subset of *core.EventOps the events sub-API forwards to.
 type Ops interface {
-	SetSync(bus *EventBus)
-	SetAsync(bus *AsyncEventBus)
+	SetSync(bus *EventBus) error
+	SetAsync(bus *AsyncEventBus) error
 	GetSync() *EventBus
 }
 
@@ -16,11 +18,35 @@ type API struct{ ops Ops }
 // New constructs an events sub-API.
 func New(ops Ops) *API { return &API{ops: ops} }
 
+func (a *API) ready() (Ops, error) {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return nil, grapherr.ErrNilGraph
+	}
+	return a.ops, nil
+}
+
 // SetSync installs a synchronous EventBus on the graph.
-func (a *API) SetSync(bus *EventBus) { a.ops.SetSync(bus) }
+func (a *API) SetSync(bus *EventBus) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SetSync(bus)
+}
 
 // SetAsync installs an asynchronous EventBus on the graph.
-func (a *API) SetAsync(bus *AsyncEventBus) { a.ops.SetAsync(bus) }
+func (a *API) SetAsync(bus *AsyncEventBus) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SetAsync(bus)
+}
 
 // GetSync returns the currently installed synchronous EventBus, if any.
-func (a *API) GetSync() *EventBus { return a.ops.GetSync() }
+func (a *API) GetSync() *EventBus {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return nil
+	}
+	return a.ops.GetSync()
+}

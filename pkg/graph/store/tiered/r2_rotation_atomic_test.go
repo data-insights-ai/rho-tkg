@@ -7,12 +7,22 @@
 package tiered
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
+
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type alwaysOKVerifier struct{}
+
+func (alwaysOKVerifier) VerifyNodeChain(types.NodeID) (bool, error) { return true, nil }
+func (alwaysOKVerifier) VerifyRelChain(types.RelID) (bool, error)   { return true, nil }
 
 func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -89,6 +99,31 @@ func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
 	}
 }
 
+func TestRotateHotShard_TrackedIndexSetupFailure_RollsBackNewShard(t *testing.T) {
+	ts := newTestTieredStore(t)
+
+	hotBefore := ts.hotShard
+	shardCountBefore := len(ts.eventShards)
+	catalogBefore := ts.catalog.snapshotShards()
+
+	ts.tempIdxMu.Lock()
+	ts.tempIdxLabels = []uint16{0}
+	ts.tempIdxMu.Unlock()
+
+	if err := ts.ForceRotate(); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ForceRotate error = %v, want ErrInvalidStoreMutation", err)
+	}
+	if ts.hotShard != hotBefore {
+		t.Fatalf("hotShard changed after tracked index setup failure")
+	}
+	if len(ts.eventShards) != shardCountBefore {
+		t.Fatalf("eventShards count = %d, want %d", len(ts.eventShards), shardCountBefore)
+	}
+	if catalogAfter := ts.catalog.snapshotShards(); !reflect.DeepEqual(catalogAfter, catalogBefore) {
+		t.Fatalf("catalog changed after tracked index setup failure: got %#v want %#v", catalogAfter, catalogBefore)
+	}
+}
+
 func TestRotateHotShard_Success_PersistsBeforeLiveSwitch(t *testing.T) {
 	t.Parallel()
 
@@ -120,5 +155,148 @@ func TestRotateHotShard_Success_PersistsBeforeLiveSwitch(t *testing.T) {
 	}
 	if hot.Name != ts.hotShard.name {
 		t.Errorf("catalog hot=%q, live hot=%q", hot.Name, ts.hotShard.name)
+	}
+}
+
+func TestOpenRefArchive_CatalogSaveFailure_RollsBack(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	ts, err := New(Config{
+		DataDir:     dir,
+		ShardWindow: time.Hour,
+		RefLabels:   []string{"Person"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+
+	metaDir := filepath.Join(dir, "meta")
+	if err := os.Chmod(metaDir, 0o500); err != nil {
+		t.Fatalf("chmod meta read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(metaDir, 0o700) })
+
+	if err := ts.ensureRefArchive(); err == nil {
+		t.Fatal("ensureRefArchive: nil error, want catalog-save failure")
+	}
+	if ts.refArchive.Load() != nil {
+		t.Fatal("refArchive was published after failed catalog save")
+	}
+	if _, ok := ts.catalog.GetShard("archive"); ok {
+		t.Fatal("catalog retained archive entry after failed catalog save")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "archive")); !os.IsNotExist(err) {
+		t.Fatalf("archive directory after rollback stat err = %v, want not exist", err)
+	}
+}
+
+func TestVerifyShard_CatalogSaveFailure_RollsBackCache(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	ts, err := New(Config{
+		DataDir:     dir,
+		ShardWindow: time.Hour,
+		RefLabels:   []string{"Person"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+
+	oldHot := ts.hotShard.name
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	before, ok := ts.catalog.GetShard(oldHot)
+	if !ok {
+		t.Fatalf("old hot shard %q missing from catalog", oldHot)
+	}
+	if before.Verified {
+		t.Fatal("old hot shard unexpectedly verified before VerifyShard")
+	}
+
+	metaDir := filepath.Join(dir, "meta")
+	if err := os.Chmod(metaDir, 0o500); err != nil {
+		t.Fatalf("chmod meta read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(metaDir, 0o700) })
+
+	result, err := ts.VerifyShard(alwaysOKVerifier{}, oldHot)
+	if err == nil {
+		t.Fatal("VerifyShard: nil error, want catalog-save failure")
+	}
+	if result == nil {
+		t.Fatal("VerifyShard returned nil result with cache-save error")
+	}
+	after, ok := ts.catalog.GetShard(oldHot)
+	if !ok {
+		t.Fatalf("old hot shard %q missing from catalog after failed cache save", oldHot)
+	}
+	if after.Verified {
+		t.Fatal("catalog retained verified=true after failed cache save")
+	}
+}
+
+func TestRebuildCatalog_CatalogSaveFailure_RollsBackStats(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	ts, err := New(Config{
+		DataDir:     dir,
+		ShardWindow: time.Hour,
+		RefLabels:   []string{"Person"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	personTok, err := reg.GetOrCreate("Person")
+	if err != nil {
+		t.Fatalf("GetOrCreate Person: %v", err)
+	}
+	nodeID := tieredNodeGen(t).Generate()
+	if err := ts.PutNode(types.NewNode(types.NodeID(nodeID), personTok, nil)); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	before, ok := ts.catalog.GetShard("reference")
+	if !ok {
+		t.Fatal("reference shard missing before RebuildCatalog")
+	}
+	if before.ApproxNodes != 0 {
+		t.Fatalf("reference ApproxNodes before RebuildCatalog = %d, want 0 setup", before.ApproxNodes)
+	}
+
+	metaDir := filepath.Join(dir, "meta")
+	if err := os.Chmod(metaDir, 0o500); err != nil {
+		t.Fatalf("chmod meta read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(metaDir, 0o700) })
+
+	if err := ts.RebuildCatalog(); err == nil {
+		t.Fatal("RebuildCatalog: nil error, want catalog-save failure")
+	}
+	after, ok := ts.catalog.GetShard("reference")
+	if !ok {
+		t.Fatal("reference shard missing after failed RebuildCatalog")
+	}
+	if after.ApproxNodes != before.ApproxNodes || after.ApproxRels != before.ApproxRels {
+		t.Fatalf("reference stats after failed RebuildCatalog = (%d,%d), want (%d,%d)",
+			after.ApproxNodes, after.ApproxRels, before.ApproxNodes, before.ApproxRels)
 	}
 }

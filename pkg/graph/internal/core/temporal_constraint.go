@@ -28,8 +28,9 @@ func (c *Core) checkTemporalConstraints(r *types.Relationship, startNode, endNod
 		switch constraint.Kind {
 		case temporalpkg.ConstraintRelWithinEndpoints:
 			return c.checkRelWithinEndpoints(r, startNode, endNode)
+		default:
+			return fmt.Errorf("%w: %w: kind %d", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrInvalidTemporalConstraint, constraint.Kind)
 		}
-		return nil
 	})
 }
 

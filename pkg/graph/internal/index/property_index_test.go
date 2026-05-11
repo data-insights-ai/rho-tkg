@@ -38,3 +38,28 @@ func TestPropertyIndex_Contains(t *testing.T) {
 		t.Error("should not contain ID 3")
 	}
 }
+
+func TestPropertyIndexZeroValueAndNilReceiverNoop(t *testing.T) {
+	t.Parallel()
+
+	var idx PropertyIndex
+	idx.Add(snowflake.ID(1), "Alice")
+	if got := idx.Lookup("Alice"); len(got) != 1 {
+		t.Fatalf("zero-value Lookup after Add len = %d, want 1", len(got))
+	}
+	idx.Remove(snowflake.ID(1), "Alice")
+	if got := idx.Lookup("Alice"); got != nil {
+		t.Fatalf("zero-value Lookup after Remove = %v, want nil", got)
+	}
+
+	var nilIdx *PropertyIndex
+	nilIdx.Add(snowflake.ID(1), "Alice")
+	nilIdx.Remove(snowflake.ID(1), "Alice")
+	if got := nilIdx.Lookup("Alice"); got != nil {
+		t.Fatalf("nil Lookup = %v, want nil", got)
+	}
+
+	PurgeNodeFromAllPropertyIndexes(map[PropertyIndexKey]*PropertyIndex{
+		{LabelToken: 1, PropertyKey: "name"}: nil,
+	}, snowflake.ID(1))
+}

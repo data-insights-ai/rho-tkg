@@ -1,10 +1,8 @@
 // Tests in this file pin R5-F7 from the 2026-05-09 maintainability
-// review: graph-level temporal constraints must be enforced by every
-// relationship-creation entry point. The ByID variants previously
-// skipped the live-endpoint fetch and silently bypassed
-// ConstraintRelWithinEndpoints — silent bypass is gone now: when a
-// constraint is configured, the ByID path transparently fetches
-// endpoints and runs the same check that Rels.Add runs.
+// review and the later R9 parity fix: graph-level temporal constraints
+// and endpoint-hash capture must be enforced by every relationship-create
+// entry point. The ByID variants accept endpoint IDs instead of node
+// objects, but their relationship state must match Rels.Add.
 package core
 
 import (
@@ -23,16 +21,18 @@ import (
 func TestR5_AddByID_EnforcesTemporalConstraint(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Persist b with an already-expired ValidTo so the constraint
-	// check on the rel must reject.
+	// Persist b with a deterministic already-expired interval so the
+	// constraint check on the rel must reject as after-expiry rather
+	// than before-validity.
 	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,14 +48,15 @@ func TestR5_AddByID_EnforcesTemporalConstraint(t *testing.T) {
 func TestR5_AddByIDIfAbsent_EnforcesTemporalConstraint(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -67,24 +68,10 @@ func TestR5_AddByIDIfAbsent_EnforcesTemporalConstraint(t *testing.T) {
 	}
 }
 
-// R5-F7 fast-path preservation: when no constraints are configured,
-// AddByID must NOT fetch endpoints — the original high-throughput
-// trade-off is preserved when the user has not opted into constraints.
-// We verify by ensuring AddByID still succeeds when the endpoint
-// nodes don't exist in the store at all (they couldn't if the path
-// were silently fetching them).
-//
-// The test uses ImportNodeWithID-style setup: create endpoint IDs
-// without persisting them, then call AddByID. With no constraints
-// the call must succeed (snowflake IDs accepted, no fetch attempted);
-// with constraints it would fail with a fetch error.
-//
-// Implementation note: getting "endpoint IDs that don't exist" is
-// awkward through the public API. A simpler proxy: with no
-// constraints, AddByID succeeds *and* leaves FromNodeHash/ToNodeHash
-// empty (they'd be populated if the endpoints had been fetched). This
-// pins the fast path's observable side effect.
-func TestR5_AddByID_FastPathSkipsEndpointFetchWhenNoConstraints(t *testing.T) {
+// ByID is only an input-shape variant. Even without configured
+// constraints it must fetch live endpoints and capture endpoint hashes
+// so the relationship integrity shape matches Rels.Add.
+func TestR9_AddByID_CapturesEndpointHashesWithoutConstraints(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 	// No constraints configured.
@@ -106,8 +93,8 @@ func TestR5_AddByID_FastPathSkipsEndpointFetchWhenNoConstraints(t *testing.T) {
 	if ig == nil {
 		t.Fatal("rel has nil Integrity")
 	}
-	if ig.FromNodeHash != "" || ig.ToNodeHash != "" {
-		t.Errorf("fast path captured endpoint hashes — From=%q To=%q; want empty pair when no constraints configured", ig.FromNodeHash, ig.ToNodeHash)
+	if ig.FromNodeHash == "" || ig.ToNodeHash == "" {
+		t.Errorf("ByID missed endpoint hashes without constraints — From=%q To=%q", ig.FromNodeHash, ig.ToNodeHash)
 	}
 }
 
@@ -117,7 +104,7 @@ func TestR5_AddByID_FastPathSkipsEndpointFetchWhenNoConstraints(t *testing.T) {
 func TestR5_AddByID_ConstrainedPathCapturesEndpointHashes(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {

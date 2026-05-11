@@ -225,3 +225,88 @@ func TestDeleteNodeWithHistory_EmptyRelTombstones(t *testing.T) {
 		t.Error("node tombstone DeletedAt not set in history")
 	}
 }
+
+func TestDeleteNodeWithHistoryRejectsRelTombstoneIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	for _, n := range []*types.Node{
+		types.NewNode(types.NodeID(10), 1, nil),
+		types.NewNode(types.NodeID(20), 2, nil),
+		types.NewNode(types.NodeID(30), 3, nil),
+	} {
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+	}
+	rel := types.NewRelationship(types.RelID(100), 1, types.NodeID(10), types.NodeID(20))
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	nodeTombstone := types.NewNode(types.NodeID(10), 1, nil)
+	badRelTombstone := types.NewRelationship(types.RelID(100), 1, types.NodeID(10), types.NodeID(30))
+	err := ms.DeleteNodeWithHistory(types.NodeID(10), 0, nodeTombstone, []RelTombstone{{
+		ID:          rel.ID(),
+		PrevVersion: rel.Version(),
+		Tombstone:   badRelTombstone,
+	}})
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodeWithHistory bad rel tombstone = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ms.GetNode(types.NodeID(10)); err != nil {
+		t.Fatalf("node deleted after rejected tombstone: %v", err)
+	}
+	gotRel, err := ms.GetRelationship(types.RelID(100))
+	if err != nil {
+		t.Fatalf("relationship deleted after rejected tombstone: %v", err)
+	}
+	if gotRel.EndNodeID() != types.NodeID(20) {
+		t.Fatalf("relationship tombstone changed live endpoint: got %d, want 20", gotRel.EndNodeID())
+	}
+	if hist, err := ms.GetRelHistory(types.RelID(100)); err != nil || len(hist) != 0 {
+		t.Fatalf("relationship history after rejected tombstone = len %d err %v, want empty nil", len(hist), err)
+	}
+}
+
+func TestDeleteNodeWithHistoryPurgesOrphanAdjacency(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	defer ms.Close() //nolint:errcheck
+
+	nA := types.NewNode(types.NodeID(10), 1, nil)
+	nB := types.NewNode(types.NodeID(20), 1, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	orphan := types.RelID(999)
+	ms.mu.Lock()
+	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	ms.mu.Unlock()
+
+	tombN := nA.DeepCopy()
+	tm := &types.TemporalMetadata{DeletedAt: types.Instant(time.Now().UnixMilli())}
+	tombN.SetTemporal(tm)
+	if err := ms.DeleteNodeWithHistory(nA.ID(), nA.Version(), tombN, nil); err != nil {
+		t.Fatalf("DeleteNodeWithHistory: %v", err)
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if _, ok := ms.outIdx[nA.ID()][orphan]; ok {
+		t.Fatal("orphan rel remained in outgoing adjacency after delete-with-history")
+	}
+	if _, ok := ms.inIdx[nB.ID()][orphan]; ok {
+		t.Fatal("orphan rel remained in incoming adjacency after delete-with-history")
+	}
+	if _, ok := ms.typeIdx[7][orphan]; ok {
+		t.Fatal("orphan rel remained in type index after delete-with-history")
+	}
+}

@@ -12,6 +12,7 @@ import (
 // Token 0 is reserved as the zero/invalid value and is never assigned.
 // Thread-safe via RWMutex with double-check on write miss.
 type RelTypeRegistry struct {
+	initOnce  sync.Once
 	mu        sync.RWMutex
 	toToken   map[string]uint16
 	toName    []string // index 0 = "" (reserved)
@@ -28,6 +29,23 @@ func NewRelTypeRegistry() *RelTypeRegistry {
 	}
 }
 
+func (r *RelTypeRegistry) ensureInitialized() {
+	r.initOnce.Do(func() {
+		if len(r.toName) == 0 {
+			r.toName = []string{""}
+		}
+		if r.toToken == nil {
+			r.toToken = make(map[string]uint16, len(r.toName)-1)
+			for i := 1; i < len(r.toName); i++ {
+				r.toToken[r.toName[i]] = uint16(i) // #nosec G115 — registry state is capacity-bounded by import/allocation paths.
+			}
+		}
+		if r.nextToken == 0 && len(r.toName) > 0 {
+			r.nextToken = uint16(len(r.toName)) // #nosec G115 — registry state is capacity-bounded by import/allocation paths.
+		}
+	})
+}
+
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
 // Returns ErrEmptyName if name is empty or whitespace-only.
 // Returns an error if the registry is full (65535 tokens).
@@ -35,6 +53,7 @@ func (r *RelTypeRegistry) GetOrCreate(name string) (uint16, error) {
 	if strings.TrimSpace(name) == "" {
 		return 0, ErrEmptyName
 	}
+	r.ensureInitialized()
 
 	// Fast path: read lock.
 	r.mu.RLock()
@@ -77,6 +96,8 @@ func (r *RelTypeRegistry) GetOrCreate(name string) (uint16, error) {
 // Resolve returns the relationship type string for the given token.
 // Returns "" for token 0 or out-of-range tokens.
 func (r *RelTypeRegistry) Resolve(token uint16) string {
+	r.ensureInitialized()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -88,6 +109,8 @@ func (r *RelTypeRegistry) Resolve(token uint16) string {
 
 // ResolveAll resolves a batch of tokens to relationship type strings.
 func (r *RelTypeRegistry) ResolveAll(tokens []uint16) []string {
+	r.ensureInitialized()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -103,6 +126,8 @@ func (r *RelTypeRegistry) ResolveAll(tokens []uint16) []string {
 // Lookup returns the token for name without creating it.
 // Returns false if the name is not registered.
 func (r *RelTypeRegistry) Lookup(name string) (uint16, bool) {
+	r.ensureInitialized()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -112,6 +137,8 @@ func (r *RelTypeRegistry) Lookup(name string) (uint16, bool) {
 
 // Len returns the number of registered relationship types (excluding reserved token 0).
 func (r *RelTypeRegistry) Len() int {
+	r.ensureInitialized()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -121,6 +148,8 @@ func (r *RelTypeRegistry) Len() int {
 // ExportNames returns a copy of the registered names slice for persistence.
 // Index 0 is always "" (reserved). Read-locked.
 func (r *RelTypeRegistry) ExportNames() []string {
+	r.ensureInitialized()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -132,6 +161,8 @@ func (r *RelTypeRegistry) ExportNames() []string {
 // ImportNames restores the registry from persisted data. Write-locked.
 // The registry must be empty (freshly constructed). names[0] must be "".
 func (r *RelTypeRegistry) ImportNames(names []string) error {
+	r.ensureInitialized()
+
 	if len(names) == 0 {
 		return errors.New("graph: import: names slice must not be empty")
 	}
@@ -172,4 +203,45 @@ func (r *RelTypeRegistry) ImportNames(names []string) error {
 
 	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against TokenCapacityMax
 	return nil
+}
+
+// RollbackNames restores a previous registry snapshot when the current
+// registry contains exactly that snapshot plus the supplied newly allocated
+// suffix names. It returns false without mutating if the registry has changed
+// in any other way.
+func (r *RelTypeRegistry) RollbackNames(snapshot []string, allocated ...string) (bool, error) {
+	r.ensureInitialized()
+
+	if len(snapshot) == 0 {
+		return false, errors.New("graph: rollback: snapshot must not be empty")
+	}
+	if snapshot[0] != "" {
+		return false, errors.New("graph: rollback: snapshot[0] must be empty (reserved)")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.toName) != len(snapshot)+len(allocated) {
+		return false, nil
+	}
+	for i := range snapshot {
+		if r.toName[i] != snapshot[i] {
+			return false, nil
+		}
+	}
+	for i, name := range allocated {
+		if r.toName[len(snapshot)+i] != name {
+			return false, nil
+		}
+	}
+
+	r.toName = make([]string, len(snapshot))
+	copy(r.toName, snapshot)
+	r.toToken = make(map[string]uint16, len(snapshot)-1)
+	for i := 1; i < len(snapshot); i++ {
+		r.toToken[snapshot[i]] = uint16(i)
+	}
+	r.nextToken = uint16(len(snapshot)) // #nosec G115 — snapshot came from a capacity-bounded registry
+	return true, nil
 }

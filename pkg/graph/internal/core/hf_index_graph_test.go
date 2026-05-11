@@ -147,21 +147,28 @@ func TestHFIndex_ConflictsWithTemporalIndex(t *testing.T) {
 	}
 }
 
-func TestHFIndex_UnknownLabel(t *testing.T) {
+func TestHFIndex_CreateBeforeLabelExists(t *testing.T) {
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
 
-	// Create/Drop on never-registered label — should return nil (not found is OK per spec)
 	err = g.Index.CreateHighFrequency("NoSuchLabel", time.Hour)
 	if err != nil {
-		t.Errorf("CreateHighFrequencyIndex on unknown label should return nil, got %v", err)
+		t.Fatalf("CreateHighFrequencyIndex before label registration: %v", err)
+	}
+	if _, ok := g.labels.Lookup("NoSuchLabel"); !ok {
+		t.Fatal("CreateHighFrequencyIndex must register the label token")
+	}
+
+	err = g.Index.CreateHighFrequency("NoSuchLabel", time.Hour)
+	if err != storepkg.ErrTemporalIndexExists {
+		t.Fatalf("duplicate CreateHighFrequencyIndex err = %v, want ErrTemporalIndexExists", err)
 	}
 
 	err = g.Index.DropHighFrequency("NoSuchLabel")
 	if err != nil {
-		t.Errorf("DropHighFrequencyIndex on unknown label should return nil, got %v", err)
+		t.Fatalf("DropHighFrequencyIndex after future-label create: %v", err)
 	}
 }

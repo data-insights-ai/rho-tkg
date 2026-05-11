@@ -51,10 +51,16 @@ type TemporalMetadata struct {
 // BaseEntityID returns the opaque ID linking to the original entity in a
 // version chain. Zero value means no base entity (this is the original).
 func (tm *TemporalMetadata) BaseEntityID() EntityID {
+	if tm == nil {
+		return 0
+	}
 	return tm.baseEntityID
 }
 
 // SetBaseEntityID sets the base entity ID.
 func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
+	if tm == nil {
+		return
+	}
 	tm.baseEntityID = id
 }

@@ -17,6 +17,7 @@ package core
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -146,8 +147,9 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 	store.calls = nil
 	// k strictly larger than the ceiling. Without the R4-F10 fix the
 	// loop never executes (rawK > ceiling on entry) and we get an
-	// empty result with zero backend calls.
-	got, err := g.Index.SearchNearest("Target", "v", []float32{0, 0, 0}, overfetchCeiling+1, storepkg.QueryOpts{ValidAt: 1})
+	// empty result with zero backend calls. Without the later buffer
+	// cap, math.MaxInt panics before the clamped backend call.
+	got, err := g.Index.SearchNearest("Target", "v", []float32{0, 0, 0}, math.MaxInt, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
 	if err != nil {
 		t.Fatalf("SearchNearest: %v", err)
 	}

@@ -194,6 +194,44 @@ func TestAllenRelation_InverseZero(t *testing.T) {
 	}
 }
 
+func TestAllenRelationSet_InvalidRelationIgnored(t *testing.T) {
+	t.Parallel()
+
+	for _, r := range []AllenRelation{0, allenRelationCount + 1, 255} {
+		if got := r.Set(); got != 0 {
+			t.Fatalf("AllenRelation(%d).Set() = %v, want empty", r, got)
+		}
+	}
+
+	hidden := AllenRelationSet(1 << 15)
+	if !hidden.IsEmpty() {
+		t.Fatal("set with only invalid relation bits should be empty")
+	}
+	if got := hidden.Len(); got != 0 {
+		t.Fatalf("hidden-bit set Len() = %d, want 0", got)
+	}
+	if got := hidden.ToSlice(); len(got) != 0 {
+		t.Fatalf("hidden-bit set ToSlice() = %v, want empty", got)
+	}
+	if got := hidden.String(); got != "{}" {
+		t.Fatalf("hidden-bit set String() = %q, want {}", got)
+	}
+	if hidden.Contains(AllenRelation(16)) {
+		t.Fatal("hidden-bit set must not report invalid relation membership")
+	}
+
+	withValid := hidden.Add(Before).Add(AllenRelation(14))
+	if withValid != Before.Set() {
+		t.Fatalf("hidden.Add(Before).Add(14) = %v, want %v", withValid, Before.Set())
+	}
+	if got := hidden.Union(Before.Set()); got != Before.Set() {
+		t.Fatalf("hidden.Union(Before) = %v, want %v", got, Before.Set())
+	}
+	if got := (Before.Set() | hidden).Intersection(hidden); got != 0 {
+		t.Fatalf("intersection with hidden bits = %v, want empty", got)
+	}
+}
+
 // --- AllenRelationSet ---
 
 func TestAllenRelationSet_Basic(t *testing.T) {

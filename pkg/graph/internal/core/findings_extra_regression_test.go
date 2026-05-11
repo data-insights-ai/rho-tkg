@@ -498,8 +498,8 @@ func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 	}
 
 	result, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("batch Execute: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("batch Execute error = %v, want ErrBatchFailed", err)
 	}
 
 	// Two node failures + one rel failure; nothing created.
@@ -606,8 +606,8 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 	}
 
 	res, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
 	}
 	if res.Failed != 1 || res.Created != 0 {
 		t.Fatalf("result: failed=%d created=%d, want failed=1 created=0", res.Failed, res.Created)
@@ -618,53 +618,124 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 	}
 }
 
-// All / NodesByLabel / NodesByLabelAndProperty / RelationshipsByType /
-// AllRelationships must reject opts.Depth+temporal explicitly: the
-// history-aware path enumerates IDs through ForEach* iterators that have
-// no storepkg.QueryOpts, so the underlying tiered.Store cannot honor Depth there.
-// Surfacing the limitation is preferable to silently returning entities
-// the caller asked to exclude.
-func TestTemporalQueries_RejectDepthFilter(t *testing.T) {
-	g, err := New(Config{})
+func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
+	ts := newTestTieredStore(t)
+	g, err := New(Config{
+		Store:      ts,
+		Validation: ValidationLimits{AllowSelfLoops: true},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
 
-	// Seed enough state that the registered label/reltype Lookup paths
-	// reach the Depth gate (the early "label/type not registered → nil"
-	// short-circuit hides the gate from the test otherwise).
-	a, _ := g.Nodes.Add([]string{"A"}, map[string]any{"k": "v"})
-	b, _ := g.Nodes.Add([]string{"A"}, nil)
-	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
-		t.Fatalf("AddRelationship: %v", err)
+	const at = types.Instant(2)
+	live, err := g.Nodes.Add([]string{"User"}, map[string]any{
+		"k":              "v",
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddNode live: %v", err)
 	}
-	now := nowInstant()
-	opts := storepkg.QueryOpts{ValidAt: now, Depth: storepkg.DepthHot}
+	archived, err := g.Nodes.Add([]string{"User"}, map[string]any{
+		"k":              "v",
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddNode archived: %v", err)
+	}
+	liveRel, err := g.Rels.Add("SELF", live, live, map[string]any{
+		"r":              "v",
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddRelationship live: %v", err)
+	}
+	archivedRel, err := g.Rels.Add("SELF", archived, archived, map[string]any{
+		"r":              "v",
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddRelationship archived: %v", err)
+	}
+	if _, err := g.Nodes.Update(archived.ID(), map[string]any{"k": "v2"}); err != nil {
+		t.Fatalf("UpdateNode archived: %v", err)
+	}
+	if _, err := g.Rels.Update(archivedRel.ID(), map[string]any{"r": "v2"}); err != nil {
+		t.Fatalf("UpdateRelationship archived: %v", err)
+	}
+	if err := g.Admin.Archive(archived.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	if err := g.Nodes.Delete(archived.ID()); err != nil {
+		t.Fatalf("Delete archived node: %v", err)
+	}
 
-	if _, err := g.Nodes.All(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("AllNodes(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	optsAll := storepkg.QueryOpts{ValidAt: at}
+	optsHot := storepkg.QueryOpts{ValidAt: at, Depth: storepkg.DepthHot}
+
+	allNodes, err := g.Nodes.All(optsAll)
+	if err != nil {
+		t.Fatalf("AllNodes DepthAll: %v", err)
 	}
-	if _, err := g.Rels.All(opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("AllRelationships(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	if !containsNodeID(allNodes, live.ID()) || !containsNodeID(allNodes, archived.ID()) {
+		t.Fatalf("AllNodes DepthAll should include live and archived nodes, got %v", nodeIDs(allNodes))
 	}
-	if _, err := g.Nodes.ByLabel("A", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("NodesByLabel(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	hotNodes, err := g.Nodes.All(optsHot)
+	if err != nil {
+		t.Fatalf("AllNodes DepthHot: %v", err)
 	}
-	if _, err := g.Nodes.ByLabelAndProperty("A", "k", "v", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("NodesByLabelAndProperty(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+	if !containsNodeID(hotNodes, live.ID()) || containsNodeID(hotNodes, archived.ID()) {
+		t.Fatalf("AllNodes DepthHot should include live and exclude archived, got %v", nodeIDs(hotNodes))
 	}
-	if _, err := g.Rels.ByType("KNOWS", opts); !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("RelationshipsByType(temporal+Depth): got %v, want ErrDepthTemporalUnsupported", err)
+
+	byLabel, err := g.Nodes.ByLabel("User", optsHot)
+	if err != nil {
+		t.Fatalf("NodesByLabel DepthHot: %v", err)
+	}
+	if !containsNodeID(byLabel, live.ID()) || containsNodeID(byLabel, archived.ID()) {
+		t.Fatalf("NodesByLabel DepthHot should include live and exclude archived, got %v", nodeIDs(byLabel))
+	}
+
+	byProperty, err := g.Nodes.ByLabelAndProperty("User", "k", "v", optsHot)
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty DepthHot: %v", err)
+	}
+	if !containsNodeID(byProperty, live.ID()) || containsNodeID(byProperty, archived.ID()) {
+		t.Fatalf("NodesByLabelAndProperty DepthHot should include live and exclude archived, got %v", nodeIDs(byProperty))
+	}
+
+	allRelsDepthAll, err := g.Rels.All(optsAll)
+	if err != nil {
+		t.Fatalf("AllRelationships DepthAll: %v", err)
+	}
+	if !containsRelID(allRelsDepthAll, liveRel.ID()) || !containsRelID(allRelsDepthAll, archivedRel.ID()) {
+		t.Fatalf("AllRelationships DepthAll should include live and archived")
+	}
+
+	allRels, err := g.Rels.All(optsHot)
+	if err != nil {
+		t.Fatalf("AllRelationships DepthHot: %v", err)
+	}
+	if !containsRelID(allRels, liveRel.ID()) || containsRelID(allRels, archivedRel.ID()) {
+		t.Fatalf("AllRelationships DepthHot should include live and exclude archived")
+	}
+
+	byType, err := g.Rels.ByType("SELF", optsHot)
+	if err != nil {
+		t.Fatalf("RelationshipsByType DepthHot: %v", err)
+	}
+	if !containsRelID(byType, liveRel.ID()) || containsRelID(byType, archivedRel.ID()) {
+		t.Fatalf("RelationshipsByType DepthHot should include live and exclude archived")
 	}
 }
 
-// Failed batch relationship creates must roll back the in-memory TxFrom
-// stamp on the entity returned from AddRelationship — symmetric to the
-// node path. The stamp aliases the relationship's TemporalMetadata
-// pointer, so without rollback the caller's *types.Relationship reflects
-// a transaction commit time that never actually committed.
-func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *testing.T) {
+// Failed batch relationship creates must roll back commit-time state on the
+// entity returned from AddRelationship — symmetric to the node path. Temporal
+// metadata and endpoint hashes alias the relationship's own fields, so without
+// rollback the caller's *types.Relationship reflects a relationship write that
+// never actually committed.
+func TestBatchExecute_FailedPutRelationship_RollsBackReturnedEntityState(t *testing.T) {
 	injected := errors.New("injected PutRelationship failure for rollback test")
 	g, err := New(Config{Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
 	if err != nil {
@@ -687,8 +758,8 @@ func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *t
 	}
 
 	res, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
 	}
 	// Nodes should succeed (no failure injected on PutNodesBatch); only
 	// the rel write should fail.
@@ -698,6 +769,11 @@ func TestBatchExecute_FailedPutRelationship_RollsBackTxFromOnReturnedEntity(t *t
 
 	if tm := r.Temporal(); tm != nil && tm.TxFrom != 0 {
 		t.Fatalf("post-failure rel TxFrom = %d, want 0 (rolled back)", tm.TxFrom)
+	}
+	if ig := r.Integrity(); ig == nil {
+		t.Fatal("post-failure rel integrity = nil, want queue-time integrity")
+	} else if ig.FromNodeHash != "" || ig.ToNodeHash != "" {
+		t.Fatalf("post-failure endpoint hashes = (%q, %q), want empty queue-time hashes", ig.FromNodeHash, ig.ToNodeHash)
 	}
 }
 

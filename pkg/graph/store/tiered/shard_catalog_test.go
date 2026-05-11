@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,6 +84,67 @@ func TestShardCatalog_LoadMissing(t *testing.T) {
 	}
 	if len(sc.Shards) != 0 {
 		t.Errorf("Load missing: got %d shards, want 0", len(sc.Shards))
+	}
+}
+
+func TestShardCatalog_LoadRejectsInvalidPersistedTopology(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		json string
+	}{
+		{
+			name: "duplicate names",
+			json: `{"shards":[` +
+				`{"name":"reference","kind":"reference","tier":"hot","path":"reference"},` +
+				`{"name":"reference","kind":"reference","tier":"hot","path":"reference-copy"}` +
+				`]}`,
+		},
+		{
+			name: "multiple hot event shards",
+			json: `{"shards":[` +
+				`{"name":"2026-W01","kind":"event","tier":"hot","path":"events/2026-W01","time_start":"2026-01-01T00:00:00Z","time_end":"2026-01-08T00:00:00Z"},` +
+				`{"name":"2026-W02","kind":"event","tier":"hot","path":"events/2026-W02","time_start":"2026-01-08T00:00:00Z","time_end":"2026-01-15T00:00:00Z"}` +
+				`]}`,
+		},
+		{
+			name: "path traversal",
+			json: `{"shards":[` +
+				`{"name":"reference","kind":"reference","tier":"hot","path":"../outside"}` +
+				`]}`,
+		},
+		{
+			name: "negative stats",
+			json: `{"shards":[` +
+				`{"name":"reference","kind":"reference","tier":"hot","path":"reference","approx_nodes":-1}` +
+				`]}`,
+		},
+		{
+			name: "invalid event window",
+			json: `{"shards":[` +
+				`{"name":"2026-W01","kind":"event","tier":"warm","path":"events/2026-W01","time_start":"2026-01-08T00:00:00Z","time_end":"2026-01-01T00:00:00Z"}` +
+				`]}`,
+		},
+		{
+			name: "invalid kind",
+			json: `{"shards":[` +
+				`{"name":"reference","kind":"other","tier":"hot","path":"reference"}` +
+				`]}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "catalog.json")
+			if err := os.WriteFile(path, []byte(tc.json), 0o600); err != nil {
+				t.Fatalf("write catalog: %v", err)
+			}
+			sc := NewShardCatalog(path)
+			if err := sc.Load(); err == nil {
+				t.Fatal("Load returned nil, want validation error")
+			}
+		})
 	}
 }
 
@@ -181,5 +243,49 @@ func TestShardCatalog_SaveAtomicity(t *testing.T) {
 		if e.Name() != "catalog.json" {
 			t.Errorf("unexpected file: %s", e.Name())
 		}
+	}
+}
+
+func TestShardCatalogFileRollbackRestoresPreviousBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	original := []byte(`{"shards":[{"name":"old"}]}`)
+	if err := atomicWriteFile(path, original, "test catalog setup"); err != nil {
+		t.Fatalf("write original catalog: %v", err)
+	}
+	snapshot, err := snapshotShardCatalogFile(path)
+	if err != nil {
+		t.Fatalf("snapshotShardCatalogFile: %v", err)
+	}
+	if err := atomicWriteFile(path, []byte(`{"shards":[{"name":"new"}]}`), "test catalog overwrite"); err != nil {
+		t.Fatalf("write changed catalog: %v", err)
+	}
+
+	if err := restoreShardCatalogFile(snapshot); err != nil {
+		t.Fatalf("restoreShardCatalogFile: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read restored catalog: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("restored catalog bytes = %q, want %q", got, original)
+	}
+}
+
+func TestShardCatalogFileRollbackRemovesNewFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	snapshot, err := snapshotShardCatalogFile(path)
+	if err != nil {
+		t.Fatalf("snapshotShardCatalogFile: %v", err)
+	}
+	if err := atomicWriteFile(path, []byte(`{"shards":[]}`), "test catalog create"); err != nil {
+		t.Fatalf("write new catalog: %v", err)
+	}
+
+	if err := restoreShardCatalogFile(snapshot); err != nil {
+		t.Fatalf("restoreShardCatalogFile: %v", err)
+	}
+	if _, err := os.ReadFile(path); !os.IsNotExist(err) {
+		t.Fatalf("catalog file after rollback error = %v, want not exist", err)
 	}
 }

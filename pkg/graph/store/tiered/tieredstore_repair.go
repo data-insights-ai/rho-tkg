@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // RepairResult holds the outcome of a cross-shard consistency repair scan.
@@ -19,7 +20,7 @@ type RepairResult struct {
 // Only scans cross-shard relationships (same-shard are atomic).
 //
 // Phase 1: Find orphaned in/ entries (entity missing)
-// For each shard, for each nodeID, get IncomingRelIDs. For each relID, check if
+// For each shard, snapshot all incoming-index entries. For each relID, check if
 // the entity exists in any shard. If not → delete the orphaned in/ entry.
 //
 // Phase 2: Find missing in/ entries (entity exists, in/ missing)
@@ -33,40 +34,38 @@ func (ts *Store) RunRepair() (*RepairResult, error) {
 	}
 	defer release()
 
+	return ts.runRepairStores(stores)
+}
+
+func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 	result := &RepairResult{
 		ShardsScanned: len(stores),
 	}
 
 	// Phase 1: Find and remove orphaned in/ entries.
 	for _, ns := range stores {
-		nodeIDs, err := ns.store.AllNodeIDs(QueryOpts{})
-		if err != nil {
-			return nil, err
-		}
-		for _, nodeID := range nodeIDs {
-			rawNodeID := nodeID.SnowflakeID()
-			inRelIDs := ns.store.IncomingRelIDs(rawNodeID, 0)
-			for _, relID := range inRelIDs {
-				if ns.store.HasRelID(relID) {
-					continue // same-shard — entity exists here
-				}
-				// Cross-shard: check the already-pinned shard snapshot for
-				// the entity. Re-resolving via a fresh checkoutArchive +
-				// ts.eventShards walk would race a concurrent Close that
-				// has set closed=true / nil'd refArchive but is still
-				// blocked on archiveActiveReqs — the rel exists, but the
-				// fresh resolver returns nil and Phase 1 deletes its
-				// valid in/ entry as orphaned.
-				entityStore := ts.findRelInAnyShardStore(relID, stores)
-				if entityStore != nil {
-					continue // entity exists in another shard — not orphaned
-				}
-				// Orphaned in/ entry: entity doesn't exist anywhere.
-				if err := ns.store.DeleteIncomingByRelID(rawNodeID, relID); err != nil {
-					return nil, err
-				}
-				result.OrphanedInEntries++
+		for _, entry := range ns.store.IncomingIndexEntries() {
+			if relationshipRowExists(ns.store, types.RelID(entry.RelID)) {
+				continue // same-shard — entity exists here
 			}
+			// Cross-shard: check the already-pinned shard snapshot for
+			// the entity. Re-resolving via a fresh checkoutArchive +
+			// ts.eventShards walk would race a concurrent Close that
+			// has set closed=true / nil'd refArchive but is still
+			// blocked on archiveActiveReqs — the rel exists, but the
+			// fresh resolver returns nil and Phase 1 deletes its
+			// valid in/ entry as orphaned.
+			entityStore := ts.findRelInAnyShardStore(entry.RelID, stores)
+			if entityStore != nil {
+				continue // entity exists in another shard — not orphaned
+			}
+			// Orphaned in/ entry: entity doesn't exist anywhere. Purge every
+			// local index for the rel ID so stale type/out keys do not keep
+			// relIDs and counters alive after repair.
+			if err := ns.store.PurgeOrphanRelationshipIndexes(types.RelID(entry.RelID)); err != nil {
+				return nil, err
+			}
+			result.OrphanedInEntries++
 		}
 	}
 
@@ -96,17 +95,17 @@ func (ts *Store) RunRepair() (*RepairResult, error) {
 			endID := r.EndNodeID().SnowflakeID()
 			relType := r.TypeToken().Value()
 
-			// Resolve which shard owns each endpoint. Routing failures
-			// indicate a real problem (corrupt ontology, missing shard
-			// catalog entry); the original code's silent `continue` made
-			// these failures look like "repair clean".
-			startShard, err := ts.shardForNodeID(r.StartNodeID())
-			if err != nil {
-				return nil, fmt.Errorf("repair: shard %q: resolve start shard for rel %d: %w", ns.name, relID, err)
+			// Resolve each endpoint from the same pinned shard snapshot
+			// this repair pass is already scanning. Fresh live routing can
+			// observe refArchive == nil during a concurrent Close even
+			// while this snapshot still pins the archive open.
+			startShard := ts.findNodeInAnyShardStore(startID, stores)
+			if startShard == nil {
+				return nil, fmt.Errorf("repair: shard %q: resolve start shard for rel %d: %w", ns.name, relID, ErrNodeNotFound)
 			}
-			endShard, err := ts.shardForNodeID(r.EndNodeID())
-			if err != nil {
-				return nil, fmt.Errorf("repair: shard %q: resolve end shard for rel %d: %w", ns.name, relID, err)
+			endShard := ts.findNodeInAnyShardStore(endID, stores)
+			if endShard == nil {
+				return nil, fmt.Errorf("repair: shard %q: resolve end shard for rel %d: %w", ns.name, relID, ErrNodeNotFound)
 			}
 
 			if startShard == endShard {

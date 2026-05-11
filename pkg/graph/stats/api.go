@@ -5,6 +5,8 @@
 // snapshot.
 package stats
 
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
+
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;
 // they are zero for MemoryStore and tiered.Store.
@@ -55,11 +57,21 @@ type API struct{ ops Ops }
 // New constructs a stats sub-API.
 func New(ops Ops) *API { return &API{ops: ops} }
 
+func (a *API) ready() (Ops, error) {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return nil, grapherr.ErrNilGraph
+	}
+	return a.ops, nil
+}
+
 // Get returns a snapshot of graph operation counters and optional cache metrics.
 // Cache metrics are populated only when the underlying store implements the
 // store-stats interface (currently BadgerStore only); all cache fields are zero
 // for MemoryStore and tiered.Store.
 func (a *API) Get() GraphStats {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return GraphStats{}
+	}
 	na, nr, nu, nd, ra, rr, ru, rd, nch, ncm, rch, rcm := a.ops.SnapshotCounters()
 	return GraphStats{
 		NodesAdded:      na,
@@ -78,19 +90,55 @@ func (a *API) Get() GraphStats {
 }
 
 // NodeCount returns the total node count.
-func (a *API) NodeCount() (int, error) { return a.ops.NodeCount() }
+func (a *API) NodeCount() (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.NodeCount()
+}
 
 // RelCount returns the total relationship count.
-func (a *API) RelCount() (int, error) { return a.ops.RelCount() }
+func (a *API) RelCount() (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.RelCount()
+}
 
 // NodeCountByLabel returns the count of nodes carrying the label.
-func (a *API) NodeCountByLabel(label string) (int, error) { return a.ops.NodeCountByLabel(label) }
+func (a *API) NodeCountByLabel(label string) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.NodeCountByLabel(label)
+}
 
 // RelCountByType returns the count of relationships of the given type.
-func (a *API) RelCountByType(typeName string) (int, error) { return a.ops.RelCountByType(typeName) }
+func (a *API) RelCountByType(typeName string) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.RelCountByType(typeName)
+}
 
 // AllLabelCounts returns counts per label.
-func (a *API) AllLabelCounts() (map[string]int, error) { return a.ops.AllLabelCounts() }
+func (a *API) AllLabelCounts() (map[string]int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AllLabelCounts()
+}
 
 // AllRelTypeCounts returns counts per relationship type.
-func (a *API) AllRelTypeCounts() (map[string]int, error) { return a.ops.AllRelTypeCounts() }
+func (a *API) AllRelTypeCounts() (map[string]int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AllRelTypeCounts()
+}

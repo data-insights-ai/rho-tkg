@@ -31,9 +31,17 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 		return matchesPointInTime(id, tm, opts.ValidAt)
 	}
 	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		if opts.ValidStart >= opts.ValidEnd {
+			return false
+		}
 		return matchesInterval(id, tm, opts.ValidStart, opts.ValidEnd)
 	}
 	return true // no filter
+}
+
+// HasTemporalFilter reports whether opts contains an active temporal filter.
+func HasTemporalFilter(opts storepkg.QueryOpts) bool {
+	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 }
 
 // matchesPointInTime checks: from <= t AND (to == 0 OR to > t).

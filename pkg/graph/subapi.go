@@ -17,7 +17,12 @@ type TxAPI struct{ c *core.Core }
 
 // Begin opens a new transaction. Returns ErrGraphClosed if the graph
 // has already been closed.
-func (a *TxAPI) Begin() (*GraphTx, error) { return a.c.BeginTx() }
+func (a *TxAPI) Begin() (*GraphTx, error) {
+	if a == nil || a.c == nil {
+		return nil, core.ErrNilGraph
+	}
+	return a.c.BeginTx()
+}
 
 // Run executes fn within a transaction. Commits if fn returns nil,
 // otherwise rolls back. The returned error is fn's error joined with any
@@ -28,6 +33,12 @@ func (a *TxAPI) Begin() (*GraphTx, error) { return a.c.BeginTx() }
 // callback would leave c.mu held forever, deadlocking every subsequent
 // mutation, transaction, and read.
 func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
+	if a == nil || a.c == nil {
+		return core.ErrNilGraph
+	}
+	if fn == nil {
+		return core.ErrNilTxCallback
+	}
 	tx, err := a.c.BeginTx()
 	if err != nil {
 		return err
@@ -59,8 +70,17 @@ func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
 // before BeginTx or after fn returns nil but before Commit, the transaction
 // is rolled back and ctx.Err() is returned.
 func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr error) {
+	if a == nil || a.c == nil {
+		return core.ErrNilGraph
+	}
+	if ctx == nil {
+		return core.ErrNilContext
+	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if fn == nil {
+		return core.ErrNilTxCallback
 	}
 	tx, err := a.c.BeginTx()
 	if err != nil {
@@ -100,5 +120,8 @@ type BatchAPI struct{ c *core.Core }
 // New constructs a fresh BatchBuilder bound to the underlying graph.
 // Returns ErrGraphClosed if the graph has already been closed.
 func (a *BatchAPI) New() (*BatchBuilder, error) {
+	if a == nil || a.c == nil {
+		return nil, core.ErrNilGraph
+	}
 	return core.NewBatchBuilder(a.c)
 }

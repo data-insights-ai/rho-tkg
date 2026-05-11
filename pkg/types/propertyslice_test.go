@@ -48,6 +48,57 @@ func TestPropertySliceSetOverwritesExisting(t *testing.T) {
 	}
 }
 
+func TestPropertySliceSetNilReceiverReturnsSentinel(t *testing.T) {
+	t.Parallel()
+
+	var ps *PropertySlice
+	if err := ps.Set("x", int64(1)); !errors.Is(err, ErrNilPropertySlice) {
+		t.Fatalf("Set on nil *PropertySlice = %v, want ErrNilPropertySlice", err)
+	}
+}
+
+func TestPropertySliceDeleteNilReceiverReturnsSentinel(t *testing.T) {
+	t.Parallel()
+
+	var ps *PropertySlice
+	deleted, err := ps.Delete("x")
+	if !errors.Is(err, ErrNilPropertySlice) || deleted {
+		t.Fatalf("Delete on nil *PropertySlice = (%v, %v), want (false, ErrNilPropertySlice)", deleted, err)
+	}
+}
+
+func TestPropertySliceSetCopiesCallerValue(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	tags := []string{"alpha", "beta"}
+	meta := map[string]any{"nested": []any{"one"}}
+	if err := ps.Set("tags", tags); err != nil {
+		t.Fatalf("Set tags: %v", err)
+	}
+	if err := ps.Set("meta", meta); err != nil {
+		t.Fatalf("Set meta: %v", err)
+	}
+
+	tags[0] = "mutated"
+	meta["nested"].([]any)[0] = "mutated"
+
+	gotTags, ok := ps.Get("tags")
+	if !ok {
+		t.Fatal("Get tags missing")
+	}
+	if gotTags.([]string)[0] != "alpha" {
+		t.Fatalf("Set retained caller slice alias: %q", gotTags.([]string)[0])
+	}
+	gotMeta, ok := ps.Get("meta")
+	if !ok {
+		t.Fatal("Get meta missing")
+	}
+	if gotMeta.(map[string]any)["nested"].([]any)[0] != "one" {
+		t.Fatalf("Set retained caller nested map alias: %v", gotMeta)
+	}
+}
+
 // ─── Get edge cases ─────────────────────────────────────────────────────────
 
 func TestPropertySliceGetMissReturnsNilFalse(t *testing.T) {

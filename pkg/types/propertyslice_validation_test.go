@@ -438,6 +438,94 @@ func TestValidateRejectsConcreteValueMaps(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsNamedScalarAliases(t *testing.T) {
+	t.Parallel()
+
+	type namedString string
+	type namedInt int
+
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{name: "string alias", val: namedString("x")},
+		{name: "int alias", val: namedInt(1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var ps PropertySlice
+			err := ps.Set("alias", tc.val)
+			if err == nil {
+				t.Fatalf("Set should reject named scalar alias %T", tc.val)
+			}
+			if !errors.Is(err, ErrUnsupportedValueType) {
+				t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsUnsupportedConcreteSlices(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{name: "int32 slice", val: []int32{1, 2}},
+		{name: "uint slice", val: []uint{1, 2}},
+		{name: "string alias slice", val: []struct{ S string }{{S: "x"}}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var ps PropertySlice
+			err := ps.Set("slice", tc.val)
+			if err == nil {
+				t.Fatalf("Set should reject unsupported slice %T", tc.val)
+			}
+			if !errors.Is(err, ErrUnsupportedValueType) {
+				t.Errorf("errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsNamedContainerAliases(t *testing.T) {
+	t.Parallel()
+
+	type stringSlice []string
+	type stringAnyMap map[string]any
+	type namedString string
+
+	tests := []struct {
+		name string
+		val  any
+		want error
+	}{
+		{name: "slice alias", val: stringSlice{"x"}, want: ErrUnsupportedValueType},
+		{name: "map alias", val: stringAnyMap{"x": 1}, want: ErrUnsupportedMapType},
+		{name: "map string alias value", val: map[string]namedString{"x": "y"}, want: ErrUnsupportedMapType},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var ps PropertySlice
+			err := ps.Set("alias", tc.val)
+			if err == nil {
+				t.Fatalf("Set should reject named container alias %T", tc.val)
+			}
+			if !errors.Is(err, tc.want) {
+				t.Errorf("errors.Is(err, %v) = false; err = %v", tc.want, err)
+			}
+		})
+	}
+}
+
 // ─── NewPropertySlice bulk loader tests ──────────────────────────────────────
 
 func TestNewPropertySliceBasic(t *testing.T) {
@@ -470,6 +558,38 @@ func TestNewPropertySliceBasic(t *testing.T) {
 		if got != v {
 			t.Fatalf("Get(%q) = %v, want %v", k, got, v)
 		}
+	}
+}
+
+func TestNewPropertySliceCopiesCallerValues(t *testing.T) {
+	t.Parallel()
+
+	tags := []string{"alpha", "beta"}
+	meta := map[string]any{"nested": []any{"one"}}
+	ps, err := NewPropertySlice(map[string]any{
+		"tags": tags,
+		"meta": meta,
+	})
+	if err != nil {
+		t.Fatalf("NewPropertySlice: %v", err)
+	}
+
+	tags[0] = "mutated"
+	meta["nested"].([]any)[0] = "mutated"
+
+	gotTags, ok := ps.Get("tags")
+	if !ok {
+		t.Fatal("Get tags missing")
+	}
+	if gotTags.([]string)[0] != "alpha" {
+		t.Fatalf("NewPropertySlice retained caller slice alias: %q", gotTags.([]string)[0])
+	}
+	gotMeta, ok := ps.Get("meta")
+	if !ok {
+		t.Fatal("Get meta missing")
+	}
+	if gotMeta.(map[string]any)["nested"].([]any)[0] != "one" {
+		t.Fatalf("NewPropertySlice retained caller nested map alias: %v", gotMeta)
 	}
 }
 

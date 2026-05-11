@@ -11,15 +11,21 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func (bs *Store) PutNode(n *types.Node) error {
+	if err := storecontract.ValidateNodeWrite(n); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	nid := n.InternalID()
 	id := nid.SnowflakeID() // LRU is keyed by raw snowflake.ID (Tier D — see lru.go).
 
-	w := storepkg.NodeToWire(n)
-	data, err := msgpack.Marshal(w)
+	data, err := storepkg.MarshalNodeWire(n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
@@ -30,6 +36,10 @@ func (bs *Store) PutNode(n *types.Node) error {
 	if _, exists := bs.nodeIDs[nid]; exists {
 		bs.idxMu.Unlock()
 		return ErrNodeExists
+	}
+	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, n, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 
 	// Update in-memory state.
@@ -50,7 +60,11 @@ func (bs *Store) PutNode(n *types.Node) error {
 
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
-	indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
+	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
@@ -66,6 +80,12 @@ func (bs *Store) PutNode(n *types.Node) error {
 // then falls through to Badger only if the node is confirmed to exist.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
 	id := nid.SnowflakeID()
 	// Check cache first.
 	v, status := bs.nodeCache.Get(id)
@@ -76,8 +96,8 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 		return nil, ErrNodeNotFound
 	}
 
-	// Short-circuit: nodeIDs is the authoritative set of all node IDs.
-	// Avoids opening a Badger transaction for non-existent nodes.
+	// Short-circuit: nodeIDs is rebuilt from node entity rows at open and
+	// maintained with writes, so misses do not need a Badger transaction.
 	bs.idxMu.RLock()
 	_, exists := bs.nodeIDs[nid]
 	bs.idxMu.RUnlock()
@@ -100,7 +120,11 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = storepkg.WireToNode(w)
+			decoded, err := decodeNodeWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode node: %w", err)
+			}
+			n = decoded
 			return nil
 		})
 	})
@@ -114,15 +138,21 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 }
 
 // DeleteNode removes a node and its label index entries.
+// Returns ErrInvalidStoreMutation if the node still has connected relationships.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *Store) DeleteNode(nid types.NodeID) error {
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	id := nid.SnowflakeID()
 
 	// Pre-fetch node state before acquiring the write lock to avoid holding
 	// idxMu.Lock() during Badger disk I/O on cache misses (B3: lock scope rule).
 	// prefetchNode checks the cache and falls through to db.View without any lock.
-	n, err := bs.prefetchNode(nid)
-	if err != nil {
+	if _, err := bs.prefetchNode(nid); err != nil {
 		return err
 	}
 
@@ -134,8 +164,23 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
+	if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
+	}
 
-	// Build delete ops using pre-fetched node (labels needed for index cleanup).
+	// Re-read under the write lock. prefetchNode loaded the cache on the
+	// normal cache-miss path, so this is a cache hit unless the entry was
+	// evicted between prefetch and lock acquisition. Using the locked current
+	// row avoids cleaning indexes with stale labels if a direct Store caller
+	// deleted and recreated the same ID in the TOCTOU window.
+	n, err := bs.getNodeLocked(nid)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+
+	// Build delete ops using the current node (labels needed for index cleanup).
 	ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 
 	// Remove label index entries.
@@ -153,6 +198,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
@@ -173,18 +219,24 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 // No label index changes — labels are immutable after creation.
 // Property indexes are updated to reflect property changes.
 func (bs *Store) ReplaceNode(n *types.Node) error {
+	if err := storecontract.ValidateNodeWrite(n); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	nid := n.InternalID()
 	id := nid.SnowflakeID()
 
-	w := storepkg.NodeToWire(n)
-	data, err := msgpack.Marshal(w)
+	data, err := storepkg.MarshalNodeWire(n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
-	old, _ := bs.prefetchNode(nid)
+	// If the node still exists after the write lock is acquired, this error is
+	// real corruption or an operational read failure and must be returned.
+	old, prefetchErr := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
 
@@ -192,23 +244,36 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
+	if prefetchErr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before replace: %w", prefetchErr)
+	}
+	if old == nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before replace: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeReplacement(old, n); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, n, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Update property, temporal, and vector indexes: remove old entries, add new.
-	if old != nil {
-		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
-		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
-		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	} else {
-		// Pre-fetch failed (concurrent delete between prefetch and write lock, or
-		// cache miss on a just-opened store) — brute-force purge to avoid orphans.
-		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
-		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
-		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
-	}
+	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	bs.nodeCache.Put(id, n.DeepCopy())
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
-	indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
+	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.idxMu.Unlock()
 
@@ -223,16 +288,22 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 // version bumped. Version history must be written by the caller before this call.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	id := nid.SnowflakeID()
-	w := storepkg.NodeToWire(updatedNode)
-	data, err := msgpack.Marshal(w)
+	data, err := storepkg.MarshalNodeWire(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
-	old, _ := bs.prefetchNode(nid)
+	// If the node still exists after the write lock is acquired, this error is
+	// real corruption or an operational read failure and must be returned.
+	old, prefetchErr := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
 
@@ -240,17 +311,28 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
+	if prefetchErr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before remove label: %w", prefetchErr)
+	}
+	if old == nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before remove label: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeLabelRemoval(old, updatedNode, tok); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Update property, temporal, and vector indexes using pre-fetched old node state.
-	if old != nil {
-		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
-		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
-		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	} else {
-		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
-		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
-		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
-	}
+	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
 	// Remove tok from the in-memory label index.
 	if set, ok := bs.labelIdx[tok]; ok {
@@ -265,7 +347,11 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
-	indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Queue: set node data + delete label index entry.
 	bs.appendOps(
@@ -284,16 +370,22 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 // No version bump; no history entry. Used by transaction rollback.
 // Returns ErrNodeNotFound if the node does not exist.
 func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	id := nid.SnowflakeID()
-	w := storepkg.NodeToWire(updatedNode)
-	data, err := msgpack.Marshal(w)
+	data, err := storepkg.MarshalNodeWire(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// Errors here are non-fatal: the write lock path falls back to brute-force purge.
-	old, _ := bs.prefetchNode(nid)
+	// If the node still exists after the write lock is acquired, this error is
+	// real corruption or an operational read failure and must be returned.
+	old, prefetchErr := bs.prefetchNode(nid)
 
 	bs.idxMu.Lock()
 
@@ -301,16 +393,27 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-
-	if old != nil {
-		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
-		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
-		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	} else {
-		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
-		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
-		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
+	if prefetchErr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before add label: %w", prefetchErr)
 	}
+	if old == nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before add label: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeLabelAddition(old, updatedNode, tok); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+
+	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
 	set, ok := bs.labelIdx[tok]
 	if !ok {
@@ -323,7 +426,11 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
-	indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	bs.appendOps(
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
@@ -354,7 +461,11 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 		if err := msgpack.Unmarshal(val, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node: %w", err)
 		}
-		n = storepkg.WireToNode(w)
+		decoded, err := decodeNodeWireForKey(w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode node: %w", err)
+		}
+		n = decoded
 		return nil
 	})
 	return n, err
@@ -398,7 +509,11 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = storepkg.WireToNode(w)
+			decoded, err := decodeNodeWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode node: %w", err)
+			}
+			n = decoded
 			return nil
 		})
 	})
@@ -436,7 +551,11 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			n = storepkg.WireToNode(w)
+			decoded, err := decodeNodeWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode node: %w", err)
+			}
+			n = decoded
 			return nil
 		})
 	})

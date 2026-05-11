@@ -43,46 +43,58 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil, nil
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
 	}
-	if !hasTemporalFilter(opts) {
-		return c.store.NodesByLabel(tok, opts)
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
 	}
-	if opts.Depth != storepkg.DepthAll {
-		return nil, ErrDepthTemporalUnsupported
-	}
-	// Indexed candidate set: current nodes that carry the label NOW, plus all
-	// node IDs that ever appeared in history (covering the case where the
-	// label was held in a previous version but not the current one). Avoids
-	// a full ForEachNodeID scan.
-	current, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		if !hasTemporalFilter(opts) {
+			nodes, err := c.store.NodesByLabel(tok, opts)
+			result = nodes
+			return err
+		}
+		// Indexed candidate set: current nodes that carry the label NOW, plus all
+		// node IDs that ever appeared in history (covering the case where the
+		// label was held in a previous version but not the current one). Avoids
+		// a full ForEachNodeID scan.
+		current, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{Depth: opts.Depth})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.NodeID, 0, len(current))
+		for _, n := range current {
+			currentIDs = append(currentIDs, n.ID())
+		}
+
+		pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
+		if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+			n, err := c.findNodeVersionForOpts(id, opts, pred)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, n)
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortNodesByID(result)
+		result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.NodeID, 0, len(current))
-	for _, n := range current {
-		currentIDs = append(currentIDs, n.ID())
-	}
-
-	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, opts, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
-			}
-			return err
-		}
-		result = append(result, n)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	storeutil.SortNodesByID(result)
-	return storeutil.PaginateNodes(result, opts.After, opts.Limit), nil
+	return result, nil
 }
 
 // ByType returns relationships with the given type (resolved from string),
@@ -98,45 +110,57 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.relTypes.Lookup(typeName)
-	if !ok {
-		return nil, nil
+	if err := c.validateIndexName(typeName); err != nil {
+		return nil, err
 	}
-	if !hasTemporalFilter(opts) {
-		return c.store.RelationshipsByType(tok, opts)
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
 	}
-	if opts.Depth != storepkg.DepthAll {
-		return nil, ErrDepthTemporalUnsupported
-	}
-	// Indexed candidate set: current rels of this type, plus history IDs.
-	// Type tokens are structurally immutable so the type predicate is only
-	// needed for safety; history IDs cover the deleted-rel case.
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.relTypes.Lookup(typeName)
+		if !ok {
+			return nil
+		}
+		if !hasTemporalFilter(opts) {
+			rels, err := c.store.RelationshipsByType(tok, opts)
+			result = rels
+			return err
+		}
+		// Indexed candidate set: current rels of this type, plus history IDs.
+		// Type tokens are structurally immutable so the type predicate is only
+		// needed for safety; history IDs cover the deleted-rel case.
+		current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{Depth: opts.Depth})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.RelID, 0, len(current))
+		for _, r := range current {
+			currentIDs = append(currentIDs, r.ID())
+		}
+
+		pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
+		if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
+			r, err := c.findRelVersionForOpts(id, opts, pred)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, r)
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortRelsByID(result)
+		result = storeutil.PaginateRels(result, opts.After, opts.Limit)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.RelID, 0, len(current))
-	for _, r := range current {
-		currentIDs = append(currentIDs, r.ID())
-	}
-
-	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	var result []*types.Relationship
-	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
-		r, err := c.findRelVersionForOpts(id, opts, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
-			}
-			return err
-		}
-		result = append(result, r)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	storeutil.SortRelsByID(result)
-	return storeutil.PaginateRels(result, opts.After, opts.Limit), nil
+	return result, nil
 }
 
 // Outgoing returns all outgoing relationships from the given node.
@@ -147,15 +171,29 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	var tok uint16
 	if typeName != "" {
-		t, ok := c.relTypes.Lookup(typeName)
-		if !ok {
-			return nil, nil
+		if err := c.validateIndexName(typeName); err != nil {
+			return nil, err
 		}
-		tok = t
 	}
-	return c.store.OutgoingRelationships(nodeID, tok)
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var tok uint16
+		if typeName != "" {
+			t, ok := c.relTypes.Lookup(typeName)
+			if !ok {
+				return nil
+			}
+			tok = t
+		}
+		rels, err := c.store.OutgoingRelationships(nodeID, tok)
+		result = rels
+		return err
+	})
+	return result, err
 }
 
 // OutgoingForNodes returns outgoing relationships for multiple nodes
@@ -168,18 +206,34 @@ func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if typeName != "" {
+		if err := c.validateIndexName(typeName); err != nil {
+			return nil, err
+		}
+	}
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-	var tok uint16
-	if typeName != "" {
-		t, ok := c.relTypes.Lookup(typeName)
-		if !ok {
-			return nil, nil
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
 		}
-		tok = t
 	}
-	return c.store.OutgoingRelationshipsForNodes(nodeIDs, tok)
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var tok uint16
+		if typeName != "" {
+			t, ok := c.relTypes.Lookup(typeName)
+			if !ok {
+				return nil
+			}
+			tok = t
+		}
+		rels, err := c.store.OutgoingRelationshipsForNodes(nodeIDs, tok)
+		result = rels
+		return err
+	})
+	return result, err
 }
 
 // IncomingForNodes returns incoming relationships for multiple nodes
@@ -192,18 +246,34 @@ func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if typeName != "" {
+		if err := c.validateIndexName(typeName); err != nil {
+			return nil, err
+		}
+	}
 	if len(nodeIDs) == 0 {
 		return nil, nil
 	}
-	var tok uint16
-	if typeName != "" {
-		t, ok := c.relTypes.Lookup(typeName)
-		if !ok {
-			return nil, nil
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
 		}
-		tok = t
 	}
-	return c.store.IncomingRelationshipsForNodes(nodeIDs, tok)
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var tok uint16
+		if typeName != "" {
+			t, ok := c.relTypes.Lookup(typeName)
+			if !ok {
+				return nil
+			}
+			tok = t
+		}
+		rels, err := c.store.IncomingRelationshipsForNodes(nodeIDs, tok)
+		result = rels
+		return err
+	})
+	return result, err
 }
 
 // Incoming returns all incoming relationships to the given node.
@@ -214,15 +284,29 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	var tok uint16
 	if typeName != "" {
-		t, ok := c.relTypes.Lookup(typeName)
-		if !ok {
-			return nil, nil
+		if err := c.validateIndexName(typeName); err != nil {
+			return nil, err
 		}
-		tok = t
 	}
-	return c.store.IncomingRelationships(nodeID, tok)
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var tok uint16
+		if typeName != "" {
+			t, ok := c.relTypes.Lookup(typeName)
+			if !ok {
+				return nil
+			}
+			tok = t
+		}
+		rels, err := c.store.IncomingRelationships(nodeID, tok)
+		result = rels
+		return err
+	})
+	return result, err
 }
 
 // Count returns the number of nodes in the store.
@@ -231,7 +315,13 @@ func (n *NodeOps) Count() (int, error) {
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
-	return c.store.NodeCount()
+	var count int
+	err := c.readUnderRLock(func() error {
+		var err error
+		count, err = c.store.NodeCount()
+		return err
+	})
+	return count, err
 }
 
 // Count returns the number of relationships in the store.
@@ -240,7 +330,13 @@ func (r *RelOps) Count() (int, error) {
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
-	return c.store.RelationshipCount()
+	var count int
+	err := c.readUnderRLock(func() error {
+		var err error
+		count, err = c.store.RelationshipCount()
+		return err
+	})
+	return count, err
 }
 
 // All returns all nodes in the store, with optional pagination.
@@ -255,29 +351,38 @@ func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if !hasTemporalFilter(opts) {
-		return c.store.AllNodes(opts)
-	}
-	if opts.Depth != storepkg.DepthAll {
-		return nil, ErrDepthTemporalUnsupported
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
 	}
 	var result []*types.Node
-	err := c.forEachKnownNodeID(func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, opts, nil)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
-			}
+	err := c.readUnderRLock(func() error {
+		if !hasTemporalFilter(opts) {
+			nodes, err := c.store.AllNodes(opts)
+			result = nodes
 			return err
 		}
-		result = append(result, n)
+		err := c.forEachKnownNodeIDByDepth(opts.Depth, func(id types.NodeID) error {
+			n, err := c.findNodeVersionForOpts(id, opts, nil)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, n)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		storeutil.SortNodesByID(result)
+		result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	storeutil.SortNodesByID(result)
-	return storeutil.PaginateNodes(result, opts.After, opts.Limit), nil
+	return result, nil
 }
 
 // All returns all relationships in the store, with optional
@@ -293,47 +398,80 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if !hasTemporalFilter(opts) {
-		return c.store.AllRelationships(opts)
-	}
-	if opts.Depth != storepkg.DepthAll {
-		return nil, ErrDepthTemporalUnsupported
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
 	}
 	var result []*types.Relationship
-	err := c.forEachKnownRelID(func(id types.RelID) error {
-		r, err := c.findRelVersionForOpts(id, opts, nil)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
-			}
+	err := c.readUnderRLock(func() error {
+		if !hasTemporalFilter(opts) {
+			rels, err := c.store.AllRelationships(opts)
+			result = rels
 			return err
 		}
-		result = append(result, r)
+		err := c.forEachKnownRelIDByDepth(opts.Depth, func(id types.RelID) error {
+			r, err := c.findRelVersionForOpts(id, opts, nil)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, r)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		storeutil.SortRelsByID(result)
+		result = storeutil.PaginateRels(result, opts.After, opts.Limit)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	storeutil.SortRelsByID(result)
-	return storeutil.PaginateRels(result, opts.After, opts.Limit), nil
+	return result, nil
 }
 
-// GetByIDs returns nodes matching the given IDs. Missing IDs are skipped.
+// GetByIDs returns nodes for every requested ID sorted by ascending ID.
+// Missing IDs return store.ErrNodeNotFound.
 func (n *NodeOps) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	return c.store.GetNodesByIDs(ids)
+	for _, id := range ids {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		nodes, err := c.store.GetNodesByIDs(ids)
+		result = nodes
+		return err
+	})
+	return result, err
 }
 
-// GetByIDs returns relationships matching the given IDs. Missing IDs are skipped.
+// GetByIDs returns relationships for every requested ID sorted by ascending ID.
+// Missing IDs return store.ErrRelNotFound.
 func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	return c.store.GetRelationshipsByIDs(ids)
+	for _, id := range ids {
+		if err := storepkg.ValidateRelID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		rels, err := c.store.GetRelationshipsByIDs(ids)
+		result = rels
+		return err
+	})
+	return result, err
 }
 
 // --- Per-label / per-type statistics ---
@@ -345,11 +483,20 @@ func (n *NodeOps) CountByLabel(label string) (int, error) {
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return 0, nil
+	if err := c.validateIndexLabel(label); err != nil {
+		return 0, err
 	}
-	return c.store.NodeCountByLabel(tok)
+	var count int
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		var err error
+		count, err = c.store.NodeCountByLabel(tok)
+		return err
+	})
+	return count, err
 }
 
 // CountByType returns the number of relationships with the given type. O(1).
@@ -359,11 +506,20 @@ func (r *RelOps) CountByType(typeName string) (int, error) {
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
-	tok, ok := c.relTypes.Lookup(typeName)
-	if !ok {
-		return 0, nil
+	if err := c.validateIndexName(typeName); err != nil {
+		return 0, err
 	}
-	return c.store.RelCountByType(tok)
+	var count int
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.relTypes.Lookup(typeName)
+		if !ok {
+			return nil
+		}
+		var err error
+		count, err = c.store.RelCountByType(tok)
+		return err
+	})
+	return count, err
 }
 
 // (AllLabelCounts and AllRelTypeCounts moved to StatOps in stats.go.)

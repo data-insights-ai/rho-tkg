@@ -2,6 +2,7 @@
 package hash
 
 import (
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -17,8 +18,27 @@ type API struct{ ops Ops }
 // New constructs a hash sub-API.
 func New(ops Ops) *API { return &API{ops: ops} }
 
+func (a *API) ready() (Ops, error) {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return nil, grapherr.ErrNilGraph
+	}
+	return a.ops, nil
+}
+
 // VerifyNodeChain verifies the hash chain for a node's version history.
-func (a *API) VerifyNodeChain(id types.NodeID) (bool, error) { return a.ops.VerifyNodeChain(id) }
+func (a *API) VerifyNodeChain(id types.NodeID) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.VerifyNodeChain(id)
+}
 
 // VerifyRelChain verifies the hash chain for a relationship's version history.
-func (a *API) VerifyRelChain(id types.RelID) (bool, error) { return a.ops.VerifyRelChain(id) }
+func (a *API) VerifyRelChain(id types.RelID) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.VerifyRelChain(id)
+}

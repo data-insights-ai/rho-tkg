@@ -3,7 +3,6 @@ package badger
 import (
 	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -63,24 +62,6 @@ func (bs *Store) LabelIndexForTest(token uint16) ([]types.NodeID, bool) {
 	return out, true
 }
 
-// HasNodeIDForTest snapshots membership in the in-memory node-ID index.
-// Exported solely so pkg/graph tests can assert on the index without touching
-// the unexported nodeIDs map.
-func (bs *Store) HasNodeIDForTest(id snowflake.ID) bool {
-	bs.idxMu.RLock()
-	defer bs.idxMu.RUnlock()
-	_, ok := bs.nodeIDs[types.NodeID(id)]
-	return ok
-}
-
-// HasRelIDForTest snapshots membership in the in-memory rel-ID index.
-func (bs *Store) HasRelIDForTest(id snowflake.ID) bool {
-	bs.idxMu.RLock()
-	defer bs.idxMu.RUnlock()
-	_, ok := bs.relIDs[types.RelID(id)]
-	return ok
-}
-
 // SyncWritesForTest reports the resolved sync-writes setting (after the
 // ReadOnly disable rule). Tests use this to verify config plumbing.
 func (bs *Store) SyncWritesForTest() bool { return bs.syncWrites }
@@ -107,6 +88,18 @@ func (bs *Store) HasHFIndexForTest(token uint16) bool {
 	defer bs.idxMu.RUnlock()
 	_, ok := bs.hfIndexes[token]
 	return ok
+}
+
+// HFIndexPointQueryForTest returns the high-frequency index candidates for t.
+// Exported solely for store-index assertions; not for production use.
+func (bs *Store) HFIndexPointQueryForTest(token uint16, t types.Instant) []types.NodeID {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	hfi := bs.hfIndexes[token]
+	if hfi == nil {
+		return nil
+	}
+	return hfi.PointQuery(t)
 }
 
 // LockIdxMuRForTest / UnlockIdxMuRForTest expose the in-memory index mutex's

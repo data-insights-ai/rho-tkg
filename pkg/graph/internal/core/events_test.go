@@ -297,7 +297,7 @@ func newTestGraphForEvents(t *testing.T) *Core {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	g.Events.SetSync(eventspkg.NewEventBus())
+	_ = g.Events.SetSync(eventspkg.NewEventBus())
 	t.Cleanup(func() { _ = g.Close() })
 	return g
 }

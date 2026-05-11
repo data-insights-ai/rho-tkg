@@ -49,33 +49,22 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	}
 
 	if len(updates) == 0 {
-		return c.Rels.GetWithContext(ctx, id)
+		if err := storepkg.ValidateRelID(id); err != nil {
+			return nil, err
+		}
+		current, err := c.store.GetRelationship(id)
+		if err == nil {
+			c.opRelReads.Add(1)
+		}
+		return current, err
 	}
 
-	// Extract reserved provenance fields before validation.
-	authorID, sig, authorizedBy, authLevel, updates, err := extractProvenance(updates)
+	prov, updates, err := c.prepareUpdateProperties(updates, "update relationship")
 	if err != nil {
 		return nil, err
 	}
-
-	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update relationship: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
-			}
-			if err := c.validatePropertyEntry(key, val); err != nil {
-				return nil, err
-			}
-		} else {
-			// Even for deletions, check key length.
-			if len(key) > c.validation.MaxPropertyKeyLength {
-				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
-			}
-		}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
@@ -112,6 +101,10 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return nil, err
+	}
 	prevState := current.DeepCopy()
 
 	// Capture current hash for the PrevHash chain.
@@ -141,7 +134,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
-	current.SetVersion(current.Version() + 1)
+	current.SetVersion(nextVersion)
 
 	now := c.now()
 	tm := current.Temporal()
@@ -164,18 +157,21 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	// Set TxFrom on the new version (this is the commit time of the new version).
 	tm.TxFrom = now
 
-	relTypeName := c.Rels.Type(current)
-	hash := integrity.ComputeRelHash(current, relTypeName)
+	relTypeName := c.relTypeUnlocked(current)
+	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: compute relationship hash: %w", err)
+	}
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
 	// These are NOT fed into ComputeRelHash to avoid cascading hash invalidation.
 	relIG := &types.RelIntegrity{
 		Hash:               hash,
 		PrevHash:           prevHash,
-		AuthorID:           authorID,
-		Signature:          sig,
-		AuthorizedBy:       authorizedBy,
-		AuthorizationLevel: authLevel,
+		AuthorID:           prov.authorID,
+		Signature:          prov.signature,
+		AuthorizedBy:       prov.authorizedBy,
+		AuthorizationLevel: prov.authLevel,
 	}
 	// Endpoint hash refresh: only ErrNodeNotFound is silent (the endpoint
 	// was deleted out from under us; FromNodeHash/ToNodeHash stay empty).
@@ -257,26 +253,22 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 
 	if len(updates) == 0 {
-		return c.Rels.GetWithContext(ctx, id)
+		if err := storepkg.ValidateRelID(id); err != nil {
+			return nil, err
+		}
+		current, err := c.store.GetRelationship(id)
+		if err == nil {
+			c.opRelReads.Add(1)
+		}
+		return current, err
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update relationship in place: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
-			}
-			if err := c.validatePropertyEntry(key, val); err != nil {
-				return nil, err
-			}
-		} else {
-			if len(key) > c.validation.MaxPropertyKeyLength {
-				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
-			}
-		}
+	if err := c.validatePropertyUpdates(updates, "update relationship in place"); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
@@ -333,9 +325,12 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 	tm.UpdatedAt = now
 
-	relTypeName := c.Rels.Type(current)
-	hash := integrity.ComputeRelHash(current, relTypeName)
-	current.SetIntegrity(&types.RelIntegrity{Hash: hash, PrevHash: prevHash})
+	relTypeName := c.relTypeUnlocked(current)
+	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: compute relationship hash: %w", err)
+	}
+	current.SetIntegrity(relIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

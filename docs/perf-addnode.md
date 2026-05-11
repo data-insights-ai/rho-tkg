@@ -70,7 +70,7 @@ AddNode (from 62 to 46 on Badger) and improved Badger throughput by 17%.
   provides sub-nanosecond monotonic timestamps with no syscall.
 - **Hash cost is near the SHA-256 floor** — ComputeNodeHash at 128 ns is only
   50 ns above raw `sha256.Sum256` (78 ns). The gap is label sort + buffer setup.
-- **Index maintenance is zero-cost** when no property/temporal/vector indexes
+- **Index maintenance is zero-cost** when no property/temporal/high-frequency/vector indexes
   are configured (all index update functions return immediately).
 - **Label registry fast path** (RLock + map lookup) adds negligible overhead
   after the first call.

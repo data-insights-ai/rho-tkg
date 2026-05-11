@@ -4,12 +4,18 @@
 package memory
 
 import (
+	"fmt"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+func errNilIterationCallback() error {
+	return fmt.Errorf("%w: nil iteration callback", ErrInvalidStoreMutation)
+}
 
 // NodesByLabel returns nodes with the given label token, with optional pagination
 // and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
@@ -18,6 +24,16 @@ import (
 func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 
 	set := ms.labelIdx[token]
 	if len(set) == 0 {
@@ -47,6 +63,37 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			result := make([]*types.Node, 0, len(rawIDs))
 			for _, id := range rawIDs {
 				if n, ok := ms.nodes[types.NodeID(id)]; ok {
+					result = append(result, n.DeepCopy())
+				}
+			}
+			return result, nil
+		}
+	}
+
+	if hfi, ok := ms.hfIndexes[token]; ok {
+		var ids []types.NodeID
+		temporalQuery := false
+		if opts.ValidAt != 0 {
+			ids = hfi.CandidatesUpTo(opts.ValidAt)
+			temporalQuery = true
+		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+			ids = hfi.CandidatesUpTo(opts.ValidEnd)
+			temporalQuery = true
+		}
+		if temporalQuery {
+			if len(ids) == 0 {
+				return nil, nil
+			}
+			ids = uniqueNodeIDs(ids)
+			sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+			ids = ms.filterNodeIDsByTemporal(ids, opts)
+			ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
+			if len(ids) == 0 {
+				return nil, nil
+			}
+			result := make([]*types.Node, 0, len(ids))
+			for _, id := range ids {
+				if n, ok := ms.nodes[id]; ok {
 					result = append(result, n.DeepCopy())
 				}
 			}
@@ -85,6 +132,16 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+
 	set := ms.typeIdx[token]
 	if len(set) == 0 {
 		return nil, nil
@@ -118,6 +175,9 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 func (ms *Store) NodeCount() (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
 	return len(ms.nodes), nil
 }
 
@@ -126,6 +186,9 @@ func (ms *Store) NodeCount() (int, error) {
 func (ms *Store) RelationshipCount() (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
 	return len(ms.rels), nil
 }
 
@@ -134,6 +197,12 @@ func (ms *Store) RelationshipCount() (int, error) {
 func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return 0, err
+	}
 	return len(ms.labelIdx[token]), nil
 }
 
@@ -142,14 +211,28 @@ func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
 func (ms *Store) RelCountByType(token uint16) (int, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return 0, err
+	}
 	return len(ms.typeIdx[token]), nil
 }
 
-// AllNodeIDs returns the IDs of all current nodes, with optional pagination.
-// Returns only IDs — no entity deserialization or deep copy.
+// AllNodeIDs returns the IDs of all current nodes, with optional temporal
+// filtering and pagination. Non-temporal calls return only IDs without entity
+// deserialization; temporal calls inspect current entity metadata.
 func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 
 	if len(ms.nodes) == 0 {
 		return nil, nil
@@ -159,6 +242,7 @@ func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = ms.filterNodeIDsByTemporal(ids, opts)
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -166,11 +250,19 @@ func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	return ids, nil
 }
 
-// AllRelIDs returns the IDs of all current relationships, with optional pagination.
-// Returns only IDs — no entity deserialization or deep copy.
+// AllRelIDs returns the IDs of all current relationships, with optional
+// temporal filtering and pagination. Non-temporal calls return only IDs without
+// entity deserialization; temporal calls inspect current entity metadata.
 func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 
 	if len(ms.rels) == 0 {
 		return nil, nil
@@ -180,6 +272,7 @@ func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = ms.filterRelIDsByTemporal(ids, opts)
 	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -191,8 +284,20 @@ func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.NodeID, 0, len(ms.nodes))
 	for id := range ms.nodes {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
@@ -204,8 +309,20 @@ func (ms *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.RelID, 0, len(ms.rels))
 	for id := range ms.rels {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
@@ -217,8 +334,20 @@ func (ms *Store) ForEachRelID(fn func(types.RelID) bool) error {
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.NodeID, 0, len(ms.nodeHistory))
 	for id := range ms.nodeHistory {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
@@ -230,8 +359,20 @@ func (ms *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.RelID, 0, len(ms.relHistory))
 	for id := range ms.relHistory {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
@@ -252,10 +393,17 @@ func (ms *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 }
 
 // AllNodeHistoryIDsFrom returns the IDs of nodes with version history, sorted
-// ascending, starting strictly after `after`. limit ≤ 0 returns all remaining.
+// ascending, starting strictly after `after`. limit 0 returns all remaining.
 func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidatePagination(types.EntityID(after), limit); err != nil {
+		return nil, err
+	}
 
 	if len(ms.nodeHistory) == 0 {
 		return nil, nil
@@ -273,10 +421,17 @@ func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 }
 
 // AllRelHistoryIDsFrom returns the IDs of relationships with version history,
-// sorted ascending, starting strictly after `after`. limit ≤ 0 returns all remaining.
+// sorted ascending, starting strictly after `after`. limit 0 returns all remaining.
 func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidatePagination(types.EntityID(after), limit); err != nil {
+		return nil, err
+	}
 
 	if len(ms.relHistory) == 0 {
 		return nil, nil
@@ -300,6 +455,13 @@ func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 func (ms *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 
 	if len(ms.nodes) == 0 {
 		return nil, nil
@@ -334,6 +496,13 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+
 	if len(ms.rels) == 0 {
 		return nil, nil
 	}
@@ -361,21 +530,31 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	return result, nil
 }
 
-// GetNodesByIDs returns nodes matching the given IDs.
-// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+// GetNodesByIDs returns nodes for every requested ID.
+// Missing IDs return ErrNodeNotFound. Results are sorted by snowflake.ID.
 func (ms *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	for _, id := range ids {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
-		if n, ok := ms.nodes[id]; ok {
-			result = append(result, n.DeepCopy())
+		n, ok := ms.nodes[id]
+		if !ok {
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
 		}
+		result = append(result, n.DeepCopy())
 	}
 	if len(result) == 0 {
 		return nil, nil
@@ -384,21 +563,31 @@ func (ms *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return result, nil
 }
 
-// GetRelationshipsByIDs returns relationships matching the given IDs.
-// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+// GetRelationshipsByIDs returns relationships for every requested ID.
+// Missing IDs return ErrRelNotFound. Results are sorted by snowflake.ID.
 func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	for _, id := range ids {
+		if err := storecontract.ValidateRelID(id); err != nil {
+			return nil, err
+		}
+	}
+
 	result := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
-		if r, ok := ms.rels[id]; ok {
-			result = append(result, r.DeepCopy())
+		r, ok := ms.rels[id]
+		if !ok {
+			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
 		}
+		result = append(result, r.DeepCopy())
 	}
 	if len(result) == 0 {
 		return nil, nil

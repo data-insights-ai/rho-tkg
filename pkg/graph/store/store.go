@@ -17,10 +17,10 @@ import (
 // sites type-assert on the specific capability.
 //
 // See capabilities.go for the per-cluster boundaries and which clusters
-// are mandatory vs. optional. The PropertyIndex / TemporalIndex /
-// VectorIndex / HighFrequencyIndex capabilities are declared optional
-// going forward — backends MAY omit them; consumers MUST type-assert
-// before calling.
+// are mandatory vs. optional. PropertyIndex / TemporalIndex / VectorIndex /
+// HighFrequencyIndex are embedded here for the current full Store contract;
+// newer optional helper capabilities such as FilteredVectorSearchCapability
+// and DepthHistoryIterationCapability are type-asserted directly by callers.
 type Store interface {
 	Lifecycle
 	NodeCRUDCapability
@@ -44,6 +44,8 @@ type Store interface {
 // RelTombstone packages a relationship's tombstone data for use in atomic delete-with-history.
 // PrevVersion is the history slot to write the tombstone to (matches r.Version() before deletion).
 // Tombstone is a pre-built deep copy with DeletedAt, ValidTo, TxFrom, TxTo populated by the caller.
+// DeleteNodeWithHistory requires one RelTombstone per live connected relationship,
+// with no duplicates and no relationships unrelated to the deleted node.
 type RelTombstone struct {
 	ID          types.RelID
 	PrevVersion uint32

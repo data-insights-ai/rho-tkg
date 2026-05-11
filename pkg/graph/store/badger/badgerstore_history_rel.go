@@ -8,25 +8,35 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Relationship-history methods (R5-F9 split out from badgerstore_history.go).
 
 func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(current); err != nil {
+		return err
+	}
 	rid := current.InternalID()
 	id := rid.SnowflakeID()
+	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, prevState); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+
+	old, prefetchErr := bs.prefetchRel(rid)
 
 	// Serialize current state.
-	w := storepkg.RelToWire(current)
-	data, err := msgpack.Marshal(w)
+	data, err := marshalRelToBytes(current)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
 
 	// Serialize history snapshot.
-	hw := storepkg.RelToWire(prevState)
-	histData, err := msgpack.Marshal(hw)
+	histData, err := marshalRelToBytes(prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -36,6 +46,18 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	if _, exists := bs.relIDs[rid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
+	}
+	if prefetchErr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read relationship before replace history: %w", prefetchErr)
+	}
+	if err := storecontract.ValidateRelationshipReplacement(old, current); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := storecontract.ValidateRelationshipReplacement(old, prevState); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 
 	bs.relCache.Put(id, current.DeepCopy())
@@ -55,10 +77,15 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 }
 
 func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, tombstone); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	id := rid.SnowflakeID()
 	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
-	w := storepkg.RelToWire(tombstone)
-	tombData, err := msgpack.Marshal(w)
+	tombData, err := marshalRelToBytes(tombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 	}
@@ -67,6 +94,10 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	bs.idxMu.Lock()
 	r, err := bs.getRelLocked(rid)
 	if err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	if err := storecontract.ValidateRelationshipReplacement(r, tombstone); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -87,13 +118,18 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 }
 
 func marshalRelToBytes(r *types.Relationship) ([]byte, error) {
-	return msgpack.Marshal(storepkg.RelToWire(r))
+	return storepkg.MarshalRelWire(r)
 }
 
 func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, r); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	id := rid.SnowflakeID()
-	w := storepkg.RelToWire(r)
-	data, err := msgpack.Marshal(w)
+	data, err := marshalRelToBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -106,6 +142,12 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 }
 
 func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
 	id := rid.SnowflakeID()
 	key := storepkg.HistRelKey(id, uint64(version))
 
@@ -122,7 +164,10 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r := storepkg.WireToRel(w)
+		r, err := decodeRelWireForKey(w, id)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode rel version: %w", err)
+		}
 		return r.DeepCopy(), nil
 	}
 
@@ -141,7 +186,11 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal rel version: %w", err)
 			}
-			r = storepkg.WireToRel(w)
+			decoded, err := decodeRelWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode rel version: %w", err)
+			}
+			r = decoded
 			return nil
 		})
 	})
@@ -152,12 +201,19 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 }
 
 func (bs *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	return bs.getRelHistoryByPrefix(prefix)
 }
 
 func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
+	expectedID := storepkg.ParseIDFromKey(prefix, 1)
 	prefixStr := string(prefix)
 
 	entries := make(map[string][]byte)
@@ -169,7 +225,11 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
-			k := string(item.KeyCopy(nil))
+			key := item.KeyCopy(nil)
+			if len(key) != storepkg.SizeHistKey {
+				continue
+			}
+			k := string(key)
 			err := item.Value(func(val []byte) error {
 				cp := make([]byte, len(val))
 				copy(cp, val)
@@ -188,7 +248,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 
 	bs.wbMu.Lock()
 	for k, op := range bs.pending {
-		if len(k) >= len(prefixStr) && k[:len(prefixStr)] == prefixStr {
+		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
 			if op.opType == writeOpDelete {
 				delete(entries, k)
 			} else {
@@ -216,60 +276,63 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r := storepkg.WireToRel(w)
+		r, err := decodeRelWireForKey(w, expectedID)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode rel version: %w", err)
+		}
 		result = append(result, r.DeepCopy())
 	}
 	return result, nil
 }
 
 func (bs *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
 }
 
 func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
-	seen := make(map[snowflake.ID]struct{})
-
-	// Phase 1: pending buffer.
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistRel {
-			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			seen[id] = struct{}{}
-		}
+	if err := bs.checkOpen(); err != nil {
+		return err
 	}
-	bs.wbMu.Unlock()
-
-	// Emit pending IDs.
-	for id := range seen {
-		if !fn(types.RelID(id)) {
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	maxID, err := bs.maxHistoryID(storepkg.KeyHistRel)
+	if err != nil {
+		return fmt.Errorf("graph: scan rel history max ID: %w", err)
+	}
+	if maxID == 0 {
+		return nil
+	}
+	var after types.RelID
+	for {
+		ids, err := bs.AllRelHistoryIDsFrom(after, 1024)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		for _, id := range ids {
+			if id.SnowflakeID() > maxID {
+				return nil
+			}
+			if !fn(id) {
+				return nil
+			}
+		}
+		after = ids[len(ids)-1]
+		if after.SnowflakeID() >= maxID {
 			return nil
 		}
 	}
-
-	// Phase 2: Badger prefix scan.
-	return bs.db.View(func(txn *badgerv4.Txn) error {
-		opts := badgerv4.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		pfx := []byte{storepkg.KeyHistRel}
-		for it.Seek(pfx); it.ValidForPrefix(pfx); it.Next() {
-			key := it.Item().Key()
-			if len(key) >= storepkg.SizeHistKey {
-				id := storepkg.ParseIDFromKey(key, 1)
-				if _, ok := seen[id]; ok {
-					continue // already emitted
-				}
-				seen[id] = struct{}{}
-				if !fn(types.RelID(id)) {
-					return nil
-				}
-			}
-		}
-		return nil
-	})
 }
 
 func (bs *Store) AllRelHistoryIDs() ([]types.RelID, error) {
@@ -277,19 +340,15 @@ func (bs *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 }
 
 func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidatePagination(types.EntityID(after), limit); err != nil {
+		return nil, err
+	}
 	afterRaw := snowflake.ID(after)
 
-	pending := make(map[snowflake.ID]struct{})
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
-		if op.opType == writeOpSet && len(k) >= storepkg.SizeHistKey && k[0] == storepkg.KeyHistRel {
-			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			if id > afterRaw {
-				pending[id] = struct{}{}
-			}
-		}
-	}
-	bs.wbMu.Unlock()
+	pending, pendingDeletes := bs.pendingHistoryIDOverlay(storepkg.KeyHistRel, afterRaw)
 
 	pendingSorted := make([]snowflake.ID, 0, len(pending))
 	for id := range pending {
@@ -299,7 +358,9 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 
 	seekKey := historyIDSeekKey(storepkg.KeyHistRel, afterRaw)
 	if seekKey == nil {
-		return paginateRawRelIDs(pendingSorted, limit), nil
+		// after+1 overflow: after is already the max snowflake ID. The pending
+		// set is filtered to id > afterRaw, so nothing can remain.
+		return nil, nil
 	}
 	prefix := []byte{storepkg.KeyHistRel}
 
@@ -318,7 +379,10 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 
 		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < storepkg.SizeHistKey {
+			if len(key) != storepkg.SizeHistKey {
+				continue
+			}
+			if _, deleted := pendingDeletes[string(key)]; deleted {
 				continue
 			}
 			id := storepkg.ParseIDFromKey(key, 1)
@@ -376,18 +440,4 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 		return nil, nil
 	}
 	return out, nil
-}
-
-func paginateRawRelIDs(ids []snowflake.ID, limit int) []types.RelID {
-	if len(ids) == 0 {
-		return nil
-	}
-	if limit > 0 && limit < len(ids) {
-		ids = ids[:limit]
-	}
-	out := make([]types.RelID, len(ids))
-	for i, id := range ids {
-		out[i] = types.RelID(id)
-	}
-	return out
 }

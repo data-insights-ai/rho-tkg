@@ -1,88 +1,130 @@
 package core
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
 // --- Property indexes ---
 
 // CreateProperty creates a property index on the given label and property key.
-// Resolves the label name to a token. Returns storepkg.ErrIndexExists if the index already exists.
-// Returns nil if the label has never been registered (nothing to index).
+// Resolves or creates the label token. Returns storepkg.ErrIndexExists if the index already exists.
 func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.propertyIndexCap()
-	if err != nil {
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		cap, err := c.propertyIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return err
+		}
+		labelFinished := false
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during property index create"))
+			}
+		}()
+		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreatePropertyIndex(tok, propertyKey))
+		labelFinished = true
 		return err
-	}
-	return cap.CreatePropertyIndex(tok, propertyKey)
+	})
 }
 
 // DropProperty removes a property index.
 // Resolves the label name to a token. Returns storepkg.ErrIndexNotFound if the index does not exist.
-// Returns nil if the label has never been registered.
 func (i *IndexOps) DropProperty(label, propertyKey string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.propertyIndexCap()
-	if err != nil {
-		return err
-	}
-	return cap.DropPropertyIndex(tok, propertyKey)
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return storepkg.ErrIndexNotFound
+		}
+		cap, err := c.propertyIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropPropertyIndex(tok, propertyKey)
+	})
 }
 
 // CreateTemporal creates a temporal index on nodes with the given label.
 // Accelerates temporal queries (ValidAt/interval filter) for that label.
 // Returns storepkg.ErrTemporalIndexExists if the index already exists.
-// Returns nil if the label has never been registered.
+// Resolves or creates the label token so the index applies to future matching nodes.
 func (i *IndexOps) CreateTemporal(label string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.temporalIndexCap()
-	if err != nil {
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		cap, err := c.temporalIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return err
+		}
+		labelFinished := false
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during temporal index create"))
+			}
+		}()
+		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateTemporalIndex(tok))
+		labelFinished = true
 		return err
-	}
-	return cap.CreateTemporalIndex(tok)
+	})
 }
 
 // DropTemporal removes a temporal index for the given label.
 // Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
-// Returns nil if the label has never been registered.
 func (i *IndexOps) DropTemporal(label string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.temporalIndexCap()
-	if err != nil {
-		return err
-	}
-	return cap.DropTemporalIndex(tok)
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return storepkg.ErrTemporalIndexNotFound
+		}
+		cap, err := c.temporalIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropTemporalIndex(tok)
+	})
 }
 
 // --- High-frequency indexes ---
@@ -92,81 +134,153 @@ func (i *IndexOps) DropTemporal(label string) error {
 // width of each bucket (e.g., time.Hour).
 // Designed for high-write-rate scenarios (thousands of event writes/sec).
 // Only one temporal index type (temporal or high-frequency) can exist per label.
-// Returns nil if the label has never been registered.
+// Resolves or creates the label token so the index applies to future matching nodes.
+// Returns storepkg.ErrInvalidTemporalIndexConfig if bucketSize is not a
+// positive whole millisecond.
 // Returns storepkg.ErrTemporalIndexExists if any temporal index already exists for this label.
-// Not persisted: the index must be rebuilt via CreateHighFrequency after restart.
+// In-memory indexes are rebuilt from current store state when this method runs.
 func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.highFrequencyIndexCap()
-	if err != nil {
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := storepkg.ValidateHighFrequencyBucketSize(bucketSize); err != nil {
+			return err
+		}
+		cap, err := c.highFrequencyIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return err
+		}
+		labelFinished := false
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during high-frequency index create"))
+			}
+		}()
+		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateHighFrequencyIndex(tok, bucketSize))
+		labelFinished = true
 		return err
-	}
-	return cap.CreateHighFrequencyIndex(tok, bucketSize)
+	})
 }
 
 // DropHighFrequency removes the high-frequency temporal index for the given label.
-// Returns nil if the label has never been registered.
 // Returns storepkg.ErrTemporalIndexNotFound if no high-frequency index exists.
 func (i *IndexOps) DropHighFrequency(label string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.highFrequencyIndexCap()
-	if err != nil {
-		return err
-	}
-	return cap.DropHighFrequencyIndex(tok)
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return storepkg.ErrTemporalIndexNotFound
+		}
+		cap, err := c.highFrequencyIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropHighFrequencyIndex(tok)
+	})
 }
 
 // --- Vector indexes ---
 
 // CreateVector creates a vector similarity index on the given label and property key.
 // dims is the expected vector dimension. metric selects the distance function.
-// Returns nil if the label has never been registered (no-op).
+// Resolves or creates the label token so the index applies to future matching nodes.
 // Returns ErrVectorIndexExists if the index already exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
-	}
-	cap, err := c.vectorIndexCap()
-	if err != nil {
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
+			return err
+		}
+		cap, err := c.vectorIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return err
+		}
+		labelFinished := false
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during vector index create"))
+			}
+		}()
+		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateVectorIndex(tok, propertyKey, dims, metric))
+		labelFinished = true
 		return err
-	}
-	return cap.CreateVectorIndex(tok, propertyKey, dims, metric)
+	})
 }
 
 // DropVector removes a vector index.
-// Returns nil if the label has never been registered.
 // Returns ErrVectorIndexNotFound if the index does not exist.
 func (i *IndexOps) DropVector(label, propertyKey string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return storepkg.ErrVectorIndexNotFound
+		}
+		cap, err := c.vectorIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropVectorIndex(tok, propertyKey)
+	})
+}
+
+func (c *Core) validateIndexLabel(label string) error {
+	return c.validateIndexName(label)
+}
+
+func (c *Core) validateIndexName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return ErrEmptyName
 	}
-	cap, err := c.vectorIndexCap()
-	if err != nil {
+	if err := c.validateName(name); err != nil {
 		return err
 	}
-	return cap.DropVectorIndex(tok, propertyKey)
+	return nil
+}
+
+func (c *Core) validateIndexPropertyKey(propertyKey string) error {
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return err
+	}
+	if len(propertyKey) > c.validation.MaxPropertyKeyLength {
+		return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, propertyKey, len(propertyKey), c.validation.MaxPropertyKeyLength)
+	}
+	return nil
 }

@@ -8,6 +8,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -45,6 +46,32 @@ func (s *noFilterPushDownStore) SearchNearestNodes(tok uint16, key string, query
 // NOT FilteredVectorSearchCapability — the whole point of the wrapper.
 var _ storepkg.VectorIndexCapability = (*noFilterPushDownStore)(nil)
 
+type filteredHistoryFaultStore struct {
+	*memory.Store
+	failID types.NodeID
+	err    error
+}
+
+func (s *filteredHistoryFaultStore) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	if id == s.failID {
+		return nil, s.err
+	}
+	return s.Store.GetNodeHistory(id)
+}
+
+type mandatoryHistoryFaultStore struct {
+	storepkg.MandatoryStore
+	failID types.NodeID
+	err    error
+}
+
+func (s *mandatoryHistoryFaultStore) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	if id == s.failID {
+		return nil, s.err
+	}
+	return s.MandatoryStore.GetNodeHistory(id)
+}
+
 // Negative compile-time check: a runtime assertion that the wrapper
 // does NOT satisfy FilteredVectorSearchCapability. If the wrapper is
 // later refactored to inherit the method via embedding, the iterative
@@ -60,6 +87,66 @@ func TestVectorOverfetch_WrapperDoesNotSatisfyFilteredCapability(t *testing.T) {
 	}
 	if _, ok := any(w).(storepkg.FilteredVectorSearchCapability); ok {
 		t.Fatal("noFilterPushDownStore unexpectedly satisfies FilteredVectorSearchCapability — over-fetch path is not exercised")
+	}
+}
+
+func TestSearchNearest_TemporalFilteredPath_PropagatesCandidateResolutionError(t *testing.T) {
+	t.Parallel()
+
+	errBoom := errors.New("history read failed")
+	ms := memory.New()
+	store := &filteredHistoryFaultStore{Store: ms, err: errBoom}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	node, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	store.failID = node.ID()
+	if err := g.Index.CreateVector("Doc", "embedding", 2, storepkg.DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+
+	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("SearchNearest filtered path error = %v, want %v", err, errBoom)
+	}
+}
+
+func TestSearchNearest_TemporalOverfetchPath_PropagatesCandidateResolutionError(t *testing.T) {
+	t.Parallel()
+
+	errBoom := errors.New("history read failed")
+	ms := memory.New()
+	fault := &mandatoryHistoryFaultStore{MandatoryStore: ms, err: errBoom}
+	wrapped := &noFilterPushDownStore{
+		MandatoryStore: fault,
+		createVec:      ms.CreateVectorIndex,
+		dropVec:        ms.DropVectorIndex,
+		searchVec:      ms.SearchNearestNodes,
+	}
+	g, err := New(Config{Store: wrapped})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	node, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	fault.failID = node.ID()
+	if err := g.Index.CreateVector("Doc", "embedding", 2, storepkg.DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+
+	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("SearchNearest overfetch path error = %v, want %v", err, errBoom)
 	}
 }
 

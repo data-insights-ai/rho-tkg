@@ -12,6 +12,9 @@ import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 func (ms *Store) GetNodeHistoryEntry(id types.NodeID, version uint32) *types.Node {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil
+	}
 	hist, ok := ms.nodeHistory[id]
 	if !ok {
 		return nil
@@ -31,6 +34,9 @@ func (ms *Store) GetNodeHistoryEntry(id types.NodeID, version uint32) *types.Nod
 func (ms *Store) SetNodeHistoryEntryForTest(id types.NodeID, version uint32, n *types.Node) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return
+	}
 	hist, ok := ms.nodeHistory[id]
 	if !ok {
 		return
@@ -48,8 +54,26 @@ func (ms *Store) SetNodeHistoryEntryForTest(id types.NodeID, version uint32, n *
 func (ms *Store) SetNodeForTest(id types.NodeID, n *types.Node) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return
+	}
 	if _, exists := ms.nodes[id]; !exists {
 		return
 	}
 	ms.nodes[id] = n.DeepCopy()
+}
+
+// HFIndexPointQueryForTest returns the high-frequency index candidates for t.
+// Exported solely for store-index assertions; not for production use.
+func (ms *Store) HFIndexPointQueryForTest(token uint16, t types.Instant) []types.NodeID {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil
+	}
+	hfi := ms.hfIndexes[token]
+	if hfi == nil {
+		return nil
+	}
+	return hfi.PointQuery(t)
 }

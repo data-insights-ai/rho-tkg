@@ -20,15 +20,16 @@ import (
 // sites to depend on the narrowest capability without touching the
 // implementations.
 //
-// Optional capabilities (PropertyIndexCapability, TemporalIndexCapability,
-// VectorIndexCapability, HighFrequencyIndexCapability) can be removed from a
-// backend's Store implementation in a future major version; consumers that
-// rely on them will then need to type-assert and surface a documented
-// "unsupported" sentinel when the capability is missing.
+// Optional capabilities (DepthHistoryIterationCapability,
+// PropertyIndexCapability, TemporalIndexCapability, VectorIndexCapability,
+// HighFrequencyIndexCapability) can be removed from a backend's Store
+// implementation in a future major version; consumers that rely on them
+// type-assert before calling.
 
 // Lifecycle is the always-mandatory housekeeping subset every backend must
 // implement. Close releases resources; Clear truncates without removing
-// registries (a graph-layer concern).
+// registries (a graph-layer concern). Nil concrete store receivers return
+// ErrNilStore from lifecycle methods rather than panicking.
 type Lifecycle interface {
 	// Clear removes all entities, indexes, history, and counters.
 	// Registries (label/reltype tokens) are a graph-layer concern and
@@ -40,11 +41,14 @@ type Lifecycle interface {
 
 // NodeCRUDCapability is the node-mutation surface. Every backend must
 // implement it — node CRUD plus the label-mutation helpers required by the
-// graph's history-aware label flows.
+// graph's history-aware label flows. Label-mutation helpers validate that the
+// supplied current row adds or removes exactly the requested token.
 type NodeCRUDCapability interface {
 	PutNode(n *types.Node) error
 	GetNode(id types.NodeID) (*types.Node, error)
 	ReplaceNode(n *types.Node) error
+	// DeleteNode removes only an unconnected node row. Backends return
+	// ErrInvalidStoreMutation instead of orphaning connected relationships.
 	DeleteNode(id types.NodeID) error
 
 	// DeleteNodeCascade removes the node and every relationship it
@@ -66,7 +70,9 @@ type RelationshipCRUDCapability interface {
 
 // AdjacencyCapability is the outgoing/incoming relationship lookup surface
 // plus the batch ForNodes variants. Mandatory because it is on the hot path
-// of every traversal-shaped query.
+// of every traversal-shaped query. Explicit node IDs are all-or-error:
+// existing nodes with zero matching relationships return an empty result, but
+// any missing requested node returns ErrNodeNotFound.
 type AdjacencyCapability interface {
 	OutgoingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
 	IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]*types.Relationship, error)
@@ -90,7 +96,10 @@ type BulkReadCapability interface {
 
 // BatchCapability is the batched-mutation surface used by BatchBuilder and
 // the import path. All-or-nothing: empty/nil input returns nil with zero
-// mutations.
+// mutations. Delete batches treat duplicate IDs as one requested deletion
+// before validation and counter/index updates. DeleteNodesBatch removes only
+// unconnected node rows; connected batch deletes must use graph-level cascade
+// or history-aware delete flows.
 type BatchCapability interface {
 	PutNodesBatch(nodes []*types.Node) error
 	PutRelationshipsBatch(rels []*types.Relationship) error
@@ -102,7 +111,8 @@ type BatchCapability interface {
 // implement it because the graph layer applies pre-mutation snapshots on
 // every Update*. The atomic ReplaceWith*History and Delete*WithHistory
 // methods exist so backends can avoid the "history written, then crash, then
-// data write fails" orphan window.
+// data write fails" orphan window. DeleteNodeWithHistory relTombstones must
+// cover every live connected relationship exactly once.
 type HistoryCapability interface {
 	ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error
 	ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error
@@ -138,7 +148,12 @@ type StatsCapability interface {
 // IterationCapability is the iteration surface (ForEach + paginated AllIDs).
 // Distinct from BulkReadCapability because iteration returns IDs only — no
 // entity deserialisation, no deep copy. The graph layer uses iteration in
-// snapshot/diff and on the export path.
+// snapshot/diff and on the export path. Nil ForEach callbacks return
+// ErrInvalidStoreMutation. Non-nil callbacks are invoked outside backend locks,
+// Badger transactions, and Tiered shard checkouts so callback code may call
+// back into Store methods. History iterators must not let callback-created
+// higher IDs extend the active iteration, and async-buffered stores must make
+// pending history deletes visible to ID scans before flush.
 type IterationCapability interface {
 	AllNodeIDs(opts QueryOpts) ([]types.NodeID, error)
 	AllRelIDs(opts QueryOpts) ([]types.RelID, error)
@@ -153,6 +168,16 @@ type IterationCapability interface {
 	ForEachRelID(fn func(types.RelID) bool) error
 	ForEachNodeHistoryID(fn func(types.NodeID) bool) error
 	ForEachRelHistoryID(fn func(types.RelID) bool) error
+}
+
+// DepthHistoryIterationCapability is OPTIONAL. Tiered backends implement it
+// so graph-layer history-aware queries can combine temporal filters with
+// shard-depth filtering without scanning history from tiers the caller
+// excluded. Single-shard backends may omit it because every valid depth
+// selector maps to the same shard. Nil callbacks return ErrInvalidStoreMutation.
+type DepthHistoryIterationCapability interface {
+	ForEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error
+	ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error
 }
 
 // PropertyIndexCapability is OPTIONAL. Backends that do not implement
@@ -208,7 +233,9 @@ type FilteredVectorSearchCapability interface {
 
 // HighFrequencyIndexCapability is OPTIONAL — see the note on
 // PropertyIndexCapability. Implementations that have no need for the
-// time-bucketed amortised insertion path may omit it.
+// time-bucketed amortised insertion path may omit it. Implementations must
+// reject bucket sizes that are not positive whole milliseconds with
+// ErrInvalidTemporalIndexConfig.
 type HighFrequencyIndexCapability interface {
 	CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error
 	DropHighFrequencyIndex(labelToken uint16) error

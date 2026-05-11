@@ -60,6 +60,63 @@ func TestRelTypeRegistryTokenZeroReserved(t *testing.T) {
 	}
 }
 
+func TestRelTypeRegistryZeroValueBehavesLikeEmptyRegistry(t *testing.T) {
+	t.Parallel()
+
+	var reg RelTypeRegistry
+	if got := reg.Len(); got != 0 {
+		t.Fatalf("zero-value Len = %d, want 0", got)
+	}
+	if names := reg.ExportNames(); len(names) != 1 || names[0] != "" {
+		t.Fatalf("zero-value ExportNames = %v, want reserved token entry only", names)
+	}
+	if got := reg.Resolve(0); got != "" {
+		t.Fatalf("zero-value Resolve(0) = %q, want empty string", got)
+	}
+	if tok, ok := reg.Lookup("KNOWS"); ok || tok != 0 {
+		t.Fatalf("zero-value Lookup before allocation = (%d, %v), want (0, false)", tok, ok)
+	}
+
+	tok, err := reg.GetOrCreate("KNOWS")
+	if err != nil {
+		t.Fatalf("zero-value GetOrCreate: %v", err)
+	}
+	if tok != 1 {
+		t.Fatalf("zero-value first token = %d, want 1", tok)
+	}
+	if got := reg.Resolve(tok); got != "KNOWS" {
+		t.Fatalf("zero-value Resolve(%d) = %q, want KNOWS", tok, got)
+	}
+	if names := reg.ResolveAll([]uint16{0, tok, 99}); len(names) != 3 || names[0] != "" || names[1] != "KNOWS" || names[2] != "" {
+		t.Fatalf("zero-value ResolveAll = %v, want [ KNOWS ] with out-of-range empty", names)
+	}
+	if got := reg.Len(); got != 1 {
+		t.Fatalf("zero-value Len after allocation = %d, want 1", got)
+	}
+}
+
+func TestRelTypeRegistryZeroValueImportNames(t *testing.T) {
+	t.Parallel()
+
+	var reg RelTypeRegistry
+	if err := reg.ImportNames([]string{"", "KNOWS", "ACTED_IN"}); err != nil {
+		t.Fatalf("zero-value ImportNames: %v", err)
+	}
+	if got := reg.Len(); got != 2 {
+		t.Fatalf("Len after zero-value import = %d, want 2", got)
+	}
+	if got := reg.Resolve(2); got != "ACTED_IN" {
+		t.Fatalf("Resolve(2) after zero-value import = %q, want ACTED_IN", got)
+	}
+	tok, err := reg.GetOrCreate("DIRECTED")
+	if err != nil {
+		t.Fatalf("GetOrCreate after zero-value import: %v", err)
+	}
+	if tok != 3 {
+		t.Fatalf("token after zero-value import = %d, want 3", tok)
+	}
+}
+
 func TestRelTypeRegistryCapacityError(t *testing.T) {
 	t.Parallel()
 
@@ -124,6 +181,57 @@ func TestRelTypeRegistryResolveAll(t *testing.T) {
 	}
 	if names[0] != "KNOWS" || names[1] != "ACTED_IN" {
 		t.Errorf("ResolveAll = %v, want [KNOWS ACTED_IN]", names)
+	}
+}
+
+func TestRelTypeRegistryRollbackNames(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRelTypeRegistry()
+	if _, err := reg.GetOrCreate("KNOWS"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := reg.ExportNames()
+	if _, err := reg.GetOrCreate("TRANSIENT"); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := reg.RollbackNames(snapshot, "TRANSIENT")
+	if err != nil {
+		t.Fatalf("RollbackNames: %v", err)
+	}
+	if !ok {
+		t.Fatal("RollbackNames returned false for exact suffix")
+	}
+	if _, exists := reg.Lookup("TRANSIENT"); exists {
+		t.Fatal("TRANSIENT still exists after rollback")
+	}
+	if tok, exists := reg.Lookup("KNOWS"); !exists || tok != 1 {
+		t.Fatalf("KNOWS lookup after rollback = (%d, %v), want (1, true)", tok, exists)
+	}
+}
+
+func TestRelTypeRegistryRollbackNamesRefusesChangedRegistry(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRelTypeRegistry()
+	if _, err := reg.GetOrCreate("KNOWS"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := reg.ExportNames()
+	if _, err := reg.GetOrCreate("OTHER"); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := reg.RollbackNames(snapshot, "TRANSIENT")
+	if err != nil {
+		t.Fatalf("RollbackNames: %v", err)
+	}
+	if ok {
+		t.Fatal("RollbackNames returned true for mismatched suffix")
+	}
+	if _, exists := reg.Lookup("OTHER"); !exists {
+		t.Fatal("OTHER was removed despite mismatched rollback suffix")
 	}
 }
 

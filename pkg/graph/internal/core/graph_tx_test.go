@@ -69,4 +69,66 @@ func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderRejectsNestedPropertyStringValueTooLarge(t *testing.T) {
+	t.Parallel()
+
+	oversized := map[string]any{"nested": []any{"toolong"}}
+	tests := []struct {
+		name string
+		run  func(*Core) error
+	}{
+		{
+			name: "add node",
+			run: func(g *Core) error {
+				batch, _ := NewBatchBuilder(g)
+				_, err := batch.AddNode([]string{"X"}, map[string]any{"k": oversized})
+				return err
+			},
+		},
+		{
+			name: "add relationship",
+			run: func(g *Core) error {
+				batch, _ := NewBatchBuilder(g)
+				a, _ := batch.AddNode([]string{"X"}, nil)
+				b, _ := batch.AddNode([]string{"X"}, nil)
+				_, err := batch.AddRelationship("REL", a, b, map[string]any{"k": oversized})
+				return err
+			},
+		},
+		{
+			name: "update node",
+			run: func(g *Core) error {
+				n, _ := g.Nodes.Add([]string{"X"}, nil)
+				batch, _ := NewBatchBuilder(g)
+				return batch.UpdateNode(n.ID(), map[string]any{"k": oversized})
+			},
+		},
+		{
+			name: "update relationship",
+			run: func(g *Core) error {
+				a, _ := g.Nodes.Add([]string{"X"}, nil)
+				b, _ := g.Nodes.Add([]string{"X"}, nil)
+				r, _ := g.Rels.Add("REL", a, b, nil)
+				batch, _ := NewBatchBuilder(g)
+				return batch.UpdateRelationship(r.ID(), map[string]any{"k": oversized})
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+			err := tc.run(g)
+			if err == nil {
+				t.Fatal("expected error for nested string value too large")
+			}
+			if !errors.Is(err, ErrValueTooLarge) {
+				t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+			}
+		})
+	}
+}
+
 // --- MemoryStore NodeCountByLabel / RelCountByType ---

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -21,7 +22,19 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	rel, err := c.store.GetRelationship(id)
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	var (
+		rel *types.Relationship
+		err error
+	)
+	_, closeErr := c.runUnderRLock(func() {
+		rel, err = c.store.GetRelationship(id)
+	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		c.opRelReads.Add(1)
 	}
@@ -52,6 +65,9 @@ func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {
 	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
 

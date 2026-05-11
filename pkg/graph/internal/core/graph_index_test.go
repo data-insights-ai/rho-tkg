@@ -3,10 +3,12 @@ package core
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestMemStoreCreatePropertyIndex(t *testing.T) {
@@ -103,18 +105,116 @@ func TestGraphCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Resolve.GetOrCreateLabel("Person")
 
 	err := g.Index.CreateProperty("Person", "name")
 	if err != nil {
 		t.Fatalf("CreatePropertyIndex failed: %v", err)
 	}
 
-	// Unregistered label → no-op (no error).
-	err = g.Index.CreateProperty("Unknown", "name")
-	if err != nil {
-		t.Fatalf("unregistered label should return nil, got %v", err)
+	if _, ok := g.labels.Lookup("Person"); !ok {
+		t.Fatal("CreateProperty must register the label token")
 	}
+
+	err = g.Index.CreateProperty("Person", "name")
+	if !errors.Is(err, storepkg.ErrIndexExists) {
+		t.Fatalf("duplicate CreateProperty err = %v, want ErrIndexExists", err)
+	}
+}
+
+func TestGraphCreatePropertyIndexBeforeLabelExistsIndexesFutureNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	if err := g.Index.CreateProperty("Future", "name"); err != nil {
+		t.Fatalf("CreateProperty before label exists: %v", err)
+	}
+
+	if _, err := g.Nodes.Add([]string{"Future"}, map[string]any{"name": "Alice"}); err != nil {
+		t.Fatalf("Add future indexed node: %v", err)
+	}
+
+	nodes, err := g.Nodes.ByLabelAndProperty("Future", "name", "Alice", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabelAndProperty: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("future node not indexed: got %d nodes, want 1", len(nodes))
+	}
+}
+
+func TestGraphCreateIndexFailureDoesNotRegisterNewLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(*Core, string) error
+	}{
+		{
+			name: "property",
+			run: func(g *Core, label string) error {
+				return g.Index.CreateProperty(label, "name")
+			},
+		},
+		{
+			name: "temporal",
+			run: func(g *Core, label string) error {
+				return g.Index.CreateTemporal(label)
+			},
+		},
+		{
+			name: "high-frequency",
+			run: func(g *Core, label string) error {
+				return g.Index.CreateHighFrequency(label, time.Second)
+			},
+		},
+		{
+			name: "vector",
+			run: func(g *Core, label string) error {
+				return g.Index.CreateVector(label, "embedding", 3, storepkg.DistanceCosine)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			injected := errors.New("synthetic index create fault")
+			g, err := New(Config{Store: &failIndexCreateStore{Store: memory.New(), err: injected}})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			label := "IndexFail" + tc.name
+			if err := tc.run(g, label); !errors.Is(err, injected) {
+				t.Fatalf("%s error = %v, want injected index fault", tc.name, err)
+			}
+			if _, ok := g.labels.Lookup(label); ok {
+				t.Fatalf("%s create kept label token %q after backend failure", tc.name, label)
+			}
+		})
+	}
+}
+
+type failIndexCreateStore struct {
+	storepkg.Store
+	err error
+}
+
+func (s *failIndexCreateStore) CreatePropertyIndex(uint16, string) error {
+	return s.err
+}
+
+func (s *failIndexCreateStore) CreateTemporalIndex(uint16) error {
+	return s.err
+}
+
+func (s *failIndexCreateStore) CreateHighFrequencyIndex(uint16, time.Duration) error {
+	return s.err
+}
+
+func (s *failIndexCreateStore) CreateVectorIndex(uint16, string, int, storepkg.DistanceMetric) error {
+	return s.err
 }
 
 func TestGraphDropPropertyIndex(t *testing.T) {
@@ -129,10 +229,162 @@ func TestGraphDropPropertyIndex(t *testing.T) {
 		t.Fatalf("DropPropertyIndex failed: %v", err)
 	}
 
-	// Unregistered label → no-op.
 	err = g.Index.DropProperty("Unknown", "name")
-	if err != nil {
-		t.Fatalf("unregistered label should return nil, got %v", err)
+	if !errors.Is(err, storepkg.ErrIndexNotFound) {
+		t.Fatalf("unregistered label error = %v, want ErrIndexNotFound", err)
+	}
+}
+
+func TestGraphDropIndexRejectsInvalidAndUnknownInputs(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{
+		Store: memory.New(),
+		Validation: ValidationLimits{
+			MaxNameLength:        10,
+			MaxPropertyKeyLength: 4,
+		},
+	})
+
+	tests := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{
+			name: "property empty label",
+			run:  func() error { return g.Index.DropProperty("", "name") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "property key too long",
+			run:  func() error { return g.Index.DropProperty("Person", "long-key") },
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "property reserved key",
+			run:  func() error { return g.Index.DropProperty("Person", "tkg_hash") },
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "property unknown label",
+			run:  func() error { return g.Index.DropProperty("Missing", "name") },
+			want: storepkg.ErrIndexNotFound,
+		},
+		{
+			name: "temporal empty label",
+			run:  func() error { return g.Index.DropTemporal("") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "temporal unknown label",
+			run:  func() error { return g.Index.DropTemporal("Missing") },
+			want: storepkg.ErrTemporalIndexNotFound,
+		},
+		{
+			name: "high-frequency empty label",
+			run:  func() error { return g.Index.DropHighFrequency("") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "high-frequency unknown label",
+			run:  func() error { return g.Index.DropHighFrequency("Missing") },
+			want: storepkg.ErrTemporalIndexNotFound,
+		},
+		{
+			name: "vector empty label",
+			run:  func() error { return g.Index.DropVector("", "vec") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "vector key too long",
+			run:  func() error { return g.Index.DropVector("Person", "long-key") },
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "vector reserved key",
+			run:  func() error { return g.Index.DropVector("Person", "tkg_hash") },
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "vector unknown label",
+			run:  func() error { return g.Index.DropVector("Missing", "vec") },
+			want: storepkg.ErrVectorIndexNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, tc.want) {
+				t.Fatalf("%s error = %v, want %v", tc.name, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestGraphByLabelAndPropertyRejectsInvalidTargets(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{
+		Store: memory.New(),
+		Validation: ValidationLimits{
+			MaxNameLength:        10,
+			MaxPropertyKeyLength: 4,
+		},
+	})
+
+	tests := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{
+			name: "empty label",
+			run: func() error {
+				_, err := g.Nodes.ByLabelAndProperty("", "name", "Alice", storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrEmptyName,
+		},
+		{
+			name: "property key too long",
+			run: func() error {
+				_, err := g.Nodes.ByLabelAndProperty("Person", "long-key", "Alice", storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "reserved property key",
+			run: func() error {
+				_, err := g.Nodes.ByLabelAndProperty("Person", "tkg_hash", "Alice", storepkg.QueryOpts{})
+				return err
+			},
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "unknown valid label remains empty result",
+			run: func() error {
+				nodes, err := g.Nodes.ByLabelAndProperty("Missing", "name", "Alice", storepkg.QueryOpts{})
+				if err != nil {
+					return err
+				}
+				if len(nodes) != 0 {
+					t.Fatalf("unknown label returned %d nodes, want 0", len(nodes))
+				}
+				return nil
+			},
+			want: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.run()
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("%s error = %v, want %v", tc.name, err, tc.want)
+			}
+		})
 	}
 }
 

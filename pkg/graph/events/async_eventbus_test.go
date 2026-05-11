@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,7 +19,7 @@ func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
 
 	bus.Publish(Event{Type: EventNodeCreate})
 
-	// Wait for delivery (workers are async)
+	// Wait for async dispatcher delivery.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if received.Load() > 0 {
@@ -28,6 +29,296 @@ func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
 	}
 	if received.Load() == 0 {
 		t.Fatal("handler never received event")
+	}
+}
+
+func TestAsyncEventBusSubscribeNilIsNoop(t *testing.T) {
+	var bus AsyncEventBus
+
+	unsub := bus.Subscribe(nil)
+	unsub()
+	unsub()
+
+	bus.mu.RLock()
+	handlerCount := len(bus.handlers)
+	bus.mu.RUnlock()
+	if handlerCount != 0 {
+		t.Fatalf("Subscribe(nil) installed %d handlers, want 0", handlerCount)
+	}
+	if bus.stopCh != nil {
+		t.Fatal("Subscribe(nil) started zero-value AsyncEventBus")
+	}
+
+	bus.Publish(Event{Type: EventNodeCreate})
+	bus.Close()
+}
+
+func TestAsyncEventBusNilReceiverMethodsAreNoop(t *testing.T) {
+	var bus *AsyncEventBus
+
+	unsub := bus.Subscribe(func(Event) {
+		t.Fatal("nil AsyncEventBus should not install handlers")
+	})
+	unsub()
+	unsub()
+
+	bus.Publish(Event{Type: EventNodeCreate})
+	bus.PublishBatch(Event{Type: EventRelDelete})
+	bus.Close()
+}
+
+func TestAsyncEventBusZeroValueStartsOnFirstUse(t *testing.T) {
+	var bus AsyncEventBus
+	defer bus.Close()
+
+	received := make(chan EventType, 2)
+	bus.Subscribe(func(e Event) {
+		received <- e.Type
+	})
+
+	bus.Publish(Event{Type: EventNodeCreate})
+	bus.PublishBatch(Event{Type: EventRelDelete})
+
+	for _, want := range []EventType{EventNodeCreate, EventRelDelete} {
+		select {
+		case got := <-received:
+			if got != want {
+				t.Fatalf("zero-value AsyncEventBus delivered %v, want %v", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("zero-value AsyncEventBus did not deliver %v", want)
+		}
+	}
+}
+
+func TestAsyncEventBusZeroValueCloseBeforeUse(t *testing.T) {
+	var bus AsyncEventBus
+	bus.Close()
+	bus.Close()
+
+	done := make(chan struct{})
+	go func() {
+		bus.Publish(Event{Type: EventNodeCreate})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Publish after zero-value Close blocked")
+	}
+}
+
+func TestAsyncEventBusSubscribeAfterCloseIsNoop(t *testing.T) {
+	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 4})
+	bus.Close()
+
+	unsub := bus.Subscribe(func(Event) {
+		t.Fatal("handler registered after Close should not be invoked")
+	})
+	unsub()
+	unsub()
+
+	bus.mu.RLock()
+	handlerCount := len(bus.handlers)
+	bus.mu.RUnlock()
+	if handlerCount != 0 {
+		t.Fatalf("Subscribe after Close installed %d handlers, want 0", handlerCount)
+	}
+}
+
+func TestAsyncEventBusInvalidBackpressureDefaultsToBlock(t *testing.T) {
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers:      1,
+		QueueSize:    16,
+		Backpressure: BackpressureStrategy(99),
+	})
+	defer bus.Close()
+
+	if got := bus.backpressure; got != BackpressureBlock {
+		t.Fatalf("normalized backpressure = %d, want BackpressureBlock", got)
+	}
+
+	received := make(chan EventType, 1)
+	bus.Subscribe(func(e Event) {
+		received <- e.Type
+	})
+
+	bus.Publish(Event{Type: EventNodeCreate})
+	select {
+	case got := <-received:
+		if got != EventNodeCreate {
+			t.Fatalf("delivered event = %v, want %v", got, EventNodeCreate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("invalid backpressure dropped published event")
+	}
+}
+
+func TestAsyncEventBusPublishAfterCloseDoesNotEnqueue(t *testing.T) {
+	for _, strategy := range []BackpressureStrategy{
+		BackpressureBlock,
+		BackpressureDropOldest,
+		BackpressureDropLatest,
+	} {
+		t.Run(fmt.Sprintf("strategy_%d", strategy), func(t *testing.T) {
+			bus := NewAsyncEventBus(AsyncEventBusConfig{
+				Workers:      1,
+				QueueSize:    4,
+				Backpressure: strategy,
+			})
+			bus.Close()
+
+			bus.Publish(Event{Type: EventNodeCreate, Priority: PriorityCritical})
+			bus.PublishBatch(
+				Event{Type: EventNodeUpdate, Priority: PriorityHigh},
+				Event{Type: EventRelDelete, Priority: PriorityDeferred},
+			)
+
+			for i, q := range bus.queues {
+				if got := len(q); got != 0 {
+					t.Fatalf("queue %d length after post-close publish = %d, want 0", i, got)
+				}
+			}
+		})
+	}
+}
+
+func TestAsyncEventBusCloseUnblocksBackpressureBlockPublisher(t *testing.T) {
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers:      1,
+		QueueSize:    1,
+		Backpressure: BackpressureBlock,
+	})
+
+	handlerStarted := make(chan struct{})
+	releaseHandler := make(chan struct{})
+	var startOnce sync.Once
+	bus.Subscribe(func(Event) {
+		startOnce.Do(func() { close(handlerStarted) })
+		<-releaseHandler
+	})
+
+	bus.Publish(Event{Type: EventNodeCreate})
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		close(releaseHandler)
+		t.Fatal("first event handler did not start")
+	}
+
+	bus.Publish(Event{Type: EventNodeUpdate})
+
+	publishDone := make(chan struct{})
+	go func() {
+		bus.Publish(Event{Type: EventRelDelete})
+		close(publishDone)
+	}()
+
+	select {
+	case <-publishDone:
+		close(releaseHandler)
+		t.Fatal("third publish returned before the queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	closeStarted := make(chan struct{})
+	closeDone := make(chan struct{})
+	go func() {
+		close(closeStarted)
+		bus.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeStarted:
+	case <-time.After(time.Second):
+		close(releaseHandler)
+		t.Fatal("Close goroutine did not start")
+	}
+
+	select {
+	case <-publishDone:
+	case <-time.After(time.Second):
+		close(releaseHandler)
+		t.Fatal("Close did not unblock publisher waiting on full queue")
+	}
+
+	select {
+	case <-closeDone:
+		close(releaseHandler)
+		t.Fatal("Close returned while handler was still blocked")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseHandler)
+	select {
+	case <-closeDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not finish after handler was released")
+	}
+}
+
+func TestAsyncEventBusPublishBatchStrictPriorityDuringClose(t *testing.T) {
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers:      2,
+		QueueSize:    16,
+		Backpressure: BackpressureBlock,
+	})
+	if got := bus.workers; got != 1 {
+		t.Fatalf("configured Workers > 1 started %d dispatchers, want 1", got)
+	}
+
+	criticalStarted := make(chan struct{})
+	releaseCritical := make(chan struct{})
+	lowDelivered := make(chan struct{}, 1)
+
+	bus.Subscribe(func(e Event) {
+		switch e.Priority {
+		case PriorityCritical:
+			close(criticalStarted)
+			<-releaseCritical
+		case PriorityLow:
+			lowDelivered <- struct{}{}
+		}
+	})
+
+	bus.PublishBatch(
+		Event{Type: EventNodeDelete, Priority: PriorityCritical},
+		Event{Type: EventNodeUpdate, Priority: PriorityLow},
+	)
+
+	closed := make(chan struct{})
+	go func() {
+		bus.Close()
+		close(closed)
+	}()
+
+	select {
+	case <-criticalStarted:
+	case <-time.After(2 * time.Second):
+		close(releaseCritical)
+		t.Fatal("critical event was not delivered")
+	}
+
+	select {
+	case <-lowDelivered:
+		close(releaseCritical)
+		t.Fatal("low-priority batch event was delivered before critical handler completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseCritical)
+
+	select {
+	case <-lowDelivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("low-priority event was not delivered after critical handler completed")
+	}
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return after draining events")
 	}
 }
 
@@ -133,6 +424,74 @@ func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
 	}
 }
 
+func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
+	t.Run("invalid priority uses normal queue", func(t *testing.T) {
+		var bus AsyncEventBus
+		bus.backpressure = BackpressureDropLatest
+		bus.stopCh = make(chan struct{})
+		bus.queues[PriorityNormal] = make(chan Event, 1)
+
+		bus.publishMu.Lock()
+		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate, Priority: EventPriority(numPriorityLevels + 1)})
+		bus.publishMu.Unlock()
+		if !wrote {
+			t.Fatal("enqueueLocked dropped invalid-priority event, want normal-priority enqueue")
+		}
+
+		select {
+		case got := <-bus.queues[PriorityNormal]:
+			if got.Type != EventNodeCreate {
+				t.Fatalf("event type = %v, want %v", got.Type, EventNodeCreate)
+			}
+		default:
+			t.Fatal("normal-priority queue did not receive invalid-priority event")
+		}
+	})
+
+	t.Run("drop oldest stops while contended", func(t *testing.T) {
+		var bus AsyncEventBus
+		bus.backpressure = BackpressureDropOldest
+		bus.stopCh = make(chan struct{})
+		bus.queues[PriorityNormal] = make(chan Event)
+
+		done := make(chan bool, 1)
+		go func() {
+			bus.publishMu.Lock()
+			done <- bus.enqueueLocked(Event{Type: EventNodeCreate})
+			bus.publishMu.Unlock()
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+		close(bus.stopCh)
+
+		select {
+		case wrote := <-done:
+			if wrote {
+				t.Fatal("enqueueLocked reported a write after stopCh closed")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("enqueueLocked did not return after stopCh closed")
+		}
+	})
+
+	t.Run("unknown backpressure drops defensively", func(t *testing.T) {
+		var bus AsyncEventBus
+		bus.backpressure = BackpressureStrategy(99)
+		bus.stopCh = make(chan struct{})
+		bus.queues[PriorityNormal] = make(chan Event, 1)
+
+		bus.publishMu.Lock()
+		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate})
+		bus.publishMu.Unlock()
+		if wrote {
+			t.Fatal("enqueueLocked wrote with an unknown backpressure strategy")
+		}
+		if got := len(bus.queues[PriorityNormal]); got != 0 {
+			t.Fatalf("normal-priority queue length = %d, want 0", got)
+		}
+	})
+}
+
 func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 2, QueueSize: 64})
 
@@ -153,8 +512,8 @@ func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
 	}
 }
 
-func TestAsyncEventBus_MultipleWorkers(t *testing.T) {
-	// Run with -race to detect data races
+func TestAsyncEventBusConcurrentPublishers(t *testing.T) {
+	// Run with -race to detect data races across concurrent publishers.
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 4, QueueSize: 256})
 	defer bus.Close()
 
@@ -201,40 +560,27 @@ func TestPriority_ZeroValueIsNormal(t *testing.T) {
 }
 
 func TestPriority_CriticalBeforeNormal(t *testing.T) {
-	// With a single worker and a stalled queue, critical events should be
-	// processed before normal events — but this is hard to test deterministically
-	// without single-threaded sequential drain.
-	//
-	// Instead, test that the per-priority queue routing is correct:
-	// publish Critical + Normal, verify both are eventually received.
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 2, QueueSize: 64})
 	defer bus.Close()
 
-	var received []EventPriority
-	var mu sync.Mutex
+	received := make(chan EventPriority, 2)
 	bus.Subscribe(func(e Event) {
-		mu.Lock()
-		received = append(received, e.Priority)
-		mu.Unlock()
+		received <- e.Priority
 	})
 
-	bus.Publish(Event{Type: EventNodeUpdate, Priority: PriorityNormal})
-	bus.Publish(Event{Type: EventNodeDelete, Priority: PriorityCritical})
+	bus.PublishBatch(
+		Event{Type: EventNodeUpdate, Priority: PriorityNormal},
+		Event{Type: EventNodeDelete, Priority: PriorityCritical},
+	)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		n := len(received)
-		mu.Unlock()
-		if n >= 2 {
-			break
+	for _, want := range []EventPriority{PriorityCritical, PriorityNormal} {
+		select {
+		case got := <-received:
+			if got != want {
+				t.Fatalf("delivery priority = %v, want %v", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for priority %v", want)
 		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(received) < 2 {
-		t.Fatalf("expected 2 events, got %d", len(received))
 	}
 }

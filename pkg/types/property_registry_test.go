@@ -105,6 +105,18 @@ func TestRegisterPropertyStructType_RegisteringPointerAlsoAcceptsValue(t *testin
 	}
 }
 
+func TestRegisterPropertyStructType_UntypedNilRejected(t *testing.T) {
+	t.Cleanup(resetRegistry)
+
+	err := RegisterPropertyStructType(nil)
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("RegisterPropertyStructType(nil): got %v, want ErrUnsupportedValueType", err)
+	}
+	if got := RegisteredPropertyStructTypes(); len(got) != 0 {
+		t.Fatalf("RegisterPropertyStructType(nil) mutated registry: %v", got)
+	}
+}
+
 func TestRegisterPropertyStructType_UnregisteredRejected(t *testing.T) {
 	t.Cleanup(resetRegistry)
 

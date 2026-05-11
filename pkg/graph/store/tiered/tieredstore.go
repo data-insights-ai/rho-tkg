@@ -38,9 +38,10 @@ type Config struct {
 	// FlushInterval is the per-shard flush interval. Default: 100ms.
 	FlushInterval time.Duration
 	// ColdAfter demotes warm shards to cold after this duration. 0 = never demote.
+	// Must not be negative.
 	ColdAfter time.Duration
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
-	// Default: 5 minutes when ColdAfter > 0.
+	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
 	IdleTimeout time.Duration
 	// Compression sets the SSTable compression algorithm for all shards.
 	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
@@ -59,7 +60,7 @@ type EventShard struct {
 	tier       ShardTier
 	timeStart  time.Time    // shard window start (inclusive)
 	timeEnd    time.Time    // shard window end (exclusive)
-	readOnly   bool         // warm/cold shards are read-only
+	readOnly   bool         // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
 	path       string       // relative path for lazy-open (e.g., "events/2026-W10")
 	shardMu    sync.Mutex   // protects lazy open/close
 	activeReqs atomic.Int64 // outstanding read requests; blocks idle-close
@@ -83,6 +84,8 @@ type Store struct {
 	ontology          *OntologyMapping
 	catalog           *ShardCatalog
 	regFile           string // path to registry.msgpack
+	temporalIdxFile   string // path to temporal_indexes.msgpack
+	vectorIdxFile     string // path to vector_indexes.msgpack
 	dataDir           string
 	inMemory          bool
 	shardWindow       time.Duration
@@ -97,13 +100,19 @@ type Store struct {
 	closed            atomic.Bool // set under archiveMu inside Close before tearing the archive down;
 	// readers consult this from ensureRefArchive to refuse re-opening the archive after Close
 	// has already closed it (prevents an orphan re-open + leaked DB handle)
+	bgErrMu sync.Mutex
+	bgErr   error
 
-	// Temporal indexes — tracked so new hot shards inherit them on rotation.
+	nodeCreateMu sync.Mutex // serializes cross-shard node ID uniqueness checks with writes
+	relCreateMu  sync.Mutex // serializes cross-shard relationship ID uniqueness checks with writes
+
+	// Temporal indexes — tracked so new hot/archive shards inherit them.
 	tempIdxMu     sync.Mutex
 	tempIdxLabels []uint16
+	hfIdxBuckets  map[uint16]time.Duration
 
 	// Vector indexes — in-memory brute-force k-NN index spanning all shards.
-	// Not persisted; must be rebuilt via CreateVectorIndex after restart.
+	// In-memory; CreateVectorIndex rebuilds entries from current node properties.
 	vectorIdxMu   sync.RWMutex
 	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
 }
@@ -113,6 +122,11 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory && cfg.DataDir == "" {
 		return nil, fmt.Errorf("graph: Config.DataDir required unless InMemory")
 	}
+	for i, label := range cfg.RefLabels {
+		if strings.TrimSpace(label) == "" {
+			return nil, fmt.Errorf("graph: Config.RefLabels[%d] must not be empty", i)
+		}
+	}
 
 	window := cfg.ShardWindow
 	if window == 0 {
@@ -120,6 +134,12 @@ func New(cfg Config) (*Store, error) {
 	}
 	if window < time.Minute {
 		return nil, fmt.Errorf("graph: Config.ShardWindow must be >= 1 minute, got %v", window)
+	}
+	if window%time.Millisecond != 0 {
+		return nil, fmt.Errorf("graph: Config.ShardWindow must be a whole millisecond, got %v", window)
+	}
+	if cfg.ColdAfter < 0 {
+		return nil, fmt.Errorf("graph: Config.ColdAfter must not be negative, got %v", cfg.ColdAfter)
 	}
 	cacheCap := cfg.CacheCapacity
 	if cacheCap <= 0 {
@@ -133,6 +153,15 @@ func New(cfg Config) (*Store, error) {
 	idleTimeout := cfg.IdleTimeout
 	if idleTimeout == 0 && cfg.ColdAfter > 0 {
 		idleTimeout = 5 * time.Minute
+	}
+	if idleTimeout < 0 {
+		return nil, fmt.Errorf("graph: Config.IdleTimeout must not be negative, got %v", idleTimeout)
+	}
+	if idleTimeout > 0 && idleTimeout < time.Millisecond {
+		return nil, fmt.Errorf("graph: Config.IdleTimeout must be >= 1 millisecond when set, got %v", idleTimeout)
+	}
+	if idleTimeout > 0 && idleTimeout%time.Millisecond != 0 {
+		return nil, fmt.Errorf("graph: Config.IdleTimeout must be a whole millisecond, got %v", idleTimeout)
 	}
 
 	ts := &Store{
@@ -148,6 +177,7 @@ func New(cfg Config) (*Store, error) {
 		compression:   cfg.Compression,
 		zstdLevel:     cfg.ZSTDCompressionLevel,
 		closeCh:       make(chan struct{}),
+		hfIdxBuckets:  make(map[uint16]time.Duration),
 		vectorIndexes: make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 	}
 
@@ -165,6 +195,8 @@ func New(cfg Config) (*Store, error) {
 			}
 		}
 		ts.regFile = filepath.Join(cfg.DataDir, "meta", "registry.msgpack")
+		ts.temporalIdxFile = filepath.Join(cfg.DataDir, "meta", "temporal_indexes.msgpack")
+		ts.vectorIdxFile = filepath.Join(cfg.DataDir, "meta", "vector_indexes.msgpack")
 		ts.catalog = NewShardCatalog(filepath.Join(cfg.DataDir, "meta", "shard_catalog.json"))
 	} else {
 		ts.catalog = NewShardCatalog("") // in-memory catalog (never persisted)
@@ -246,7 +278,8 @@ func New(cfg Config) (*Store, error) {
 	for _, entry := range ts.catalog.EventShards() {
 		switch entry.Tier {
 		case TierWarm:
-			// Read-only on disk; in-memory shards stay read-write (Badger limitation).
+			// Warm is a routing tier, not a write permission. The shard may
+			// still own existing event entities that need updates/deletes.
 			var warmStore *BadgerStore
 			var err error
 			if cfg.InMemory {
@@ -302,6 +335,27 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
+	if !cfg.InMemory {
+		if err := ts.loadTemporalIndexDefs(); err != nil {
+			for _, es := range ts.eventShards {
+				if es.store != nil {
+					_ = es.store.Close()
+				}
+			}
+			_ = refStore.Close()
+			return nil, fmt.Errorf("graph: load temporal indexes: %w", err)
+		}
+		if err := ts.loadVectorIndexDefs(); err != nil {
+			for _, es := range ts.eventShards {
+				if es.store != nil {
+					_ = es.store.Close()
+				}
+			}
+			_ = refStore.Close()
+			return nil, fmt.Errorf("graph: load vector indexes: %w", err)
+		}
+	}
+
 	// Start idle-close goroutine for cold shards.
 	if ts.idleTimeout > 0 {
 		go ts.idleCloseLoop()
@@ -312,6 +366,12 @@ func New(cfg Config) (*Store, error) {
 
 // Close closes all shards and saves the catalog. Idempotent via sync.Once.
 func (ts *Store) Close() error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.closeCh == nil || ts.refShard == nil {
+		return ErrStoreClosed
+	}
 	var closeErr error
 	ts.closeOnce.Do(func() {
 		// Mark the store as closed BEFORE tearing the archive down. The flag
@@ -350,13 +410,18 @@ func (ts *Store) Close() error {
 			}
 		}
 
-		// Close all event shards. Cold shards may have nil stores.
+		// Close all event shards. Cold shards may have nil stores. Use the
+		// shard mutex because closeIdleShards also closes cold stores and
+		// clears es.store under this lock.
 		for _, es := range ts.eventShards {
+			es.shardMu.Lock()
 			if es.store != nil {
 				if err := es.store.Close(); err != nil {
 					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
+				es.store = nil
 			}
+			es.shardMu.Unlock()
 		}
 
 		// Close reference archive if it was open at close time. Drain
@@ -379,60 +444,68 @@ func (ts *Store) Close() error {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w", err))
 			}
 		}
+		closeErr = errors.Join(closeErr, ts.backgroundError())
 	})
 	return closeErr
 }
 
-// Clear clears all open shards. Cold shards with nil stores are skipped.
-// Also resets store-level state that lives on the Store itself rather
+func (ts *Store) recordBackgroundError(err error) {
+	if err == nil {
+		return
+	}
+	ts.bgErrMu.Lock()
+	ts.bgErr = errors.Join(ts.bgErr, err)
+	ts.bgErrMu.Unlock()
+}
+
+func (ts *Store) backgroundError() error {
+	ts.bgErrMu.Lock()
+	defer ts.bgErrMu.Unlock()
+	return ts.bgErr
+}
+
+func (ts *Store) checkOpen() error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.closeCh == nil || ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	if ts.closed.Load() {
+		return ErrStoreClosed
+	}
+	return nil
+}
+
+// Clear clears all shards, including closed cold event shards.
+// It also resets store-level state that lives on the Store itself rather
 // than on individual shards: the vector-index map and the tracked temporal
 // index labels list (which would otherwise re-install temporal indexes for
 // stale labels on the next hot-shard rotation).
 //
-// Concurrency: each open event shard is pinned via checkoutStore for the
-// duration of its Clear() call. Without the pin, Close (which doesn't
-// take ts.mu and only spin-waits on activeReqs) could free the
-// underlying DB while Clear was still touching it — Badger v4 Flush on
+// Concurrency: takes ts.mu.Lock for the full clear so direct Store callers get
+// the same topology exclusion as g.Admin.Reset. Each open event shard is also
+// pinned via checkoutStore for the duration of its Clear() call. Without the
+// pin, Close (which doesn't take ts.mu and only spin-waits on activeReqs) could
+// free the underlying DB while Clear was still touching it — Badger v4 Flush on
 // a closed DB blocks forever.
-//
-// Note: the snapshot-then-clear pattern races a concurrent ForceRotate
-// that could replace the hot shard between the snapshot and its Clear().
-// The new hot shard would survive uncleared. This is pre-existing
-// behaviour shared by all snapshot-based admin paths (ListShards,
-// RebuildCatalog, index-create/drop). Treat Clear as admin-only and
-// serialise externally against rotation.
 func (ts *Store) Clear() error {
-	ts.mu.RLock()
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
 	shards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		shards = append(shards, es)
 	}
-	ts.mu.RUnlock()
 
 	if err := ts.refShard.Clear(); err != nil {
 		return fmt.Errorf("graph: clear ref shard: %w", err)
 	}
 	for _, es := range shards {
-		// Best-effort skip for shards observed cold-and-empty under the
-		// snapshot RLock above. This is an OPTIMIZATION, not a strict
-		// guarantee: a concurrent caller could lazy-open this shard via
-		// checkoutStore between our nil-check and the loop below. That's
-		// acceptable — Clear is admin-only (not a concurrent-safe API)
-		// and the worst case is we skip a freshly-opened shard, which
-		// will simply contain post-Clear writes that the next admin
-		// caller can address. The pin discipline below is what protects
-		// us from Close racing the Clear call itself.
-		if es.store == nil {
-			continue
-		}
-		store, coErr := es.checkoutStore(ts)
-		if coErr != nil {
-			// Close started after our snapshot — skip rather than crash.
-			continue
-		}
-		err := store.Clear()
-		es.checkinStore()
-		if err != nil {
+		if err := ts.clearEventShard(es); err != nil {
 			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
 		}
 	}
@@ -443,10 +516,19 @@ func (ts *Store) Clear() error {
 	// labels that were dropped along with the shard data (tempIdxLabels).
 	ts.vectorIdxMu.Lock()
 	ts.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
+	if err := ts.persistVectorIndexDefsLocked(); err != nil {
+		ts.vectorIdxMu.Unlock()
+		return err
+	}
 	ts.vectorIdxMu.Unlock()
 
 	ts.tempIdxMu.Lock()
 	ts.tempIdxLabels = nil
+	ts.hfIdxBuckets = make(map[uint16]time.Duration)
+	if err := ts.persistTemporalIndexDefsLocked(); err != nil {
+		ts.tempIdxMu.Unlock()
+		return err
+	}
 	ts.tempIdxMu.Unlock()
 
 	// Skip the archive checkout entirely when neither the in-memory pointer
@@ -454,24 +536,88 @@ func (ts *Store) Clear() error {
 	// no-op too, but bailing early makes the intent explicit and avoids the
 	// theoretical lazy-open-then-clear churn if the archive is on disk but
 	// has not been opened this session.
-	if ts.refArchive.Load() == nil && !ts.hasArchiveShard() {
+	if ts.refArchive.Load() != nil || ts.hasArchiveShard() {
+		// Pin via checkoutArchive — see resolveShardStore("archive") doc.
+		// A raw refArchive.Load() races Close, which drains archiveActiveReqs
+		// (sees 0) and proceeds to archive.Close() while Clear is still
+		// touching the DB → Badger v4 Flush-on-closed-DB hang.
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return archiveErr
+		}
+		if archive != nil {
+			if err := archive.Clear(); err != nil {
+				archiveCheckin()
+				return fmt.Errorf("graph: clear ref archive: %w", err)
+			}
+			archiveCheckin()
+		}
+	}
+	if err := ts.resetCatalogAfterClear(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (ts *Store) clearEventShard(es *EventShard) error {
+	if ts.closed.Load() {
 		return nil
 	}
-
-	// Pin via checkoutArchive — see resolveShardStore("archive") doc.
-	// A raw refArchive.Load() races Close, which drains archiveActiveReqs
-	// (sees 0) and proceeds to archive.Close() while Clear is still
-	// touching the DB → Badger v4 Flush-on-closed-DB hang.
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return archiveErr
+	if ts.inMemory && es.store == nil {
+		return nil
 	}
-	if archive != nil {
-		if err := archive.Clear(); err != nil {
-			archiveCheckin()
-			return fmt.Errorf("graph: clear ref archive: %w", err)
+	if !es.readOnly || ts.inMemory {
+		store, coErr := es.checkoutStore(ts)
+		if coErr != nil {
+			// Close started after our snapshot — skip rather than crash.
+			return nil
 		}
-		archiveCheckin()
+		err := store.Clear()
+		es.checkinStore()
+		return err
+	}
+
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+
+	es.activeReqs.Add(1)
+	defer es.activeReqs.Add(-1)
+	for es.activeReqs.Load() > 1 {
+		time.Sleep(time.Millisecond)
+	}
+
+	if es.store != nil {
+		if err := es.store.Close(); err != nil {
+			return err
+		}
+		es.store = nil
+	}
+
+	store, err := ts.openBadgerStore(es.path, false)
+	if err != nil {
+		return err
+	}
+	clearErr := store.Clear()
+	closeErr := store.Close()
+	var reopenErr error
+	if es.tier == TierWarm && !ts.closed.Load() {
+		es.store, reopenErr = ts.openBadgerStoreWithRecovery(es.path)
+	}
+	return errors.Join(clearErr, closeErr, reopenErr)
+}
+
+func (ts *Store) resetCatalogAfterClear() error {
+	snapshot := ts.catalog.snapshotShards()
+	for _, entry := range snapshot {
+		ts.catalog.UpdateShardStats(entry.Name, 0, 0)
+		ts.catalog.UpdateShardVerified(entry.Name, false)
+	}
+	if ts.inMemory {
+		return nil
+	}
+	if err := ts.catalog.Save(); err != nil {
+		ts.catalog.restoreShards(snapshot)
+		return fmt.Errorf("graph: save catalog after clear: %w", err)
 	}
 	return nil
 }
@@ -496,28 +642,23 @@ func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, erro
 	return NewBadgerStore(cfg)
 }
 
-// openBadgerStoreWithRecovery opens a BadgerStore in read-only mode. If the WAL
-// is corrupt (ErrTruncateNeeded from an unclean shutdown), it recovers by
-// opening read-write (which auto-truncates the corrupt tail), closing, and
-// reopening read-only. The truncation discards at most one flush window (~100ms)
-// of buffered writes that were not fsynced before the crash.
+// openBadgerStoreWithRecovery opens a writable BadgerStore for a warm/cold event
+// shard. It probes read-only first so ErrTruncateNeeded from an unclean shutdown
+// is recovered by a read-write open, but the returned handle must be mutable:
+// existing event entities keep routing to their owner shard after rotation.
 func (ts *Store) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
-	store, err := ts.openBadgerStore(name, true)
+	probe, err := ts.openBadgerStore(name, true)
 	if err == nil {
-		return store, nil
+		if err := probe.Close(); err != nil {
+			return nil, fmt.Errorf("graph: recovery probe close %s: %w", name, err)
+		}
+		return ts.openBadgerStore(name, false)
 	}
 	if !isTruncateNeeded(err) {
 		return nil, err
 	}
 	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
-	rwStore, err := ts.openBadgerStore(name, false)
-	if err != nil {
-		return nil, fmt.Errorf("graph: recovery open (read-write) %s: %w", name, err)
-	}
-	if err := rwStore.Close(); err != nil {
-		return nil, fmt.Errorf("graph: recovery close %s: %w", name, err)
-	}
-	return ts.openBadgerStore(name, true)
+	return ts.openBadgerStore(name, false)
 }
 
 // isTruncateNeeded checks whether the error indicates a Badger WAL truncation

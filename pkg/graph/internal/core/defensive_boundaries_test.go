@@ -21,10 +21,9 @@ import (
 
 // --- F1: ImportGraph must not panic on malformed records ---
 //
-// types.NewNode panics on primaryLabel == 0 or any extraLabel == 0.
-// types.NewRelationship panics on relType == 0.
 // ImportGraph reads from an arbitrary io.Reader (untrusted input). A corrupt or
-// malicious export must NOT crash the caller — it must surface a typed error.
+// malicious export must NOT create invalid token-0 entities — it must surface a
+// typed error before construction.
 
 // writeImportRecord assembles one tagged length-prefixed record (matching
 // writeExportRecord) into buf for use as ImportGraph input.
@@ -41,11 +40,16 @@ func writeImportRecord(buf *bytes.Buffer, tag byte, body []byte) {
 // record next.
 func validImportPrelude(t *testing.T) []byte {
 	t.Helper()
+	return validImportPreludeWithCounts(t, 0, 0)
+}
+
+func validImportPreludeWithCounts(t *testing.T, nodeCount, relCount int64) []byte {
+	t.Helper()
 	hdr := exportHeader{
 		Version:    exportFormatVersion,
 		ExportedAt: 0,
-		NodeCount:  0,
-		RelCount:   0,
+		NodeCount:  nodeCount,
+		RelCount:   relCount,
 	}
 	hdrBody, err := msgpack.Marshal(&hdr)
 	if err != nil {
@@ -87,9 +91,314 @@ func runImportSafely(t *testing.T, g *Core, r io.Reader) error {
 	return importErr
 }
 
+func TestImportGraph_RejectsUnknownRecordTag(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { g.Close() })
+
+	var buf bytes.Buffer
+	buf.Write(validImportPrelude(t))
+	writeImportRecord(&buf, 0x7f, []byte{0x81, 0xa1, 'x', 0x01})
+
+	importErr := runImportSafely(t, g, bytes.NewReader(buf.Bytes()))
+	if !errors.Is(importErr, ErrCorruptExport) {
+		t.Fatalf("ImportGraph unknown tag: got %v, want ErrCorruptExport", importErr)
+	}
+}
+
+func TestImportGraph_RejectsMalformedMsgpackRecordsWithCorruptSentinel(t *testing.T) {
+	t.Parallel()
+
+	malformed := []byte{0xc1} // msgpack "never used" byte; decoder rejects it.
+	validHeader := validImportPrelude(t)
+	var headerOnly bytes.Buffer
+	hdrBody, err := msgpack.Marshal(&exportHeader{Version: exportFormatVersion})
+	if err != nil {
+		t.Fatalf("marshal header: %v", err)
+	}
+	writeImportRecord(&headerOnly, exportTagHeader, hdrBody)
+
+	tests := map[string][]byte{
+		"header": func() []byte {
+			var buf bytes.Buffer
+			writeImportRecord(&buf, exportTagHeader, malformed)
+			return buf.Bytes()
+		}(),
+		"registry": func() []byte {
+			var buf bytes.Buffer
+			buf.Write(headerOnly.Bytes())
+			writeImportRecord(&buf, exportTagRegistry, malformed)
+			return buf.Bytes()
+		}(),
+		"node": func() []byte {
+			var buf bytes.Buffer
+			buf.Write(validHeader)
+			writeImportRecord(&buf, exportTagNode, malformed)
+			return buf.Bytes()
+		}(),
+		"node-history": func() []byte {
+			var buf bytes.Buffer
+			buf.Write(validHeader)
+			writeImportRecord(&buf, exportTagNodeHist, malformed)
+			return buf.Bytes()
+		}(),
+		"rel": func() []byte {
+			var buf bytes.Buffer
+			buf.Write(validHeader)
+			writeImportRecord(&buf, exportTagRel, malformed)
+			return buf.Bytes()
+		}(),
+		"rel-history": func() []byte {
+			var buf bytes.Buffer
+			buf.Write(validHeader)
+			writeImportRecord(&buf, exportTagRelHist, malformed)
+			return buf.Bytes()
+		}(),
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			importErr := runImportSafely(t, g, bytes.NewReader(input))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph malformed %s: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsMissingRequiredRecords(t *testing.T) {
+	t.Parallel()
+
+	hdr := exportHeader{Version: exportFormatVersion}
+	hdrBody, err := msgpack.Marshal(&hdr)
+	if err != nil {
+		t.Fatalf("marshal header: %v", err)
+	}
+	var headerOnly bytes.Buffer
+	writeImportRecord(&headerOnly, exportTagHeader, hdrBody)
+
+	for name, input := range map[string][]byte{
+		"empty":       nil,
+		"header-only": headerOnly.Bytes(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			importErr := runImportSafely(t, g, bytes.NewReader(input))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph %s stream: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsHeaderCountMismatch(t *testing.T) {
+	t.Parallel()
+
+	for name, input := range map[string][]byte{
+		"missing-node": validImportPreludeWithCounts(t, 1, 0),
+		"missing-rel":  validImportPreludeWithCounts(t, 0, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			importErr := runImportSafely(t, g, bytes.NewReader(input))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph %s: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsInvalidHeaderCountsAndDuplicateSingletonRecords(t *testing.T) {
+	t.Parallel()
+
+	duplicateHeader := append([]byte{}, validImportPrelude(t)...)
+	hdr := exportHeader{Version: exportFormatVersion}
+	hdrBody, err := msgpack.Marshal(&hdr)
+	if err != nil {
+		t.Fatalf("marshal header: %v", err)
+	}
+	var duplicateHeaderRecord bytes.Buffer
+	writeImportRecord(&duplicateHeaderRecord, exportTagHeader, hdrBody)
+	duplicateHeader = append(duplicateHeader, duplicateHeaderRecord.Bytes()...)
+
+	duplicateRegistry := append([]byte{}, validImportPrelude(t)...)
+	reg := tiered.RegistryFileData{
+		Labels:   []string{"", "L1"},
+		RelTypes: []string{"", "R1"},
+	}
+	regBody, err := msgpack.Marshal(&reg)
+	if err != nil {
+		t.Fatalf("marshal registry: %v", err)
+	}
+	var duplicateRegistryRecord bytes.Buffer
+	writeImportRecord(&duplicateRegistryRecord, exportTagRegistry, regBody)
+	duplicateRegistry = append(duplicateRegistry, duplicateRegistryRecord.Bytes()...)
+
+	for name, input := range map[string][]byte{
+		"negative-node-count": validImportPreludeWithCounts(t, -1, 0),
+		"negative-rel-count":  validImportPreludeWithCounts(t, 0, -1),
+		"duplicate-header":    duplicateHeader,
+		"duplicate-registry":  duplicateRegistry,
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			importErr := runImportSafely(t, g, bytes.NewReader(input))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph %s: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsDuplicateCurrentRecordsInStream(t *testing.T) {
+	t.Parallel()
+
+	nodeBody, err := msgpack.Marshal(&storeutil.NodeWire{
+		ID:           snowflakeIDForTest(),
+		PrimaryLabel: 1,
+		Version:      0,
+	})
+	if err != nil {
+		t.Fatalf("marshal node: %v", err)
+	}
+
+	relStartID := int64(1000001)
+	relEndID := int64(1000002)
+	relStartBody, err := msgpack.Marshal(&storeutil.NodeWire{
+		ID:           relStartID,
+		PrimaryLabel: 1,
+		Version:      0,
+	})
+	if err != nil {
+		t.Fatalf("marshal rel start node: %v", err)
+	}
+	relEndBody, err := msgpack.Marshal(&storeutil.NodeWire{
+		ID:           relEndID,
+		PrimaryLabel: 1,
+		Version:      0,
+	})
+	if err != nil {
+		t.Fatalf("marshal rel end node: %v", err)
+	}
+	relBody, err := msgpack.Marshal(&storeutil.RelWire{
+		ID:      1000003,
+		RelType: 1,
+		StartID: relStartID,
+		EndID:   relEndID,
+		Version: 0,
+	})
+	if err != nil {
+		t.Fatalf("marshal rel: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		prelude []byte
+		tag     byte
+		body    []byte
+	}{
+		"node": {prelude: validImportPreludeWithCounts(t, 2, 0), tag: exportTagNode, body: nodeBody},
+		"rel":  {prelude: validImportPreludeWithCounts(t, 2, 2), tag: exportTagRel, body: relBody},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			var buf bytes.Buffer
+			buf.Write(tc.prelude)
+			if name == "rel" {
+				writeImportRecord(&buf, exportTagNode, relStartBody)
+				writeImportRecord(&buf, exportTagNode, relEndBody)
+			}
+			writeImportRecord(&buf, tc.tag, tc.body)
+			writeImportRecord(&buf, tc.tag, tc.body)
+
+			importErr := runImportSafely(t, g, bytes.NewReader(buf.Bytes()))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph duplicate %s record: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsDuplicateHistoryRecordsInStream(t *testing.T) {
+	t.Parallel()
+
+	nodeBody, err := msgpack.Marshal(&storeutil.NodeWire{
+		ID:           snowflakeIDForTest(),
+		PrimaryLabel: 1,
+		Version:      1,
+	})
+	if err != nil {
+		t.Fatalf("marshal node history: %v", err)
+	}
+
+	relBody, err := msgpack.Marshal(&storeutil.RelWire{
+		ID:      snowflakeIDForTest(),
+		RelType: 1,
+		StartID: 1,
+		EndID:   2,
+		Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("marshal rel history: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		tag  byte
+		body []byte
+	}{
+		"node-history": {tag: exportTagNodeHist, body: nodeBody},
+		"rel-history":  {tag: exportTagRelHist, body: relBody},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { g.Close() })
+
+			var buf bytes.Buffer
+			buf.Write(validImportPrelude(t))
+			writeImportRecord(&buf, tc.tag, tc.body)
+			writeImportRecord(&buf, tc.tag, tc.body)
+
+			importErr := runImportSafely(t, g, bytes.NewReader(buf.Bytes()))
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Fatalf("ImportGraph duplicate %s record: got %v, want ErrCorruptExport", name, importErr)
+			}
+		})
+	}
+}
+
 // TestImportGraph_RejectsZeroPrimaryLabel: a corrupt node record with
-// primaryLabel = 0 must produce ErrCorruptExport, not a panic from
-// types.NewNode("primary label token 0 is reserved").
+// primaryLabel = 0 must produce ErrCorruptExport before construction.
 func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 	t.Parallel()
 
@@ -122,8 +431,7 @@ func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
 }
 
 // TestImportGraph_RejectsZeroExtraLabel: a corrupt node record with an
-// extraLabel of 0 must produce ErrCorruptExport (NewNode panics on extra
-// label token 0 too — different code path than primary).
+// extraLabel of 0 must produce ErrCorruptExport.
 func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
 	t.Parallel()
 
@@ -406,6 +714,334 @@ func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
 	}
 	if !errors.Is(importErr, ErrCorruptExport) {
 		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
+	}
+}
+
+func TestImportGraph_RejectsInvalidNodeWireScalars(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		wire storeutil.NodeWire
+	}{
+		{
+			name: "zero id",
+			wire: storeutil.NodeWire{ID: 0, PrimaryLabel: 1},
+		},
+		{
+			name: "negative id",
+			wire: storeutil.NodeWire{ID: -1, PrimaryLabel: 1},
+		},
+		{
+			name: "negative version",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, Version: -1},
+		},
+		{
+			name: "negative base entity id",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, BaseEntityID: -1},
+		},
+		{
+			name: "extra duplicates primary",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, ExtraLabels: []int{1}},
+		},
+		{
+			name: "duplicate extras",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, ExtraLabels: []int{2, 2}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := msgpack.Marshal(&tc.wire)
+			if err != nil {
+				t.Fatalf("marshal node: %v", err)
+			}
+
+			var buf bytes.Buffer
+			buf.Write(validImportPrelude(t))
+			writeImportRecord(&buf, exportTagNode, body)
+
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close() //nolint:errcheck
+
+			importErr := runImportSafely(t, g, &buf)
+			if importErr == nil {
+				t.Fatal("ImportGraph: expected error, got nil")
+			}
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsInvalidRelWireScalars(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		wire storeutil.RelWire
+	}{
+		{
+			name: "zero id",
+			wire: storeutil.RelWire{ID: 0, RelType: 1, StartID: 10, EndID: 11},
+		},
+		{
+			name: "negative id",
+			wire: storeutil.RelWire{ID: -1, RelType: 1, StartID: 10, EndID: 11},
+		},
+		{
+			name: "zero start",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 0, EndID: 11},
+		},
+		{
+			name: "zero end",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 0},
+		},
+		{
+			name: "negative version",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, Version: -1},
+		},
+		{
+			name: "negative base entity id",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, BaseEntityID: -1},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := msgpack.Marshal(&tc.wire)
+			if err != nil {
+				t.Fatalf("marshal rel: %v", err)
+			}
+
+			var buf bytes.Buffer
+			buf.Write(validImportPrelude(t))
+			writeImportRecord(&buf, exportTagRel, body)
+
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close() //nolint:errcheck
+
+			importErr := runImportSafely(t, g, &buf)
+			if importErr == nil {
+				t.Fatal("ImportGraph: expected error, got nil")
+			}
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsMalformedPropertyWire(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		wire storeutil.NodeWire
+	}{
+		{
+			name: "reserved shadow key",
+			wire: storeutil.NodeWire{
+				ID:           snowflakeIDForTest(),
+				PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{{
+					Key:   types.ShadowHash,
+					Value: "spoofed",
+					Type:  storeutil.PropertyTypeTag("spoofed"),
+				}},
+			},
+		},
+		{
+			name: "unsorted keys",
+			wire: storeutil.NodeWire{
+				ID:           snowflakeIDForTest(),
+				PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{
+					{Key: "z", Value: int64(1), Type: storeutil.PropertyTypeTag(int64(1))},
+					{Key: "a", Value: int64(2), Type: storeutil.PropertyTypeTag(int64(2))},
+				},
+			},
+		},
+		{
+			name: "duplicate keys",
+			wire: storeutil.NodeWire{
+				ID:           snowflakeIDForTest(),
+				PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{
+					{Key: "a", Value: int64(1), Type: storeutil.PropertyTypeTag(int64(1))},
+					{Key: "a", Value: int64(2), Type: storeutil.PropertyTypeTag(int64(2))},
+				},
+			},
+		},
+		{
+			name: "unknown type tag",
+			wire: storeutil.NodeWire{
+				ID:           snowflakeIDForTest(),
+				PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{{
+					Key:   "a",
+					Value: "value",
+					Type:  255,
+				}},
+			},
+		},
+		{
+			name: "lossy unsigned type tag",
+			wire: storeutil.NodeWire{
+				ID:           snowflakeIDForTest(),
+				PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{{
+					Key:   "a",
+					Value: int64(-1),
+					Type:  storeutil.PropertyTypeTag(uint8(0)),
+				}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := msgpack.Marshal(&tc.wire)
+			if err != nil {
+				t.Fatalf("marshal node: %v", err)
+			}
+
+			var buf bytes.Buffer
+			buf.Write(validImportPrelude(t))
+			writeImportRecord(&buf, exportTagNode, body)
+
+			g, err := New(Config{Store: memory.New()})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close() //nolint:errcheck
+
+			importErr := runImportSafely(t, g, &buf)
+			if importErr == nil {
+				t.Fatal("ImportGraph: expected error, got nil")
+			}
+			if !errors.Is(importErr, ErrCorruptExport) {
+				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
+			}
+		})
+	}
+}
+
+func TestImportGraph_RejectsPropertiesOverDestinationValidationLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		tag  byte
+		body func(t *testing.T) []byte
+		want error
+	}{
+		{
+			name: "node too many properties",
+			tag:  exportTagNode,
+			body: func(t *testing.T) []byte {
+				t.Helper()
+				b, err := msgpack.Marshal(&storeutil.NodeWire{
+					ID:           snowflakeIDForTest(),
+					PrimaryLabel: 1,
+					Properties: []storeutil.PropertyWire{
+						{Key: "a", Value: int64(1), Type: storeutil.PropertyTypeTag(int64(1))},
+						{Key: "b", Value: int64(2), Type: storeutil.PropertyTypeTag(int64(2))},
+					},
+				})
+				if err != nil {
+					t.Fatalf("marshal node: %v", err)
+				}
+				return b
+			},
+			want: ErrTooManyProperties,
+		},
+		{
+			name: "node nested oversized string",
+			tag:  exportTagNode,
+			body: func(t *testing.T) []byte {
+				t.Helper()
+				value := map[string]any{"nested": []any{"toolong"}}
+				b, err := msgpack.Marshal(&storeutil.NodeWire{
+					ID:           snowflakeIDForTest(),
+					PrimaryLabel: 1,
+					Properties: []storeutil.PropertyWire{{
+						Key:   "a",
+						Value: value,
+						Type:  storeutil.PropertyTypeTag(value),
+					}},
+				})
+				if err != nil {
+					t.Fatalf("marshal node: %v", err)
+				}
+				return b
+			},
+			want: ErrValueTooLarge,
+		},
+		{
+			name: "rel history nested oversized map key",
+			tag:  exportTagRelHist,
+			body: func(t *testing.T) []byte {
+				t.Helper()
+				value := map[string]any{"toolong": true}
+				b, err := msgpack.Marshal(&storeutil.RelWire{
+					ID:      snowflakeIDForTest(),
+					RelType: 1,
+					StartID: snowflakeIDForTest() + 1,
+					EndID:   snowflakeIDForTest() + 2,
+					Version: 1,
+					Properties: []storeutil.PropertyWire{{
+						Key:   "a",
+						Value: value,
+						Type:  storeutil.PropertyTypeTag(value),
+					}},
+				})
+				if err != nil {
+					t.Fatalf("marshal rel: %v", err)
+				}
+				return b
+			},
+			want: ErrValueTooLarge,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			buf.Write(validImportPrelude(t))
+			writeImportRecord(&buf, tc.tag, tc.body(t))
+
+			g, err := New(Config{
+				Store: memory.New(),
+				Validation: ValidationLimits{
+					MaxPropertiesPerEntity: 1,
+					MaxPropertyValueSize:   3,
+				},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close() //nolint:errcheck
+
+			importErr := runImportSafely(t, g, &buf)
+			if importErr == nil {
+				t.Fatal("ImportGraph: expected validation error, got nil")
+			}
+			if !errors.Is(importErr, tc.want) {
+				t.Errorf("ImportGraph: got %v, want %v", importErr, tc.want)
+			}
+		})
 	}
 }
 

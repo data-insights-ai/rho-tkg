@@ -4,12 +4,19 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- Bulk queries ---
 
 func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -85,9 +92,13 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	merged := mergeNodeSlices(slices)
 	return applyNodePagination(merged, opts), nil
 }
+
 // --- Counts ---
 
 func (ts *Store) NodeCount() (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
@@ -129,6 +140,12 @@ func (ts *Store) NodeCount() (int, error) {
 }
 
 func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return 0, err
+	}
 	if ts.ontology.ClassifyByToken(token) == ClassReference {
 		n, err := ts.refShard.NodeCountByLabel(token)
 		if err != nil {
@@ -172,6 +189,12 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 // --- ID enumeration ---
 
 func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -251,18 +274,23 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 // This eliminates the O(N) per-shard slice allocations that cause OOM on large graphs.
 
 func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
-	stopped := false
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	ids := make([]types.NodeID, 0)
 	if err := ts.refShard.ForEachNodeID(func(id types.NodeID) bool {
-		if !fn(id) {
-			stopped = true
-			return false
-		}
+		ids = append(ids, id)
 		return true
 	}); err != nil {
 		return err
 	}
-	if stopped {
-		return nil
+	for _, id := range ids {
+		if !fn(id) {
+			return nil
+		}
 	}
 
 	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
@@ -271,19 +299,19 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 		return archiveErr
 	}
 	if archive != nil {
+		ids = ids[:0]
 		err := archive.ForEachNodeID(func(id types.NodeID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
+			ids = append(ids, id)
 			return true
 		})
 		archiveCheckin()
 		if err != nil {
 			return err
 		}
-		if stopped {
-			return nil
+		for _, id := range ids {
+			if !fn(id) {
+				return nil
+			}
 		}
 	}
 
@@ -297,21 +325,20 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 		if err != nil {
 			return err
 		}
+		ids = ids[:0]
 		err = store.ForEachNodeID(func(id types.NodeID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
+			ids = append(ids, id)
 			return true
 		})
 		es.checkinStore()
 		if err != nil {
 			return err
 		}
-		if stopped {
-			return nil
+		for _, id := range ids {
+			if !fn(id) {
+				return nil
+			}
 		}
 	}
 	return nil
 }
-

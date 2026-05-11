@@ -1,9 +1,13 @@
 package badger
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -87,6 +91,174 @@ func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
 	if got == nil {
 		t.Fatal("GetNode: returned nil node")
 	}
+}
+
+func TestSyncWrite_IndexDefinitionMutationsPersistImmediately(t *testing.T) {
+	tests := []struct {
+		name   string
+		key    []byte
+		create func(*Store) error
+		drop   func(*Store) error
+	}{
+		{
+			name: "property index",
+			key:  storeutil.PropIndexDefsKey,
+			create: func(bs *Store) error {
+				return bs.CreatePropertyIndex(1, "name")
+			},
+			drop: func(bs *Store) error {
+				return bs.DropPropertyIndex(1, "name")
+			},
+		},
+		{
+			name: "temporal index",
+			key:  storeutil.TemporalIndexDefsKey,
+			create: func(bs *Store) error {
+				return bs.CreateTemporalIndex(1)
+			},
+			drop: func(bs *Store) error {
+				return bs.DropTemporalIndex(1)
+			},
+		},
+		{
+			name: "high-frequency index",
+			key:  storeutil.HighFrequencyIndexDefsKey,
+			create: func(bs *Store) error {
+				return bs.CreateHighFrequencyIndex(1, time.Hour)
+			},
+			drop: func(bs *Store) error {
+				return bs.DropHighFrequencyIndex(1)
+			},
+		},
+		{
+			name: "vector index",
+			key:  storeutil.VectorIndexDefsKey,
+			create: func(bs *Store) error {
+				return bs.CreateVectorIndex(1, "embedding", 3, DistanceCosine)
+			},
+			drop: func(bs *Store) error {
+				return bs.DropVectorIndex(1, "embedding")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bs, err := New(Config{
+				Dir:        t.TempDir(),
+				SyncWrites: true,
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer func() { _ = bs.Close() }()
+
+			if err := tt.create(bs); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if !badgerKeyExists(t, bs, tt.key) {
+				t.Fatalf("metadata key %q was not flushed after create", string(tt.key))
+			}
+
+			if err := tt.drop(bs); err != nil {
+				t.Fatalf("drop: %v", err)
+			}
+			if badgerKeyExists(t, bs, tt.key) {
+				t.Fatalf("metadata key %q was not flushed after drop", string(tt.key))
+			}
+		})
+	}
+}
+
+func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
+	bs, err := New(Config{
+		Dir:        t.TempDir(),
+		SyncWrites: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bs.Close() }()
+
+	startID := snowflake.ID(101)
+	endID := snowflake.ID(202)
+	relID := snowflake.ID(303)
+	relType := uint16(7)
+	rel := types.NewRelationship(types.RelID(relID), relType, types.NodeID(startID), types.NodeID(endID))
+
+	relKey := storeutil.RelKey(relID)
+	typeKey := storeutil.RelTypeIndexKey(relType, relID)
+	outKey := storeutil.OutKey(startID, relType, endID, relID)
+	inKey := storeutil.InKey(endID, relType, startID, relID)
+
+	if err := bs.PutRelEntityAndOut(rel); err != nil {
+		t.Fatalf("PutRelEntityAndOut: %v", err)
+	}
+	for name, key := range map[string][]byte{"rel": relKey, "type": typeKey, "out": outKey} {
+		if !badgerKeyExists(t, bs, key) {
+			t.Fatalf("%s key was not flushed after PutRelEntityAndOut", name)
+		}
+	}
+
+	if err := bs.PutRelIncoming(endID, startID, relType, relID); err != nil {
+		t.Fatalf("PutRelIncoming: %v", err)
+	}
+	if !badgerKeyExists(t, bs, inKey) {
+		t.Fatal("incoming key was not flushed after PutRelIncoming")
+	}
+
+	if _, err := bs.DeleteRelEntityAndOut(relID); err != nil {
+		t.Fatalf("DeleteRelEntityAndOut: %v", err)
+	}
+	for name, key := range map[string][]byte{"rel": relKey, "type": typeKey, "out": outKey} {
+		if badgerKeyExists(t, bs, key) {
+			t.Fatalf("%s key was not flushed after DeleteRelEntityAndOut", name)
+		}
+	}
+
+	if err := bs.DeleteIncomingByRelID(endID, relID); err != nil {
+		t.Fatalf("DeleteIncomingByRelID: %v", err)
+	}
+	if badgerKeyExists(t, bs, inKey) {
+		t.Fatal("incoming key was not flushed after DeleteIncomingByRelID")
+	}
+
+	if err := bs.PutRelIncoming(endID, startID, relType, relID); err != nil {
+		t.Fatalf("PutRelIncoming second: %v", err)
+	}
+	if err := bs.DeleteRelIncoming(RelDeleteInfo{
+		ID:      relID,
+		RelType: relType,
+		StartID: startID,
+		EndID:   endID,
+	}); err != nil {
+		t.Fatalf("DeleteRelIncoming: %v", err)
+	}
+	if badgerKeyExists(t, bs, inKey) {
+		t.Fatal("incoming key was not flushed after DeleteRelIncoming")
+	}
+}
+
+func badgerKeyExists(t *testing.T, bs *Store, key []byte) bool {
+	t.Helper()
+
+	var exists bool
+	err := bs.DBForTest().View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(key)
+		switch {
+		case err == nil:
+			exists = true
+			return nil
+		case errors.Is(err, badgerv4.ErrKeyNotFound):
+			return nil
+		default:
+			return err
+		}
+	})
+	if err != nil {
+		t.Fatalf("lookup metadata key %q: %v", string(key), err)
+	}
+	return exists
 }
 
 func TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites(t *testing.T) {

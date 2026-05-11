@@ -3,8 +3,10 @@ package core
 import (
 	"errors"
 	"testing"
+	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestVectorIndex_CreateAndSearch_Cosine(t *testing.T) {
@@ -164,13 +166,114 @@ func TestVectorIndex_IndexNotFound(t *testing.T) {
 	}
 }
 
-func TestVectorIndex_LabelNotRegistered_ReturnsNil(t *testing.T) {
+func TestVectorIndex_CreateBeforeLabelExistsIndexesFutureNodes(t *testing.T) {
 	g, _ := New(Config{})
+	label := "Ghost"
+	key := "v"
 
-	// Label "Ghost" not registered — CreateVectorIndex should return nil (no-op).
-	err := g.Index.CreateVector("Ghost", "v", 2, storepkg.DistanceCosine)
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVector before label registration: %v", err)
+	}
+
+	n, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
-		t.Errorf("expected nil for unregistered label, got %v", err)
+		t.Fatalf("Add future indexed node: %v", err)
+	}
+
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearest after future node add: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n.ID() {
+		t.Fatalf("future node not indexed: got %v, want %d", results, n.ID().SnowflakeID())
+	}
+}
+
+func TestIndexCreateRejectsInvalidLabelAndPropertyKey(t *testing.T) {
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
+
+	creates := []struct {
+		name string
+		fn   func() error
+		want error
+	}{
+		{
+			name: "property empty label",
+			fn:   func() error { return g.Index.CreateProperty(" ", "key") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "temporal empty label",
+			fn:   func() error { return g.Index.CreateTemporal("") },
+			want: ErrEmptyName,
+		},
+		{
+			name: "high frequency empty label",
+			fn:   func() error { return g.Index.CreateHighFrequency("\t", 0) },
+			want: ErrEmptyName,
+		},
+		{
+			name: "vector empty label",
+			fn:   func() error { return g.Index.CreateVector("", "key", 2, storepkg.DistanceCosine) },
+			want: ErrEmptyName,
+		},
+		{
+			name: "high frequency non-positive bucket",
+			fn:   func() error { return g.Index.CreateHighFrequency("Doc", 0) },
+			want: ErrInvalidTemporalIndexConfig,
+		},
+		{
+			name: "high frequency negative bucket",
+			fn:   func() error { return g.Index.CreateHighFrequency("Doc", -time.Second) },
+			want: ErrInvalidTemporalIndexConfig,
+		},
+		{
+			name: "high frequency sub-millisecond bucket",
+			fn:   func() error { return g.Index.CreateHighFrequency("Doc", time.Nanosecond) },
+			want: ErrInvalidTemporalIndexConfig,
+		},
+		{
+			name: "high frequency fractional millisecond bucket",
+			fn:   func() error { return g.Index.CreateHighFrequency("Doc", 1500*time.Microsecond) },
+			want: ErrInvalidTemporalIndexConfig,
+		},
+		{
+			name: "property key too long",
+			fn:   func() error { return g.Index.CreateProperty("Doc", "long") },
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "property reserved key",
+			fn:   func() error { return g.Index.CreateProperty("Doc", "tkg_hash") },
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "vector property key too long",
+			fn:   func() error { return g.Index.CreateVector("Doc", "long", 2, storepkg.DistanceCosine) },
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "vector reserved property key",
+			fn:   func() error { return g.Index.CreateVector("Doc", "tkg_hash", 2, storepkg.DistanceCosine) },
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "vector zero dimensions",
+			fn:   func() error { return g.Index.CreateVector("Doc", "v", 0, storepkg.DistanceCosine) },
+			want: ErrInvalidVectorIndexConfig,
+		},
+		{
+			name: "vector unsupported metric",
+			fn:   func() error { return g.Index.CreateVector("Doc", "v", 2, storepkg.DistanceMetric(99)) },
+			want: ErrInvalidVectorIndexConfig,
+		},
+	}
+	for _, tc := range creates {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.fn(); !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+		})
 	}
 }
 
@@ -201,6 +304,108 @@ func TestVectorIndex_SearchNotFound_ReturnsError(t *testing.T) {
 	_, err := g.Index.SearchNearest(label, "missing", []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if !errors.Is(err, ErrVectorIndexNotFound) {
 		t.Errorf("expected ErrVectorIndexNotFound when no index, got %v", err)
+	}
+}
+
+func TestVectorIndex_SearchRejectsInvalidAndUnknownTargets(t *testing.T) {
+	g, _ := New(Config{
+		Validation: ValidationLimits{
+			MaxPropertyKeyLength: 4,
+		},
+	})
+
+	tests := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{
+			name: "empty label",
+			run: func() error {
+				_, err := g.Index.SearchNearest("", "vec", []float32{1, 0}, 1, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrEmptyName,
+		},
+		{
+			name: "property key too long",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Person", "long-key", []float32{1, 0}, 1, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "reserved property key",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Person", "tkg_hash", []float32{1, 0}, 1, storepkg.QueryOpts{})
+				return err
+			},
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "unknown label",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Missing", "vec", []float32{1, 0}, 1, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrVectorIndexNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, tc.want) {
+				t.Fatalf("%s error = %v, want %v", tc.name, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestVectorIndex_SearchValidatesTargetsBeforeNonPositiveKShortcut(t *testing.T) {
+	g, _ := New(Config{
+		Validation: ValidationLimits{
+			MaxPropertyKeyLength: 4,
+		},
+	})
+
+	tests := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{
+			name: "empty label",
+			run: func() error {
+				_, err := g.Index.SearchNearest(" ", "vec", []float32{1, 0}, 0, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrEmptyName,
+		},
+		{
+			name: "reserved property key",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Person", "tkg_hash", []float32{1, 0}, 0, storepkg.QueryOpts{})
+				return err
+			},
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "unknown label",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Missing", "vec", []float32{1, 0}, 0, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrVectorIndexNotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, tc.want) {
+				t.Fatalf("%s error = %v, want %v", tc.name, err, tc.want)
+			}
+		})
 	}
 }
 

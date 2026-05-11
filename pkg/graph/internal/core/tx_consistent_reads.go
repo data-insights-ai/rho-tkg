@@ -11,17 +11,15 @@ import (
 
 // Tx-scoped consistent-read APIs (R5-F2).
 //
-// The standalone IO/Temporal/Admin entry points hold c.mu.RLock for
-// their duration, which excludes tx/batch but NOT individual
-// standalone mutations (which also take RLock). For a strict view of
-// the graph — no concurrent writers, no torn reads — call these
-// methods from inside g.Tx.Run / g.Tx.RunContext: the tx already
-// holds c.mu.Lock, so the underlying lock-free implementations run
-// without re-entering c.mu.
+// The standalone IO/Temporal/Admin snapshot-style entry points acquire
+// c.mu.Lock themselves. Code that is already inside g.Tx.Run /
+// g.Tx.RunContext must call these tx-scoped methods instead: the tx
+// already holds c.mu.Lock, so the underlying lock-free implementations
+// run without re-entering c.mu.
 //
 // Calling the standalone (*IOOps).Export, (*TempOps).Snapshot, or
 // (*AdminOps).VerifyShard from inside g.Tx.Run would deadlock because
-// sync.RWMutex is not reentrant — those methods try to RLock while
+// sync.RWMutex is not reentrant — those methods try to Lock while
 // the tx holds Lock. The tx-scoped methods below avoid that trap.
 
 // Export writes a portable graph snapshot to w under the transaction's

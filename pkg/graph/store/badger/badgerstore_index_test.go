@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -47,6 +49,129 @@ func TestBadgerStoreCreatePropertyIndex_Duplicate(t *testing.T) {
 	}
 }
 
+func TestBadgerStorePropertyIndexCreatePlaceholderGuards(t *testing.T) {
+	t.Parallel()
+
+	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "name"}
+	original := indexpkg.NewPropertyIndex()
+	replacement := indexpkg.NewPropertyIndex()
+	idxs := map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex{key: original}
+
+	if err := requirePropertyIndexCurrentForCreate(idxs, key, original); err != nil {
+		t.Fatalf("require original: %v", err)
+	}
+
+	idxs[key] = replacement
+	deletePropertyIndexIfCurrent(idxs, key, original)
+	if idxs[key] != replacement {
+		t.Fatal("deletePropertyIndexIfCurrent removed replacement")
+	}
+	if err := requirePropertyIndexCurrentForCreate(idxs, key, original); !errors.Is(err, ErrIndexExists) {
+		t.Fatalf("require replacement = %v, want ErrIndexExists", err)
+	}
+
+	delete(idxs, key)
+	if err := requirePropertyIndexCurrentForCreate(idxs, key, original); !errors.Is(err, ErrIndexNotFound) {
+		t.Fatalf("require dropped = %v, want ErrIndexNotFound", err)
+	}
+}
+
+func TestBadgerStoreQueriesIgnoreBuildingIndexPlaceholders(t *testing.T) {
+	t.Run("property", func(t *testing.T) {
+		bs := newTestBadgerStore(t)
+
+		for _, id := range []snowflake.ID{11, 12} {
+			n := types.NewNode(types.NodeID(id), 1, nil)
+			if err := n.SetProperty("status", "active"); err != nil {
+				t.Fatalf("SetProperty: %v", err)
+			}
+			if err := bs.PutNode(n); err != nil {
+				t.Fatalf("PutNode: %v", err)
+			}
+		}
+
+		key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "status"}
+		placeholder := indexpkg.NewPropertyIndex()
+		placeholder.Mutated = make(map[snowflake.ID]struct{})
+		bs.idxMu.Lock()
+		bs.propertyIndexes[key] = placeholder
+		bs.idxMu.Unlock()
+
+		nodes, err := bs.NodesByLabelAndProperty(1, "status", "active", QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabelAndProperty: %v", err)
+		}
+		if len(nodes) != 2 {
+			t.Fatalf("building property index returned %d nodes, want fallback scan with 2", len(nodes))
+		}
+	})
+
+	t.Run("temporal", func(t *testing.T) {
+		bs := newTestBadgerStore(t)
+		putBadgerNodeTemporal(t, bs, snowflake.ID(21), 1, 100, 0)
+		putBadgerNodeTemporal(t, bs, snowflake.ID(22), 1, 100, 0)
+
+		placeholder := indexpkg.NewTemporalIndex()
+		placeholder.Building = true
+		bs.idxMu.Lock()
+		bs.temporalIndexes[1] = placeholder
+		bs.idxMu.Unlock()
+
+		nodes, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 150})
+		if err != nil {
+			t.Fatalf("NodesByLabel: %v", err)
+		}
+		if len(nodes) != 2 {
+			t.Fatalf("building temporal index returned %d nodes, want fallback scan with 2", len(nodes))
+		}
+	})
+
+	t.Run("high-frequency", func(t *testing.T) {
+		bs := newTestBadgerStore(t)
+		putBadgerNodeTemporal(t, bs, snowflake.ID(31), 1, 100, 0)
+		putBadgerNodeTemporal(t, bs, snowflake.ID(32), 1, 100, 0)
+
+		placeholder := indexpkg.NewHighFrequencyIndex(time.Hour, 0)
+		placeholder.Mutated = make(map[snowflake.ID]struct{})
+		bs.idxMu.Lock()
+		bs.hfIndexes[1] = placeholder
+		bs.idxMu.Unlock()
+
+		nodes, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 150})
+		if err != nil {
+			t.Fatalf("NodesByLabel: %v", err)
+		}
+		if len(nodes) != 2 {
+			t.Fatalf("building high-frequency index returned %d nodes, want fallback scan with 2", len(nodes))
+		}
+	})
+
+	t.Run("vector", func(t *testing.T) {
+		bs := newTestBadgerStore(t)
+		n := types.NewNode(types.NodeID(snowflake.ID(41)), 1, nil)
+		if err := n.SetProperty("vec", []float32{1, 0}); err != nil {
+			t.Fatalf("SetProperty: %v", err)
+		}
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+
+		key := indexpkg.VectorIndexKey{LabelToken: 1, PropertyKey: "vec"}
+		bs.idxMu.Lock()
+		bs.vectorIndexes[key] = &indexpkg.VectorIndex{
+			Dims:    2,
+			Metric:  DistanceEuclidean,
+			Mutated: make(map[snowflake.ID]struct{}),
+		}
+		bs.idxMu.Unlock()
+
+		_, err := bs.SearchNearestNodes(1, "vec", []float32{1, 0}, 1, QueryOpts{})
+		if !errors.Is(err, ErrVectorIndexNotFound) {
+			t.Fatalf("SearchNearestNodes with building vector index = %v, want ErrVectorIndexNotFound", err)
+		}
+	})
+}
+
 func TestBadgerStoreDropPropertyIndex(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -55,6 +180,33 @@ func TestBadgerStoreDropPropertyIndex(t *testing.T) {
 	err := bs.DropPropertyIndex(1, "name")
 	if err != nil {
 		t.Fatalf("DropPropertyIndex failed: %v", err)
+	}
+}
+
+func TestBadgerStoreTemporalIndexCreatePlaceholderGuards(t *testing.T) {
+	t.Parallel()
+
+	labelTok := uint16(1)
+	original := indexpkg.NewTemporalIndex()
+	replacement := indexpkg.NewTemporalIndex()
+	idxs := map[uint16]*indexpkg.TemporalIndex{labelTok: original}
+
+	if err := requireTemporalIndexCurrentForCreate(idxs, labelTok, original); err != nil {
+		t.Fatalf("require original: %v", err)
+	}
+
+	idxs[labelTok] = replacement
+	deleteTemporalIndexIfCurrent(idxs, labelTok, original)
+	if idxs[labelTok] != replacement {
+		t.Fatal("deleteTemporalIndexIfCurrent removed replacement")
+	}
+	if err := requireTemporalIndexCurrentForCreate(idxs, labelTok, original); !errors.Is(err, ErrTemporalIndexExists) {
+		t.Fatalf("require replacement = %v, want ErrTemporalIndexExists", err)
+	}
+
+	delete(idxs, labelTok)
+	if err := requireTemporalIndexCurrentForCreate(idxs, labelTok, original); !errors.Is(err, ErrTemporalIndexNotFound) {
+		t.Fatalf("require dropped = %v, want ErrTemporalIndexNotFound", err)
 	}
 }
 

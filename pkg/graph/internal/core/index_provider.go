@@ -2,7 +2,9 @@ package core
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
+	"strings"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -54,7 +56,7 @@ func (r graphReaderView) IncomingRelationships(nodeID types.NodeID, typeName str
 
 // legacyAdapter wraps an indexpkg.LegacyIndexProvider so it can be stored
 // uniformly alongside new-shape IndexProviders. Forwards OnEvent(ev) to
-// the legacy provider's OnEvent(ev, g) where g is a GraphReader.
+// the legacy provider's OnEvent(ev, reader) where reader is a GraphReader.
 type legacyAdapter struct {
 	legacy indexpkg.LegacyIndexProvider //nolint:staticcheck // intentional bridge for the deprecated provider shape
 	reader indexpkg.GraphReader
@@ -76,6 +78,11 @@ func (a *legacyAdapter) Close() error { return a.legacy.Close() }
 type indexProviderEntry struct {
 	provider    indexpkg.IndexProvider
 	unsubscribe func()
+	initDone    chan struct{}
+}
+
+func (e *indexProviderEntry) waitInit() {
+	<-e.initDone
 }
 
 // subscribeFunc is the abstraction over eventspkg.EventBus.Subscribe and
@@ -139,11 +146,11 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	if p == nil {
+	if isNilInterfaceValue(p) {
 		return fmt.Errorf("graph: index provider is nil")
 	}
 	name := p.Name()
-	if name == "" {
+	if strings.TrimSpace(name) == "" {
 		return indexpkg.ErrIndexProviderEmptyName
 	}
 
@@ -165,25 +172,39 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 		// OnEvent errors are best-effort diagnostics; we deliberately do
 		// not surface them to the originating mutation goroutine because
 		// the mutation has already committed.
-		_ = p.OnEvent(ev)
+		if err := p.OnEvent(ev); err != nil {
+			slog.Error("graph: index provider event handler failed",
+				"provider", name,
+				"eventType", ev.Type,
+				"entityID", ev.EntityID,
+				"error", err)
+		}
 	})
-	c.indexProviders[name] = &indexProviderEntry{provider: p, unsubscribe: unsub}
+	entry := &indexProviderEntry{provider: p, unsubscribe: unsub, initDone: make(chan struct{})}
+	c.indexProviders[name] = entry
 	c.mu.Unlock()
 
 	if init, ok := p.(indexpkg.Initializable); ok {
-		if err := init.Init(graphReaderView{g: c}); err != nil {
+		var initErr error
+		func() {
+			defer close(entry.initDone)
+			initErr = init.Init(graphReaderView{g: c})
+		}()
+		if initErr != nil {
 			// Roll back the registration so the caller does not have to
 			// worry about a half-wired provider observing future events.
 			c.mu.Lock()
-			if entry, present := c.indexProviders[name]; present && entry.provider == p {
+			if current, present := c.indexProviders[name]; present && current == entry {
 				delete(c.indexProviders, name)
 				c.mu.Unlock()
 				entry.unsubscribe()
 			} else {
 				c.mu.Unlock()
 			}
-			return fmt.Errorf("graph: index provider %q Init failed: %w", name, err)
+			return fmt.Errorf("graph: index provider %q Init failed: %w", name, initErr)
 		}
+	} else {
+		close(entry.initDone)
 	}
 	return nil
 }
@@ -196,8 +217,8 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 // All semantics (auto-bus creation, sync/async support, duplicate-name
 // rejection, race safety) match IndexOps.RegisterProvider. Legacy providers
 // cannot use Initializable — the adapter does not implement it because
-// the old API never had a bulk-load hook. Callers needing bulk-load
-// should migrate to the new IndexProvider interface.
+// the old API never had a bulk-load hook. Bulk-load support is provided
+// by the new IndexProvider interface.
 //
 // Deprecated: Migrate providers to indexpkg.IndexProvider (and optionally
 // Initializable). This entry point will be removed in a future major
@@ -207,7 +228,7 @@ func (i *IndexOps) RegisterLegacyProvider(p indexpkg.LegacyIndexProvider) error 
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	if p == nil {
+	if isNilInterfaceValue(p) {
 		return fmt.Errorf("graph: index provider is nil")
 	}
 	return i.RegisterProvider(&legacyAdapter{legacy: p, reader: graphReaderView{g: c}})
@@ -222,7 +243,14 @@ func (i *IndexOps) UnregisterProvider(name string) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	if strings.TrimSpace(name) == "" {
+		return indexpkg.ErrIndexProviderEmptyName
+	}
 	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		return ErrGraphClosed
+	}
 	entry, ok := c.indexProviders[name]
 	if !ok {
 		c.mu.Unlock()
@@ -232,6 +260,7 @@ func (i *IndexOps) UnregisterProvider(name string) error {
 	c.mu.Unlock()
 
 	entry.unsubscribe()
+	entry.waitInit()
 	return entry.provider.Close()
 }
 
@@ -241,6 +270,10 @@ func (i *IndexOps) UnregisterProvider(name string) error {
 func (i *IndexOps) Providers() []string {
 	c := i.c
 	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil
+	}
 	out := make([]string, 0, len(c.indexProviders))
 	for name := range c.indexProviders {
 		out = append(out, name)

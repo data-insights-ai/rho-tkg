@@ -131,6 +131,71 @@ func TestF1_DeepCopyIsolatesRegisteredPointerStructInternals(t *testing.T) {
 	}
 }
 
+func TestPropertySliceSetPreservesPointerShapeForValueReceiverCustomType(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(nestedRingsStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	original := &nestedRingsStub{Rings: [][]int{{1, 2}, {3, 4}}}
+	var ps PropertySlice
+	if err := ps.Set("geom", original); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	original.Rings[0][0] = 99
+	got, ok := ps.Get("geom")
+	if !ok {
+		t.Fatal("Get(\"geom\") missing")
+	}
+	cpPtr, ok := got.(*nestedRingsStub)
+	if !ok {
+		t.Fatalf("stored custom value type = %T, want *nestedRingsStub", got)
+	}
+	if cpPtr == original {
+		t.Fatal("Set stored original custom pointer")
+	}
+	if cpPtr.Rings[0][0] != 1 {
+		t.Fatalf("Set retained caller nested alias: %v", cpPtr.Rings)
+	}
+}
+
+type valueReturnsPointerCopyStub struct {
+	Items []int
+}
+
+func (v valueReturnsPointerCopyStub) HashBytes() []byte { return []byte{byte(len(v.Items))} }
+func (v valueReturnsPointerCopyStub) DeepCopyValue() any {
+	cp := valueReturnsPointerCopyStub{Items: append([]int(nil), v.Items...)}
+	return &cp
+}
+
+func TestPropertySliceSetPreservesValueShapeForCustomType(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(valueReturnsPointerCopyStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	original := valueReturnsPointerCopyStub{Items: []int{1, 2, 3}}
+	var ps PropertySlice
+	if err := ps.Set("custom", original); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	original.Items[0] = 99
+	got, ok := ps.Get("custom")
+	if !ok {
+		t.Fatal("Get(\"custom\") missing")
+	}
+	cpValue, ok := got.(valueReturnsPointerCopyStub)
+	if !ok {
+		t.Fatalf("stored custom value type = %T, want valueReturnsPointerCopyStub", got)
+	}
+	if cpValue.Items[0] != 1 {
+		t.Fatalf("Set retained caller nested alias: %v", cpValue.Items)
+	}
+}
+
 // ─── F2 RED: registration must reject types that cannot satisfy the contracts ──
 //
 // Today RegisterPropertyStructType returns nothing and accepts anything.
@@ -286,5 +351,65 @@ func TestF3_PointerRegistrationRejectsValueFormAtSet(t *testing.T) {
 	// Pointer form: must still be accepted.
 	if err := ps.Set("ok", &pointerOnlyMethods{X: 2}); err != nil {
 		t.Errorf("Set rejected valid pointer-form value: %v", err)
+	}
+}
+
+type badCopyValueStub struct{}
+
+func (b badCopyValueStub) HashBytes() []byte { return []byte("bad-copy") }
+func (b badCopyValueStub) DeepCopyValue() any {
+	return map[string]int{"unsupported": 1}
+}
+
+func TestPropertySliceRejectsUnsupportedDeepCopyResult(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(badCopyValueStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	var ps PropertySlice
+	err := ps.Set("bad", badCopyValueStub{})
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Fatalf("Set error = %v, want ErrUnsupportedMapType", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("Set stored unsupported deep-copy result: %v", ps)
+	}
+
+	_, err = NewPropertySlice(map[string]any{"bad": badCopyValueStub{}})
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Fatalf("NewPropertySlice error = %v, want ErrUnsupportedMapType", err)
+	}
+
+	n := NewNode(1, 1, nil)
+	err = n.SetProperties(PropertySlice{{Key: "bad", Value: badCopyValueStub{}}})
+	if !errors.Is(err, ErrUnsupportedMapType) {
+		t.Fatalf("Node.SetProperties error = %v, want ErrUnsupportedMapType", err)
+	}
+	if n.Properties().Len() != 0 {
+		t.Fatalf("Node.SetProperties stored unsupported deep-copy result: %v", n.Properties())
+	}
+}
+
+type panicCopyValueStub struct{}
+
+func (p panicCopyValueStub) HashBytes() []byte { return []byte("panic-copy") }
+func (p panicCopyValueStub) DeepCopyValue() any {
+	panic("copy failed")
+}
+
+func TestPropertySliceRejectsPanickingDeepCopyResult(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(panicCopyValueStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	var ps PropertySlice
+	err := ps.Set("panic", panicCopyValueStub{})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Set error = %v, want ErrUnsupportedValueType", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("Set stored value after DeepCopyValue panic: %v", ps)
 	}
 }

@@ -16,7 +16,8 @@ const (
 // Zero (DepthAll) includes all tiers — backward-compatible default.
 type ShardDepth byte
 
-// Shard-depth selectors for TieredStore queries.
+// Shard-depth selectors for Store queries. Single-shard stores accept the
+// defined selectors but treat them equivalently because they have no cold tiers.
 const (
 	DepthAll  ShardDepth = 0 // All tiers (default, backward-compatible).
 	DepthHot  ShardDepth = 1 // Hot shard only.
@@ -36,6 +37,7 @@ type QueryOpts struct {
 	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
 
 	// Depth controls which shard tiers to query. 0 (DepthAll) = all tiers.
-	// Only used by TieredStore; single-shard stores ignore this field.
+	// Single-shard stores accept only the defined enum values, but all valid
+	// depth values see the full single shard.
 	Depth ShardDepth
 }

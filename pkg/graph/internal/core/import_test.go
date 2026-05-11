@@ -67,6 +67,16 @@ func TestImportNodeWithID_ZeroID(t *testing.T) {
 	}
 }
 
+func TestImportNodeWithID_NegativeID(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	_, err := g.Nodes.Import(context.Background(), types.NodeID(-1), []string{"A"}, nil)
+	if !errors.Is(err, ErrInvalidID) {
+		t.Errorf("err = %v, want ErrInvalidID", err)
+	}
+}
+
 func TestImportNodeWithID_Validation(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -124,6 +134,19 @@ func TestImportRelationshipWithID_Collision(t *testing.T) {
 	}
 }
 
+func TestImportRelationshipWithID_NegativeID(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+
+	_, err := g.Rels.Import(context.Background(), types.RelID(-1), "KNOWS", n1, n2, nil)
+	if !errors.Is(err, ErrInvalidID) {
+		t.Errorf("err = %v, want ErrInvalidID", err)
+	}
+}
+
 func TestGraphTx_ImportNodeWithID(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -158,6 +181,24 @@ func TestGraphTx_ImportNodeWithID(t *testing.T) {
 	name, _ := got.GetProperty("name")
 	if name != "Bob" {
 		t.Errorf("name = %v, want Bob", name)
+	}
+}
+
+func TestGraphTx_ImportNegativeIDs(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+
+	tx, _ := g.BeginTx()
+	defer tx.Rollback()
+
+	if _, err := tx.ImportNodeWithID(context.Background(), types.NodeID(-1), []string{"Person"}, nil); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("ImportNodeWithID negative ID = %v, want ErrInvalidID", err)
+	}
+	if _, err := tx.ImportRelationshipWithID(context.Background(), types.RelID(-1), "KNOWS", n1, n2, nil); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("ImportRelationshipWithID negative ID = %v, want ErrInvalidID", err)
 	}
 }
 

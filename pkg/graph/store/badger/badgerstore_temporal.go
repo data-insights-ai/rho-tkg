@@ -84,6 +84,40 @@ func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts
 	return nodes, nil
 }
 
+// fetchNodesWithTemporalFilterPage fetches sorted node IDs after the cursor and
+// stops only after Limit temporally valid rows have been collected. Cache-miss
+// IDs from filterNodeIDsByTemporalPeek must not consume page slots before their
+// metadata has been read from Badger.
+func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
+	for _, nid := range ids {
+		id := nid.SnowflakeID()
+		n, err := bs.GetNode(nid)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
+		}
+		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
+			continue
+		}
+		nodes = append(nodes, n)
+		if opts.Limit > 0 && len(nodes) >= opts.Limit {
+			break
+		}
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes, nil
+}
+
 // fetchRelsWithTemporalFilter fetches relationships by ID and post-filters for
 // temporal match.
 func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
@@ -102,6 +136,38 @@ func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) 
 			continue
 		}
 		rels = append(rels, r)
+	}
+	return rels, nil
+}
+
+// fetchRelsWithTemporalFilterPage is the relationship counterpart to
+// fetchNodesWithTemporalFilterPage.
+func (bs *Store) fetchRelsWithTemporalFilterPage(ids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
+	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
+	for _, rid := range ids {
+		id := rid.SnowflakeID()
+		r, err := bs.GetRelationship(rid)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
+		}
+		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
+			continue
+		}
+		rels = append(rels, r)
+		if opts.Limit > 0 && len(rels) >= opts.Limit {
+			break
+		}
+	}
+	if len(rels) == 0 {
+		return nil, nil
 	}
 	return rels, nil
 }

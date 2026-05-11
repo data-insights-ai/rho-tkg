@@ -305,18 +305,7 @@ func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 	}
 }
 
-// TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE verifies that
-// archiving a reference node A which has an outgoing rel R: A -> B
-// where B lives on an event shard does NOT silently lose R. Pre-fix,
-// archive.PutRelationship(R) failed with storepkg.ErrNodeNotFound (B not in
-// archive) and the error was swallowed via `continue`; refShard.Cascade
-// then deleted R from refShard while leaving the in/ entry on B's
-// event shard dangling — silent data corruption.
-//
-// The fix detects the boundary-crossing rel up front and returns
-// tiered.ErrCrossShardArchiveRel, leaving all state untouched. Callers must
-// either delete the rel or archive both endpoints first.
-func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
+func TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
@@ -335,42 +324,39 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_REtoE(t *testing.T) {
 	signalID := signalNode.InternalID().SnowflakeID()
 	relID := rel.InternalID().SnowflakeID()
 
-	err = ts.ArchiveNode(caseNode.InternalID())
-	if err == nil {
-		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; data loss")
-	}
-	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	// State must be unchanged on rejection — no partial archive.
-	if !ts.RefShardForTest().HasNodeID(caseID) {
-		t.Error("caseNode should still be in refShard after rejected archive")
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode did not open refArchive")
 	}
-	if !ts.RefShardForTest().HasRelID(relID) {
-		t.Error("rel entity should still be on refShard (R→E entity lives on start shard)")
+	if ts.RefShardForTest().HasNodeID(caseID) || !archive.HasNodeID(caseID) {
+		t.Fatal("caseNode should move from refShard to refArchive")
 	}
-	if ts.RefArchiveForTest().Load() != nil {
-		t.Error("rejected archive must not lazy-open refArchive")
+	if ts.RefShardForTest().HasRelID(relID) || !archive.HasRelID(relID) {
+		t.Fatal("R→E rel entity/out should move from refShard to refArchive")
 	}
-	// Partner shard's in/ entry for signalID → relID must still exist.
+
 	signalShard, signalCheckin, err := ts.ShardForNodeIDCheckedForTest(signalNode.InternalID())
 	if err != nil {
 		t.Fatalf("resolve signal shard: %v", err)
 	}
 	defer signalCheckin()
 	if !tiered.HasIncomingEntryForTest(signalShard, signalID, relID) {
-		t.Error("event shard's in/ entry for cross-shard rel should be unchanged after rejected archive")
+		t.Error("event shard's in/ entry for cross-shard rel should remain")
+	}
+	out, err := ts.OutgoingRelationships(caseNode.InternalID(), 0)
+	if err != nil {
+		t.Fatalf("OutgoingRelationships archived case: %v", err)
+	}
+	if !containsRelID(out, rel.ID()) {
+		t.Fatal("archived case outgoing traversal missed migrated rel")
 	}
 }
 
-// TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR — symmetric to
-// the case above but with rel R: B(event) -> A(ref). The rel entity
-// lives on the event shard and refShard only has the in/ entry. Pre-fix,
-// refShard.Rels.Get(R) returned storepkg.ErrRelNotFound and the rel was
-// silently skipped, leaving the in/ entry on refShard dangling after
-// cascade.
-func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
+func TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
@@ -388,34 +374,36 @@ func TestTieredStore_ArchiveNode_RejectsCrossShardRel_EtoR(t *testing.T) {
 	caseID := caseNode.InternalID().SnowflakeID()
 	relID := rel.InternalID().SnowflakeID()
 
-	err = ts.ArchiveNode(caseNode.InternalID())
-	if err == nil {
-		t.Fatal("ArchiveNode silently succeeded with cross-shard rel; in/ entry would dangle")
-	}
-	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
+	if err := ts.ArchiveNode(caseNode.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	// State must be unchanged on rejection.
-	if !ts.RefShardForTest().HasNodeID(caseID) {
-		t.Error("caseNode should still be in refShard after rejected archive")
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode did not open refArchive")
 	}
-	// E→R: rel entity lives on event shard. refShard only has the in/
-	// entry for caseID → relID; verify it is still present.
-	if !tiered.HasIncomingEntryForTest(ts.RefShardForTest(), caseID, relID) {
-		t.Error("refShard's in/ entry for caseNode should be unchanged after rejected archive")
+	if ts.RefShardForTest().HasNodeID(caseID) || !archive.HasNodeID(caseID) {
+		t.Fatal("caseNode should move from refShard to refArchive")
 	}
-	if ts.RefArchiveForTest().Load() != nil {
-		t.Error("rejected archive must not lazy-open refArchive")
+	if tiered.HasIncomingEntryForTest(ts.RefShardForTest(), caseID, relID) {
+		t.Fatal("refShard in/ entry for archived endpoint should move away")
+	}
+	if !tiered.HasIncomingEntryForTest(archive, caseID, relID) {
+		t.Fatal("refArchive missing incoming entry for archived endpoint")
+	}
+	if _, err := ts.GetRelationship(rel.ID()); err != nil {
+		t.Fatalf("GetRelationship after archive: %v", err)
+	}
+	in, err := ts.IncomingRelationships(caseNode.InternalID(), 0)
+	if err != nil {
+		t.Fatalf("IncomingRelationships archived case: %v", err)
+	}
+	if !containsRelID(in, rel.ID()) {
+		t.Fatal("archived case incoming traversal missed migrated rel")
 	}
 }
 
-// TestTieredStore_ArchiveNode_RejectsRefRefRel verifies that archiving
-// a reference node A which has a same-shard rel R: A -> A2 to another
-// reference node A2 is rejected. Pre-fix, archive.PutRelationship(R)
-// failed (A2 not on archive) and the rel was silently skipped; cascade
-// then deleted R entirely from refShard — full data loss.
-func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
+func TestTieredStore_ArchiveNode_MigratesRefRefRel(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	a, err := g.Nodes.Add([]string{"Case"}, nil)
@@ -434,23 +422,29 @@ func TestTieredStore_ArchiveNode_RejectsRefRefRel(t *testing.T) {
 	a2ID := a2.InternalID().SnowflakeID()
 	relID := rel.InternalID().SnowflakeID()
 
-	err = ts.ArchiveNode(a.InternalID())
-	if err == nil {
-		t.Fatal("ArchiveNode silently succeeded with ref-ref rel where the other endpoint stays on refShard; rel would be silently deleted")
-	}
-	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode returned %v, want tiered.ErrCrossShardArchiveRel", err)
+	if err := ts.ArchiveNode(a.InternalID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	// State must be unchanged on rejection — no partial archive.
-	if !ts.RefShardForTest().HasNodeID(aID) || !ts.RefShardForTest().HasNodeID(a2ID) {
-		t.Error("both nodes should still be in refShard after rejected archive")
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode did not open refArchive")
 	}
-	if !ts.RefShardForTest().HasRelID(relID) {
-		t.Error("rel should still be in refShard after rejected archive")
+	if ts.RefShardForTest().HasNodeID(aID) || !archive.HasNodeID(aID) || !ts.RefShardForTest().HasNodeID(a2ID) {
+		t.Fatal("only archived endpoint should move to refArchive")
 	}
-	if ts.RefArchiveForTest().Load() != nil {
-		t.Error("rejected archive must not lazy-open refArchive")
+	if ts.RefShardForTest().HasRelID(relID) || !archive.HasRelID(relID) {
+		t.Fatal("A→A2 rel entity/out should move to refArchive")
+	}
+	if !tiered.HasIncomingEntryForTest(ts.RefShardForTest(), a2ID, relID) {
+		t.Fatal("live reference endpoint should keep incoming entry")
+	}
+	out, err := ts.OutgoingRelationships(a.InternalID(), 0)
+	if err != nil {
+		t.Fatalf("OutgoingRelationships archived ref node: %v", err)
+	}
+	if !containsRelID(out, rel.ID()) {
+		t.Fatal("archived ref outgoing traversal missed migrated rel")
 	}
 }
 
@@ -489,11 +483,9 @@ func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
 // MR. All other archive tests call ts.ArchiveNode() directly, which bypasses
 // the Graph layer and leaves the new lock lines uncovered.
 //
-// Adversarial shape: a concurrent AddRelationship is attempted between archive
-// and restore. Without g.mu.Lock in ArchiveNode, the adjacency pre-scan can
-// miss rels added concurrently, and the cascade partially destroys them.
-// With the lock, AddRelationship blocks until ArchiveNode finishes and then
-// receives tiered.ErrCrossShardArchiveRel.
+// Adversarial shape: a relationship is added between archive and restore.
+// Archive/restore must migrate both the existing self-loop and the new
+// archive→ref relationship without dangling adjacency.
 func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,
@@ -543,17 +535,9 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 		t.Fatal("node still present in refShard after g.Admin.Archive")
 	}
 
-	// After archiving, AddRelationship from archive to live ref must fail.
-	// Pre-fix (no g.mu.Lock): a concurrent AddRelationship between the
-	// pre-scan and the cascade could succeed, leaving a dangling cross-shard
-	// rel. Post-fix: either blocked by the lock or caught by PutRelationship's
-	// archive guard, which returns tiered.ErrCrossShardArchiveRel.
-	_, addErr := g.Rels.Add("TOUCHES", node, partner, nil)
-	if addErr == nil {
-		t.Fatal("AddRelationship archive→live succeeded; cross-shard archive rel created — re-introduces M2 silent-loss surface")
-	}
-	if !errors.Is(addErr, tiered.ErrCrossShardArchiveRel) {
-		t.Fatalf("AddRelationship archive→live returned %v, want tiered.ErrCrossShardArchiveRel", addErr)
+	touches, err := g.Rels.Add("TOUCHES", node, partner, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship archive→live: %v", err)
 	}
 
 	// Restore via Graph API.
@@ -565,5 +549,15 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	}
 	if archive.HasNodeID(node.ID().SnowflakeID()) {
 		t.Fatal("node still present in refArchive after g.Admin.Restore")
+	}
+	if !ts.RefShardForTest().HasRelID(touches.ID().SnowflakeID()) {
+		t.Fatal("archive→live relationship entity should move back to refShard on restore")
+	}
+	out, err := g.Rels.Outgoing(node.ID(), "")
+	if err != nil {
+		t.Fatalf("Outgoing after restore: %v", err)
+	}
+	if !containsRelID(out, touches.ID()) {
+		t.Fatal("restored node outgoing traversal missed archive-created relationship")
 	}
 }

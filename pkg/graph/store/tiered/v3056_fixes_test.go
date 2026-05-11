@@ -61,7 +61,7 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 
 // TestTieredStore_PutNodesBatch_RollbackOnHotShardError verifies that when the
 // hot-shard write fails, ref-shard nodes written in the same batch are rolled
-// back (best-effort) so no orphan reference entities persist.
+// back so no orphan reference entities persist.
 func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)

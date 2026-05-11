@@ -362,7 +362,7 @@ func TestTxCommitPublishesBufferedEvents(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	var mu sync.Mutex
 	var received []eventspkg.Event
@@ -429,7 +429,7 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	var handlerOK atomic.Bool
 	bus.Subscribe(func(e eventspkg.Event) {
@@ -468,7 +468,7 @@ func TestBatchEventsNotBuffered(t *testing.T) {
 	t.Cleanup(func() { g.Close() })
 
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	var count atomic.Int64
 	bus.Subscribe(func(e eventspkg.Event) {

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -117,6 +118,36 @@ func (p *initializableProvider) Init(g indexpkg.GraphReader) error {
 	return nil
 }
 
+type blockingInitializableProvider struct {
+	mockIndexProvider
+	initStarted      chan struct{}
+	releaseInit      chan struct{}
+	initReturned     atomic.Bool
+	closedDuringInit atomic.Bool
+}
+
+func newBlockingInitializableProvider(name string) *blockingInitializableProvider {
+	return &blockingInitializableProvider{
+		mockIndexProvider: mockIndexProvider{name: name},
+		initStarted:       make(chan struct{}),
+		releaseInit:       make(chan struct{}),
+	}
+}
+
+func (p *blockingInitializableProvider) Init(indexpkg.GraphReader) error {
+	close(p.initStarted)
+	<-p.releaseInit
+	p.initReturned.Store(true)
+	return nil
+}
+
+func (p *blockingInitializableProvider) Close() error {
+	if !p.initReturned.Load() {
+		p.closedDuringInit.Store(true)
+	}
+	return p.mockIndexProvider.Close()
+}
+
 func newProviderTestGraph(t *testing.T) *Core {
 	t.Helper()
 	g, err := New(Config{})
@@ -148,6 +179,53 @@ func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
 	}
 }
 
+func TestIndexProvider_ProvidersClosedFlagReturnsEmpty(t *testing.T) {
+	g := newProviderTestGraph(t)
+	if err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"}); err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+
+	// Simulate the first phase of Close: the closed flag is visible before
+	// c.mu.Lock drains indexProviders. Providers has no error return, so it
+	// must fail closed by returning an empty list in that window.
+	g.closed.Store(true)
+	if names := g.Index.Providers(); len(names) != 0 {
+		t.Fatalf("Providers after closed flag = %v, want empty", names)
+	}
+}
+
+func TestIndexProvider_ProvidersRechecksClosedAfterWaitingForLock(t *testing.T) {
+	g := newProviderTestGraph(t)
+	if err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"}); err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+
+	g.mu.Lock()
+	done := make(chan []string, 1)
+	go func() {
+		done <- g.Index.Providers()
+	}()
+
+	select {
+	case names := <-done:
+		g.mu.Unlock()
+		t.Fatalf("Providers returned while write lock held: %v", names)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	g.closed.Store(true)
+	g.mu.Unlock()
+
+	select {
+	case names := <-done:
+		if len(names) != 0 {
+			t.Fatalf("Providers after closed flag while waiting for lock = %v, want empty", names)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Providers did not return after write lock released")
+	}
+}
+
 func TestIndexProvider_DuplicateNameRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
 	p := &mockIndexProvider{name: "spatial"}
@@ -168,10 +246,25 @@ func TestIndexProvider_EmptyNameRejected(t *testing.T) {
 	}
 }
 
+func TestIndexProvider_BlankNameRejected(t *testing.T) {
+	g := newProviderTestGraph(t)
+	if err := g.Index.RegisterProvider(&mockIndexProvider{name: " \t\n "}); !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
+		t.Fatalf("RegisterProvider blank name = %v, want ErrIndexProviderEmptyName", err)
+	}
+	if err := g.Index.UnregisterProvider(" \t\n "); !errors.Is(err, indexpkg.ErrIndexProviderEmptyName) {
+		t.Fatalf("UnregisterProvider blank name = %v, want ErrIndexProviderEmptyName", err)
+	}
+}
+
 func TestIndexProvider_NilRejected(t *testing.T) {
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(nil); err == nil {
 		t.Error("expected error for nil provider")
+	}
+
+	var typedNil *mockIndexProvider
+	if err := g.Index.RegisterProvider(typedNil); err == nil {
+		t.Error("expected error for typed nil provider")
 	}
 }
 
@@ -296,7 +389,7 @@ func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	ab := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{QueueSize: 8, Workers: 1})
-	g.Events.SetAsync(ab)
+	_ = g.Events.SetAsync(ab)
 
 	p := &mockIndexProvider{name: "spatial"}
 	if err := g.Index.RegisterProvider(p); err != nil {
@@ -444,6 +537,11 @@ func TestIndexProvider_LegacyNilRejected(t *testing.T) {
 	if err := g.Index.RegisterLegacyProvider(nil); err == nil {
 		t.Error("expected error for nil legacy provider")
 	}
+
+	var typedNil *mockLegacyIndexProvider
+	if err := g.Index.RegisterLegacyProvider(typedNil); err == nil {
+		t.Error("expected error for typed nil legacy provider")
+	}
 }
 
 func TestIndexProvider_InitializableBulkLoad(t *testing.T) {
@@ -511,6 +609,109 @@ func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
 	}
 }
 
+func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := newBlockingInitializableProvider("spatial")
+
+	registerDone := make(chan error, 1)
+	go func() {
+		registerDone <- g.Index.RegisterProvider(p)
+	}()
+
+	select {
+	case <-p.initStarted:
+	case <-time.After(time.Second):
+		t.Fatal("RegisterProvider did not enter Init")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- g.Close()
+	}()
+
+	select {
+	case err := <-closeDone:
+		t.Fatalf("Close returned before Init finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if p.closed.Load() {
+		t.Fatal("provider Close ran while Init was still blocked")
+	}
+
+	close(p.releaseInit)
+
+	if err := <-registerDone; err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after Init finished")
+	}
+	if p.closedDuringInit.Load() {
+		t.Fatal("provider Close observed Init still running")
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close was not called by graph Close")
+	}
+}
+
+func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T) {
+	g := newProviderTestGraph(t)
+	p := newBlockingInitializableProvider("spatial")
+
+	registerDone := make(chan error, 1)
+	go func() {
+		registerDone <- g.Index.RegisterProvider(p)
+	}()
+
+	select {
+	case <-p.initStarted:
+	case <-time.After(time.Second):
+		t.Fatal("RegisterProvider did not enter Init")
+	}
+
+	unregisterDone := make(chan error, 1)
+	go func() {
+		unregisterDone <- g.Index.UnregisterProvider("spatial")
+	}()
+
+	select {
+	case err := <-unregisterDone:
+		t.Fatalf("UnregisterProvider returned before Init finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if p.closed.Load() {
+		t.Fatal("provider Close ran while Init was still blocked")
+	}
+
+	close(p.releaseInit)
+
+	if err := <-registerDone; err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+	select {
+	case err := <-unregisterDone:
+		if err != nil {
+			t.Fatalf("UnregisterProvider: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("UnregisterProvider did not return after Init finished")
+	}
+	if p.closedDuringInit.Load() {
+		t.Fatal("provider Close observed Init still running")
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close was not called by UnregisterProvider")
+	}
+}
+
 func TestIndexProvider_InitializableSeesAddedAfterEvents(t *testing.T) {
 	// Two-phase: Init populates from current state, then subsequent
 	// mutations arrive via OnEvent. Verify the provider can stitch
@@ -555,6 +756,56 @@ func TestIndexProvider_OnEventErrorDoesNotAbortMutation(t *testing.T) {
 	}
 	if got := len(p.capturedEvents()); got != 1 {
 		t.Errorf("expected 1 event observed by provider, got %d", got)
+	}
+}
+
+func TestGraphReaderViewDelegatesReadMethods(t *testing.T) {
+	g := newProviderTestGraph(t)
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	reader := graphReaderView{g: g}
+	gotNode, err := reader.GetNode(a.ID())
+	if err != nil || gotNode.ID() != a.ID() {
+		t.Fatalf("GetNode = %v, %v; want %v, nil", gotNode, err, a.ID())
+	}
+	gotRel, err := reader.GetRelationship(r.ID())
+	if err != nil || gotRel.ID() != r.ID() {
+		t.Fatalf("GetRelationship = %v, %v; want %v, nil", gotRel, err, r.ID())
+	}
+	nodes, err := reader.NodesByLabel("Person", storepkg.QueryOpts{})
+	if err != nil || len(nodes) != 2 {
+		t.Fatalf("NodesByLabel = len %d, %v; want 2, nil", len(nodes), err)
+	}
+	rels, err := reader.RelationshipsByType("KNOWS", storepkg.QueryOpts{})
+	if err != nil || len(rels) != 1 {
+		t.Fatalf("RelationshipsByType = len %d, %v; want 1, nil", len(rels), err)
+	}
+	nodeCount, err := reader.NodeCount()
+	if err != nil || nodeCount != 2 {
+		t.Fatalf("NodeCount = %d, %v; want 2, nil", nodeCount, err)
+	}
+	relCount, err := reader.RelationshipCount()
+	if err != nil || relCount != 1 {
+		t.Fatalf("RelationshipCount = %d, %v; want 1, nil", relCount, err)
+	}
+	out, err := reader.OutgoingRelationships(a.ID(), "KNOWS")
+	if err != nil || len(out) != 1 || out[0].ID() != r.ID() {
+		t.Fatalf("OutgoingRelationships = %#v, %v; want rel %v", out, err, r.ID())
+	}
+	in, err := reader.IncomingRelationships(b.ID(), "KNOWS")
+	if err != nil || len(in) != 1 || in[0].ID() != r.ID() {
+		t.Fatalf("IncomingRelationships = %#v, %v; want rel %v", in, err, r.ID())
 	}
 }
 

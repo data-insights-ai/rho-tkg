@@ -534,6 +534,50 @@ func TestLRUMarkFlushedNonExistentID(t *testing.T) {
 	}
 }
 
+func TestLRUZeroValueBehavesLikeMinimumCapacityCache(t *testing.T) {
+	t.Parallel()
+
+	var put Cache[string]
+	put.Put(snowflake.ID(1), "dirty")
+	if got := put.Cap(); got != 1 {
+		t.Fatalf("zero-value Cap after Put = %d, want 1", got)
+	}
+	if v, status := put.Get(snowflake.ID(1)); status != CacheHit || v != "dirty" {
+		t.Fatalf("zero-value Put/Get = %q, %d; want dirty, CacheHit", v, status)
+	}
+
+	var deleted Cache[string]
+	deleted.MarkDeleted(snowflake.ID(2))
+	if _, status := deleted.Get(snowflake.ID(2)); status != CacheDeleted {
+		t.Fatalf("zero-value MarkDeleted/Get status = %d, want CacheDeleted", status)
+	}
+
+	var clean Cache[string]
+	clean.LoadClean(snowflake.ID(1), "a")
+	clean.LoadClean(snowflake.ID(2), "b")
+	if got := clean.Len(); got != 1 {
+		t.Fatalf("zero-value LoadClean Len = %d, want 1", got)
+	}
+	if _, status := clean.Get(snowflake.ID(1)); status != CacheMiss {
+		t.Fatalf("zero-value LoadClean should evict first clean entry, status = %d", status)
+	}
+	if v, status := clean.Get(snowflake.ID(2)); status != CacheHit || v != "b" {
+		t.Fatalf("zero-value LoadClean/Get latest = %q, %d; want b, CacheHit", v, status)
+	}
+
+	var collect Cache[string]
+	if dirty := collect.CollectDirty(); len(dirty) != 0 {
+		t.Fatalf("zero-value CollectDirty len = %d, want 0", len(dirty))
+	}
+
+	var reset Cache[string]
+	reset.ResetForTest()
+	reset.Put(snowflake.ID(3), "after-reset")
+	if v, status := reset.Get(snowflake.ID(3)); status != CacheHit || v != "after-reset" {
+		t.Fatalf("zero-value ResetForTest then Put/Get = %q, %d; want after-reset, CacheHit", v, status)
+	}
+}
+
 // ─── CleanCount tracking ────────────────────────────────────────────────────
 
 func TestLRUEvictCleanSkipsWhenAllDirty(t *testing.T) {

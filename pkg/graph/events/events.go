@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -63,7 +64,7 @@ type EventHandler func(Event)
 // Handlers are invoked outside the EventBus lock to prevent deadlocks
 // when a handler re-enters the Graph (e.g., reads the mutated entity).
 //
-// Zero value is not usable — use NewEventBus().
+// The zero value is ready to use.
 type EventBus struct {
 	mu       sync.RWMutex
 	nextID   int
@@ -76,10 +77,17 @@ func NewEventBus() *EventBus {
 }
 
 // Subscribe registers a handler and returns an unsubscribe function.
+// A nil handler is ignored and returns a no-op unsubscribe.
 // The returned function may be called at any time to deregister the handler.
 // Calling it multiple times is safe.
 func (eb *EventBus) Subscribe(h EventHandler) func() {
+	if eb == nil || h == nil {
+		return func() {}
+	}
 	eb.mu.Lock()
+	if eb.handlers == nil {
+		eb.handlers = make(map[int]EventHandler)
+	}
 	id := eb.nextID
 	eb.nextID++
 	eb.handlers[id] = h
@@ -103,6 +111,9 @@ func (eb *EventBus) Subscribe(h EventHandler) func() {
 // cannot crash the graph mutation that triggered the event. Panics are
 // logged at Error level and do not prevent subsequent handlers from running.
 func (eb *EventBus) Publish(e Event) {
+	if eb == nil {
+		return
+	}
 	eb.mu.RLock()
 	if len(eb.handlers) == 0 {
 		eb.mu.RUnlock()
@@ -124,6 +135,9 @@ func (eb *EventBus) Publish(e Event) {
 // ordering" reduces to "events fire in the order supplied". Mirrors
 // the AsyncEventBus contract so the Publisher interface is uniform.
 func (eb *EventBus) PublishBatch(events ...Event) {
+	if eb == nil {
+		return
+	}
 	for _, e := range events {
 		eb.Publish(e)
 	}
@@ -167,24 +181,24 @@ const (
 
 // AsyncEventBusConfig configures an AsyncEventBus.
 type AsyncEventBusConfig struct {
-	Workers      int                  // number of worker goroutines (default 1)
+	Workers      int                  // requested worker count; capped at 1 to preserve priority, default 1
 	QueueSize    int                  // channel capacity (default 256)
-	Backpressure BackpressureStrategy // behavior when queue is full
+	Backpressure BackpressureStrategy // behavior when queue is full; invalid values use BackpressureBlock
 }
 
-// AsyncEventBus delivers graph lifecycle events asynchronously via a worker pool.
-// Handlers are invoked in worker goroutines, not on the caller's goroutine.
+// AsyncEventBus delivers graph lifecycle events asynchronously via a dispatcher.
+// Handlers are invoked in a dispatcher goroutine, not on the caller's goroutine.
 // This decouples slow handler latency from graph write latency.
 //
-// Events are routed to per-priority queues. Workers drain queues in priority
+// Events are routed to per-priority queues. The dispatcher drains queues in priority
 // order: Critical > High > Normal > Low > Deferred. PublishBatch enqueues
-// multiple events atomically with a single wake-up at the end, so the worker
+// multiple events atomically with a single wake-up at the end, so the dispatcher
 // observes the full burst before its first scan and dispatches in strict
 // priority order. Sequential Publish calls do not provide that guarantee
-// because the worker can wake from the first call's signal and dispatch
+// because the dispatcher can wake from the first call's signal and dispatch
 // before later events enqueue.
 //
-// Zero value is not usable — use NewAsyncEventBus().
+// The zero value starts lazily with the default configuration on first use.
 type AsyncEventBus struct {
 	mu       sync.RWMutex
 	nextID   int
@@ -192,7 +206,7 @@ type AsyncEventBus struct {
 
 	// publishMu serializes Publish/PublishBatch so a batch's enqueues
 	// land together and no per-event Publish can interleave a wake-up
-	// signal mid-batch. The worker does NOT take publishMu — it
+	// signal mid-batch. The dispatcher does NOT take publishMu — it
 	// observes the queues only via channel receives, and the
 	// channels' own internal locking guarantees safe concurrent
 	// access.
@@ -203,7 +217,7 @@ type AsyncEventBus struct {
 
 	// wakeupCh is a 1-buffered "events available" signal. Each
 	// Publish/PublishBatch does ONE non-blocking send after all
-	// enqueues are complete. The worker only learns "events are
+	// enqueues are complete. The dispatcher only learns "events are
 	// available" via wakeupCh — never directly from a per-priority
 	// channel in its blocking branch — so when it wakes it always
 	// re-runs the priority-ordered scan and picks the highest
@@ -212,40 +226,80 @@ type AsyncEventBus struct {
 
 	wg        sync.WaitGroup
 	stopCh    chan struct{}
+	workers   int
+	queueSize int
+	closing   atomic.Bool
+	startOnce sync.Once
 	closeOnce sync.Once
 }
 
 // NewAsyncEventBus creates and starts an AsyncEventBus with the given configuration.
-// Workers are started immediately and consume events until Close() is called.
+// The dispatcher is started immediately and consumes events until Close() is called.
 func NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus {
-	if cfg.Workers <= 0 {
-		cfg.Workers = 1
-	}
-	if cfg.QueueSize <= 0 {
-		cfg.QueueSize = 256
-	}
-
 	ab := &AsyncEventBus{
-		handlers:     make(map[int]EventHandler),
-		backpressure: cfg.Backpressure,
-		stopCh:       make(chan struct{}),
-		wakeupCh:     make(chan struct{}, 1),
+		backpressure: normalizeBackpressure(cfg.Backpressure),
+		workers:      cfg.Workers,
+		queueSize:    cfg.QueueSize,
 	}
-	for i := range ab.queues {
-		ab.queues[i] = make(chan Event, cfg.QueueSize)
-	}
-
-	for i := 0; i < cfg.Workers; i++ {
-		ab.wg.Add(1)
-		go ab.worker()
-	}
+	ab.start()
 	return ab
 }
 
+func normalizeBackpressure(strategy BackpressureStrategy) BackpressureStrategy {
+	switch strategy {
+	case BackpressureBlock, BackpressureDropOldest, BackpressureDropLatest:
+		return strategy
+	default:
+		return BackpressureBlock
+	}
+}
+
+func (ab *AsyncEventBus) start() {
+	ab.startOnce.Do(func() {
+		workers := ab.workers
+		if workers <= 0 {
+			workers = 1
+		}
+		if workers > 1 {
+			workers = 1
+		}
+		ab.workers = workers
+		queueSize := ab.queueSize
+		if queueSize <= 0 {
+			queueSize = 256
+		}
+		ab.backpressure = normalizeBackpressure(ab.backpressure)
+
+		ab.handlers = make(map[int]EventHandler)
+		ab.stopCh = make(chan struct{})
+		ab.wakeupCh = make(chan struct{}, 1)
+		for i := range ab.queues {
+			ab.queues[i] = make(chan Event, queueSize)
+		}
+
+		for i := 0; i < workers; i++ {
+			ab.wg.Add(1)
+			go ab.worker()
+		}
+	})
+}
+
 // Subscribe registers a handler and returns an unsubscribe function.
+// A nil handler is ignored and returns a no-op unsubscribe.
 // Safe to call concurrently. Calling the unsubscribe function multiple times is safe.
 func (ab *AsyncEventBus) Subscribe(h EventHandler) func() {
+	if ab == nil || h == nil {
+		return func() {}
+	}
+	ab.start()
+	if ab.closing.Load() {
+		return func() {}
+	}
 	ab.mu.Lock()
+	if ab.closing.Load() {
+		ab.mu.Unlock()
+		return func() {}
+	}
 	id := ab.nextID
 	ab.nextID++
 	ab.handlers[id] = h
@@ -265,11 +319,22 @@ func (ab *AsyncEventBus) Subscribe(h EventHandler) func() {
 // Behavior when the target queue is full is determined by BackpressureStrategy.
 //
 // Sequential Publish calls do NOT guarantee strict priority ordering across
-// the burst: the worker may wake from the first call's signal and dispatch
+// the burst: the dispatcher may wake from the first call's signal and dispatch
 // before later events enqueue. Use PublishBatch when strict ordering across
 // multiple events is required.
 func (ab *AsyncEventBus) Publish(e Event) {
+	if ab == nil {
+		return
+	}
+	ab.start()
+	if ab.closing.Load() {
+		return
+	}
 	ab.publishMu.Lock()
+	if ab.closing.Load() {
+		ab.publishMu.Unlock()
+		return
+	}
 	wrote := ab.enqueueLocked(e)
 	ab.publishMu.Unlock()
 	if wrote {
@@ -278,8 +343,8 @@ func (ab *AsyncEventBus) Publish(e Event) {
 }
 
 // PublishBatch enqueues a sequence of events atomically: the publish
-// mutex is held across every enqueue and the worker is woken exactly
-// once at the end. The worker therefore sees every event in the burst
+// mutex is held across every enqueue and the dispatcher is woken exactly
+// once at the end. The dispatcher therefore sees every event in the burst
 // when it scans, and dispatches them in strict priority order
 // (Critical > High > Normal > Low > Deferred). Use this for the Tx /
 // Batch event-flush path or any caller that needs deterministic
@@ -289,10 +354,21 @@ func (ab *AsyncEventBus) Publish(e Event) {
 // a single event, the batch waits there before enqueueing later
 // events. BackpressureDropOldest / DropLatest never block.
 func (ab *AsyncEventBus) PublishBatch(events ...Event) {
+	if ab == nil {
+		return
+	}
 	if len(events) == 0 {
 		return
 	}
+	ab.start()
+	if ab.closing.Load() {
+		return
+	}
 	ab.publishMu.Lock()
+	if ab.closing.Load() {
+		ab.publishMu.Unlock()
+		return
+	}
 	wroteAny := false
 	for _, e := range events {
 		if ab.enqueueLocked(e) {
@@ -332,10 +408,12 @@ func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
 				return true
 			default:
 				select {
+				case <-ab.stopCh:
+					return false
 				case <-q:
 				default:
 					// Queue is full and drain attempt also contended;
-					// yield so workers draining the queue get CPU time.
+					// yield so the dispatcher draining the queue gets CPU time.
 					runtime.Gosched()
 				}
 			}
@@ -352,9 +430,9 @@ func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
 	return false
 }
 
-// signalWakeup pokes the worker via the coalescing wakeupCh. Buffered
+// signalWakeup pokes the dispatcher via the coalescing wakeupCh. Buffered
 // cap 1 means repeated Publishes against an already-pending wake-up
-// collapse into a single signal; the worker observes there is work and
+// collapse into a single signal; the dispatcher observes there is work and
 // re-runs the priority-ordered drain.
 func (ab *AsyncEventBus) signalWakeup() {
 	select {
@@ -363,7 +441,7 @@ func (ab *AsyncEventBus) signalWakeup() {
 	}
 }
 
-// priorityOrder is the drain order for worker goroutines: highest priority first.
+// priorityOrder is the dispatcher drain order: highest priority first.
 var priorityOrder = [numPriorityLevels]EventPriority{
 	PriorityCritical,
 	PriorityHigh,
@@ -372,7 +450,7 @@ var priorityOrder = [numPriorityLevels]EventPriority{
 	PriorityDeferred,
 }
 
-// worker drains per-priority queues in strict priority order via a
+// worker runs the dispatcher loop and drains per-priority queues via a
 // non-blocking scan; when all queues are empty it blocks ONLY on
 // stopCh + wakeupCh (R4-F16). Critically, the blocking branch never
 // receives an event directly — it only learns "events are now
@@ -421,7 +499,7 @@ func (ab *AsyncEventBus) worker() {
 	}
 }
 
-// drainAll processes all remaining events in priority order before worker exits.
+// drainAll processes all remaining events in priority order before the dispatcher exits.
 func (ab *AsyncEventBus) drainAll() {
 	for {
 		drained := false
@@ -459,11 +537,20 @@ func (ab *AsyncEventBus) dispatch(e Event) {
 	}
 }
 
-// Close signals workers to stop, waits for them to drain the queue and finish.
+// Close signals the dispatcher to stop, waits for it to drain the queue and finish.
 // Safe to call multiple times (B11). Blocks until all in-flight events are delivered.
 func (ab *AsyncEventBus) Close() {
+	if ab == nil {
+		return
+	}
+	ab.start()
 	ab.closeOnce.Do(func() {
+		ab.closing.Store(true)
 		close(ab.stopCh)
+		ab.publishMu.Lock()
+		// publishMu is a lifecycle gate here: taking it after closing waits for
+		// any publisher that entered before the closing flag became visible.
+		ab.publishMu.Unlock() //nolint:staticcheck
 		ab.wg.Wait()
 	})
 }

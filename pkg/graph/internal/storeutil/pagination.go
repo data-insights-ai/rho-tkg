@@ -87,6 +87,41 @@ func PaginateRels(rels []*types.Relationship, after types.EntityID, limit int) [
 	return out
 }
 
+// PaginateNodesInOrder applies cursor pagination to a slice whose order is
+// meaningful but not necessarily sorted by ID, such as vector-search distance
+// order. If after is set but absent from nodes, the next page is empty.
+func PaginateNodesInOrder(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
+	if len(nodes) == 0 {
+		return nil
+	}
+	start := 0
+	if after != 0 {
+		afterRaw := after.SnowflakeID()
+		found := false
+		for i, n := range nodes {
+			if n.ID().SnowflakeID() == afterRaw {
+				start = i + 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	if start >= len(nodes) {
+		return nil
+	}
+	out := nodes[start:]
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // ToNodeIDs wraps a raw snowflake.ID slice into a typed types.NodeID slice.
 // Used at boundaries where storage maps return raw IDs but the downstream API
 // takes typed IDs. New allocation; preserves order.

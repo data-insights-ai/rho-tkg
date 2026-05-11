@@ -5,10 +5,23 @@ import (
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+const nonZeroRelTypeProbeToken uint16 = 1
+
+func validateRelationshipEndpointIDs(startID, endID types.NodeID) error {
+	if err := storepkg.ValidateNodeID(startID); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(endID); err != nil {
+		return err
+	}
+	return nil
+}
 
 // =============================================================================
 // Relationship — Add (Create / IfAbsent / ByID)
@@ -76,6 +89,9 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 
 	startID := startNode.ID()
 	endID := endNode.ID()
+	if err := validateRelationshipEndpointIDs(startID, endID); err != nil {
+		return nil, err
+	}
 
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
@@ -106,22 +122,46 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 	}
 
+	id := c.nextRelID()
+	if c.constraints.Len() > 0 {
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, err
+		}
+	}
+
 	// R5-F6: defer rel-type token allocation past every endpoint-fetch
 	// failure path. A missing endpoint, store error, or context
 	// cancellation between the caller fetch and our endpoint-lock
 	// window must NOT leave a permanent rel-type registration. R4-F14
 	// already deferred past the cheap self-loop/validation gates;
-	// R5-F6 finishes the job for the operational failure paths.
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	// R5-F6 finishes the job for the operational failure paths. The
+	// allocation snapshot below rolls back a newly created type if the
+	// final store write still fails.
+	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
+	relTypeFinished := false
+	finishRelType := func(err error) error {
+		relTypeFinished = true
+		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
+	}
+	defer func() {
+		if !relTypeFinished {
+			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+		}
+	}()
 
-	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
+	}
 
-	hash := integrity.ComputeRelHash(r, typeName)
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: compute relationship hash: %w", err))
+	}
 
 	// Capture endpoint hashes at creation time for cross-validation.
 	// FromNodeHash/ToNodeHash are NOT part of ComputeRelHash to avoid cascading
@@ -142,56 +182,51 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	}
 	r.SetIntegrity(ig)
 
-	// Set transaction time + merge caller-provided temporal metadata.
-	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
-	{
-		txNow := c.now()
-		rtm := r.Temporal()
-		if rtm == nil {
-			rtm = &types.TemporalMetadata{}
-			r.SetTemporal(rtm)
-		}
-		rtm.TxFrom = txNow
-		if validFrom != 0 {
-			rtm.ValidFrom = validFrom
-		}
-		if validTo != 0 {
-			rtm.ValidTo = validTo
-		}
-		if createdAt != 0 {
-			rtm.CreatedAt = createdAt
-		}
-	}
-
-	if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
-		return nil, err
-	}
+	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, finishRelType(err)
 	}
 
-	if err := c.store.PutRelationship(r); err != nil {
-		return nil, err
+	if err := putGeneratedRelationship(c.store, r); err != nil {
+		return nil, finishRelType(err)
+	}
+	if err := finishRelType(nil); err != nil {
+		return r, err
 	}
 
 	c.opRelAdds.Add(1)
 	return r, nil
 }
 
+func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) *types.Relationship {
+	r := types.NewRelationship(id, nonZeroRelTypeProbeToken, startID, endID)
+	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
+	return r
+}
+
+func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo, createdAt types.Instant) {
+	rtm := r.Temporal()
+	if rtm == nil {
+		rtm = &types.TemporalMetadata{}
+		r.SetTemporal(rtm)
+	}
+	rtm.TxFrom = c.now()
+	if validFrom != 0 {
+		rtm.ValidFrom = validFrom
+	}
+	if validTo != 0 {
+		rtm.ValidTo = validTo
+	}
+	if createdAt != 0 {
+		rtm.CreatedAt = createdAt
+	}
+}
+
 // AddByIDWithContext creates a relationship using endpoint snowflake IDs.
-// This is the high-throughput path when the caller already knows both
-// endpoint IDs and no graph-level constraints are configured.
-//
-// Behaviour vs RelOps.AddWithContext:
-//   - When no endpoint-dependent constraints are configured, the live
-//     endpoints are NOT fetched: FromNodeHash/ToNodeHash stay empty
-//     and ConstraintRelWithinEndpoints is trivially satisfied (nothing
-//     to check). This is the fast path the API name advertises.
-//   - When ConstraintRelWithinEndpoints (or any other graph-level
-//     constraint) is set on the graph, AddByID transparently fetches
-//     the live endpoints under the endpoint lock and enforces the
-//     constraint — silent bypass via this entry point is not possible.
+// It has the same live-endpoint verification, endpoint-hash capture, and
+// constraint enforcement semantics as RelOps.AddWithContext; it only changes
+// the input form so callers do not need to carry endpoint node objects.
 func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -247,6 +282,9 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
+	if err := validateRelationshipEndpointIDs(startID, endID); err != nil {
+		return nil, err
+	}
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
 	}
@@ -260,45 +298,58 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	// R5-F7: when graph-level constraints are configured, fetch live
-	// endpoints under the lock so the same enforcement that Rels.Add
-	// performs runs here too. The "fast path" — no endpoint fetch,
-	// no hash capture, no constraint check — applies only when there
-	// is no constraint to enforce. Silent bypass via the ByID entry
-	// point is no longer possible.
-	var liveStart, liveEnd *types.Node
-	if c.constraints.Len() > 0 {
-		liveStart, err = c.store.GetNode(startID)
+	liveStart, err := c.store.GetNode(startID)
+	if err != nil {
+		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+	}
+	var liveEnd *types.Node
+	if startID == endID {
+		liveEnd = liveStart
+	} else {
+		liveEnd, err = c.store.GetNode(endID)
 		if err != nil {
-			return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+			return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 		}
-		if startID == endID {
-			liveEnd = liveStart
-		} else {
-			liveEnd, err = c.store.GetNode(endID)
-			if err != nil {
-				return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-			}
+	}
+
+	id := c.nextRelID()
+	if c.constraints.Len() > 0 {
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, err
 		}
 	}
 
 	// R5-F6: allocate rel-type token AFTER endpoint locks are held
 	// (and, when constraints are active, AFTER the live-endpoint
 	// fetches succeed) so a failed fetch does not leave a permanent
-	// rel-type registration. The remaining post-allocation failure is
-	// the store PutRelationship at the bottom of this function —
-	// unavoidable because the relationship object literally needs the
-	// token at construction time.
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	// rel-type registration. Snapshot the registry at allocation time
+	// so a final PutRelationship failure can roll back a newly created
+	// type token.
+	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
+	relTypeFinished := false
+	finishRelType := func(err error) error {
+		relTypeFinished = true
+		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
+	}
+	defer func() {
+		if !relTypeFinished {
+			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+		}
+	}()
 
-	id := c.Rels.NextID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
+	}
 
-	hash := integrity.ComputeRelHash(r, typeName)
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: compute relationship hash: %w", err))
+	}
 
 	ig := &types.RelIntegrity{
 		Hash:               hash,
@@ -308,56 +359,25 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	// Capture endpoint hashes when we have the live endpoints — this
-	// matches Rels.Add's behaviour. When constraints are not configured
-	// the hashes stay empty (the documented fast-path trade-off).
-	if liveStart != nil {
-		if startIg := liveStart.Integrity(); startIg != nil {
-			ig.FromNodeHash = startIg.Hash
-		}
+	if startIg := liveStart.Integrity(); startIg != nil {
+		ig.FromNodeHash = startIg.Hash
 	}
-	if liveEnd != nil {
-		if endIg := liveEnd.Integrity(); endIg != nil {
-			ig.ToNodeHash = endIg.Hash
-		}
+	if endIg := liveEnd.Integrity(); endIg != nil {
+		ig.ToNodeHash = endIg.Hash
 	}
 	r.SetIntegrity(ig)
 
-	// Set transaction time + merge caller-provided temporal metadata.
-	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
-	{
-		txNow := c.now()
-		rtm := r.Temporal()
-		if rtm == nil {
-			rtm = &types.TemporalMetadata{}
-			r.SetTemporal(rtm)
-		}
-		rtm.TxFrom = txNow
-		if validFrom != 0 {
-			rtm.ValidFrom = validFrom
-		}
-		if validTo != 0 {
-			rtm.ValidTo = validTo
-		}
-		if createdAt != 0 {
-			rtm.CreatedAt = createdAt
-		}
-	}
-
-	// R5-F7: enforce graph-level constraints when configured. Without
-	// the live endpoints (no constraint set) there's nothing to check.
-	if liveStart != nil && liveEnd != nil {
-		if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
-			return nil, err
-		}
-	}
+	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, finishRelType(err)
 	}
 
-	if err := c.store.PutRelationship(r); err != nil {
-		return nil, err
+	if err := putGeneratedRelationship(c.store, r); err != nil {
+		return nil, finishRelType(err)
+	}
+	if err := finishRelType(nil); err != nil {
+		return r, err
 	}
 
 	c.opRelAdds.Add(1)
@@ -372,10 +392,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 // The existence check and creation are serialized under entity locks, preventing
 // the TOCTOU race inherent in separate check-then-create calls.
 //
-// Constraint behaviour: same as AddByIDWithContext — when graph-level
-// constraints are configured, live endpoints are fetched and the
-// constraint is enforced; the fast path (no fetch, empty endpoint
-// hashes) applies only when no constraint is set.
+// Endpoint and constraint behaviour matches AddByIDWithContext.
 func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -433,6 +450,9 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		return nil, false, fmt.Errorf("graph: relationship properties: %w", err)
 	}
 
+	if err := validateRelationshipEndpointIDs(startID, endID); err != nil {
+		return nil, false, err
+	}
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, false, ErrSelfLoop
 	}
@@ -452,7 +472,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	// skip OutgoingRelationships entirely. This avoids polluting the
 	// rel-type registry when a "duplicate-relationship" check that
 	// would have hit the store-failure path returns early.
-	if existingTok, ok := c.relTypes.Lookup(typeName); ok {
+	if existingTok, ok := c.lookupRelTypeLocked(typeName); ok {
 		existing, err := c.store.OutgoingRelationships(startID, existingTok)
 		if err != nil {
 			return nil, false, fmt.Errorf("graph: check existing relationships: %w", err)
@@ -464,35 +484,54 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 	}
 
-	// R5-F7: when graph-level constraints are configured, fetch live
-	// endpoints so the constraint is enforced uniformly with the rel
-	// creation paths that DO fetch endpoints.
-	var liveStart, liveEnd *types.Node
-	if c.constraints.Len() > 0 {
-		liveStart, err = c.store.GetNode(startID)
+	liveStart, err := c.store.GetNode(startID)
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+	}
+	var liveEnd *types.Node
+	if startID == endID {
+		liveEnd = liveStart
+	} else {
+		liveEnd, err = c.store.GetNode(endID)
 		if err != nil {
-			return nil, false, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
-		}
-		if startID == endID {
-			liveEnd = liveStart
-		} else {
-			liveEnd, err = c.store.GetNode(endID)
-			if err != nil {
-				return nil, false, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-			}
+			return nil, false, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 		}
 	}
 
-	// Not found — allocate the token now and create.
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	id := c.nextRelID()
+	if c.constraints.Len() > 0 {
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, false, err
+		}
+	}
+
+	// Not found — allocate the token now and create. The allocation
+	// snapshot lets a final PutRelationship failure roll back a newly
+	// created type token.
+	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: relationship type: %w", err)
 	}
-	id := c.Rels.NextID()
+	relTypeFinished := false
+	finishRelType := func(err error) error {
+		relTypeFinished = true
+		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
+	}
+	defer func() {
+		if !relTypeFinished {
+			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+		}
+	}()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		return nil, false, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
+	}
 
-	hash := integrity.ComputeRelHash(r, typeName)
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		return nil, false, finishRelType(fmt.Errorf("graph: compute relationship hash: %w", err))
+	}
 
 	ig := &types.RelIntegrity{
 		Hash:               hash,
@@ -502,53 +541,25 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if liveStart != nil {
-		if startIg := liveStart.Integrity(); startIg != nil {
-			ig.FromNodeHash = startIg.Hash
-		}
+	if startIg := liveStart.Integrity(); startIg != nil {
+		ig.FromNodeHash = startIg.Hash
 	}
-	if liveEnd != nil {
-		if endIg := liveEnd.Integrity(); endIg != nil {
-			ig.ToNodeHash = endIg.Hash
-		}
+	if endIg := liveEnd.Integrity(); endIg != nil {
+		ig.ToNodeHash = endIg.Hash
 	}
 	r.SetIntegrity(ig)
 
-	// Set transaction time + merge caller-provided temporal metadata.
-	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
-	{
-		txNow := c.now()
-		rtm := r.Temporal()
-		if rtm == nil {
-			rtm = &types.TemporalMetadata{}
-			r.SetTemporal(rtm)
-		}
-		rtm.TxFrom = txNow
-		if validFrom != 0 {
-			rtm.ValidFrom = validFrom
-		}
-		if validTo != 0 {
-			rtm.ValidTo = validTo
-		}
-		if createdAt != 0 {
-			rtm.CreatedAt = createdAt
-		}
-	}
-
-	// R5-F7: enforce graph-level constraints when live endpoints are
-	// available.
-	if liveStart != nil && liveEnd != nil {
-		if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
-			return nil, false, err
-		}
-	}
+	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, false, err
+		return nil, false, finishRelType(err)
 	}
 
-	if err := c.store.PutRelationship(r); err != nil {
-		return nil, false, err
+	if err := putGeneratedRelationship(c.store, r); err != nil {
+		return nil, false, finishRelType(err)
+	}
+	if err := finishRelType(nil); err != nil {
+		return r, true, err
 	}
 
 	c.opRelAdds.Add(1)

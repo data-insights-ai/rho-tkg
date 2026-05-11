@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -122,6 +123,61 @@ func TestExport_Empty_Graph(t *testing.T) {
 	nc, _ := dst.Nodes.Count()
 	if nc != 0 {
 		t.Errorf("NodeCount after empty import = %d; want 0", nc)
+	}
+}
+
+func TestIOExportNilWriterReturnsSentinel(t *testing.T) {
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close() //nolint:errcheck
+
+	var nilWriter io.Writer
+	if err := g.IO.Export(nilWriter); !errors.Is(err, ErrNilWriter) {
+		t.Fatalf("Export(nil writer): got %v, want ErrNilWriter", err)
+	}
+
+	var typedNilWriter *bytes.Buffer
+	if err := g.IO.Export(typedNilWriter); !errors.Is(err, ErrNilWriter) {
+		t.Fatalf("Export(typed nil writer): got %v, want ErrNilWriter", err)
+	}
+}
+
+func TestIOImportNilReaderReturnsSentinel(t *testing.T) {
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close() //nolint:errcheck
+
+	var nilReader io.Reader
+	if err := g.IO.Import(nilReader); !errors.Is(err, ErrNilReader) {
+		t.Fatalf("Import(nil reader): got %v, want ErrNilReader", err)
+	}
+
+	var typedNilReader *bytes.Buffer
+	if err := g.IO.ImportWithOptions(typedNilReader, tkgio.ImportOptions{}); !errors.Is(err, ErrNilReader) {
+		t.Fatalf("ImportWithOptions(typed nil reader): got %v, want ErrNilReader", err)
+	}
+}
+
+func TestTxExportNilWriterReturnsSentinel(t *testing.T) {
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close() //nolint:errcheck
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var nilWriter io.Writer
+	if err := tx.Export(nilWriter); !errors.Is(err, ErrNilWriter) {
+		t.Fatalf("tx.Export(nil writer): got %v, want ErrNilWriter", err)
 	}
 }
 

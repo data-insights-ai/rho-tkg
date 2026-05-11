@@ -50,6 +50,9 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if _, err := g.Nodes.GetByIDs([]types.NodeID{a.ID()}); err != nil {
 		t.Errorf("GetByIDs: %v", err)
 	}
+	if _, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), types.NodeID(999)}); !errors.Is(err, graphpkg.ErrNodeNotFound) {
+		t.Errorf("GetByIDs missing: err = %v, want ErrNodeNotFound", err)
+	}
 	if _, err := g.Nodes.Update(a.ID(), map[string]any{"age": int64(31)}); err != nil {
 		t.Errorf("Update: %v", err)
 	}
@@ -156,6 +159,9 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	}
 	if _, err := g.Rels.GetByIDs([]types.RelID{r1.ID(), r2.ID()}); err != nil {
 		t.Errorf("GetByIDs: %v", err)
+	}
+	if _, err := g.Rels.GetByIDs([]types.RelID{r1.ID(), types.RelID(999)}); !errors.Is(err, graphpkg.ErrRelNotFound) {
+		t.Errorf("GetByIDs missing: err = %v, want ErrRelNotFound", err)
 	}
 
 	if _, err := g.Rels.Update(r1.ID(), map[string]any{"weight": float64(0.5)}); err != nil {
@@ -393,9 +399,11 @@ func TestSubAPISmoke_StatsResolveConstraintsEvents(t *testing.T) {
 		t.Errorf("Resolve.LookupRelType(KNOWS): missing")
 	}
 
-	g.Constraints.Add(temporalpkg.TemporalConstraint{})
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{}); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
+		t.Errorf("Constraints.Add(invalid): %v", err)
+	}
 
-	g.Events.SetAsync(nil) // tolerated: clears
+	_ = g.Events.SetAsync(nil) // tolerated: clears
 }
 
 func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {

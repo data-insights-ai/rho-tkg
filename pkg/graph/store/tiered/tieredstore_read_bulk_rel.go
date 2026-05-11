@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -11,6 +12,12 @@ import (
 // Mirror layout of the node-side methods left in tieredstore_read_bulk.go.
 
 func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -80,6 +87,9 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 }
 
 func (ts *Store) RelationshipCount() (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
@@ -121,6 +131,12 @@ func (ts *Store) RelationshipCount() (int, error) {
 }
 
 func (ts *Store) RelCountByType(token uint16) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return 0, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
@@ -162,6 +178,12 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 }
 
 func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -234,18 +256,23 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 }
 
 func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
-	stopped := false
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	ids := make([]types.RelID, 0)
 	if err := ts.refShard.ForEachRelID(func(id types.RelID) bool {
-		if !fn(id) {
-			stopped = true
-			return false
-		}
+		ids = append(ids, id)
 		return true
 	}); err != nil {
 		return err
 	}
-	if stopped {
-		return nil
+	for _, id := range ids {
+		if !fn(id) {
+			return nil
+		}
 	}
 
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
@@ -253,19 +280,19 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 		return archiveErr
 	}
 	if archive != nil {
+		ids = ids[:0]
 		err := archive.ForEachRelID(func(id types.RelID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
+			ids = append(ids, id)
 			return true
 		})
 		archiveCheckin()
 		if err != nil {
 			return err
 		}
-		if stopped {
-			return nil
+		for _, id := range ids {
+			if !fn(id) {
+				return nil
+			}
 		}
 	}
 
@@ -278,19 +305,19 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 		if err != nil {
 			return err
 		}
+		ids = ids[:0]
 		err = store.ForEachRelID(func(id types.RelID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
+			ids = append(ids, id)
 			return true
 		})
 		es.checkinStore()
 		if err != nil {
 			return err
 		}
-		if stopped {
-			return nil
+		for _, id := range ids {
+			if !fn(id) {
+				return nil
+			}
 		}
 	}
 	return nil

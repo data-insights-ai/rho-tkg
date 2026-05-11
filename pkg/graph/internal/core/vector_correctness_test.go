@@ -9,18 +9,19 @@ package core
 //       happens BEFORE k-cut so invalid near candidates do not crowd out
 //       valid farther ones.
 //     - After/Limit: pagination applied after eligibility filtering and k-cut.
-//     - Depth (tiered.Store): archive-resident nodes excluded from
+//     - Depth (tiered.Store): archive-resident reference nodes and
+//       out-of-depth event-shard nodes excluded from
 //       storepkg.DepthHot/storepkg.DepthWarm queries.
-//     - Temporal + Depth: combination is rejected with
-//       ErrDepthTemporalUnsupported (mirrors NodesByLabel/AllNodes).
+//     - Temporal + Depth: depth-ineligible nodes are excluded before
+//       temporal eligibility and k-cut.
 
 import (
-	"errors"
 	"math"
 	"sort"
 	"testing"
 	"time"
 
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 
@@ -445,26 +446,119 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 	}
 }
 
-// TestSearchNearestNodes_TemporalDepthCombo_Rejected verifies that Depth +
-// temporal filter combinations return ErrDepthTemporalUnsupported, matching
-// the gating policy of NodesByLabel/AllNodes/RelationshipsByType/AllRelationships.
-func TestSearchNearestNodes_TemporalDepthCombo_Rejected(t *testing.T) {
+func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testing.T) {
+	t.Parallel()
+	g, ts := newTestTieredGraph(t)
+
+	label := "Signal" // event label per newTestTieredStore RefLabels
+	key := "v"
+
+	cold, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
+	if err != nil {
+		t.Fatalf("AddNode cold: %v", err)
+	}
+	ts.MuForTest().RLock()
+	coldShard := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
+
+	time.Sleep(2 * time.Millisecond)
+	if err := g.Admin.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate cold->warm: %v", err)
+	}
+	demoteToCold(ts, coldShard)
+	time.Sleep(2 * time.Millisecond)
+
+	warm, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}})
+	if err != nil {
+		t.Fatalf("AddNode warm: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := g.Admin.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate warm->warm: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+
+	hot, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
+	if err != nil {
+		t.Fatalf("AddNode hot: %v", err)
+	}
+
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	resultsAll, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("DepthAll SearchNearest: %v", err)
+	}
+	if len(resultsAll) != 1 || resultsAll[0].ID() != cold.ID() {
+		t.Fatalf("DepthAll should return nearest cold node %d, got %v", cold.ID(), vectorTestNodeIDs(resultsAll))
+	}
+
+	resultsWarm, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{Depth: storepkg.DepthWarm})
+	if err != nil {
+		t.Fatalf("DepthWarm SearchNearest: %v", err)
+	}
+	if len(resultsWarm) != 1 || resultsWarm[0].ID() != warm.ID() {
+		t.Fatalf("DepthWarm should exclude cold before k-cut and return warm node %d, got %v",
+			warm.ID(), vectorTestNodeIDs(resultsWarm))
+	}
+
+	resultsHot, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{Depth: storepkg.DepthHot})
+	if err != nil {
+		t.Fatalf("DepthHot SearchNearest: %v", err)
+	}
+	if len(resultsHot) != 1 || resultsHot[0].ID() != hot.ID() {
+		t.Fatalf("DepthHot should exclude warm/cold before k-cut and return hot node %d, got %v",
+			hot.ID(), vectorTestNodeIDs(resultsHot))
+	}
+}
+
+func TestSearchNearestNodes_TemporalDepthCombo_FiltersArchivedBeforeK(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
 	label := "User"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
-
-	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
-		t.Fatalf("CreateVectorIndex: %v", err)
+	live, err := g.Nodes.Add([]string{label}, map[string]any{
+		key:              []float32{2, 0},
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddNode live: %v", err)
+	}
+	archived, err := g.Nodes.Add([]string{label}, map[string]any{
+		key:              []float32{0.1, 0},
+		"tkg_valid_from": types.Instant(1),
+	})
+	if err != nil {
+		t.Fatalf("AddNode archived: %v", err)
 	}
 
-	now := types.Instant(time.Now().UnixMilli())
-	_, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1,
-		storepkg.QueryOpts{ValidAt: now, Depth: storepkg.DepthHot})
-	if !errors.Is(err, ErrDepthTemporalUnsupported) {
-		t.Errorf("expected ErrDepthTemporalUnsupported for ValidAt + Depth, got %v", err)
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	if err := g.Admin.Archive(archived.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+
+	resultsAll, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1,
+		storepkg.QueryOpts{ValidAt: 2})
+	if err != nil {
+		t.Fatalf("DepthAll SearchNearest: %v", err)
+	}
+	if len(resultsAll) != 1 || resultsAll[0].ID() != archived.ID() {
+		t.Fatalf("DepthAll should return closer archived node %d, got %v", archived.ID(), vectorTestNodeIDs(resultsAll))
+	}
+
+	resultsHot, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1,
+		storepkg.QueryOpts{ValidAt: 2, Depth: storepkg.DepthHot})
+	if err != nil {
+		t.Fatalf("DepthHot SearchNearest: %v", err)
+	}
+	if len(resultsHot) != 1 || resultsHot[0].ID() != live.ID() {
+		t.Fatalf("DepthHot should exclude archived before k-cut and return live node %d, got %v",
+			live.ID(), vectorTestNodeIDs(resultsHot))
 	}
 }
 
@@ -553,7 +647,7 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 	}
 }
 
-// --- resolveTemporalVectorMatches + paginateNearestNodes edge-case coverage ---
+// --- resolveTemporalVectorMatches + ranked pagination edge-case coverage ---
 
 // resolveTemporalVectorMatches is a test-only helper that mirrors the
 // pre-iterative-over-fetch temporal-vector resolution semantics. The
@@ -570,7 +664,7 @@ func resolveTemporalVectorMatches(g *Core, candidates []*types.Node, opts storep
 		}
 		resolved = append(resolved, n)
 	}
-	return paginateNearestNodes(resolved, after, limit)
+	return storeutil.PaginateNodesInOrder(resolved, after, limit)
 }
 
 // TestResolveTemporalVectorMatches_FiltersAndPaginates calls the fallback
@@ -622,8 +716,7 @@ func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
 		t.Errorf("After=pre2: expected [pre3], got %v", got3)
 	}
 
-	// After=post (cursor not in eligible set): paginateNearestNodes must
-	// return nil — the !found path sets start=len(nodes).
+	// After=post (cursor not in eligible set): ranked pagination must return nil.
 	gotNone := resolveTemporalVectorMatches(g, all, opts, pred, types.EntityID(post.ID()), 0)
 	if len(gotNone) != 0 {
 		t.Errorf("After=post (ineligible cursor): expected empty, got %d results", len(gotNone))
@@ -822,8 +915,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	label := "VBatch"
 	key := "v"
 
-	// Add a seed node first so the label is registered, then create the index.
-	// CreateVectorIndex uses Lookup (not GetOrCreate), so the label must exist.
+	// Add a seed node first so the backfill path contributes one existing entry.
 	seed, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 1}})
 	if err != nil {
 		t.Fatalf("AddNode seed: %v", err)

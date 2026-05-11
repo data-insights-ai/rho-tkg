@@ -160,8 +160,8 @@ func TestBatch_EndpointReadFailure_RecordsBatchError(t *testing.T) {
 	fs.enabled.Store(true)
 
 	res, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
 	}
 
 	if res.Failed != 1 {
@@ -186,5 +186,13 @@ func TestBatch_EndpointReadFailure_RecordsBatchError(t *testing.T) {
 	}
 	if !errors.Is(matched.Err, injected) {
 		t.Errorf("Err = %v, want errors.Is(err, injected)", matched.Err)
+	}
+	if tm := rFail.Temporal(); tm != nil && tm.TxFrom != 0 {
+		t.Fatalf("failed rel TxFrom = %d, want queue-time zero", tm.TxFrom)
+	}
+	if ig := rFail.Integrity(); ig == nil {
+		t.Fatal("failed rel integrity = nil, want queue-time integrity")
+	} else if ig.FromNodeHash != "" || ig.ToNodeHash != "" {
+		t.Fatalf("failed rel endpoint hashes = (%q, %q), want empty queue-time hashes", ig.FromNodeHash, ig.ToNodeHash)
 	}
 }

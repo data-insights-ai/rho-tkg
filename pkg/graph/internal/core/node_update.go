@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -46,35 +47,24 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	}
 
 	if len(updates) == 0 {
-		return c.Nodes.GetWithContext(ctx, id)
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+		current, err := c.store.GetNode(id)
+		if err == nil {
+			c.opNodeReads.Add(1)
+		}
+		return current, err
 	}
 
-	// Extract reserved provenance fields before validation.
 	// The no-op check above uses the original map length; after extraction
 	// the remaining updates may be empty (metadata-only update).
-	authorID, sig, authorizedBy, authLevel, updates, err := extractProvenance(updates)
+	prov, updates, err := c.prepareUpdateProperties(updates, "update node")
 	if err != nil {
 		return nil, err
 	}
-
-	// Phase 1: Pre-validate before acquiring entity lock (fail fast).
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update node: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
-			}
-			if err := c.validatePropertyEntry(key, val); err != nil {
-				return nil, err
-			}
-		} else {
-			// Even for deletions, check key length.
-			if len(key) > c.validation.MaxPropertyKeyLength {
-				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
-			}
-		}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
@@ -96,6 +86,10 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return nil, err
+	}
 	prevState := current.DeepCopy()
 
 	// Capture current hash for the PrevHash chain.
@@ -125,7 +119,7 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
-	current.SetVersion(current.Version() + 1)
+	current.SetVersion(nextVersion)
 
 	now := c.now()
 	tm := current.Temporal()
@@ -148,15 +142,18 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	// Set TxFrom on the new version (this is the commit time of the new version).
 	tm.TxFrom = now
 
-	nodeLabels := c.Nodes.Labels(current)
-	hash := integrity.ComputeNodeHash(current, nodeLabels)
+	nodeLabels := c.nodeLabelsUnlocked(current)
+	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	if err != nil {
+		return nil, fmt.Errorf("graph: compute node hash: %w", err)
+	}
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           prevHash,
-		AuthorID:           authorID,
-		Signature:          sig,
-		AuthorizedBy:       authorizedBy,
-		AuthorizationLevel: authLevel,
+		AuthorID:           prov.authorID,
+		Signature:          prov.signature,
+		AuthorizedBy:       prov.authorizedBy,
+		AuthorizationLevel: prov.authLevel,
 	})
 
 	if err := checkCtx(ctx); err != nil {
@@ -216,26 +213,22 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 
 	if len(updates) == 0 {
-		return c.Nodes.GetWithContext(ctx, id)
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+		current, err := c.store.GetNode(id)
+		if err == nil {
+			c.opNodeReads.Add(1)
+		}
+		return current, err
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return nil, fmt.Errorf("graph: update node in place: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
-			}
-			if err := c.validatePropertyEntry(key, val); err != nil {
-				return nil, err
-			}
-		} else {
-			if len(key) > c.validation.MaxPropertyKeyLength {
-				return nil, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
-			}
-		}
+	if err := c.validatePropertyUpdates(updates, "update node in place"); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
@@ -292,9 +285,12 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 	tm.UpdatedAt = now
 
-	nodeLabels := c.Nodes.Labels(current)
-	hash := integrity.ComputeNodeHash(current, nodeLabels)
-	current.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+	nodeLabels := c.nodeLabelsUnlocked(current)
+	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	if err != nil {
+		return nil, fmt.Errorf("graph: compute node hash: %w", err)
+	}
+	current.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err

@@ -24,6 +24,32 @@ func TestTemporalIndex_Empty(t *testing.T) {
 	}
 }
 
+func TestTemporalIndexNilReceiverAndNilMapEntriesNoop(t *testing.T) {
+	t.Parallel()
+
+	var nilIndex *TemporalIndex
+	nilIndex.Add(snowflake.ID(1), 100, 200)
+	nilIndex.Remove(snowflake.ID(1))
+	nilIndex.sortIfDirty()
+	if got := nilIndex.Len(); got != 0 {
+		t.Fatalf("nil Len = %d, want 0", got)
+	}
+	if got := nilIndex.QueryAt(150); got != nil {
+		t.Fatalf("nil QueryAt = %v, want nil", got)
+	}
+	if got := nilIndex.QueryOverlap(100, 200); got != nil {
+		t.Fatalf("nil QueryOverlap = %v, want nil", got)
+	}
+
+	idxs := map[uint16]*TemporalIndex{1: nil}
+	node := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
+	AddNodeToTemporalIndexes(idxs, node, snowflake.ID(1))
+	RemoveNodeFromTemporalIndexes(idxs, node, snowflake.ID(1))
+	PurgeNodeFromAllTemporalIndexes(idxs, snowflake.ID(1))
+	AddNodeToTemporalIndexes(idxs, nil, snowflake.ID(1))
+	RemoveNodeFromTemporalIndexes(idxs, nil, snowflake.ID(1))
+}
+
 func TestTemporalIndex_AddQueryAt_OpenEnded(t *testing.T) {
 	t.Parallel()
 	ti := NewTemporalIndex()

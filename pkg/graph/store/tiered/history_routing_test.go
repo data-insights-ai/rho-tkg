@@ -9,6 +9,154 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func TestEventShard_CheckoutStoreIfOpen_DoesNotLazyOpenClosedCold(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	ts.MuForTest().RLock()
+	hot := ts.HotShardForTest()
+	hotName := hot.Name()
+	ts.MuForTest().RUnlock()
+
+	store, ok, err := hot.checkoutStoreIfOpen(ts)
+	if err != nil {
+		t.Fatalf("checkoutStoreIfOpen hot: %v", err)
+	}
+	if !ok || store == nil {
+		t.Fatal("checkoutStoreIfOpen hot returned no store")
+	}
+	hot.checkinStore()
+
+	demoteToCold(ts, hotName)
+	store, ok, err = hot.checkoutStoreIfOpen(ts)
+	if err != nil {
+		t.Fatalf("checkoutStoreIfOpen open cold: %v", err)
+	}
+	if !ok || store == nil {
+		t.Fatal("checkoutStoreIfOpen open cold returned no store")
+	}
+	if got := hot.ActiveReqsForTest().Load(); got != 1 {
+		t.Fatalf("open cold activeReqs = %d, want 1", got)
+	}
+	hot.checkinStore()
+
+	hot.LockShardMuForTest()
+	if err := hot.Store().Close(); err != nil {
+		hot.UnlockShardMuForTest()
+		t.Fatalf("close cold store: %v", err)
+	}
+	hot.SetStoreForTest(nil)
+	hot.UnlockShardMuForTest()
+
+	store, ok, err = hot.checkoutStoreIfOpen(ts)
+	if err != nil {
+		t.Fatalf("checkoutStoreIfOpen closed cold: %v", err)
+	}
+	if ok || store != nil {
+		t.Fatalf("checkoutStoreIfOpen closed cold = (%v, %v), want no store", store, ok)
+	}
+	if got := hot.ActiveReqsForTest().Load(); got != 0 {
+		t.Fatalf("closed cold activeReqs = %d, want 0", got)
+	}
+	hot.LockShardMuForTest()
+	stillClosed := hot.Store() == nil
+	hot.UnlockShardMuForTest()
+	if !stillClosed {
+		t.Fatal("checkoutStoreIfOpen lazy-opened a closed cold shard")
+	}
+
+	closedTS := newTestTieredStore(t)
+	closedTS.MuForTest().RLock()
+	closedHot := closedTS.HotShardForTest()
+	closedTS.MuForTest().RUnlock()
+	closedTS.ClosedForTest().Store(true)
+	if _, _, err := closedHot.checkoutStoreIfOpen(closedTS); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("checkoutStoreIfOpen after close = %v, want ErrStoreClosed", err)
+	}
+	closedTS.ClosedForTest().Store(false)
+}
+
+func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
+	ts, caseTok, _ := newArchiveWriteTestStore(t)
+
+	gen := tieredNodeGen(t)
+	n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.PutNodeVersion(n.ID(), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+
+	rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, n.ID(), n.ID())
+	if err := ts.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+	if err := ts.PutRelVersion(rel.ID(), 0, rel); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	if err := ts.ArchiveNode(n.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode left refArchive nil")
+	}
+
+	nodeShard, nodeCheckin, nodeIsArchive, err := ts.shardForNodeIDCheckedWithArchive(n.ID())
+	if err != nil {
+		t.Fatalf("shardForNodeIDCheckedWithArchive: %v", err)
+	}
+	relShard, relCheckin, relIsArchive, err := ts.shardForRelIDCheckedWithArchive(rel.ID())
+	if err != nil {
+		nodeCheckin()
+		t.Fatalf("shardForRelIDCheckedWithArchive: %v", err)
+	}
+
+	ts.refArchive.Store(nil)
+	defer func() {
+		ts.refArchive.Store(archive)
+		relCheckin()
+		nodeCheckin()
+	}()
+
+	if nodeShard != archive || !nodeIsArchive {
+		t.Fatalf("node archive placement = (%v, %v), want archive + true", nodeShard == archive, nodeIsArchive)
+	}
+	if relShard != archive || !relIsArchive {
+		t.Fatalf("rel archive placement = (%v, %v), want archive + true", relShard == archive, relIsArchive)
+	}
+	if ts.RefArchiveForTest().Load() != nil {
+		t.Fatal("test did not clear live refArchive pointer")
+	}
+	if nodeShard.HasNodeID(n.ID().SnowflakeID()) && !nodeIsArchive {
+		t.Fatal("node history routing would misclassify archive shard")
+	}
+	if relShard.HasRelID(rel.ID().SnowflakeID()) && !relIsArchive {
+		t.Fatal("rel history routing would misclassify archive shard")
+	}
+
+	stores := []namedStore{
+		{name: "nil"},
+		{name: "archive", store: archive},
+	}
+	if got := ts.findNodeInAnyShardStore(n.ID().SnowflakeID(), stores); got != archive {
+		t.Fatal("findNodeInAnyShardStore did not find archive node in pinned snapshot")
+	}
+	if got := ts.findNodeInAnyShardStore(types.NodeID(0).SnowflakeID(), stores); got != nil {
+		t.Fatal("findNodeInAnyShardStore found a missing node")
+	}
+}
+
 // allShardStoresWithLazyOpen previously called es.GetStoreForTest(ts) which opens a
 // cold shard but does not bump activeReqs. closeIdleShards could then race
 // the caller and close the BadgerStore mid-iteration. Verify the new
@@ -312,11 +460,11 @@ func mustClosingTieredStore(t *testing.T) (*Store, *EventShard, func()) {
 
 // TestTieredStore_Clear_DoesNotTouchClosingEventShard verifies that when the
 // Store is in the mid-Close state (closed=true, hot shard's BadgerStore
-// marked dbClosed), Clear skips the event shard without calling db.DropAll.
+// marked dbClosed), Clear fails closed before calling db.DropAll.
 // Pre-fix: Clear called es.Store().Clear() directly — DropAll on a BadgerStore
 // whose db.Close() races concurrently is undefined behaviour and can hang.
-// Post-fix: checkoutStore sees ts.ClosedForTest()=true, returns ErrStoreClosed, Clear
-// continues without touching the store.
+// Post-fix: Clear sees ts.ClosedForTest()=true and returns ErrStoreClosed
+// without touching the store.
 //
 // The test runs Clear in a goroutine and fails after 3 s to detect hangs that
 // would not be caught by an err != nil assertion.
@@ -329,10 +477,8 @@ func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
 
 	select {
 	case err := <-done:
-		// Any error indicates the guard fired (ErrStoreClosed propagated) or
-		// the refShard.Clear() failed — both are unexpected here.
-		if err != nil {
-			t.Fatalf("Clear returned %v; expected nil (event shard should be skipped)", err)
+		if !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("Clear returned %v; expected ErrStoreClosed", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Clear blocked: checkoutStore guard did not skip the closing event shard — would hang on concurrent db.DropAll + db.Close")
@@ -340,10 +486,8 @@ func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
 }
 
 // TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing verifies that
-// when the Store enters the mid-Close state between the RLock snapshot
-// and the per-shard checkoutStore call, the hot event shard is reported as
-// Open=false with zero counts — not Open=true with stale counts read from a
-// closing BadgerStore.
+// when the Store enters the mid-Close state, ListShards fails closed instead of
+// returning Open=true with stale counts read from a closing BadgerStore.
 // Pre-fix: ListShards called es.Store().NodeCount() directly — no pin, no
 // check of ts.ClosedForTest(); the shard was counted as open even after Close started.
 func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.T) {
@@ -354,31 +498,14 @@ func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.
 	// as Open=true with Nodes=1 (stale). With the guard it must be Open=false.
 	hot.Store().SetNodeCountForTest(1)
 
-	infos, err := ts.ListShards()
-	if err != nil {
-		t.Fatalf("ListShards returned error: %v", err)
-	}
-
-	for _, si := range infos {
-		if si.Kind != ShardEvent {
-			continue
-		}
-		if si.Open {
-			t.Fatalf("event shard %q reported Open=true during simulated close; "+
-				"pre-fix: checkoutStore was not called, so the stale nodeCount=1 "+
-				"was read from a closing BadgerStore", si.Name)
-		}
-		if si.Nodes != 0 || si.Rels != 0 {
-			t.Fatalf("event shard %q reported Nodes=%d Rels=%d during simulated close; "+
-				"expected zero (counts must not be read from a closing store)", si.Name, si.Nodes, si.Rels)
-		}
+	if _, err := ts.ListShards(); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("ListShards returned %v; expected ErrStoreClosed", err)
 	}
 }
 
 // TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard verifies that
-// when ts.ClosedForTest()=true, RebuildCatalog's checkoutStore returns ErrStoreClosed
-// and the catalog stat update for the event shard is skipped — rather than
-// calling NodeCount/RelCount on a BadgerStore that Close is concurrently
+// when ts.ClosedForTest()=true, RebuildCatalog returns ErrStoreClosed rather
+// than calling NodeCount/RelCount on a BadgerStore that Close is concurrently
 // tearing down. Runs in a goroutine with a timeout to catch hangs.
 func TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard(t *testing.T) {
 	ts, _, cleanup := mustClosingTieredStore(t)
@@ -389,8 +516,8 @@ func TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard(t *testing.T) 
 
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("RebuildCatalog returned %v; expected nil", err)
+		if !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("RebuildCatalog returned %v; expected ErrStoreClosed", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("RebuildCatalog blocked: event shard was not skipped when closing")

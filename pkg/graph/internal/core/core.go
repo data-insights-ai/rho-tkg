@@ -19,7 +19,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
@@ -27,6 +27,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // =============================================================================
@@ -47,6 +48,7 @@ type Core struct {
 	events        eventspkg.Publisher
 	txEventBuffer *[]eventspkg.Event
 	mu            sync.RWMutex
+	registryMu    sync.Mutex
 	closeOnce     sync.Once
 	closed        atomic.Bool
 
@@ -92,15 +94,23 @@ type Core struct {
 
 var (
 	ErrNoLabels                 = errors.New("graph: node requires at least one label")
-	ErrNilNode                  = errors.New("graph: node must not be nil")
+	ErrNilNode                  = types.ErrNilNode
+	ErrNilRelationship          = types.ErrNilRelationship
 	ErrZeroID                   = errors.New("graph: zero ID is not valid for import")
+	ErrInvalidID                = errors.New("graph: invalid ID is not valid for import")
+	ErrVersionOverflow          = errors.New("graph: entity version overflow")
 	ErrNotTieredStore           = errors.New("graph: operation requires tiered.Store")
 	ErrAlreadyClosed            = errors.New("graph: entity already closed")
 	ErrGraphClosed              = errors.New("graph: graph is closed")
-	ErrInvalidTimeRange         = errors.New("graph: invalid time range")
+	ErrNilGraph                 = grapherr.ErrNilGraph
+	ErrNilStore                 = storepkg.ErrNilStore
+	ErrNilContext               = errors.New("graph: context must not be nil")
+	ErrNilTxCallback            = errors.New("graph: transaction callback must not be nil")
 	ErrLabelNotFound            = errors.New("graph: node does not have the specified label")
 	ErrLastLabel                = errors.New("graph: cannot remove the last label from a node")
-	ErrDepthTemporalUnsupported = errors.New("graph: opts.Depth is not supported with a temporal filter")
+	ErrDepthTemporalUnsupported = errors.New("graph: legacy depth/temporal sentinel")
+	ErrBatchFailed              = errors.New("graph: batch execution had failed operations")
+	ErrBatchDone                = errors.New("graph: batch already executed")
 )
 
 var (
@@ -114,11 +124,16 @@ var (
 
 // Re-exports of registry errors and index errors used by methods on *Core.
 var (
-	ErrEmptyName           = registrypkg.ErrEmptyName
-	ErrRegistryNotEmpty    = registrypkg.ErrRegistryNotEmpty
-	ErrVectorIndexExists   = indexpkg.ErrVectorIndexExists
-	ErrVectorIndexNotFound = indexpkg.ErrVectorIndexNotFound
-	ErrDimensionMismatch   = indexpkg.ErrDimensionMismatch
+	ErrEmptyName                  = registrypkg.ErrEmptyName
+	ErrRegistryNotEmpty           = registrypkg.ErrRegistryNotEmpty
+	ErrVectorIndexExists          = storepkg.ErrVectorIndexExists
+	ErrVectorIndexNotFound        = storepkg.ErrVectorIndexNotFound
+	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch
+	ErrInvalidTemporalIndexConfig = storepkg.ErrInvalidTemporalIndexConfig
+	ErrInvalidVectorIndexConfig   = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidTimeRange           = storepkg.ErrInvalidTimeRange
+	ErrInvalidQueryLimit          = storepkg.ErrInvalidQueryLimit
+	ErrInvalidQueryCursor         = storepkg.ErrInvalidQueryCursor
 )
 
 // =============================================================================
@@ -191,10 +206,22 @@ type registriesPersister interface {
 	SaveRegistries(*registrypkg.LabelRegistry, *registrypkg.RelTypeRegistry) error
 }
 
+func (c *Core) persistRegistries() error {
+	if rp, ok := c.store.(registriesPersister); ok {
+		if err := rp.SaveRegistries(c.labels, c.relTypes); err != nil {
+			return fmt.Errorf("graph: save registries: %w", err)
+		}
+	}
+	return nil
+}
+
 // New creates a new Core with the given configuration. See pkg/graph.New for docs.
 func New(config Config) (*Core, error) {
 	if config.SnowflakeNodeID < 0 || config.SnowflakeNodeID > 15 {
 		return nil, fmt.Errorf("graph: SnowflakeNodeID must be 0-15, got %d", config.SnowflakeNodeID)
+	}
+	if config.Store != nil && isNilInterfaceValue(config.Store) {
+		return nil, ErrNilStore
 	}
 
 	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
@@ -280,13 +307,27 @@ func New(config Config) (*Core, error) {
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)
 			}
-			if _, err := bs.LoadLabelRegistry(c.labels); err != nil {
+			loadedLabels := registrypkg.NewLabelRegistry()
+			if found, err := bs.LoadLabelRegistry(loadedLabels); err != nil {
 				_ = bs.Close()
 				return nil, fmt.Errorf("graph: load label registry: %w", err)
+			} else if found {
+				if err := c.validateRegistryNames("label", loadedLabels.ExportNames()); err != nil {
+					_ = bs.Close()
+					return nil, fmt.Errorf("graph: load label registry: %w", err)
+				}
+				c.labels = loadedLabels
 			}
-			if _, err := bs.LoadRelTypeRegistry(c.relTypes); err != nil {
+			loadedRelTypes := registrypkg.NewRelTypeRegistry()
+			if found, err := bs.LoadRelTypeRegistry(loadedRelTypes); err != nil {
 				_ = bs.Close()
 				return nil, fmt.Errorf("graph: load reltype registry: %w", err)
+			} else if found {
+				if err := c.validateRegistryNames("reltype", loadedRelTypes.ExportNames()); err != nil {
+					_ = bs.Close()
+					return nil, fmt.Errorf("graph: load reltype registry: %w", err)
+				}
+				c.relTypes = loadedRelTypes
 			}
 			store = bs
 		} else {
@@ -312,21 +353,45 @@ func New(config Config) (*Core, error) {
 	// rather than concrete type.
 	if config.Store != nil {
 		if lr, ok := store.(badgerRegistryLoader); ok {
-			if _, err := lr.LoadLabelRegistry(c.labels); err != nil {
+			loadedLabels := registrypkg.NewLabelRegistry()
+			if found, err := lr.LoadLabelRegistry(loadedLabels); err != nil {
 				return nil, fmt.Errorf("graph: load label registry from injected store: %w", err)
+			} else if found {
+				if err := c.validateRegistryNames("label", loadedLabels.ExportNames()); err != nil {
+					return nil, fmt.Errorf("graph: load label registry from injected store: %w", err)
+				}
+				c.labels = loadedLabels
 			}
-			if _, err := lr.LoadRelTypeRegistry(c.relTypes); err != nil {
+			loadedRelTypes := registrypkg.NewRelTypeRegistry()
+			if found, err := lr.LoadRelTypeRegistry(loadedRelTypes); err != nil {
 				return nil, fmt.Errorf("graph: load reltype registry from injected store: %w", err)
+			} else if found {
+				if err := c.validateRegistryNames("reltype", loadedRelTypes.ExportNames()); err != nil {
+					return nil, fmt.Errorf("graph: load reltype registry from injected store: %w", err)
+				}
+				c.relTypes = loadedRelTypes
 			}
 		}
 		if ts, ok := store.(*tiered.Store); ok {
-			ts.SetLabelRegistry(c.labels)
-			if _, err := ts.LoadLabelRegistry(c.labels); err != nil {
+			loadedLabels := registrypkg.NewLabelRegistry()
+			if n, err := ts.LoadLabelRegistry(loadedLabels); err != nil {
 				return nil, fmt.Errorf("graph: load label registry from injected tiered store: %w", err)
+			} else if n > 0 {
+				if err := c.validateRegistryNames("label", loadedLabels.ExportNames()); err != nil {
+					return nil, fmt.Errorf("graph: load label registry from injected tiered store: %w", err)
+				}
+				c.labels = loadedLabels
 			}
-			if _, err := ts.LoadRelTypeRegistry(c.relTypes); err != nil {
+			loadedRelTypes := registrypkg.NewRelTypeRegistry()
+			if n, err := ts.LoadRelTypeRegistry(loadedRelTypes); err != nil {
 				return nil, fmt.Errorf("graph: load reltype registry from injected tiered store: %w", err)
+			} else if n > 0 {
+				if err := c.validateRegistryNames("reltype", loadedRelTypes.ExportNames()); err != nil {
+					return nil, fmt.Errorf("graph: load reltype registry from injected tiered store: %w", err)
+				}
+				c.relTypes = loadedRelTypes
 			}
+			ts.SetLabelRegistry(c.labels)
 		}
 	}
 
@@ -371,19 +436,18 @@ func (c *Core) Close() error {
 
 		// Provider Close runs outside the lifecycle lock — providers
 		// may flush/close their own backends and we do not want to
-		// hold the graph lock for that latency.
+		// hold the graph lock for that latency. Initializable
+		// providers are registered before Init runs, so wait for any
+		// in-flight Init callback before invoking Close.
 		for _, e := range entries {
 			e.unsubscribe()
+			e.waitInit()
 			if err := e.provider.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("index provider %q close: %w", e.provider.Name(), err))
 			}
 		}
 
-		if rp, ok := c.store.(registriesPersister); ok {
-			if err := rp.SaveRegistries(c.labels, c.relTypes); err != nil {
-				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save registries: %w", err))
-			}
-		}
+		closeErr = errors.Join(closeErr, c.persistRegistries())
 		closeErr = errors.Join(closeErr, c.store.Close())
 	})
 	return closeErr

@@ -122,7 +122,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	defer g.Close()
 
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	var wg sync.WaitGroup
 	const N = 20
@@ -143,8 +143,8 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for j := 0; j < 50; j++ {
-			g.Events.SetSync(bus)
-			g.Events.SetSync(nil)
+			_ = g.Events.SetSync(bus)
+			_ = g.Events.SetSync(nil)
 		}
 	}()
 
@@ -187,8 +187,14 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 			Kind: temporalpkg.ConstraintRelWithinEndpoints,
 		})
 		for j := 0; j < 50; j++ {
-			g.Constraints.Set(cs)
-			g.Constraints.Set(temporalpkg.ConstraintSet{})
+			if err := g.Constraints.Set(cs); err != nil {
+				t.Errorf("Constraints.Set(cs): %v", err)
+				return
+			}
+			if err := g.Constraints.Set(temporalpkg.ConstraintSet{}); err != nil {
+				t.Errorf("Constraints.Set(empty): %v", err)
+				return
+			}
 		}
 	}()
 
@@ -207,7 +213,7 @@ func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	defer g.Close()
 
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	// Sync handler calls g.Nodes.Get inside the callback.
 	var handlerNodeID types.EntityID

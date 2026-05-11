@@ -11,10 +11,17 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	rid := r.InternalID()
 	startNID := r.StartNodeID()
 	endNID := r.EndNodeID()
@@ -23,8 +30,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	endID := endNID.SnowflakeID()
 	relType := r.TypeToken().Value()
 
-	w := storepkg.RelToWire(r)
-	data, err := msgpack.Marshal(w)
+	data, err := storepkg.MarshalRelWire(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
@@ -90,6 +96,12 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 // Cache-first: checks LRU cache before falling through to Badger.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
 	id := rid.SnowflakeID()
 	// Check cache first.
 	v, status := bs.relCache.Get(id)
@@ -100,8 +112,8 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 		return nil, ErrRelNotFound
 	}
 
-	// Short-circuit: relIDs is the authoritative set of all relationship IDs.
-	// Avoids opening a Badger transaction for non-existent relationships.
+	// Short-circuit: relIDs is rebuilt from relationship entity rows at open and
+	// maintained with writes, so misses do not need a Badger transaction.
 	bs.idxMu.RLock()
 	_, exists := bs.relIDs[rid]
 	bs.idxMu.RUnlock()
@@ -124,7 +136,11 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			r = storepkg.WireToRel(w)
+			decoded, err := decodeRelWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode relationship: %w", err)
+			}
+			r = decoded
 			return nil
 		})
 	})
@@ -141,11 +157,18 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	rid := r.InternalID()
 	id := rid.SnowflakeID()
 
-	w := storepkg.RelToWire(r)
-	data, err := msgpack.Marshal(w)
+	old, prefetchErr := bs.prefetchRel(rid)
+
+	data, err := storepkg.MarshalRelWire(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
@@ -155,6 +178,14 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	if _, exists := bs.relIDs[rid]; !exists {
 		bs.idxMu.Unlock()
 		return ErrRelNotFound
+	}
+	if prefetchErr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read relationship before replace: %w", prefetchErr)
+	}
+	if err := storecontract.ValidateRelationshipReplacement(old, r); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 
 	bs.relCache.Put(id, r.DeepCopy())
@@ -170,9 +201,30 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) DeleteRelationship(rid types.RelID) error {
-	id := rid.SnowflakeID()
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	// Pre-fetch the relationship before acquiring idxMu.Lock so a cache-miss
+	// delete does not hold the global index write lock across Badger I/O.
+	// The locked section re-reads from the cache-loaded current row below to
+	// avoid cleaning indexes with stale type/endpoints if a direct Store caller
+	// reused the same ID in the TOCTOU window.
+	if _, err := bs.prefetchRel(rid); err != nil {
+		return err
+	}
+
 	bs.idxMu.Lock()
-	err := bs.deleteRelLocked(id)
+	if _, exists := bs.relIDs[rid]; !exists {
+		bs.idxMu.Unlock()
+		return ErrRelNotFound
+	}
+	r, err := bs.getRelLocked(rid)
+	if err == nil {
+		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+	}
 	bs.idxMu.Unlock()
 
 	if err != nil {
@@ -192,24 +244,13 @@ type RelDeleteInfo struct {
 	EndID   snowflake.ID
 }
 
-// deleteRelLocked removes a relationship and cleans up indexes.
-// Caller must hold bs.idxMu write lock.
-func (bs *Store) deleteRelLocked(id snowflake.ID) error {
-	// Read phase.
-	r, err := bs.getRelLocked(types.RelID(id))
-	if err != nil {
-		return err
-	}
-
-	// Mutation phase.
-	bs.deleteRelByInfo(RelDeleteInfo{
-		ID:      id,
+func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
+	return RelDeleteInfo{
+		ID:      r.ID().SnowflakeID(),
 		RelType: r.TypeToken().Value(),
 		StartID: r.StartNodeID().SnowflakeID(),
 		EndID:   r.EndNodeID().SnowflakeID(),
-	})
-
-	return nil
+	}
 }
 
 // deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
@@ -287,7 +328,57 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			r = storepkg.WireToRel(w)
+			decoded, err := decodeRelWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode relationship: %w", err)
+			}
+			r = decoded
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	bs.relCache.LoadClean(id, r)
+	return r, nil
+}
+
+func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
+	id := rid.SnowflakeID()
+	v, status := bs.relCache.Get(id)
+	switch status {
+	case indexpkg.CacheHit:
+		return v, nil
+	case indexpkg.CacheDeleted:
+		return nil, ErrRelNotFound
+	}
+
+	bs.idxMu.RLock()
+	_, exists := bs.relIDs[rid]
+	bs.idxMu.RUnlock()
+	if !exists {
+		return nil, ErrRelNotFound
+	}
+
+	var r *types.Relationship
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.RelKey(id))
+		if err == badgerv4.ErrKeyNotFound {
+			return ErrRelNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w storepkg.RelWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal relationship: %w", err)
+			}
+			decoded, err := decodeRelWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode relationship: %w", err)
+			}
+			r = decoded
 			return nil
 		})
 	})

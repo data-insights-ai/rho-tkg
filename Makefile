@@ -4,6 +4,10 @@ SHELL := /bin/bash
 
 .PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover cover-gate vet fmt fmt-check lint security vulncheck check ci clean
 
+BENCH_COUNT ?= 1
+BENCH_TIME ?= 1s
+PROD_BENCH_COUNT ?= 1
+
 # Build (verify compilation)
 build:
 	go build ./...
@@ -30,7 +34,7 @@ bench:
 
 # Run graph performance baseline benchmarks for benchstat comparisons.
 bench-graph-baseline:
-	go test -run '^$$' -bench 'BenchmarkGraphBaseline|BenchmarkAddNode|BenchmarkAddRelationship|BenchmarkAddNodeLabel|BenchmarkRemoveNodeLabel' -benchmem -benchtime=1s -count=10 ./pkg/graph
+	go test -run '^$$' -bench 'BenchmarkGraphBaseline|BenchmarkAddNode|BenchmarkAddRelationship|BenchmarkAddNodeLabel|BenchmarkRemoveNodeLabel' -benchmem -benchtime=$(BENCH_TIME) -count=$(BENCH_COUNT) ./pkg/graph/internal/core
 
 # Run the default small production-shaped graph benchmark profile.
 bench-graph-production: bench-graph-production-small
@@ -49,7 +53,7 @@ bench-graph-production-small:
 	TKG_BENCH_TIERED_WARM_SIGNALS=2048 \
 	TKG_BENCH_TIERED_HOT_SIGNALS=2048 \
 	TKG_BENCH_SURFACE_NODES=2048 \
-	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=1s -count=5 ./pkg/graph
+	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=$(BENCH_TIME) -count=$(PROD_BENCH_COUNT) ./pkg/graph/internal/core
 
 # Run production-shaped graph benchmarks with large stress fixtures.
 bench-graph-production-large:
@@ -65,7 +69,7 @@ bench-graph-production-large:
 	TKG_BENCH_TIERED_WARM_SIGNALS=20000 \
 	TKG_BENCH_TIERED_HOT_SIGNALS=20000 \
 	TKG_BENCH_SURFACE_NODES=10000 \
-	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=1s -count=3 ./pkg/graph
+	go test -run '^$$' -bench 'BenchmarkGraphProduction' -benchmem -benchtime=$(BENCH_TIME) -count=$(PROD_BENCH_COUNT) ./pkg/graph/internal/core
 
 # Run both routine baseline and production-shaped benchmark suites.
 bench-graph-all: bench-graph-baseline bench-graph-production-small
@@ -96,12 +100,11 @@ vet:
 
 # Format code
 fmt:
-	gofmt -w .
+	gofmt -w $$(git ls-files '*.go')
 
-# Verify formatting (fails if any file needs formatting). Skips .claude/
-# (agent worktree copies — not part of the source tree).
+# Verify formatting (fails if any tracked Go source file needs formatting).
 fmt-check:
-	@unformatted=$$(gofmt -l . | grep -v '^\.claude/' || true); \
+	@unformatted=$$(gofmt -l $$(git ls-files '*.go')); \
 		test -z "$$unformatted" || (echo "Files need formatting:"; echo "$$unformatted"; exit 1)
 
 # Run golangci-lint
@@ -110,11 +113,11 @@ lint:
 
 # Static security analysis
 security:
-	gosec ./...
+	gosec $$(go list -f '{{.Dir}}' ./...)
 
 # Known vulnerability check
 vulncheck:
-	govulncheck ./...
+	govulncheck $$(go list ./...)
 
 # Quick pre-commit check
 check: vet build test

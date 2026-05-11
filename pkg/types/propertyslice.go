@@ -11,7 +11,7 @@ import (
 var ErrReservedPrefix = errors.New("types: property key uses reserved tkg_ prefix")
 
 // ErrUnsupportedValueType is returned when a property value contains a type
-// not on the allowlist (only primitives, slices, and maps are accepted).
+// not on the exact allowlist consumed by hashing, copying, and wire encoding.
 // Graph databases store data, not application memory references.
 var ErrUnsupportedValueType = errors.New("types: unsupported property value type")
 
@@ -30,6 +30,35 @@ var ErrMaxDepthExceeded = errors.New("types: property value exceeds maximum nest
 // Validation and deep-copy functions stop recursing beyond this limit.
 const maxPropertyDepth = 32
 
+var (
+	propertyTypeBool    = reflect.TypeOf(true)
+	propertyTypeString  = reflect.TypeOf("")
+	propertyTypeInt     = reflect.TypeOf(int(0))
+	propertyTypeInt8    = reflect.TypeOf(int8(0))
+	propertyTypeInt16   = reflect.TypeOf(int16(0))
+	propertyTypeInt32   = reflect.TypeOf(int32(0))
+	propertyTypeInt64   = reflect.TypeOf(int64(0))
+	propertyTypeUint    = reflect.TypeOf(uint(0))
+	propertyTypeUint8   = reflect.TypeOf(uint8(0))
+	propertyTypeUint16  = reflect.TypeOf(uint16(0))
+	propertyTypeUint32  = reflect.TypeOf(uint32(0))
+	propertyTypeUint64  = reflect.TypeOf(uint64(0))
+	propertyTypeFloat32 = reflect.TypeOf(float32(0))
+	propertyTypeFloat64 = reflect.TypeOf(float64(0))
+
+	propertyTypeSliceString  = reflect.TypeOf([]string(nil))
+	propertyTypeSliceInt     = reflect.TypeOf([]int(nil))
+	propertyTypeSliceInt64   = reflect.TypeOf([]int64(nil))
+	propertyTypeSliceFloat32 = reflect.TypeOf([]float32(nil))
+	propertyTypeSliceFloat64 = reflect.TypeOf([]float64(nil))
+	propertyTypeSliceByte    = reflect.TypeOf([]byte(nil))
+	propertyTypeSliceBool    = reflect.TypeOf([]bool(nil))
+	propertyTypeSliceAny     = reflect.TypeOf([]any(nil))
+
+	propertyTypeMapStringAny    = reflect.TypeOf(map[string]any(nil))
+	propertyTypeMapStringString = reflect.TypeOf(map[string]string(nil))
+)
+
 // Property is a single key-value property entry.
 type Property struct {
 	Key   string
@@ -42,32 +71,55 @@ type PropertySlice []Property
 
 // Set inserts or overwrites the property at key.
 // Returns an error if key has the reserved "tkg_" prefix.
-// Recursively validates the value using an allowlist — only primitives, slices,
-// and maps are accepted. All other types (pointers, structs, arrays, channels,
-// functions, etc.) are rejected at any nesting depth.
+// Recursively validates the value using an exact allowlist — only the concrete
+// scalar, slice, and map types handled by hashing/copy/wire are accepted. All
+// other types (pointers, structs, arrays, channels, functions, aliases, etc.)
+// are rejected at any nesting depth unless explicitly registered as custom
+// property struct types.
 // Returns ErrMaxDepthExceeded if nesting exceeds maxPropertyDepth (32).
-// Maintains the sorted-by-key invariant.
+// Stores a deep copy of accepted values and maintains the sorted-by-key invariant.
 //
 // For bulk construction, prefer NewPropertySlice (O(N log N)) over repeated
 // Set calls (O(N) per call due to binary-search insertion into a sorted slice).
 func (ps *PropertySlice) Set(key string, value any) error {
+	if ps == nil {
+		return ErrNilPropertySlice
+	}
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)
 	}
 	if err := ValidatePropertyValue(value); err != nil {
 		return fmt.Errorf("%w: %q (got %T)", err, key, value)
 	}
+	copied, err := copyValidatedPropertyValue(key, value)
+	if err != nil {
+		return err
+	}
 	i := sort.Search(len(*ps), func(i int) bool {
 		return (*ps)[i].Key >= key
 	})
 	if i < len(*ps) && (*ps)[i].Key == key {
-		(*ps)[i].Value = value
+		(*ps)[i].Value = copied
 		return nil
 	}
 	*ps = append(*ps, Property{})
 	copy((*ps)[i+1:], (*ps)[i:])
-	(*ps)[i] = Property{Key: key, Value: value}
+	(*ps)[i] = Property{Key: key, Value: copied}
 	return nil
+}
+
+func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			copied = nil
+			err = fmt.Errorf("%w: %q deep copy panic: %v", ErrUnsupportedValueType, key, r)
+		}
+	}()
+	copied = deepCopyValue(value, 0)
+	if err := ValidatePropertyValue(copied); err != nil {
+		return nil, fmt.Errorf("%w: %q after deep copy (got %T)", err, key, copied)
+	}
+	return copied, nil
 }
 
 // Get returns the value for key and whether it was found.
@@ -96,8 +148,9 @@ func (ps PropertySlice) DeepCopy() PropertySlice {
 	return cp
 }
 
-// ValidatePropertyValue recursively checks that v contains only allowlisted types
-// at any nesting depth. Slices, maps, and interface wrappers are traversed.
+// ValidatePropertyValue recursively checks that v contains only allowlisted
+// exact types at any nesting depth. Slices, maps, and interface wrappers are
+// traversed.
 // Rejects at maxPropertyDepth to prevent stack overflow from deep/cyclic input.
 func ValidatePropertyValue(v any) error {
 	if v == nil {
@@ -106,9 +159,10 @@ func ValidatePropertyValue(v any) error {
 	return validateReflectValue(reflect.ValueOf(v), 0)
 }
 
-// validateReflectValue uses an allowlist to accept only safe kinds.
-// Primitives pass directly. Containers (Slice, Map, Interface) are recursed
-// with a depth counter to prevent stack overflow from deep/cyclic structures.
+// validateReflectValue uses an allowlist to accept only types that downstream
+// hashing, deep-copy, and wire reconstruction handle without type-erasure loss.
+// Containers (Slice, Map, Interface) are recursed with a depth counter to
+// prevent stack overflow from deep/cyclic structures.
 // Everything else (Ptr, Struct, Array, Chan, Func, UnsafePointer, etc.) is rejected.
 func validateReflectValue(rv reflect.Value, depth int) error {
 	if depth > maxPropertyDepth {
@@ -116,15 +170,18 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 	}
 
 	switch rv.Kind() {
-	// Primitives — always safe.
+	// Exact scalar types supported by hash/copy/wire.
 	case reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.String:
-		return nil
+		if isAllowedPropertyScalarType(rv.Type()) {
+			return nil
+		}
+		return fmt.Errorf("%w: %s", ErrUnsupportedValueType, rv.Type())
 
-	// Containers — recurse into elements.
+	// Containers — recurse only where the supported shape can hide any values.
 	case reflect.Interface:
 		if rv.IsNil() {
 			return nil
@@ -133,7 +190,13 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 		return validateReflectValue(rv.Elem(), depth)
 
 	case reflect.Slice:
+		if !isAllowedPropertySliceType(rv.Type()) {
+			return fmt.Errorf("%w: %s", ErrUnsupportedValueType, rv.Type())
+		}
 		if rv.IsNil() {
+			return nil
+		}
+		if rv.Type() != propertyTypeSliceAny {
 			return nil
 		}
 		for i := range rv.Len() {
@@ -144,34 +207,22 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 		return nil
 
 	case reflect.Map:
+		mt := rv.Type()
+		if mt != propertyTypeMapStringAny && mt != propertyTypeMapStringString {
+			return fmt.Errorf("%w: %s", ErrUnsupportedMapType, mt)
+		}
 		if rv.IsNil() {
 			return nil
 		}
-		// Only map[string]any and map[string]string are accepted because they
-		// are the only shapes the hash and wire layers support. Any other
-		// shape (e.g. map[int]string) would pass validation, then panic at
-		// hash time when the entity is added — see appendPropertyValue's
-		// type switch in pkg/graph/internal/integrity/integrity.go.
-		mt := rv.Type()
-		if mt.Key().Kind() != reflect.String {
-			return fmt.Errorf("%w: %s", ErrUnsupportedMapType, mt)
-		}
-		switch mt.Elem().Kind() {
-		case reflect.Interface:
-			// map[string]any — recurse into values.
+		if mt == propertyTypeMapStringAny {
 			iter := rv.MapRange()
 			for iter.Next() {
 				if err := validateReflectValue(iter.Value(), depth+1); err != nil {
 					return err
 				}
 			}
-			return nil
-		case reflect.String:
-			// map[string]string — values are always safe.
-			return nil
-		default:
-			return fmt.Errorf("%w: %s", ErrUnsupportedMapType, mt)
 		}
+		return nil
 
 	// Pointer and Struct are accepted if the type has been registered via
 	// RegisterPropertyStructType (e.g. for spatial geometry types). This is
@@ -185,6 +236,44 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 	// Everything else (Array, Chan, Func, UnsafePointer, etc.) is rejected.
 	default:
 		return ErrUnsupportedValueType
+	}
+}
+
+func isAllowedPropertyScalarType(t reflect.Type) bool {
+	switch t {
+	case propertyTypeBool,
+		propertyTypeString,
+		propertyTypeInt,
+		propertyTypeInt8,
+		propertyTypeInt16,
+		propertyTypeInt32,
+		propertyTypeInt64,
+		propertyTypeUint,
+		propertyTypeUint8,
+		propertyTypeUint16,
+		propertyTypeUint32,
+		propertyTypeUint64,
+		propertyTypeFloat32,
+		propertyTypeFloat64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedPropertySliceType(t reflect.Type) bool {
+	switch t {
+	case propertyTypeSliceString,
+		propertyTypeSliceInt,
+		propertyTypeSliceInt64,
+		propertyTypeSliceFloat32,
+		propertyTypeSliceFloat64,
+		propertyTypeSliceByte,
+		propertyTypeSliceBool,
+		propertyTypeSliceAny:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -206,7 +295,7 @@ func deepCopyValue(v any, depth int) any {
 	// Probed before the type switch so the slice/map fast paths don't get
 	// invoked with an arbitrary user struct.
 	if dc, ok := v.(DeepCopier); ok {
-		return dc.DeepCopyValue()
+		return preserveDeepCopyPointerShape(v, dc.DeepCopyValue())
 	}
 
 	switch val := v.(type) {
@@ -273,6 +362,34 @@ func deepCopyValue(v any, depth int) any {
 	}
 }
 
+func preserveDeepCopyPointerShape(original, copied any) any {
+	if original == nil || copied == nil {
+		return copied
+	}
+	origT := reflect.TypeOf(original)
+	copiedT := reflect.TypeOf(copied)
+	if origT.Kind() != reflect.Pointer {
+		if copiedT.Kind() != reflect.Pointer {
+			return copied
+		}
+		copiedV := reflect.ValueOf(copied)
+		if copiedV.IsNil() || !copiedT.Elem().AssignableTo(origT) {
+			return copied
+		}
+		return copiedV.Elem().Interface()
+	}
+	if copiedT == origT {
+		return copied
+	}
+	elemT := origT.Elem()
+	if !copiedT.AssignableTo(elemT) {
+		return copied
+	}
+	ptr := reflect.New(elemT)
+	ptr.Elem().Set(reflect.ValueOf(copied))
+	return ptr.Interface()
+}
+
 // reflectCopyValue uses reflection to clone unknown slice and map types.
 // Elements are recursively deep-copied via deepCopyValue so that nested
 // reference types (e.g., map[int][]string) are fully independent.
@@ -321,6 +438,9 @@ func reflectCopyValue(v any, depth int) any {
 // Returns true if the key was found and removed, false if it was not present.
 // Returns an error if key has the reserved "tkg_" prefix.
 func (ps *PropertySlice) Delete(key string) (bool, error) {
+	if ps == nil {
+		return false, ErrNilPropertySlice
+	}
 	if IsShadowKey(key) {
 		return false, fmt.Errorf("%w: %q", ErrReservedPrefix, key)
 	}
@@ -349,8 +469,44 @@ func (ps PropertySlice) Len() int {
 	return len(ps)
 }
 
+// canonicalPropertySlice validates, de-duplicates, sorts, and deep-copies a
+// caller-provided PropertySlice before it is installed on an entity.
+func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	latest := make(map[string]any, len(ps))
+	for _, p := range ps {
+		if IsShadowKey(p.Key) {
+			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
+		}
+		if err := ValidatePropertyValue(p.Value); err != nil {
+			return nil, fmt.Errorf("%w: %q (got %T)", err, p.Key, p.Value)
+		}
+		copied, err := copyValidatedPropertyValue(p.Key, p.Value)
+		if err != nil {
+			return nil, err
+		}
+		latest[p.Key] = copied
+	}
+
+	keys := make([]string, 0, len(latest))
+	for key := range latest {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := make(PropertySlice, len(keys))
+	for i, key := range keys {
+		out[i] = Property{Key: key, Value: latest[key]}
+	}
+	return out, nil
+}
+
 // NewPropertySlice creates a PropertySlice from a map in O(N log N) time.
-// Allocates once, validates all values, then sorts once — no per-key memmoves.
+// Allocates the result once, validates all values, deep-copies accepted
+// reference values, then sorts once — no per-key memmoves.
 // Returns nil, nil for nil or empty maps.
 // Returns ErrReservedPrefix if any key starts with "tkg_".
 // Returns ErrUnsupportedValueType if any value fails allowlist validation.
@@ -366,7 +522,11 @@ func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 		if err := ValidatePropertyValue(v); err != nil {
 			return nil, fmt.Errorf("%w: %q (got %T)", err, k, v)
 		}
-		ps = append(ps, Property{Key: k, Value: v})
+		copied, err := copyValidatedPropertyValue(k, v)
+		if err != nil {
+			return nil, err
+		}
+		ps = append(ps, Property{Key: k, Value: copied})
 	}
 	sort.Slice(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key })
 	return ps, nil

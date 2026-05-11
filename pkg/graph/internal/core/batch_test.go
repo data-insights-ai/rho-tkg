@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -23,6 +24,18 @@ func newTestGraph(t *testing.T) *Core {
 	}
 	t.Cleanup(func() { g.Close() })
 	return g
+}
+
+func TestNewBatchBuilder_NilCoreReturnsErrNilGraph(t *testing.T) {
+	t.Parallel()
+
+	b, err := NewBatchBuilder(nil)
+	if !errors.Is(err, ErrNilGraph) {
+		t.Fatalf("NewBatchBuilder(nil) = (%v, %v), want ErrNilGraph", b, err)
+	}
+	if b != nil {
+		t.Fatalf("NewBatchBuilder(nil) returned builder %v", b)
+	}
 }
 
 func TestBatchBuilderAddNode(t *testing.T) {
@@ -59,7 +72,15 @@ func TestBatchBuilderAddNode(t *testing.T) {
 		t.Error("genesis node should have empty PrevHash")
 	}
 
-	// Check labels.
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 1 {
+		t.Fatalf("Created = %d, want 1", result.Created)
+	}
+
+	// Check labels after Execute retokenizes the queued node.
 	labels := g.Nodes.Labels(n)
 	if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Actor" {
 		t.Errorf("labels = %v, want [Person Actor]", labels)
@@ -123,6 +144,57 @@ func TestBatchBuilderAddRelationship(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderAddRelationshipDefersNewRelTypeUntilExecute(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	b, _ := NewBatchBuilder(g)
+
+	n1, err := b.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode n1: %v", err)
+	}
+	n2, err := b.AddNode([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode n2: %v", err)
+	}
+
+	const typ = "KNOWS_DEFERRED"
+	r, err := b.AddRelationship(typ, n1, n2, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	if _, ok := g.Resolve.LookupRelType(typ); ok {
+		t.Fatalf("queued AddRelationship registered new rel type %q before Execute", typ)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Failed != 0 {
+		t.Fatalf("batch failed: %+v", result.Errors)
+	}
+
+	tok, ok := g.Resolve.LookupRelType(typ)
+	if !ok {
+		t.Fatalf("Execute did not register rel type %q", typ)
+	}
+	if !r.HasTypeTokenRaw(tok) {
+		t.Fatalf("returned relationship token = %d, want %d", r.TypeToken().Value(), tok)
+	}
+	if gotType := g.Rels.Type(r); gotType != typ {
+		t.Fatalf("returned relationship type = %q, want %q", gotType, typ)
+	}
+
+	got, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if !got.HasTypeTokenRaw(tok) {
+		t.Fatalf("stored relationship token = %d, want %d", got.TypeToken().Value(), tok)
+	}
+}
+
 func TestBatchBuilderAddRelNilEndpoint(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -152,6 +224,68 @@ func TestBatchBuilderUpdateNodeInvalidKey(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderUpdateAllowsProvenanceKeys(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"score": int64(1)})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	bNode, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, bNode, map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	batch, _ := NewBatchBuilder(g)
+	if err := batch.UpdateNode(a.ID(), map[string]any{
+		"score":         int64(2),
+		"tkg_author_id": "node-updater",
+	}); err != nil {
+		t.Fatalf("UpdateNode queue: %v", err)
+	}
+	if err := batch.UpdateRelationship(r.ID(), map[string]any{
+		"weight":        int64(2),
+		"tkg_author_id": "rel-updater",
+	}); err != nil {
+		t.Fatalf("UpdateRelationship queue: %v", err)
+	}
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Failed != 0 {
+		t.Fatalf("batch failed: %+v", result.Errors)
+	}
+
+	gotNode, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if ig := gotNode.Integrity(); ig == nil || ig.AuthorID != "node-updater" {
+		t.Fatalf("node integrity = %+v, want AuthorID node-updater", ig)
+	}
+	if _, ok := gotNode.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("node stored tkg_author_id as a normal property")
+	}
+
+	gotRel, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if ig := gotRel.Integrity(); ig == nil || ig.AuthorID != "rel-updater" {
+		t.Fatalf("relationship integrity = %+v, want AuthorID rel-updater", ig)
+	}
+	if _, ok := gotRel.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("relationship stored tkg_author_id as a normal property")
+	}
+}
+
 func TestBatchBuilderExecuteEmpty(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -159,7 +293,7 @@ func TestBatchBuilderExecuteEmpty(t *testing.T) {
 
 	result, err := b.Execute()
 	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+		t.Fatalf("Execute error = %v, want nil", err)
 	}
 	if result.Created != 0 || result.Updated != 0 || result.Deleted != 0 || result.Failed != 0 {
 		t.Errorf("empty batch result = %+v, want all zeros", result)
@@ -275,6 +409,178 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	}
 	if updated.Version() != 1 {
 		t.Errorf("version = %d, want 1", updated.Version())
+	}
+}
+
+func TestBatchBuilderUpdateQueuesSnapshotOfUpdateMaps(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bNode, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Eve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, bNode, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeTags := []string{"queued"}
+	nodeUpdates := map[string]any{"name": "Bob", "tags": nodeTags}
+	relNotes := []string{"queued-rel"}
+	relUpdates := map[string]any{"weight": int64(1), "notes": relNotes}
+
+	batch, _ := NewBatchBuilder(g)
+	if err := batch.UpdateNode(a.ID(), nodeUpdates); err != nil {
+		t.Fatal(err)
+	}
+	if err := batch.UpdateRelationship(r.ID(), relUpdates); err != nil {
+		t.Fatal(err)
+	}
+
+	nodeUpdates["name"] = "Mallory"
+	nodeUpdates["late"] = "should-not-apply"
+	nodeTags[0] = "mutated"
+	relUpdates["weight"] = int64(2)
+	relUpdates["late"] = "should-not-apply"
+	relNotes[0] = "mutated-rel"
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Updated != 2 {
+		t.Fatalf("Updated = %d, want 2", result.Updated)
+	}
+
+	updatedNode, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := updatedNode.GetProperty("name"); got != "Bob" {
+		t.Fatalf("node name = %v, want queued value Bob", got)
+	}
+	if got, _ := updatedNode.GetProperty("tags"); !stringSliceEqual(got, []string{"queued"}) {
+		t.Fatalf("node tags = %#v, want queued value [queued]", got)
+	}
+	if got, ok := updatedNode.GetProperty("late"); ok {
+		t.Fatalf("late node update applied after queue mutation: %v", got)
+	}
+
+	updatedRel, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := updatedRel.GetProperty("weight"); got != int64(1) {
+		t.Fatalf("rel weight = %v, want queued value 1", got)
+	}
+	if got, _ := updatedRel.GetProperty("notes"); !stringSliceEqual(got, []string{"queued-rel"}) {
+		t.Fatalf("rel notes = %#v, want queued value [queued-rel]", got)
+	}
+	if got, ok := updatedRel.GetProperty("late"); ok {
+		t.Fatalf("late rel update applied after queue mutation: %v", got)
+	}
+}
+
+func stringSliceEqual(got any, want []string) bool {
+	s, ok := got.([]string)
+	if !ok || len(s) != len(want) {
+		return false
+	}
+	for i := range s {
+		if s[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestBatchBuilderExecuteEmptyUpdatesAreNoOps(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	_ = g.Events.SetSync(eventspkg.NewEventBus())
+
+	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode n1: %v", err)
+	}
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode n2: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"since": int64(2026)})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	events := collectEvents(g, eventspkg.EventNodeUpdate)
+
+	b, _ := NewBatchBuilder(g)
+	if err := b.UpdateNode(n1.ID(), map[string]any{}); err != nil {
+		t.Fatalf("UpdateNode queue: %v", err)
+	}
+	if err := b.UpdateRelationship(r.ID(), nil); err != nil {
+		t.Fatalf("UpdateRelationship queue: %v", err)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Updated != 0 {
+		t.Fatalf("Updated = %d, want 0 for empty update no-ops", result.Updated)
+	}
+	if gotEvents := drain(events); len(gotEvents) != 0 {
+		t.Fatalf("empty batch updates published events: %+v", gotEvents)
+	}
+
+	gotNode, err := g.Nodes.Get(n1.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if gotNode.Version() != 0 {
+		t.Fatalf("node version = %d, want 0", gotNode.Version())
+	}
+	gotRel, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if gotRel.Version() != 0 {
+		t.Fatalf("relationship version = %d, want 0", gotRel.Version())
+	}
+}
+
+func TestBatchBuilderExecuteEmptyUpdatesStillCheckExistence(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	b, _ := NewBatchBuilder(g)
+	if err := b.UpdateNode(types.NodeID(1), map[string]any{}); err != nil {
+		t.Fatalf("UpdateNode queue: %v", err)
+	}
+	if err := b.UpdateRelationship(types.RelID(2), nil); err != nil {
+		t.Fatalf("UpdateRelationship queue: %v", err)
+	}
+
+	result, err := b.Execute()
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
+	}
+	if result.Updated != 0 || result.Failed != 2 {
+		t.Fatalf("result = %+v, want Updated=0 Failed=2", result)
+	}
+	if len(result.Errors) != 2 {
+		t.Fatalf("len(result.Errors) = %d, want 2", len(result.Errors))
+	}
+	if !errors.Is(result.Errors[0].Err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("node error = %v, want ErrNodeNotFound", result.Errors[0].Err)
+	}
+	if !errors.Is(result.Errors[1].Err, storepkg.ErrRelNotFound) {
+		t.Fatalf("relationship error = %v, want ErrRelNotFound", result.Errors[1].Err)
 	}
 }
 
@@ -471,8 +777,8 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	b.DeleteRelationship(types.RelID(888888))
 
 	result, err := b.Execute()
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
 	}
 
 	if result.Updated != 1 {
@@ -615,6 +921,9 @@ func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("batch AddNode: %v", err)
 	}
+	if _, err := b.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
 	batchHash := batchNode.Integrity().Hash
 
 	// Recompute with canonical labels — must match the stored hash.
@@ -651,5 +960,169 @@ func TestBatchBuilder_AddNode_HashChainVerification(t *testing.T) {
 	}
 	if !ok {
 		t.Error("hash chain verification failed for batch-created node with duplicate labels")
+	}
+}
+
+func TestBatchBuilderConcurrentQueueMethods(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	b, _ := NewBatchBuilder(g)
+
+	const workers = 64
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := b.AddNode([]string{"Concurrent"}, map[string]any{"i": i}); err != nil {
+				errCh <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent AddNode: %v", err)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != workers {
+		t.Fatalf("Created = %d, want %d", result.Created, workers)
+	}
+}
+
+func TestBatchBuilderAfterExecuteReturnsErrBatchDone(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	b, _ := NewBatchBuilder(g)
+
+	if _, err := b.AddNode([]string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if _, err := b.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if _, err := b.AddNode([]string{"Person"}, nil); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("AddNode after Execute: got %v, want ErrBatchDone", err)
+	}
+	if _, err := b.AddRelationship("REL", nil, nil, nil); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("AddRelationship after Execute: got %v, want ErrBatchDone", err)
+	}
+	if err := b.UpdateNode(types.NodeID(1), map[string]any{"k": "v"}); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("UpdateNode after Execute: got %v, want ErrBatchDone", err)
+	}
+	if err := b.UpdateRelationship(types.RelID(1), map[string]any{"k": "v"}); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("UpdateRelationship after Execute: got %v, want ErrBatchDone", err)
+	}
+	if err := b.DeleteNode(types.NodeID(1)); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("DeleteNode after Execute: got %v, want ErrBatchDone", err)
+	}
+	if err := b.DeleteRelationship(types.RelID(1)); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("DeleteRelationship after Execute: got %v, want ErrBatchDone", err)
+	}
+	if _, err := b.Execute(); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("second Execute: got %v, want ErrBatchDone", err)
+	}
+}
+
+func TestBatchBuilderExecuteReleasesBuilderLockBeforeSyncEventDispatch(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	bus := eventspkg.NewEventBus()
+	_ = g.Events.SetSync(bus)
+
+	b, _ := NewBatchBuilder(g)
+	if _, err := b.AddNode([]string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	handlerErr := make(chan error, 1)
+	bus.Subscribe(func(eventspkg.Event) {
+		_, err := b.AddNode([]string{"Late"}, nil)
+		handlerErr <- err
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := b.Execute()
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Execute deadlocked during synchronous event dispatch")
+	}
+
+	select {
+	case err := <-handlerErr:
+		if !errors.Is(err, ErrBatchDone) {
+			t.Fatalf("handler AddNode: got %v, want ErrBatchDone", err)
+		}
+	default:
+		t.Fatal("event handler was not called")
+	}
+}
+
+type recordingEventPublisher struct {
+	publishCalls      int
+	publishBatchCalls int
+	events            []eventspkg.Event
+}
+
+func (p *recordingEventPublisher) Publish(e eventspkg.Event) {
+	p.publishCalls++
+	p.events = append(p.events, e)
+}
+
+func (p *recordingEventPublisher) PublishBatch(events ...eventspkg.Event) {
+	p.publishBatchCalls++
+	p.events = append(p.events, events...)
+}
+
+func TestBatchBuilderExecutePublishesBufferedEventsAtomically(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	publisher := &recordingEventPublisher{}
+	g.mu.Lock()
+	g.events = publisher
+	g.mu.Unlock()
+
+	b, _ := NewBatchBuilder(g)
+	if _, err := b.AddNode([]string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	if _, err := b.AddNode([]string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 2 {
+		t.Fatalf("Created = %d, want 2", result.Created)
+	}
+	if publisher.publishCalls != 0 {
+		t.Fatalf("batch event flush used Publish %d time(s), want PublishBatch", publisher.publishCalls)
+	}
+	if publisher.publishBatchCalls != 1 {
+		t.Fatalf("PublishBatch calls = %d, want 1", publisher.publishBatchCalls)
+	}
+	if len(publisher.events) != 2 {
+		t.Fatalf("published events = %d, want 2", len(publisher.events))
+	}
+	for i, e := range publisher.events {
+		if e.Type != eventspkg.EventNodeCreate {
+			t.Fatalf("event %d type = %v, want EventNodeCreate", i, e.Type)
+		}
 	}
 }

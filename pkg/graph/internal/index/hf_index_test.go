@@ -152,6 +152,51 @@ func TestHFIndex_RangeQuery_EmptyResult(t *testing.T) {
 	}
 }
 
+func TestHFIndexZeroValueAndNilReceiverNoop(t *testing.T) {
+	t.Parallel()
+
+	var hfi HighFrequencyIndex
+	id := types.NodeID(7)
+	hfi.Add(id, 123)
+	if got := hfi.PointQuery(123); !hfIDsContain(got, id) {
+		t.Fatalf("zero-value PointQuery = %v, want id %d", got, id)
+	}
+	if got := hfi.RangeQuery(0, 999); !hfIDsContain(got, id) {
+		t.Fatalf("zero-value RangeQuery = %v, want id %d", got, id)
+	}
+	hfi.Remove(id, 123)
+	if got := hfi.PointQuery(123); hfIDsContain(got, id) {
+		t.Fatalf("zero-value Remove left id %d in %v", id, got)
+	}
+
+	var nilHFI *HighFrequencyIndex
+	if got := nilHFI.BucketSize(); got != 0 {
+		t.Fatalf("nil BucketSize = %v, want 0", got)
+	}
+	if got := nilHFI.BucketFor(123); got != 0 {
+		t.Fatalf("nil BucketFor = %d, want 0", got)
+	}
+	nilHFI.Add(id, 123)
+	nilHFI.Remove(id, 123)
+	nilHFI.ClearMutationTracking()
+	if nilHFI.WasMutated(id.SnowflakeID()) {
+		t.Fatal("nil WasMutated = true, want false")
+	}
+	if nilHFI.IsBuilding() {
+		t.Fatal("nil IsBuilding = true, want false")
+	}
+	if got := nilHFI.PointQuery(123); got != nil {
+		t.Fatalf("nil PointQuery = %v, want nil", got)
+	}
+	if got := nilHFI.CandidatesUpTo(123); got != nil {
+		t.Fatalf("nil CandidatesUpTo = %v, want nil", got)
+	}
+	if got := nilHFI.RangeQuery(0, 999); got != nil {
+		t.Fatalf("nil RangeQuery = %v, want nil", got)
+	}
+	nilHFI.removeAll(id)
+}
+
 // TestHFIndex_RangeQuery_OpenEndedDoesNotHang verifies that a rangeQuery with
 // end=math.MaxInt64 returns immediately. The previous implementation iterated
 // from startBucket to endBucket numerically (~2.5 trillion iterations with a
@@ -182,4 +227,40 @@ func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("rangeQuery with large end hung (regression: numeric range iteration)")
 	}
+}
+
+func TestHFIndex_PurgeNodeFromAllHighFrequencyIndexes(t *testing.T) {
+	idxs := map[uint16]*HighFrequencyIndex{
+		1: NewHighFrequencyIndex(time.Hour, 0),
+		2: NewHighFrequencyIndex(time.Hour, 0),
+	}
+	purged := types.NodeID(10)
+	kept := types.NodeID(20)
+
+	idxs[1].Add(purged, 0)
+	idxs[1].Add(kept, 0)
+	idxs[2].Add(purged, types.Instant(time.Hour.Milliseconds()))
+
+	PurgeNodeFromAllHighFrequencyIndexes(idxs, purged.SnowflakeID())
+
+	for token, hfi := range idxs {
+		got := hfi.RangeQuery(0, types.Instant(2*time.Hour.Milliseconds()))
+		for _, id := range got {
+			if id == purged {
+				t.Fatalf("index %d still contains purged node %d: %v", token, purged, got)
+			}
+		}
+	}
+	if got := idxs[1].PointQuery(0); !hfIDsContain(got, kept) {
+		t.Fatalf("purge removed unrelated node: %v", got)
+	}
+}
+
+func hfIDsContain(ids []types.NodeID, want types.NodeID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
 }

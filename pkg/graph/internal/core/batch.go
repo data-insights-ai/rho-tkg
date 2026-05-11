@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -10,27 +11,23 @@ import (
 // BatchBuilder queues graph operations for batch execution.
 // Operations are eagerly validated when added, then executed sequentially
 // when Execute is called. Partial success is possible — individual
-// operation failures are collected in BatchResult.Errors.
+// operation failures are collected in BatchResult.Errors and surfaced via
+// an Execute error wrapping ErrBatchFailed.
 //
-// BatchBuilder is not safe for concurrent use. All Add/Update/Delete/Execute
-// calls must be serialized by the caller.
+// Queue methods and Execute are serialized internally. Execute is one-shot:
+// once replay begins, later queue calls or Execute calls return ErrBatchDone.
 //
 // Execute order: create nodes → create rels → update nodes → update rels →
 // delete rels → delete nodes. Nodes before rels (endpoints must exist),
 // deletes last (don't delete something that's about to be updated).
 //
-// Queue-time side effects (R4-F13): AddNode and AddRelationship allocate
-// label/rel-type registry tokens and consume snowflake IDs at queue time.
-// This is intentional — the entity returned from AddNode is the same
-// pointer eventually persisted by Execute, so callers can chain
-// AddRelationship using the queued node's ID. The trade-off is that a
-// queued-but-never-Executed batch permanently registers the labels/types
-// it touched and skips IDs from the snowflake sequence. Validation
-// rejections (label-name format, property limits, self-loop) run BEFORE
-// token allocation per R4-F14, so only validation-PASSING-but-abandoned
-// batches leak. Callers concerned about registry pollution should call
-// Execute (even with the empty-result variant) rather than abandoning a
-// builder.
+// Queue-time side effects (R4-F13): AddNode and AddRelationship consume
+// snowflake IDs at queue time and reuse existing registry tokens when available,
+// but defer new label/type token allocation until Execute has passed rejection
+// checks. Execute retokenizes returned entity pointers in place before
+// persistence when it had to use queue-time probe tokens. Validation rejections
+// (label/type-name format, property limits, self-loop) run BEFORE token
+// allocation per R4-F14.
 //
 // File layout (R5-F9 split):
 //   - batch.go         — types, constructor, BatchError
@@ -38,6 +35,8 @@ import (
 //   - batch_execute.go — Execute (the under-lock replay)
 type BatchBuilder struct {
 	g           *Core
+	mu          sync.Mutex
+	done        bool
 	nodes       []pendingNode
 	rels        []pendingRel
 	nodeUpdates []pendingNodeUpdate
@@ -56,18 +55,22 @@ type BatchBuilder struct {
 // the in-place mutation, and that is fine for batch's contract since the
 // entity is documented as "queue-time skeleton, finalised at Execute".
 type pendingNode struct {
-	node          *types.Node
-	labels        []string
-	nodeIntegrity *types.NodeIntegrity    // aliases node.integrity
-	temporal      *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
+	node               *types.Node
+	labels             []string
+	queuedPrimaryToken uint16
+	queuedExtraTokens  []uint16
+	nodeIntegrity      *types.NodeIntegrity    // aliases node.integrity
+	temporal           *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
 }
 
 type pendingRel struct {
-	rel          *types.Relationship
-	startID      types.NodeID
-	endID        types.NodeID
-	relIntegrity *types.RelIntegrity // aliases rel.integrity;
+	rel             *types.Relationship
+	typeName        string
+	startID         types.NodeID
+	endID           types.NodeID
+	queuedTypeToken uint16
+	relIntegrity    *types.RelIntegrity // aliases rel.integrity;
 	// FromNodeHash/ToNodeHash mutated under per-rel endpoint locks in Execute
 	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
@@ -107,8 +110,25 @@ func (e BatchError) Error() string {
 // NewBatchBuilder creates a new BatchBuilder for the given graph.
 // Returns ErrGraphClosed if the graph has already been closed.
 func NewBatchBuilder(c *Core) (*BatchBuilder, error) {
+	if c == nil {
+		return nil, ErrNilGraph
+	}
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return nil, ErrGraphClosed
+	}
 	return &BatchBuilder{g: c}, nil
+}
+
+func (b *BatchBuilder) lockOpen() error {
+	b.mu.Lock()
+	if b.done {
+		b.mu.Unlock()
+		return ErrBatchDone
+	}
+	return nil
 }

@@ -76,15 +76,12 @@ func TestCapability_PropertyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 func TestCapability_TemporalIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
-	// The wrapper short-circuits on a label that has never been
-	// registered (returns nil), so seed a node first so we exercise the
-	// capability assertion path.
-	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
-		t.Fatalf("seed Person: %v", err)
-	}
 
 	if err := g.Index.CreateTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateTemporal err = %v, want ErrCapabilityNotSupported", err)
+	}
+	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
+		t.Fatalf("seed Person: %v", err)
 	}
 	if err := g.Index.DropTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropTemporal err = %v, want ErrCapabilityNotSupported", err)
@@ -94,12 +91,12 @@ func TestCapability_TemporalIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 func TestCapability_HighFrequencyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
-	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
-		t.Fatalf("seed Person: %v", err)
-	}
 
 	if err := g.Index.CreateHighFrequency("Person", time.Hour); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateHighFrequency err = %v, want ErrCapabilityNotSupported", err)
+	}
+	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
+		t.Fatalf("seed Person: %v", err)
 	}
 	if err := g.Index.DropHighFrequency("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropHighFrequency err = %v, want ErrCapabilityNotSupported", err)
@@ -109,14 +106,15 @@ func TestCapability_HighFrequencyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T
 func TestCapability_VectorIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
-	// Seed a node with the label so the early-exit on missing label does
-	// not short-circuit before the capability assertion runs.
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 2, 3}}); err != nil {
-		t.Fatalf("seed Doc: %v", err)
-	}
 
+	if err := g.Index.CreateVector("Doc", "embedding", 0, storepkg.DistanceCosine); !errors.Is(err, ErrInvalidVectorIndexConfig) {
+		t.Errorf("CreateVector invalid config err = %v, want ErrInvalidVectorIndexConfig", err)
+	}
 	if err := g.Index.CreateVector("Doc", "embedding", 3, storepkg.DistanceCosine); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateVector err = %v, want ErrCapabilityNotSupported", err)
+	}
+	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 2, 3}}); err != nil {
+		t.Fatalf("seed Doc: %v", err)
 	}
 	if err := g.Index.DropVector("Doc", "embedding"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropVector err = %v, want ErrCapabilityNotSupported", err)

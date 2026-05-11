@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -108,11 +109,35 @@ func (r *RelOps) DeleteProperty(id types.RelID, key string) error {
 // History returns all version history snapshots for the given node.
 func (n *NodeOps) History(id types.NodeID) ([]*types.Node, error) {
 	c := n.c
-	return c.store.GetNodeHistory(id)
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	var history []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		history, err = c.store.GetNodeHistory(id)
+		return err
+	})
+	return history, err
 }
 
 // History returns all version history snapshots for the given relationship.
 func (r *RelOps) History(id types.RelID) ([]*types.Relationship, error) {
 	c := r.c
-	return c.store.GetRelHistory(id)
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	var history []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		history, err = c.store.GetRelHistory(id)
+		return err
+	})
+	return history, err
 }

@@ -26,7 +26,19 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	node, err := c.store.GetNode(id)
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	var (
+		node *types.Node
+		err  error
+	)
+	_, closeErr := c.runUnderRLock(func() {
+		node, err = c.store.GetNode(id)
+	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
 	if err == nil {
 		c.opNodeReads.Add(1)
 	}
@@ -59,11 +71,14 @@ func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error 
 //
 // Two-phase locking with TOCTOU retry:
 //
-//	Phase A (node lock only): read node + adjacency, collect all entity IDs.
-//	Phase B (all entities locked): re-read adjacency, verify unchanged, then mutate.
+//	Phase A (node lock only): confirm node exists, read adjacency, collect all entity IDs.
+//	Phase B (all entities locked): re-read node + adjacency, verify adjacency unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
 func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
 
@@ -74,7 +89,6 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 		// leak the shard lock.
 		var (
 			allIDs    []snowflake.ID
-			current   *types.Node
 			phaseAErr error
 		)
 		func() {
@@ -85,8 +99,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				phaseAErr = err
 				return
 			}
-			n, err := c.store.GetNode(id)
-			if err != nil {
+			if _, err := c.store.GetNode(id); err != nil {
 				phaseAErr = err
 				return
 			}
@@ -100,14 +113,13 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				phaseAErr = err
 				return
 			}
-			current = n
 			allIDs = collectDeleteIDs(id.SnowflakeID(), outRels, inRels)
 		}()
 		if phaseAErr != nil {
 			return phaseAErr
 		}
 
-		// Phase B: lock ALL entities (node + rels), re-verify adjacency.
+		// Phase B: lock ALL entities (node + rels), re-read node, and re-verify adjacency.
 		// Same closure pattern — panic during the re-read or delete must
 		// not leak LockMany.
 		var (
@@ -119,6 +131,11 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 			c.entityLocks.LockMany(allIDs)
 			defer c.entityLocks.UnlockMany(allIDs)
 
+			current, err := c.store.GetNode(id)
+			if err != nil {
+				phaseBErr = err
+				return
+			}
 			outRels2, err := c.store.OutgoingRelationships(id, 0)
 			if err != nil {
 				phaseBErr = err

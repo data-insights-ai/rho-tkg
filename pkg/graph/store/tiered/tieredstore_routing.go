@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,8 +12,9 @@ import (
 
 // --- Shard routing helpers ---
 
-// shardForNode routes a node to the correct BadgerStore by its primary label.
-// For event nodes, always routes to the hot shard (new writes).
+// shardForNode routes class-only operations by primary label. Event labels
+// return the current hot shard; node create paths with concrete IDs use
+// shardForNodeCreate so backfilled event IDs land on their timestamp owner.
 func (ts *Store) shardForNode(primaryLabel uint16) *BadgerStore {
 	if ts.ontology.ClassifyByToken(primaryLabel) == ClassReference {
 		return ts.refShard
@@ -23,52 +25,19 @@ func (ts *Store) shardForNode(primaryLabel uint16) *BadgerStore {
 	return s
 }
 
-// shardForNodeID resolves which shard owns a node ID.
-// O(1): try ref (HasNodeID), miss -> archive check -> timestamp extraction -> event shard.
-// Returns error if cold shard lazy-open fails.
+// shardForNodeID resolves which shard owns a node ID. It preserves the legacy
+// unpinned return contract for tests; production paths use shardForNodeIDChecked.
 func (ts *Store) shardForNodeID(id types.NodeID) (*BadgerStore, error) {
-	raw := id.SnowflakeID()
-	if ts.refShard.HasNodeID(raw) {
-		return ts.refShard, nil
+	store, checkin, err := ts.shardForNodeIDChecked(id)
+	if err != nil {
+		return nil, err
 	}
-	// Check archive if open or catalog says it exists.
-	archive := ts.refArchive.Load()
-	if archive != nil && archive.HasNodeID(raw) {
-		return archive, nil
-	}
-	if archive == nil && ts.hasArchiveShard() {
-		if err := ts.ensureRefArchive(); err != nil {
-			return nil, err
-		}
-		archive = ts.refArchive.Load()
-		if archive != nil && archive.HasNodeID(raw) {
-			return archive, nil
-		}
-	}
-	return ts.timestampToEventShard(raw)
-}
-
-// timestampToEventShard extracts the creation timestamp from a snowflake ID
-// and maps it to the correct event shard. Falls back to the hot shard if no
-// shard window matches (entity from before the oldest shard).
-// Returns error if cold shard lazy-open fails.
-func (ts *Store) timestampToEventShard(id snowflake.ID) (*BadgerStore, error) {
-	created := snowflakepkg.Layout.CreatedAt(id)
-
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
-	for _, es := range ts.eventShards {
-		if !created.Before(es.timeStart) && created.Before(es.timeEnd) {
-			return es.getStore(ts)
-		}
-	}
-	return ts.hotShard.store, nil // fallback: newest shard (always open)
+	checkin()
+	return store, nil
 }
 
 // timestampToEventShardEntry extracts the creation timestamp from a snowflake ID
-// and returns the *EventShard responsible for that timestamp. Unlike
-// timestampToEventShard, it returns the shard struct so callers can use
+// and returns the *EventShard responsible for that timestamp. Callers then use
 // checkoutStore/checkinStore for safe concurrent access.
 // Falls back to hotShard if no window matches.
 func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
@@ -85,6 +54,17 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 	return ts.hotShard // fallback: newest shard (always open)
 }
 
+func (ts *Store) idOutsideHotShardWindow(id snowflake.ID) bool {
+	created := snowflakepkg.Layout.CreatedAt(id)
+
+	ts.mu.RLock()
+	hotStart := ts.hotShard.timeStart
+	hotEnd := ts.hotShard.timeEnd
+	ts.mu.RUnlock()
+
+	return created.Before(hotStart) || !created.Before(hotEnd)
+}
+
 // shardForRelIDChecked resolves the storage shard for a relationship ID and
 // increments activeReqs on any event shard returned, mirroring
 // shardForNodeIDChecked.
@@ -99,9 +79,17 @@ func (ts *Store) timestampToEventShardEntry(id snowflake.ID) *EventShard {
 // The caller MUST invoke the returned checkin function exactly once.
 // refShard checkin is a no-op; event shard checkin decrements activeReqs.
 func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, checkin func(), err error) {
+	store, checkin, _, err = ts.shardForRelIDCheckedWithArchive(id)
+	return store, checkin, err
+}
+
+func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, nil, false, err
+	}
 	raw := id.SnowflakeID()
-	if ts.refShard.HasRelID(raw) {
-		return ts.refShard, func() {}, nil
+	if relationshipRowExists(ts.refShard, id) {
+		return ts.refShard, func() {}, false, nil
 	}
 
 	// Probe refArchive: ArchiveNode migrates a reference node AND its
@@ -110,11 +98,11 @@ func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, check
 	// concurrent Close cannot tear it down mid-use.
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if archive != nil {
-		if archive.HasRelID(raw) {
-			return archive, archiveCheckin, nil
+		if relationshipRowExists(archive, id) {
+			return archive, archiveCheckin, true, nil
 		}
 		archiveCheckin()
 	}
@@ -122,10 +110,10 @@ func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, check
 	candidateEntry := ts.timestampToEventShardEntry(raw)
 	candidate, err := candidateEntry.checkoutStore(ts)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	if candidate.HasRelID(raw) {
-		return candidate, func() { candidateEntry.checkinStore() }, nil
+	if relationshipRowExists(candidate, id) {
+		return candidate, func() { candidateEntry.checkinStore() }, false, nil
 	}
 
 	// Probe every other event shard (excluding the candidate we already
@@ -145,18 +133,29 @@ func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, check
 		s, err := es.checkoutStore(ts)
 		if err != nil {
 			candidateEntry.checkinStore()
-			return nil, nil, err
+			return nil, nil, false, err
 		}
-		if s.HasRelID(raw) {
+		if relationshipRowExists(s, id) {
 			candidateEntry.checkinStore()
-			return s, func() { es.checkinStore() }, nil
+			return s, func() { es.checkinStore() }, false, nil
 		}
 		es.checkinStore()
 	}
 
 	// Not found anywhere — return the timestamp candidate so downstream reads
 	// surface a typed ErrRelNotFound. The caller still owns its checkin.
-	return candidate, func() { candidateEntry.checkinStore() }, nil
+	return candidate, func() { candidateEntry.checkinStore() }, false, nil
+}
+
+func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
+	if store == nil || !store.HasRelID(id.SnowflakeID()) {
+		return false
+	}
+	// HasRelID is an index-derived fast path; verify the entity row.
+	if _, err := store.GetRelationship(id); err != nil {
+		return !errors.Is(err, ErrRelNotFound)
+	}
+	return true
 }
 
 // shardForNodeIDChecked resolves the storage shard for a node ID and increments
@@ -171,9 +170,17 @@ func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, check
 // a no-op. Only event shards (especially cold tier) need the checkout/checkin
 // protocol.
 func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
+	store, checkin, _, err = ts.shardForNodeIDCheckedWithArchive(id)
+	return store, checkin, err
+}
+
+func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *BadgerStore, checkin func(), isArchive bool, err error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, nil, false, err
+	}
 	raw := id.SnowflakeID()
 	if ts.refShard.HasNodeID(raw) {
-		return ts.refShard, func() {}, nil // refShard: never closed, no-op checkin
+		return ts.refShard, func() {}, false, nil // refShard: never closed, no-op checkin
 	}
 
 	// Archive probe — pin via checkoutArchive so a concurrent Close
@@ -185,11 +192,11 @@ func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, che
 	// the in-memory pointer is nil.
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if archive != nil {
 		if archive.HasNodeID(raw) {
-			return archive, archiveCheckin, nil
+			return archive, archiveCheckin, true, nil
 		}
 		archiveCheckin()
 	}
@@ -198,9 +205,9 @@ func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, che
 	es := ts.timestampToEventShardEntry(raw)
 	store, err = es.checkoutStore(ts)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return store, func() { es.checkinStore() }, nil
+	return store, func() { es.checkinStore() }, false, nil
 }
 
 // eventShardSnapshot returns a snapshot of event shards filtered by depth.
@@ -236,8 +243,8 @@ func shardWindowName(t time.Time, window time.Duration) string {
 		// Daily: "2026-03-02"
 		return t.Format("2006-01-02")
 	default:
-		// Monthly fallback: "2026-03"
-		return t.Format("2006-01")
+		start := shardWindowStart(t, window)
+		return start.UTC().Format("20060102T150405.000Z")
 	}
 }
 
@@ -247,24 +254,19 @@ func shardWindowStart(t time.Time, window time.Duration) time.Time {
 	case window >= 7*24*time.Hour:
 		// ISO week start (Monday).
 		year, week := t.ISOWeek()
-		// Compute day 1 of ISO week.
-		jan1 := time.Date(year, 1, 1, 0, 0, 0, 0, t.Location())
-		jan1Weekday := jan1.Weekday()
-		if jan1Weekday == time.Sunday {
-			jan1Weekday = 7
+		// ISO week 1 is the week containing January 4.
+		jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, t.Location())
+		jan4Weekday := jan4.Weekday()
+		if jan4Weekday == time.Sunday {
+			jan4Weekday = 7
 		}
-		// Days from Jan 1 to Monday of ISO week 1.
-		daysToMonday := int(time.Monday - jan1Weekday)
-		if daysToMonday > 0 {
-			daysToMonday -= 7
-		}
-		isoWeek1Monday := jan1.AddDate(0, 0, daysToMonday)
+		daysToMonday := int(time.Monday - jan4Weekday)
+		isoWeek1Monday := jan4.AddDate(0, 0, daysToMonday)
 		return isoWeek1Monday.AddDate(0, 0, (week-1)*7)
 	case window >= 24*time.Hour:
 		// Day start.
 		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 	default:
-		// Month start.
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+		return t.Truncate(window)
 	}
 }

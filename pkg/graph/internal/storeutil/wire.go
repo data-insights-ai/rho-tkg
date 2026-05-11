@@ -1,7 +1,15 @@
 package storeutil
 
 import (
+	"fmt"
+
+	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
+
+const (
+	maxWireUint16 = 1<<16 - 1
+	maxWireUint32 = 1<<32 - 1
 )
 
 // NodeWire is the msgpack wire format for Node entities.
@@ -71,15 +79,30 @@ type RelWire struct {
 // PropertyWire is the msgpack wire format for a single property key-value pair.
 // Type carries the original Go type tag so exact types survive msgpack round-trips.
 type PropertyWire struct {
-	Key   string `msgpack:"k"`
-	Value any    `msgpack:"v"`
-	Type  byte   `msgpack:"t"` // property type tag for faithful reconstruction
+	Key           string `msgpack:"k"`
+	Value         any    `msgpack:"v"`
+	Type          byte   `msgpack:"t"`            // property type tag for faithful reconstruction
+	CustomType    string `msgpack:"ct,omitempty"` // registered custom property element type
+	CustomPointer bool   `msgpack:"cp,omitempty"` // original custom property form was *T
 }
 
 // --- Node conversion ---
 
 // NodeToWire converts a Node to its wire format for serialization.
 func NodeToWire(n *types.Node) NodeWire {
+	w, err := NodeToWireChecked(n)
+	if err != nil {
+		panic(fmt.Sprintf("storeutil: NodeToWire: %v", err))
+	}
+	return w
+}
+
+// NodeToWireChecked converts a Node to its wire format for serialization.
+func NodeToWireChecked(n *types.Node) (NodeWire, error) {
+	if n == nil {
+		return NodeWire{}, fmt.Errorf("node wire: nil node")
+	}
+
 	w := NodeWire{
 		ID:           int64(n.ID().SnowflakeID()),
 		PrimaryLabel: int(n.PrimaryLabelToken().Value()),
@@ -94,7 +117,11 @@ func NodeToWire(n *types.Node) NodeWire {
 		}
 	}
 
-	w.Properties = propertiesToWire(n.Properties())
+	props, err := propertiesToWireChecked(n.Properties())
+	if err != nil {
+		return NodeWire{}, fmt.Errorf("node wire: properties: %w", err)
+	}
+	w.Properties = props
 
 	if tm := n.Temporal(); tm != nil {
 		w.HasTemporal = true
@@ -119,18 +146,39 @@ func NodeToWire(n *types.Node) NodeWire {
 		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
 
-	return w
+	return w, nil
+}
+
+// MarshalNodeWire converts and MsgPack-encodes a Node.
+func MarshalNodeWire(n *types.Node) ([]byte, error) {
+	w, err := NodeToWireChecked(n)
+	if err != nil {
+		return nil, err
+	}
+	return msgpack.Marshal(w)
 }
 
 // WireToNode reconstructs a Node from its wire format.
 func WireToNode(w NodeWire) *types.Node {
+	n := newNodeFromWire(w)
+	if err := applyNodeWireFields(n, w, wireToProperties(w.Properties)); err != nil {
+		panic(fmt.Sprintf("storeutil: WireToNode with invalid prevalidated properties: %v", err))
+	}
+	return n
+}
+
+func newNodeFromWire(w NodeWire) *types.Node {
 	var extras []uint16
 	for _, e := range w.ExtraLabels {
 		extras = append(extras, uint16(e)) // #nosec G115 — token values from our own serialization, always in uint16 range
 	}
+	return types.NewNode(types.NodeID(w.ID), uint16(w.PrimaryLabel), extras) // #nosec G115 — token from our own serialization
+}
 
-	n := types.NewNode(types.NodeID(w.ID), uint16(w.PrimaryLabel), extras) // #nosec G115 — token from our own serialization
-	n.SetProperties(wireToProperties(w.Properties))
+func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) error {
+	if err := n.SetProperties(props); err != nil {
+		return err
+	}
 	n.SetVersion(uint32(w.Version)) // #nosec G115 — version from our own serialization
 
 	if w.HasTemporal {
@@ -162,13 +210,44 @@ func WireToNode(w NodeWire) *types.Node {
 		})
 	}
 
-	return n
+	return nil
+}
+
+// WireToNodeChecked validates and reconstructs a Node from persisted wire data.
+// Use this on data read from durable stores, where valid MsgPack can still carry
+// semantically invalid fields that must not enter Store state.
+func WireToNodeChecked(w NodeWire) (*types.Node, error) {
+	if err := ValidateNodeWire(w); err != nil {
+		return nil, err
+	}
+	props, err := wireToPropertiesChecked(w.Properties)
+	if err != nil {
+		return nil, fmt.Errorf("node wire: properties: %w", err)
+	}
+	n := newNodeFromWire(w)
+	if err := applyNodeWireFields(n, w, props); err != nil {
+		return nil, fmt.Errorf("node wire: properties: %w", err)
+	}
+	return n, nil
 }
 
 // --- Relationship conversion ---
 
 // RelToWire converts a Relationship to its wire format for serialization.
 func RelToWire(r *types.Relationship) RelWire {
+	w, err := RelToWireChecked(r)
+	if err != nil {
+		panic(fmt.Sprintf("storeutil: RelToWire: %v", err))
+	}
+	return w
+}
+
+// RelToWireChecked converts a Relationship to its wire format for serialization.
+func RelToWireChecked(r *types.Relationship) (RelWire, error) {
+	if r == nil {
+		return RelWire{}, fmt.Errorf("relationship wire: nil relationship")
+	}
+
 	w := RelWire{
 		ID:      int64(r.ID().SnowflakeID()),
 		RelType: int(r.TypeToken().Value()),
@@ -177,7 +256,11 @@ func RelToWire(r *types.Relationship) RelWire {
 		Version: int(r.Version()),
 	}
 
-	w.Properties = propertiesToWire(r.Properties())
+	props, err := propertiesToWireChecked(r.Properties())
+	if err != nil {
+		return RelWire{}, fmt.Errorf("relationship wire: properties: %w", err)
+	}
+	w.Properties = props
 
 	if tm := r.Temporal(); tm != nil {
 		w.HasTemporal = true
@@ -204,7 +287,16 @@ func RelToWire(r *types.Relationship) RelWire {
 		w.AuthorizationLevel = ig.AuthorizationLevel
 	}
 
-	return w
+	return w, nil
+}
+
+// MarshalRelWire converts and MsgPack-encodes a Relationship.
+func MarshalRelWire(r *types.Relationship) ([]byte, error) {
+	w, err := RelToWireChecked(r)
+	if err != nil {
+		return nil, err
+	}
+	return msgpack.Marshal(w)
 }
 
 // WireToRel reconstructs a Relationship from its wire format.
@@ -215,7 +307,16 @@ func WireToRel(w RelWire) *types.Relationship {
 		types.NodeID(w.StartID),
 		types.NodeID(w.EndID),
 	)
-	r.SetProperties(wireToProperties(w.Properties))
+	if err := applyRelWireFields(r, w, wireToProperties(w.Properties)); err != nil {
+		panic(fmt.Sprintf("storeutil: WireToRel with invalid prevalidated properties: %v", err))
+	}
+	return r
+}
+
+func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySlice) error {
+	if err := r.SetProperties(props); err != nil {
+		return err
+	}
 	r.SetVersion(uint32(w.Version)) // #nosec G115 — version from our own serialization
 
 	if w.HasTemporal {
@@ -249,19 +350,172 @@ func WireToRel(w RelWire) *types.Relationship {
 		})
 	}
 
-	return r
+	return nil
 }
+
+// WireToRelChecked validates and reconstructs a Relationship from persisted
+// wire data. Use this at store read boundaries instead of calling WireToRel
+// directly on bytes that came from disk.
+func WireToRelChecked(w RelWire) (*types.Relationship, error) {
+	if err := ValidateRelWire(w); err != nil {
+		return nil, err
+	}
+	props, err := wireToPropertiesChecked(w.Properties)
+	if err != nil {
+		return nil, fmt.Errorf("relationship wire: properties: %w", err)
+	}
+	r := types.NewRelationship(
+		types.RelID(w.ID),
+		uint16(w.RelType), // #nosec G115 — token already validated
+		types.NodeID(w.StartID),
+		types.NodeID(w.EndID),
+	)
+	if err := applyRelWireFields(r, w, props); err != nil {
+		return nil, fmt.Errorf("relationship wire: properties: %w", err)
+	}
+	return r, nil
+}
+
 // propertiesToWire converts a PropertySlice to wire format.
 // Each property's Go type is recorded in the Type tag for faithful reconstruction.
 func propertiesToWire(ps types.PropertySlice) []PropertyWire {
+	pw, err := propertiesToWireChecked(ps)
+	if err != nil {
+		panic(fmt.Sprintf("storeutil: propertiesToWire: %v", err))
+	}
+	return pw
+}
+
+func propertiesToWireChecked(ps types.PropertySlice) ([]PropertyWire, error) {
 	if len(ps) == 0 {
-		return nil
+		return nil, nil
 	}
 	pw := make([]PropertyWire, len(ps))
 	for i, p := range ps {
-		pw[i] = PropertyWire{Key: p.Key, Value: p.Value, Type: PropertyTypeTag(p.Value)}
+		prop, err := propertyToWire(p)
+		if err != nil {
+			return nil, fmt.Errorf("property[%d] key %q: %w", i, p.Key, err)
+		}
+		pw[i] = prop
 	}
-	return pw
+	return pw, nil
+}
+
+// ValidatePropertyWireSlice checks that a property wire slice can be safely
+// installed directly into a PropertySlice without breaking its invariants.
+//
+// Import paths read untrusted record streams, and durable store reads can see
+// semantically corrupt rows from old bugs, disk corruption, or hostile fixtures.
+// Both should validate property wire before constructing entities.
+func ValidatePropertyWireSlice(pw []PropertyWire) error {
+	var prev string
+	for i, p := range pw {
+		if types.IsShadowKey(p.Key) {
+			return fmt.Errorf("property[%d] key %q uses reserved tkg_ prefix", i, p.Key)
+		}
+		if i > 0 && p.Key <= prev {
+			return fmt.Errorf("property[%d] key %q is not in strict sorted order after %q", i, p.Key, prev)
+		}
+		if p.Type > ptCustom {
+			return fmt.Errorf("property[%d] key %q has unknown type tag %d", i, p.Key, p.Type)
+		}
+		if err := validatePropertyWireValue(p.Value, p.Type); err != nil {
+			return fmt.Errorf("property[%d] key %q type tag: %w", i, p.Key, err)
+		}
+		if err := types.ValidatePropertyValue(p.Value); err != nil {
+			return fmt.Errorf("property[%d] key %q raw value: %w", i, p.Key, err)
+		}
+		value, err := reconstructPropertyWireValue(p)
+		if err != nil {
+			return fmt.Errorf("property[%d] key %q reconstruct: %w", i, p.Key, err)
+		}
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return fmt.Errorf("property[%d] key %q reconstructed value: %w", i, p.Key, err)
+		}
+		var probe types.PropertySlice
+		if err := probe.Set(p.Key, value); err != nil {
+			return fmt.Errorf("property[%d] key %q reconstructed value install: %w", i, p.Key, err)
+		}
+		prev = p.Key
+	}
+	return nil
+}
+
+// ValidateNodeWire checks that a NodeWire can be reconstructed without
+// truncating tokens, accepting non-canonical label lists, or panicking in the
+// types layer.
+func ValidateNodeWire(w NodeWire) error {
+	if w.ID <= 0 {
+		return fmt.Errorf("node wire: id must be positive, got %d", w.ID)
+	}
+	if w.Version < 0 || int64(w.Version) > maxWireUint32 {
+		return fmt.Errorf("node wire: version %d outside uint32 range", w.Version)
+	}
+	if w.PrimaryLabel <= 0 {
+		return fmt.Errorf("node wire: primary label token 0 is reserved")
+	}
+	if w.PrimaryLabel > maxWireUint16 {
+		return fmt.Errorf("node wire: primary label token %d outside uint16 range", w.PrimaryLabel)
+	}
+	seen := make(map[int]struct{}, len(w.ExtraLabels))
+	for i, t := range w.ExtraLabels {
+		if t <= 0 {
+			return fmt.Errorf("node wire: extra label[%d] token 0 is reserved", i)
+		}
+		if t > maxWireUint16 {
+			return fmt.Errorf("node wire: extra label[%d] token %d outside uint16 range", i, t)
+		}
+		if t == w.PrimaryLabel {
+			return fmt.Errorf("node wire: extra label[%d] duplicates primary label token %d", i, t)
+		}
+		if _, ok := seen[t]; ok {
+			return fmt.Errorf("node wire: extra label[%d] duplicates token %d", i, t)
+		}
+		seen[t] = struct{}{}
+	}
+	if w.BaseEntityID < 0 {
+		return fmt.Errorf("node wire: base entity id must be non-negative, got %d", w.BaseEntityID)
+	}
+	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
+		return fmt.Errorf("node wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
+	}
+	if err := ValidatePropertyWireSlice(w.Properties); err != nil {
+		return fmt.Errorf("node wire: properties: %w", err)
+	}
+	return nil
+}
+
+// ValidateRelWire checks that a RelWire can be reconstructed without
+// truncating tokens or panicking in the types layer.
+func ValidateRelWire(w RelWire) error {
+	if w.ID <= 0 {
+		return fmt.Errorf("relationship wire: id must be positive, got %d", w.ID)
+	}
+	if w.StartID <= 0 {
+		return fmt.Errorf("relationship wire: start id must be positive, got %d", w.StartID)
+	}
+	if w.EndID <= 0 {
+		return fmt.Errorf("relationship wire: end id must be positive, got %d", w.EndID)
+	}
+	if w.Version < 0 || int64(w.Version) > maxWireUint32 {
+		return fmt.Errorf("relationship wire: version %d outside uint32 range", w.Version)
+	}
+	if w.RelType <= 0 {
+		return fmt.Errorf("relationship wire: type token 0 is reserved")
+	}
+	if w.RelType > maxWireUint16 {
+		return fmt.Errorf("relationship wire: type token %d outside uint16 range", w.RelType)
+	}
+	if w.BaseEntityID < 0 {
+		return fmt.Errorf("relationship wire: base entity id must be non-negative, got %d", w.BaseEntityID)
+	}
+	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
+		return fmt.Errorf("relationship wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
+	}
+	if err := ValidatePropertyWireSlice(w.Properties); err != nil {
+		return fmt.Errorf("relationship wire: properties: %w", err)
+	}
+	return nil
 }
 
 // wireToProperties converts wire properties back to a PropertySlice.
@@ -272,12 +526,24 @@ func propertiesToWire(ps types.PropertySlice) []PropertyWire {
 // Old data without Type (decoded as 0/ptUnknown) falls through to
 // normalizeIntegersRecursive — same behavior as before the type tag was added.
 func wireToProperties(pw []PropertyWire) types.PropertySlice {
+	ps, err := wireToPropertiesChecked(pw)
+	if err != nil {
+		panic(fmt.Sprintf("storeutil: wireToProperties with invalid prevalidated property: %v", err))
+	}
+	return ps
+}
+
+func wireToPropertiesChecked(pw []PropertyWire) (types.PropertySlice, error) {
 	if len(pw) == 0 {
-		return nil
+		return nil, nil
 	}
 	ps := make(types.PropertySlice, len(pw))
 	for i, p := range pw {
-		ps[i] = types.Property{Key: p.Key, Value: reconstructTypedValue(p.Value, p.Type)}
+		value, err := reconstructPropertyWireValue(p)
+		if err != nil {
+			return nil, fmt.Errorf("property[%d] key %q: %w", i, p.Key, err)
+		}
+		ps[i] = types.Property{Key: p.Key, Value: value}
 	}
-	return ps
+	return ps, nil
 }

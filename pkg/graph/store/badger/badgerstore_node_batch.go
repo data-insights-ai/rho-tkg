@@ -5,15 +5,22 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"github.com/vmihailenco/msgpack/v5"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Node batch writes + cascade-delete (R5-F9 split out from badgerstore_node.go).
 
 func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	_, corruptErr, err := bs.cascadeDeleteLocked(nid)
 	if err != nil {
 		return err
@@ -49,11 +56,13 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	// Phase 1 — Preflight: read all relationship metadata before any mutations.
 	// If any read fails (corruption), we abort without partial state changes.
 	toDelete := make([]RelDeleteInfo, 0, len(relIDs))
+	orphanRelIDs := make([]types.RelID, 0)
 	for relID := range relIDs {
 		r, err := bs.getRelLocked(relID)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
-				continue // tolerate already-deleted rels
+				orphanRelIDs = append(orphanRelIDs, relID)
+				continue
 			}
 			return nil, nil, fmt.Errorf("graph: cascade read relationship: %w", err)
 		}
@@ -66,6 +75,11 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	}
 
 	// Phase 2 — Apply: all mutations use pre-read data, no reads, cannot fail.
+	for _, relID := range orphanRelIDs {
+		if err := bs.purgeOrphanRelIDLocked(relID); err != nil {
+			return nil, nil, fmt.Errorf("graph: cascade purge orphan relationship %d: %w", relID.SnowflakeID(), err)
+		}
+	}
 	for _, info := range toDelete {
 		bs.deleteRelByInfo(info)
 	}
@@ -91,6 +105,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
 		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, id)
 		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
 
 		bs.nodeCache.MarkDeleted(id)
@@ -118,6 +133,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
@@ -137,11 +153,161 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID) ([]RelDeleteInfo, error, 
 	return bs.cascadeDeleteInner(nid)
 }
 
+// PurgeOrphanRelationshipIndexes removes type and adjacency index entries for
+// rid only when the relationship row is already absent.
+func (bs *Store) PurgeOrphanRelationshipIndexes(rid types.RelID) error {
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+
+	bs.idxMu.Lock()
+	if _, err := bs.getRelLocked(rid); err == nil {
+		bs.idxMu.Unlock()
+		return nil
+	} else if !errors.Is(err, ErrRelNotFound) {
+		bs.idxMu.Unlock()
+		return err
+	}
+	err := bs.purgeOrphanRelIDLocked(rid)
+	bs.idxMu.Unlock()
+	if err != nil {
+		return err
+	}
+	if bs.syncWrites {
+		return bs.flush()
+	}
+	return nil
+}
+
+func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
+	rawID := rid.SnowflakeID()
+	typeTokens := make([]uint16, 0)
+	outNodes := make([]types.NodeID, 0)
+	inNodes := make([]types.NodeID, 0)
+
+	for tok, set := range bs.typeIdx {
+		if _, ok := set[rid]; ok {
+			typeTokens = append(typeTokens, tok)
+		}
+	}
+	for nid, set := range bs.outIdx {
+		if _, ok := set[rid]; ok {
+			outNodes = append(outNodes, nid)
+		}
+	}
+	for nid, set := range bs.inIdx {
+		if _, ok := set[rid]; ok {
+			inNodes = append(inNodes, nid)
+		}
+	}
+
+	indexKeys, err := bs.relationshipIndexKeysForRel(rawID)
+	if err != nil {
+		return err
+	}
+	ops := make([]writeOp, 0, len(indexKeys))
+	for _, key := range indexKeys {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: key})
+	}
+
+	bs.wbMu.Lock()
+	for k := range bs.pending {
+		key := []byte(k)
+		if relationshipIndexKeyMatchesRelID(key, rawID) {
+			keyCopy := make([]byte, len(key))
+			copy(keyCopy, key)
+			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
+			continue
+		}
+	}
+	bs.wbMu.Unlock()
+
+	for _, tok := range typeTokens {
+		set := bs.typeIdx[tok]
+		delete(set, rid)
+		if len(set) == 0 {
+			delete(bs.typeIdx, tok)
+		}
+		bs.getOrCreateTypeCounter(tok).Store(int64(len(set)))
+	}
+	for _, nid := range outNodes {
+		set := bs.outIdx[nid]
+		delete(set, rid)
+		if len(set) == 0 {
+			delete(bs.outIdx, nid)
+		}
+	}
+	for _, nid := range inNodes {
+		set := bs.inIdx[nid]
+		delete(set, rid)
+		if len(set) == 0 {
+			delete(bs.inIdx, nid)
+		}
+	}
+	if _, tracked := bs.relIDs[rid]; tracked {
+		delete(bs.relIDs, rid)
+		bs.relCount.Add(-1)
+	}
+	bs.relCache.MarkDeleted(rawID)
+	if len(ops) > 0 {
+		bs.appendOps(ops...)
+	}
+	return nil
+}
+
+func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {
+	keys := make([][]byte, 0)
+	seen := make(map[string]struct{})
+
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+
+		for _, prefix := range []byte{storepkg.KeyRelType, storepkg.KeyOut, storepkg.KeyIn} {
+			prefixBytes := []byte{prefix}
+			it := txn.NewIterator(opts)
+			for it.Seek(prefixBytes); it.ValidForPrefix(prefixBytes); it.Next() {
+				key := it.Item().Key()
+				if !relationshipIndexKeyMatchesRelID(key, relID) {
+					continue
+				}
+				keyCopy := make([]byte, len(key))
+				copy(keyCopy, key)
+				if _, ok := seen[string(keyCopy)]; ok {
+					continue
+				}
+				seen[string(keyCopy)] = struct{}{}
+				keys = append(keys, keyCopy)
+			}
+			it.Close()
+		}
+		return nil
+	})
+	return keys, err
+}
+
+func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
+	switch {
+	case len(key) == storepkg.SizeRelTypeIdx && key[0] == storepkg.KeyRelType:
+		return storepkg.ParseIDFromKey(key, 3) == relID
+	case len(key) == storepkg.SizeAdjacency && (key[0] == storepkg.KeyOut || key[0] == storepkg.KeyIn):
+		return storepkg.ParseRelIDFromAdjKey(key) == relID
+	default:
+		return false
+	}
+}
+
 // PutNodesBatch stores multiple nodes atomically using two-phase validation.
 // Phase 1: check for duplicates vs existing store AND within the batch.
 // Phase 2: serialize, cache, index, and queue each for async flush.
 // Any duplicate → error, zero mutations. Nil/empty input → nil error.
 func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -154,8 +320,10 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	}
 	serialized := make([]nodeData, len(nodes))
 	for i, n := range nodes {
-		w := storepkg.NodeToWire(n)
-		data, err := msgpack.Marshal(w)
+		if err := storecontract.ValidateNodeWrite(n); err != nil {
+			return err
+		}
+		data, err := storepkg.MarshalNodeWire(n)
 		if err != nil {
 			return fmt.Errorf("graph: marshal node: %w", err)
 		}
@@ -178,6 +346,12 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 		seen[nd.nid] = struct{}{}
 	}
+	for i, n := range nodes {
+		if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, n, serialized[i].id); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
+	}
 
 	// Phase 2: apply — all validated, safe to mutate.
 	ops := make([]writeOp, 0, len(nodes)*3) // entity + avg ~2 label indexes
@@ -199,7 +373,11 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
-		indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, nd.id)
+		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
+		if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, nd.id); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
 	}
 
 	bs.appendOps(ops...)
@@ -215,20 +393,34 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 // DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
 // Phase 1: check all IDs exist, pre-read node data for label cleanup.
 // Phase 2: remove from cache, indexes, queue delete ops.
-// Missing ID → ErrNodeNotFound, zero mutations. Nil/empty input → nil error.
+// Missing ID → ErrNodeNotFound, zero mutations. Duplicate IDs are coalesced.
+// Nil/empty input → nil error.
 func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	if len(typedIDs) == 0 {
 		return nil
 	}
+	for _, id := range typedIDs {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return err
+		}
+	}
+	typedIDs = uniqueNodeIDs(typedIDs)
 
 	bs.idxMu.Lock()
 
-	// Phase 1: validate — all must exist + pre-read for label cleanup.
+	// Phase 1: validate — all must exist, be unconnected, and pre-read for label cleanup.
 	nodeData := make([]*types.Node, len(typedIDs))
 	for i, nid := range typedIDs {
 		if _, exists := bs.nodeIDs[nid]; !exists {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
+		}
+		if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+			bs.idxMu.Unlock()
+			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 		}
 		n, err := bs.getNodeLocked(nid)
 		if err != nil {
@@ -259,6 +451,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 
 		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
@@ -272,6 +465,19 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		return bs.flush()
 	}
 	return nil
+}
+
+func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	out := make([]types.NodeID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // loadNodeFromBadger reads and unmarshals a node within an existing Badger transaction.

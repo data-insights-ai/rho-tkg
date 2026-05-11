@@ -147,3 +147,24 @@ func TestMemoryStoreClear_ClearsHFIndexes(t *testing.T) {
 		t.Fatalf("CreateHighFrequencyIndex after Clear: %v", err)
 	}
 }
+
+func TestMemoryStoreCreateHighFrequencyIndexRejectsInvalidBucket(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	if err := ms.CreateHighFrequencyIndex(1, 0); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(0) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := ms.CreateHighFrequencyIndex(1, -time.Second); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(-1s) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := ms.CreateHighFrequencyIndex(1, time.Nanosecond); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(1ns) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := ms.CreateHighFrequencyIndex(1, 1500*time.Microsecond); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(1.5ms) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := ms.CreateHighFrequencyIndex(1, time.Hour); err != nil {
+		t.Fatalf("CreateHighFrequencyIndex valid bucket after rejects: %v", err)
+	}
+}

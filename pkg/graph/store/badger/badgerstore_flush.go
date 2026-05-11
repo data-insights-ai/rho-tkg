@@ -26,6 +26,13 @@ func (bs *Store) appendOps(ops ...writeOp) {
 	bs.wbMu.Unlock()
 }
 
+func (bs *Store) flushIfSyncWrites() error {
+	if !bs.syncWrites {
+		return nil
+	}
+	return bs.flush()
+}
+
 // flushLoop periodically drains the write buffer to Badger.
 func (bs *Store) flushLoop() {
 	defer close(bs.flushDone)
@@ -48,6 +55,9 @@ func (bs *Store) flushLoop() {
 
 // Flush synchronously drains the write buffer to Badger. Exported for testing.
 func (bs *Store) Flush() error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	return bs.flush()
 }
 

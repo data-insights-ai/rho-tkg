@@ -29,6 +29,21 @@ func newTestTieredStore(t *testing.T) *Store {
 	return ts
 }
 
+func newDiskTestTieredStore(t *testing.T) *Store {
+	t.Helper()
+	ts, err := New(Config{
+		DataDir:       t.TempDir(),
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1, // disable periodic flush
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	return ts
+}
+
 // newTestGen creates a snowflake generator for testing. Mirrors the production
 // layout (5 node bits, 10 step bits, microsecond precision).
 func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {

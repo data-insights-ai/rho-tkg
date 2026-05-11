@@ -87,6 +87,124 @@ func TestR5_RelImport_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.
 	}
 }
 
+func TestR5_RelCreate_PutFailureDoesNotKeepNewRelTypeToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(*Core, string) error
+	}{
+		{
+			name: "Add",
+			run: func(g *Core, typ string) error {
+				a, err := g.Nodes.Add([]string{"A"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := g.Nodes.Add([]string{"B"}, nil)
+				if err != nil {
+					return err
+				}
+				_, err = g.Rels.Add(typ, a, b, nil)
+				return err
+			},
+		},
+		{
+			name: "AddByID",
+			run: func(g *Core, typ string) error {
+				a, err := g.Nodes.Add([]string{"A"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := g.Nodes.Add([]string{"B"}, nil)
+				if err != nil {
+					return err
+				}
+				_, err = g.Rels.AddByID(typ, a.ID(), b.ID(), nil)
+				return err
+			},
+		},
+		{
+			name: "AddByIDIfAbsent",
+			run: func(g *Core, typ string) error {
+				a, err := g.Nodes.Add([]string{"A"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := g.Nodes.Add([]string{"B"}, nil)
+				if err != nil {
+					return err
+				}
+				_, _, err = g.Rels.AddByIDIfAbsent(typ, a.ID(), b.ID(), nil)
+				return err
+			},
+		},
+		{
+			name: "Import",
+			run: func(g *Core, typ string) error {
+				a, err := g.Nodes.Add([]string{"A"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := g.Nodes.Add([]string{"B"}, nil)
+				if err != nil {
+					return err
+				}
+				_, err = g.Rels.Import(context.Background(), g.nextRelID(), typ, a, b, nil)
+				return err
+			},
+		},
+		{
+			name: "BatchExecute",
+			run: func(g *Core, typ string) error {
+				bb, err := NewBatchBuilder(g)
+				if err != nil {
+					return err
+				}
+				a, err := bb.AddNode([]string{"A"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := bb.AddNode([]string{"B"}, nil)
+				if err != nil {
+					return err
+				}
+				if _, err := bb.AddRelationship(typ, a, b, nil); err != nil {
+					return err
+				}
+				result, err := bb.Execute()
+				if err == nil {
+					return nil
+				}
+				if result != nil && len(result.Errors) > 0 {
+					return result.Errors[0].Err
+				}
+				return err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			injected := errors.New("synthetic PutRelationship fault")
+			g, err := New(Config{Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			typ := "PUT_FAIL_" + tc.name
+			if err := tc.run(g, typ); !errors.Is(err, injected) {
+				t.Fatalf("%s error = %v, want injected PutRelationship fault", tc.name, err)
+			}
+			if _, ok := g.relTypes.Lookup(typ); ok {
+				t.Fatalf("%s kept rel type token %q after PutRelationship failure", tc.name, typ)
+			}
+		})
+	}
+}
+
 // R5-F6: the AddByIDIfAbsent path must not allocate the rel-type
 // token when the duplicate-existence check finds nothing in the
 // registry — there's nothing to look up, so we know there are no
@@ -100,14 +218,10 @@ func TestR5_RelImport_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.
 // PutRelationship, so verify allocation only happens after the
 // "type unknown → skip OutgoingRelationships" branch.)
 //
-// Implementation note: currently AddByIDIfAbsent always allocates the
-// type token when it reaches the create path, so a PutRelationship
-// failure would leak the token. R5-F6 accepts that PutRelationship
-// failures cannot be deferred past — the rel object literally needs
-// the token. The narrower R5-F6 invariant we CAN test is: when the
-// type was never registered AND IfAbsent finds the duplicate-check
-// vacuous, the token registration only happens once the create path
-// is committed to running.
+// Implementation note: PutRelationship still needs a typed relationship object,
+// so token allocation happens before the final store call. If that final store
+// call fails, the newly allocated token must be rolled back; the separate
+// PutRelationship-failure test above pins that post-allocation window.
 func TestR5_RelAddByIDIfAbsent_VacuousDupCheck_StillAllocatesOnCreate(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

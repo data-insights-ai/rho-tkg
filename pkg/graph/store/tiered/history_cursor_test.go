@@ -1,11 +1,13 @@
 package tiered
 
 import (
+	"errors"
 	"reflect"
 	"sort"
 	"testing"
 
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -54,6 +56,40 @@ func TestTieredStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("AllNodeHistoryIDsFrom(empty) = %v; want empty", got)
+	}
+}
+
+func TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
+	ts := newTestTieredStore(t)
+
+	checks := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{name: "node negative limit", run: func() error {
+			_, err := ts.AllNodeHistoryIDsFrom(types.NodeID(0), -1)
+			return err
+		}, want: storecontract.ErrInvalidQueryLimit},
+		{name: "node negative cursor", run: func() error {
+			_, err := ts.AllNodeHistoryIDsFrom(types.NodeID(-1), 0)
+			return err
+		}, want: storecontract.ErrInvalidQueryCursor},
+		{name: "rel negative limit", run: func() error {
+			_, err := ts.AllRelHistoryIDsFrom(types.RelID(0), -1)
+			return err
+		}, want: storecontract.ErrInvalidQueryLimit},
+		{name: "rel negative cursor", run: func() error {
+			_, err := ts.AllRelHistoryIDsFrom(types.RelID(-1), 0)
+			return err
+		}, want: storecontract.ErrInvalidQueryCursor},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, check.want) {
+				t.Fatalf("err = %v, want %v", err, check.want)
+			}
+		})
 	}
 }
 

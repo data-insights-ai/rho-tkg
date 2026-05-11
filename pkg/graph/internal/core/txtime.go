@@ -22,6 +22,19 @@ var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the give
 //  3. None found → ErrNoVersionAsOf.
 func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var result *types.Node
+	err := c.readUnderRLock(func() error {
+		n, err := c.nodeAsOfLocked(id, txTime)
+		result = n
+		return err
+	})
+	return result, err
+}
+
+func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	// Try current node first.
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -62,6 +75,19 @@ func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, 
 // transaction time. Mirrors GetNodeAsOf for relationships.
 func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var result *types.Relationship
+	err := c.readUnderRLock(func() error {
+		r, err := c.relAsOfLocked(id, txTime)
+		result = r
+		return err
+	})
+	return result, err
+}
+
+func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -101,33 +127,40 @@ func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relation
 // Returns nil, nil if no nodes existed at txTime.
 func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	c := t.c
-	// Two-phase: collect IDs under store locks, then process after lock release.
-	// Callback must NOT call store methods (B15 — lock reentrancy deadlock).
-	seen := make(map[snowflake.ID]struct{})
-	if err := c.store.ForEachNodeID(func(id types.NodeID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
-		return nil, err
-	}
-	if err := c.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
+	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
 
-	// Phase 2: process with store locks released — safe to call GetNodeAsOf.
 	var result []*types.Node
-	for id := range seen {
-		n, err := c.Temporal.NodeAsOf(types.NodeID(id), txTime)
-		if err != nil {
-			if errors.Is(err, ErrNoVersionAsOf) {
-				continue
-			}
-			return nil, err
+	err := c.readUnderRLock(func() error {
+		seen := make(map[snowflake.ID]struct{})
+		if err := c.store.ForEachNodeID(func(id types.NodeID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			return err
 		}
-		result = append(result, n)
+		if err := c.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			return err
+		}
+
+		for id := range seen {
+			n, err := c.nodeAsOfLocked(types.NodeID(id), txTime)
+			if err != nil {
+				if errors.Is(err, ErrNoVersionAsOf) {
+					continue
+				}
+				return err
+			}
+			result = append(result, n)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -136,32 +169,40 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 // Mirrors GetNodesAsOf for relationships.
 func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	c := t.c
-	// Two-phase: collect IDs under store locks, then process after lock release.
-	seen := make(map[snowflake.ID]struct{})
-	if err := c.store.ForEachRelID(func(id types.RelID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
-		return nil, err
-	}
-	if err := c.store.ForEachRelHistoryID(func(id types.RelID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
+	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
 
-	// Phase 2: process with store locks released.
 	var result []*types.Relationship
-	for id := range seen {
-		r, err := c.Temporal.RelAsOf(types.RelID(id), txTime)
-		if err != nil {
-			if errors.Is(err, ErrNoVersionAsOf) {
-				continue
-			}
-			return nil, err
+	err := c.readUnderRLock(func() error {
+		seen := make(map[snowflake.ID]struct{})
+		if err := c.store.ForEachRelID(func(id types.RelID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			return err
 		}
-		result = append(result, r)
+		if err := c.store.ForEachRelHistoryID(func(id types.RelID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			return err
+		}
+
+		for id := range seen {
+			r, err := c.relAsOfLocked(types.RelID(id), txTime)
+			if err != nil {
+				if errors.Is(err, ErrNoVersionAsOf) {
+					continue
+				}
+				return err
+			}
+			result = append(result, r)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }

@@ -1,8 +1,11 @@
 package tiered
 
 import (
+	"errors"
 	"fmt"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -13,11 +16,48 @@ import (
 // to correctly handle E→E cross-shard relationships, and pin cold owners for the
 // duration of the write.
 
+func (ts *Store) relIDExists(id types.RelID) (bool, error) {
+	shard, checkin, err := ts.shardForRelIDChecked(id)
+	if err != nil {
+		return false, err
+	}
+	defer checkin()
+	return relationshipRowExists(shard, id), nil
+}
+
 func (ts *Store) PutRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
+	ts.relCreateMu.Lock()
+	defer ts.relCreateMu.Unlock()
 
+	return ts.putRelationshipLocked(r, true)
+}
+
+func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generatedcreate.Proof) error {
+	if !proof.Valid() {
+		return ts.PutRelationship(r)
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	if err := ts.checkRotation(); err != nil {
+		return err
+	}
+	ts.relCreateMu.Lock()
+	defer ts.relCreateMu.Unlock()
+
+	return ts.putRelationshipLocked(r, false)
+}
+
+func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate bool) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
 	startID := r.StartNodeID().SnowflakeID()
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
@@ -37,40 +77,8 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 	}
 	defer endCheckin()
 
-	if startShard == endShard {
-		// Same shard: delegate entirely. Includes the both-on-archive
-		// case (e.g., a self-loop on an archived node) which is the
-		// only archive write the M2 invariant currently permits.
-		return startShard.PutRelationship(r)
-	}
-
-	// Cross-shard with an archived endpoint is the runtime counterpart of
-	// the M2 / ErrCrossShardArchiveRel invariant. Without this check
-	// AddRelationship can sneak past the ArchiveNode pre-scan: after
-	// archiving A, a fresh AddRelationship(A, B) where B lives on
-	// refShard or an event shard would cross the archive boundary and
-	// re-introduce the silent-loss surface RestoreNode would later hit.
-	//
-	// We probe via archive.HasNodeID rather than identity comparison
-	// against the resolved shard pointers because HasNodeID is the
-	// single-source-of-truth for archive residency — independent of any
-	// momentary refArchive pointer state.
-	//
-	// Close-race note: when refArchive.Load() returns nil, ts.closed
-	// is already true (Close stores nil under archiveMu only AFTER
-	// setting closed). shardForNodeIDChecked / checkoutArchive return
-	// ErrStoreClosed in that state, so we never reach this point with
-	// a still-live archive whose Load() yields nil — the guard's
-	// nil-skip branch is unreachable while the archive holds rels.
-	if archive := ts.refArchive.Load(); archive != nil {
-		startOnArchive := archive.HasNodeID(startID)
-		endOnArchive := archive.HasNodeID(endID)
-		if startOnArchive != endOnArchive {
-			return fmt.Errorf("graph: cross-shard relationship endpoint is archived: %w", ErrCrossShardArchiveRel)
-		}
-	}
-
-	// Cross-shard: verify endpoints exist.
+	// Verify endpoints exist before duplicate checks, matching the
+	// single-shard store contract.
 	entityShard := startShard // entity + out/
 	inShard := endShard       // in/
 
@@ -79,6 +87,21 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 	}
 	if !inShard.HasNodeID(endID) {
 		return ErrNodeNotFound
+	}
+	if checkDuplicate {
+		exists, err := ts.relIDExists(r.ID())
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrRelExists
+		}
+	}
+
+	if startShard == endShard {
+		// Same shard: delegate entirely, including relationships whose
+		// endpoints both live on refArchive.
+		return startShard.PutRelationship(r)
 	}
 
 	// Split-write ordering per spec §12.
@@ -112,6 +135,9 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 }
 
 func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
 	shard, checkin, err := ts.shardForRelIDChecked(r.ID())
 	if err != nil {
 		return err
@@ -121,6 +147,9 @@ func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
 }
 
 func (ts *Store) DeleteRelationship(rid types.RelID) error {
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
 	id := rid.SnowflakeID()
 
 	// Find which shard owns the entity. Use the checked variant so a cold
@@ -176,6 +205,48 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
+	ts.relCreateMu.Lock()
+	defer ts.relCreateMu.Unlock()
+
+	seen := make(map[types.RelID]struct{}, len(rels))
+	for _, r := range rels {
+		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+			return err
+		}
+		rid := r.ID()
+		if _, ok := seen[rid]; ok {
+			return ErrRelExists
+		}
+		seen[rid] = struct{}{}
+
+		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		if err != nil {
+			return err
+		}
+		startExists := startShard.HasNodeID(r.StartNodeID().SnowflakeID())
+		startCheckin()
+		if !startExists {
+			return ErrNodeNotFound
+		}
+
+		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+		if err != nil {
+			return err
+		}
+		endExists := endShard.HasNodeID(r.EndNodeID().SnowflakeID())
+		endCheckin()
+		if !endExists {
+			return ErrNodeNotFound
+		}
+
+		exists, err := ts.relIDExists(rid)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrRelExists
+		}
+	}
 
 	// Partition: same-shard rels can use batch, cross-shard use individual put.
 	// Group by *BadgerStore pointer for batching. Owner shards are checked
@@ -202,19 +273,11 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 
 		if startShard != endShard {
-			// Cross-shard: individual put — release these checkins immediately
-			// since PutRelationship pins again internally. There is a brief
-			// unpinned window between checkin here and PutRelationship's
-			// internal re-pin, but closeIdleShards cannot fire inside it:
-			// each owner shard's lastAccess was just bumped by the prior
-			// checkout (line above), and IdleTimeout >= 5min, so the window
-			// is bounded by IdleTimeout and the activeReqs gap is microseconds.
+			// Cross-shard writes run after partitioning through
+			// putRelationshipLocked. Release these classification pins now;
+			// the split-write helper pins endpoints again for the actual write.
 			startCheckin()
 			endCheckin()
-			if err := ts.PutRelationship(r); err != nil {
-				releaseAll()
-				return err
-			}
 			continue
 		}
 
@@ -227,24 +290,77 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 	defer releaseAll()
 
-	// Write per-shard buckets, tracking committed batches for best-effort rollback.
-	// If a later shard fails, previously committed shards are rolled back to prevent
-	// silent partial state (e.g., rels in refShard with no corresponding hot-shard rels).
+	var committedCross []types.RelID
+	rollbackCross := func() error {
+		var rollbackErrs []error
+		for i := len(committedCross) - 1; i >= 0; i-- {
+			if err := ts.DeleteRelationship(committedCross[i]); err != nil && !errors.Is(err, ErrRelNotFound) {
+				rollbackErrs = append(rollbackErrs, err)
+			}
+		}
+		return errors.Join(rollbackErrs...)
+	}
+
 	type committedBatch struct {
 		shard *BadgerStore
 		rels  []*types.Relationship
 	}
 	var committed []committedBatch
+	rollbackBatches := func() error {
+		var rollbackErrs []error
+		for i := len(committed) - 1; i >= 0; i-- {
+			cb := committed[i]
+			for _, r := range cb.rels {
+				if err := cb.shard.DeleteRelationship(r.ID()); err != nil && !errors.Is(err, ErrRelNotFound) {
+					rollbackErrs = append(rollbackErrs, err)
+				}
+			}
+		}
+		return errors.Join(rollbackErrs...)
+	}
+
+	// Cross-shard rels: write through the same split-write helper used by
+	// PutRelationship. The batch preflight above already checked duplicate IDs,
+	// so the per-rel helper can skip duplicate probes and avoid deadlocking on
+	// relCreateMu.
+	for _, r := range rels {
+		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+		if err != nil {
+			if rbErr := rollbackCross(); rbErr != nil {
+				return fmt.Errorf("%w (cross-shard relationship rollback failed: %v)", err, rbErr)
+			}
+			return err
+		}
+		endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+		if err != nil {
+			startCheckin()
+			if rbErr := rollbackCross(); rbErr != nil {
+				return fmt.Errorf("%w (cross-shard relationship rollback failed: %v)", err, rbErr)
+			}
+			return err
+		}
+		startCheckin()
+		endCheckin()
+
+		if startShard == endShard {
+			continue
+		}
+		if err := ts.putRelationshipLocked(r, false); err != nil {
+			if rbErr := rollbackCross(); rbErr != nil {
+				return fmt.Errorf("%w (cross-shard relationship rollback failed: %v)", err, rbErr)
+			}
+			return err
+		}
+		committedCross = append(committedCross, r.ID())
+	}
 
 	for shard, bucket := range shardBuckets {
 		if err := shard.PutRelationshipsBatch(bucket); err != nil {
-			// Best-effort rollback: delete rels written to previously committed shards.
-			for _, cb := range committed {
-				for _, r := range cb.rels {
-					_ = cb.shard.DeleteRelationship(r.ID())
-				}
+			rbErr := errors.Join(rollbackBatches(), rollbackCross())
+			if rbErr != nil {
+				return fmt.Errorf("tiered: put rels batch: %w (rollback failed: %v)", err, rbErr)
 			}
-			return fmt.Errorf("tiered: put rels batch (prior shard writes rolled back best-effort): %w", err)
+			return fmt.Errorf("tiered: put rels batch (prior shard writes rolled back): %w", err)
 		}
 		committed = append(committed, committedBatch{shard: shard, rels: bucket})
 	}
@@ -259,18 +375,28 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 //
 // Behavioural compatibility with the previous per-ID loop:
 //   - Empty / nil input is a no-op (returns nil).
-//   - Failure semantics are unchanged: this is NOT atomic across shards. A
-//     mid-batch failure leaves earlier per-shard batches and earlier cross-shard
-//     deletes committed. Callers that need all-or-nothing semantics must wrap
-//     the call in a higher-level transaction.
+//   - Duplicate IDs are coalesced before shard routing, so counters and indexes
+//     are updated once per relationship.
+//   - Missing-ID and routing validation errors are detected before any delete.
+//   - Backend I/O failures after one shard accepts a delete roll back prior
+//     accepted relationship deletes before returning.
 //
 // Throughput: same-shard rels collapse from N shard lookups + N WriteBatches
 // down to one shard lookup per rel + one WriteBatch per shard, mirroring the
 // PutRelationshipsBatch optimisation.
 func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if len(ids) == 0 {
 		return nil
 	}
+	for _, id := range ids {
+		if err := storecontract.ValidateRelID(id); err != nil {
+			return err
+		}
+	}
+	ids = uniqueRelIDs(ids)
 
 	// Group same-shard rel IDs by their owning *BadgerStore. Owner shards are
 	// pinned via checkout so cold owners cannot be torn down between resolution
@@ -278,6 +404,7 @@ func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 	// immediately and replayed via the per-ID path which re-pins internally.
 	sameShard := make(map[*BadgerStore][]types.RelID)
 	var crossShard []types.RelID
+	relByID := make(map[types.RelID]*types.Relationship, len(ids))
 	var checkins []func()
 	releaseAll := func() {
 		for _, fn := range checkins {
@@ -300,6 +427,7 @@ func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 			releaseAll()
 			return err
 		}
+		relByID[id] = r
 
 		startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
 		if err != nil {
@@ -337,18 +465,78 @@ func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 	}
 	defer releaseAll()
 
+	ts.relCreateMu.Lock()
+	defer ts.relCreateMu.Unlock()
+
+	committed := make([]*types.Relationship, 0, len(ids))
+	rollback := func(err error) error {
+		if rbErr := ts.rollbackDeletedRelationshipsBatchLocked(committed); rbErr != nil {
+			return fmt.Errorf("%w (relationship batch rollback failed: %v)", err, rbErr)
+		}
+		return fmt.Errorf("%w (prior relationship deletes rolled back)", err)
+	}
+
 	// Per-shard batch delete for same-shard rels.
 	for shard, bucket := range sameShard {
 		if err := shard.DeleteRelationshipsBatch(bucket); err != nil {
-			return fmt.Errorf("tiered: delete same-shard rels batch: %w", err)
+			if !errors.Is(err, ErrRelNotFound) {
+				committed = appendMissingRelationships(committed, bucket, relByID, shard)
+			}
+			return rollback(fmt.Errorf("tiered: delete same-shard rels batch: %w", err))
 		}
+		committed = appendRelationshipsForIDs(committed, bucket, relByID)
 	}
 
 	// Cross-shard rels: per-ID via existing split-delete path.
 	for _, id := range crossShard {
 		if err := ts.DeleteRelationship(id); err != nil {
-			return err
+			return rollback(err)
 		}
+		committed = append(committed, relByID[id])
 	}
 	return nil
+}
+
+func appendRelationshipsForIDs(dst []*types.Relationship, ids []types.RelID, relByID map[types.RelID]*types.Relationship) []*types.Relationship {
+	for _, id := range ids {
+		if r := relByID[id]; r != nil {
+			dst = append(dst, r)
+		}
+	}
+	return dst
+}
+
+func appendMissingRelationships(dst []*types.Relationship, ids []types.RelID, relByID map[types.RelID]*types.Relationship, shard *BadgerStore) []*types.Relationship {
+	for _, id := range ids {
+		if relationshipRowExists(shard, id) {
+			continue
+		}
+		if r := relByID[id]; r != nil {
+			dst = append(dst, r)
+		}
+	}
+	return dst
+}
+
+func (ts *Store) rollbackDeletedRelationshipsBatchLocked(rels []*types.Relationship) error {
+	var rollbackErrs []error
+	for i := len(rels) - 1; i >= 0; i-- {
+		if err := ts.putRelationshipLocked(rels[i], false); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("restore relationship %d: %w", rels[i].ID(), err))
+		}
+	}
+	return errors.Join(rollbackErrs...)
+}
+
+func uniqueRelIDs(ids []types.RelID) []types.RelID {
+	seen := make(map[types.RelID]struct{}, len(ids))
+	out := make([]types.RelID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }

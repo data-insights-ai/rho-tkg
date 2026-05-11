@@ -26,3 +26,13 @@ func TestEntityIDSnowflakeIDZeroValue(t *testing.T) {
 		t.Errorf("zero entityID.SnowflakeID() = %d, want 0", got)
 	}
 }
+
+func TestTemporalMetadataNilReceiverMethodsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	var tm *TemporalMetadata
+	if got := tm.BaseEntityID(); got != 0 {
+		t.Fatalf("BaseEntityID() on nil receiver = %d, want 0", got)
+	}
+	tm.SetBaseEntityID(EntityID(42))
+}

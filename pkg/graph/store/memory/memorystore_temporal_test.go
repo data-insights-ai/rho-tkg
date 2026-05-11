@@ -109,6 +109,22 @@ func TestMemoryStore_AllNodes_ValidAt(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_AllNodeIDs_ValidAt(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	putTestNodeWithTemporal(t, ms, snowflake.ID(10), 1, 100, 200)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(20), 2, 100, 0)
+
+	ids, err := ms.AllNodeIDs(QueryOpts{ValidAt: 250})
+	if err != nil {
+		t.Fatalf("AllNodeIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 20 {
+		t.Fatalf("AllNodeIDs ValidAt=250 = %v, want [20]", ids)
+	}
+}
+
 func TestMemoryStore_RelationshipsByType_ValidAt(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -208,6 +224,25 @@ func TestMemoryStore_AllRelationships_ValidAt(t *testing.T) {
 	}
 	if len(rels) != 1 || rels[0].ID() != 200 {
 		t.Fatalf("t=350: got %d rels, want 1 (rel 200)", len(rels))
+	}
+}
+
+func TestMemoryStore_AllRelIDs_ValidAt(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	putTestNodeWithTemporal(t, ms, snowflake.ID(1), 1, 100, 0)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(2), 1, 100, 0)
+
+	putTestRelWithTemporal(t, ms, snowflake.ID(100), 1, 1, 2, 100, 200)
+	putTestRelWithTemporal(t, ms, snowflake.ID(200), 1, 1, 2, 300, 0)
+
+	ids, err := ms.AllRelIDs(QueryOpts{ValidAt: 350})
+	if err != nil {
+		t.Fatalf("AllRelIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 200 {
+		t.Fatalf("AllRelIDs ValidAt=350 = %v, want [200]", ids)
 	}
 }
 

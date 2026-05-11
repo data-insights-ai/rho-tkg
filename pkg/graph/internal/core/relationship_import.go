@@ -59,6 +59,9 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if id == 0 {
 		return nil, ErrZeroID
 	}
+	if id < 0 {
+		return nil, ErrInvalidID
+	}
 
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
@@ -78,6 +81,9 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 
 	startID := startNode.ID()
 	endID := endNode.ID()
+	if err := validateRelationshipEndpointIDs(startID, endID); err != nil {
+		return nil, err
+	}
 
 	if startID == endID && !c.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop
@@ -122,17 +128,39 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 	}
 
-	// R5-F6: only allocate the rel-type token now that every cheap and
-	// operational rejection gate has been cleared.
-	typeToken, err := c.relTypes.GetOrCreate(typeName)
+	if c.constraints.Len() > 0 {
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, err
+		}
+	}
+
+	// R5-F6: only allocate the rel-type token now that every cheap,
+	// operational, and temporal-constraint rejection gate has been cleared.
+	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
 	}
+	relTypeFinished := false
+	finishRelType := func(err error) error {
+		relTypeFinished = true
+		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
+	}
+	defer func() {
+		if !relTypeFinished {
+			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship import"))
+		}
+	}()
 
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: relationship import properties: %w", err))
+	}
 
-	hash := integrity.ComputeRelHash(r, typeName)
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		return nil, finishRelType(fmt.Errorf("graph: compute relationship hash: %w", err))
+	}
 	ig := &types.RelIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -166,16 +194,15 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		tm.CreatedAt = createdAt
 	}
 
-	if err := c.checkTemporalConstraints(r, liveStart, liveEnd); err != nil {
-		return nil, err
-	}
-
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, finishRelType(err)
 	}
 
 	if err := c.store.PutRelationship(r); err != nil {
-		return nil, err
+		return nil, finishRelType(err)
+	}
+	if err := finishRelType(nil); err != nil {
+		return r, err
 	}
 
 	c.opRelAdds.Add(1)

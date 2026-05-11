@@ -4,9 +4,11 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -14,12 +16,19 @@ import (
 // Returns ErrNodeNotFound if start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (ms *Store) PutRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
 	id := r.ID()
 	startID := r.StartNodeID()
 	endID := r.EndNodeID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
 
 	// Verify endpoints exist.
 	if _, ok := ms.nodes[startID]; !ok {
@@ -63,6 +72,13 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+
 	r, ok := ms.rels[rid]
 	if !ok {
 		return nil, ErrRelNotFound
@@ -74,13 +90,24 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
 	id := r.ID()
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	if _, exists := ms.rels[id]; !exists {
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+
+	old, exists := ms.rels[id]
+	if !exists {
 		return ErrRelNotFound
+	}
+	if err := storecontract.ValidateRelationshipReplacement(old, r); err != nil {
+		return err
 	}
 	ms.rels[id] = r.DeepCopy()
 	return nil
@@ -89,8 +116,15 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (ms *Store) DeleteRelationship(rid types.RelID) error {
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
 
 	return ms.deleteRelLocked(rid)
 }
@@ -133,13 +167,55 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	return nil
 }
 
+func (ms *Store) deleteRelOrPurgeOrphanLocked(id types.RelID) error {
+	if err := ms.deleteRelLocked(id); err != nil {
+		if errors.Is(err, ErrRelNotFound) {
+			ms.purgeRelIDFromIndexesLocked(id)
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (ms *Store) purgeRelIDFromIndexesLocked(id types.RelID) {
+	for tok, set := range ms.typeIdx {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.typeIdx, tok)
+		}
+	}
+	for nid, set := range ms.outIdx {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.outIdx, nid)
+		}
+	}
+	for nid, set := range ms.inIdx {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.inIdx, nid)
+		}
+	}
+}
+
 // OutgoingRelationships returns relationships starting from the given node.
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
-// Store never returns an error.
+// Returns ErrNodeNotFound if the requested node does not exist.
 func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if _, ok := ms.nodes[nid]; !ok {
+		return nil, ErrNodeNotFound
+	}
 
 	set := ms.outIdx[nid]
 	if len(set) == 0 {
@@ -160,20 +236,35 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 }
 
 // OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
-// in a single batched operation under one read lock.
+// in a single batched operation under one read lock. Every requested node must
+// exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
 	if len(typedNodeIDs) == 0 {
 		return nil, nil
 	}
 
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-
-	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
+	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
-		if _, done := result[nid]; done {
-			continue // deduplicate input
+		if err := storecontract.ValidateNodeID(nid); err != nil {
+			return nil, err
 		}
+		if _, done := seen[nid]; done {
+			continue
+		}
+		seen[nid] = struct{}{}
+		if _, ok := ms.nodes[nid]; !ok {
+			return nil, ErrNodeNotFound
+		}
+	}
+
+	result := make(map[types.NodeID][]*types.Relationship, len(seen))
+	for nid := range seen {
 		set := ms.outIdx[nid]
 		if len(set) == 0 {
 			continue
@@ -203,10 +294,20 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
-// Store never returns an error.
+// Returns ErrNodeNotFound if the requested node does not exist.
 func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if _, ok := ms.nodes[nid]; !ok {
+		return nil, ErrNodeNotFound
+	}
 
 	set := ms.inIdx[nid]
 	if len(set) == 0 {
@@ -227,20 +328,35 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 }
 
 // IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
-// in a single batched operation under one read lock.
+// in a single batched operation under one read lock. Every requested node must
+// exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
 	if len(typedNodeIDs) == 0 {
 		return nil, nil
 	}
 
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-
-	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
+	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
-		if _, done := result[nid]; done {
-			continue // deduplicate input
+		if err := storecontract.ValidateNodeID(nid); err != nil {
+			return nil, err
 		}
+		if _, done := seen[nid]; done {
+			continue
+		}
+		seen[nid] = struct{}{}
+		if _, ok := ms.nodes[nid]; !ok {
+			return nil, ErrNodeNotFound
+		}
+	}
+
+	result := make(map[types.NodeID][]*types.Relationship, len(seen))
+	for nid := range seen {
 		set := ms.inIdx[nid]
 		if len(set) == 0 {
 			continue
@@ -272,16 +388,22 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // Phase 2: deep-copy each, store, update type + adjacency indexes.
 // Any failure → error, zero mutations. Nil/empty input → nil error.
 func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
 	if len(rels) == 0 {
 		return nil
 	}
 
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-
 	// Phase 1: validate — endpoints exist, no duplicates.
 	seen := make(map[types.RelID]struct{}, len(rels))
 	for _, r := range rels {
+		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+			return err
+		}
 		id := r.ID()
 		startID := r.StartNodeID()
 		endID := r.EndNodeID()
@@ -331,15 +453,25 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 // DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
 // Phase 1: check all IDs exist.
-// Phase 2: delete each via deleteRelLocked (handles type/adjacency/history cleanup).
-// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+// Phase 2: delete each via deleteRelLocked (handles type/adjacency cleanup; history is preserved).
+// Missing ID → ErrRelNotFound, zero mutations. Duplicate IDs are coalesced.
+// Nil/empty input → nil error.
 func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
 	if len(typedIDs) == 0 {
 		return nil
 	}
-
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+	for _, id := range typedIDs {
+		if err := storecontract.ValidateRelID(id); err != nil {
+			return err
+		}
+	}
+	typedIDs = uniqueRelIDs(typedIDs)
 
 	// Phase 1: validate — all must exist.
 	for _, id := range typedIDs {
@@ -350,9 +482,23 @@ func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 
 	// Phase 2: apply — all validated, safe to mutate.
 	for _, id := range typedIDs {
-		// deleteRelLocked can't fail here (verified existence above, holding write lock).
-		_ = ms.deleteRelLocked(id)
+		if err := ms.deleteRelLocked(id); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func uniqueRelIDs(ids []types.RelID) []types.RelID {
+	seen := make(map[types.RelID]struct{}, len(ids))
+	out := make([]types.RelID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }

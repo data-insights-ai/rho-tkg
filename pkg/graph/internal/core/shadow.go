@@ -9,7 +9,15 @@ import (
 // For tkg_ shadow keys, resolves from the node's metadata via the graph layer.
 // Returns (nil, false) for unknown shadow keys or inapplicable keys (e.g., tkg_type on a node).
 func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
+	if n == nil {
+		return nil, false
+	}
 	c := r.c
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return nil, false
+	}
 	if !types.IsShadowKey(key) {
 		return n.GetProperty(key)
 	}
@@ -17,7 +25,7 @@ func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
 	switch key {
 	// Structural
 	case types.ShadowLabels:
-		return c.Nodes.Labels(n), true
+		return c.nodeLabelsUnlocked(n), true
 	case types.ShadowType:
 		return nil, false // rel-only
 
@@ -109,7 +117,7 @@ func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
 	// Version chain
 	case types.ShadowBaseEntity:
 		if tm := n.Temporal(); tm != nil {
-			return tm.BaseEntityID().SnowflakeID(), true
+			return tm.BaseEntityID(), true
 		}
 		return nil, false
 
@@ -123,7 +131,15 @@ func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
 // For tkg_ shadow keys, resolves from the relationship's metadata via the graph layer.
 // Returns (nil, false) for unknown shadow keys or inapplicable keys (e.g., tkg_labels on a rel).
 func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool) {
+	if rel == nil {
+		return nil, false
+	}
 	c := r.c
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return nil, false
+	}
 	if !types.IsShadowKey(key) {
 		return rel.GetProperty(key)
 	}
@@ -133,7 +149,7 @@ func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool
 	case types.ShadowLabels:
 		return nil, false // node-only
 	case types.ShadowType:
-		return c.Rels.Type(rel), true
+		return c.relTypeUnlocked(rel), true
 
 	// Temporal
 	case types.ShadowValidFrom:
@@ -231,7 +247,7 @@ func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool
 	// Version chain
 	case types.ShadowBaseEntity:
 		if tm := rel.Temporal(); tm != nil {
-			return tm.BaseEntityID().SnowflakeID(), true
+			return tm.BaseEntityID(), true
 		}
 		return nil, false
 

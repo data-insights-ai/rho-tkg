@@ -77,7 +77,7 @@ func TestUpdateNodeInPlace_NoOp(t *testing.T) {
 func TestUpdateNodeInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
 	id := n.ID()
@@ -194,7 +194,7 @@ func TestUpdateRelInPlace_NoOp(t *testing.T) {
 func TestUpdateRelInPlace_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	a, _ := g.Nodes.Add([]string{"A"}, nil)
 	b, _ := g.Nodes.Add([]string{"B"}, nil)

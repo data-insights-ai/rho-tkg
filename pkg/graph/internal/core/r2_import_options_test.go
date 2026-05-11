@@ -7,10 +7,13 @@ package core
 import (
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -92,6 +95,35 @@ func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
 	}
 }
 
+func TestImportWithOptions_MaxStagedBytes_RejectsNegative(t *testing.T) {
+	t.Parallel()
+
+	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New(dst): %v", err)
+	}
+	defer dst.Close()
+
+	err = dst.IO.ImportWithOptions(bytes.NewReader(nil), tkgio.ImportOptions{MaxStagedBytes: -1})
+	if !errors.Is(err, ErrImportSizeLimit) {
+		t.Fatalf("ImportWithOptions negative MaxStagedBytes: got %v, want ErrImportSizeLimit", err)
+	}
+}
+
+func TestImportStageCapExceededAvoidsOverflow(t *testing.T) {
+	t.Parallel()
+
+	if !importStageCapExceeded(math.MaxInt64-1, 2, math.MaxInt64) {
+		t.Fatal("near-MaxInt64 addition must exceed cap without overflowing")
+	}
+	if importStageCapExceeded(math.MaxInt64-2, 2, math.MaxInt64) {
+		t.Fatal("exact cap fit must be accepted")
+	}
+	if importStageCapExceeded(math.MaxInt64-1, 2, 0) {
+		t.Fatal("cap 0 is unlimited")
+	}
+}
+
 func TestImportWithOptions_DefaultsMatchPriorBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +153,81 @@ func TestImportWithOptions_DefaultsMatchPriorBehavior(t *testing.T) {
 	if cnt, _ := dst.Nodes.Count(); cnt != 1 {
 		t.Errorf("dst node count = %d, want 1", cnt)
 	}
+}
+
+func TestImportWithOptions_CloseDuringStagingReturnsGraphClosed(t *testing.T) {
+	t.Parallel()
+
+	src, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New(src): %v", err)
+	}
+	defer src.Close()
+	if _, err := src.Nodes.Add([]string{"Person"}, nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var exported bytes.Buffer
+	if err := src.IO.Export(&exported); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New(dst): %v", err)
+	}
+
+	reader := &blockingImportReader{
+		r:       bytes.NewReader(exported.Bytes()),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer reader.unblock()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- dst.IO.ImportWithOptions(reader, tkgio.ImportOptions{})
+	}()
+
+	select {
+	case <-reader.started:
+	case err := <-errCh:
+		t.Fatalf("ImportWithOptions returned before reader blocked: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for import reader to block")
+	}
+
+	if err := dst.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reader.unblock()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrGraphClosed) {
+			t.Fatalf("ImportWithOptions after concurrent Close: got %v, want ErrGraphClosed", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for import to return after Close")
+	}
+}
+
+type blockingImportReader struct {
+	r           *bytes.Reader
+	started     chan struct{}
+	release     chan struct{}
+	once        sync.Once
+	releaseOnce sync.Once
+}
+
+func (r *blockingImportReader) Read(p []byte) (int, error) {
+	r.once.Do(func() {
+		close(r.started)
+		<-r.release
+	})
+	return r.r.Read(p)
+}
+
+func (r *blockingImportReader) unblock() {
+	r.releaseOnce.Do(func() { close(r.release) })
 }
 
 func readDir(t *testing.T, dir string) []string {

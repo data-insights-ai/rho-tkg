@@ -71,6 +71,19 @@ func TestNew_NegativeValidationLimits(t *testing.T) {
 	})
 }
 
+func TestNew_TypedNilStoreRejected(t *testing.T) {
+	t.Parallel()
+
+	var typedNilStore *memory.Store
+	g, err := New(Config{Store: typedNilStore})
+	if !errors.Is(err, ErrNilStore) {
+		t.Fatalf("New(typed nil store) = (%v, %v), want ErrNilStore", g, err)
+	}
+	if g != nil {
+		t.Fatalf("New(typed nil store) returned graph %v", g)
+	}
+}
+
 // ─── Issue 4: badger.Store config — reject invalid values ──────────────────────
 
 func TestNewBadgerStore_InvalidConfig(t *testing.T) {

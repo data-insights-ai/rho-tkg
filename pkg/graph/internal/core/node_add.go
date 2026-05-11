@@ -85,28 +85,37 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	}
 
 	// Resolve labels to tokens.
-	primaryToken, err := c.labels.GetOrCreate(labels[0])
+	primaryToken, extraTokens, labelSnapshot, allocatedLabels, labelsLocked, err := c.getOrCreateLabelsWithSnapshot(labels)
 	if err != nil {
-		return nil, fmt.Errorf("graph: primary label: %w", err)
+		return nil, err
 	}
-
-	var extraTokens []uint16
-	for _, label := range labels[1:] {
-		tok, err := c.labels.GetOrCreate(label)
-		if err != nil {
-			return nil, fmt.Errorf("graph: extra label %q: %w", label, err)
+	labelsFinished := !labelsLocked
+	finishLabels := func(err error) error {
+		if !labelsLocked {
+			return err
 		}
-		extraTokens = append(extraTokens, tok)
+		labelsFinished = true
+		return c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, err)
 	}
+	defer func() {
+		if !labelsFinished {
+			_ = c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node create"))
+		}
+	}()
 
-	id := c.Nodes.NextID()
+	id := c.nextNodeID()
 	n := types.NewNode(id, primaryToken, extraTokens)
-	n.SetProperties(ps)
+	if err := n.SetProperties(ps); err != nil {
+		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
+	}
 
 	// Hash from canonical (deduplicated) labels, not raw user input.
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
-	canonicalLabels := c.Nodes.Labels(n)
-	hash := integrity.ComputeNodeHash(n, canonicalLabels)
+	canonicalLabels := c.nodeLabelsUnlocked(n)
+	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	if err != nil {
+		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))
+	}
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -138,11 +147,14 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, finishLabels(err)
 	}
 
-	if err := c.store.PutNode(n); err != nil {
-		return nil, err
+	if err := putGeneratedNode(c.store, n); err != nil {
+		return nil, finishLabels(err)
+	}
+	if err := finishLabels(nil); err != nil {
+		return n, err
 	}
 
 	c.opNodeAdds.Add(1)
@@ -192,6 +204,9 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if id == 0 {
 		return nil, ErrZeroID
 	}
+	if id < 0 {
+		return nil, ErrInvalidID
+	}
 
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
@@ -225,25 +240,34 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, fmt.Errorf("graph: node-id collision probe: %w", err)
 	}
 
-	primaryToken, err := c.labels.GetOrCreate(labels[0])
+	primaryToken, extraTokens, labelSnapshot, allocatedLabels, labelsLocked, err := c.getOrCreateLabelsWithSnapshot(labels)
 	if err != nil {
-		return nil, fmt.Errorf("graph: primary label: %w", err)
+		return nil, err
 	}
-
-	var extraTokens []uint16
-	for _, label := range labels[1:] {
-		tok, err := c.labels.GetOrCreate(label)
-		if err != nil {
-			return nil, fmt.Errorf("graph: extra label %q: %w", label, err)
+	labelsFinished := !labelsLocked
+	finishLabels := func(err error) error {
+		if !labelsLocked {
+			return err
 		}
-		extraTokens = append(extraTokens, tok)
+		labelsFinished = true
+		return c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, err)
 	}
+	defer func() {
+		if !labelsFinished {
+			_ = c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node import"))
+		}
+	}()
 
 	n := types.NewNode(id, primaryToken, extraTokens)
-	n.SetProperties(ps)
+	if err := n.SetProperties(ps); err != nil {
+		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
+	}
 
-	canonicalLabels := c.Nodes.Labels(n)
-	hash := integrity.ComputeNodeHash(n, canonicalLabels)
+	canonicalLabels := c.nodeLabelsUnlocked(n)
+	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	if err != nil {
+		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))
+	}
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -271,11 +295,14 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, finishLabels(err)
 	}
 
 	if err := c.store.PutNode(n); err != nil {
-		return nil, err
+		return nil, finishLabels(err)
+	}
+	if err := finishLabels(nil); err != nil {
+		return n, err
 	}
 
 	c.opNodeAdds.Add(1)

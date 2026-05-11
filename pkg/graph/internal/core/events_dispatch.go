@@ -10,15 +10,22 @@ import (
 // SetSync attaches a synchronous eventspkg.EventBus to the graph.
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
-func (e *EventOps) SetSync(bus *eventspkg.EventBus) {
+func (e *EventOps) SetSync(bus *eventspkg.EventBus) error {
 	c := e.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	if bus == nil {
 		c.events = nil
 	} else {
 		c.events = bus
 	}
-	c.mu.Unlock()
+	return nil
 }
 
 // GetSync returns the attached synchronous eventspkg.EventBus, or nil if none is set
@@ -37,15 +44,22 @@ func (e *EventOps) GetSync() *eventspkg.EventBus {
 // SetAsync attaches an eventspkg.AsyncEventBus to the graph for async event delivery.
 // All subsequent mutations publish lifecycle events to the bus.
 // Pass nil to detach and disable event publishing.
-func (e *EventOps) SetAsync(bus *eventspkg.AsyncEventBus) {
+func (e *EventOps) SetAsync(bus *eventspkg.AsyncEventBus) error {
 	c := e.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	if bus == nil {
 		c.events = nil
 	} else {
 		c.events = bus
 	}
-	c.mu.Unlock()
+	return nil
 }
 
 // publishEvent delivers a lifecycle event to the attached eventspkg.EventBus.

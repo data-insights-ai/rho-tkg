@@ -124,6 +124,23 @@ func TestMatchesTemporalFilter_IntervalNoOverlap(t *testing.T) {
 	}
 }
 
+func TestMatchesTemporalFilter_InvalidIntervalDoesNotMatchOpenEndedEntity(t *testing.T) {
+	t.Parallel()
+	tm := &types.TemporalMetadata{ValidFrom: 100}
+	id := snowflake.ID(0)
+	for _, opts := range []storepkg.QueryOpts{
+		{ValidStart: 300, ValidEnd: 300},
+		{ValidStart: 400, ValidEnd: 300},
+	} {
+		if MatchesTemporalFilter(id, tm, opts) {
+			t.Fatalf("invalid interval %+v matched open-ended entity", opts)
+		}
+		if !HasTemporalFilter(opts) {
+			t.Fatalf("invalid active interval %+v should still be treated as temporal", opts)
+		}
+	}
+}
+
 func TestMatchesTemporalFilter_ValidAtPrecedence(t *testing.T) {
 	t.Parallel()
 	// When both ValidAt and interval are set, ValidAt takes precedence.

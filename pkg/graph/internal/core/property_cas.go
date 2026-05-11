@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -73,6 +74,9 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 			return false, false, fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
 		}
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return false, false, err
+	}
 
 	// Entity lock → read-modify-write under serialization.
 	c.entityLocks.LockEntity(id.SnowflakeID())
@@ -108,6 +112,10 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 
 	// --- Capture pre-mutation state ---
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return false, false, err
+	}
 	prevState := current.DeepCopy()
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
@@ -125,7 +133,12 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		}
 	}
 
-	current.SetVersion(current.Version() + 1)
+	// Check final property count after mutations (under entity lock, before persist).
+	if current.PropertyCount() > c.validation.MaxPropertiesPerEntity {
+		return false, false, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
+	}
+
+	current.SetVersion(nextVersion)
 
 	now := c.now()
 	tm := current.Temporal()
@@ -145,12 +158,12 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	}
 	tm.TxFrom = now
 
-	nodeLabels := c.Nodes.Labels(current)
-	hash := integrity.ComputeNodeHash(current, nodeLabels)
-	current.SetIntegrity(&types.NodeIntegrity{
-		Hash:     hash,
-		PrevHash: prevHash,
-	})
+	nodeLabels := c.nodeLabelsUnlocked(current)
+	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	if err != nil {
+		return false, false, fmt.Errorf("graph: compute node hash: %w", err)
+	}
+	current.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Atomic replace + history.
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {

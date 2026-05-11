@@ -183,17 +183,9 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 // label/property/type indexes on the archive store carry the same
 // metadata refShard does.
 func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
-	// Modification rationale (vs. an earlier draft of this test): the
-	// original setup created a Case → other(Case) ref→ref rel and
-	// archived one endpoint, relying on the silent-skip behavior to
-	// "succeed". With tiered.ErrCrossShardArchiveRel that setup no longer
-	// runs to completion. The test's intent — verify that indexed
-	// public queries (NodesByLabel, NodesByLabelAndProperty,
-	// NodeCountByLabel, RelationshipsByType, RelCountByType) include
-	// archive-resident entities — is preserved and slightly
-	// strengthened by switching to a self-loop: the rel actually
-	// migrates to archive (instead of being silently lost), so the
-	// rel-side assertions exercise real archive-resident state.
+	// The self-loop makes the relationship fully archive-resident, so the
+	// rel-side assertions exercise archive indexes directly. Cross-shard
+	// archive-placement migration is covered by the node routing tests.
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
 		SnowflakeNodeID: 0,

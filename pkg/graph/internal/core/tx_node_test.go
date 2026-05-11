@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- GraphTx CRUD tests (update/delete with rollback) ---
@@ -100,6 +101,43 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	}
 	if age != int64(30) {
 		t.Errorf("age = %v, want 30", age)
+	}
+}
+
+func TestGraphTx_UpdateNodeValidatesUpdatesBeforeSnapshot(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	tests := []struct {
+		name    string
+		updates map[string]any
+		want    error
+	}{
+		{
+			name:    "reserved shadow key",
+			updates: map[string]any{"tkg_hash": "x"},
+			want:    types.ErrReservedPrefix,
+		},
+		{
+			name:    "unsupported value",
+			updates: map[string]any{"bad": make(chan int)},
+			want:    types.ErrUnsupportedValueType,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := g.BeginTx()
+			if err != nil {
+				t.Fatalf("BeginTx: %v", err)
+			}
+			defer func() { _ = tx.Rollback() }()
+
+			_, err = tx.UpdateNode(types.NodeID(1), tc.updates)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("UpdateNode error = %v, want errors.Is(..., %v)", err, tc.want)
+			}
+		})
 	}
 }
 

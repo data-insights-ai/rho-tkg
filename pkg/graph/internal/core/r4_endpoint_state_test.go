@@ -33,7 +33,7 @@ import (
 func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
@@ -60,16 +60,18 @@ func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Persist b with ValidTo=1 in the store so the live state seen by
-	// the batch's constraint check is genuinely past-its-expiry.
+	// Persist b with a deterministic expired interval in the store so the
+	// live state seen by the batch's constraint check is genuinely
+	// past-its-expiry.
 	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +82,8 @@ func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 		t.Fatalf("BatchBuilder.AddRelationship: %v", err)
 	}
 	res, err := bb.Execute()
-	if err != nil {
-		t.Fatalf("Batch.Execute: %v", err)
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Batch.Execute error = %v, want ErrBatchFailed", err)
 	}
 	if res.Created != 0 {
 		t.Errorf("res.Created = %d, want 0 (constraint violation must skip the rel)", res.Created)

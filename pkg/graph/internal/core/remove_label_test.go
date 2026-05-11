@@ -129,7 +129,7 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
 	id := n.ID()

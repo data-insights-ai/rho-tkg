@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -42,6 +43,9 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	if err := c.validateName(label); err != nil {
 		return false, err
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return false, err
+	}
 
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
@@ -51,16 +55,12 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 		return false, err
 	}
 
-	// Resolve or create the token only after confirming the node exists, so
-	// we don't pollute the registry for unknown IDs.
-	tok, err := c.labels.GetOrCreate(label)
-	if err != nil {
-		return false, fmt.Errorf("graph: add label: %w", err)
-	}
-
-	// Idempotent: node already carries the label — no mutation, no history.
-	if current.HasLabelTokenRaw(tok) {
-		return false, nil
+	tok, known := c.lookupLabelLocked(label)
+	if known {
+		// Idempotent: node already carries the label — no mutation, no history.
+		if current.HasLabelTokenRaw(tok) {
+			return false, nil
+		}
 	}
 
 	// Enforce MaxLabelsPerNode against the post-addition count.
@@ -68,8 +68,37 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, c.validation.MaxLabelsPerNode)
 	}
 
-	// Capture pre-mutation state for version history (before any modification).
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return false, err
+	}
+
+	finishLabel := func(err error) error {
+		return err
+	}
+	labelFinished := true
+	if !known {
+		var err error
+		var labelSnapshot []string
+		var allocatedLabel bool
+		tok, labelSnapshot, allocatedLabel, err = c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return false, fmt.Errorf("graph: add label: %w", err)
+		}
+		labelFinished = false
+		finishLabel = func(err error) error {
+			labelFinished = true
+			return c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, err)
+		}
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during add label"))
+			}
+		}()
+	}
+
+	// Capture pre-mutation state for version history (before any modification).
 	prevState := current.DeepCopy()
 
 	copy := current.DeepCopy()
@@ -77,16 +106,19 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 		// Defensive: should never hit — idempotence check above already handled presence.
 		return false, nil
 	}
-	copy.SetVersion(prevVersion + 1)
+	copy.SetVersion(nextVersion)
 
 	// Advance hash chain: PrevHash = current Hash (link new version back to current).
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.Nodes.Labels(copy)
-	hash := integrity.ComputeNodeHash(copy, nodeLabels)
-	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+	nodeLabels := c.nodeLabelsUnlocked(copy)
+	hash, err := integrity.ComputeNodeHashChecked(copy, nodeLabels)
+	if err != nil {
+		return false, finishLabel(fmt.Errorf("graph: compute node hash: %w", err))
+	}
+	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
 	now := c.now()
@@ -107,6 +139,9 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 
 	// Atomic: write history entry + add label index + persist updated node in one call.
 	if err := c.store.AddNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
+		return false, finishLabel(err)
+	}
+	if err := finishLabel(nil); err != nil {
 		return false, err
 	}
 	c.opNodeUpdates.Add(1)
@@ -136,6 +171,13 @@ func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
 // removeNodeLabelInternal is the lock-free implementation of RemoveNodeLabel.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
+	if err := c.validateName(label); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return ErrLabelNotFound
@@ -158,20 +200,27 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 
 	// Capture pre-mutation state for version history (before any modification).
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return err
+	}
 	prevState := current.DeepCopy()
 
 	copy := current.DeepCopy()
 	copy.RemoveLabelTokenRaw(tok)
-	copy.SetVersion(prevVersion + 1)
+	copy.SetVersion(nextVersion)
 
 	// Advance hash chain: PrevHash = current Hash (link new version back to current).
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.Nodes.Labels(copy)
-	hash := integrity.ComputeNodeHash(copy, nodeLabels)
-	copy.SetIntegrity(&types.NodeIntegrity{Hash: hash, PrevHash: prevHash})
+	nodeLabels := c.nodeLabelsUnlocked(copy)
+	hash, err := integrity.ComputeNodeHashChecked(copy, nodeLabels)
+	if err != nil {
+		return fmt.Errorf("graph: compute node hash: %w", err)
+	}
+	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
 	now := c.now()

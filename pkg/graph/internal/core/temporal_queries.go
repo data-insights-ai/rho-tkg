@@ -21,8 +21,21 @@ func (t *TempOps) NodesAt(at types.Instant) ([]*types.Node, error) {
 		return nil, err
 	}
 	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		nodes, err := c.nodesAtLocked(at)
+		result = nodes
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) nodesAtLocked(at types.Instant) ([]*types.Node, error) {
+	var result []*types.Node
 	err := c.forEachKnownNodeID(func(id types.NodeID) error {
-		n, err := c.Temporal.NodeAt(id, at)
+		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -47,8 +60,21 @@ func (t *TempOps) RelationshipsAt(at types.Instant) ([]*types.Relationship, erro
 		return nil, err
 	}
 	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		rels, err := c.relationshipsAtLocked(at)
+		result = rels
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) relationshipsAtLocked(at types.Instant) ([]*types.Relationship, error) {
+	var result []*types.Relationship
 	err := c.forEachKnownRelID(func(id types.RelID) error {
-		r, err := c.Temporal.RelAt(id, at)
+		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
@@ -73,36 +99,45 @@ func (t *TempOps) NodesByLabelAt(label string, at types.Instant) ([]*types.Node,
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil, nil
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
 	}
-	// Indexed candidate set + history IDs — avoids a full ForEachNodeID scan.
-	currentByLabel, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		// Indexed candidate set + history IDs — avoids a full ForEachNodeID scan.
+		currentByLabel, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.NodeID, 0, len(currentByLabel))
+		for _, n := range currentByLabel {
+			currentIDs = append(currentIDs, n.InternalID())
+		}
+		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+			n, err := c.nodeAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
+			}
+			if n.HasLabelTokenRaw(tok) {
+				result = append(result, n)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortNodesByID(result)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.NodeID, 0, len(currentByLabel))
-	for _, n := range currentByLabel {
-		currentIDs = append(currentIDs, n.InternalID())
-	}
-	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.Temporal.NodeAt(id, at)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
-			}
-			return err
-		}
-		if n.HasLabelTokenRaw(tok) {
-			result = append(result, n)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -120,23 +155,33 @@ func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	end = resolveOpenEndInstant(end)
+	resolvedEnd, err := normalizeDuringRange(start, end)
+	if err != nil {
+		return nil, err
+	}
+	end = resolvedEnd
 	var result []*types.Node
-	err := c.forEachKnownNodeID(func(id types.NodeID) error {
-		n, err := c.getNodeVersionDuring(id, start, end)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
+	err = c.readUnderRLock(func() error {
+		err := c.forEachKnownNodeID(func(id types.NodeID) error {
+			n, err := c.getNodeVersionDuring(id, start, end)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
 			}
+			result = append(result, n)
+			return nil
+		})
+		if err != nil {
 			return err
 		}
-		result = append(result, n)
+		storeutil.SortNodesByID(result)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -149,23 +194,33 @@ func (t *TempOps) RelationshipsDuring(start, end types.Instant) ([]*types.Relati
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	end = resolveOpenEndInstant(end)
+	resolvedEnd, err := normalizeDuringRange(start, end)
+	if err != nil {
+		return nil, err
+	}
+	end = resolvedEnd
 	var result []*types.Relationship
-	err := c.forEachKnownRelID(func(id types.RelID) error {
-		r, err := c.getRelVersionDuring(id, start, end)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
+	err = c.readUnderRLock(func() error {
+		err := c.forEachKnownRelID(func(id types.RelID) error {
+			r, err := c.getRelVersionDuring(id, start, end)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
 			}
+			result = append(result, r)
+			return nil
+		})
+		if err != nil {
 			return err
 		}
-		result = append(result, r)
+		storeutil.SortRelsByID(result)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -191,6 +246,16 @@ func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error)
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	var result *types.Node
+	err := c.readUnderRLock(func() error {
+		n, err := c.nodeAtLocked(id, at)
+		result = n
+		return err
+	})
+	return result, err
+}
+
+func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, error) {
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -227,6 +292,16 @@ func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, 
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	var result *types.Relationship
+	err := c.readUnderRLock(func() error {
+		r, err := c.relAtLocked(id, at)
+		result = r
+		return err
+	})
+	return result, err
+}
+
+func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationship, error) {
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -260,60 +335,76 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	// Indexed candidate set: current outgoing + incoming adjacency, merged
-	// with all history rel IDs (covering deleted-rel neighbors). Avoids a
-	// full ForEachRelID scan.
-	out, err := c.Rels.Outgoing(nodeID, "")
-	if err != nil {
-		return nil, err
-	}
-	in, err := c.Rels.Incoming(nodeID, "")
-	if err != nil {
-		return nil, err
-	}
-	currentRelIDs := make([]types.RelID, 0, len(out)+len(in))
-	for _, r := range out {
-		currentRelIDs = append(currentRelIDs, r.InternalID())
-	}
-	for _, r := range in {
-		currentRelIDs = append(currentRelIDs, r.InternalID())
-	}
-
-	neighborIDs := make(map[types.NodeID]struct{})
-	if err := c.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
-		r, err := c.Temporal.RelAt(id, at)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
-			}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		if _, err := c.nodeAtLocked(nodeID, at); err != nil {
 			return err
 		}
-		if r.StartNodeID() == nodeID {
-			neighborIDs[r.EndNodeID()] = struct{}{}
-		} else if r.EndNodeID() == nodeID {
-			neighborIDs[r.StartNodeID()] = struct{}{}
+
+		// Indexed candidate set: current outgoing + incoming adjacency, merged
+		// with all history rel IDs (covering deleted-rel neighbors). Avoids a
+		// full ForEachRelID scan.
+		out, err := c.store.OutgoingRelationships(nodeID, 0)
+		if err != nil {
+			if !errors.Is(err, storepkg.ErrNodeNotFound) {
+				return err
+			}
+			out = nil
 		}
+		in, err := c.store.IncomingRelationships(nodeID, 0)
+		if err != nil {
+			if !errors.Is(err, storepkg.ErrNodeNotFound) {
+				return err
+			}
+			in = nil
+		}
+		currentRelIDs := make([]types.RelID, 0, len(out)+len(in))
+		for _, r := range out {
+			currentRelIDs = append(currentRelIDs, r.InternalID())
+		}
+		for _, r := range in {
+			currentRelIDs = append(currentRelIDs, r.InternalID())
+		}
+
+		neighborIDs := make(map[types.NodeID]struct{})
+		if err := c.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
+			r, err := c.relAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			if r.StartNodeID() == nodeID {
+				neighborIDs[r.EndNodeID()] = struct{}{}
+			} else if r.EndNodeID() == nodeID {
+				neighborIDs[r.StartNodeID()] = struct{}{}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		if len(neighborIDs) == 0 {
+			return nil
+		}
+
+		for id := range neighborIDs {
+			n, err := c.nodeAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					continue
+				}
+				return err
+			}
+			result = append(result, n)
+		}
+		storeutil.SortNodesByID(result)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	if len(neighborIDs) == 0 {
-		return nil, nil
-	}
-
-	var result []*types.Node
-	for id := range neighborIDs {
-		n, err := c.Temporal.NodeAt(id, at)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				continue
-			}
-			return nil, err
-		}
-		result = append(result, n)
-	}
-	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -327,45 +418,57 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil, nil
-	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
-	}
-	// Seed candidates from the property index when present, label scan
-	// + property filter otherwise. Both produce a correct candidate
-	// set; the index path is just faster.
-	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(key); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		targetKey := indexpkg.PropertyValueKey(value)
+		if targetKey == "" {
+			return nil
+		}
+		// Seed candidates from the property index when present, label scan
+		// + property filter otherwise. Both produce a correct candidate
+		// set; the index path is just faster.
+		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.NodeID, 0, len(currentMatching))
+		for _, n := range currentMatching {
+			currentIDs = append(currentIDs, n.InternalID())
+		}
+		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+			n, err := c.nodeAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
+			}
+			if !n.HasLabelTokenRaw(tok) {
+				return nil
+			}
+			if v, found := n.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
+				result = append(result, n)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortNodesByID(result)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.NodeID, 0, len(currentMatching))
-	for _, n := range currentMatching {
-		currentIDs = append(currentIDs, n.InternalID())
-	}
-	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.Temporal.NodeAt(id, at)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
-			}
-			return err
-		}
-		if !n.HasLabelTokenRaw(tok) {
-			return nil
-		}
-		if v, found := n.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
-			result = append(result, n)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -379,49 +482,63 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil, nil
-	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
-	}
-	// Resolve open-ended end once for the whole iteration — see
-	// GetNodesValidDuring.
-	end = resolveOpenEndInstant(end)
-	// Seed candidates from the property index when present, label scan
-	// + property filter otherwise.
-	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.NodeID, 0, len(currentMatching))
-	for _, n := range currentMatching {
-		currentIDs = append(currentIDs, n.InternalID())
-	}
-	pred := func(n *types.Node) bool {
-		if !n.HasLabelTokenRaw(tok) {
-			return false
-		}
-		v, found := n.GetProperty(key)
-		return found && indexpkg.PropertyValueKey(v) == targetKey
-	}
+	end = resolvedEnd
 	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
-		n, err := c.findNodeVersionMatchingDuring(id, start, end, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
-			}
+	err = c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
 			return err
 		}
-		result = append(result, n)
+		if err := c.validateIndexPropertyKey(key); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		targetKey := indexpkg.PropertyValueKey(value)
+		if targetKey == "" {
+			return nil
+		}
+		// Seed candidates from the property index when present, label scan
+		// + property filter otherwise.
+		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.NodeID, 0, len(currentMatching))
+		for _, n := range currentMatching {
+			currentIDs = append(currentIDs, n.InternalID())
+		}
+		pred := func(n *types.Node) bool {
+			if !n.HasLabelTokenRaw(tok) {
+				return false
+			}
+			v, found := n.GetProperty(key)
+			return found && indexpkg.PropertyValueKey(v) == targetKey
+		}
+		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+			n, err := c.findNodeVersionMatchingDuring(id, start, end, pred)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, n)
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortNodesByID(result)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
@@ -456,45 +573,57 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.relTypes.Lookup(relType)
-	if !ok {
-		return nil, nil
-	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
-	}
-	// Seed candidates from the type index. No (type, property) index exists
-	// at the store level for relationships, so the property predicate is
-	// evaluated per-version below.
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexName(relType); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(key); err != nil {
+			return err
+		}
+		tok, ok := c.relTypes.Lookup(relType)
+		if !ok {
+			return nil
+		}
+		targetKey := indexpkg.PropertyValueKey(value)
+		if targetKey == "" {
+			return nil
+		}
+		// Seed candidates from the type index. No (type, property) index exists
+		// at the store level for relationships, so the property predicate is
+		// evaluated per-version below.
+		current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.RelID, 0, len(current))
+		for _, r := range current {
+			currentIDs = append(currentIDs, r.InternalID())
+		}
+		if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+			r, err := c.relAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			if !r.HasTypeTokenRaw(tok) {
+				return nil
+			}
+			if v, found := r.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
+				result = append(result, r)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortRelsByID(result)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.RelID, 0, len(current))
-	for _, r := range current {
-		currentIDs = append(currentIDs, r.InternalID())
-	}
-	var result []*types.Relationship
-	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
-		r, err := c.Temporal.RelAt(id, at)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
-			}
-			return err
-		}
-		if !r.HasTypeTokenRaw(tok) {
-			return nil
-		}
-		if v, found := r.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
-			result = append(result, r)
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -514,48 +643,62 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	tok, ok := c.relTypes.Lookup(relType)
-	if !ok {
-		return nil, nil
-	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
-	}
-	// Resolve open-ended end once for the whole iteration — see
-	// GetNodesValidDuring.
-	end = resolveOpenEndInstant(end)
-	// Seed candidates from the type index. No (type, property) index exists
-	// at the store level for relationships.
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
+	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
-	currentIDs := make([]types.RelID, 0, len(current))
-	for _, r := range current {
-		currentIDs = append(currentIDs, r.InternalID())
-	}
-	pred := func(r *types.Relationship) bool {
-		if !r.HasTypeTokenRaw(tok) {
-			return false
-		}
-		v, found := r.GetProperty(key)
-		return found && indexpkg.PropertyValueKey(v) == targetKey
-	}
+	end = resolvedEnd
 	var result []*types.Relationship
-	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
-		r, err := c.findRelVersionMatchingDuring(id, start, end, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
-			}
+	err = c.readUnderRLock(func() error {
+		if err := c.validateIndexName(relType); err != nil {
 			return err
 		}
-		result = append(result, r)
+		if err := c.validateIndexPropertyKey(key); err != nil {
+			return err
+		}
+		tok, ok := c.relTypes.Lookup(relType)
+		if !ok {
+			return nil
+		}
+		targetKey := indexpkg.PropertyValueKey(value)
+		if targetKey == "" {
+			return nil
+		}
+		// Seed candidates from the type index. No (type, property) index exists
+		// at the store level for relationships.
+		current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
+		if err != nil {
+			return err
+		}
+		currentIDs := make([]types.RelID, 0, len(current))
+		for _, r := range current {
+			currentIDs = append(currentIDs, r.InternalID())
+		}
+		pred := func(r *types.Relationship) bool {
+			if !r.HasTypeTokenRaw(tok) {
+				return false
+			}
+			v, found := r.GetProperty(key)
+			return found && indexpkg.PropertyValueKey(v) == targetKey
+		}
+		if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+			r, err := c.findRelVersionMatchingDuring(id, start, end, pred)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			result = append(result, r)
+			return nil
+		}); err != nil {
+			return err
+		}
+		storeutil.SortRelsByID(result)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-	storeutil.SortRelsByID(result)
 	return result, nil
 }

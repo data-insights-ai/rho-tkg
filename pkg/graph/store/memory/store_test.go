@@ -96,6 +96,35 @@ func TestMemoryStoreDeleteNode(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreDeleteNodeRejectsConnectedRelationships(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	a := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	b := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
+	if err := ms.PutNode(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNode(b); err != nil {
+		t.Fatal(err)
+	}
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, a.ID(), b.ID())
+	if err := ms.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ms.DeleteNode(a.ID())
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode connected node = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ms.GetNode(a.ID()); err != nil {
+		t.Fatalf("node was deleted after rejected DeleteNode: %v", err)
+	}
+	if _, err := ms.GetRelationship(r.ID()); err != nil {
+		t.Fatalf("relationship was deleted after rejected DeleteNode: %v", err)
+	}
+}
+
 func TestMemoryStoreDeleteNonexistentNode(t *testing.T) {
 	t.Parallel()
 
@@ -381,6 +410,38 @@ func TestMemoryStoreIncomingRelationships(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("IncomingRelationships(10, 0) = %d rels, want 0", len(got))
+	}
+}
+
+func TestMemoryStoreAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatal(err)
+	}
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
+	if err := ms.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+
+	missing := types.NodeID(snowflake.ID(999))
+	if _, err := ms.OutgoingRelationships(missing, 0); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("OutgoingRelationships missing err = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := ms.IncomingRelationships(missing, 0); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("IncomingRelationships missing err = %v, want ErrNodeNotFound", err)
+	}
+	if got, err := ms.OutgoingRelationshipsForNodes([]types.NodeID{nA.ID(), missing}, 0); !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
+	}
+	if got, err := ms.IncomingRelationshipsForNodes([]types.NodeID{nB.ID(), missing}, 0); !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("IncomingRelationshipsForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
 	}
 }
 
@@ -725,6 +786,43 @@ func TestMemoryStoreDeleteNodeCascade(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreDeleteNodeCascadePurgesOrphanAdjacency(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	orphan := types.RelID(snowflake.ID(999))
+	ms.mu.Lock()
+	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	ms.mu.Unlock()
+
+	if err := ms.DeleteNodeCascade(nA.ID()); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if _, ok := ms.outIdx[nA.ID()][orphan]; ok {
+		t.Fatal("orphan rel remained in outgoing adjacency after cascade")
+	}
+	if _, ok := ms.inIdx[nB.ID()][orphan]; ok {
+		t.Fatal("orphan rel remained in incoming adjacency after cascade")
+	}
+	if _, ok := ms.typeIdx[7][orphan]; ok {
+		t.Fatal("orphan rel remained in type index after cascade")
+	}
+}
+
 func TestMemoryStoreDeleteNodeCascadeSelfLoop(t *testing.T) {
 	t.Parallel()
 
@@ -923,6 +1021,64 @@ func TestMemoryStoreReplaceRelCacheIsolation(t *testing.T) {
 	v, _ := got.GetProperty("weight")
 	if v != 2.0 {
 		t.Fatalf("ReplaceRelationship did not deep copy: got %v, want 2.0", v)
+	}
+}
+
+func TestMemoryStoreReplaceRelationshipRejectsIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	for _, id := range []snowflake.ID{10, 20, 30} {
+		if err := ms.PutNode(types.NewNode(types.NodeID(id), 1, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	original := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+	if err := ms.PutRelationship(original); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		rel  *types.Relationship
+	}{
+		{
+			name: "type",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 6, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20))),
+		},
+		{
+			name: "start",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(30)), types.NodeID(snowflake.ID(20))),
+		},
+		{
+			name: "end",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(30))),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ms.ReplaceRelationship(tc.rel); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ReplaceRelationship indexed-field mutation = %v, want ErrInvalidStoreMutation", err)
+			}
+		})
+	}
+
+	current, err := ms.GetRelationship(types.RelID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TypeToken().Value() != 5 || current.StartNodeID() != types.NodeID(snowflake.ID(10)) || current.EndNodeID() != types.NodeID(snowflake.ID(20)) {
+		t.Fatalf("relationship changed after rejected replacement: type=%d start=%d end=%d",
+			current.TypeToken().Value(), current.StartNodeID(), current.EndNodeID())
+	}
+	if rels, _ := ms.RelationshipsByType(6, QueryOpts{}); len(rels) != 0 {
+		t.Fatalf("new type index contains rejected relationship: %d", len(rels))
+	}
+	if rels, _ := ms.OutgoingRelationships(types.NodeID(snowflake.ID(30)), 5); len(rels) != 0 {
+		t.Fatalf("new start adjacency contains rejected relationship: %d", len(rels))
+	}
+	if rels, _ := ms.IncomingRelationships(types.NodeID(snowflake.ID(30)), 5); len(rels) != 0 {
+		t.Fatalf("new end adjacency contains rejected relationship: %d", len(rels))
 	}
 }
 
@@ -1182,6 +1338,25 @@ func TestMemoryStoreTruncateNodeHistoryAll(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreTruncateNodeHistoryRejectsNegativeKeep(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	id := types.NodeID(snowflake.ID(1))
+	n := types.NewNode(id, 10, nil)
+	if err := ms.PutNodeVersion(id, 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+
+	if err := ms.TruncateNodeHistory(id, -1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateNodeHistory(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, _ := ms.GetNodeHistory(id)
+	if len(history) != 1 {
+		t.Fatalf("negative truncate mutated history: len = %d, want 1", len(history))
+	}
+}
+
 func TestMemoryStoreDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 
@@ -1362,6 +1537,25 @@ func TestMemoryStoreTruncateRelHistoryAll(t *testing.T) {
 	history, _ := ms.GetRelHistory(types.RelID(id))
 	if len(history) != 0 {
 		t.Fatalf("expected empty history after truncate all, got %d", len(history))
+	}
+}
+
+func TestMemoryStoreTruncateRelHistoryRejectsNegativeKeep(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	id := types.RelID(snowflake.ID(100))
+	r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+	if err := ms.PutRelVersion(id, 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+
+	if err := ms.TruncateRelHistory(id, -1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateRelHistory(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, _ := ms.GetRelHistory(id)
+	if len(history) != 1 {
+		t.Fatalf("negative truncate mutated rel history: len = %d, want 1", len(history))
 	}
 }
 
@@ -1584,13 +1778,9 @@ func TestMemoryStoreGetNodesByIDs(t *testing.T) {
 	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(2)), 20, nil))
 	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(3)), 10, nil))
 
-	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := ms.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
-	if err != nil {
-		t.Fatalf("GetNodesByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	_, err := ms.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNodesByIDs() err = %v, want ErrNodeNotFound", err)
 	}
 }
 
@@ -1655,13 +1845,9 @@ func TestMemoryStoreGetRelsByIDs(t *testing.T) {
 	ms.PutRelationship(types.NewRelationship(types.RelID(snowflake.ID(101)), 7, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20))))
 	ms.PutRelationship(types.NewRelationship(types.RelID(snowflake.ID(102)), 5, types.NodeID(snowflake.ID(20)), types.NodeID(snowflake.ID(10))))
 
-	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := ms.GetRelationshipsByIDs([]types.RelID{types.RelID(100), types.RelID(999), types.RelID(102)})
-	if err != nil {
-		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	_, err := ms.GetRelationshipsByIDs([]types.RelID{types.RelID(100), types.RelID(999), types.RelID(102)})
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationshipsByIDs() err = %v, want ErrRelNotFound", err)
 	}
 }
 
@@ -1706,6 +1892,96 @@ func TestMemoryStorePutNodesBatchEmpty(t *testing.T) {
 	}
 	if err := ms.PutNodesBatch([]*types.Node{}); err != nil {
 		t.Fatalf("PutNodesBatch([]) returned error: %v", err)
+	}
+}
+
+func TestMemoryStoreRejectsZeroIDWrites(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	zeroNode := types.NewNode(types.NodeID(0), 1, nil)
+	if err := ms.PutNode(zeroNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceNode(zeroNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.PutNodesBatch([]*types.Node{zeroNode}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNodesBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeNode := types.NewNode(types.NodeID(-1), 1, nil)
+	if err := ms.PutNode(negativeNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceNode(negativeNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.PutNodesBatch([]*types.Node{negativeNode}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNodesBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteNode(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteNode(types.NodeID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteNodeCascade(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodeCascade(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteNodesBatch([]types.NodeID{0}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteNodesBatch([]types.NodeID{types.NodeID(-1)}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if count, err := ms.NodeCount(); err != nil || count != 0 {
+		t.Fatalf("NodeCount after rejected invalid-ID nodes = %d, %v; want 0, nil", count, err)
+	}
+
+	if err := ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	zeroRel := types.NewRelationship(types.RelID(0), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := ms.PutRelationship(zeroRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceRelationship(zeroRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeRel := types.NewRelationship(types.RelID(-1), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := ms.PutRelationship(negativeRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceRelationship(negativeRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteRelationship(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteRelationship(types.RelID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteRelationshipsBatch([]types.RelID{0}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationshipsBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.DeleteRelationshipsBatch([]types.RelID{types.RelID(-1)}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationshipsBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	zeroStart := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(0), types.NodeID(snowflake.ID(2)))
+	if err := ms.PutRelationshipsBatch([]*types.Relationship{zeroStart}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationshipsBatch(zero endpoint) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeStart := types.NewRelationship(types.RelID(snowflake.ID(101)), 1, types.NodeID(-1), types.NodeID(snowflake.ID(2)))
+	if err := ms.PutRelationshipsBatch([]*types.Relationship{negativeStart}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationshipsBatch(negative endpoint) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if count, err := ms.RelationshipCount(); err != nil || count != 0 {
+		t.Fatalf("RelationshipCount after rejected invalid-ID relationships = %d, %v; want 0, nil", count, err)
 	}
 }
 
@@ -1901,6 +2177,57 @@ func TestMemoryStoreDeleteNodesBatch(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreDeleteNodesBatchDeduplicatesInput(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	_ = ms.PutNode(n)
+
+	if err := ms.DeleteNodesBatch([]types.NodeID{n.ID(), n.ID()}); err != nil {
+		t.Fatalf("DeleteNodesBatch duplicate ID: %v", err)
+	}
+	count, _ := ms.NodeCount()
+	if count != 0 {
+		t.Fatalf("NodeCount = %d, want 0", count)
+	}
+}
+
+func TestMemoryStoreDeleteNodesBatchRejectsConnectedRelationships(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	a := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	b := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
+	unconnected := types.NewNode(types.NodeID(snowflake.ID(3)), 10, nil)
+	if err := ms.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ms.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+	if err := ms.PutNode(unconnected); err != nil {
+		t.Fatalf("PutNode unconnected: %v", err)
+	}
+	rel := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, a.ID(), b.ID())
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	err := ms.DeleteNodesBatch([]types.NodeID{unconnected.ID(), a.ID(), b.ID()})
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch connected nodes = %v, want ErrInvalidStoreMutation", err)
+	}
+	for _, n := range []*types.Node{a, b, unconnected} {
+		if _, getErr := ms.GetNode(n.ID()); getErr != nil {
+			t.Fatalf("GetNode(%d) after rejected batch delete: %v", n.ID(), getErr)
+		}
+	}
+	if _, getErr := ms.GetRelationship(rel.ID()); getErr != nil {
+		t.Fatalf("GetRelationship after rejected batch delete: %v", getErr)
+	}
+}
+
 func TestMemoryStoreDeleteNodesBatchMissing(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -1964,6 +2291,26 @@ func TestMemoryStoreDeleteRelsBatch(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreDeleteRelsBatchDeduplicatesInput(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
+	_ = ms.PutNode(n1)
+	_ = ms.PutNode(n2)
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, n1.ID(), n2.ID())
+	_ = ms.PutRelationship(r)
+
+	if err := ms.DeleteRelationshipsBatch([]types.RelID{r.ID(), r.ID()}); err != nil {
+		t.Fatalf("DeleteRelationshipsBatch duplicate ID: %v", err)
+	}
+	count, _ := ms.RelationshipCount()
+	if count != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", count)
+	}
+}
+
 // ─── Store: ReplaceNodeWithHistory ────────────────────────────────────
 
 func TestMemoryStoreReplaceNodeWithHistory(t *testing.T) {
@@ -2014,6 +2361,112 @@ func TestMemoryStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
 	err := ms.ReplaceNodeWithHistory(n, 0, n)
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("want ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestMemoryStoreReplaceNodeRejectsLabelMutation(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := ms.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := types.NewNode(n.ID(), 20, nil)
+	if err := ms.ReplaceNode(replacement); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode label mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := ms.NodesByLabel(20, QueryOpts{}); err != nil || len(nodes) != 0 {
+		t.Fatalf("NodesByLabel(20) = %d, %v; want 0, nil", len(nodes), err)
+	}
+	if nodes, err := ms.NodesByLabel(10, QueryOpts{}); err != nil || len(nodes) != 1 {
+		t.Fatalf("NodesByLabel(10) = %d, %v; want 1, nil", len(nodes), err)
+	}
+
+	current, err := ms.GetNode(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withHistory := types.NewNode(n.ID(), 20, nil)
+	withHistory.SetVersion(1)
+	if err := ms.ReplaceNodeWithHistory(withHistory, current.Version(), current); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory label mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, err := ms.GetNodeHistory(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history entries after rejected label mutation = %d, want 0", len(history))
+	}
+}
+
+func TestMemoryStoreNodeLabelTokenHelpersRejectInvalidDeltas(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, []uint16{20})
+	if err := ms.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+
+	stillHasRemoved := n.DeepCopy()
+	if err := ms.RemoveNodeLabelToken(n.ID(), 20, stillHasRemoved); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("RemoveNodeLabelToken unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := ms.NodesByLabel(20, QueryOpts{}); err != nil || len(nodes) != 1 {
+		t.Fatalf("NodesByLabel(20) after rejected remove = %d, %v; want 1, nil", len(nodes), err)
+	}
+
+	missingAdded := n.DeepCopy()
+	if err := ms.AddNodeLabelToken(n.ID(), 30, missingAdded); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("AddNodeLabelToken unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := ms.NodesByLabel(30, QueryOpts{}); err != nil || len(nodes) != 0 {
+		t.Fatalf("NodesByLabel(30) after rejected add = %d, %v; want 0, nil", len(nodes), err)
+	}
+
+	prev := n.DeepCopy()
+	invalidRemoveWithHistory := n.DeepCopy()
+	invalidRemoveWithHistory.SetVersion(1)
+	if err := ms.RemoveNodeLabelTokenWithHistory(n.ID(), 20, invalidRemoveWithHistory, prev.Version(), prev); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("RemoveNodeLabelTokenWithHistory unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	invalidAddWithHistory := n.DeepCopy()
+	invalidAddWithHistory.SetVersion(1)
+	if err := ms.AddNodeLabelTokenWithHistory(n.ID(), 30, invalidAddWithHistory, prev.Version(), prev); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("AddNodeLabelTokenWithHistory unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	history, err := ms.GetNodeHistory(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history entries after rejected label-token helpers = %d, want 0", len(history))
+	}
+}
+
+func TestMemoryStoreReplaceWithHistoryRejectsNilPayloads(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := ms.ReplaceNodeWithHistory(nil, 0, n); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory(nil current) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceNodeWithHistory(n, 0, nil); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory(nil history) = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := ms.ReplaceRelWithHistory(nil, 0, r); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory(nil current) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ms.ReplaceRelWithHistory(r, 0, nil); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory(nil history) = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -2070,6 +2523,42 @@ func TestMemoryStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 	err := ms.ReplaceRelWithHistory(r, 0, r)
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("want ErrRelNotFound, got %v", err)
+	}
+}
+
+func TestMemoryStoreReplaceRelWithHistoryRejectsIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	for _, id := range []snowflake.ID{1, 2, 3} {
+		if err := ms.PutNode(types.NewNode(types.NodeID(id), 10, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	original := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := ms.PutRelationship(original); err != nil {
+		t.Fatal(err)
+	}
+
+	updated := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(3)))
+	updated.SetVersion(1)
+	err := ms.ReplaceRelWithHistory(updated, original.Version(), original.DeepCopy())
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory indexed-field mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	hist, histErr := ms.GetRelHistory(types.RelID(snowflake.ID(100)))
+	if histErr != nil {
+		t.Fatal(histErr)
+	}
+	if len(hist) != 0 {
+		t.Fatalf("history written for rejected relationship replacement: %d entries", len(hist))
+	}
+	current, err := ms.GetRelationship(types.RelID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.EndNodeID() != types.NodeID(snowflake.ID(2)) || current.Version() != 0 {
+		t.Fatalf("relationship changed after rejected replacement: end=%d version=%d", current.EndNodeID(), current.Version())
 	}
 }
 

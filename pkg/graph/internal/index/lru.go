@@ -62,6 +62,20 @@ func NewCache[V any](capacity int) *Cache[V] {
 	}
 }
 
+// ensureInitializedLocked makes the zero value behave like NewCache(1).
+// Must be called with c.mu held.
+func (c *Cache[V]) ensureInitializedLocked() {
+	if c.capacity < 1 {
+		c.capacity = 1
+	}
+	if c.items == nil {
+		c.items = make(map[snowflake.ID]*list.Element, c.capacity)
+	}
+	if c.order == nil {
+		c.order = list.New()
+	}
+}
+
 // Get looks up a key in the cache.
 // Returns the value and cache status (CacheMiss, CacheHit, or CacheDeleted).
 // Moves the entry to the front (most recently used) on hit.
@@ -95,6 +109,7 @@ func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 func (c *Cache[V]) Put(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
 
 	c.nextVer++
 
@@ -124,6 +139,7 @@ func (c *Cache[V]) Put(key snowflake.ID, value V) {
 func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
 
 	c.nextVer++
 
@@ -151,6 +167,7 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
 
 	if _, ok := c.items[key]; ok {
 		return // in-memory state takes precedence
@@ -171,6 +188,7 @@ func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 func (c *Cache[V]) CollectDirty() []Entry[V] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
 
 	var dirty []Entry[V]
 	for el := c.order.Front(); el != nil; el = el.Next() {
@@ -236,6 +254,9 @@ func (c *Cache[V]) Peek(key snowflake.ID) (V, CacheStatus) {
 
 // Cap returns the configured capacity of the cache.
 func (c *Cache[V]) Cap() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
 	return c.capacity
 }
 
@@ -260,7 +281,8 @@ func (c *Cache[V]) CleanCount() int {
 func (c *Cache[V]) ResetForTest() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.items = make(map[snowflake.ID]*list.Element)
+	c.ensureInitializedLocked()
+	c.items = make(map[snowflake.ID]*list.Element, c.capacity)
 	c.order.Init()
 	c.cleanCount = 0
 }

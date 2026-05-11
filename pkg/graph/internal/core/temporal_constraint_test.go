@@ -11,6 +11,13 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func addRelWithinEndpointsConstraint(t *testing.T, g *Core) {
+	t.Helper()
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
+		t.Fatalf("Constraints.Add: %v", err)
+	}
+}
+
 // --- temporalpkg.ConstraintSet unit tests ---
 
 func TestTemporalConstraintSet_Add_Len_Items(t *testing.T) {
@@ -57,6 +64,19 @@ func TestNewConstraintSet(t *testing.T) {
 	}
 }
 
+func TestTemporalConstraintValidationRejectsUnknownKind(t *testing.T) {
+	t.Parallel()
+
+	invalid := temporalpkg.TemporalConstraint{}
+	if err := invalid.Validate(); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
+		t.Fatalf("TemporalConstraint.Validate() = %v, want temporal invalid constraint sentinels", err)
+	}
+	cs := temporalpkg.NewConstraintSet(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}, invalid)
+	if err := cs.Validate(); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
+		t.Fatalf("ConstraintSet.Validate() = %v, want temporal invalid constraint sentinels", err)
+	}
+}
+
 // --- TestSetTemporalConstraints_Replace ---
 
 func TestSetTemporalConstraints_Replace(t *testing.T) {
@@ -64,22 +84,152 @@ func TestSetTemporalConstraints_Replace(t *testing.T) {
 	g := newTestGraph(t)
 
 	c := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
-	g.Constraints.Add(c)
+	if err := g.Constraints.Add(c); err != nil {
+		t.Fatalf("AddTemporalConstraint: %v", err)
+	}
 	if g.Constraints.Get().Len() != 1 {
 		t.Fatalf("Len() = %d after AddTemporalConstraint, want 1", g.Constraints.Get().Len())
 	}
 
 	// Replace with a set of two constraints.
 	cs := temporalpkg.NewConstraintSet(c, c)
-	g.Constraints.Set(cs)
+	if err := g.Constraints.Set(cs); err != nil {
+		t.Fatalf("SetTemporalConstraints(2): %v", err)
+	}
 	if g.Constraints.Get().Len() != 2 {
 		t.Errorf("Len() = %d after SetTemporalConstraints(2), want 2", g.Constraints.Get().Len())
 	}
 
 	// Replace with empty — clears all constraints.
-	g.Constraints.Set(temporalpkg.ConstraintSet{})
+	if err := g.Constraints.Set(temporalpkg.ConstraintSet{}); err != nil {
+		t.Fatalf("SetTemporalConstraints(empty): %v", err)
+	}
 	if g.Constraints.Get().Len() != 0 {
 		t.Errorf("Len() = %d after SetTemporalConstraints(empty), want 0", g.Constraints.Get().Len())
+	}
+}
+
+func TestTemporalConstraintUnknownKindRejectedAtRegistration(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{}); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
+		t.Fatalf("Constraints.Add(invalid) = %v, want temporal invalid constraint sentinels", err)
+	}
+	if got := g.Constraints.Get().Len(); got != 0 {
+		t.Fatalf("Constraints.Get().Len after rejected Add = %d, want 0", got)
+	}
+	valid := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
+	if err := g.Constraints.Set(temporalpkg.NewConstraintSet(valid, temporalpkg.TemporalConstraint{})); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
+		t.Fatalf("Constraints.Set(invalid) = %v, want temporal invalid constraint sentinels", err)
+	}
+	if got := g.Constraints.Get().Len(); got != 0 {
+		t.Fatalf("Constraints.Get().Len after rejected Set = %d, want 0", got)
+	}
+
+	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = g.Rels.Add("LINK", a, b, nil)
+	if err != nil {
+		t.Fatalf("relationship write after rejected invalid constraint = %v, want nil", err)
+	}
+	count, err := g.Rels.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("relationship count after accepted write = %d, want 1", count)
+	}
+}
+
+func TestTemporalConstraintRejectedRelationshipDoesNotRegisterRelType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(*Core, *types.Node, *types.Node, string) error
+	}{
+		{
+			name: "Add",
+			run: func(g *Core, a, b *types.Node, typ string) error {
+				_, err := g.Rels.Add(typ, a, b, nil)
+				return err
+			},
+		},
+		{
+			name: "AddByID",
+			run: func(g *Core, a, b *types.Node, typ string) error {
+				_, err := g.Rels.AddByID(typ, a.ID(), b.ID(), nil)
+				return err
+			},
+		},
+		{
+			name: "AddByIDIfAbsent",
+			run: func(g *Core, a, b *types.Node, typ string) error {
+				_, _, err := g.Rels.AddByIDIfAbsent(typ, a.ID(), b.ID(), nil)
+				return err
+			},
+		},
+		{
+			name: "Import",
+			run: func(g *Core, a, b *types.Node, typ string) error {
+				_, err := g.Rels.Import(context.Background(), g.nextRelID(), typ, a, b, nil)
+				return err
+			},
+		},
+		{
+			name: "BatchExecute",
+			run: func(g *Core, a, b *types.Node, typ string) error {
+				bb, err := NewBatchBuilder(g)
+				if err != nil {
+					return err
+				}
+				if _, err := bb.AddRelationship(typ, a, b, nil); err != nil {
+					return err
+				}
+				result, err := bb.Execute()
+				if err == nil {
+					return nil
+				}
+				if result != nil && len(result.Errors) > 0 {
+					return result.Errors[0].Err
+				}
+				return err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := newTestGraph(t)
+			addRelWithinEndpointsConstraint(t, g)
+
+			future := int64(1 << 60)
+			a, err := g.Nodes.Add([]string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
+			if err != nil {
+				t.Fatalf("AddNode A: %v", err)
+			}
+			b, err := g.Nodes.Add([]string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
+			if err != nil {
+				t.Fatalf("AddNode B: %v", err)
+			}
+
+			typ := "REJECTED_" + tc.name
+			err = tc.run(g, a, b, typ)
+			if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+				t.Fatalf("%s error = %v, want ErrTemporalConstraint", tc.name, err)
+			}
+			if _, ok := g.Resolve.LookupRelType(typ); ok {
+				t.Fatalf("%s registered rejected relationship type %q", tc.name, typ)
+			}
+		})
 	}
 }
 
@@ -111,7 +261,7 @@ func TestConstraintRelWithinEndpoints_NoConstraint(t *testing.T) {
 func TestConstraintRelWithinEndpoints_Valid(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	// Open-ended nodes, open-ended rel — always valid.
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
@@ -131,7 +281,7 @@ func TestConstraintRelWithinEndpoints_Valid(t *testing.T) {
 func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	// Set start node's ValidFrom to the far future at creation time so the
 	// store-side state seen by the constraint check (R4-F5) reflects it.
@@ -161,7 +311,7 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
@@ -191,11 +341,15 @@ func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
-	// Start node expired at t=1ms — persisted via shadow props (R4-F5).
+	// Start node has a deterministic expired interval — persisted via shadow
+	// props (R4-F5). ValidFrom must be explicit; otherwise the effective start
+	// comes from the snowflake timestamp and can classify the relationship as
+	// before-validity instead of after-expiry under tight timing.
 	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -220,15 +374,17 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// End node expired at t=1ms — persisted via shadow props (R4-F5).
+	// End node has a deterministic expired interval — persisted via shadow
+	// props (R4-F5).
 	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +407,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 	// Since AddRelationship doesn't set rel temporal, test via the internal method directly.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
@@ -299,7 +455,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	// rel.ValidTo > endNode.ValidTo — start node has no ValidTo but end node does.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
@@ -343,11 +499,13 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 	// errors.Is must work on both the outer sentinel and specific leaf error.
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
-	// Start node expired — persisted via shadow props (R4-F5).
+	// Start node has a deterministic expired interval — persisted via shadow
+	// props (R4-F5).
 	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -375,15 +533,17 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints})
+	addRelWithinEndpointsConstraint(t, g)
 
 	a, err := g.Nodes.Add([]string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// End node expired — persisted via shadow props (R4-F5).
+	// End node has a deterministic expired interval — persisted via shadow
+	// props (R4-F5).
 	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
-		"tkg_valid_to": types.Instant(1),
+		"tkg_valid_from": types.Instant(1),
+		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)

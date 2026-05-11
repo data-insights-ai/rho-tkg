@@ -32,29 +32,18 @@ func (c *Core) runUnderRLock(fn func()) (eventspkg.Publisher, error) {
 	return c.events, nil
 }
 
-// runUnderLock is the write-lock counterpart of runUnderRLock. Used by
-// admin operations that mutate live shard topology, registries, or
-// the close-gated provider map. Returns ErrGraphClosed if the graph
-// has been closed before fn runs.
-func (c *Core) runUnderLock(fn func()) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed.Load() {
-		return ErrGraphClosed
+// readUnderRLock runs an operation that does not require exclusive graph access
+// under c.mu.RLock and returns ErrGraphClosed if Close has set the lifecycle
+// flag before the lock is acquired. Public read/query paths and small
+// registry-mutating helpers use this so Close drains them before closing the
+// underlying store or persisting registries.
+func (c *Core) readUnderRLock(fn func() error) error {
+	var err error
+	_, closeErr := c.runUnderRLock(func() {
+		err = fn()
+	})
+	if closeErr != nil {
+		return closeErr
 	}
-	fn()
-	return nil
-}
-
-// readUnderRLock is the read-only counterpart for query/inspection
-// paths that need a consistent view but no event dispatch. Returns
-// ErrGraphClosed if the graph has been closed before fn runs.
-func (c *Core) readUnderRLock(fn func()) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.closed.Load() {
-		return ErrGraphClosed
-	}
-	fn()
-	return nil
+	return err
 }

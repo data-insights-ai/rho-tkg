@@ -503,6 +503,31 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 	})
 }
 
+func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T) {
+	g, _, cold := newTieredGraphWithClosedColdShard(t)
+
+	b, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	a, err := b.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode(a): %v", err)
+	}
+	bn, err := b.AddNode([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode(b): %v", err)
+	}
+	if _, err := b.AddRelationship("LINK", a, bn, nil); err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	if _, err := b.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	assertColdShardStillClosed(t, cold, "Batch generated creates")
+}
+
 // Cross-shard rel write rollback: when the second leg of PutRelationship
 // fails, the first leg's writes must be reverted so partial state isn't
 // observable. (The rollback lives on the codex/history-aware-regression-tests
@@ -653,10 +678,8 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 // surfaced by recovery flows) remains reachable through every public lookup.
 //
 // We exercise the resolver directly by writing a rel to refArchive via the
-// underlying store: ArchiveNode currently drops rels whose other endpoint
-// isn't already in archive (PutRelationship rejects with storepkg.ErrNodeNotFound),
-// so a end-to-end ArchiveNode setup is brittle for the routing-only check
-// this regression guards.
+// underlying store so this stays a routing-only check. End-to-end
+// ArchiveNode/RestoreNode tests cover placement migration separately.
 func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 

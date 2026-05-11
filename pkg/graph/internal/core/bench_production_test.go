@@ -612,7 +612,7 @@ func BenchmarkGraphProduction_Events_MemoryStore(b *testing.B) {
 		bus.Subscribe(func(eventspkg.Event) {
 			count.Add(1)
 		})
-		g.Events.SetSync(bus)
+		_ = g.Events.SetSync(bus)
 
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -632,7 +632,7 @@ func BenchmarkGraphProduction_Events_MemoryStore(b *testing.B) {
 		})
 		b.Cleanup(func() { bus.Close() })
 		bus.Subscribe(func(eventspkg.Event) {})
-		g.Events.SetAsync(bus)
+		_ = g.Events.SetAsync(bus)
 
 		b.ReportAllocs()
 		b.ResetTimer()

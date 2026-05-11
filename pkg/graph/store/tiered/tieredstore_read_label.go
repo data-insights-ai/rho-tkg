@@ -3,12 +3,22 @@ package tiered
 import (
 	"sync"
 
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- Label/type queries ---
 
 func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	if ts.ontology.ClassifyByToken(token) == ClassReference {
 		// Reference labels live on refShard + refArchive. Without merging
 		// archive results, archived reference entities silently disappear
@@ -82,6 +92,15 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 }
 
 func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -155,6 +174,19 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 // --- Property indexes ---
 
 func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+
 	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
 		// Reference labels live on refShard + refArchive — see NodesByLabel.
 		// Depth-gated: archive is excluded from DepthHot/DepthWarm.

@@ -512,6 +512,14 @@ func TestCheckCtxBackground(t *testing.T) {
 	}
 }
 
+func TestCheckCtxNilReturnsSentinel(t *testing.T) {
+	t.Parallel()
+	var ctx context.Context
+	if err := checkCtx(ctx); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("checkCtx(nil) = %v, want ErrNilContext", err)
+	}
+}
+
 // --- Fix 1: DeleteRelationshipWithContext entity lock tests ---
 
 func TestDeleteRelWithContext_UsesEntityLock(t *testing.T) {
@@ -694,6 +702,37 @@ func TestExtractProvenance_InvalidType(t *testing.T) {
 	}
 }
 
+func TestExtractProvenance_InvalidReservedValueTypes(t *testing.T) {
+	t.Parallel()
+	tests := []map[string]any{
+		{"tkg_author_id": 123},
+		{"tkg_signature": "signed"},
+		{"tkg_authorized_by": []byte("admin")},
+	}
+	for _, props := range tests {
+		_, _, _, _, _, err := extractProvenance(props)
+		if err == nil {
+			t.Fatalf("extractProvenance(%v) returned nil error", props)
+		}
+	}
+}
+
+func TestAddNodeRejectsInvalidProvenanceTypeWithoutDroppingReservedKey(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	if _, err := g.Nodes.Add([]string{"Person"}, map[string]any{"tkg_author_id": 123}); err == nil {
+		t.Fatal("Nodes.Add returned nil error for non-string tkg_author_id")
+	}
+	count, err := g.Nodes.Count()
+	if err != nil {
+		t.Fatalf("Nodes.Count: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("Nodes.Count = %d, want 0 after rejected provenance", count)
+	}
+}
+
 func TestExtractProvenance_ValidBoundary(t *testing.T) {
 	t.Parallel()
 	// int(0) — minimum valid value
@@ -715,7 +754,120 @@ func TestExtractProvenance_ValidBoundary(t *testing.T) {
 	}
 }
 
+func TestExtractProvenance_ValidAuthLevelNumericTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		val  any
+		want uint8
+	}{
+		{name: "int8", val: int8(7), want: 7},
+		{name: "int16", val: int16(8), want: 8},
+		{name: "uint", val: uint(9), want: 9},
+		{name: "uint16", val: uint16(10), want: 10},
+		{name: "uint32", val: uint32(11), want: 11},
+		{name: "uint64", val: uint64(12), want: 12},
+		{name: "float32 whole number", val: float32(13), want: 13},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, got, _, err := extractProvenance(map[string]any{"tkg_auth_level": tt.val})
+			if err != nil {
+				t.Fatalf("extractProvenance(%T(%v)): %v", tt.val, tt.val, err)
+			}
+			if got != tt.want {
+				t.Fatalf("authLevel = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractProvenance_RejectsOutOfRangeAuthLevelNumericTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{name: "int8 negative", val: int8(-1)},
+		{name: "int16 high", val: int16(256)},
+		{name: "uint high", val: uint(256)},
+		{name: "uint16 high", val: uint16(256)},
+		{name: "uint32 high", val: uint32(256)},
+		{name: "uint64 high", val: uint64(256)},
+		{name: "float32 fractional", val: float32(5.5)},
+		{name: "float32 high", val: float32(256)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, _, _, err := extractProvenance(map[string]any{"tkg_auth_level": tt.val})
+			if err == nil {
+				t.Fatalf("extractProvenance(%T(%v)) returned nil error", tt.val, tt.val)
+			}
+		})
+	}
+}
+
 // --- Group: Temporal metadata via tkg_ props ---
+
+func TestParseInstantAcceptsSafeNumericTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		val  any
+		want types.Instant
+	}{
+		{name: "types.Instant", val: types.Instant(1000), want: 1000},
+		{name: "int", val: int(1001), want: 1001},
+		{name: "int8", val: int8(12), want: 12},
+		{name: "int16", val: int16(1002), want: 1002},
+		{name: "int32", val: int32(1003), want: 1003},
+		{name: "int64", val: int64(1004), want: 1004},
+		{name: "uint", val: uint(1005), want: 1005},
+		{name: "uint8", val: uint8(13), want: 13},
+		{name: "uint16", val: uint16(1006), want: 1006},
+		{name: "uint32", val: uint32(1007), want: 1007},
+		{name: "uint64", val: uint64(1008), want: 1008},
+		{name: "float32 whole number", val: float32(1009), want: 1009},
+		{name: "float64 whole number", val: float64(1010), want: 1010},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseInstant(tt.val, "tkg_valid_from")
+			if err != nil {
+				t.Fatalf("parseInstant(%T(%v)): %v", tt.val, tt.val, err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseInstant = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseInstantRejectsUnsafeNumericTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{name: "uint64 over int64", val: uint64(maxInt64Value) + 1},
+		{name: "float32 fractional", val: float32(10.5)},
+		{name: "float32 outside exact range", val: float32(maxExactFloat32Int * 2)},
+		{name: "float64 fractional", val: float64(10.5)},
+		{name: "float64 outside exact range", val: maxExactFloat64Int * 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseInstant(tt.val, "tkg_valid_from")
+			if err == nil {
+				t.Fatalf("parseInstant(%T(%v)) returned nil error", tt.val, tt.val)
+			}
+		})
+	}
+}
 
 func TestAddNodeWithTemporal(t *testing.T) {
 	t.Parallel()
@@ -853,6 +1005,46 @@ func TestTemporalNonIntegerFloat64Rejected(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for non-integer float64 tkg_valid_from")
+	}
+}
+
+func TestTemporalExplicitInvalidRangeRejected(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	props := map[string]any{
+		"tkg_valid_from": types.Instant(20),
+		"tkg_valid_to":   types.Instant(20),
+	}
+	if _, err := g.Nodes.Add([]string{"Event"}, props); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("Nodes.Add equal temporal range = %v, want ErrInvalidTimeRange", err)
+	}
+
+	start, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode end: %v", err)
+	}
+	relProps := map[string]any{
+		"tkg_valid_from": types.Instant(30),
+		"tkg_valid_to":   types.Instant(10),
+	}
+	if _, err := g.Rels.Add("LINKS", start, end, relProps); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("Rels.Add reversed temporal range = %v, want ErrInvalidTimeRange", err)
+	}
+
+	batch, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := batch.AddNode([]string{"Queued"}, props); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("Batch.AddNode equal temporal range = %v, want ErrInvalidTimeRange", err)
+	}
+	if _, err := batch.AddRelationship("QUEUED", start, end, relProps); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("Batch.AddRelationship reversed temporal range = %v, want ErrInvalidTimeRange", err)
 	}
 }
 

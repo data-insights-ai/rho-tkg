@@ -169,6 +169,51 @@ func TestTieredStore_ListShards_WithCold(t *testing.T) {
 	}
 }
 
+func TestTieredStore_ListShards_ClosedColdUsesCatalogStats(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	_, _ = reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	n := makeEvtNode(t, gen, ts)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	coldName := ts.HotShardForTest().Name()
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	demoteToCold(ts, coldName)
+	closeEventShardForListTest(t, ts.EventShardsForTest()[coldName])
+
+	if err := ts.RebuildCatalog(); err != nil {
+		t.Fatalf("RebuildCatalog: %v", err)
+	}
+	closeEventShardForListTest(t, ts.EventShardsForTest()[coldName])
+
+	infos, lsErr := ts.ListShards()
+	if lsErr != nil {
+		t.Fatalf("ListShards: %v", lsErr)
+	}
+	for _, si := range infos {
+		if si.Name != coldName {
+			continue
+		}
+		if si.Open {
+			t.Fatalf("closed cold shard reported Open=true")
+		}
+		if si.Nodes != 1 || si.Rels != 0 {
+			t.Fatalf("closed cold shard stats = nodes %d rels %d, want 1/0", si.Nodes, si.Rels)
+		}
+		return
+	}
+	t.Fatalf("ListShards missing cold shard %q", coldName)
+}
+
 func TestTieredStore_ListShards_LiveStats(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -192,6 +237,19 @@ func TestTieredStore_ListShards_LiveStats(t *testing.T) {
 			}
 		}
 	}
+}
+
+func closeEventShardForListTest(t *testing.T, es *EventShard) {
+	t.Helper()
+	es.LockShardMuForTest()
+	defer es.UnlockShardMuForTest()
+	if es.Store() == nil {
+		return
+	}
+	if err := es.Store().Close(); err != nil {
+		t.Fatalf("close event shard: %v", err)
+	}
+	es.SetStoreForTest(nil)
 }
 
 func TestTieredStore_RebuildCatalog(t *testing.T) {

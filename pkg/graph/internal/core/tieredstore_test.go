@@ -146,6 +146,75 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 }
 
 // --- GetNodesByIDs / GetRelationshipsByIDs ---
+
+func TestTieredStore_GraphGetByIDsSorted(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+
+	case1, err := g.Nodes.Add([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signal, err := g.Nodes.Add([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	case2, err := g.Nodes.Add([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = g.Nodes.GetByIDs([]types.NodeID{
+		signal.ID(),
+		types.NodeID(999),
+		case1.ID(),
+	})
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("Nodes.GetByIDs missing err = %v, want ErrNodeNotFound", err)
+	}
+
+	nodes, err := g.Nodes.GetByIDs([]types.NodeID{signal.ID(), case1.ID()})
+	if err != nil {
+		t.Fatalf("Nodes.GetByIDs existing: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("Nodes.GetByIDs = %d nodes, want 2", len(nodes))
+	}
+	if nodes[0].ID() != case1.ID() || nodes[1].ID() != signal.ID() {
+		t.Fatalf("Nodes.GetByIDs order = [%v, %v], want sorted [%v, %v]",
+			nodes[0].ID(), nodes[1].ID(), case1.ID(), signal.ID())
+	}
+
+	rel1, err := g.Rels.Add("LINKS", case1, signal, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel2, err := g.Rels.Add("LINKS", signal, case2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = g.Rels.GetByIDs([]types.RelID{
+		rel2.ID(),
+		types.RelID(999),
+		rel1.ID(),
+	})
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("Rels.GetByIDs missing err = %v, want ErrRelNotFound", err)
+	}
+
+	rels, err := g.Rels.GetByIDs([]types.RelID{rel2.ID(), rel1.ID()})
+	if err != nil {
+		t.Fatalf("Rels.GetByIDs existing: %v", err)
+	}
+	if len(rels) != 2 {
+		t.Fatalf("Rels.GetByIDs = %d rels, want 2", len(rels))
+	}
+	if rels[0].ID() != rel1.ID() || rels[1].ID() != rel2.ID() {
+		t.Fatalf("Rels.GetByIDs order = [%v, %v], want sorted [%v, %v]",
+			rels[0].ID(), rels[1].ID(), rel1.ID(), rel2.ID())
+	}
+}
+
 // --- RelationshipsByType merge test ---
 // --- RelCountByType merge test ---
 // --- Replace relationship test ---
@@ -255,16 +324,6 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveWithRels(t *testing.T) {
-	// Modification rationale (vs. the test as it stood on main):
-	// the original test created a ref→ref rel between case1 and case2,
-	// archived case1 alone, and asserted that "rel was cascade-deleted
-	// from refShard and not copied to archive ... this is expected:
-	// partial archive loses cross-node rels". That comment encoded
-	// silent rel loss as desired behavior — the precise bug
-	// tiered.ErrCrossShardArchiveRel was introduced to reject. Inverting the
-	// assertion (now: archive must reject, leaving state untouched)
-	// preserves the test's role as a regression guard for the rel
-	// topology while reflecting the corrected semantic.
 	g, ts := newTestTieredGraph(t)
 
 	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
@@ -275,23 +334,25 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	case2ID := case2.ID()
 	relID := rel.ID()
 
-	err := ts.ArchiveNode(case1ID)
-	if !errors.Is(err, tiered.ErrCrossShardArchiveRel) {
-		t.Fatalf("ArchiveNode with ref-ref rel: got %v, want tiered.ErrCrossShardArchiveRel", err)
+	if err := ts.ArchiveNode(case1ID); err != nil {
+		t.Fatalf("ArchiveNode with ref-ref rel: %v", err)
 	}
 
-	// State must be unchanged on rejection — no partial archive.
-	if !ts.RefShardForTest().HasNodeID(case1ID.SnowflakeID()) {
-		t.Error("case1 should still be in refShard after rejected archive")
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("ArchiveNode did not open refArchive")
+	}
+	if ts.RefShardForTest().HasNodeID(case1ID.SnowflakeID()) || !archive.HasNodeID(case1ID.SnowflakeID()) {
+		t.Error("case1 should move to refArchive")
 	}
 	if !ts.RefShardForTest().HasNodeID(case2ID.SnowflakeID()) {
-		t.Error("case2 should still be in refShard after rejected archive")
+		t.Error("case2 should remain in refShard")
 	}
-	if !ts.RefShardForTest().HasRelID(relID.SnowflakeID()) {
-		t.Error("rel should still be in refShard after rejected archive (no partial state)")
+	if ts.RefShardForTest().HasRelID(relID.SnowflakeID()) || !archive.HasRelID(relID.SnowflakeID()) {
+		t.Error("rel entity/out should move to refArchive with archived start node")
 	}
-	if ts.RefArchiveForTest().Load() != nil {
-		t.Error("rejected archive must not lazy-open refArchive")
+	if !tiered.HasIncomingEntryForTest(ts.RefShardForTest(), case2ID.SnowflakeID(), relID.SnowflakeID()) {
+		t.Error("live endpoint should keep incoming entry in refShard")
 	}
 }
 
@@ -430,6 +491,29 @@ func TestGraph_RestoreNode_NotTiered(t *testing.T) {
 	}
 }
 
+func TestGraph_ArchiveRestoreRejectInvalidIDsBeforeCapabilityCheck(t *testing.T) {
+	g, err := New(Config{SnowflakeNodeID: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+
+	checks := []struct {
+		name string
+		err  error
+	}{
+		{name: "Archive zero", err: g.Admin.Archive(0)},
+		{name: "Archive negative", err: g.Admin.Archive(types.NodeID(-1))},
+		{name: "Restore zero", err: g.Admin.Restore(0)},
+		{name: "Restore negative", err: g.Admin.Restore(types.NodeID(-1))},
+	}
+	for _, check := range checks {
+		if !errors.Is(check.err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("%s = %v, want ErrInvalidStoreMutation", check.name, check.err)
+		}
+	}
+}
+
 // --- ColdEventShards catalog helper test ---
 // ====================================================================
 // Phase 3e: Repair + Tooling tests
@@ -547,22 +631,34 @@ func TestTieredStore_AdminNotTiered(t *testing.T) {
 func TestTieredStore_VerifyShard_Hot(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	// Add a node to the hot shard.
+	// Add nodes and a relationship to the hot shard.
 	n, err := g.Nodes.Add([]string{"Signal"}, nil)
 	if err != nil {
-		t.Fatalf("AddNode: %v", err)
+		t.Fatalf("AddNode n: %v", err)
 	}
-	_ = n
+	n2, err := g.Nodes.Add([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode n2: %v", err)
+	}
+	if _, err := g.Rels.Add("OBSERVED", n, n2, nil); err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
 
 	result, err := g.Admin.VerifyShard(ts.HotShardForTest().Name())
 	if err != nil {
 		t.Fatalf("VerifyShard: %v", err)
 	}
-	if result.NodesOK != 1 {
-		t.Errorf("NodesOK = %d, want 1", result.NodesOK)
+	if result.NodesOK != 2 {
+		t.Errorf("NodesOK = %d, want 2", result.NodesOK)
 	}
 	if result.NodesFailed != 0 {
 		t.Errorf("NodesFailed = %d, want 0", result.NodesFailed)
+	}
+	if result.RelsOK != 1 {
+		t.Errorf("RelsOK = %d, want 1", result.RelsOK)
+	}
+	if result.RelsFailed != 0 {
+		t.Errorf("RelsFailed = %d, want 0", result.RelsFailed)
 	}
 	if result.Cached {
 		t.Error("should not be cached for hot shard")
@@ -893,16 +989,9 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 // --- Fix 3: ArchiveNode/RestoreNode — rollback ---
 
 func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
-	// Modification rationale (vs. the test as it stood on main):
-	// the original test created a ref→ref rel between n1 and n2 and
-	// asserted that ArchiveNode(n1) succeeded — but the *actual* behavior
-	// then was to silently drop the rel (the test never asserted on rel
-	// state, so the bug went undetected here for as long as the test
-	// existed). With tiered.ErrCrossShardArchiveRel, that exact setup is now
-	// rejected, so the original assertions no longer hold. Refactoring
-	// to a self-loop preserves the test's documented intent — round-trip
-	// archive + restore for a node with a relationship — and uses the
-	// only currently-supported rel-with-archive topology.
+	// Round-trip archive + restore for a node with a relationship. The
+	// self-loop keeps this test focused on rollback wiring; dedicated
+	// cross-shard archive tests cover relationships to live partners.
 	//
 	// Caveat carried over from the original: the test name says "rollback
 	// on delete failure" but no failure is injected. That was true of the
@@ -957,21 +1046,8 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 
 func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	// Restore round-trip with a rel that touches the archived node.
-	//
-	// Modification rationale (vs. the test as it stood on main):
-	// the original built a ref→ref rel between n1 and n2, archived
-	// BOTH, restored n1, and asserted that the rel "should not be in
-	// refShard" because n2 was still archived. That assertion codified
-	// silent rel loss as expected behavior — the same data-loss class
-	// that tiered.ErrCrossShardArchiveRel was added to reject. The original
-	// test's setup also no longer compiles past the new pre-scan
-	// (ArchiveNode(n1) is rejected because the ref→ref rel would cross
-	// the archive boundary).
-	//
-	// Self-loop preserves the test's *intent* — exercise restore for
-	// a node with a relationship — without depending on the silent-loss
-	// behavior. After ArchiveNode(n1), the self-loop and node both live
-	// on archive; RestoreNode(n1) must move both back to refShard.
+	// The self-loop and node both live on archive after ArchiveNode(n1);
+	// RestoreNode(n1) must move both back to refShard.
 	cfg := Config{
 		SnowflakeNodeID: 0,
 		Validation:      ValidationLimits{AllowSelfLoops: true},

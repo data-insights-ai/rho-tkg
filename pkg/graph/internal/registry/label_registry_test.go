@@ -60,6 +60,63 @@ func TestLabelRegistryTokenZeroReserved(t *testing.T) {
 	}
 }
 
+func TestLabelRegistryZeroValueBehavesLikeEmptyRegistry(t *testing.T) {
+	t.Parallel()
+
+	var reg LabelRegistry
+	if got := reg.Len(); got != 0 {
+		t.Fatalf("zero-value Len = %d, want 0", got)
+	}
+	if names := reg.ExportNames(); len(names) != 1 || names[0] != "" {
+		t.Fatalf("zero-value ExportNames = %v, want reserved token entry only", names)
+	}
+	if got := reg.Resolve(0); got != "" {
+		t.Fatalf("zero-value Resolve(0) = %q, want empty string", got)
+	}
+	if tok, ok := reg.Lookup("Person"); ok || tok != 0 {
+		t.Fatalf("zero-value Lookup before allocation = (%d, %v), want (0, false)", tok, ok)
+	}
+
+	tok, err := reg.GetOrCreate("Person")
+	if err != nil {
+		t.Fatalf("zero-value GetOrCreate: %v", err)
+	}
+	if tok != 1 {
+		t.Fatalf("zero-value first token = %d, want 1", tok)
+	}
+	if got := reg.Resolve(tok); got != "Person" {
+		t.Fatalf("zero-value Resolve(%d) = %q, want Person", tok, got)
+	}
+	if names := reg.ResolveAll([]uint16{0, tok, 99}); len(names) != 3 || names[0] != "" || names[1] != "Person" || names[2] != "" {
+		t.Fatalf("zero-value ResolveAll = %v, want [ Person ] with out-of-range empty", names)
+	}
+	if got := reg.Len(); got != 1 {
+		t.Fatalf("zero-value Len after allocation = %d, want 1", got)
+	}
+}
+
+func TestLabelRegistryZeroValueImportNames(t *testing.T) {
+	t.Parallel()
+
+	var reg LabelRegistry
+	if err := reg.ImportNames([]string{"", "Person", "Movie"}); err != nil {
+		t.Fatalf("zero-value ImportNames: %v", err)
+	}
+	if got := reg.Len(); got != 2 {
+		t.Fatalf("Len after zero-value import = %d, want 2", got)
+	}
+	if got := reg.Resolve(2); got != "Movie" {
+		t.Fatalf("Resolve(2) after zero-value import = %q, want Movie", got)
+	}
+	tok, err := reg.GetOrCreate("Book")
+	if err != nil {
+		t.Fatalf("GetOrCreate after zero-value import: %v", err)
+	}
+	if tok != 3 {
+		t.Fatalf("token after zero-value import = %d, want 3", tok)
+	}
+}
+
 func TestLabelRegistryCapacityError(t *testing.T) {
 	t.Parallel()
 
@@ -124,6 +181,57 @@ func TestLabelRegistryResolveAll(t *testing.T) {
 	}
 	if labels[0] != "Person" || labels[1] != "Actor" {
 		t.Errorf("ResolveAll = %v, want [Person Actor]", labels)
+	}
+}
+
+func TestLabelRegistryRollbackNames(t *testing.T) {
+	t.Parallel()
+
+	reg := NewLabelRegistry()
+	if _, err := reg.GetOrCreate("Person"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := reg.ExportNames()
+	if _, err := reg.GetOrCreate("Transient"); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := reg.RollbackNames(snapshot, "Transient")
+	if err != nil {
+		t.Fatalf("RollbackNames: %v", err)
+	}
+	if !ok {
+		t.Fatal("RollbackNames returned false for exact suffix")
+	}
+	if _, exists := reg.Lookup("Transient"); exists {
+		t.Fatal("Transient still exists after rollback")
+	}
+	if tok, exists := reg.Lookup("Person"); !exists || tok != 1 {
+		t.Fatalf("Person lookup after rollback = (%d, %v), want (1, true)", tok, exists)
+	}
+}
+
+func TestLabelRegistryRollbackNamesRefusesChangedRegistry(t *testing.T) {
+	t.Parallel()
+
+	reg := NewLabelRegistry()
+	if _, err := reg.GetOrCreate("Person"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := reg.ExportNames()
+	if _, err := reg.GetOrCreate("Other"); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := reg.RollbackNames(snapshot, "Transient")
+	if err != nil {
+		t.Fatalf("RollbackNames: %v", err)
+	}
+	if ok {
+		t.Fatal("RollbackNames returned true for mismatched suffix")
+	}
+	if _, exists := reg.Lookup("Other"); !exists {
+		t.Fatal("Other was removed despite mismatched rollback suffix")
 	}
 }
 

@@ -187,8 +187,10 @@ func TestDeepCopyReflectFallbackIsIndependent(t *testing.T) {
 	t.Run("exotic_slice_int32", func(t *testing.T) {
 		t.Parallel()
 
-		var ps PropertySlice
-		_ = ps.Set("scores", []int32{1, 2, 3})
+		// PropertySlice.Set rejects []int32 because hash/wire only support
+		// the documented slice shapes. Construct directly to exercise the
+		// reflect fallback used for legacy/bypassed PropertySlice values.
+		ps := PropertySlice{{Key: "scores", Value: []int32{1, 2, 3}}}
 
 		cp := ps.DeepCopy()
 		copiedVal, _ := cp.Get("scores")

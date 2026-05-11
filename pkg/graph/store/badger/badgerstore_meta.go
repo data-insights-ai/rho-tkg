@@ -12,6 +12,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
 // getCounter reads a big-endian int64 counter from the given key within txn.
@@ -30,6 +31,9 @@ func getCounter(txn *badgerv4.Txn, key []byte) (int64, error) {
 			return fmt.Errorf("graph: counter value size %d, want 8", len(v))
 		}
 		val = int64(binary.BigEndian.Uint64(v)) // #nosec G115 — inverse of counter encoding
+		if val < 0 {
+			return fmt.Errorf("%w: counter value must be non-negative, got %d", ErrInvalidStoreMutation, val)
+		}
 		return nil
 	})
 	return val, err
@@ -37,16 +41,28 @@ func getCounter(txn *badgerv4.Txn, key []byte) (int64, error) {
 
 // NodeCount returns the number of stored nodes. O(1).
 func (bs *Store) NodeCount() (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
 	return int(bs.nodeCount.Load()), nil // #nosec G115 — count is always non-negative and within int range
 }
 
 // RelationshipCount returns the number of stored relationships. O(1).
 func (bs *Store) RelationshipCount() (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
 	return int(bs.relCount.Load()), nil // #nosec G115 — count is always non-negative and within int range
 }
 
 // NodeCountByLabel returns the number of nodes with the given label token. O(1).
 func (bs *Store) NodeCountByLabel(token uint16) (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return 0, err
+	}
 	if v, ok := bs.labelCounts.Load(token); ok {
 		return int(v.(*atomic.Int64).Load()), nil // #nosec G115 — count is always non-negative and within int range
 	}
@@ -55,6 +71,12 @@ func (bs *Store) NodeCountByLabel(token uint16) (int, error) {
 
 // RelCountByType returns the number of relationships with the given type token. O(1).
 func (bs *Store) RelCountByType(token uint16) (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return 0, err
+	}
 	if v, ok := bs.typeCounts.Load(token); ok {
 		return int(v.(*atomic.Int64).Load()), nil // #nosec G115 — count is always non-negative and within int range
 	}
@@ -84,19 +106,39 @@ func (bs *Store) getOrCreateTypeCounter(token uint16) *atomic.Int64 {
 // NodeCacheHits returns the total number of node cache hits since store creation.
 // Implements StoreStats. Both indexpkg.CacheHit and indexpkg.CacheDeleted (tombstone) results count
 // as hits, because both avoid a Badger read.
-func (bs *Store) NodeCacheHits() int64 { return bs.nodeCache.Hits() }
+func (bs *Store) NodeCacheHits() int64 {
+	if bs.dbClosed.Load() {
+		return 0
+	}
+	return bs.nodeCache.Hits()
+}
 
 // NodeCacheMisses returns the total number of node cache misses since store creation.
 // Implements StoreStats.
-func (bs *Store) NodeCacheMisses() int64 { return bs.nodeCache.Misses() }
+func (bs *Store) NodeCacheMisses() int64 {
+	if bs.dbClosed.Load() {
+		return 0
+	}
+	return bs.nodeCache.Misses()
+}
 
 // RelCacheHits returns the total number of relationship cache hits since store creation.
 // Implements StoreStats.
-func (bs *Store) RelCacheHits() int64 { return bs.relCache.Hits() }
+func (bs *Store) RelCacheHits() int64 {
+	if bs.dbClosed.Load() {
+		return 0
+	}
+	return bs.relCache.Hits()
+}
 
 // RelCacheMisses returns the total number of relationship cache misses since store creation.
 // Implements StoreStats.
-func (bs *Store) RelCacheMisses() int64 { return bs.relCache.Misses() }
+func (bs *Store) RelCacheMisses() int64 {
+	if bs.dbClosed.Load() {
+		return 0
+	}
+	return bs.relCache.Misses()
+}
 
 // SaveRegistries persists both the label and relationship-type registries
 // atomically in a single Badger transaction. Either both writes commit or
@@ -105,6 +147,15 @@ func (bs *Store) RelCacheMisses() int64 { return bs.relCache.Misses() }
 // so that lifecycle code can persist registries through a single uniform
 // interface regardless of the underlying Store implementation.
 func (bs *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if labelReg == nil {
+		return errNilLabelRegistry()
+	}
+	if relTypeReg == nil {
+		return errNilRelTypeRegistry()
+	}
 	labelNames := labelReg.ExportNames()
 	labelData, err := msgpack.Marshal(labelNames)
 	if err != nil {
@@ -125,6 +176,12 @@ func (bs *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 
 // SaveLabelRegistry persists the label registry to the Badger store.
 func (bs *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if reg == nil {
+		return errNilLabelRegistry()
+	}
 	names := reg.ExportNames()
 	data, err := msgpack.Marshal(names)
 	if err != nil {
@@ -138,6 +195,12 @@ func (bs *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 // LoadLabelRegistry loads the label registry from the Badger store.
 // Returns false if no saved data exists (fresh database).
 func (bs *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return false, err
+	}
+	if reg == nil {
+		return false, errNilLabelRegistry()
+	}
 	var names []string
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("label_tokens"))
@@ -162,6 +225,12 @@ func (bs *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error)
 
 // SaveRelTypeRegistry persists the relationship type registry to the Badger store.
 func (bs *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if reg == nil {
+		return errNilRelTypeRegistry()
+	}
 	names := reg.ExportNames()
 	data, err := msgpack.Marshal(names)
 	if err != nil {
@@ -175,6 +244,12 @@ func (bs *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 // LoadRelTypeRegistry loads the relationship type registry from the Badger store.
 // Returns false if no saved data exists (fresh database).
 func (bs *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return false, err
+	}
+	if reg == nil {
+		return false, errNilRelTypeRegistry()
+	}
 	var names []string
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.MetaKey("reltype_tokens"))

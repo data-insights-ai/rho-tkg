@@ -74,6 +74,38 @@ func TestCAS_NilExpected_Absent(t *testing.T) {
 	}
 }
 
+func TestCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{
+		Store:      memory.New(),
+		Validation: ValidationLimits{MaxPropertiesPerEntity: 1},
+	})
+	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"a": 1})
+	id := n.ID()
+
+	ok, err := g.Nodes.CompareAndSetProperty(id, "b", nil, 2)
+	if err == nil {
+		t.Fatal("expected property count limit error")
+	}
+	if ok {
+		t.Fatal("CAS should not report success when final property count exceeds limit")
+	}
+	if !errors.Is(err, ErrTooManyProperties) {
+		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+
+	got, getErr := g.Nodes.Get(id)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if got.PropertyCount() != 1 {
+		t.Fatalf("property count = %d, want 1", got.PropertyCount())
+	}
+	if _, found := got.GetProperty("b"); found {
+		t.Fatal("overflow property should not be persisted")
+	}
+}
+
 func TestCAS_NilExpected_Present(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})

@@ -213,6 +213,20 @@ func TestRecurrence_Validate_Errors(t *testing.T) {
 			},
 		},
 		{
+			"DayStart fractional millisecond",
+			types.RecurrencePattern{
+				Frequency: types.RecurrenceDaily, Days: types.MaskAllDays,
+				DayStart: 9*time.Hour + 500*time.Microsecond, DayEnd: 17 * time.Hour,
+			},
+		},
+		{
+			"DayEnd fractional millisecond",
+			types.RecurrencePattern{
+				Frequency: types.RecurrenceDaily, Days: types.MaskAllDays,
+				DayStart: 9 * time.Hour, DayEnd: 17*time.Hour + 500*time.Microsecond,
+			},
+		},
+		{
 			"Daily with no days",
 			types.RecurrencePattern{
 				Frequency: types.RecurrenceDaily, Days: 0,
@@ -220,9 +234,23 @@ func TestRecurrence_Validate_Errors(t *testing.T) {
 			},
 		},
 		{
+			"Daily with unsupported day bit",
+			types.RecurrencePattern{
+				Frequency: types.RecurrenceDaily, Days: types.MaskMonday | types.WeekdayMask(1<<7),
+				DayStart: 9 * time.Hour, DayEnd: 17 * time.Hour,
+			},
+		},
+		{
 			"Monthly with invalid DayOfMonth",
 			types.RecurrencePattern{
 				Frequency: types.RecurrenceMonthly, DayOfMonth: 31,
+				DayStart: 9 * time.Hour, DayEnd: 17 * time.Hour,
+			},
+		},
+		{
+			"Yearly with invalid Month",
+			types.RecurrencePattern{
+				Frequency: types.RecurrenceYearly, Month: time.Month(13), DayOfMonth: 1,
 				DayStart: 9 * time.Hour, DayEnd: 17 * time.Hour,
 			},
 		},
@@ -247,9 +275,7 @@ func TestRecurrence_Expand_InvalidRange(t *testing.T) {
 	}
 	now := types.Instant(time.Now().UnixMilli())
 	_, err := p.Expand(now, now)
-	if err == nil {
-		t.Error("expected error for from == to")
+	if !errors.Is(err, types.ErrInvalidTimeRange) {
+		t.Fatalf("Expand error = %v, want ErrInvalidTimeRange", err)
 	}
-	// errors.Is is not required for custom string errors, but check non-nil.
-	_ = errors.New("checked")
 }

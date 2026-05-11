@@ -111,6 +111,26 @@ func TestNodeInterval_NilTemporal(t *testing.T) {
 	}
 }
 
+func TestNodeInterval_NilNode(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	_, _, err := g.Temporal.NodeInterval(nil)
+	if !errors.Is(err, ErrNilNode) {
+		t.Fatalf("NodeInterval(nil): got err=%v, want ErrNilNode", err)
+	}
+}
+
+func TestRelInterval_NilRelationship(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	_, _, err := g.Temporal.RelInterval(nil)
+	if !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("RelInterval(nil): got err=%v, want ErrNilRelationship", err)
+	}
+}
+
 // --- Relation classification through Graph ---
 
 // makeFiniteNode creates a node via the graph and sets its interval to [from, to).
@@ -122,6 +142,24 @@ func makeFiniteNode(t *testing.T, g *Core, from, to types.Instant) *types.Node {
 	}
 	n.SetTemporal(&types.TemporalMetadata{ValidFrom: from, ValidTo: to})
 	return n
+}
+
+func makeFiniteRel(t *testing.T, g *Core, from, to types.Instant) *types.Relationship {
+	t.Helper()
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: from, ValidTo: to})
+	return r
 }
 
 func TestRelateNodes_AllRelations(t *testing.T) {
@@ -162,6 +200,19 @@ func TestRelateNodes_AllRelations(t *testing.T) {
 				t.Errorf("RelateNodes = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRelateNodes_NilNode(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	n := makeFiniteNode(t, g, 100, 200)
+
+	if _, err := g.Temporal.RelateNodes(nil, n); !errors.Is(err, ErrNilNode) {
+		t.Fatalf("RelateNodes(nil, n): got err=%v, want ErrNilNode", err)
+	}
+	if _, err := g.Temporal.RelateNodes(n, nil); !errors.Is(err, ErrNilNode) {
+		t.Fatalf("RelateNodes(n, nil): got err=%v, want ErrNilNode", err)
 	}
 }
 
@@ -227,6 +278,19 @@ func TestRelateRels_Before(t *testing.T) {
 	}
 	if got != types.Before {
 		t.Errorf("RelateRels = %v, want Before", got)
+	}
+}
+
+func TestRelateRels_NilRelationship(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	r := makeFiniteRel(t, g, 100, 200)
+
+	if _, err := g.Temporal.RelateRels(nil, r); !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("RelateRels(nil, r): got err=%v, want ErrNilRelationship", err)
+	}
+	if _, err := g.Temporal.RelateRels(r, nil); !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("RelateRels(r, nil): got err=%v, want ErrNilRelationship", err)
 	}
 }
 

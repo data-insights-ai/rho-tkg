@@ -6,6 +6,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -66,6 +67,29 @@ func TestBadgerStoreGetRelNotFound(t *testing.T) {
 	_, err := bs.GetRelationship(types.RelID(999))
 	if !errors.Is(err, ErrRelNotFound) {
 		t.Fatalf("expected ErrRelNotFound, got %v", err)
+	}
+}
+
+func TestBadgerStoreGetRelationshipRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 20)
+	corruptRelWireAfterFlush(t, bs, storepkg.RelWire{ID: 500, RelType: 0, StartID: 10, EndID: 20})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetRelationship panicked on semantically corrupt rel wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetRelationship(types.RelID(snowflake.ID(500)))
+	if err == nil {
+		t.Fatal("GetRelationship should return error for semantically corrupt rel wire")
+	}
+	if errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship returned ErrRelNotFound for corrupt rel wire: %v", err)
 	}
 }
 
@@ -216,6 +240,29 @@ func TestBadgerStoreIncomingFiltered(t *testing.T) {
 	}
 	if len(rels) != 1 {
 		t.Fatalf("expected 1 incoming type 2, got %d", len(rels))
+	}
+}
+
+func TestBadgerStoreAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 500, 1, 10, 20)
+
+	missing := types.NodeID(999)
+	if _, err := bs.OutgoingRelationships(missing, 0); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("OutgoingRelationships missing err = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := bs.IncomingRelationships(missing, 0); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("IncomingRelationships missing err = %v, want ErrNodeNotFound", err)
+	}
+	if got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10), missing}, 0); !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
+	}
+	if got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(20), missing}, 0); !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("IncomingRelationshipsForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
 	}
 }
 
@@ -626,6 +673,63 @@ func TestBadgerStoreReplaceRelCacheIsolation(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreReplaceRelationshipRejectsIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestNode(t, bs, 30, 1, nil)
+
+	original := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+	if err := bs.PutRelationship(original); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		rel  *types.Relationship
+	}{
+		{
+			name: "type",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 6, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20))),
+		},
+		{
+			name: "start",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(30)), types.NodeID(snowflake.ID(20))),
+		},
+		{
+			name: "end",
+			rel:  types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(30))),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := bs.ReplaceRelationship(tc.rel); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ReplaceRelationship indexed-field mutation = %v, want ErrInvalidStoreMutation", err)
+			}
+		})
+	}
+
+	current, err := bs.GetRelationship(types.RelID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TypeToken().Value() != 5 || current.StartNodeID() != types.NodeID(snowflake.ID(10)) || current.EndNodeID() != types.NodeID(snowflake.ID(20)) {
+		t.Fatalf("relationship changed after rejected replacement: type=%d start=%d end=%d",
+			current.TypeToken().Value(), current.StartNodeID(), current.EndNodeID())
+	}
+	if rels, _ := bs.RelationshipsByType(6, QueryOpts{}); len(rels) != 0 {
+		t.Fatalf("new type index contains rejected relationship: %d", len(rels))
+	}
+	if rels, _ := bs.OutgoingRelationships(types.NodeID(snowflake.ID(30)), 5); len(rels) != 0 {
+		t.Fatalf("new start adjacency contains rejected relationship: %d", len(rels))
+	}
+	if rels, _ := bs.IncomingRelationships(types.NodeID(snowflake.ID(30)), 5); len(rels) != 0 {
+		t.Fatalf("new end adjacency contains rejected relationship: %d", len(rels))
+	}
+}
+
 // ─── Store: Bulk queries — AllRelationships ───────────────────────────
 
 func TestBadgerStoreAllRelsEmpty(t *testing.T) {
@@ -723,13 +827,9 @@ func TestBadgerStoreGetRelsByIDs(t *testing.T) {
 	putTestRel(t, bs, 101, 7, 10, 20)
 	putTestRel(t, bs, 102, 5, 20, 10)
 
-	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := bs.GetRelationshipsByIDs([]types.RelID{types.RelID(100), types.RelID(999), types.RelID(102)})
-	if err != nil {
-		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	_, err := bs.GetRelationshipsByIDs([]types.RelID{types.RelID(100), types.RelID(999), types.RelID(102)})
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationshipsByIDs() err = %v, want ErrRelNotFound", err)
 	}
 }
 
@@ -1201,11 +1301,8 @@ func TestBadgerStoreOutgoingForNodesNonexistentNode(t *testing.T) {
 
 	// Query a node that was never added.
 	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(999)}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != nil {
-		t.Fatalf("nonexistent node: got %v, want nil", got)
+	if !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("nonexistent node: got %v, %v; want nil, ErrNodeNotFound", got, err)
 	}
 }
 
@@ -1215,10 +1312,25 @@ func TestBadgerStoreIncomingForNodesNonexistentNode(t *testing.T) {
 
 	// Query a node that was never added.
 	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(999)}, 0)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrNodeNotFound) || got != nil {
+		t.Fatalf("nonexistent node: got %v, %v; want nil, ErrNodeNotFound", got, err)
 	}
-	if got != nil {
-		t.Fatalf("nonexistent node: got %v, want nil", got)
+}
+
+func corruptRelWireAfterFlush(t *testing.T, bs *Store, w storepkg.RelWire) {
+	t.Helper()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal corrupt rel wire: %v", err)
+	}
+	id := snowflake.ID(w.ID)
+	bs.relCache.ResetForTest()
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.RelKey(id), data)
+	}); err != nil {
+		t.Fatalf("corrupt rel wire: %v", err)
 	}
 }

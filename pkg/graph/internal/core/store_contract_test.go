@@ -388,7 +388,7 @@ func TestStoreContract_Events(t *testing.T) {
 		bus.Subscribe(func(e eventspkg.Event) {
 			events = append(events, e)
 		})
-		g.Events.SetSync(bus)
+		_ = g.Events.SetSync(bus)
 
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
 		if _, err := g.Nodes.Update(caseNode.ID(), map[string]any{"status": "closed"}); err != nil {

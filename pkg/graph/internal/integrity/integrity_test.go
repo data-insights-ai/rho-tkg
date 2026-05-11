@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -662,21 +663,11 @@ func TestAppendPropertyValue_HashableValue_Deterministic(t *testing.T) {
 }
 
 // unsupportedStub is intentionally NOT registered — it exists only to
-// trigger the panic branch in appendPropertyValue. PropertySlice.Set
-// rejects unregistered types, so we have to bypass it by injecting the
-// value via the slice header directly.
+// trigger the panic branch in appendPropertyValue and prove the public entity
+// setters reject that value before it can reach hashing.
 type unsupportedStub struct{ Z int }
 
-func TestAppendPropertyValue_UnsupportedTypePanics(t *testing.T) {
-	// Build a PropertySlice manually to bypass validation. This is the only
-	// path that lets an unsupported value reach appendPropertyValue's panic
-	// branch — the public Set / NewPropertySlice paths reject it earlier.
-	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
-	bad := types.PropertySlice{
-		{Key: "weird", Value: unsupportedStub{Z: 1}},
-	}
-	n.SetProperties(bad)
-
+func TestAppendPropertyValue_UnsupportedTypePanicsOnlyOnBrokenInvariant(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -690,6 +681,17 @@ func TestAppendPropertyValue_UnsupportedTypePanics(t *testing.T) {
 			t.Fatalf("panic message missing 'unsupported type': %q", msg)
 		}
 	}()
+	_ = appendPropertyValue(nil, unsupportedStub{Z: 1})
+}
+
+func TestComputeNodeHash_PublicSetPropertiesRejectsUnsupportedType(t *testing.T) {
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
+	bad := types.PropertySlice{
+		{Key: "weird", Value: unsupportedStub{Z: 1}},
+	}
+	if err := n.SetProperties(bad); !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("SetProperties error = %v, want ErrUnsupportedValueType", err)
+	}
 	_ = ComputeNodeHash(n, nil)
 }
 

@@ -38,6 +38,7 @@ import (
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- Graph.Nodes.AddLabel ---
@@ -111,11 +112,48 @@ func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 	}
 }
 
+func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
+
+	err := g.Nodes.AddLabel(n.ID(), "Rejected")
+	if !errors.Is(err, ErrTooManyLabels) {
+		t.Fatalf("AddLabel error = %v, want ErrTooManyLabels", err)
+	}
+	if _, ok := g.Resolve.LookupLabel("Rejected"); ok {
+		t.Fatal("rejected AddLabel registered label token")
+	}
+}
+
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 	g, _ := New(Config{})
 	err := g.Nodes.AddLabel(999, "Person")
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestNodeLabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
+	g, _ := New(Config{})
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "add", run: func() error {
+			return g.Nodes.AddLabel(types.NodeID(999), " ")
+		}},
+		{name: "remove", run: func() error {
+			return g.Nodes.RemoveLabel(types.NodeID(999), " ")
+		}},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, ErrEmptyName) {
+				t.Fatalf("err = %v, want ErrEmptyName", err)
+			}
+		})
 	}
 }
 
@@ -199,7 +237,7 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	g, _ := New(Config{})
 	bus := eventspkg.NewEventBus()
-	g.Events.SetSync(bus)
+	_ = g.Events.SetSync(bus)
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	id := n.ID()
@@ -264,6 +302,23 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 	}
 }
 
+func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testing.T) {
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
+
+	tx, _ := g.BeginTx()
+	err := tx.AddNodeLabel(n.ID(), "Rejected")
+	if !errors.Is(err, ErrTooManyLabels) {
+		t.Fatalf("tx.AddNodeLabel error = %v, want ErrTooManyLabels", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if _, ok := g.Resolve.LookupLabel("Rejected"); ok {
+		t.Fatal("rejected tx.AddNodeLabel registered label token after commit")
+	}
+}
+
 func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
@@ -283,6 +338,45 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	for _, nd := range nodes {
 		if nd.ID() == id {
 			t.Fatal("label index still contains node under B after rollback")
+		}
+	}
+}
+
+func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.AddNodeLabel(id, "B"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel(B): %v", err)
+	}
+	if err := tx.AddNodeLabel(id, "C"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel(C): %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	updated, _ := g.Nodes.Get(id)
+	if !g.Nodes.HasLabel(updated, "A") {
+		t.Fatal("label A should remain after Rollback")
+	}
+	if g.Nodes.HasLabel(updated, "B") || g.Nodes.HasLabel(updated, "C") {
+		t.Fatalf("labels after Rollback = %#v; want only A", updated.AllLabelTokens())
+	}
+
+	for _, label := range []string{"B", "C"} {
+		nodes, err := g.Nodes.ByLabel(label, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("ByLabel(%q): %v", label, err)
+		}
+		for _, nd := range nodes {
+			if nd.ID() == id {
+				t.Fatalf("label index still contains node under %s after rollback", label)
+			}
 		}
 	}
 }
@@ -311,6 +405,197 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("label index missing node under B after rollback")
+	}
+}
+
+func TestGraphTx_RemoveNodeLabel_RollbackRestoresMultipleLabelRemoves(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.RemoveNodeLabel(B): %v", err)
+	}
+	if err := tx.RemoveNodeLabel(id, "C"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.RemoveNodeLabel(C): %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	updated, _ := g.Nodes.Get(id)
+	for _, label := range []string{"A", "B", "C"} {
+		if !g.Nodes.HasLabel(updated, label) {
+			t.Fatalf("label %s should be restored after Rollback", label)
+		}
+		nodes, err := g.Nodes.ByLabel(label, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("ByLabel(%q): %v", label, err)
+		}
+		found := false
+		for _, nd := range nodes {
+			if nd.ID() == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("label index missing node under %s after rollback", label)
+		}
+	}
+}
+
+func TestGraphTx_LabelRollbackRestoresMixedLabelOrder(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.RemoveNodeLabel(B): %v", err)
+	}
+	if err := tx.AddNodeLabel(id, "D"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel(D): %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	updated, _ := g.Nodes.Get(id)
+	for _, label := range []string{"A", "B", "C"} {
+		if !g.Nodes.HasLabel(updated, label) {
+			t.Fatalf("label %s should be restored after Rollback", label)
+		}
+	}
+	if g.Nodes.HasLabel(updated, "D") {
+		t.Fatal("label D should be absent after Rollback")
+	}
+
+	for _, tc := range []struct {
+		label string
+		want  bool
+	}{
+		{label: "B", want: true},
+		{label: "D", want: false},
+	} {
+		nodes, err := g.Nodes.ByLabel(tc.label, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("ByLabel(%q): %v", tc.label, err)
+		}
+		found := false
+		for _, nd := range nodes {
+			if nd.ID() == id {
+				found = true
+				break
+			}
+		}
+		if found != tc.want {
+			t.Fatalf("ByLabel(%q) contains node = %v, want %v", tc.label, found, tc.want)
+		}
+	}
+}
+
+func TestGraphTx_LabelRollbackRestoresPrimaryLabelOrder(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.RemoveNodeLabel(id, "A"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.RemoveNodeLabel(A): %v", err)
+	}
+	if err := tx.AddNodeLabel(id, "D"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel(D): %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	updated, _ := g.Nodes.Get(id)
+	for _, label := range []string{"A", "B", "C"} {
+		if !g.Nodes.HasLabel(updated, label) {
+			t.Fatalf("label %s should be restored after Rollback", label)
+		}
+	}
+	if got, want := g.Nodes.PrimaryLabel(updated), "A"; got != want {
+		t.Fatalf("primary label after Rollback = %q, want %q", got, want)
+	}
+	if g.Nodes.HasLabel(updated, "D") {
+		t.Fatal("label D should be absent after Rollback")
+	}
+}
+
+func TestGraphTx_LabelRollbackRestoresTieredPrimaryWithoutClassHop(t *testing.T) {
+	g, _ := newTestTieredGraph(t)
+	n, err := g.Nodes.Add([]string{"Case", "User", "Signal"}, nil)
+	if err != nil {
+		t.Fatalf("Nodes.Add: %v", err)
+	}
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.RemoveNodeLabel(id, "Case"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.RemoveNodeLabel(Case): %v", err)
+	}
+	if err := tx.AddNodeLabel(id, "Archived"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel(Archived): %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	updated, err := g.Nodes.Get(id)
+	if err != nil {
+		t.Fatalf("Nodes.Get: %v", err)
+	}
+	if got, want := g.Nodes.PrimaryLabel(updated), "Case"; got != want {
+		t.Fatalf("primary label after Rollback = %q, want %q", got, want)
+	}
+	for _, label := range []string{"Case", "User", "Signal"} {
+		if !g.Nodes.HasLabel(updated, label) {
+			t.Fatalf("label %s should be restored after Rollback", label)
+		}
+	}
+	if g.Nodes.HasLabel(updated, "Archived") {
+		t.Fatal("label Archived should be absent after Rollback")
+	}
+}
+
+func TestGraphTx_LabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
+	g, _ := New(Config{})
+
+	checks := []struct {
+		name string
+		run  func(*GraphTx) error
+	}{
+		{name: "add", run: func(tx *GraphTx) error {
+			return tx.AddNodeLabel(types.NodeID(999), " ")
+		}},
+		{name: "remove", run: func(tx *GraphTx) error {
+			return tx.RemoveNodeLabel(types.NodeID(999), " ")
+		}},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			tx, _ := g.BeginTx()
+			err := check.run(tx)
+			if rbErr := tx.Rollback(); rbErr != nil {
+				t.Fatalf("Rollback: %v", rbErr)
+			}
+			if !errors.Is(err, ErrEmptyName) {
+				t.Fatalf("err = %v, want ErrEmptyName", err)
+			}
+		})
 	}
 }
 

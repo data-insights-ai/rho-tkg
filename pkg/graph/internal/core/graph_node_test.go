@@ -947,12 +947,9 @@ func TestGraphGetNodesByIDs(t *testing.T) {
 		n2.ID(),
 	}
 
-	got, err := g.Nodes.GetByIDs(ids)
-	if err != nil {
-		t.Fatalf("GetNodesByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	_, err := g.Nodes.GetByIDs(ids)
+	if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("GetNodesByIDs() err = %v, want ErrNodeNotFound", err)
 	}
 }
 

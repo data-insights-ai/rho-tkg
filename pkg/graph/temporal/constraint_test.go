@@ -137,6 +137,27 @@ func TestConstraintSet_ForEach_EmptySet(t *testing.T) {
 	}
 }
 
+func TestConstraintSet_ForEach_NilCallbackReturnsInvalidConstraint(t *testing.T) {
+	t.Parallel()
+
+	checks := []struct {
+		name string
+		set  ConstraintSet
+	}{
+		{name: "empty", set: NewConstraintSet()},
+		{name: "non-empty", set: NewConstraintSet(TemporalConstraint{Kind: ConstraintRelWithinEndpoints})},
+	}
+	for _, check := range checks {
+		err := check.set.ForEach(nil)
+		if !errors.Is(err, ErrInvalidTemporalConstraint) {
+			t.Fatalf("%s ForEach(nil) = %v, want ErrInvalidTemporalConstraint", check.name, err)
+		}
+		if !errors.Is(err, ErrTemporalConstraint) {
+			t.Fatalf("%s ForEach(nil) = %v, want ErrTemporalConstraint", check.name, err)
+		}
+	}
+}
+
 // TestConstraintSet_ForEach_StopsOnError verifies the documented short-circuit
 // behaviour: ForEach returns the first non-nil error and stops iteration.
 func TestConstraintSet_ForEach_StopsOnError(t *testing.T) {
@@ -208,7 +229,7 @@ func TestConstraintRelWithinEndpoints_Value(t *testing.T) {
 	}
 }
 
-// TestSentinelErrors_Distinct verifies that all 7 sentinel errors are distinct
+// TestSentinelErrors_Distinct verifies that all sentinel errors are distinct
 // values (no accidental aliasing) and that errors.Is matches each one against
 // itself.
 func TestSentinelErrors_Distinct(t *testing.T) {
@@ -217,6 +238,7 @@ func TestSentinelErrors_Distinct(t *testing.T) {
 		err  error
 	}{
 		{"ErrTemporalConstraint", ErrTemporalConstraint},
+		{"ErrInvalidTemporalConstraint", ErrInvalidTemporalConstraint},
 		{"ErrRelBeforeStartNode", ErrRelBeforeStartNode},
 		{"ErrRelBeforeEndNode", ErrRelBeforeEndNode},
 		{"ErrRelAfterStartNode", ErrRelAfterStartNode},
@@ -249,13 +271,14 @@ func TestSentinelErrors_Distinct(t *testing.T) {
 }
 
 // TestSentinelErrors_Wrapping verifies (per Testing Rule 4) that each sentinel
-// error can be wrapped and recovered via errors.Is. We cover all 7 sentinels.
+// error can be wrapped and recovered via errors.Is.
 func TestSentinelErrors_Wrapping(t *testing.T) {
 	cases := []struct {
 		name string
 		err  error
 	}{
 		{"ErrTemporalConstraint", ErrTemporalConstraint},
+		{"ErrInvalidTemporalConstraint", ErrInvalidTemporalConstraint},
 		{"ErrRelBeforeStartNode", ErrRelBeforeStartNode},
 		{"ErrRelBeforeEndNode", ErrRelBeforeEndNode},
 		{"ErrRelAfterStartNode", ErrRelAfterStartNode},

@@ -38,11 +38,9 @@ type Node struct {
 }
 
 // NewNode creates a Node with the given typed node ID, primary label token,
-// and optional extra label tokens.
+// and optional extra label tokens. Token 0 is reserved; callers that pass it
+// receive a node that Store write validation rejects instead of a panic.
 func NewNode(id NodeID, primaryLabel uint16, extraLabels []uint16) *Node {
-	if primaryLabel == 0 {
-		panic("types: primary label token 0 is reserved")
-	}
 	n := &Node{
 		id:           id,
 		primaryLabel: labelToken(primaryLabel),
@@ -50,9 +48,6 @@ func NewNode(id NodeID, primaryLabel uint16, extraLabels []uint16) *Node {
 	if len(extraLabels) > 0 {
 		seen := make(map[uint16]struct{}, len(extraLabels))
 		for _, t := range extraLabels {
-			if t == 0 {
-				panic("types: extra label token 0 is reserved")
-			}
 			if t == primaryLabel {
 				continue // primary already tracked separately
 			}
@@ -68,23 +63,35 @@ func NewNode(id NodeID, primaryLabel uint16, extraLabels []uint16) *Node {
 
 // ID returns the node's typed ID.
 func (n *Node) ID() NodeID {
+	if n == nil {
+		return 0
+	}
 	return n.id
 }
 
 // InternalID is the legacy accessor kept for migration; prefer ID().
 // Will be removed once all callsites have switched.
 func (n *Node) InternalID() NodeID {
+	if n == nil {
+		return 0
+	}
 	return n.id
 }
 
 // PrimaryLabelToken returns the primary label token.
 func (n *Node) PrimaryLabelToken() labelToken {
+	if n == nil {
+		return 0
+	}
 	return n.primaryLabel
 }
 
 // ExtraLabelTokens returns the extra label tokens (all labels except primary).
 // Returns nil for single-label nodes. Always returns a copy.
 func (n *Node) ExtraLabelTokens() []labelToken {
+	if n == nil {
+		return nil
+	}
 	if len(n.extraLabels) == 0 {
 		return nil
 	}
@@ -96,6 +103,9 @@ func (n *Node) ExtraLabelTokens() []labelToken {
 // AllLabelTokens returns all label tokens (primary first, then extras).
 // Always returns a new slice.
 func (n *Node) AllLabelTokens() []labelToken {
+	if n == nil {
+		return nil
+	}
 	out := make([]labelToken, 0, 1+len(n.extraLabels))
 	out = append(out, n.primaryLabel)
 	out = append(out, n.extraLabels...)
@@ -105,7 +115,7 @@ func (n *Node) AllLabelTokens() []labelToken {
 // HasLabelToken returns true if this node has the given label token.
 // Token 0 always returns false — it is reserved as the zero/invalid value.
 func (n *Node) HasLabelToken(tok labelToken) bool {
-	if tok == 0 {
+	if n == nil || tok == 0 {
 		return false
 	}
 	if n.primaryLabel == tok {
@@ -123,7 +133,7 @@ func (n *Node) HasLabelToken(tok labelToken) bool {
 // uint16 value. This is the zero-allocation path for the graph layer, which
 // holds tokens as uint16. Token 0 always returns false.
 func (n *Node) HasLabelTokenRaw(tok uint16) bool {
-	if tok == 0 {
+	if n == nil || tok == 0 {
 		return false
 	}
 	if uint16(n.primaryLabel) == tok {
@@ -139,23 +149,41 @@ func (n *Node) HasLabelTokenRaw(tok uint16) bool {
 
 // LabelTokenCount returns the total number of label tokens.
 func (n *Node) LabelTokenCount() int {
+	if n == nil {
+		return 0
+	}
 	return 1 + len(n.extraLabels)
 }
 
-// SetProperties replaces the node's property slice with a pre-built one.
-// Use NewPropertySlice to build a validated, sorted slice in O(N log N).
-func (n *Node) SetProperties(ps PropertySlice) {
-	n.properties = ps
+// SetProperties replaces the node's property slice.
+// The input is validated, canonicalized by key, and deep-copied before being
+// installed. If a key appears more than once, the last value wins.
+func (n *Node) SetProperties(ps PropertySlice) error {
+	if n == nil {
+		return ErrNilNode
+	}
+	canonical, err := canonicalPropertySlice(ps)
+	if err != nil {
+		return err
+	}
+	n.properties = canonical
+	return nil
 }
 
 // SetProperty sets a property on the node.
 // Returns an error if the key has the reserved "tkg_" prefix.
 func (n *Node) SetProperty(key string, value any) error {
+	if n == nil {
+		return ErrNilNode
+	}
 	return n.properties.Set(key, value)
 }
 
 // GetProperty returns the value for the given property key and whether it exists.
 func (n *Node) GetProperty(key string) (any, bool) {
+	if n == nil {
+		return nil, false
+	}
 	return n.properties.Get(key)
 }
 
@@ -163,31 +191,49 @@ func (n *Node) GetProperty(key string) (any, bool) {
 // Returns true if the key was found and removed, false if it was not present.
 // Returns an error if the key has the reserved "tkg_" prefix.
 func (n *Node) DeleteProperty(key string) (bool, error) {
+	if n == nil {
+		return false, ErrNilNode
+	}
 	return n.properties.Delete(key)
 }
 
 // PropertyCount returns the number of properties on the node without copying.
 func (n *Node) PropertyCount() int {
+	if n == nil {
+		return 0
+	}
 	return n.properties.Len()
 }
 
 // Properties returns a copy of the node's property slice.
 func (n *Node) Properties() PropertySlice {
+	if n == nil {
+		return nil
+	}
 	return n.properties.DeepCopy()
 }
 
 // PropertiesMap returns the node's properties as a map.
 func (n *Node) PropertiesMap() map[string]any {
+	if n == nil {
+		return nil
+	}
 	return n.properties.ToMap()
 }
 
 // Version returns the node's version number (default 0).
 func (n *Node) Version() uint32 {
+	if n == nil {
+		return 0
+	}
 	return n.version
 }
 
 // SetVersion sets the node's version number.
 func (n *Node) SetVersion(v uint32) {
+	if n == nil {
+		return
+	}
 	n.version = v
 }
 
@@ -196,11 +242,17 @@ func (n *Node) SetVersion(v uint32) {
 // access, so no defensive copy is made. Callers outside the graph layer should
 // treat it as read-only.
 func (n *Node) Temporal() *TemporalMetadata {
+	if n == nil {
+		return nil
+	}
 	return n.temporal
 }
 
 // SetTemporal sets the node's temporal metadata.
 func (n *Node) SetTemporal(tm *TemporalMetadata) {
+	if n == nil {
+		return
+	}
 	n.temporal = tm
 }
 
@@ -209,11 +261,17 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 // access, so no defensive copy is made. Callers outside the graph layer should
 // treat it as read-only.
 func (n *Node) Integrity() *NodeIntegrity {
+	if n == nil {
+		return nil
+	}
 	return n.integrity
 }
 
 // SetIntegrity sets the node's integrity metadata.
 func (n *Node) SetIntegrity(ig *NodeIntegrity) {
+	if n == nil {
+		return
+	}
 	n.integrity = ig
 }
 
@@ -221,7 +279,7 @@ func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 // Returns false if tok == 0 or the token is already present (primary or extra);
 // returns true if the label was added.
 func (n *Node) AddLabelTokenRaw(tok uint16) bool {
-	if tok == 0 {
+	if n == nil || tok == 0 {
 		return false
 	}
 	if uint16(n.primaryLabel) == tok {
@@ -239,10 +297,9 @@ func (n *Node) AddLabelTokenRaw(tok uint16) bool {
 // RemoveLabelTokenRaw removes the label with the given raw uint16 token from this node.
 // Returns false if tok == 0 or the token is not present on this node.
 // If the removed label is the primary label, the first extra label is promoted to primary.
-// Callers must ensure LabelTokenCount() > 1 before calling — removing the last label
-// is not allowed and the caller is responsible for enforcing this invariant.
+// Removing the last label is refused and returns false.
 func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
-	if tok == 0 {
+	if n == nil || tok == 0 {
 		return false
 	}
 	// Case 1: removing an extra label.
@@ -260,7 +317,7 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 	}
 	// Case 2: removing the primary label — promote first extra to primary.
 	if len(n.extraLabels) == 0 {
-		return false // would leave node without a label; caller should prevent this
+		return false
 	}
 	n.primaryLabel = n.extraLabels[0]
 	if len(n.extraLabels) == 1 {
@@ -275,6 +332,9 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 // All nested reference types (extraLabels, properties, temporal, integrity)
 // are deep-copied so mutations to the copy never affect the original.
 func (n *Node) DeepCopy() *Node {
+	if n == nil {
+		return nil
+	}
 	cp := &Node{
 		id:           n.id,
 		primaryLabel: n.primaryLabel,

@@ -4,7 +4,8 @@
 package tiered
 
 import (
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	"fmt"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/ontology"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	badger "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
@@ -85,17 +86,34 @@ func NewBadgerStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 
 // Sentinel error aliases.
 var (
-	ErrNodeExists            = storecontract.ErrNodeExists
-	ErrNodeNotFound          = storecontract.ErrNodeNotFound
-	ErrRelExists             = storecontract.ErrRelExists
-	ErrRelNotFound           = storecontract.ErrRelNotFound
-	ErrVersionNotFound       = storecontract.ErrVersionNotFound
-	ErrIndexExists           = storecontract.ErrIndexExists
-	ErrIndexNotFound         = storecontract.ErrIndexNotFound
-	ErrTemporalIndexExists   = storecontract.ErrTemporalIndexExists
-	ErrTemporalIndexNotFound = storecontract.ErrTemporalIndexNotFound
-	ErrStoreClosed           = storecontract.ErrStoreClosed
-	ErrVectorIndexExists     = indexpkg.ErrVectorIndexExists
-	ErrVectorIndexNotFound   = indexpkg.ErrVectorIndexNotFound
-	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
+	ErrNodeExists                 = storecontract.ErrNodeExists
+	ErrNodeNotFound               = storecontract.ErrNodeNotFound
+	ErrRelExists                  = storecontract.ErrRelExists
+	ErrRelNotFound                = storecontract.ErrRelNotFound
+	ErrVersionNotFound            = storecontract.ErrVersionNotFound
+	ErrIndexExists                = storecontract.ErrIndexExists
+	ErrIndexNotFound              = storecontract.ErrIndexNotFound
+	ErrTemporalIndexExists        = storecontract.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound      = storecontract.ErrTemporalIndexNotFound
+	ErrInvalidTemporalIndexConfig = storecontract.ErrInvalidTemporalIndexConfig
+	ErrStoreClosed                = storecontract.ErrStoreClosed
+	ErrVectorIndexExists          = storecontract.ErrVectorIndexExists
+	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
+	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
+	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidShardDepth          = storecontract.ErrInvalidShardDepth
+	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
+	ErrNilStore                   = storecontract.ErrNilStore
 )
+
+func errNilIterationCallback() error {
+	return fmt.Errorf("%w: nil iteration callback", ErrInvalidStoreMutation)
+}
+
+func errNilLabelRegistry() error {
+	return fmt.Errorf("%w: nil label registry", ErrInvalidStoreMutation)
+}
+
+func errNilRelTypeRegistry() error {
+	return fmt.Errorf("%w: nil relationship type registry", ErrInvalidStoreMutation)
+}

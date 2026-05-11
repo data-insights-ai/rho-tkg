@@ -28,12 +28,12 @@ func (l *captureLogger) Infof(string, ...any)             {}
 func (l *captureLogger) Debugf(string, ...any)            {}
 func (l *captureLogger) Warningf(format string, _ ...any) { l.warnings.Add(1) }
 
-// dropNodeKey opens a raw Badger DB at the given directory and deletes the
+// corruptNodeKey opens a raw Badger DB at the given directory and corrupts the
 // 0x01/<id> row that holds the node entity. The 0x03/<labelToken>/<id>
-// label-index row is left intact so loadIndexes still finds the node when
-// rebuilding labelIdx, then fails to load the entity, and must report the
-// skip via IndexRebuildStats.
-func dropNodeKey(t *testing.T, dir string, id int64) {
+// label-index row is left intact so loadIndexes preserves the label candidate
+// for this corrupt entity, then fails to load it during secondary-index rebuild
+// and must report the skip via IndexRebuildStats.
+func corruptNodeKey(t *testing.T, dir string, id int64) {
 	t.Helper()
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
 	if err != nil {
@@ -41,9 +41,9 @@ func dropNodeKey(t *testing.T, dir string, id int64) {
 	}
 	defer db.Close()
 	if err := db.Update(func(txn *badgerv4.Txn) error {
-		return txn.Delete(storepkg.NodeKey(snowflake.ID(id)))
+		return txn.Set(storepkg.NodeKey(snowflake.ID(id)), []byte("corrupt-node"))
 	}); err != nil {
-		t.Fatalf("delete node row: %v", err)
+		t.Fatalf("corrupt node row: %v", err)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged(t *testing.T)
 		t.Fatalf("close 1: %v", err)
 	}
 
-	dropNodeKey(t, dir, nodeID)
+	corruptNodeKey(t, dir, nodeID)
 
 	logger := &captureLogger{}
 	bs2, err := New(Config{Dir: dir, Logger: logger})
@@ -116,7 +116,7 @@ func TestIndexRebuildStats_TemporalIndex_SkipsAreReportedAndLogged(t *testing.T)
 		t.Fatalf("close 1: %v", err)
 	}
 
-	dropNodeKey(t, dir, nodeID)
+	corruptNodeKey(t, dir, nodeID)
 
 	logger := &captureLogger{}
 	bs2, err := New(Config{Dir: dir, Logger: logger})
@@ -201,7 +201,7 @@ func TestIndexRebuildStats_LoggerNil_NoPanic(t *testing.T) {
 		t.Fatalf("close 1: %v", err)
 	}
 
-	dropNodeKey(t, dir, nodeID)
+	corruptNodeKey(t, dir, nodeID)
 
 	bs2, err := New(Config{Dir: dir}) // no Logger
 	if err != nil {

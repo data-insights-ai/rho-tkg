@@ -5,13 +5,20 @@ import (
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // --- History reads ---
 
 func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
-	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	shard, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +33,7 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
 	// only migrates the current entity, so pre-archive history versions remain
 	// on refShard and must be discovered via the fan-out below.
-	if shard.HasNodeID(nid.SnowflakeID()) && shard != ts.refArchive.Load() {
+	if shard.HasNodeID(nid.SnowflakeID()) && !isArchive {
 		return nil, ErrVersionNotFound
 	}
 
@@ -52,7 +59,13 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 }
 
 func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
-	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +81,7 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	// Skip the optimisation when the live entity sits on refArchive: ArchiveNode
 	// only migrates the current entity, so pre-archive history versions remain
 	// on refShard and must be discovered via the fan-out below.
-	if store.HasNodeID(nid.SnowflakeID()) && store != ts.refArchive.Load() {
+	if store.HasNodeID(nid.SnowflakeID()) && !isArchive {
 		return nil, nil
 	}
 
@@ -89,7 +102,6 @@ func (ts *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	}
 	return found, nil
 }
-
 
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history
 // entries across the reference shard, the reference archive (when present),
@@ -149,6 +161,12 @@ func (ts *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 // shard slices in RAM simultaneously and dedup'd via a final map keyed on
 // the entire population — both transients have been eliminated.
 func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidatePagination(types.EntityID(after), limit); err != nil {
+		return nil, err
+	}
 	seen := make(map[snowflake.ID]struct{})
 	var raw []snowflake.ID
 
@@ -211,7 +229,6 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	return rawToNodeIDs(raw), nil
 }
 
-
 // forEachHistoryShard probes shards that may own history after the live entity
 // index has been deleted. Reference entity history lives on the reference
 // shard even when timestamp fallback selects an event shard; cross-shard
@@ -225,6 +242,9 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 // history once the start-node's shard ages out. The lazy-open cost is paid
 // once per cold shard per process; subsequent probes are cheap Badger Seeks.
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if ts.refShard != skip {
 		stop, err := fn(ts.refShard)
 		if err != nil || stop {
@@ -277,43 +297,98 @@ func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (b
 }
 
 func (ts *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
-	stopped := false
-	if err := ts.refShard.ForEachNodeHistoryID(func(id types.NodeID) bool {
-		if !fn(id) {
-			stopped = true
-			return false
-		}
-		return true
-	}); err != nil {
+	return ts.ForEachNodeHistoryIDByDepth(DepthAll, fn)
+}
+
+func (ts *Store) ForEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error {
+	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	if stopped {
-		return nil
+	if err := validateDepth(depth); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	var archive *BadgerStore
+	var archiveCheckin func()
+	if depth != DepthAll {
+		var archiveErr error
+		archive, archiveCheckin, archiveErr = ts.checkoutArchive()
+		if archiveErr != nil {
+			return archiveErr
+		}
 	}
 
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return archiveErr
+	ids := make([]types.NodeID, 0)
+	var archiveProbeErr error
+	if err := ts.refShard.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		if archive != nil {
+			raw := id.SnowflakeID()
+			// Restored reference nodes can have archive history, but current
+			// ref-shard ownership makes them eligible for hot/warm depth.
+			if !ts.refShard.HasNodeID(raw) {
+				if archive.HasNodeID(raw) {
+					return true
+				}
+				hasHistory, err := archiveHasNodeHistoryID(archive, id)
+				if err != nil {
+					archiveProbeErr = err
+					return false
+				}
+				if hasHistory {
+					return true
+				}
+			}
+		}
+		ids = append(ids, id)
+		return true
+	}); err != nil {
+		if archive != nil {
+			archiveCheckin()
+		}
+		return err
+	}
+	if archiveProbeErr != nil {
+		if archive != nil {
+			archiveCheckin()
+		}
+		return archiveProbeErr
 	}
 	if archive != nil {
-		err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
-			return true
-		})
 		archiveCheckin()
-		if err != nil {
-			return err
-		}
-		if stopped {
+	}
+	for _, id := range ids {
+		if !fn(id) {
 			return nil
 		}
 	}
 
+	if depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return archiveErr
+		}
+		if archive != nil {
+			ids = ids[:0]
+			err := archive.ForEachNodeHistoryID(func(id types.NodeID) bool {
+				ids = append(ids, id)
+				return true
+			})
+			archiveCheckin()
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				if !fn(id) {
+					return nil
+				}
+			}
+		}
+	}
+
 	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
+	shards := ts.eventShardSnapshot(depth)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
@@ -321,21 +396,33 @@ func (ts *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 		if err != nil {
 			return err
 		}
+		ids = ids[:0]
 		err = store.ForEachNodeHistoryID(func(id types.NodeID) bool {
-			if !fn(id) {
-				stopped = true
-				return false
-			}
+			ids = append(ids, id)
 			return true
 		})
 		es.checkinStore()
 		if err != nil {
 			return err
 		}
-		if stopped {
-			return nil
+		for _, id := range ids {
+			if !fn(id) {
+				return nil
+			}
 		}
 	}
 	return nil
 }
 
+func archiveHasNodeHistoryID(archive *BadgerStore, id types.NodeID) (bool, error) {
+	raw := id.SnowflakeID()
+	after := types.NodeID(0)
+	if raw > 0 {
+		after = types.NodeID(raw - 1)
+	}
+	ids, err := archive.AllNodeHistoryIDsFrom(after, 1)
+	if err != nil {
+		return false, err
+	}
+	return len(ids) > 0 && ids[0] == id, nil
+}

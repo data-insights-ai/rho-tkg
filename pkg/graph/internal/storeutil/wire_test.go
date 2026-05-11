@@ -1,6 +1,8 @@
 package storeutil
 
 import (
+	"errors"
+	"math"
 	"reflect"
 	"testing"
 
@@ -235,6 +237,211 @@ func TestPropertyWireRoundTrip(t *testing.T) {
 	v, ok = got.Get("string")
 	if !ok || v != "hello" {
 		t.Fatal("string mismatch")
+	}
+}
+
+type wireCustomProperty struct {
+	Name  string
+	Count int
+}
+
+func (w wireCustomProperty) HashBytes() []byte {
+	return []byte{byte(w.Count), byte(len(w.Name))}
+}
+
+func (w wireCustomProperty) DeepCopyValue() any { return w }
+
+func TestPropertyWireRegisteredCustomValueRoundTrip(t *testing.T) {
+	if err := types.RegisterPropertyStructType(wireCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		value   any
+		wantPtr bool
+	}{
+		{name: "value", value: wireCustomProperty{Name: "point", Count: 7}},
+		{name: "pointer", value: &wireCustomProperty{Name: "point", Count: 8}, wantPtr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var ps types.PropertySlice
+			if err := ps.Set("custom", tc.value); err != nil {
+				t.Fatalf("Set: %v", err)
+			}
+
+			pw, err := propertiesToWireChecked(ps)
+			if err != nil {
+				t.Fatalf("propertiesToWireChecked: %v", err)
+			}
+			if got := pw[0].Type; got != ptCustom {
+				t.Fatalf("wire type = %d, want ptCustom", got)
+			}
+			if pw[0].CustomType == "" {
+				t.Fatal("custom property type name was not persisted")
+			}
+			if pw[0].CustomPointer != tc.wantPtr {
+				t.Fatalf("custom pointer flag = %v, want %v", pw[0].CustomPointer, tc.wantPtr)
+			}
+
+			data, err := msgpack.Marshal(pw)
+			if err != nil {
+				t.Fatalf("Marshal property wire: %v", err)
+			}
+			var decoded []PropertyWire
+			if err := msgpack.Unmarshal(data, &decoded); err != nil {
+				t.Fatalf("Unmarshal property wire: %v", err)
+			}
+			if err := ValidatePropertyWireSlice(decoded); err != nil {
+				t.Fatalf("ValidatePropertyWireSlice: %v", err)
+			}
+
+			got := wireToProperties(decoded)
+			v, ok := got.Get("custom")
+			if !ok {
+				t.Fatal("custom property missing after wire round-trip")
+			}
+			if tc.wantPtr {
+				gotPtr, ok := v.(*wireCustomProperty)
+				if !ok {
+					t.Fatalf("round-trip type = %T, want *wireCustomProperty", v)
+				}
+				if gotPtr.Name != "point" || gotPtr.Count != 8 {
+					t.Fatalf("round-trip pointer value = %#v", gotPtr)
+				}
+			} else {
+				gotValue, ok := v.(wireCustomProperty)
+				if !ok {
+					t.Fatalf("round-trip type = %T, want wireCustomProperty", v)
+				}
+				if gotValue.Name != "point" || gotValue.Count != 7 {
+					t.Fatalf("round-trip value = %#v", gotValue)
+				}
+			}
+		})
+	}
+}
+
+type wireUnmarshalableCustomProperty struct {
+	Ch chan int
+}
+
+func (w wireUnmarshalableCustomProperty) HashBytes() []byte  { return []byte("bad") }
+func (w wireUnmarshalableCustomProperty) DeepCopyValue() any { return w }
+
+func TestMarshalNodeWireRejectsUnmarshalableCustomProperty(t *testing.T) {
+	if err := types.RegisterPropertyStructType(wireUnmarshalableCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
+	if err := n.SetProperties(types.PropertySlice{{
+		Key:   "bad",
+		Value: wireUnmarshalableCustomProperty{Ch: make(chan int)},
+	}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+
+	if _, err := MarshalNodeWire(n); err == nil {
+		t.Fatal("MarshalNodeWire returned nil error for unmarshalable custom property")
+	}
+}
+
+type wirePanicHashCustomProperty struct {
+	Name string
+}
+
+func (w wirePanicHashCustomProperty) HashBytes() []byte {
+	panic("wire hash panic")
+}
+
+func (w wirePanicHashCustomProperty) DeepCopyValue() any { return w }
+
+func TestMarshalNodeWireRejectsPanicHashCustomProperty(t *testing.T) {
+	if err := types.RegisterPropertyStructType(wirePanicHashCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
+	if err := n.SetProperties(types.PropertySlice{{
+		Key:   "bad",
+		Value: wirePanicHashCustomProperty{Name: "boom"},
+	}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("MarshalNodeWire panicked: %v", r)
+		}
+	}()
+	_, err := MarshalNodeWire(n)
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("MarshalNodeWire error = %v, want ErrUnsupportedValueType", err)
+	}
+}
+
+type wirePanicCopyCustomProperty struct {
+	Name string
+}
+
+func (w wirePanicCopyCustomProperty) HashBytes() []byte { return []byte(w.Name) }
+
+func (w wirePanicCopyCustomProperty) DeepCopyValue() any {
+	panic("wire copy panic")
+}
+
+func panicCopyPropertyWire(t *testing.T) []PropertyWire {
+	t.Helper()
+	if err := types.RegisterPropertyStructType(wirePanicCopyCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	value := wirePanicCopyCustomProperty{Name: "boom"}
+	typeName, pointer, ok := types.RegisteredPropertyStructWireType(value)
+	if !ok {
+		t.Fatalf("RegisteredPropertyStructWireType(%T) returned ok=false", value)
+	}
+	data, err := msgpack.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal custom property fixture: %v", err)
+	}
+	return []PropertyWire{{
+		Key:           "bad",
+		Value:         data,
+		Type:          ptCustom,
+		CustomType:    typeName,
+		CustomPointer: pointer,
+	}}
+}
+
+func TestCheckedWireRejectsPanicDeepCopyCustomProperty(t *testing.T) {
+	properties := panicCopyPropertyWire(t)
+
+	if err := ValidatePropertyWireSlice(properties); !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("ValidatePropertyWireSlice error = %v, want ErrUnsupportedValueType", err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("checked wire reconstruction panicked: %v", r)
+		}
+	}()
+	_, nodeErr := WireToNodeChecked(NodeWire{
+		ID:           1,
+		PrimaryLabel: 1,
+		Properties:   properties,
+	})
+	if !errors.Is(nodeErr, types.ErrUnsupportedValueType) {
+		t.Fatalf("WireToNodeChecked error = %v, want ErrUnsupportedValueType", nodeErr)
+	}
+
+	_, relErr := WireToRelChecked(RelWire{
+		ID:         2,
+		RelType:    1,
+		StartID:    1,
+		EndID:      3,
+		Properties: properties,
+	})
+	if !errors.Is(relErr, types.ErrUnsupportedValueType) {
+		t.Fatalf("WireToRelChecked error = %v, want ErrUnsupportedValueType", relErr)
 	}
 }
 
@@ -864,6 +1071,23 @@ func TestPropertyTypeTagAllBranches(t *testing.T) {
 	}
 }
 
+func TestValidateWireBoolSlice(t *testing.T) {
+	t.Parallel()
+
+	if err := validatePropertyWireValue([]bool{true, false}, ptSliceBool); err != nil {
+		t.Fatalf("validate []bool: %v", err)
+	}
+	if err := validatePropertyWireValue([]any{true, false}, ptSliceBool); err != nil {
+		t.Fatalf("validate decoded []any bools: %v", err)
+	}
+	if err := validatePropertyWireValue([]any{true, "false"}, ptSliceBool); err == nil {
+		t.Fatal("validate decoded []any with non-bool returned nil error")
+	}
+	if err := validatePropertyWireValue([]string{"true"}, ptSliceBool); err == nil {
+		t.Fatal("validate []string as []bool returned nil error")
+	}
+}
+
 // TestToInt64AllBranches covers every type case in toInt64 directly.
 func TestToInt64AllBranches(t *testing.T) {
 	t.Parallel()
@@ -968,6 +1192,317 @@ func TestNormalizeIntegersRecursiveAllBranches(t *testing.T) {
 	m, ok := mapResult.(map[string]any)
 	if !ok || m["x"] != int64(99) {
 		t.Fatalf("map[string]any branch: got %T(%v)", mapResult, mapResult)
+	}
+}
+
+func TestValidatePropertyWireSliceRejectsLossyTaggedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pw   []PropertyWire
+	}{
+		{
+			name: "negative value with unsigned tag",
+			pw:   []PropertyWire{{Key: "a", Value: int64(-1), Type: ptUint8}},
+		},
+		{
+			name: "out of range int8",
+			pw:   []PropertyWire{{Key: "a", Value: int64(200), Type: ptInt8}},
+		},
+		{
+			name: "string slice tag with mixed element",
+			pw:   []PropertyWire{{Key: "a", Value: []any{"ok", int64(1)}, Type: ptSliceStr}},
+		},
+		{
+			name: "string map tag with non-string value",
+			pw:   []PropertyWire{{Key: "a", Value: map[string]any{"k": int64(1)}, Type: ptMapStrStr}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidatePropertyWireSlice(tc.pw); err == nil {
+				t.Fatal("ValidatePropertyWireSlice returned nil, want error")
+			}
+		})
+	}
+}
+
+func TestValidatePropertyWireSliceAcceptsCanonicalTaggedValues(t *testing.T) {
+	t.Parallel()
+
+	pw := []PropertyWire{
+		{Key: "a", Value: int64(-8), Type: ptInt8},
+		{Key: "b", Value: uint64(255), Type: ptUint8},
+		{Key: "c", Value: []any{"x", "y"}, Type: ptSliceStr},
+		{Key: "d", Value: map[string]any{"k": "v"}, Type: ptMapStrStr},
+		{Key: "e", Value: []any{float64(1), float64(2)}, Type: ptSliceF32},
+	}
+
+	if err := ValidatePropertyWireSlice(pw); err != nil {
+		t.Fatalf("ValidatePropertyWireSlice: %v", err)
+	}
+}
+
+func TestValidatePropertyWireSliceAcceptsFloat32SpecialValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pw   []PropertyWire
+	}{
+		{
+			name: "scalar nan",
+			pw:   []PropertyWire{{Key: "a", Value: math.NaN(), Type: ptFloat32}},
+		},
+		{
+			name: "scalar infinity",
+			pw:   []PropertyWire{{Key: "a", Value: math.Inf(1), Type: ptFloat32}},
+		},
+		{
+			name: "any slice nan and infinity",
+			pw:   []PropertyWire{{Key: "a", Value: []any{math.NaN(), math.Inf(-1)}, Type: ptSliceF32}},
+		},
+		{
+			name: "typed slice nan and infinity",
+			pw:   []PropertyWire{{Key: "a", Value: []float32{float32(math.NaN()), float32(math.Inf(1))}, Type: ptSliceF32}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidatePropertyWireSlice(tc.pw); err != nil {
+				t.Fatalf("ValidatePropertyWireSlice: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidatePropertyWireSliceRejectsFloat32FiniteOverflow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pw   []PropertyWire
+	}{
+		{
+			name: "scalar overflow",
+			pw:   []PropertyWire{{Key: "a", Value: maxFloat32 * 2, Type: ptFloat32}},
+		},
+		{
+			name: "slice overflow",
+			pw:   []PropertyWire{{Key: "a", Value: []any{maxFloat32 * 2}, Type: ptSliceF32}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidatePropertyWireSlice(tc.pw); err == nil {
+				t.Fatal("ValidatePropertyWireSlice returned nil, want error")
+			}
+		})
+	}
+}
+
+func TestValidatePropertyWireSliceRejectsPrecisionLosingFloat32DecodedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pw   []PropertyWire
+	}{
+		{
+			name: "scalar precision loss",
+			pw:   []PropertyWire{{Key: "a", Value: float64(0.1), Type: ptFloat32}},
+		},
+		{
+			name: "slice precision loss",
+			pw:   []PropertyWire{{Key: "a", Value: []any{float64(0.1)}, Type: ptSliceF32}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidatePropertyWireSlice(tc.pw); err == nil {
+				t.Fatal("ValidatePropertyWireSlice returned nil, want precision-loss error")
+			}
+		})
+	}
+}
+
+func TestWireToNodeCheckedReconstructsFloat64TagsFromFloat32DecodedValues(t *testing.T) {
+	t.Parallel()
+
+	n, err := WireToNodeChecked(NodeWire{
+		ID:           1,
+		PrimaryLabel: 1,
+		Properties: []PropertyWire{
+			{Key: "scalar", Value: float32(1.25), Type: ptFloat64},
+			{Key: "slice", Value: []any{float32(2.5), float64(3.5)}, Type: ptSliceF64},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WireToNodeChecked: %v", err)
+	}
+
+	scalar, ok := n.GetProperty("scalar")
+	if !ok {
+		t.Fatal("missing scalar property")
+	}
+	if _, ok := scalar.(float64); !ok {
+		t.Fatalf("scalar type = %T, want float64", scalar)
+	}
+	if scalar != float64(1.25) {
+		t.Fatalf("scalar = %v, want 1.25", scalar)
+	}
+
+	sliceValue, ok := n.GetProperty("slice")
+	if !ok {
+		t.Fatal("missing slice property")
+	}
+	slice, ok := sliceValue.([]float64)
+	if !ok {
+		t.Fatalf("slice type = %T, want []float64", sliceValue)
+	}
+	if len(slice) != 2 || slice[0] != 2.5 || slice[1] != 3.5 {
+		t.Fatalf("slice = %v, want [2.5 3.5]", slice)
+	}
+}
+
+func TestWireToNodeCheckedReconstructsIntSliceTagFromInt64DecodedValues(t *testing.T) {
+	t.Parallel()
+
+	n, err := WireToNodeChecked(NodeWire{
+		ID:           1,
+		PrimaryLabel: 1,
+		Properties: []PropertyWire{
+			{Key: "ints", Value: []int64{1, 2, 3}, Type: ptSliceInt},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WireToNodeChecked: %v", err)
+	}
+
+	value, ok := n.GetProperty("ints")
+	if !ok {
+		t.Fatal("missing ints property")
+	}
+	ints, ok := value.([]int)
+	if !ok {
+		t.Fatalf("ints type = %T, want []int", value)
+	}
+	if len(ints) != 3 || ints[0] != 1 || ints[1] != 2 || ints[2] != 3 {
+		t.Fatalf("ints = %v, want [1 2 3]", ints)
+	}
+}
+
+func TestWireToNodeCheckedReconstructsUintDecodedValues(t *testing.T) {
+	t.Parallel()
+
+	n, err := WireToNodeChecked(NodeWire{
+		ID:           1,
+		PrimaryLabel: 1,
+		Properties: []PropertyWire{
+			{Key: "int_scalar", Value: uint(7), Type: ptInt},
+			{Key: "int_slice", Value: []any{uint(8), uint16(9)}, Type: ptSliceInt64},
+			{Key: "uint_scalar", Value: uint(10), Type: ptUint},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WireToNodeChecked: %v", err)
+	}
+
+	intScalar, ok := n.GetProperty("int_scalar")
+	if !ok {
+		t.Fatal("missing int_scalar property")
+	}
+	if got, ok := intScalar.(int); !ok || got != 7 {
+		t.Fatalf("int_scalar = %#v (%T), want int(7)", intScalar, intScalar)
+	}
+
+	intSliceValue, ok := n.GetProperty("int_slice")
+	if !ok {
+		t.Fatal("missing int_slice property")
+	}
+	intSlice, ok := intSliceValue.([]int64)
+	if !ok {
+		t.Fatalf("int_slice type = %T, want []int64", intSliceValue)
+	}
+	if len(intSlice) != 2 || intSlice[0] != 8 || intSlice[1] != 9 {
+		t.Fatalf("int_slice = %v, want [8 9]", intSlice)
+	}
+
+	uintScalar, ok := n.GetProperty("uint_scalar")
+	if !ok {
+		t.Fatal("missing uint_scalar property")
+	}
+	if got, ok := uintScalar.(uint); !ok || got != 10 {
+		t.Fatalf("uint_scalar = %#v (%T), want uint(10)", uintScalar, uintScalar)
+	}
+}
+
+func TestNodeToWireCheckedRejectsNilNode(t *testing.T) {
+	t.Parallel()
+	if _, err := NodeToWireChecked(nil); err == nil {
+		t.Fatal("NodeToWireChecked(nil) returned nil error")
+	}
+}
+
+func TestRelToWireCheckedRejectsNilRelationship(t *testing.T) {
+	t.Parallel()
+	if _, err := RelToWireChecked(nil); err == nil {
+		t.Fatal("RelToWireChecked(nil) returned nil error")
+	}
+}
+
+func TestWireToNodeCheckedRejectsSemanticCorruption(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		wire NodeWire
+	}{
+		{name: "zero primary label", wire: NodeWire{ID: 1, PrimaryLabel: 0}},
+		{name: "token truncation", wire: NodeWire{ID: 1, PrimaryLabel: 1 << 16}},
+		{name: "duplicate extra label", wire: NodeWire{ID: 1, PrimaryLabel: 1, ExtraLabels: []int{2, 2}}},
+		{name: "empty explicit temporal range", wire: NodeWire{ID: 1, PrimaryLabel: 1, ValidFrom: 20, ValidTo: 20}},
+		{name: "reversed explicit temporal range", wire: NodeWire{ID: 1, PrimaryLabel: 1, ValidFrom: 30, ValidTo: 20}},
+		{name: "reserved property", wire: NodeWire{ID: 1, PrimaryLabel: 1, Properties: []PropertyWire{{Key: "tkg_hash", Value: "x", Type: ptString}}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := WireToNodeChecked(tc.wire); err == nil {
+				t.Fatal("WireToNodeChecked returned nil error")
+			}
+		})
+	}
+}
+
+func TestWireToRelCheckedRejectsSemanticCorruption(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		wire RelWire
+	}{
+		{name: "zero rel type", wire: RelWire{ID: 1, RelType: 0, StartID: 2, EndID: 3}},
+		{name: "missing start", wire: RelWire{ID: 1, RelType: 1, StartID: 0, EndID: 3}},
+		{name: "token truncation", wire: RelWire{ID: 1, RelType: 1 << 16, StartID: 2, EndID: 3}},
+		{name: "empty explicit temporal range", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, ValidFrom: 20, ValidTo: 20}},
+		{name: "reversed explicit temporal range", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, ValidFrom: 30, ValidTo: 20}},
+		{name: "reserved property", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, Properties: []PropertyWire{{Key: "tkg_hash", Value: "x", Type: ptString}}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := WireToRelChecked(tc.wire); err == nil {
+				t.Fatal("WireToRelChecked returned nil error")
+			}
+		})
 	}
 }
 

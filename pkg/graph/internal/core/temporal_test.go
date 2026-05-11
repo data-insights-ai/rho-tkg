@@ -308,6 +308,53 @@ func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 	}
 }
 
+func TestTemporalDuringRejectsInvalidRanges(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "NodesDuring empty", run: func() error {
+			_, err := g.Temporal.NodesDuring(10, 10)
+			return err
+		}},
+		{name: "NodesDuring reversed", run: func() error {
+			_, err := g.Temporal.NodesDuring(20, 10)
+			return err
+		}},
+		{name: "RelationshipsDuring empty", run: func() error {
+			_, err := g.Temporal.RelationshipsDuring(10, 10)
+			return err
+		}},
+		{name: "RelationshipsDuring reversed", run: func() error {
+			_, err := g.Temporal.RelationshipsDuring(20, 10)
+			return err
+		}},
+		{name: "NodesByLabelPropertyDuring", run: func() error {
+			_, err := g.Temporal.NodesByLabelPropertyDuring("Missing", "p", "v", 20, 10)
+			return err
+		}},
+		{name: "RelsByTypePropertyDuring", run: func() error {
+			_, err := g.Temporal.RelsByTypePropertyDuring("Missing", "p", "v", 20, 10)
+			return err
+		}},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, ErrInvalidTimeRange) {
+				t.Fatalf("err = %v, want ErrInvalidTimeRange", err)
+			}
+		})
+	}
+}
+
 func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 
@@ -1329,6 +1376,104 @@ func TestNodesByLabelPropertyAndTime_UnregisteredLabel(t *testing.T) {
 	}
 	if nodes != nil {
 		t.Fatalf("expected nil, got %d nodes", len(nodes))
+	}
+}
+
+func TestTemporalPropertyQueriesRejectInvalidTargets(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 4}})
+	defer func() { _ = g.Close() }()
+
+	longKey := "abcde"
+	tests := []struct {
+		name string
+		call func() error
+		want error
+	}{
+		{
+			name: "node at empty label",
+			call: func() error {
+				_, err := g.Temporal.NodesByLabelPropertyAt("", "name", "Alice", 1)
+				return err
+			},
+			want: ErrEmptyName,
+		},
+		{
+			name: "node during long key",
+			call: func() error {
+				_, err := g.Temporal.NodesByLabelPropertyDuring("Case", longKey, "Alice", 1, 2)
+				return err
+			},
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "node at shadow key",
+			call: func() error {
+				_, err := g.Temporal.NodesByLabelPropertyAt("Case", "tkg_hash", "Alice", 1)
+				return err
+			},
+			want: types.ErrReservedPrefix,
+		},
+		{
+			name: "rel at empty type",
+			call: func() error {
+				_, err := g.Temporal.RelsByTypePropertyAt("", "name", "Alice", 1)
+				return err
+			},
+			want: ErrEmptyName,
+		},
+		{
+			name: "rel during long key",
+			call: func() error {
+				_, err := g.Temporal.RelsByTypePropertyDuring("Edge", longKey, "Alice", 1, 2)
+				return err
+			},
+			want: ErrKeyTooLong,
+		},
+		{
+			name: "rel at shadow key",
+			call: func() error {
+				_, err := g.Temporal.RelsByTypePropertyAt("Edge", "tkg_hash", "Alice", 1)
+				return err
+			},
+			want: types.ErrReservedPrefix,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("error = %v, want errors.Is(..., %v)", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemporalNodesByLabelAtRejectsInvalidLabel(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 4}})
+	defer func() { _ = g.Close() }()
+
+	tests := []struct {
+		name  string
+		label string
+		want  error
+	}{
+		{name: "empty", label: "", want: ErrEmptyName},
+		{name: "whitespace", label: "  ", want: ErrEmptyName},
+		{name: "too long", label: "abcde", want: ErrNameTooLong},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := g.Temporal.NodesByLabelAt(tt.label, 1)
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("error = %v, want errors.Is(..., %v)", err, tt.want)
+			}
+		})
 	}
 }
 

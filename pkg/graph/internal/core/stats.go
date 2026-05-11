@@ -39,6 +39,8 @@ type StoreStats interface {
 // (currently BadgerStore only); all cache fields are zero for MemoryStore and tiered.Store.
 func (s *StatOps) Get() GraphStats {
 	c := s.c
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	out := GraphStats{
 		NodesAdded:   c.opNodeAdds.Load(),
 		NodesRead:    c.opNodeReads.Load(),
@@ -49,11 +51,13 @@ func (s *StatOps) Get() GraphStats {
 		RelsUpdated:  c.opRelUpdates.Load(),
 		RelsDeleted:  c.opRelDeletes.Load(),
 	}
-	if ss, ok := c.store.(StoreStats); ok {
-		out.NodeCacheHits = ss.NodeCacheHits()
-		out.NodeCacheMisses = ss.NodeCacheMisses()
-		out.RelCacheHits = ss.RelCacheHits()
-		out.RelCacheMisses = ss.RelCacheMisses()
+	if !c.closed.Load() {
+		if ss, ok := c.store.(StoreStats); ok {
+			out.NodeCacheHits = ss.NodeCacheHits()
+			out.NodeCacheMisses = ss.NodeCacheMisses()
+			out.RelCacheHits = ss.RelCacheHits()
+			out.RelCacheMisses = ss.RelCacheMisses()
+		}
 	}
 	return out
 }
@@ -92,19 +96,22 @@ func (s *StatOps) AllLabelCounts() (map[string]int, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	names := c.labels.ExportNames()
 	result := make(map[string]int)
-	// Skip index 0 (reserved empty string).
-	for i := 1; i < len(names); i++ {
-		count, err := c.store.NodeCountByLabel(uint16(i))
-		if err != nil {
-			return nil, err
+	err := c.readUnderRLock(func() error {
+		names := c.labels.ExportNames()
+		// Skip index 0 (reserved empty string).
+		for i := 1; i < len(names); i++ {
+			count, err := c.store.NodeCountByLabel(uint16(i))
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				result[names[i]] = count
+			}
 		}
-		if count > 0 {
-			result[names[i]] = count
-		}
-	}
-	return result, nil
+		return nil
+	})
+	return result, err
 }
 
 // AllRelTypeCounts returns a map of relationship type name to relationship count
@@ -114,17 +121,20 @@ func (s *StatOps) AllRelTypeCounts() (map[string]int, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	names := c.relTypes.ExportNames()
 	result := make(map[string]int)
-	// Skip index 0 (reserved empty string).
-	for i := 1; i < len(names); i++ {
-		count, err := c.store.RelCountByType(uint16(i))
-		if err != nil {
-			return nil, err
+	err := c.readUnderRLock(func() error {
+		names := c.relTypes.ExportNames()
+		// Skip index 0 (reserved empty string).
+		for i := 1; i < len(names); i++ {
+			count, err := c.store.RelCountByType(uint16(i))
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				result[names[i]] = count
+			}
 		}
-		if count > 0 {
-			result[names[i]] = count
-		}
-	}
-	return result, nil
+		return nil
+	})
+	return result, err
 }

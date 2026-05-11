@@ -159,12 +159,14 @@ func TestSubAPISmoke(t *testing.T) {
 	}
 
 	// Events: install/get sync bus
-	g.Events.SetSync(nil) // tolerated; clears
+	_ = g.Events.SetSync(nil) // tolerated; clears
 	_ = g.Events.GetSync()
 
 	// Constraints
 	cs := g.Constraints.Get()
-	g.Constraints.Set(cs)
+	if err := g.Constraints.Set(cs); err != nil {
+		t.Fatalf("Constraints.Set: %v", err)
+	}
 
 	// Temporal — point-in-time read
 	persons2, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
@@ -182,5 +184,52 @@ func TestSubAPISmoke(t *testing.T) {
 	}
 	if snap == nil {
 		t.Fatalf("Temporal.Snapshot returned nil")
+	}
+}
+
+func TestTxBeginWrapper(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	tx, err := g.Tx.Begin()
+	if err != nil {
+		t.Fatalf("Tx.Begin: %v", err)
+	}
+	if _, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNode: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("tx.Commit: %v", err)
+	}
+	if cnt, err := g.Nodes.Count(); err != nil || cnt != 1 {
+		t.Fatalf("Nodes.Count after tx commit = %d, %v; want 1, nil", cnt, err)
+	}
+}
+
+func TestNewBatchBuilderWrapper(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	bb, err := graphpkg.NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := bb.AddNode([]string{"Person"}, map[string]any{"name": "Bob"}); err != nil {
+		t.Fatalf("Batch.AddNode: %v", err)
+	}
+	if _, err := bb.Execute(); err != nil {
+		t.Fatalf("Batch.Execute: %v", err)
+	}
+	if cnt, err := g.Nodes.Count(); err != nil || cnt != 1 {
+		t.Fatalf("Nodes.Count after batch execute = %d, %v; want 1, nil", cnt, err)
 	}
 }

@@ -7,6 +7,7 @@
 package ontology
 
 import (
+	"strings"
 	"sync"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
@@ -43,6 +44,9 @@ type OntologyMapping struct {
 func NewOntologyMapping(refLabels []string) *OntologyMapping {
 	byName := make(map[string]EntityClass, len(refLabels))
 	for _, name := range refLabels {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
 		byName[name] = ClassReference
 	}
 	return &OntologyMapping{
@@ -54,6 +58,9 @@ func NewOntologyMapping(refLabels []string) *OntologyMapping {
 // ClassifyByName returns the entity class for the given label name.
 // Unknown labels return ClassEvent.
 func (om *OntologyMapping) ClassifyByName(name string) EntityClass {
+	if om == nil {
+		return ClassEvent
+	}
 	if c, ok := om.byName[name]; ok {
 		return c
 	}
@@ -64,45 +71,66 @@ func (om *OntologyMapping) ClassifyByName(name string) EntityClass {
 // Uses a lazy cache backed by the label registry. Token 0 (reserved)
 // returns ClassEvent. If no label registry is set, returns ClassEvent.
 func (om *OntologyMapping) ClassifyByToken(token uint16) EntityClass {
-	if token == 0 {
+	if om == nil || token == 0 {
 		return ClassEvent
 	}
 
-	// Fast path: check cache under read lock.
-	om.mu.RLock()
-	c, ok := om.byToken[token]
-	om.mu.RUnlock()
-	if ok {
-		return c
+	for {
+		// Fast path: check cache and snapshot the registry under read lock.
+		om.mu.RLock()
+		c, ok := om.byToken[token]
+		reg := om.labelReg
+		om.mu.RUnlock()
+		if ok {
+			return c
+		}
+
+		// Slow path: resolve via label registry, cache result if the registry
+		// has not changed while resolution ran outside the ontology lock.
+		if reg == nil {
+			return ClassEvent
+		}
+
+		name := reg.Resolve(token)
+		if name == "" {
+			return ClassEvent
+		}
+
+		cls := om.ClassifyByName(name)
+
+		om.mu.Lock()
+		if om.labelReg != reg {
+			om.mu.Unlock()
+			continue
+		}
+		om.byToken[token] = cls
+		om.mu.Unlock()
+
+		return cls
 	}
-
-	// Slow path: resolve via label registry, cache result.
-	if om.labelReg == nil {
-		return ClassEvent
-	}
-
-	name := om.labelReg.Resolve(token)
-	if name == "" {
-		return ClassEvent
-	}
-
-	cls := om.ClassifyByName(name)
-
-	om.mu.Lock()
-	om.byToken[token] = cls
-	om.mu.Unlock()
-
-	return cls
 }
 
 // SetLabelRegistry wires the ontology to the graph's label registry for
 // token-based classification. Called by Graph.New() after construction.
-func (om *OntologyMapping) SetLabelRegistry(reg *registry.LabelRegistry) {
+// It returns the previously wired registry so callers that temporarily swap
+// registries can restore the old routing state after rollback.
+func (om *OntologyMapping) SetLabelRegistry(reg *registry.LabelRegistry) *registry.LabelRegistry {
+	if om == nil {
+		return nil
+	}
+	om.mu.Lock()
+	defer om.mu.Unlock()
+	prev := om.labelReg
 	om.labelReg = reg
+	om.byToken = make(map[uint16]EntityClass)
+	return prev
 }
 
 // RefLabels returns the set of reference label names. Used for catalog metadata.
 func (om *OntologyMapping) RefLabels() []string {
+	if om == nil {
+		return nil
+	}
 	out := make([]string, 0, len(om.byName))
 	for name, cls := range om.byName {
 		if cls == ClassReference {

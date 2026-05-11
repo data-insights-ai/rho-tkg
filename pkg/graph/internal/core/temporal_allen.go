@@ -9,6 +9,9 @@ import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 // NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
 // because Allen's algebra requires finite intervals.
 func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
+	if n == nil {
+		return 0, 0, ErrNilNode
+	}
 	c := t.c
 	start = c.nodeValidFrom(n)
 	tm := n.Temporal()
@@ -25,6 +28,9 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 //
 // RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
 func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
+	if r == nil {
+		return 0, 0, ErrNilRelationship
+	}
 	c := t.c
 	start = c.relValidFrom(r)
 	tm := r.Temporal()
@@ -39,12 +45,11 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 // Both nodes must have finite intervals (ValidTo != 0); returns
 // types.ErrOpenInterval otherwise.
 func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
-	c := t.c
-	aStart, aEnd, err := c.Temporal.NodeInterval(a)
+	aStart, aEnd, err := t.NodeInterval(a)
 	if err != nil {
 		return 0, err
 	}
-	bStart, bEnd, err := c.Temporal.NodeInterval(b)
+	bStart, bEnd, err := t.NodeInterval(b)
 	if err != nil {
 		return 0, err
 	}
@@ -54,12 +59,11 @@ func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
 // RelateRels classifies the Allen relation of relationship A's interval
 // to relationship B's. Both must have finite intervals.
 func (t *TempOps) RelateRels(a, b *types.Relationship) (types.AllenRelation, error) {
-	c := t.c
-	aStart, aEnd, err := c.Temporal.RelInterval(a)
+	aStart, aEnd, err := t.RelInterval(a)
 	if err != nil {
 		return 0, err
 	}
-	bStart, bEnd, err := c.Temporal.RelInterval(b)
+	bStart, bEnd, err := t.RelInterval(b)
 	if err != nil {
 		return 0, err
 	}

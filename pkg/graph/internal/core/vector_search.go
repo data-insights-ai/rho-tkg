@@ -1,7 +1,10 @@
 package core
 
 import (
+	"errors"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -11,9 +14,7 @@ import (
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
 // Returns nil, nil if the index exists but has no entries.
-// Returns nil, nil if the label has never been registered.
-// Returns nil, nil for non-positive k (k <= 0) — empty result is the
-// natural answer, matching how unregistered labels and empty indexes behave.
+// Returns nil, nil for non-positive k (k <= 0) after target validation.
 //
 // storepkg.QueryOpts:
 //   - ValidAt / ValidStart+ValidEnd: only nodes whose label-version is valid
@@ -22,9 +23,10 @@ import (
 //     out farther-but-eligible candidates from the top-k. The returned node
 //     is the historical version (matching the requested time).
 //   - Depth (tiered.Store only): storepkg.DepthHot/storepkg.DepthWarm exclude archive-resident
-//     nodes from the candidate set. Combining a temporal filter with
-//     Depth != storepkg.DepthAll returns ErrDepthTemporalUnsupported, matching
-//     NodesByLabel/AllNodes/etc.
+//     reference nodes and warm/cold event-shard nodes outside the requested
+//     depth from the candidate set. When combined with a temporal filter,
+//     depth gating is applied before temporal eligibility resolution so a
+//     near depth-ineligible candidate cannot crowd out a farther eligible candidate.
 //   - After / Limit: cursor pagination over distance-ordered results.
 //     "After" matches by the cursor node's ID — entries up to and including
 //     that ID are skipped, then up to Limit entries are returned.
@@ -48,11 +50,33 @@ import (
 // should implement FilteredVectorSearchCapability.
 func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := i.c
-	if k <= 0 {
-		return nil, nil
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		nodes, err := c.searchNearestLocked(label, propertyKey, query, k, opts)
+		result = nodes
+		return err
+	})
+	return result, err
+}
+
+func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+		return nil, err
 	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
+		return nil, storepkg.ErrVectorIndexNotFound
+	}
+	if k <= 0 {
 		return nil, nil
 	}
 	viCap, err := c.vectorIndexCap()
@@ -60,51 +84,66 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 		return nil, err
 	}
 	if !hasTemporalFilter(opts) {
-		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, opts)
+		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{Depth: opts.Depth})
 		if err != nil {
 			return nil, err
 		}
-		return paginateNearestNodes(nodes, opts.After, opts.Limit), nil
+		return storeutil.PaginateNodesInOrder(nodes, opts.After, opts.Limit), nil
 	}
-	if opts.Depth != storepkg.DepthAll {
-		return nil, ErrDepthTemporalUnsupported
-	}
-
 	// Temporal path: build an eligibility predicate that resolves each
 	// candidate to its label-bearing version at the requested time. The
 	// filter is applied BEFORE the heap selection inside searchNearest so
 	// that the top-k is taken from the eligible-only set.
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
+	var filterErr error
 	filter := func(id snowflake.ID) bool {
 		_, err := c.findNodeVersionForOpts(types.NodeID(id), opts, pred)
-		return err == nil
+		if err == nil {
+			return true
+		}
+		if !isNodeTemporalCandidateMiss(err) && filterErr == nil {
+			filterErr = err
+		}
+		return false
 	}
 
-	if store, ok := c.store.(storepkg.FilteredVectorSearchCapability); ok {
-		// Pre-filtered fast path: the backend pushes the eligibility
-		// predicate into the search BEFORE the k-cut, so the returned
-		// top-k is taken from the eligible-only set.
-		ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
-		if err != nil {
-			return nil, err
-		}
-		resolved := make([]*types.Node, 0, len(ids))
-		for _, id := range ids {
-			n, err := c.findNodeVersionForOpts(types.NodeID(id), opts, pred)
+	if opts.Depth == storepkg.DepthAll {
+		if store, ok := c.store.(storepkg.FilteredVectorSearchCapability); ok {
+			// Pre-filtered fast path: the backend pushes the eligibility
+			// predicate into the search BEFORE the k-cut, so the returned
+			// top-k is taken from the eligible-only set.
+			ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
 			if err != nil {
-				// Filter passed earlier but resolution lost the
-				// version (e.g. concurrent mutation). Skip silently.
-				continue
+				return nil, err
 			}
-			resolved = append(resolved, n)
+			if filterErr != nil {
+				return nil, filterErr
+			}
+			resolved := make([]*types.Node, 0, len(ids))
+			for _, id := range ids {
+				n, err := c.findNodeVersionForOpts(types.NodeID(id), opts, pred)
+				if err != nil {
+					if isNodeTemporalCandidateMiss(err) {
+						// Filter passed earlier but resolution lost the
+						// version (e.g. concurrent mutation). Skip only
+						// expected absence/ineligibility; surface store
+						// faults.
+						continue
+					}
+					return nil, err
+				}
+				resolved = append(resolved, n)
+			}
+			return storeutil.PaginateNodesInOrder(resolved, opts.After, opts.Limit), nil
 		}
-		return paginateNearestNodes(resolved, opts.After, opts.Limit), nil
 	}
 
 	// Iterative over-fetch fallback for external backends that do not
-	// satisfy FilteredVectorSearchCapability. Each iteration re-asks for
-	// a larger top-k from the unfiltered backend search, then drops
-	// temporally-ineligible matches. Stops when:
+	// satisfy FilteredVectorSearchCapability, and for depth-limited
+	// temporal queries where the backend's ordinary vector search already
+	// knows how to apply Depth before the k-cut. Each iteration re-asks
+	// for a larger top-k from the backend search, then drops temporally-
+	// ineligible matches. Stops when:
 	//   - we have ≥ k eligible results, or
 	//   - the backend returns the same number of raw matches as last
 	//     time (the index is exhausted), or
@@ -116,8 +155,8 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	// be temporally ineligible, even when farther-but-eligible
 	// candidates exist. The loop preserves correctness at the cost of
 	// repeated server-side work; backends that can pre-filter should
-	// implement FilteredVectorSearchCapability to avoid the loop
-	// entirely.
+	// implement FilteredVectorSearchCapability to avoid the loop entirely
+	// for DepthAll queries.
 	//
 	// Ceiling discipline (R4-F10): the probe size is clamped to
 	// overfetchCeiling on every iteration. For k > overfetchCeiling the
@@ -127,24 +166,30 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	// step also clamps so the final iteration always probes the
 	// ceiling instead of jumping past it.
 	const overfetchCeiling = 1 << 16 // 65536 — bounded so a misbehaving backend cannot loop forever
-	resolved := make([]*types.Node, 0, k)
-	lastRaw := -1
 	rawK := k
+	searchOpts := storepkg.QueryOpts{Depth: opts.Depth}
 	if rawK > overfetchCeiling {
 		rawK = overfetchCeiling
 	}
+	resolved := make([]*types.Node, 0, rawK)
+	lastRaw := -1
 	for {
-		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, rawK, storepkg.QueryOpts{})
+		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, rawK, searchOpts)
 		if err != nil {
 			return nil, err
 		}
 		resolved = resolved[:0]
 		for _, n := range nodes {
-			if n2, ferr := c.findNodeVersionForOpts(n.ID(), opts, pred); ferr == nil {
-				resolved = append(resolved, n2)
-				if len(resolved) >= k {
-					break
+			n2, ferr := c.findNodeVersionForOpts(n.ID(), opts, pred)
+			if ferr != nil {
+				if isNodeTemporalCandidateMiss(ferr) {
+					continue
 				}
+				return nil, ferr
+			}
+			resolved = append(resolved, n2)
+			if len(resolved) >= k {
+				break
 			}
 		}
 		if len(resolved) >= k {
@@ -168,44 +213,9 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 			rawK = overfetchCeiling
 		}
 	}
-	return paginateNearestNodes(resolved, opts.After, opts.Limit), nil
+	return storeutil.PaginateNodesInOrder(resolved, opts.After, opts.Limit), nil
 }
 
-// paginateNearestNodes applies cursor pagination to a distance-ordered slice.
-// The slice is NOT ID-sorted, so binary search is unsafe; we linearly scan
-// until we find the cursor node, then return up to limit entries after it.
-// after == 0 means "from the beginning". limit == 0 means "all".
-func paginateNearestNodes(nodes []*types.Node, after types.EntityID, limit int) []*types.Node {
-	if len(nodes) == 0 {
-		return nil
-	}
-	start := 0
-	if after != 0 {
-		afterRaw := after.SnowflakeID()
-		// Linear scan: distance order is not monotonic in ID, so we must
-		// inspect every entry up to the cursor.
-		found := false
-		for i, n := range nodes {
-			if n.ID().SnowflakeID() == afterRaw {
-				start = i + 1
-				found = true
-				break
-			}
-		}
-		if !found {
-			start = len(nodes) // cursor not in result set: return nothing
-		}
-	}
-	if start >= len(nodes) {
-		return nil
-	}
-	out := nodes[start:]
-	if limit > 0 && limit < len(out) {
-		out = out[:limit]
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+func isNodeTemporalCandidateMiss(err error) bool {
+	return errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound)
 }
-

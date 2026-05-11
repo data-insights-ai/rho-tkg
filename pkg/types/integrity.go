@@ -37,6 +37,9 @@ type NodeIntegrity struct {
 // DeepCopy returns an independent clone of the NodeIntegrity.
 // Signature is deep-copied so mutations to the copy never affect the original.
 func (ig *NodeIntegrity) DeepCopy() *NodeIntegrity {
+	if ig == nil {
+		return nil
+	}
 	cp := *ig
 	cp.Signature = CloneBytes(ig.Signature)
 	return &cp
@@ -75,6 +78,9 @@ type RelIntegrity struct {
 // DeepCopy returns an independent clone of the RelIntegrity.
 // Signature is deep-copied so mutations to the copy never affect the original.
 func (ig *RelIntegrity) DeepCopy() *RelIntegrity {
+	if ig == nil {
+		return nil
+	}
 	cp := *ig
 	cp.Signature = CloneBytes(ig.Signature)
 	return &cp

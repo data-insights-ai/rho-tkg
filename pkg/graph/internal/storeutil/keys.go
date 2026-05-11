@@ -171,6 +171,12 @@ var PropIndexDefsKey = MetaKey("prop_indexes")
 // TemporalIndexDefsKey is the Badger key for persisting temporal index label tokens.
 var TemporalIndexDefsKey = MetaKey("temporal_index_defs")
 
+// HighFrequencyIndexDefsKey is the Badger key for persisting high-frequency temporal index definitions.
+var HighFrequencyIndexDefsKey = MetaKey("high_frequency_index_defs")
+
+// VectorIndexDefsKey is the Badger key for persisting vector index definitions.
+var VectorIndexDefsKey = MetaKey("vector_index_defs")
+
 // --- Parser functions ---
 
 // ParseIDFromKey extracts the 8-byte big-endian snowflake.ID at the given offset.

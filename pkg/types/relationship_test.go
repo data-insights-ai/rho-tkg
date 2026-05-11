@@ -51,15 +51,82 @@ func TestRelSetPropertyRejectsNestedPointer(t *testing.T) {
 	}
 }
 
-func TestNewRelationshipPanicsOnZeroRelType(t *testing.T) {
+func TestNewRelationshipAllowsZeroRelTypeForStoreValidation(t *testing.T) {
 	t.Parallel()
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("NewRelationship(RelID(id), 0, NodeID(start), NodeID(end)) should panic on reserved token 0")
-		}
-	}()
-	NewRelationship(RelID(snowflake.ID(1)), 0, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	r := NewRelationship(RelID(snowflake.ID(1)), 0, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	if r == nil {
+		t.Fatal("NewRelationship returned nil")
+	}
+	if r.TypeToken() != relTypeToken(0) {
+		t.Fatalf("TypeToken() = %d, want reserved token 0", r.TypeToken())
+	}
+	if r.HasTypeTokenRaw(0) {
+		t.Fatal("HasTypeTokenRaw(0) should still return false")
+	}
+}
+
+func TestRelationshipNilReceiverMethodsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	var r *Relationship
+	if r.ID() != 0 {
+		t.Fatalf("ID() = %v, want 0", r.ID())
+	}
+	if r.InternalID() != 0 {
+		t.Fatalf("InternalID() = %v, want 0", r.InternalID())
+	}
+	if r.TypeToken() != 0 {
+		t.Fatalf("TypeToken() = %v, want 0", r.TypeToken())
+	}
+	if r.HasTypeToken(1) {
+		t.Fatal("HasTypeToken(1) = true, want false")
+	}
+	if r.HasTypeTokenRaw(1) {
+		t.Fatal("HasTypeTokenRaw(1) = true, want false")
+	}
+	if r.StartNodeID() != 0 {
+		t.Fatalf("StartNodeID() = %v, want 0", r.StartNodeID())
+	}
+	if r.EndNodeID() != 0 {
+		t.Fatalf("EndNodeID() = %v, want 0", r.EndNodeID())
+	}
+	if err := r.SetProperties(nil); !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("SetProperties(nil) = %v, want ErrNilRelationship", err)
+	}
+	if err := r.SetProperty("x", int64(1)); !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("SetProperty = %v, want ErrNilRelationship", err)
+	}
+	if got, ok := r.GetProperty("x"); got != nil || ok {
+		t.Fatalf("GetProperty = (%v, %v), want (nil, false)", got, ok)
+	}
+	if deleted, err := r.DeleteProperty("x"); !errors.Is(err, ErrNilRelationship) || deleted {
+		t.Fatalf("DeleteProperty = (%v, %v), want (false, ErrNilRelationship)", deleted, err)
+	}
+	if r.PropertyCount() != 0 {
+		t.Fatalf("PropertyCount() = %d, want 0", r.PropertyCount())
+	}
+	if got := r.Properties(); got != nil {
+		t.Fatalf("Properties() = %v, want nil", got)
+	}
+	if got := r.PropertiesMap(); got != nil {
+		t.Fatalf("PropertiesMap() = %v, want nil", got)
+	}
+	if r.Version() != 0 {
+		t.Fatalf("Version() = %d, want 0", r.Version())
+	}
+	r.SetVersion(7)
+	if r.Temporal() != nil {
+		t.Fatal("Temporal() != nil, want nil")
+	}
+	r.SetTemporal(&TemporalMetadata{})
+	if r.Integrity() != nil {
+		t.Fatal("Integrity() != nil, want nil")
+	}
+	r.SetIntegrity(&RelIntegrity{})
+	if cp := r.DeepCopy(); cp != nil {
+		t.Fatalf("DeepCopy() = %v, want nil", cp)
+	}
 }
 
 func TestTokenZeroReservedRel(t *testing.T) {
@@ -164,6 +231,25 @@ func TestRelSetPropertyAcceptsNormalKeys(t *testing.T) {
 	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
 	if err := r.SetProperty("weight", 1.5); err != nil {
 		t.Fatalf("SetProperty(\"weight\", 1.5) returned unexpected error: %v", err)
+	}
+}
+
+func TestRelSetPropertyCopiesCallerValue(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	tags := []string{"alpha", "beta"}
+	if err := r.SetProperty("tags", tags); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+
+	tags[0] = "mutated"
+	got, ok := r.GetProperty("tags")
+	if !ok {
+		t.Fatal("GetProperty(\"tags\") missing")
+	}
+	if got.([]string)[0] != "alpha" {
+		t.Fatalf("SetProperty retained caller slice alias: %q", got.([]string)[0])
 	}
 }
 
@@ -413,7 +499,9 @@ func TestRelSetProperties(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
 
 	val, ok := r.GetProperty("weight")
 	if !ok || val != 1.5 {
@@ -422,6 +510,72 @@ func TestRelSetProperties(t *testing.T) {
 	val, ok = r.GetProperty("since")
 	if !ok || val != "2025" {
 		t.Errorf("GetProperty(\"since\") = (%v, %v), want (\"2025\", true)", val, ok)
+	}
+}
+
+func TestRelSetPropertiesCanonicalizesAndCopies(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	tags := []string{"alpha", "beta"}
+	ps := PropertySlice{
+		{Key: "z", Value: "old"},
+		{Key: "tags", Value: tags},
+		{Key: "z", Value: "new"},
+		{Key: "weight", Value: 1.5},
+	}
+	if err := r.SetProperties(ps); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+
+	if _, ok := r.GetProperty("z"); !ok {
+		t.Fatal("GetProperty(\"z\") missing after unsorted SetProperties input")
+	}
+	if val, _ := r.GetProperty("z"); val != "new" {
+		t.Fatalf("duplicate key value = %v, want last value", val)
+	}
+
+	tags[0] = "mutated"
+	got, ok := r.GetProperty("tags")
+	if !ok {
+		t.Fatal("GetProperty(\"tags\") missing")
+	}
+	gotTags := got.([]string)
+	if gotTags[0] != "alpha" {
+		t.Fatalf("SetProperties retained caller slice alias: %q", gotTags[0])
+	}
+}
+
+func TestRelSetPropertiesRejectsInvalidAndKeepsPrevious(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	if err := r.SetProperties(PropertySlice{{Key: "since", Value: "2025"}}); err != nil {
+		t.Fatalf("initial SetProperties: %v", err)
+	}
+
+	err := r.SetProperties(PropertySlice{{Key: "bad", Value: make(chan int)}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("SetProperties error = %v, want ErrUnsupportedValueType", err)
+	}
+	if _, ok := r.GetProperty("bad"); ok {
+		t.Fatal("invalid property was installed")
+	}
+	if got, ok := r.GetProperty("since"); !ok || got != "2025" {
+		t.Fatalf("previous property after rejected SetProperties = (%v, %v), want (2025, true)", got, ok)
+	}
+}
+
+func TestRelSetPropertiesRejectsReservedKey(t *testing.T) {
+	t.Parallel()
+
+	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
+	err := r.SetProperties(PropertySlice{{Key: "tkg_hash", Value: "x"}})
+	if !errors.Is(err, ErrReservedPrefix) {
+		t.Fatalf("SetProperties error = %v, want ErrReservedPrefix", err)
+	}
+	if r.PropertyCount() != 0 {
+		t.Fatalf("reserved property was installed, count=%d", r.PropertyCount())
 	}
 }
 

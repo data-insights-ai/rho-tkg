@@ -23,19 +23,36 @@ import (
 // Store-contract sentinel error aliases for readability inside this package.
 // The canonical sentinel-error declarations live in pkg/graph/store.
 var (
-	ErrNodeExists            = storecontract.ErrNodeExists
-	ErrNodeNotFound          = storecontract.ErrNodeNotFound
-	ErrRelExists             = storecontract.ErrRelExists
-	ErrRelNotFound           = storecontract.ErrRelNotFound
-	ErrVersionNotFound       = storecontract.ErrVersionNotFound
-	ErrIndexExists           = storecontract.ErrIndexExists
-	ErrIndexNotFound         = storecontract.ErrIndexNotFound
-	ErrTemporalIndexExists   = storecontract.ErrTemporalIndexExists
-	ErrTemporalIndexNotFound = storecontract.ErrTemporalIndexNotFound
-	ErrVectorIndexExists     = indexpkg.ErrVectorIndexExists
-	ErrVectorIndexNotFound   = indexpkg.ErrVectorIndexNotFound
-	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
+	ErrNodeExists                 = storecontract.ErrNodeExists
+	ErrNodeNotFound               = storecontract.ErrNodeNotFound
+	ErrRelExists                  = storecontract.ErrRelExists
+	ErrRelNotFound                = storecontract.ErrRelNotFound
+	ErrVersionNotFound            = storecontract.ErrVersionNotFound
+	ErrIndexExists                = storecontract.ErrIndexExists
+	ErrIndexNotFound              = storecontract.ErrIndexNotFound
+	ErrTemporalIndexExists        = storecontract.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound      = storecontract.ErrTemporalIndexNotFound
+	ErrInvalidTemporalIndexConfig = storecontract.ErrInvalidTemporalIndexConfig
+	ErrVectorIndexExists          = storecontract.ErrVectorIndexExists
+	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
+	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
+	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
+	ErrNilStore                   = storecontract.ErrNilStore
+	ErrStoreClosed                = storecontract.ErrStoreClosed
 )
+
+func errNilIterationCallback() error {
+	return fmt.Errorf("%w: nil iteration callback", ErrInvalidStoreMutation)
+}
+
+func errNilLabelRegistry() error {
+	return fmt.Errorf("%w: nil label registry", ErrInvalidStoreMutation)
+}
+
+func errNilRelTypeRegistry() error {
+	return fmt.Errorf("%w: nil relationship type registry", ErrInvalidStoreMutation)
+}
 
 // QueryOpts is a Store-contract alias; canonical declaration lives in
 // pkg/graph/store.
@@ -179,15 +196,17 @@ type Store struct {
 	// instead of the previous silent skip (F9 in the maintainability review).
 	indexRebuildPropertySkips atomic.Int64
 	indexRebuildTemporalSkips atomic.Int64
+	indexRebuildHFSkips       atomic.Int64
+	indexRebuildVectorSkips   atomic.Int64
 
 	// logger is captured from cfg.Logger so loadIndexes can warn about
 	// skipped node records during the rebuild. Nil means no logging.
 	logger badgerv4.Logger
 
-	// High-frequency indexes — in-memory only. Not persisted; rebuilt via CreateHighFrequencyIndex after restart.
+	// High-frequency indexes — in-memory data. Definitions are persisted; entries are rebuilt on startup.
 	hfIndexes map[uint16]*indexpkg.HighFrequencyIndex
 
-	// Vector indexes — in-memory only. Not persisted; rebuilt via CreateVectorIndex after restart.
+	// Vector indexes — in-memory data. Definitions are persisted; entries are rebuilt on startup.
 	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
 
 	// Lifecycle.
@@ -330,17 +349,76 @@ func (bs *Store) loadIndexes() error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 
-		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B)
-		it := txn.NewIterator(opts)
-		prefix := []byte{storepkg.KeyLabel}
+		nodeEntityIDs := make(map[types.NodeID]struct{})
+		decodedNodeLabels := make(map[types.NodeID]map[uint16]struct{})
+
+		// Scan node entities. The node row is authoritative for liveness:
+		// stale label index keys must not manufacture live nodeIDs after
+		// restart, while missing label keys can be rebuilt from the row.
+		valueOpts := opts
+		valueOpts.PrefetchValues = true
+		it := txn.NewIterator(valueOpts)
+		prefix := []byte{storepkg.KeyNode}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			key := item.Key()
+			if len(key) != storepkg.SizeNodeKey {
+				continue
+			}
+			nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
+			nodeEntityIDs[nid] = struct{}{}
+
+			var n *types.Node
+			if err := item.Value(func(val []byte) error {
+				var w storepkg.NodeWire
+				if err := msgpack.Unmarshal(val, &w); err != nil {
+					return fmt.Errorf("graph: unmarshal node: %w", err)
+				}
+				decoded, err := decodeNodeWireForKey(w, nid.SnowflakeID())
+				if err != nil {
+					return fmt.Errorf("graph: decode node: %w", err)
+				}
+				n = decoded
+				return nil
+			}); err != nil {
+				if bs.logger != nil {
+					bs.logger.Warningf("graph: node-index rebuild skipped node %d: %v", nid.SnowflakeID(), err)
+				}
+				continue
+			}
+			if n.ID() != nid {
+				if bs.logger != nil {
+					bs.logger.Warningf("graph: node-index rebuild skipped node key %d with mismatched row id %d", nid.SnowflakeID(), n.ID().SnowflakeID())
+				}
+				continue
+			}
+			bs.nodeIDs[nid] = struct{}{}
+			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
+			decodedNodeLabels[nid] = labels
+		}
+		it.Close()
+
+		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B).
+		// Only rows with a local node entity key may populate labelIdx. If
+		// the entity row decoded cleanly, ignore labels that disagree with
+		// the canonical node labels.
+		it = txn.NewIterator(opts)
+		prefix = []byte{storepkg.KeyLabel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < storepkg.SizeLabelIdx {
+			if len(key) != storepkg.SizeLabelIdx {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
 			nid := types.NodeID(storepkg.ParseIDFromKey(key, 3))
-			bs.nodeIDs[nid] = struct{}{}
+			if _, exists := nodeEntityIDs[nid]; !exists {
+				continue
+			}
+			if labels, decoded := decodedNodeLabels[nid]; decoded {
+				if _, ok := labels[token]; !ok {
+					continue
+				}
+			}
 			if bs.labelIdx[token] == nil {
 				bs.labelIdx[token] = make(map[types.NodeID]struct{})
 			}
@@ -348,31 +426,76 @@ func (bs *Store) loadIndexes() error {
 		}
 		it.Close()
 
-		// Also scan node entities to catch nodes without label indexes
-		// (shouldn't happen, but defensive).
-		it = txn.NewIterator(opts)
-		prefix = []byte{storepkg.KeyNode}
+		relEntityIDs := make(map[types.RelID]struct{})
+		decodedRelInfo := make(map[types.RelID]RelDeleteInfo)
+
+		// Scan relationship entities. The entity row is authoritative for
+		// relationship liveness: reltype/outgoing index keys can be stale after
+		// interrupted repair/delete paths and must not manufacture live relIDs.
+		relValueOpts := opts
+		relValueOpts.PrefetchValues = true
+		it = txn.NewIterator(relValueOpts)
+		prefix = []byte{storepkg.KeyRel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			key := it.Item().Key()
-			if len(key) < storepkg.SizeNodeKey {
+			item := it.Item()
+			key := item.Key()
+			if len(key) != storepkg.SizeRelKey {
 				continue
 			}
-			nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
-			bs.nodeIDs[nid] = struct{}{}
+			rid := types.RelID(storepkg.ParseIDFromKey(key, 1))
+			relEntityIDs[rid] = struct{}{}
+
+			var r *types.Relationship
+			if err := item.Value(func(val []byte) error {
+				var w storepkg.RelWire
+				if err := msgpack.Unmarshal(val, &w); err != nil {
+					return fmt.Errorf("graph: unmarshal relationship: %w", err)
+				}
+				decoded, err := decodeRelWireForKey(w, rid.SnowflakeID())
+				if err != nil {
+					return fmt.Errorf("graph: decode relationship: %w", err)
+				}
+				r = decoded
+				return nil
+			}); err != nil {
+				if bs.logger != nil {
+					bs.logger.Warningf("graph: relationship-index rebuild skipped rel %d: %v", rid.SnowflakeID(), err)
+				}
+				continue
+			}
+			if r.ID() != rid {
+				if bs.logger != nil {
+					bs.logger.Warningf("graph: relationship-index rebuild skipped rel key %d with mismatched row id %d", rid.SnowflakeID(), r.ID().SnowflakeID())
+				}
+				continue
+			}
+			bs.relIDs[rid] = struct{}{}
+			info := relDeleteInfoFromRelationship(r)
+			decodedRelInfo[rid] = info
+			bs.addRelationshipIndexesFromRow(info)
 		}
 		it.Close()
 
-		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B)
+		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B).
+		// Only rows with a local entity key may populate the type index.
+		// If the entity row decoded cleanly, ignore keys that disagree with
+		// the canonical row type.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyRelType}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < storepkg.SizeRelTypeIdx {
+			if len(key) != storepkg.SizeRelTypeIdx {
 				continue
 			}
 			token := binary.BigEndian.Uint16(key[1:3])
 			rid := types.RelID(storepkg.ParseIDFromKey(key, 3))
-			bs.relIDs[rid] = struct{}{}
+			info, decoded := decodedRelInfo[rid]
+			if !decoded {
+				continue
+			}
+			if info.RelType != token {
+				continue
+			}
 			if bs.typeIdx[token] == nil {
 				bs.typeIdx[token] = make(map[types.RelID]struct{})
 			}
@@ -380,48 +503,80 @@ func (bs *Store) loadIndexes() error {
 		}
 		it.Close()
 
-		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B)
+		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B).
+		// Outgoing entries belong on the relationship entity shard. Ignore
+		// outgoing keys without a local relationship entity.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyOut}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < storepkg.SizeAdjacency {
+			if len(key) != storepkg.SizeAdjacency {
 				continue
 			}
-			startID := types.NodeID(storepkg.ParseIDFromKey(key, 1))
+			startID := storepkg.ParseIDFromKey(key, 1)
+			relType := binary.BigEndian.Uint16(key[9:11])
+			endID := storepkg.ParseIDFromKey(key, 11)
 			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			if bs.outIdx[startID] == nil {
-				bs.outIdx[startID] = make(map[types.RelID]struct{})
+			info, decoded := decodedRelInfo[relID]
+			if !decoded {
+				continue
 			}
-			bs.outIdx[startID][relID] = struct{}{}
+			if info.StartID != startID || info.EndID != endID || info.RelType != relType {
+				continue
+			}
+			if _, startLocal := bs.nodeIDs[types.NodeID(startID)]; !startLocal {
+				continue
+			}
+			startNID := types.NodeID(startID)
+			if bs.outIdx[startNID] == nil {
+				bs.outIdx[startNID] = make(map[types.RelID]struct{})
+			}
+			bs.outIdx[startNID][relID] = struct{}{}
 		}
 		it.Close()
 
-		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B)
+		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B).
+		// Incoming-only rows are valid in TieredStore cross-shard layouts, so
+		// preserve keys with no local relationship entity. If there is a local
+		// decoded relationship row, only accept the canonical same-shard entry.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyIn}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			key := it.Item().Key()
-			if len(key) < storepkg.SizeAdjacency {
+			if len(key) != storepkg.SizeAdjacency {
 				continue
 			}
-			endID := types.NodeID(storepkg.ParseIDFromKey(key, 1))
+			endID := storepkg.ParseIDFromKey(key, 1)
 			relType := binary.BigEndian.Uint16(key[9:])
+			startID := storepkg.ParseIDFromKey(key, 11)
 			relID := types.RelID(storepkg.ParseRelIDFromAdjKey(key))
-			if bs.inIdx[endID] == nil {
-				bs.inIdx[endID] = make(map[types.RelID]uint16)
+			if info, decoded := decodedRelInfo[relID]; decoded {
+				if info.StartID != startID || info.EndID != endID || info.RelType != relType {
+					continue
+				}
+				if _, endLocal := bs.nodeIDs[types.NodeID(endID)]; !endLocal {
+					continue
+				}
+			} else if _, hasLocalEntity := relEntityIDs[relID]; hasLocalEntity {
+				continue
 			}
-			bs.inIdx[endID][relID] = relType
+			endNID := types.NodeID(endID)
+			if bs.inIdx[endNID] == nil {
+				bs.inIdx[endNID] = make(map[types.RelID]uint16)
+			}
+			bs.inIdx[endNID][relID] = relType
 		}
 		it.Close()
 
-		// Load counters from meta keys, or count from indexes if missing.
+		// Load counters from meta keys, or count from live row maps if missing.
 		nodeCount, err := getCounter(txn, counterNodeCountKey)
 		if err != nil {
 			return err
 		}
-		if nodeCount == 0 && len(bs.nodeIDs) > 0 {
-			nodeCount = int64(len(bs.nodeIDs))
+		liveNodeCount := int64(len(bs.nodeIDs))
+		nodeCount, err = reconcilePersistedCounter("node", nodeCount, liveNodeCount, int64(len(nodeEntityIDs)))
+		if err != nil {
+			return err
 		}
 		bs.nodeCount.Store(nodeCount)
 
@@ -429,8 +584,10 @@ func (bs *Store) loadIndexes() error {
 		if err != nil {
 			return err
 		}
-		if relCount == 0 && len(bs.relIDs) > 0 {
-			relCount = int64(len(bs.relIDs))
+		liveRelCount := int64(len(bs.relIDs))
+		relCount, err = reconcilePersistedCounter("relationship", relCount, liveRelCount, int64(len(relEntityIDs)))
+		if err != nil {
+			return err
 		}
 		bs.relCount.Store(relCount)
 
@@ -448,33 +605,42 @@ func (bs *Store) loadIndexes() error {
 			var defs []propIdxDef
 			if e := item.Value(func(val []byte) error {
 				return msgpack.Unmarshal(val, &defs)
-			}); e == nil {
-				for _, def := range defs {
-					key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
-					idx := indexpkg.NewPropertyIndex()
-					if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
-						for nodeID := range nodeIDs {
-							rawID := nodeID.SnowflakeID()
-							n, nerr := bs.loadNodeFromBadger(txn, rawID)
-							if nerr != nil {
-								// Tolerate missing/corrupt during rebuild,
-								// but record + warn (F9). Operators can
-								// inspect via IndexRebuildStats() and trigger
-								// an explicit repair pass if the count is
-								// nonzero.
-								bs.indexRebuildPropertySkips.Add(1)
-								if bs.logger != nil {
-									bs.logger.Warningf("graph: property-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, nerr)
-								}
-								continue
+			}); e != nil {
+				return fmt.Errorf("graph: load property index definitions: %w", e)
+			}
+			for _, def := range defs {
+				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
+						def.LabelToken, def.PropertyKey, err)
+				}
+				if err := storecontract.ValidateIndexPropertyKey(def.PropertyKey); err != nil {
+					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
+						def.LabelToken, def.PropertyKey, err)
+				}
+				key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+				idx := indexpkg.NewPropertyIndex()
+				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					for nodeID := range nodeIDs {
+						rawID := nodeID.SnowflakeID()
+						n, nerr := bs.loadNodeFromBadger(txn, rawID)
+						if nerr != nil {
+							// Tolerate missing/corrupt during rebuild,
+							// but record + warn (F9). Operators can
+							// inspect via IndexRebuildStats() and trigger
+							// an explicit repair pass if the count is
+							// nonzero.
+							bs.indexRebuildPropertySkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: property-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, nerr)
 							}
-							if val, found := n.GetProperty(def.PropertyKey); found {
-								idx.Add(rawID, val)
-							}
+							continue
+						}
+						if val, found := n.GetProperty(def.PropertyKey); found {
+							idx.Add(rawID, val)
 						}
 					}
-					bs.propertyIndexes[key] = idx
 				}
+				bs.propertyIndexes[key] = idx
 			}
 		}
 		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
@@ -485,34 +651,209 @@ func (bs *Store) loadIndexes() error {
 			var tokens []uint16
 			if e := item.Value(func(val []byte) error {
 				return msgpack.Unmarshal(val, &tokens)
-			}); e == nil {
-				for _, tok := range tokens {
-					ti := indexpkg.NewTemporalIndex()
-					if nodeIDs, ok := bs.labelIdx[tok]; ok {
-						for nodeID := range nodeIDs {
-							rawID := nodeID.SnowflakeID()
-							n, nerr := bs.loadNodeFromBadger(txn, rawID)
-							if nerr != nil {
-								// Tolerate missing/corrupt during rebuild,
-								// but record + warn (F9).
-								bs.indexRebuildTemporalSkips.Add(1)
-								if bs.logger != nil {
-									bs.logger.Warningf("graph: temporal-index rebuild skipped node %d (label %d): %v", rawID, tok, nerr)
-								}
-								continue
-							}
-							from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-							ti.Add(rawID, from, to)
-						}
-					}
-					bs.temporalIndexes[tok] = ti
+			}); e != nil {
+				return fmt.Errorf("graph: load temporal index definitions: %w", e)
+			}
+			for _, tok := range tokens {
+				if err := storecontract.ValidateLabelToken(tok); err != nil {
+					return fmt.Errorf("graph: load temporal index definition label %d: %w", tok, err)
 				}
+				ti := indexpkg.NewTemporalIndex()
+				if nodeIDs, ok := bs.labelIdx[tok]; ok {
+					for nodeID := range nodeIDs {
+						rawID := nodeID.SnowflakeID()
+						n, nerr := bs.loadNodeFromBadger(txn, rawID)
+						if nerr != nil {
+							// Tolerate missing/corrupt during rebuild,
+							// but record + warn (F9).
+							bs.indexRebuildTemporalSkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: temporal-index rebuild skipped node %d (label %d): %v", rawID, tok, nerr)
+							}
+							continue
+						}
+						from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+						ti.Add(rawID, from, to)
+					}
+				}
+				bs.temporalIndexes[tok] = ti
 			}
 		}
 		// badgerv4.ErrKeyNotFound is OK — no temporal indexes defined yet.
 
+		// Load high-frequency temporal index definitions and rebuild bucket data.
+		item, err = txn.Get(storepkg.HighFrequencyIndexDefsKey)
+		if err == nil {
+			var defs []hfIdxDef
+			if e := item.Value(func(val []byte) error {
+				return msgpack.Unmarshal(val, &defs)
+			}); e != nil {
+				return fmt.Errorf("graph: load high-frequency index definitions: %w", e)
+			}
+			seenHF := make(map[uint16]time.Duration, len(defs))
+			for _, def := range defs {
+				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+					return fmt.Errorf("graph: load high-frequency index definition label %d: %w",
+						def.LabelToken, err)
+				}
+				if _, exists := bs.temporalIndexes[def.LabelToken]; exists {
+					return fmt.Errorf("graph: load high-frequency index definition label %d: %w",
+						def.LabelToken, ErrTemporalIndexExists)
+				}
+				bucketSize, err := highFrequencyBucketDuration(def.BucketSizeMillis)
+				if err != nil {
+					return fmt.Errorf("graph: load high-frequency index definition label %d: %w",
+						def.LabelToken, err)
+				}
+				if existing, exists := seenHF[def.LabelToken]; exists {
+					if existing != bucketSize {
+						return fmt.Errorf("graph: load high-frequency index definition label %d: %w",
+							def.LabelToken, ErrTemporalIndexExists)
+					}
+					continue
+				}
+				seenHF[def.LabelToken] = bucketSize
+				hfi := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
+				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					for nodeID := range nodeIDs {
+						rawID := nodeID.SnowflakeID()
+						n, nerr := bs.loadNodeFromBadger(txn, rawID)
+						if nerr != nil {
+							bs.indexRebuildHFSkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: high-frequency-index rebuild skipped node %d (label %d): %v", rawID, def.LabelToken, nerr)
+							}
+							continue
+						}
+						from, _ := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+						hfi.Add(types.NodeID(rawID), from)
+					}
+				}
+				bs.hfIndexes[def.LabelToken] = hfi
+			}
+		}
+		// badgerv4.ErrKeyNotFound is OK — no high-frequency indexes defined yet.
+
+		// Load vector index definitions and rebuild index data.
+		item, err = txn.Get(storepkg.VectorIndexDefsKey)
+		if err == nil {
+			var defs []vectorIdxDef
+			if e := item.Value(func(val []byte) error {
+				return msgpack.Unmarshal(val, &defs)
+			}); e != nil {
+				return fmt.Errorf("graph: load vector index definitions: %w", e)
+			}
+			seenVector := make(map[indexpkg.VectorIndexKey]vectorIdxDef, len(defs))
+			for _, def := range defs {
+				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+					return fmt.Errorf("graph: load vector index definition label %d property %q: %w",
+						def.LabelToken, def.PropertyKey, err)
+				}
+				if err := storecontract.ValidateIndexPropertyKey(def.PropertyKey); err != nil {
+					return fmt.Errorf("graph: load vector index definition label %d property %q: %w",
+						def.LabelToken, def.PropertyKey, err)
+				}
+				if err := indexpkg.ValidateVectorIndexConfig(def.Dims, def.Metric); err != nil {
+					return fmt.Errorf("graph: load vector index definition label %d property %q: %w",
+						def.LabelToken, def.PropertyKey, err)
+				}
+				key := indexpkg.VectorIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+				if existing, exists := seenVector[key]; exists {
+					if existing.Dims != def.Dims || existing.Metric != def.Metric {
+						return fmt.Errorf("graph: load vector index definition label %d property %q: %w",
+							def.LabelToken, def.PropertyKey, ErrVectorIndexExists)
+					}
+					continue
+				}
+				seenVector[key] = def
+				vi := &indexpkg.VectorIndex{Dims: def.Dims, Metric: def.Metric}
+				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					for nodeID := range nodeIDs {
+						rawID := nodeID.SnowflakeID()
+						n, nerr := bs.loadNodeFromBadger(txn, rawID)
+						if nerr != nil {
+							bs.indexRebuildVectorSkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: vector-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, nerr)
+							}
+							continue
+						}
+						val, found := n.GetProperty(def.PropertyKey)
+						if !found {
+							continue
+						}
+						vec, ok := indexpkg.ToFloat32Slice(val)
+						if !ok {
+							continue
+						}
+						if addErr := vi.Add(rawID, vec); addErr != nil {
+							bs.indexRebuildVectorSkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: vector-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, addErr)
+							}
+							continue
+						}
+					}
+				}
+				bs.vectorIndexes[key] = vi
+			}
+		}
+		// badgerv4.ErrKeyNotFound is OK — no vector indexes defined yet.
+
 		return nil
 	})
+}
+
+func reconcilePersistedCounter(name string, persisted, liveRows, rawEntityRows int64) (int64, error) {
+	if persisted == 0 {
+		return liveRows, nil
+	}
+	if persisted == liveRows {
+		return liveRows, nil
+	}
+	if persisted == rawEntityRows && rawEntityRows > liveRows {
+		return liveRows, nil
+	}
+	return 0, fmt.Errorf("%w: %s counter %d does not match %d live rows",
+		ErrInvalidStoreMutation, name, persisted, liveRows)
+}
+
+func (bs *Store) addNodeIndexesFromRow(nid types.NodeID, labelTokens []uint16) map[uint16]struct{} {
+	labels := make(map[uint16]struct{}, len(labelTokens))
+	for _, tok := range labelTokens {
+		labels[tok] = struct{}{}
+		if bs.labelIdx[tok] == nil {
+			bs.labelIdx[tok] = make(map[types.NodeID]struct{})
+		}
+		bs.labelIdx[tok][nid] = struct{}{}
+	}
+	return labels
+}
+
+func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
+	rid := types.RelID(info.ID)
+	relType := info.RelType
+
+	if bs.typeIdx[relType] == nil {
+		bs.typeIdx[relType] = make(map[types.RelID]struct{})
+	}
+	bs.typeIdx[relType][rid] = struct{}{}
+
+	if _, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]; startLocal {
+		startNID := types.NodeID(info.StartID)
+		if bs.outIdx[startNID] == nil {
+			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+		}
+		bs.outIdx[startNID][rid] = struct{}{}
+	}
+
+	if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
+		endNID := types.NodeID(info.EndID)
+		if bs.inIdx[endNID] == nil {
+			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+		}
+		bs.inIdx[endNID][rid] = relType
+	}
 }
 
 // Clear removes all entities, indexes, history, counters, and secondary
@@ -536,6 +877,9 @@ func (bs *Store) loadIndexes() error {
 // duration. Releasing flushMu would only save a sync.Mutex acquisition
 // that is already serialised behind idxMu anyway.
 func (bs *Store) Clear() error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
 
@@ -600,6 +944,12 @@ func (bs *Store) Clear() error {
 // (InMemory mode, FlushInterval==0). If flushLoop already drained pending,
 // this is a no-op. Counters are included in the WriteBatch atomically.
 func (bs *Store) Close() error {
+	if bs == nil {
+		return ErrNilStore
+	}
+	if bs.db == nil || bs.stopCh == nil || bs.flushDone == nil || bs.gcDone == nil {
+		return ErrStoreClosed
+	}
 	var err error
 	bs.closeOnce.Do(func() {
 		close(bs.stopCh)
@@ -619,21 +969,41 @@ func (bs *Store) Close() error {
 	return err
 }
 
+func (bs *Store) checkOpen() error {
+	if bs == nil {
+		return ErrNilStore
+	}
+	if bs.db == nil {
+		return ErrStoreClosed
+	}
+	if bs.dbClosed.Load() {
+		return ErrStoreClosed
+	}
+	return nil
+}
+
 // IndexRebuildStats reports the number of node entries that the loadIndexes
 // pass (called once at Open) tolerated as missing or corrupt while rebuilding
-// the property and temporal in-memory indexes. A nonzero count after a fresh
+// the property, temporal, high-frequency, and vector in-memory indexes. A nonzero count after a fresh
 // Open means the persisted indexes are degraded — operators should run an
 // explicit repair pass before relying on index-backed queries.
 type IndexRebuildStats struct {
 	PropertySkipped int64
 	TemporalSkipped int64
+	HFSkipped       int64
+	VectorSkipped   int64
 }
 
 // IndexRebuildStats returns the diagnostic counters captured during the last
 // loadIndexes pass. Zero means a clean rebuild.
 func (bs *Store) IndexRebuildStats() IndexRebuildStats {
+	if bs.dbClosed.Load() {
+		return IndexRebuildStats{}
+	}
 	return IndexRebuildStats{
 		PropertySkipped: bs.indexRebuildPropertySkips.Load(),
 		TemporalSkipped: bs.indexRebuildTemporalSkips.Load(),
+		HFSkipped:       bs.indexRebuildHFSkips.Load(),
+		VectorSkipped:   bs.indexRebuildVectorSkips.Load(),
 	}
 }

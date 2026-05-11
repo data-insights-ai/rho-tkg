@@ -36,6 +36,9 @@ func (c *Core) now() types.Instant {
 // Returns ctx.Err() if the context is done, nil otherwise.
 // Zero overhead when the context is not cancelled.
 func checkCtx(ctx context.Context) error {
+	if ctx == nil {
+		return ErrNilContext
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -69,6 +72,10 @@ func extractTemporal(props map[string]any) (validFrom, validTo, createdAt types.
 	if err != nil {
 		return 0, 0, 0, nil, err
 	}
+	if validFrom != 0 && validTo != 0 && validFrom >= validTo {
+		return 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
+			ErrInvalidTimeRange, validFrom, validTo)
+	}
 
 	filtered = make(map[string]any, len(props))
 	for k, v := range props {
@@ -80,7 +87,6 @@ func extractTemporal(props map[string]any) (validFrom, validTo, createdAt types.
 }
 
 // parseInstant converts a property value to types.Instant (Unix milliseconds).
-// Accepts nil (returns 0), int64, float64, int, and types.Instant.
 func parseInstant(v any, key string) (types.Instant, error) {
 	if v == nil {
 		return 0, nil
@@ -88,18 +94,71 @@ func parseInstant(v any, key string) (types.Instant, error) {
 	switch val := v.(type) {
 	case types.Instant:
 		return val, nil
-	case int64:
-		return types.Instant(val), nil
 	case int:
-		return types.Instant(val), nil
+		return instantFromSigned(int64(val)), nil
+	case int8:
+		return instantFromSigned(int64(val)), nil
+	case int16:
+		return instantFromSigned(int64(val)), nil
+	case int32:
+		return instantFromSigned(int64(val)), nil
+	case int64:
+		return instantFromSigned(val), nil
+	case uint:
+		return instantFromUnsigned(uint64(val), key)
+	case uint8:
+		return instantFromUnsigned(uint64(val), key)
+	case uint16:
+		return instantFromUnsigned(uint64(val), key)
+	case uint32:
+		return instantFromUnsigned(uint64(val), key)
+	case uint64:
+		return instantFromUnsigned(val, key)
+	case float32:
+		return instantFromFloat32(val, key)
 	case float64:
-		if val != math.Trunc(val) {
-			return 0, fmt.Errorf("graph: %s %g is not an integer", key, val)
-		}
-		return types.Instant(val), nil
+		return instantFromFloat64(val, key)
 	default:
 		return 0, fmt.Errorf("graph: %s must be a number (Unix ms), got %T", key, v)
 	}
+}
+
+const (
+	maxInt64Value      = int64(^uint64(0) >> 1)
+	maxExactFloat32Int = float64(1 << 24)
+	minExactFloat32Int = -maxExactFloat32Int
+	maxExactFloat64Int = float64(1 << 53)
+	minExactFloat64Int = -maxExactFloat64Int
+	instantRangeLabel  = "exact int64 millisecond range"
+)
+
+func instantFromSigned(v int64) types.Instant {
+	return types.Instant(v)
+}
+
+func instantFromUnsigned(v uint64, key string) (types.Instant, error) {
+	if v > uint64(maxInt64Value) {
+		return 0, fmt.Errorf("graph: %s %d outside %s", key, v, instantRangeLabel)
+	}
+	return types.Instant(int64(v)), nil
+}
+
+func instantFromFloat32(v float32, key string) (types.Instant, error) {
+	return instantFromFloat(float64(v), minExactFloat32Int, maxExactFloat32Int, key)
+}
+
+func instantFromFloat64(v float64, key string) (types.Instant, error) {
+	return instantFromFloat(v, minExactFloat64Int, maxExactFloat64Int, key)
+}
+
+func instantFromFloat(v, minExact, maxExact float64, key string) (types.Instant, error) {
+	if v != math.Trunc(v) {
+		return 0, fmt.Errorf("graph: %s %g is not an integer", key, v)
+	}
+	if v < minExact || v > maxExact {
+		return 0, fmt.Errorf("graph: %s %g outside %s", key, v, instantRangeLabel)
+	}
+	return types.Instant(int64(v)), nil
 }
 
 // extractProvenance removes the reserved provenance keys (tkg_author_id,
@@ -107,7 +166,8 @@ func parseInstant(v any, key string) (types.Instant, error) {
 // returns their values plus a filtered props map without those keys.
 // If none of the reserved keys are present, the original map is returned
 // unchanged (no allocation). The caller's original map is never mutated (B23).
-// Returns an error if tkg_auth_level is out of [0, 255] or has an unsupported type.
+// Returns an error if any reserved provenance value has an unsupported type
+// or tkg_auth_level is out of [0, 255].
 func extractProvenance(props map[string]any) (authorID string, sig []byte, authorizedBy string, authLevel uint8, filtered map[string]any, err error) {
 	_, hasA := props["tkg_author_id"]
 	_, hasS := props["tkg_signature"]
@@ -116,41 +176,40 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 	if !hasA && !hasS && !hasABy && !hasAL {
 		return "", nil, "", 0, props, nil
 	}
-	authorID, _ = props["tkg_author_id"].(string)
-	sig, _ = props["tkg_signature"].([]byte)
-	sig = types.CloneBytes(sig)
-	authorizedBy, _ = props["tkg_authorized_by"].(string)
-	// Accept uint8 and all integer types for JSON round-trip safety.
-	// Bounds are checked explicitly to prevent silent truncation via modulo.
-	switch v := props["tkg_auth_level"].(type) {
-	case uint8:
-		authLevel = v
-	case int:
-		if v < 0 || v > 255 {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+	if hasA {
+		v := props["tkg_author_id"]
+		if v != nil {
+			s, ok := v.(string)
+			if !ok {
+				return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_author_id must be a string, got %T", v)
+			}
+			authorID = s
 		}
-		authLevel = uint8(v)
-	case int32:
-		if v < 0 || v > 255 {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+	}
+	if hasS {
+		v := props["tkg_signature"]
+		if v != nil {
+			b, ok := v.([]byte)
+			if !ok {
+				return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_signature must be []byte, got %T", v)
+			}
+			sig = types.CloneBytes(b)
 		}
-		authLevel = uint8(v)
-	case int64:
-		if v < 0 || v > 255 {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+	}
+	if hasABy {
+		v := props["tkg_authorized_by"]
+		if v != nil {
+			s, ok := v.(string)
+			if !ok {
+				return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_authorized_by must be a string, got %T", v)
+			}
+			authorizedBy = s
 		}
-		authLevel = uint8(v)
-	case float64:
-		if v != math.Trunc(v) {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %g is not an integer", v)
-		}
-		if v < 0 || v > 255 {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level %g out of range [0, 255]", v)
-		}
-		authLevel = uint8(v)
-	default:
-		if props["tkg_auth_level"] != nil {
-			return "", nil, "", 0, nil, fmt.Errorf("graph: tkg_auth_level must be a number, got %T", props["tkg_auth_level"])
+	}
+	if hasAL {
+		authLevel, err = parseAuthLevel(props["tkg_auth_level"])
+		if err != nil {
+			return "", nil, "", 0, nil, err
 		}
 	}
 	filtered = make(map[string]any, len(props))
@@ -160,4 +219,62 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 		}
 	}
 	return authorID, sig, authorizedBy, authLevel, filtered, nil
+}
+
+func parseAuthLevel(v any) (uint8, error) {
+	if v == nil {
+		return 0, nil
+	}
+	switch val := v.(type) {
+	case int:
+		return authLevelFromSigned(int64(val))
+	case int8:
+		return authLevelFromSigned(int64(val))
+	case int16:
+		return authLevelFromSigned(int64(val))
+	case int32:
+		return authLevelFromSigned(int64(val))
+	case int64:
+		return authLevelFromSigned(val)
+	case uint:
+		return authLevelFromUnsigned(uint64(val))
+	case uint8:
+		return val, nil
+	case uint16:
+		return authLevelFromUnsigned(uint64(val))
+	case uint32:
+		return authLevelFromUnsigned(uint64(val))
+	case uint64:
+		return authLevelFromUnsigned(val)
+	case float32:
+		return authLevelFromFloat(float64(val))
+	case float64:
+		return authLevelFromFloat(val)
+	default:
+		return 0, fmt.Errorf("graph: tkg_auth_level must be a number, got %T", v)
+	}
+}
+
+func authLevelFromSigned(v int64) (uint8, error) {
+	if v < 0 || v > 255 {
+		return 0, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+	}
+	return uint8(v), nil
+}
+
+func authLevelFromUnsigned(v uint64) (uint8, error) {
+	if v > 255 {
+		return 0, fmt.Errorf("graph: tkg_auth_level %d out of range [0, 255]", v)
+	}
+	return uint8(v), nil
+}
+
+func authLevelFromFloat(v float64) (uint8, error) {
+	if v != math.Trunc(v) {
+		return 0, fmt.Errorf("graph: tkg_auth_level %g is not an integer", v)
+	}
+	if v < 0 || v > 255 {
+		return 0, fmt.Errorf("graph: tkg_auth_level %g out of range [0, 255]", v)
+	}
+	return uint8(v), nil
 }

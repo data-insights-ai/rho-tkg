@@ -52,6 +52,9 @@ func (ts *Store) ForceRotate() error {
 // based on the under-RLock snapshot — we deliberately do NOT lazy-open
 // them just to read counts.
 func (ts *Store) ListShards() ([]ShardInfo, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
 	type esSnapshot struct {
 		es        *EventShard
 		name      string
@@ -119,11 +122,15 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 		}
 		infos = append(infos, archiveInfo)
 	} else if ts.hasArchiveShard() {
+		archiveEntry, _ := ts.catalog.GetShard("archive") // (ShardEntry, bool) — bool discarded
 		infos = append(infos, ShardInfo{
-			Name: "archive",
-			Kind: ShardArchive,
-			Tier: TierCold,
-			Open: false,
+			Name:     "archive",
+			Kind:     ShardArchive,
+			Tier:     TierCold,
+			Open:     false,
+			Nodes:    approxNodes(archiveEntry),
+			Rels:     approxRels(archiveEntry),
+			Verified: archiveEntry != nil && archiveEntry.Verified,
 		})
 	}
 
@@ -141,6 +148,8 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			TimeStart: sn.timeStart,
 			TimeEnd:   sn.timeEnd,
 			Verified:  entry != nil && entry.Verified,
+			Nodes:     approxNodes(entry),
+			Rels:      approxRels(entry),
 		}
 		if sn.wasOpen {
 			store, err := sn.es.checkoutStore(ts)
@@ -157,8 +166,21 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 	return infos, nil
 }
 
-// RebuildCatalog reconstructs the shard catalog from the live in-memory state.
-// Updates node/rel counts and tier info for all open shards.
+func approxNodes(entry *ShardEntry) int {
+	if entry == nil {
+		return 0
+	}
+	return entry.ApproxNodes
+}
+
+func approxRels(entry *ShardEntry) int {
+	if entry == nil {
+		return 0
+	}
+	return entry.ApproxRels
+}
+
+// RebuildCatalog reconstructs shard tiers and counts from the backing stores.
 //
 // Concurrency: holds ts.mu.Lock for the duration of the rebuild,
 // blocking every reader path that takes ts.mu.RLock (label/property
@@ -169,15 +191,24 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 func (ts *Store) RebuildCatalog() error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+
+	catalogSnapshot := ts.catalog.snapshotShards()
+	rollbackCatalog := func(err error) error {
+		ts.catalog.restoreShards(catalogSnapshot)
+		return err
+	}
 
 	// Update reference shard.
 	refNodes, err := ts.refShard.NodeCount()
 	if err != nil {
-		return fmt.Errorf("graph: rebuild catalog: ref node count: %w", err)
+		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: ref node count: %w", err))
 	}
 	refRels, err := ts.refShard.RelationshipCount()
 	if err != nil {
-		return fmt.Errorf("graph: rebuild catalog: ref rel count: %w", err)
+		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: ref rel count: %w", err))
 	}
 	ts.catalog.UpdateShardStats("reference", refNodes, refRels)
 
@@ -186,57 +217,56 @@ func (ts *Store) RebuildCatalog() error {
 	// at the API boundary instead of silently leaving stats stale.
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
-		return fmt.Errorf("graph: rebuild catalog: open archive: %w", archiveErr)
+		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: open archive: %w", archiveErr))
 	}
 	if archive != nil {
 		archNodes, err := archive.NodeCount()
 		if err != nil {
 			archiveCheckin()
-			return fmt.Errorf("graph: rebuild catalog: archive node count: %w", err)
+			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: archive node count: %w", err))
 		}
 		archRels, err := archive.RelationshipCount()
 		if err != nil {
 			archiveCheckin()
-			return fmt.Errorf("graph: rebuild catalog: archive rel count: %w", err)
+			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: archive rel count: %w", err))
 		}
 		archiveCheckin()
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
-	// Update event shards. Pin each open shard via checkoutStore so a
-	// racing Close (which doesn't take ts.mu and only spin-waits on
-	// activeReqs) cannot free the underlying DB while we count it.
-	// Cold shards (es.store == nil) are skipped — the catalog already
-	// holds their last persisted counts. checkoutStore returns
-	// ErrStoreClosed if Close started after our snapshot; in that
-	// case we leave the catalog stat untouched rather than crash.
+	// Update event shards. Pin each shard via checkoutStore so a racing Close
+	// (which doesn't take ts.mu and only spin-waits on activeReqs) cannot free
+	// the underlying DB while we count it. Closed cold shards are opened
+	// read-only and counted; otherwise this method would keep stale catalog
+	// counts instead of rebuilding them. checkoutStore returns ErrStoreClosed
+	// if Close started after our snapshot; in that case we leave the catalog
+	// stat untouched rather than crash.
 	for _, es := range ts.eventShards {
 		ts.catalog.UpdateShardTier(es.name, es.tier)
-		if es.store == nil {
-			continue
-		}
 		store, coErr := es.checkoutStore(ts)
 		if coErr != nil {
-			// Close started after we observed es.store != nil; skip
-			// the count update rather than crash on a closed DB.
+			// Close started after our snapshot; skip the count update
+			// rather than crash on a closed DB.
 			continue
 		}
 		nc, err := store.NodeCount()
 		if err != nil {
 			es.checkinStore()
-			return fmt.Errorf("graph: rebuild catalog: shard %s node count: %w", es.name, err)
+			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: shard %s node count: %w", es.name, err))
 		}
 		rc, err := store.RelationshipCount()
 		if err != nil {
 			es.checkinStore()
-			return fmt.Errorf("graph: rebuild catalog: shard %s rel count: %w", es.name, err)
+			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: shard %s rel count: %w", es.name, err))
 		}
 		es.checkinStore()
 		ts.catalog.UpdateShardStats(es.name, nc, rc)
 	}
 
 	if !ts.inMemory {
-		return ts.catalog.Save()
+		if err := ts.catalog.Save(); err != nil {
+			return rollbackCatalog(err)
+		}
 	}
 	return nil
 }
@@ -258,6 +288,9 @@ type HashChainVerifier interface {
 // needs label/type resolution. For immutable shards (warm/cold) that have
 // already been verified, returns the cached result without re-scanning.
 func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResult, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
 	// Look up shard in catalog.
 	entry, ok := ts.catalog.GetShard(shardName)
 	if !ok {
@@ -323,10 +356,14 @@ func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResu
 
 	// Cache result for immutable shards if all passed.
 	if isImmutable && result.NodesFailed == 0 && result.RelsFailed == 0 {
+		catalogSnapshot := ts.catalog.snapshotShards()
 		ts.catalog.UpdateShardVerified(shardName, true)
 		ts.catalog.UpdateShardStats(shardName, result.NodesOK, result.RelsOK)
 		if !ts.inMemory {
-			_ = ts.catalog.Save() // best-effort persist
+			if err := ts.catalog.Save(); err != nil {
+				ts.catalog.restoreShards(catalogSnapshot)
+				return result, fmt.Errorf("graph: save verification cache for shard %q: %w", shardName, err)
+			}
 		}
 	}
 
@@ -343,6 +380,9 @@ func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResu
 // hang. Cold event shards are pinned via checkoutStore for the same reason.
 func (ts *Store) resolveShardStore(name string) (*BadgerStore, func(), error) {
 	noop := func() {}
+	if err := ts.checkOpen(); err != nil {
+		return nil, noop, err
+	}
 	if name == "reference" {
 		return ts.refShard, noop, nil
 	}
@@ -384,6 +424,20 @@ type namedStore struct {
 // On error, any checkouts already taken are released before returning, so
 // the caller never has to handle partial cleanup.
 func (ts *Store) allShardStoresWithLazyOpen() ([]namedStore, func(), error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, func() {}, err
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.allShardStoresWithLazyOpenLocked()
+}
+
+// allShardStoresWithLazyOpenLocked is allShardStoresWithLazyOpen for callers
+// that already hold ts.mu.RLock or ts.mu.Lock.
+func (ts *Store) allShardStoresWithLazyOpenLocked() ([]namedStore, func(), error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, func() {}, err
+	}
 	var stores []namedStore
 	stores = append(stores, namedStore{name: "reference", store: ts.refShard})
 
@@ -406,12 +460,10 @@ func (ts *Store) allShardStoresWithLazyOpen() ([]namedStore, func(), error) {
 		archiveCheckin = func() {}
 	}
 
-	ts.mu.RLock()
 	eventShards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		eventShards = append(eventShards, es)
 	}
-	ts.mu.RUnlock()
 
 	checkedOut := make([]*EventShard, 0, len(eventShards))
 	releaseAll := func() {
@@ -450,7 +502,20 @@ func (ts *Store) allShardStoresWithLazyOpen() ([]namedStore, func(), error) {
 // release function.
 func (ts *Store) findRelInAnyShardStore(relID snowflake.ID, stores []namedStore) *BadgerStore {
 	for _, ns := range stores {
-		if ns.store != nil && ns.store.HasRelID(relID) {
+		if relationshipRowExists(ns.store, types.RelID(relID)) {
+			return ns.store
+		}
+	}
+	return nil
+}
+
+// findNodeInAnyShardStore locates which BadgerStore owns a node entity by
+// scanning the caller-supplied pinned-store snapshot. It mirrors
+// findRelInAnyShardStore for repair code that must resolve relationship
+// endpoints against the same stable shard set it is already scanning.
+func (ts *Store) findNodeInAnyShardStore(nodeID snowflake.ID, stores []namedStore) *BadgerStore {
+	for _, ns := range stores {
+		if ns.store != nil && ns.store.HasNodeID(nodeID) {
 			return ns.store
 		}
 	}

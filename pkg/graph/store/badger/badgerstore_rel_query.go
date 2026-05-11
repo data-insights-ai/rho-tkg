@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -14,6 +15,15 @@ import (
 // live in badgerstore_rel_batch.go.
 
 func (bs *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelTypeToken(token); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	bs.idxMu.RLock()
 	set := bs.typeIdx[token]
 	rids := make([]types.RelID, 0, len(set))
@@ -31,6 +41,9 @@ func (bs *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	// Temporal pre-filter via Peek.
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 
+	if storepkg.HasTemporalFilter(opts) {
+		return bs.fetchRelsWithTemporalFilterPage(rids, opts)
+	}
 	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
@@ -43,7 +56,17 @@ func (bs *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 // If typeToken is 0, returns all outgoing; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
 	bs.idxMu.RLock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		bs.idxMu.RUnlock()
+		return nil, ErrNodeNotFound
+	}
 	set := bs.outIdx[nid]
 	rids := make([]types.RelID, 0, len(set))
 	for id := range set {
@@ -75,18 +98,33 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 
 // OutgoingRelationshipsForNodes returns outgoing relationships for multiple nodes
 // in a single batched operation. Phase 1 snapshots all relIDs under one idxMu.RLock;
-// phase 2 fetches entities outside the lock via the LRU cache.
+// phase 2 fetches entities outside the lock via the LRU cache. Every requested
+// node must exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if len(typedNodeIDs) == 0 {
 		return nil, nil
+	}
+	for _, nid := range typedNodeIDs {
+		if err := storecontract.ValidateNodeID(nid); err != nil {
+			return nil, err
+		}
 	}
 
 	// Phase 1: snapshot relIDs per node under single read lock.
 	bs.idxMu.RLock()
 	perNode := make(map[types.NodeID][]types.RelID, len(typedNodeIDs))
+	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
-		if _, done := perNode[nid]; done {
-			continue // deduplicate input
+		if _, done := seen[nid]; done {
+			continue
+		}
+		seen[nid] = struct{}{}
+		if _, ok := bs.nodeIDs[nid]; !ok {
+			bs.idxMu.RUnlock()
+			return nil, ErrNodeNotFound
 		}
 		set := bs.outIdx[nid]
 		if len(set) == 0 {
@@ -136,7 +174,17 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
 	bs.idxMu.RLock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		bs.idxMu.RUnlock()
+		return nil, ErrNodeNotFound
+	}
 	set := bs.inIdx[nid]
 	rids := make([]types.RelID, 0, len(set))
 	for id, tok := range set {
@@ -169,19 +217,34 @@ func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 // IncomingRelationshipsForNodes returns incoming relationships for multiple nodes
 // in a single batched operation. Phase 1 snapshots relIDs from inIdx under one
 // idxMu.RLock (with early type filtering since inIdx stores typeToken);
-// phase 2 fetches entities outside the lock via the LRU cache.
+// phase 2 fetches entities outside the lock via the LRU cache. Every requested
+// node must exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if len(typedNodeIDs) == 0 {
 		return nil, nil
+	}
+	for _, nid := range typedNodeIDs {
+		if err := storecontract.ValidateNodeID(nid); err != nil {
+			return nil, err
+		}
 	}
 
 	// Phase 1: snapshot relIDs per node under single read lock.
 	// inIdx stores relID -> typeToken, enabling early type filtering.
 	bs.idxMu.RLock()
 	perNode := make(map[types.NodeID][]types.RelID, len(typedNodeIDs))
+	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
-		if _, done := perNode[nid]; done {
-			continue // deduplicate input
+		if _, done := seen[nid]; done {
+			continue
+		}
+		seen[nid] = struct{}{}
+		if _, ok := bs.nodeIDs[nid]; !ok {
+			bs.idxMu.RUnlock()
+			return nil, ErrNodeNotFound
 		}
 		set := bs.inIdx[nid]
 		if len(set) == 0 {
@@ -233,6 +296,12 @@ func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // and temporal filtering. Snapshot relIDs under lock, sort + paginate, then
 // fetch via GetRelationship. Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	bs.idxMu.RLock()
 	rids := make([]types.RelID, 0, len(bs.relIDs))
 	for id := range bs.relIDs {
@@ -249,6 +318,9 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	// Temporal pre-filter via Peek.
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 
+	if storepkg.HasTemporalFilter(opts) {
+		return bs.fetchRelsWithTemporalFilterPage(rids, opts)
+	}
 	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
@@ -257,20 +329,25 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	return bs.fetchRelsWithTemporalFilter(rids, opts)
 }
 
-// GetRelationshipsByIDs returns relationships matching the given IDs.
-// Missing IDs are silently skipped. Results are sorted by snowflake.ID.
+// GetRelationshipsByIDs returns relationships for every requested ID.
+// Missing IDs return ErrRelNotFound. Results are sorted by snowflake.ID.
 func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if len(ids) == 0 {
 		return nil, nil
+	}
+	for _, id := range ids {
+		if err := storecontract.ValidateRelID(id); err != nil {
+			return nil, err
+		}
 	}
 
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
 		r, err := bs.GetRelationship(id)
 		if err != nil {
-			if errors.Is(err, ErrRelNotFound) {
-				continue
-			}
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}
 		rels = append(rels, r)
@@ -283,11 +360,15 @@ func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 	return rels, nil
 }
 
-// PutRelationshipsBatch stores multiple relationships atomically using two-phase validation.
-// Phase 1: check endpoints exist, check for duplicate rel IDs.
-// Phase 2: serialize, cache, index, and queue each for async flush.
-// Any failure → error, zero mutations. Nil/empty input → nil error.
+// AllRelIDs returns relationship IDs matching the temporal/depth query options,
+// sorted in ascending ID order after pagination is applied.
 func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	bs.idxMu.RLock()
 	rids := make([]types.RelID, 0, len(bs.relIDs))
 	for id := range bs.relIDs {
@@ -299,6 +380,17 @@ func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, nil
 	}
 	sort.Slice(rids, func(i, j int) bool { return rids[i].SnowflakeID() < rids[j].SnowflakeID() })
+	if storepkg.HasTemporalFilter(opts) {
+		rids = bs.filterRelIDsByTemporalPeek(rids, opts)
+		rels, err := bs.fetchRelsWithTemporalFilter(rids, opts)
+		if err != nil {
+			return nil, err
+		}
+		rids = rids[:0]
+		for _, r := range rels {
+			rids = append(rids, r.ID())
+		}
+	}
 	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
 	if len(rids) == 0 {
 		return nil, nil
@@ -309,9 +401,19 @@ func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 // ForEachRelID iterates over all current relationship IDs, calling fn for each.
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (bs *Store) ForEachRelID(fn func(types.RelID) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
 	bs.idxMu.RLock()
-	defer bs.idxMu.RUnlock()
+	ids := make([]types.RelID, 0, len(bs.relIDs))
 	for id := range bs.relIDs {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -102,6 +103,92 @@ func TestGraphStats_RelCounters(t *testing.T) {
 	s = g.Stats.Get()
 	if s.RelsDeleted != 1 {
 		t.Errorf("RelsDeleted = %d, want 1", s.RelsDeleted)
+	}
+}
+
+func TestGraphStats_BatchCreateCounters(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	b, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	a, err := b.AddNode([]string{"BatchStats"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	bn, err := b.AddNode([]string{"BatchStats"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	if _, err := b.AddRelationship("BATCH_STATS_REL", a, bn, nil); err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 3 {
+		t.Fatalf("Created = %d, want 3", result.Created)
+	}
+
+	s := g.Stats.Get()
+	if s.NodesAdded != 2 {
+		t.Fatalf("NodesAdded = %d, want 2", s.NodesAdded)
+	}
+	if s.RelsAdded != 1 {
+		t.Fatalf("RelsAdded = %d, want 1", s.RelsAdded)
+	}
+}
+
+func TestGraphStats_CloseVersionCounters(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"CloseStats"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"CloseStats"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	r, err := g.Rels.Add("CLOSE_STATS_REL", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	before := g.Stats.Get()
+	if err := g.Nodes.CloseVersion(a.ID(), 100); err != nil {
+		t.Fatalf("CloseVersion node: %v", err)
+	}
+	afterNode := g.Stats.Get()
+	if afterNode.NodesUpdated != before.NodesUpdated+1 {
+		t.Fatalf("NodesUpdated after node CloseVersion = %d, want %d", afterNode.NodesUpdated, before.NodesUpdated+1)
+	}
+
+	if err := g.Rels.CloseVersion(r.ID(), 100); err != nil {
+		t.Fatalf("CloseVersion rel: %v", err)
+	}
+	afterRel := g.Stats.Get()
+	if afterRel.RelsUpdated != before.RelsUpdated+1 {
+		t.Fatalf("RelsUpdated after rel CloseVersion = %d, want %d", afterRel.RelsUpdated, before.RelsUpdated+1)
+	}
+
+	if err := g.Nodes.CloseVersion(a.ID(), 200); !errors.Is(err, ErrAlreadyClosed) {
+		t.Fatalf("second node CloseVersion = %v, want ErrAlreadyClosed", err)
+	}
+	if err := g.Rels.CloseVersion(r.ID(), 200); !errors.Is(err, ErrAlreadyClosed) {
+		t.Fatalf("second rel CloseVersion = %v, want ErrAlreadyClosed", err)
+	}
+	afterRejected := g.Stats.Get()
+	if afterRejected.NodesUpdated != afterNode.NodesUpdated {
+		t.Fatalf("NodesUpdated changed after rejected CloseVersion: %d -> %d", afterNode.NodesUpdated, afterRejected.NodesUpdated)
+	}
+	if afterRejected.RelsUpdated != afterRel.RelsUpdated {
+		t.Fatalf("RelsUpdated changed after rejected CloseVersion: %d -> %d", afterRel.RelsUpdated, afterRejected.RelsUpdated)
 	}
 }
 

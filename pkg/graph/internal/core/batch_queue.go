@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -11,12 +12,23 @@ import (
 // eagerly. The node is fully formed (ID, hash, integrity) but not yet persisted.
 // Returns the created node so it can be passed to AddRelationship.
 //
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5: queue methods must respect the
-// same lifecycle gate as standalone mutations).
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5: queue methods must respect the same lifecycle gate as standalone
+// mutations).
 func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.Node, error) {
+	if err := b.lockOpen(); err != nil {
+		return nil, err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
 		return nil, err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return nil, ErrGraphClosed
 	}
 	if len(labels) == 0 {
 		return nil, ErrNoLabels
@@ -52,26 +64,21 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, fmt.Errorf("graph: batch node properties: %w", err)
 	}
 
-	primaryToken, err := b.g.labels.GetOrCreate(labels[0])
+	labelTokens, canonicalLabels, err := b.g.existingLabelsOrNextProbeTokens(labels)
 	if err != nil {
-		return nil, fmt.Errorf("graph: batch primary label: %w", err)
+		return nil, fmt.Errorf("graph: batch label: %w", err)
 	}
 
-	var extraTokens []uint16
-	for _, label := range labels[1:] {
-		tok, err := b.g.labels.GetOrCreate(label)
-		if err != nil {
-			return nil, fmt.Errorf("graph: batch extra label %q: %w", label, err)
-		}
-		extraTokens = append(extraTokens, tok)
+	id := b.g.nextNodeID()
+	n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
+	if err := n.SetProperties(ps); err != nil {
+		return nil, fmt.Errorf("graph: batch node properties: %w", err)
 	}
 
-	id := b.g.Nodes.NextID()
-	n := types.NewNode(id, primaryToken, extraTokens)
-	n.SetProperties(ps)
-
-	canonicalLabels := b.g.Nodes.Labels(n)
-	hash := integrity.ComputeNodeHash(n, canonicalLabels)
+	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch node hash: %w", err)
+	}
 	nodeIntegrity := &types.NodeIntegrity{
 		Hash:               hash,
 		PrevHash:           "",
@@ -92,10 +99,12 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	}
 
 	b.nodes = append(b.nodes, pendingNode{
-		node:          n,
-		labels:        canonicalLabels,
-		nodeIntegrity: nodeIntegrity,
-		temporal:      temporal,
+		node:               n,
+		labels:             canonicalLabels,
+		queuedPrimaryToken: labelTokens.primary,
+		queuedExtraTokens:  append([]uint16(nil), labelTokens.extras...),
+		nodeIntegrity:      nodeIntegrity,
+		temporal:           temporal,
 	})
 	return n, nil
 }
@@ -104,11 +113,22 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 // properties are validated eagerly. Endpoint locking is deferred to Execute.
 // Returns the created relationship.
 //
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5).
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5).
 func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+	if err := b.lockOpen(); err != nil {
+		return nil, err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
 		return nil, err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return nil, ErrGraphClosed
 	}
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
@@ -141,6 +161,9 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	startID := startNode.ID()
 	endID := endNode.ID()
+	if err := validateRelationshipEndpointIDs(startID, endID); err != nil {
+		return nil, err
+	}
 
 	// Apply the same self-loop policy as the standalone path
 	// (addRelationshipInternal). Without this gate a default graph would
@@ -150,18 +173,25 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, ErrSelfLoop
 	}
 
-	// R4-F14: allocate rel-type token AFTER the self-loop rejection so a
-	// rejected queue call does not pollute the rel-type registry.
-	typeToken, err := b.g.relTypes.GetOrCreate(typeName)
+	// Reuse existing relationship type tokens, but defer allocation for a new
+	// type until Execute has passed endpoint and temporal-constraint checks. The
+	// queue-time relationship is a caller-visible skeleton; Execute replaces its
+	// value in place with the real token before persistence.
+	typeToken, err := b.g.existingRelTypeOrNextProbeToken(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
 	}
 
-	id := b.g.Rels.NextID()
+	id := b.g.nextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	r.SetProperties(ps)
+	if err := r.SetProperties(ps); err != nil {
+		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
+	}
 
-	hash := integrity.ComputeRelHash(r, typeName)
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		return nil, fmt.Errorf("graph: batch relationship hash: %w", err)
+	}
 	// Build the integrity payload now (Hash and provenance are stable at
 	// queue time). FromNodeHash/ToNodeHash and TxFrom are deferred to
 	// Execute(): endpoint hashes are re-read from the live store after the
@@ -187,78 +217,96 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	b.rels = append(b.rels, pendingRel{
-		rel:          r,
-		startID:      startID,
-		endID:        endID,
-		relIntegrity: ig,
-		temporal:     rtm,
+		rel:             r,
+		typeName:        typeName,
+		startID:         startID,
+		endID:           endID,
+		queuedTypeToken: typeToken,
+		relIntegrity:    ig,
+		temporal:        rtm,
 	})
 	return r, nil
 }
 
 // UpdateNode queues a node update. Keys and values are validated eagerly.
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5).
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5).
 func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return fmt.Errorf("graph: batch update node: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return fmt.Errorf("graph: batch update node property %q: %w", key, err)
-			}
-			if err := b.g.validatePropertyEntry(key, val); err != nil {
-				return err
-			}
-		} else {
-			if len(key) > b.g.validation.MaxPropertyKeyLength {
-				return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), b.g.validation.MaxPropertyKeyLength)
-			}
-		}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
 	}
-	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, updates: updates})
+	queuedUpdates, err := b.g.cloneQueuedUpdateMap(updates, "batch update node")
+	if err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, updates: queuedUpdates})
 	return nil
 }
 
 // UpdateRelationship queues a relationship update. Keys and values are validated eagerly.
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5).
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5).
 func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	for key, val := range updates {
-		if types.IsShadowKey(key) {
-			return fmt.Errorf("graph: batch update relationship: %w: %q", types.ErrReservedPrefix, key)
-		}
-		if val != nil {
-			if err := types.ValidatePropertyValue(val); err != nil {
-				return fmt.Errorf("graph: batch update relationship property %q: %w", key, err)
-			}
-			if err := b.g.validatePropertyEntry(key, val); err != nil {
-				return err
-			}
-		} else {
-			if len(key) > b.g.validation.MaxPropertyKeyLength {
-				return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), b.g.validation.MaxPropertyKeyLength)
-			}
-		}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
 	}
-	b.relUpdates = append(b.relUpdates, pendingRelUpdate{id: id, updates: updates})
+	queuedUpdates, err := b.g.cloneQueuedUpdateMap(updates, "batch update relationship")
+	if err != nil {
+		return err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return err
+	}
+	b.relUpdates = append(b.relUpdates, pendingRelUpdate{id: id, updates: queuedUpdates})
 	return nil
 }
 
 // DeleteNode queues a node for deletion (cascade via Graph.Nodes.Delete).
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5). The error return was added
-// alongside the lifecycle gate; pre-R5 callers that ignored the value
-// continue to work via the default _ assignment.
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5). The error return was added alongside the lifecycle gate; pre-R5
+// callers that ignored the value continue to work via the default _
+// assignment.
 func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
 	b.nodeDeletes = append(b.nodeDeletes, id)
@@ -266,10 +314,24 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 }
 
 // DeleteRelationship queues a relationship for deletion.
-// Returns ErrGraphClosed if the underlying graph has been closed since
-// the builder was constructed (R5-F5).
+// Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
+// the underlying graph has been closed since the builder was constructed
+// (R5-F5).
 func (b *BatchBuilder) DeleteRelationship(id types.RelID) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
 	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
 	b.relDeletes = append(b.relDeletes, id)

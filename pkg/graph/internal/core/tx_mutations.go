@@ -30,12 +30,13 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 	}
 
 	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
-	if err != nil {
-		return nil, err
+	if n != nil {
+		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
+		tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
 	}
-
-	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
+	if err != nil {
+		return n, err
+	}
 
 	return n, nil
 }
@@ -51,12 +52,13 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	}
 
 	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
-	if err != nil {
-		return nil, err
+	if r != nil {
+		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
+		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	}
-
-	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+	if err != nil {
+		return r, err
+	}
 
 	return r, nil
 }
@@ -72,12 +74,13 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 	}
 
 	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
-	if err != nil {
-		return nil, err
+	if r != nil {
+		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
+		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	}
-
-	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+	if err != nil {
+		return r, err
+	}
 
 	return r, nil
 }
@@ -95,13 +98,12 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 	}
 
 	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if created {
+	if created && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
 		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+	}
+	if err != nil {
+		return r, created, err
 	}
 
 	return r, created, nil
@@ -118,12 +120,13 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 	}
 
 	n, err := tx.g.importNodeWithIDInternal(ctx, id, labels, props)
-	if err != nil {
-		return nil, err
+	if n != nil {
+		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
+		tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
 	}
-
-	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
+	if err != nil {
+		return n, err
+	}
 
 	return n, nil
 }
@@ -139,12 +142,13 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 	}
 
 	r, err := tx.g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
-	if err != nil {
-		return nil, err
+	if r != nil {
+		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
+		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
 	}
-
-	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-	tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+	if err != nil {
+		return r, err
+	}
 
 	return r, nil
 }
@@ -165,6 +169,9 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 	}
 
 	if len(updates) == 0 {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
 		// Empty-update no-op. Read directly from the store rather than via
 		// the exported wrapper: the tx already holds c.mu.Lock(), and any
 		// future addition of c.mu.RLock() to GetNodeWithContext would
@@ -178,6 +185,12 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 		return n, err
 	}
 
+	if _, _, err := tx.g.prepareUpdateProperties(updates, "update node"); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
 	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
 		return nil, err
 	}
@@ -201,6 +214,9 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 	}
 
 	if len(updates) == 0 {
+		if err := storepkg.ValidateRelID(id); err != nil {
+			return nil, err
+		}
 		// Empty-update no-op. See UpdateNode for why this avoids the
 		// exported wrapper.
 		r, err := tx.g.store.GetRelationship(id)
@@ -210,6 +226,12 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 		return r, err
 	}
 
+	if _, _, err := tx.g.prepareUpdateProperties(updates, "update relationship"); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
 	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
 		return nil, err
 	}
@@ -259,6 +281,9 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	if tx.done {
 		return storepkg.ErrTxDone
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
 
 	// Snapshot the node before deletion.
 	node, err := tx.g.store.GetNode(id)
@@ -266,6 +291,10 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 		return err
 	}
 	nodeCopy := node.DeepCopy()
+	nodeHistory, err := copyNodeHistory(tx.g.store.GetNodeHistory(id))
+	if err != nil {
+		return err
+	}
 
 	// Snapshot all connected relationships before cascade deletion.
 	outRels, err := tx.g.store.OutgoingRelationships(id, 0)
@@ -279,7 +308,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 
 	// Deduplicate self-loop rels and deep copy all.
 	seen := make(map[snowflake.ID]bool)
-	var relCopies []*types.Relationship
+	var relCopies []deletedRelSnapshot
 	allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
 	allRels = append(allRels, outRels...)
 	allRels = append(allRels, inRels...)
@@ -289,7 +318,11 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 			continue
 		}
 		seen[rid] = true
-		relCopies = append(relCopies, r.DeepCopy())
+		history, err := copyRelHistory(tx.g.store.GetRelHistory(r.ID()))
+		if err != nil {
+			return err
+		}
+		relCopies = append(relCopies, deletedRelSnapshot{rel: r.DeepCopy(), history: history})
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
@@ -299,8 +332,9 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 
 	tx.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
-		node: nodeCopy,
-		rels: relCopies,
+		node:        nodeCopy,
+		nodeHistory: nodeHistory,
+		rels:        relCopies,
 	})
 
 	return nil
@@ -315,6 +349,9 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	if tx.done {
 		return storepkg.ErrTxDone
 	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return err
+	}
 
 	// Snapshot the relationship before deletion.
 	rel, err := tx.g.store.GetRelationship(id)
@@ -322,6 +359,10 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 		return err
 	}
 	relCopy := rel.DeepCopy()
+	history, err := copyRelHistory(tx.g.store.GetRelHistory(id))
+	if err != nil {
+		return err
+	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
 	if err := tx.g.deleteRelationshipInternal(context.Background(), id); err != nil {
@@ -329,7 +370,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	}
 
 	tx.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
-	tx.deletedRels = append(tx.deletedRels, relCopy)
+	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{rel: relCopy, history: history})
 
 	return nil
 }
@@ -339,15 +380,21 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 // =============================================================================
 
 // AddNodeLabel adds a label to a node within the transaction.
-// Snapshots the pre-mutation state on first mutation and records a label
-// delta so Rollback can reverse the label index change. Idempotent: if the
-// node already has the label, returns nil with no snapshot or delta recorded.
+// Snapshots the pre-mutation state on first mutation so Rollback can restore
+// both the node row and label indexes. Idempotent: if the node already has the
+// label, returns nil with no snapshot recorded.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 	if tx.done {
 		return storepkg.ErrTxDone
+	}
+	if err := tx.g.validateName(label); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
 	}
 
 	// Look up the token (or pre-compute whether the label is already present)
@@ -374,20 +421,14 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 		return nil
 	}
 
-	// Re-lookup the token after the call — GetOrCreate may have just registered it.
-	if tok == 0 {
-		tok, _ = tx.g.labels.Lookup(label)
-	}
-	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: true})
-
 	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	return nil
 }
 
 // RemoveNodeLabel removes a label from a node within the transaction.
-// Snapshots the pre-mutation state on first mutation and records a label
-// delta so Rollback can reverse the label index change. Returns ErrLastLabel
-// if the label is the only one on the node.
+// Snapshots the pre-mutation state on first mutation so Rollback can restore
+// both the node row and label indexes. Returns ErrLastLabel if the label is the
+// only one on the node.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	tx.mu.Lock()
@@ -395,9 +436,12 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	if tx.done {
 		return storepkg.ErrTxDone
 	}
-
-	// Resolve token before the mutation so we can record the delta.
-	tok, _ := tx.g.labels.Lookup(label)
+	if err := tx.g.validateName(label); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
 
 	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
 		return err
@@ -406,8 +450,6 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 	if err := tx.g.removeNodeLabelInternal(id, label); err != nil {
 		return err
 	}
-
-	tx.labelDeltas = append(tx.labelDeltas, labelDelta{id: id.SnowflakeID(), tok: tok, added: false})
 
 	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	return nil

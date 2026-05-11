@@ -1,10 +1,13 @@
 package badger
 
 import (
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -71,6 +74,43 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 	}
 }
 
+func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name string
+		rel  *types.Relationship
+	}{
+		{
+			name: "nil",
+			rel:  nil,
+		},
+		{
+			name: "zero rel ID",
+			rel:  types.NewRelationship(types.RelID(0), 1, types.NodeID(1), types.NodeID(2)),
+		},
+		{
+			name: "zero start",
+			rel:  types.NewRelationship(types.RelID(100), 1, types.NodeID(0), types.NodeID(2)),
+		},
+		{
+			name: "zero end",
+			rel:  types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(0)),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := bs.PutRelEntityAndOut(tc.rel); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("PutRelEntityAndOut(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+
+	if count, err := bs.RelationshipCount(); err != nil || count != 0 {
+		t.Fatalf("RelationshipCount after rejected partial writes = %d, %v; want 0, nil", count, err)
+	}
+}
+
 func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -98,6 +138,35 @@ func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 	// Rel entity should NOT exist (only the in/ index was written).
 	if bs.HasRelID(relID) {
 		t.Error("HasRelID should be false — PutRelIncoming doesn't store entity")
+	}
+}
+
+func TestPutRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name    string
+		endID   snowflake.ID
+		startID snowflake.ID
+		relType uint16
+		relID   snowflake.ID
+	}{
+		{name: "zero end", endID: 0, startID: 2, relType: 1, relID: 3},
+		{name: "zero start", endID: 1, startID: 0, relType: 1, relID: 3},
+		{name: "zero type", endID: 1, startID: 2, relType: 0, relID: 3},
+		{name: "zero rel", endID: 1, startID: 2, relType: 1, relID: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := bs.PutRelIncoming(tc.endID, tc.startID, tc.relType, tc.relID)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("PutRelIncoming(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+
+	if got := bs.IncomingRelIDs(1, 0); len(got) != 0 {
+		t.Fatalf("incoming index after rejected partial writes = %v, want empty", got)
 	}
 }
 
@@ -156,6 +225,25 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 	}
 }
 
+func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name string
+		id   snowflake.ID
+	}{
+		{name: "zero", id: 0},
+		{name: "negative", id: snowflake.ID(-1)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := bs.DeleteRelEntityAndOut(tc.id); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("DeleteRelEntityAndOut(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -202,6 +290,211 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 1 || outIDs[0] != relID {
 		t.Errorf("OutgoingRelIDs should still contain rel, got %v", outIDs)
+	}
+}
+
+func TestDeleteRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name string
+		info RelDeleteInfo
+	}{
+		{
+			name: "zero end",
+			info: RelDeleteInfo{ID: 3, RelType: 1, StartID: 2, EndID: 0},
+		},
+		{
+			name: "zero start",
+			info: RelDeleteInfo{ID: 3, RelType: 1, StartID: 0, EndID: 1},
+		},
+		{
+			name: "zero type",
+			info: RelDeleteInfo{ID: 3, RelType: 0, StartID: 2, EndID: 1},
+		},
+		{
+			name: "zero rel",
+			info: RelDeleteInfo{ID: 0, RelType: 1, StartID: 2, EndID: 1},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := bs.DeleteRelIncoming(tc.info)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("DeleteRelIncoming(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+
+	if got := bs.IncomingRelIDs(1, 0); len(got) != 0 {
+		t.Fatalf("incoming index after rejected delete helpers = %v, want empty", got)
+	}
+}
+
+func TestScanAndDeleteIncoming_DeletesPersistedInKey(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	endID := snowflake.ID(1001)
+	startID := snowflake.ID(2002)
+	relID := snowflake.ID(3003)
+	relType := uint16(7)
+	if err := bs.PutRelIncoming(endID, startID, relType, relID); err != nil {
+		t.Fatalf("PutRelIncoming: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush setup: %v", err)
+	}
+
+	key := storepkg.InKey(endID, relType, startID, relID)
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(key)
+		return err
+	}); err != nil {
+		t.Fatalf("persisted incoming key missing before scan delete: %v", err)
+	}
+
+	if err := bs.ScanAndDeleteIncoming(endID, relID); err != nil {
+		t.Fatalf("ScanAndDeleteIncoming: %v", err)
+	}
+	if got := bs.IncomingRelIDs(endID, 0); len(got) != 0 {
+		t.Fatalf("IncomingRelIDs after scan delete = %v, want empty", got)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush delete: %v", err)
+	}
+
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(key)
+		return err
+	})
+	if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+		t.Fatalf("persisted incoming key after scan delete = %v, want ErrKeyNotFound", err)
+	}
+}
+
+func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	relID := snowflake.ID(3003)
+	endA := snowflake.ID(1001)
+	endB := snowflake.ID(2002)
+	keyA := storepkg.InKey(endA, 7, snowflake.ID(4004), relID)
+	keyB := storepkg.InKey(endB, 7, snowflake.ID(5005), relID)
+
+	if err := bs.PutRelIncoming(endA, snowflake.ID(4004), 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming A: %v", err)
+	}
+	if err := bs.PutRelIncoming(endB, snowflake.ID(5005), 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming B: %v", err)
+	}
+	if err := bs.DeleteIncomingByRelID(endA, relID); err != nil {
+		t.Fatalf("DeleteIncomingByRelID: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	errA := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(keyA)
+		return err
+	})
+	if !errors.Is(errA, badgerv4.ErrKeyNotFound) {
+		t.Fatalf("endA key after delete = %v, want ErrKeyNotFound", errA)
+	}
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(keyB)
+		return err
+	}); err != nil {
+		t.Fatalf("endB key after delete = %v, want present", err)
+	}
+}
+
+func TestScanAndDeleteIncoming_MatchesPendingEndNode(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	relID := snowflake.ID(3003)
+	endA := snowflake.ID(1001)
+	endB := snowflake.ID(2002)
+	keyA := storepkg.InKey(endA, 7, snowflake.ID(4004), relID)
+	keyB := storepkg.InKey(endB, 7, snowflake.ID(5005), relID)
+
+	if err := bs.PutRelIncoming(endA, snowflake.ID(4004), 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming A: %v", err)
+	}
+	if err := bs.PutRelIncoming(endB, snowflake.ID(5005), 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming B: %v", err)
+	}
+	if err := bs.ScanAndDeleteIncoming(endA, relID); err != nil {
+		t.Fatalf("ScanAndDeleteIncoming: %v", err)
+	}
+	if got := bs.IncomingRelIDs(endA, 0); len(got) != 0 {
+		t.Fatalf("endA IncomingRelIDs after scan delete = %v, want empty", got)
+	}
+	if got := bs.IncomingRelIDs(endB, 0); len(got) != 1 || got[0] != relID {
+		t.Fatalf("endB IncomingRelIDs after scan delete = %v, want [%d]", got, relID)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	errA := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(keyA)
+		return err
+	})
+	if !errors.Is(errA, badgerv4.ErrKeyNotFound) {
+		t.Fatalf("endA key after scan delete = %v, want ErrKeyNotFound", errA)
+	}
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(keyB)
+		return err
+	}); err != nil {
+		t.Fatalf("endB key after scan delete = %v, want present", err)
+	}
+}
+
+func TestDeleteIncomingByRelIDRejectsInvalidFields(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name  string
+		endID snowflake.ID
+		relID snowflake.ID
+	}{
+		{name: "zero end", endID: 0, relID: 3003},
+		{name: "zero rel", endID: 1001, relID: 0},
+		{name: "negative end", endID: snowflake.ID(-1), relID: 3003},
+		{name: "negative rel", endID: 1001, relID: snowflake.ID(-1)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := bs.DeleteIncomingByRelID(tc.endID, tc.relID)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("DeleteIncomingByRelID(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestScanAndDeleteIncomingRejectsInvalidFields(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	tests := []struct {
+		name  string
+		endID snowflake.ID
+		relID snowflake.ID
+	}{
+		{name: "zero end", endID: 0, relID: 3003},
+		{name: "zero rel", endID: 1001, relID: 0},
+		{name: "negative end", endID: snowflake.ID(-1), relID: 3003},
+		{name: "negative rel", endID: 1001, relID: snowflake.ID(-1)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := bs.ScanAndDeleteIncoming(tc.endID, tc.relID)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ScanAndDeleteIncoming(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
 	}
 }
 
@@ -308,6 +601,30 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 	type99 := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 99)
 	if len(type99) != 0 {
 		t.Errorf("IncomingRelIDs(99) = %d, want 0", len(type99))
+	}
+}
+
+func TestIncomingIndexEntries_IncludesEntriesWithoutEndNode(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	endB := snowflake.ID(2002)
+	endA := snowflake.ID(1001)
+	if err := bs.PutRelIncoming(endB, snowflake.ID(3003), 9, snowflake.ID(5005)); err != nil {
+		t.Fatalf("PutRelIncoming B: %v", err)
+	}
+	if err := bs.PutRelIncoming(endA, snowflake.ID(4004), 7, snowflake.ID(6006)); err != nil {
+		t.Fatalf("PutRelIncoming A: %v", err)
+	}
+
+	entries := bs.IncomingIndexEntries()
+	if len(entries) != 2 {
+		t.Fatalf("IncomingIndexEntries = %d, want 2", len(entries))
+	}
+	if entries[0].EndID != endA || entries[0].RelID != snowflake.ID(6006) || entries[0].RelType != 7 {
+		t.Fatalf("entry[0] = %+v, want end=%d rel=6006 type=7", entries[0], endA)
+	}
+	if entries[1].EndID != endB || entries[1].RelID != snowflake.ID(5005) || entries[1].RelType != 9 {
+		t.Fatalf("entry[1] = %+v, want end=%d rel=5005 type=9", entries[1], endB)
 	}
 }
 

@@ -104,12 +104,20 @@ func New(cfg Config) (*Graph, error) {
 }
 
 // Close flushes registries (when applicable) and closes the underlying store.
-func (g *Graph) Close() error { return g.core.Close() }
+func (g *Graph) Close() error {
+	if g == nil || g.core == nil {
+		return ErrNilGraph
+	}
+	return g.core.Close()
+}
 
 // NewBatchBuilder constructs a BatchBuilder bound to g. Equivalent to
 // g.Batch.New(). Returns ErrGraphClosed if the graph has already been
 // closed.
 func NewBatchBuilder(g *Graph) (*BatchBuilder, error) {
+	if g == nil || g.core == nil {
+		return nil, ErrNilGraph
+	}
 	return core.NewBatchBuilder(g.core)
 }
 

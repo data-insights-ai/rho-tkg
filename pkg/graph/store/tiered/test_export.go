@@ -62,6 +62,18 @@ func (ts *Store) TempIdxLabelsForTest() []uint16 {
 	return out
 }
 
+// HFBucketsForTest returns the tracked high-frequency index labels under lock.
+// Returns a fresh copy.
+func (ts *Store) HFBucketsForTest() map[uint16]time.Duration {
+	ts.tempIdxMu.Lock()
+	defer ts.tempIdxMu.Unlock()
+	out := make(map[uint16]time.Duration, len(ts.hfIdxBuckets))
+	for tok, bucket := range ts.hfIdxBuckets {
+		out[tok] = bucket
+	}
+	return out
+}
+
 // HasArchiveShardForTest reports whether the catalog has an archive entry.
 func (ts *Store) HasArchiveShardForTest() bool { return ts.hasArchiveShard() }
 
@@ -73,11 +85,6 @@ func (ts *Store) CloseIdleShardsForTest() { ts.closeIdleShards() }
 
 // CheckRotationForTest invokes the rotation check.
 func (ts *Store) CheckRotationForTest() error { return ts.checkRotation() }
-
-// CheckoutArchiveForTest exposes checkoutArchive.
-func (ts *Store) CheckoutArchiveForTest() (*BadgerStore, func(), error) {
-	return ts.checkoutArchive()
-}
 
 // ResolveShardStoreForTest exposes resolveShardStore.
 func (ts *Store) ResolveShardStoreForTest(name string) (*BadgerStore, func(), error) {
@@ -151,29 +158,11 @@ func (es *EventShard) ActiveReqsForTest() *atomic.Int64 { return &es.activeReqs 
 // SetLastAccessForTest mutates the lastAccess atomic counter (Unix ms).
 func (es *EventShard) SetLastAccessForTest(t int64) { es.lastAccess.Store(t) }
 
-// LastAccessForTest reads the lastAccess atomic counter.
-func (es *EventShard) LastAccessForTest() int64 { return es.lastAccess.Load() }
-
-// TimeStartForTest returns the shard's window start.
-func (es *EventShard) TimeStartForTest() time.Time { return es.timeStart }
-
-// TimeEndForTest returns the shard's window end.
-func (es *EventShard) TimeEndForTest() time.Time { return es.timeEnd }
-
 // SetTimeEndForTest mutates the shard's window end. Tests use this to drive
 // rotation paths without waiting for the actual ShardWindow to elapse.
 func (es *EventShard) SetTimeEndForTest(t time.Time) { es.timeEnd = t }
 
 // --- More Store field accessors ---
-
-// RegFileForTest returns the registry file path.
-func (ts *Store) RegFileForTest() string { return ts.regFile }
-
-// DataDirForTest returns the configured data directory.
-func (ts *Store) DataDirForTest() string { return ts.dataDir }
-
-// InMemoryForTest reports whether the Store was created in-memory.
-func (ts *Store) InMemoryForTest() bool { return ts.inMemory }
 
 // ShardForRelIDCheckedForTest exposes the pinned rel-id router.
 func (ts *Store) ShardForRelIDCheckedForTest(rid types.RelID) (*BadgerStore, func(), error) {
@@ -205,9 +194,6 @@ type NamedStore = namedStore
 
 // StoreForTest returns the BadgerStore in the named-store pair.
 func (ns NamedStore) StoreForTest() *BadgerStore { return ns.store }
-
-// NameForTest returns the shard name in the named-store pair.
-func (ns NamedStore) NameForTest() string { return ns.name }
 
 // OntologyForTest returns the ontology mapping.
 func (ts *Store) OntologyForTest() *OntologyMapping { return ts.ontology }

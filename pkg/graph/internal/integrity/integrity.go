@@ -34,8 +34,29 @@ var hashBufPool = sync.Pool{
 // The hash covers: id, version, sorted labels, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeNodeHash(n *types.Node, labels []string) string {
+	hash, err := ComputeNodeHashChecked(n, labels)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
+// ComputeNodeHashChecked computes a SHA-256 hash of the node's content and
+// returns property hashing failures as errors instead of panicking.
+func ComputeNodeHashChecked(n *types.Node, labels []string) (hash string, err error) {
+	if n == nil {
+		return "", types.ErrNilNode
+	}
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
+	defer func() {
+		*bp = buf
+		hashBufPool.Put(bp)
+		if r := recover(); r != nil {
+			hash = ""
+			err = fmt.Errorf("%w: compute node hash panic: %v", types.ErrUnsupportedValueType, r)
+		}
+	}()
 
 	buf = binary.BigEndian.AppendUint64(buf, uint64(n.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, n.Version())
@@ -56,18 +77,36 @@ func ComputeNodeHash(n *types.Node, labels []string) string {
 	var hexBuf [64]byte
 	hex.Encode(hexBuf[:], sum[:])
 
-	*bp = buf
-	hashBufPool.Put(bp)
-
-	return string(hexBuf[:])
+	return string(hexBuf[:]), nil
 }
 
 // ComputeRelHash computes a SHA-256 hash of the relationship's content.
 // The hash covers: id, version, type name, start ID, end ID, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeRelHash(r *types.Relationship, typeName string) string {
+	hash, err := ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
+// ComputeRelHashChecked computes a SHA-256 hash of the relationship's content
+// and returns property hashing failures as errors instead of panicking.
+func ComputeRelHashChecked(r *types.Relationship, typeName string) (hash string, err error) {
+	if r == nil {
+		return "", types.ErrNilRelationship
+	}
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
+	defer func() {
+		*bp = buf
+		hashBufPool.Put(bp)
+		if recovered := recover(); recovered != nil {
+			hash = ""
+			err = fmt.Errorf("%w: compute relationship hash panic: %v", types.ErrUnsupportedValueType, recovered)
+		}
+	}()
 
 	buf = binary.BigEndian.AppendUint64(buf, uint64(r.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, r.Version())
@@ -82,10 +121,7 @@ func ComputeRelHash(r *types.Relationship, typeName string) string {
 	var hexBuf [64]byte
 	hex.Encode(hexBuf[:], sum[:])
 
-	*bp = buf
-	hashBufPool.Put(bp)
-
-	return string(hexBuf[:])
+	return string(hexBuf[:]), nil
 }
 
 // appendProperties appends sorted properties to buf in a deterministic format.

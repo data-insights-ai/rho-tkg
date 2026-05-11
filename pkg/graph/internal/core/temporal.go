@@ -29,6 +29,14 @@ func resolveOpenEndInstant(end types.Instant) types.Instant {
 	return end
 }
 
+func normalizeDuringRange(start, end types.Instant) (types.Instant, error) {
+	end = resolveOpenEndInstant(end)
+	if start >= end {
+		return 0, ErrInvalidTimeRange
+	}
+	return end, nil
+}
+
 // nodeValidFrom returns the effective valid-from time for a node.
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
 func (c *Core) nodeValidFrom(n *types.Node) types.Instant {
@@ -171,11 +179,15 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 // adjacency index) — folding only the deleted/historical node IDs on top
 // preserves history-aware semantics without paying for a full table scan.
 func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
+	return c.forEachNodeCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
+}
+
+func (c *Core) forEachNodeCandidateIDByDepth(currentIDs []types.NodeID, depth storepkg.ShardDepth, fn func(types.NodeID) error) error {
 	seen := make(map[types.NodeID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
-	if err := c.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
+	if err := c.forEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -193,11 +205,15 @@ func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.N
 // forEachNodeCandidateID — same indexed-candidates + history-IDs union
 // without scanning ForEachRelID.
 func (c *Core) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
+	return c.forEachRelCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
+}
+
+func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
 	}
-	if err := c.store.ForEachRelHistoryID(func(id types.RelID) bool {
+	if err := c.forEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
 		seen[id] = struct{}{}
 		return true
 	}); err != nil {
@@ -223,29 +239,54 @@ func (c *Core) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.Rel
 // For history-unaware queries over only current entities, prefer the
 // streaming ForEach iterators in the Store interface directly.
 func (c *Core) forEachKnownNodeID(fn func(types.NodeID) error) error {
-	seen := make(map[types.NodeID]struct{})
+	return c.forEachKnownNodeIDByDepth(storepkg.DepthAll, fn)
+}
 
-	// Phase 1: collect unique IDs (no store method calls in callbacks — lock reentrancy).
-	if err := c.store.ForEachNodeID(func(id types.NodeID) bool {
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
+func (c *Core) forEachKnownNodeIDByDepth(depth storepkg.ShardDepth, fn func(types.NodeID) error) error {
+	ids, err := c.collectKnownNodeIDsByDepth(depth)
+	if err != nil {
 		return err
 	}
-	if err := c.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
-		return err
-	}
-
-	// Phase 2: process (store locks released, safe to call GetNodeAt etc.).
-	for id := range seen {
+	for _, id := range ids {
 		if err := fn(id); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (c *Core) collectKnownNodeIDsByDepth(depth storepkg.ShardDepth) ([]types.NodeID, error) {
+	seen := make(map[types.NodeID]struct{})
+
+	// Phase 1: collect unique IDs (no store method calls in callbacks — lock reentrancy).
+	if depth == storepkg.DepthAll {
+		if err := c.store.ForEachNodeID(func(id types.NodeID) bool {
+			seen[id] = struct{}{}
+			return true
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		ids, err := c.store.AllNodeIDs(storepkg.QueryOpts{Depth: depth})
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			seen[id] = struct{}{}
+		}
+	}
+	if err := c.forEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+
+	ids := make([]types.NodeID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // forEachKnownRelID collects the union of current + history relationship IDs
@@ -255,24 +296,15 @@ func (c *Core) forEachKnownNodeID(fn func(types.NodeID) error) error {
 // Memory note: same O(N) materialisation trade-off as forEachKnownNodeID.
 // See that function's doc comment for the rationale.
 func (c *Core) forEachKnownRelID(fn func(types.RelID) error) error {
-	seen := make(map[types.RelID]struct{})
+	return c.forEachKnownRelIDByDepth(storepkg.DepthAll, fn)
+}
 
-	// Phase 1: collect unique IDs.
-	if err := c.store.ForEachRelID(func(id types.RelID) bool {
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
+func (c *Core) forEachKnownRelIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) error) error {
+	ids, err := c.collectKnownRelIDsByDepth(depth)
+	if err != nil {
 		return err
 	}
-	if err := c.store.ForEachRelHistoryID(func(id types.RelID) bool {
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
-		return err
-	}
-
-	// Phase 2: process (store locks released).
-	for id := range seen {
+	for _, id := range ids {
 		if err := fn(id); err != nil {
 			return err
 		}
@@ -280,14 +312,69 @@ func (c *Core) forEachKnownRelID(fn func(types.RelID) error) error {
 	return nil
 }
 
+func (c *Core) collectKnownRelIDsByDepth(depth storepkg.ShardDepth) ([]types.RelID, error) {
+	seen := make(map[types.RelID]struct{})
+
+	// Phase 1: collect unique IDs.
+	if depth == storepkg.DepthAll {
+		if err := c.store.ForEachRelID(func(id types.RelID) bool {
+			seen[id] = struct{}{}
+			return true
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		ids, err := c.store.AllRelIDs(storepkg.QueryOpts{Depth: depth})
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			seen[id] = struct{}{}
+		}
+	}
+	if err := c.forEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+
+	ids := make([]types.RelID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (c *Core) forEachNodeHistoryIDByDepth(depth storepkg.ShardDepth, fn func(types.NodeID) bool) error {
+	if depth == storepkg.DepthAll {
+		return c.store.ForEachNodeHistoryID(fn)
+	}
+	if cap, ok := c.store.(storepkg.DepthHistoryIterationCapability); ok {
+		return cap.ForEachNodeHistoryIDByDepth(depth, fn)
+	}
+	return c.store.ForEachNodeHistoryID(fn)
+}
+
+func (c *Core) forEachRelHistoryIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	if depth == storepkg.DepthAll {
+		return c.store.ForEachRelHistoryID(fn)
+	}
+	if cap, ok := c.store.(storepkg.DepthHistoryIterationCapability); ok {
+		return cap.ForEachRelHistoryIDByDepth(depth, fn)
+	}
+	return c.store.ForEachRelHistoryID(fn)
+}
+
 // hasTemporalFilter reports whether opts carries a temporal filter that
 // requires history-aware resolution. Matches the Store-level storepkg.QueryOpts
 // contract: ValidStart/ValidEnd form an interval filter ONLY when both are
-// set; a single one-sided bound is treated as "no filter" so the call falls
-// through to the non-temporal fast path. Without this guard the interval
-// predicate `vStart < end && (vEnd == 0 || vEnd > start)` collapses
-// (e.g. with end == 0) and rejects every entity, regressing
-// AllNodes(storepkg.QueryOpts{ValidStart: t}) and similar one-sided callers.
+// greater than zero; a single one-sided or non-positive bound is treated as "no
+// filter" so the call falls through to the non-temporal fast path. Without this
+// guard the interval predicate `vStart < end && (vEnd == 0 || vEnd > start)`
+// collapses (e.g. with end <= 0) and rejects every entity, regressing
+// AllNodes(storepkg.QueryOpts{ValidStart: t}) and similar non-active interval
+// callers.
 //
 // Implemented as a free function rather than a method on storepkg.QueryOpts because
 // storepkg.QueryOpts is now a type alias to internal/store.storepkg.QueryOpts after the
@@ -297,7 +384,7 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return true
 	}
-	return opts.ValidStart != 0 && opts.ValidEnd != 0
+	return opts.ValidStart > 0 && opts.ValidEnd > 0
 }
 
 // findNodeVersionForOpts returns a node version that satisfies pred under the
@@ -309,7 +396,7 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if opts.ValidAt != 0 {
-		n, err := c.Temporal.NodeAt(id, opts.ValidAt)
+		n, err := c.nodeAtLocked(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +411,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if opts.ValidAt != 0 {
-		r, err := c.Temporal.RelAt(id, opts.ValidAt)
+		r, err := c.relAtLocked(id, opts.ValidAt)
 		if err != nil {
 			return nil, err
 		}

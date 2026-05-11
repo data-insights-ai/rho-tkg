@@ -402,6 +402,97 @@ func TestDiffSnapshotsCallback_HandlerAbort(t *testing.T) {
 	}
 }
 
+func TestDiffSnapshotsCallback_RelHandlerAbort(t *testing.T) {
+	g := newDiffGraph(t)
+
+	base := types.Instant(time.Now().UnixMilli())
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add node A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add node B: %v", err)
+	}
+	setNodeTemporal(t, g, a.ID(), base+50, 0)
+	setNodeTemporal(t, g, b.ID(), base+50, 0)
+	r, err := g.Rels.Add("E", a, b, nil)
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+	setRelTemporal(t, g, r.ID(), base+150, 0)
+
+	wantErr := errors.New("stop rel iteration")
+	err = g.Temporal.DiffCallback(base+100, base+300, temporalpkg.DiffHandlers{
+		OnRelCreated: func(*types.Relationship) error {
+			return wantErr
+		},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("DiffCallback rel handler error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter(t *testing.T) {
+	g := newDiffGraph(t)
+
+	base := types.Instant(time.Now().UnixMilli())
+	n, err := g.Nodes.Add([]string{"X"}, nil)
+	if err != nil {
+		t.Fatalf("Add node: %v", err)
+	}
+	setNodeTemporal(t, g, n.ID(), base+150, 0)
+
+	handlerEntered := make(chan struct{})
+	writerAttempting := make(chan struct{})
+	writerDone := make(chan struct{})
+	go func() {
+		<-handlerEntered
+		close(writerAttempting)
+		// Intentionally take the write lock only to trigger RWMutex writer
+		// preference while the handler re-enters through a graph read.
+		g.mu.Lock()
+		g.mu.Unlock() //nolint:staticcheck
+		close(writerDone)
+	}()
+
+	handlers := temporalpkg.DiffHandlers{
+		OnNodeCreated: func(*types.Node) error {
+			close(handlerEntered)
+			<-writerAttempting
+			time.Sleep(50 * time.Millisecond)
+			got, err := g.Nodes.Get(n.ID())
+			if err != nil {
+				return err
+			}
+			if got.ID() != n.ID() {
+				return errors.New("handler read returned wrong node")
+			}
+			return nil
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- g.Temporal.DiffCallback(base+100, base+300, handlers)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DiffCallback: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DiffCallback handler re-entering graph blocked behind waiting writer")
+	}
+
+	select {
+	case <-writerDone:
+	case <-time.After(time.Second):
+		t.Fatal("writer did not acquire graph lock after DiffCallback handler returned")
+	}
+}
+
 // =============================================================================
 // Nil handlers
 // =============================================================================

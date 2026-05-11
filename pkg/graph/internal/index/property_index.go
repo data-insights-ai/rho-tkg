@@ -30,9 +30,15 @@ func NewPropertyIndex() *PropertyIndex {
 // Add inserts a node ID into the index for the given property value.
 // No-op if the value type is not indexable (complex types).
 func (pi *PropertyIndex) Add(id snowflake.ID, value any) {
+	if pi == nil {
+		return
+	}
 	vk := PropertyValueKey(value)
 	if vk == "" {
 		return
+	}
+	if pi.Entries == nil {
+		pi.Entries = make(map[string]map[snowflake.ID]struct{})
 	}
 	if pi.Entries[vk] == nil {
 		pi.Entries[vk] = make(map[snowflake.ID]struct{})
@@ -46,6 +52,9 @@ func (pi *PropertyIndex) Add(id snowflake.ID, value any) {
 // Remove deletes a node ID from the index for the given property value.
 // No-op if the value type is not indexable or the ID is not in the index.
 func (pi *PropertyIndex) Remove(id snowflake.ID, value any) {
+	if pi == nil {
+		return
+	}
 	vk := PropertyValueKey(value)
 	if vk == "" {
 		return
@@ -64,6 +73,9 @@ func (pi *PropertyIndex) Remove(id snowflake.ID, value any) {
 // Lookup returns the set of node IDs matching the given value.
 // Returns nil if no matches.
 func (pi *PropertyIndex) Lookup(value any) map[snowflake.ID]struct{} {
+	if pi == nil {
+		return nil
+	}
 	vk := PropertyValueKey(value)
 	if vk == "" {
 		return nil
@@ -136,6 +148,9 @@ func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *ty
 // Caller must hold the store's write lock.
 func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, id snowflake.ID) {
 	for _, idx := range indexes {
+		if idx == nil {
+			continue
+		}
 		for valKey, idSet := range idx.Entries {
 			delete(idSet, id)
 			if len(idSet) == 0 {

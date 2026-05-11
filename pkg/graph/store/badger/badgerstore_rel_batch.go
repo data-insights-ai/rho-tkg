@@ -4,14 +4,17 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Relationship batch writes (R5-F9 split out from badgerstore_rel.go).
 
 func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	if len(rels) == 0 {
 		return nil
 	}
@@ -29,8 +32,10 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 	serialized := make([]relData, len(rels))
 	for i, r := range rels {
-		w := storepkg.RelToWire(r)
-		data, err := msgpack.Marshal(w)
+		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+			return err
+		}
+		data, err := storepkg.MarshalRelWire(r)
 		if err != nil {
 			return fmt.Errorf("graph: marshal relationship: %w", err)
 		}
@@ -115,12 +120,22 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 // DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
 // Phase 1: check all IDs exist, pre-read relationship metadata.
-// Phase 2: delete via deleteRelByInfo (mutation-only), clean up history.
-// Missing ID → ErrRelNotFound, zero mutations. Nil/empty input → nil error.
+// Phase 2: delete via deleteRelByInfo (mutation-only), preserving history.
+// Missing ID → ErrRelNotFound, zero mutations. Duplicate IDs are coalesced.
+// Nil/empty input → nil error.
 func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
 	if len(typedIDs) == 0 {
 		return nil
 	}
+	for _, id := range typedIDs {
+		if err := storecontract.ValidateRelID(id); err != nil {
+			return err
+		}
+	}
+	typedIDs = uniqueRelIDs(typedIDs)
 
 	bs.idxMu.Lock()
 
@@ -155,6 +170,19 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		return bs.flush()
 	}
 	return nil
+}
+
+func uniqueRelIDs(ids []types.RelID) []types.RelID {
+	seen := make(map[types.RelID]struct{}, len(ids))
+	out := make([]types.RelID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // AllRelIDs returns the IDs of all current relationships, with optional pagination.

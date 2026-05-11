@@ -2,6 +2,7 @@ package core
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -23,9 +24,15 @@ func (a *AdminOps) Archive(id types.NodeID) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		return ts.ArchiveNode(id)
 	}
 	return ErrNotTieredStore
@@ -41,9 +48,15 @@ func (a *AdminOps) Restore(id types.NodeID) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		return ts.RestoreNode(id)
 	}
 	return ErrNotTieredStore
@@ -66,9 +79,12 @@ func (a *AdminOps) ForceRotate() error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		return ts.ForceRotate()
 	}
 	return ErrNotTieredStore
@@ -83,9 +99,12 @@ func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return nil, ErrGraphClosed
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
 		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
@@ -102,9 +121,12 @@ func (a *AdminOps) RebuildCatalog() error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		return ts.RebuildCatalog()
 	}
 	return ErrNotTieredStore
@@ -123,9 +145,12 @@ func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return nil, ErrGraphClosed
+	}
 	if ts, ok := c.store.(*tiered.Store); ok {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		return ts.RunRepair()
 	}
 	return nil, ErrNotTieredStore
@@ -134,33 +159,44 @@ func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
 // VerifyShard runs hash chain verification on all entities in a shard.
 // Only available with tiered.Store.
 //
-// Takes c.mu.RLock. The RLock excludes tx/batch but NOT individual
-// standalone mutations (which also use c.mu.RLock — R4-F4), so the
-// scan can surface a half-written hash chain on a freshly-updated
-// entity. For a strict check (no concurrent writers at all), call
-// (*GraphTx).VerifyShard from inside g.Tx.Run; the tx already holds
-// c.mu.Lock, so the underlying verifyShardLocked runs without
-// re-entering the lock.
+// Takes c.mu.Lock so standalone mutations, tx/batch, and Reset cannot
+// interleave with the hash-chain scan. Code that is already inside a
+// transaction must call (*GraphTx).VerifyShard because sync.RWMutex is
+// not reentrant.
 func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 	c := a.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return nil, ErrGraphClosed
+	}
 	return c.verifyShardLocked(shardName)
 }
 
 // verifyShardLocked runs the per-shard hash chain verification. Caller
-// must hold c.mu.RLock OR c.mu.Lock — the standalone path uses RLock,
-// the tx path uses Lock. verifyShardLocked itself takes no graph-level
-// locks. Returns ErrNotTieredStore if the store does not support
-// shard-level verification.
+// must hold c.mu.Lock. verifyShardLocked itself takes no graph-level locks.
+// Returns ErrNotTieredStore if the store does not support shard-level
+// verification.
 func (c *Core) verifyShardLocked(shardName string) (*tiered.VerifyResult, error) {
 	if ts, ok := c.store.(*tiered.Store); ok {
-		return ts.VerifyShard(c.Hash, shardName)
+		return ts.VerifyShard(lockedHashVerifier{c: c}, shardName)
 	}
 	return nil, ErrNotTieredStore
+}
+
+type lockedHashVerifier struct {
+	c *Core
+}
+
+func (v lockedHashVerifier) VerifyNodeChain(id types.NodeID) (bool, error) {
+	return v.c.verifyNodeChainLocked(id)
+}
+
+func (v lockedHashVerifier) VerifyRelChain(id types.RelID) (bool, error) {
+	return v.c.verifyRelChainLocked(id)
 }
 
 // Reset atomically clears all entities, indexes, history, and counters from
@@ -173,5 +209,8 @@ func (a *AdminOps) Reset() error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	return c.store.Clear()
 }

@@ -60,6 +60,97 @@ func TestBadgerStore_CreateHighFrequencyIndex(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_CreateHighFrequencyIndexRejectsInvalidBucket(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	if err := bs.CreateHighFrequencyIndex(1, 0); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(0) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := bs.CreateHighFrequencyIndex(1, -time.Second); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(-1s) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := bs.CreateHighFrequencyIndex(1, time.Nanosecond); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(1ns) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := bs.CreateHighFrequencyIndex(1, 1500*time.Microsecond); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+		t.Fatalf("CreateHighFrequencyIndex(1.5ms) err = %v, want ErrInvalidTemporalIndexConfig", err)
+	}
+	if err := bs.CreateHighFrequencyIndex(1, time.Hour); err != nil {
+		t.Fatalf("CreateHighFrequencyIndex valid bucket after rejects: %v", err)
+	}
+}
+
+func TestBadgerStoreIndexAPIsRejectZeroLabelToken(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	cases := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "create property", run: func() error { return bs.CreatePropertyIndex(0, "name") }},
+		{name: "drop property", run: func() error { return bs.DropPropertyIndex(0, "name") }},
+		{name: "create temporal", run: func() error { return bs.CreateTemporalIndex(0) }},
+		{name: "drop temporal", run: func() error { return bs.DropTemporalIndex(0) }},
+		{name: "create high frequency", run: func() error { return bs.CreateHighFrequencyIndex(0, time.Hour) }},
+		{name: "drop high frequency", run: func() error { return bs.DropHighFrequencyIndex(0) }},
+		{name: "create vector", run: func() error { return bs.CreateVectorIndex(0, "vec", 2, DistanceCosine) }},
+		{name: "drop vector", run: func() error { return bs.DropVectorIndex(0, "vec") }},
+		{name: "search vector", run: func() error {
+			_, err := bs.SearchNearestNodes(0, "vec", []float32{1, 0}, 1, QueryOpts{})
+			return err
+		}},
+		{name: "search filtered vector", run: func() error {
+			_, err := bs.SearchNearestFiltered(0, "vec", []float32{1, 0}, 1, nil)
+			return err
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("%s err = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestBadgerStoreIndexAPIsRejectReservedPropertyKey(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	cases := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "create property", run: func() error { return bs.CreatePropertyIndex(1, "tkg_hash") }},
+		{name: "drop property", run: func() error { return bs.DropPropertyIndex(1, "tkg_hash") }},
+		{name: "query property", run: func() error {
+			_, err := bs.NodesByLabelAndProperty(1, "tkg_hash", "x", QueryOpts{})
+			return err
+		}},
+		{name: "create vector", run: func() error { return bs.CreateVectorIndex(1, "tkg_hash", 2, DistanceCosine) }},
+		{name: "drop vector", run: func() error { return bs.DropVectorIndex(1, "tkg_hash") }},
+		{name: "search vector", run: func() error {
+			_, err := bs.SearchNearestNodes(1, "tkg_hash", []float32{1, 0}, 1, QueryOpts{})
+			return err
+		}},
+		{name: "search filtered vector", run: func() error {
+			_, err := bs.SearchNearestFiltered(1, "tkg_hash", []float32{1, 0}, 1, nil)
+			return err
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, types.ErrReservedPrefix) {
+				t.Fatalf("%s err = %v, want ErrReservedPrefix", tc.name, err)
+			}
+		})
+	}
+}
+
 // ─── Issue 1: Store — DropHighFrequencyIndex ────────────────────────────
 
 func TestBadgerStore_DropHighFrequencyIndex(t *testing.T) {

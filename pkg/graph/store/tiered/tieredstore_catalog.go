@@ -26,6 +26,9 @@ import (
 // process running with a switched-over hotShard but a durable catalog
 // describing the old topology — split-brain on restart.
 func (ts *Store) RotateHotShard() error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	oldHot := ts.hotShard
 	now := time.Now()
 
@@ -63,17 +66,19 @@ func (ts *Store) RotateHotShard() error {
 		return fmt.Errorf("graph: open new hot shard: %w", err)
 	}
 
-	// Set up temporal indexes on the new hot shard before it begins
+	// Set up tracked temporal indexes on the new hot shard before it begins
 	// accepting writes.
-	ts.tempIdxMu.Lock()
-	for _, tok := range ts.tempIdxLabels {
-		// Errors other than ErrTemporalIndexExists are unexpected on a
-		// fresh shard.
-		if err := newStore.CreateTemporalIndex(tok); err != nil && !errors.Is(err, ErrTemporalIndexExists) {
-			slog.Error("graph: create temporal index on new hot shard", "token", tok, "error", err)
+	if err := ts.applyTrackedTemporalIndexes(newStore); err != nil {
+		if cerr := newStore.Close(); cerr != nil {
+			slog.Error("graph: rollback close new hot shard after index setup failure", "shard", newName, "error", cerr)
 		}
+		if !ts.inMemory {
+			if rerr := os.RemoveAll(filepath.Join(ts.dataDir, newDir)); rerr != nil {
+				slog.Error("graph: rollback remove new hot shard after index setup failure", "dir", newDir, "error", rerr)
+			}
+		}
+		return fmt.Errorf("graph: create temporal indexes on new hot shard: %w", err)
 	}
-	ts.tempIdxMu.Unlock()
 
 	// Snapshot the catalog before any mutation so we can roll back if
 	// Save() fails. After this point, every catalog mutation is
@@ -156,6 +161,9 @@ func (ts *Store) RotateHotShard() error {
 // checkRotation checks if the hot shard's time window has expired and rotates if needed.
 // Fast path: single time comparison (~1ns). Slow path: acquire Lock, double-check, rotate.
 func (ts *Store) checkRotation() error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	ts.mu.RLock()
 	hotEnd := ts.hotShard.timeEnd
 	ts.mu.RUnlock()
@@ -167,6 +175,9 @@ func (ts *Store) checkRotation() error {
 	// Slow path: acquire write lock and rotate.
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 
 	// Double-check after acquiring write lock.
 	if time.Now().Before(ts.hotShard.timeEnd) {
@@ -182,6 +193,15 @@ func (ts *Store) checkRotation() error {
 // Writing both halves in a single call eliminates the read-modify-write race
 // that existed when SaveLabelRegistry and SaveRelTypeRegistry were separate.
 func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if labelReg == nil {
+		return errNilLabelRegistry()
+	}
+	if relTypeReg == nil {
+		return errNilRelTypeRegistry()
+	}
 	if ts.inMemory {
 		return nil
 	}
@@ -192,6 +212,12 @@ func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
 // Kept for backward compatibility with single-registry callers.
 func (ts *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if reg == nil {
+		return errNilLabelRegistry()
+	}
 	if ts.inMemory {
 		return nil
 	}
@@ -207,6 +233,12 @@ func (ts *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 // LoadLabelRegistry restores the label registry from the registry file.
 // Returns the number of labels imported (excluding reserved token 0).
 func (ts *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if reg == nil {
+		return 0, errNilLabelRegistry()
+	}
 	if ts.inMemory {
 		return 0, nil
 	}
@@ -227,6 +259,12 @@ func (ts *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) 
 // Deprecated: use SaveRegistries to avoid read-modify-write race.
 // Kept for backward compatibility with single-registry callers.
 func (ts *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if reg == nil {
+		return errNilRelTypeRegistry()
+	}
 	if ts.inMemory {
 		return nil
 	}
@@ -242,6 +280,12 @@ func (ts *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 // LoadRelTypeRegistry restores the reltype registry from the registry file.
 // Returns the number of relTypes imported (excluding reserved token 0).
 func (ts *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if reg == nil {
+		return 0, errNilRelTypeRegistry()
+	}
 	if ts.inMemory {
 		return 0, nil
 	}
@@ -260,6 +304,12 @@ func (ts *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (int, err
 
 // SetLabelRegistry wires the ontology to the label registry for token resolution.
 func (ts *Store) SetLabelRegistry(reg *registrypkg.LabelRegistry) {
+	if ts.closed.Load() {
+		return
+	}
+	if reg == nil {
+		return
+	}
 	ts.ontology.SetLabelRegistry(reg)
 }
 
@@ -277,10 +327,14 @@ func (ts *Store) openRefArchive() error {
 	if err != nil {
 		return fmt.Errorf("graph: open ref archive: %w", err)
 	}
-	ts.refArchive.Store(store)
+	if err := ts.applyTrackedTemporalIndexes(store); err != nil {
+		_ = store.Close()
+		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
+	}
 
 	// Register archive shard in catalog if new.
 	if _, ok := ts.catalog.GetShard("archive"); !ok {
+		catalogSnapshot := ts.catalog.snapshotShards()
 		ts.catalog.AddShard(ShardEntry{
 			Name: "archive",
 			Kind: ShardArchive,
@@ -288,9 +342,23 @@ func (ts *Store) openRefArchive() error {
 			Path: "archive",
 		})
 		if !ts.inMemory {
-			_ = ts.catalog.Save() // best-effort persist
+			if err := ts.catalog.Save(); err != nil {
+				ts.catalog.restoreShards(catalogSnapshot)
+				var rollbackErr error
+				if cerr := store.Close(); cerr != nil {
+					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("close archive store: %w", cerr))
+				}
+				if rerr := os.RemoveAll(filepath.Join(ts.dataDir, "archive")); rerr != nil {
+					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove archive store: %w", rerr))
+				}
+				if rollbackErr != nil {
+					return fmt.Errorf("graph: save archive catalog: %w (rollback failed: %v)", err, rollbackErr)
+				}
+				return fmt.Errorf("graph: save archive catalog: %w", err)
+			}
 		}
 	}
+	ts.refArchive.Store(store)
 	return nil
 }
 

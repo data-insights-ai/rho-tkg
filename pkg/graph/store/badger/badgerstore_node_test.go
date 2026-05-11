@@ -9,6 +9,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -46,6 +47,60 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 	}
 }
 
+type badgerCustomProperty struct {
+	Name  string
+	Count int
+}
+
+func (b badgerCustomProperty) HashBytes() []byte {
+	return []byte{byte(b.Count), byte(len(b.Name))}
+}
+
+func (b badgerCustomProperty) DeepCopyValue() any { return b }
+
+func TestBadgerStoreCustomPropertyRoundTripsFromDisk(t *testing.T) {
+	if err := types.RegisterPropertyStructType(badgerCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	dir := t.TempDir()
+
+	bs, err := New(Config{Dir: dir, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	if err := n.SetProperties(types.PropertySlice{{Key: "custom", Value: badgerCustomProperty{Name: "point", Count: 9}}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	bs, err = New(Config{Dir: dir, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("reopen New: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	got, err := bs.GetNode(n.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	value, ok := got.GetProperty("custom")
+	if !ok {
+		t.Fatal("custom property missing after reopen")
+	}
+	custom, ok := value.(badgerCustomProperty)
+	if !ok {
+		t.Fatalf("custom property type = %T, want badgerCustomProperty", value)
+	}
+	if custom.Name != "point" || custom.Count != 9 {
+		t.Fatalf("custom property = %#v", custom)
+	}
+}
+
 func TestBadgerStorePutNodeDuplicate(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -79,6 +134,29 @@ func TestBadgerStoreDeleteNode(t *testing.T) {
 	_, err := bs.GetNode(types.NodeID(100))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatal("node should not exist after delete")
+	}
+}
+
+func TestBadgerStoreDeleteNodeRejectsConnectedRelationships(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	a := putTestNode(t, bs, 100, 1, nil)
+	b := putTestNode(t, bs, 200, 1, nil)
+	r := types.NewRelationship(types.RelID(snowflake.ID(300)), 1, a.ID(), b.ID())
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	err := bs.DeleteNode(a.ID())
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode connected node = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := bs.GetNode(a.ID()); err != nil {
+		t.Fatalf("node was deleted after rejected DeleteNode: %v", err)
+	}
+	if _, err := bs.GetRelationship(r.ID()); err != nil {
+		t.Fatalf("relationship was deleted after rejected DeleteNode: %v", err)
 	}
 }
 
@@ -518,6 +596,142 @@ func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreGetNodeRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 100, 1, nil)
+	corruptNodeWireAfterFlush(t, bs, storepkg.NodeWire{ID: 100, PrimaryLabel: 0})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetNode panicked on semantically corrupt node wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetNode(types.NodeID(snowflake.ID(100)))
+	requireCorruptNodeReadError(t, "GetNode", err)
+}
+
+func TestBadgerStoreReplaceNodePropagatesCorruptCurrentState(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 101, 1, nil)
+	corruptNodeRowAfterFlush(t, bs, 101)
+
+	updated := types.NewNode(types.NodeID(snowflake.ID(101)), 1, nil)
+	err := bs.ReplaceNode(updated)
+	requireCorruptNodeReadError(t, "ReplaceNode", err)
+}
+
+func TestBadgerStoreNodeLabelWritesPropagateCorruptCurrentState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		run  func(*testing.T, *Store, *types.Node) error
+	}{
+		{
+			name: "RemoveNodeLabelToken",
+			run: func(t *testing.T, bs *Store, n *types.Node) error {
+				t.Helper()
+				updated := n.DeepCopy()
+				updated.RemoveLabelTokenRaw(2)
+				return bs.RemoveNodeLabelToken(types.NodeID(snowflake.ID(102)), 2, updated)
+			},
+		},
+		{
+			name: "AddNodeLabelToken",
+			run: func(t *testing.T, bs *Store, n *types.Node) error {
+				t.Helper()
+				updated := n.DeepCopy()
+				if !updated.AddLabelTokenRaw(3) {
+					t.Fatal("AddLabelTokenRaw returned false")
+				}
+				return bs.AddNodeLabelToken(types.NodeID(snowflake.ID(102)), 3, updated)
+			},
+		},
+		{
+			name: "RemoveNodeLabelTokenWithHistory",
+			run: func(t *testing.T, bs *Store, n *types.Node) error {
+				t.Helper()
+				prevVersion := n.Version()
+				prevState := n.DeepCopy()
+				updated := n.DeepCopy()
+				updated.RemoveLabelTokenRaw(2)
+				updated.SetVersion(prevVersion + 1)
+				return bs.RemoveNodeLabelTokenWithHistory(types.NodeID(snowflake.ID(102)), 2, updated, prevVersion, prevState)
+			},
+		},
+		{
+			name: "AddNodeLabelTokenWithHistory",
+			run: func(t *testing.T, bs *Store, n *types.Node) error {
+				t.Helper()
+				prevVersion := n.Version()
+				prevState := n.DeepCopy()
+				updated := n.DeepCopy()
+				if !updated.AddLabelTokenRaw(3) {
+					t.Fatal("AddLabelTokenRaw returned false")
+				}
+				updated.SetVersion(prevVersion + 1)
+				return bs.AddNodeLabelTokenWithHistory(types.NodeID(snowflake.ID(102)), 3, updated, prevVersion, prevState)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bs := newTestBadgerStore(t)
+			n := putTestNode(t, bs, 102, 1, []uint16{2})
+			corruptNodeRowAfterFlush(t, bs, 102)
+
+			err := tt.run(t, bs, n)
+			requireCorruptNodeReadError(t, tt.name, err)
+		})
+	}
+}
+
+func corruptNodeRowAfterFlush(t *testing.T, bs *Store, id snowflake.ID) {
+	t.Helper()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	bs.nodeCache.ResetForTest()
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.NodeKey(id), []byte("corrupt"))
+	}); err != nil {
+		t.Fatalf("corrupt node row: %v", err)
+	}
+}
+
+func corruptNodeWireAfterFlush(t *testing.T, bs *Store, w storepkg.NodeWire) {
+	t.Helper()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal corrupt node wire: %v", err)
+	}
+	id := snowflake.ID(w.ID)
+	bs.nodeCache.ResetForTest()
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.NodeKey(id), data)
+	}); err != nil {
+		t.Fatalf("corrupt node wire: %v", err)
+	}
+}
+
+func requireCorruptNodeReadError(t *testing.T, op string, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s should return error for corrupted current node data", op)
+	}
+	if errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("%s returned ErrNodeNotFound for corrupted node data: %v", op, err)
+	}
+}
+
 // ─── Cache isolation ─────────────────────────────────────────────────────────
 
 func TestBadgerStorePutNodeCacheIsolation(t *testing.T) {
@@ -586,6 +800,51 @@ func TestBadgerStoreReplaceNode(t *testing.T) {
 	v, ok := got.GetProperty("name")
 	if !ok || v != "Bob" {
 		t.Fatalf("property after replace = %v, want Bob", v)
+	}
+}
+
+func TestBadgerStoreReplaceNodePersistsNodeRow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := New(Config{Dir: dir, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New bs1: %v", err)
+	}
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	if err := n.SetProperty("name", "Alice"); err != nil {
+		t.Fatalf("SetProperty Alice: %v", err)
+	}
+	if err := bs1.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	updated := n.DeepCopy()
+	if err := updated.SetProperty("name", "Bob"); err != nil {
+		t.Fatalf("SetProperty Bob: %v", err)
+	}
+	if err := bs1.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("Close bs1: %v", err)
+	}
+
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("New bs2: %v", err)
+	}
+	t.Cleanup(func() { _ = bs2.Close() })
+
+	got, err := bs2.GetNode(types.NodeID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatalf("GetNode after reopen: %v", err)
+	}
+	v, ok := got.GetProperty("name")
+	if !ok || v != "Bob" {
+		t.Fatalf("property after reopen = %v, want Bob", v)
+	}
+	if _, err := bs2.GetRelationship(types.RelID(snowflake.ID(100))); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship with node ID after reopen = %v, want ErrRelNotFound", err)
 	}
 }
 
@@ -884,13 +1143,9 @@ func TestBadgerStoreGetNodesByIDs(t *testing.T) {
 	putTestNode(t, bs, 2, 20, nil)
 	putTestNode(t, bs, 3, 10, nil)
 
-	// Request 2 existing + 1 missing → should return 2, skip missing.
-	got, err := bs.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
-	if err != nil {
-		t.Fatalf("GetNodesByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetNodesByIDs() = %d nodes, want 2", len(got))
+	_, err := bs.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNodesByIDs() err = %v, want ErrNodeNotFound", err)
 	}
 }
 

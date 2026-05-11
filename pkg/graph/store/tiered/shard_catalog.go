@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -76,18 +78,140 @@ func (sc *ShardCatalog) Load() error {
 	if err := json.Unmarshal(data, sc); err != nil {
 		return fmt.Errorf("shard catalog: unmarshal: %w", err)
 	}
+	if err := sc.validateLoadedLocked(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (sc *ShardCatalog) validateLoadedLocked() error {
+	seenNames := make(map[string]struct{}, len(sc.Shards))
+	hotEvents := 0
+	referenceShards := 0
+	archiveShards := 0
+
+	for _, entry := range sc.Shards {
+		if entry.Name == "" {
+			return fmt.Errorf("shard catalog: empty shard name")
+		}
+		if _, exists := seenNames[entry.Name]; exists {
+			return fmt.Errorf("shard catalog: duplicate shard name %q", entry.Name)
+		}
+		seenNames[entry.Name] = struct{}{}
+		if !isSafeCatalogShardPath(entry.Path) {
+			return fmt.Errorf("shard catalog: invalid path for shard %q: %q", entry.Name, entry.Path)
+		}
+		if entry.ApproxNodes < 0 || entry.ApproxRels < 0 {
+			return fmt.Errorf("shard catalog: negative stats for shard %q", entry.Name)
+		}
+
+		switch entry.Kind {
+		case ShardReference:
+			referenceShards++
+			if entry.Tier != TierHot {
+				return fmt.Errorf("shard catalog: reference shard %q has invalid tier %q", entry.Name, entry.Tier)
+			}
+		case ShardArchive:
+			archiveShards++
+			if entry.Tier != TierCold {
+				return fmt.Errorf("shard catalog: archive shard %q has invalid tier %q", entry.Name, entry.Tier)
+			}
+		case ShardEvent:
+			switch entry.Tier {
+			case TierHot:
+				hotEvents++
+			case TierWarm, TierCold:
+			default:
+				return fmt.Errorf("shard catalog: event shard %q has invalid tier %q", entry.Name, entry.Tier)
+			}
+			if entry.TimeStart.IsZero() || entry.TimeEnd.IsZero() || !entry.TimeEnd.After(entry.TimeStart) {
+				return fmt.Errorf("shard catalog: event shard %q has invalid time window", entry.Name)
+			}
+		default:
+			return fmt.Errorf("shard catalog: shard %q has invalid kind %q", entry.Name, entry.Kind)
+		}
+	}
+	if referenceShards > 1 {
+		return fmt.Errorf("shard catalog: multiple reference shards")
+	}
+	if archiveShards > 1 {
+		return fmt.Errorf("shard catalog: multiple archive shards")
+	}
+	if hotEvents > 1 {
+		return fmt.Errorf("shard catalog: multiple hot event shards")
+	}
+	return nil
+}
+
+func isSafeCatalogShardPath(path string) bool {
+	if path == "" || filepath.IsAbs(path) {
+		return false
+	}
+	clean := filepath.Clean(path)
+	if clean == "." || clean == ".." {
+		return false
+	}
+	return !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 // Save writes the catalog to disk atomically (write-tmp + fsync + rename).
 func (sc *ShardCatalog) Save() error {
+	if sc.path == "" {
+		return nil
+	}
 	sc.mu.RLock()
 	data, err := json.MarshalIndent(sc, "", "  ")
 	sc.mu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("shard catalog: marshal: %w", err)
 	}
-	return atomicWriteFile(sc.path, data, "shard catalog")
+	snapshot, err := snapshotShardCatalogFile(sc.path)
+	if err != nil {
+		return err
+	}
+	if err := atomicWriteFile(sc.path, data, "shard catalog"); err != nil {
+		if restoreErr := restoreShardCatalogFile(snapshot); restoreErr != nil {
+			return fmt.Errorf("shard catalog: save: %w (rollback failed: %v)", err, restoreErr)
+		}
+		return err
+	}
+	return nil
+}
+
+type shardCatalogFileSnapshot struct {
+	path   string
+	data   []byte
+	exists bool
+}
+
+func snapshotShardCatalogFile(path string) (shardCatalogFileSnapshot, error) {
+	data, err := os.ReadFile(path) // #nosec G304 — path derived from trusted Store config
+	if err != nil {
+		if os.IsNotExist(err) {
+			return shardCatalogFileSnapshot{path: path}, nil
+		}
+		return shardCatalogFileSnapshot{}, fmt.Errorf("shard catalog: snapshot: %w", err)
+	}
+	return shardCatalogFileSnapshot{path: path, data: data, exists: true}, nil
+}
+
+func restoreShardCatalogFile(snapshot shardCatalogFileSnapshot) error {
+	if snapshot.path == "" {
+		return nil
+	}
+	if snapshot.exists {
+		return atomicWriteFile(snapshot.path, snapshot.data, "shard catalog rollback")
+	}
+	if err := os.Remove(snapshot.path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("shard catalog rollback: remove: %w", err)
+	}
+	if err := syncParentDir(snapshot.path, "shard catalog rollback"); err != nil {
+		return err
+	}
+	return nil
 }
 
 // AddShard appends a new shard entry to the catalog.

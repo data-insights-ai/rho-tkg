@@ -3,12 +3,26 @@ package badger
 import (
 	"errors"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // ─── Store: Node version history ──────────────────────────────────────
+
+func newSlowFlushBadgerStore(t *testing.T) *Store {
+	t.Helper()
+	bs, err := New(Config{InMemory: true, FlushInterval: time.Hour})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	return bs
+}
 
 func TestBadgerStorePutGetNodeVersion(t *testing.T) {
 	t.Parallel()
@@ -49,6 +63,54 @@ func TestBadgerStoreGetNodeVersionNotFound(t *testing.T) {
 	_, err := bs.GetNodeVersion(types.NodeID(1), 0)
 	if !errors.Is(err, ErrVersionNotFound) {
 		t.Fatalf("expected ErrVersionNotFound, got %v", err)
+	}
+}
+
+func TestBadgerStoreGetNodeVersionRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+	corruptNodeHistoryWireAfterFlush(t, bs, 0, storepkg.NodeWire{ID: 1, PrimaryLabel: 0})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetNodeVersion panicked on semantically corrupt node history wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetNodeVersion(types.NodeID(1), 0)
+	if err == nil {
+		t.Fatal("GetNodeVersion should return error for semantically corrupt node history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetNodeVersion returned ErrVersionNotFound for corrupt node history wire: %v", err)
+	}
+}
+
+func TestBadgerStoreGetNodeHistoryRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+	corruptNodeHistoryWireAfterFlush(t, bs, 0, storepkg.NodeWire{ID: 1, PrimaryLabel: 0})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetNodeHistory panicked on semantically corrupt node history wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetNodeHistory(types.NodeID(1))
+	if err == nil {
+		t.Fatal("GetNodeHistory should return error for semantically corrupt node history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetNodeHistory returned ErrVersionNotFound for corrupt node history wire: %v", err)
 	}
 }
 
@@ -160,6 +222,25 @@ func TestBadgerStoreTruncateNodeHistoryAll(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreTruncateNodeHistoryRejectsNegativeKeep(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	id := types.NodeID(snowflake.ID(1))
+	n := types.NewNode(id, 10, nil)
+	if err := bs.PutNodeVersion(id, 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+
+	if err := bs.TruncateNodeHistory(id, -1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateNodeHistory(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, _ := bs.GetNodeHistory(id)
+	if len(history) != 1 {
+		t.Fatalf("negative truncate mutated history: len = %d, want 1", len(history))
+	}
+}
+
 func TestBadgerStoreDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -261,6 +342,54 @@ func TestBadgerStoreGetRelVersionNotFound(t *testing.T) {
 	_, err := bs.GetRelVersion(types.RelID(100), 0)
 	if !errors.Is(err, ErrVersionNotFound) {
 		t.Fatalf("expected ErrVersionNotFound, got %v", err)
+	}
+}
+
+func TestBadgerStoreGetRelVersionRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 20, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	corruptRelHistoryWireAfterFlush(t, bs, 0, storepkg.RelWire{ID: 100, RelType: 0, StartID: 1, EndID: 2})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetRelVersion panicked on semantically corrupt rel history wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetRelVersion(types.RelID(100), 0)
+	if err == nil {
+		t.Fatal("GetRelVersion should return error for semantically corrupt rel history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetRelVersion returned ErrVersionNotFound for corrupt rel history wire: %v", err)
+	}
+}
+
+func TestBadgerStoreGetRelHistoryRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 20, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	corruptRelHistoryWireAfterFlush(t, bs, 0, storepkg.RelWire{ID: 100, RelType: 0, StartID: 1, EndID: 2})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("GetRelHistory panicked on semantically corrupt rel history wire: %v", rec)
+		}
+	}()
+	_, err := bs.GetRelHistory(types.RelID(100))
+	if err == nil {
+		t.Fatal("GetRelHistory should return error for semantically corrupt rel history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetRelHistory returned ErrVersionNotFound for corrupt rel history wire: %v", err)
 	}
 }
 
@@ -367,6 +496,25 @@ func TestBadgerStoreTruncateRelHistoryAll(t *testing.T) {
 	history, _ := bs.GetRelHistory(types.RelID(id))
 	if len(history) != 0 {
 		t.Fatalf("expected empty after truncate all, got %d", len(history))
+	}
+}
+
+func TestBadgerStoreTruncateRelHistoryRejectsNegativeKeep(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	id := types.RelID(snowflake.ID(100))
+	r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+	if err := bs.PutRelVersion(id, 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+
+	if err := bs.TruncateRelHistory(id, -1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateRelHistory(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, _ := bs.GetRelHistory(id)
+	if len(history) != 1 {
+		t.Fatalf("negative truncate mutated rel history: len = %d, want 1", len(history))
 	}
 }
 
@@ -523,6 +671,147 @@ func TestBadgerStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreReplaceNodeRejectsLabelMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := putTestNode(t, bs, 1, 10, nil)
+
+	replacement := types.NewNode(n.ID(), 20, nil)
+	if err := bs.ReplaceNode(replacement); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode label mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := bs.NodesByLabel(20, QueryOpts{}); err != nil || len(nodes) != 0 {
+		t.Fatalf("NodesByLabel(20) = %d, %v; want 0, nil", len(nodes), err)
+	}
+	if nodes, err := bs.NodesByLabel(10, QueryOpts{}); err != nil || len(nodes) != 1 {
+		t.Fatalf("NodesByLabel(10) = %d, %v; want 1, nil", len(nodes), err)
+	}
+
+	current, err := bs.GetNode(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withHistory := types.NewNode(n.ID(), 20, nil)
+	withHistory.SetVersion(1)
+	if err := bs.ReplaceNodeWithHistory(withHistory, current.Version(), current); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory label mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, err := bs.GetNodeHistory(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history entries after rejected label mutation = %d, want 0", len(history))
+	}
+}
+
+func TestBadgerStoreNodeLabelTokenHelpersRejectInvalidDeltas(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := putTestNode(t, bs, 1, 10, []uint16{20})
+
+	stillHasRemoved := n.DeepCopy()
+	if err := bs.RemoveNodeLabelToken(n.ID(), 20, stillHasRemoved); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("RemoveNodeLabelToken unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := bs.NodesByLabel(20, QueryOpts{}); err != nil || len(nodes) != 1 {
+		t.Fatalf("NodesByLabel(20) after rejected remove = %d, %v; want 1, nil", len(nodes), err)
+	}
+
+	missingAdded := n.DeepCopy()
+	if err := bs.AddNodeLabelToken(n.ID(), 30, missingAdded); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("AddNodeLabelToken unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+	if nodes, err := bs.NodesByLabel(30, QueryOpts{}); err != nil || len(nodes) != 0 {
+		t.Fatalf("NodesByLabel(30) after rejected add = %d, %v; want 0, nil", len(nodes), err)
+	}
+
+	prev := n.DeepCopy()
+	invalidRemoveWithHistory := n.DeepCopy()
+	invalidRemoveWithHistory.SetVersion(1)
+	if err := bs.RemoveNodeLabelTokenWithHistory(n.ID(), 20, invalidRemoveWithHistory, prev.Version(), prev); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("RemoveNodeLabelTokenWithHistory unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	invalidAddWithHistory := n.DeepCopy()
+	invalidAddWithHistory.SetVersion(1)
+	if err := bs.AddNodeLabelTokenWithHistory(n.ID(), 30, invalidAddWithHistory, prev.Version(), prev); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("AddNodeLabelTokenWithHistory unchanged payload = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	history, err := bs.GetNodeHistory(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history entries after rejected label-token helpers = %d, want 0", len(history))
+	}
+}
+
+func TestBadgerStoreReplaceNodeWithHistoryUsesStoredStateForIndexCleanup(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := putTestNode(t, bs, 1, 10, nil)
+	_ = n.SetProperty("name", "Alice")
+	if err := bs.ReplaceNode(n); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.CreatePropertyIndex(10, "name"); err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := bs.GetNode(n.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stalePrevState := types.NewNode(n.ID(), 10, nil)
+	updated := current.DeepCopy()
+	_ = updated.SetProperty("name", "Bob")
+	updated.SetVersion(1)
+
+	if err := bs.ReplaceNodeWithHistory(updated, current.Version(), stalePrevState); err != nil {
+		t.Fatalf("ReplaceNodeWithHistory: %v", err)
+	}
+	alice, err := bs.NodesByLabelAndProperty(10, "name", "Alice", QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(alice) != 0 {
+		t.Fatalf("Alice index results after replace = %d, want 0", len(alice))
+	}
+	bob, err := bs.NodesByLabelAndProperty(10, "name", "Bob", QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bob) != 1 || bob[0].ID() != n.ID() {
+		t.Fatalf("Bob index results after replace = %d, want node %d", len(bob), n.ID())
+	}
+}
+
+func TestBadgerStoreReplaceWithHistoryRejectsNilPayloads(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := bs.ReplaceNodeWithHistory(nil, 0, n); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory(nil current) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceNodeWithHistory(n, 0, nil); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNodeWithHistory(nil history) = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.ReplaceRelWithHistory(nil, 0, r); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory(nil current) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceRelWithHistory(r, 0, nil); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory(nil history) = %v, want ErrInvalidStoreMutation", err)
+	}
+}
+
 func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -608,6 +897,72 @@ func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreReplaceRelWithHistoryRejectsIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestNode(t, bs, 3, 10, nil)
+
+	original := putTestRel(t, bs, 100, 5, 1, 2)
+	updated := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(3)))
+	updated.SetVersion(1)
+
+	err := bs.ReplaceRelWithHistory(updated, original.Version(), original.DeepCopy())
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelWithHistory indexed-field mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	hist, histErr := bs.GetRelHistory(types.RelID(snowflake.ID(100)))
+	if histErr != nil {
+		t.Fatal(histErr)
+	}
+	if len(hist) != 0 {
+		t.Fatalf("history written for rejected relationship replacement: %d entries", len(hist))
+	}
+	current, err := bs.GetRelationship(types.RelID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.EndNodeID() != types.NodeID(snowflake.ID(2)) || current.Version() != 0 {
+		t.Fatalf("relationship changed after rejected replacement: end=%d version=%d", current.EndNodeID(), current.Version())
+	}
+}
+
+func TestBadgerStoreDeleteNodeWithHistoryRejectsRelTombstoneIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 2, nil)
+	putTestNode(t, bs, 30, 3, nil)
+	rel := putTestRel(t, bs, 100, 1, 10, 20)
+
+	nodeTombstone := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	badRelTombstone := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(30)))
+	err := bs.DeleteNodeWithHistory(types.NodeID(snowflake.ID(10)), 0, nodeTombstone, []RelTombstone{{
+		ID:          rel.ID(),
+		PrevVersion: rel.Version(),
+		Tombstone:   badRelTombstone,
+	}})
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodeWithHistory bad rel tombstone = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := bs.GetNode(types.NodeID(snowflake.ID(10))); err != nil {
+		t.Fatalf("node deleted after rejected tombstone: %v", err)
+	}
+	gotRel, err := bs.GetRelationship(types.RelID(snowflake.ID(100)))
+	if err != nil {
+		t.Fatalf("relationship deleted after rejected tombstone: %v", err)
+	}
+	if gotRel.EndNodeID() != types.NodeID(snowflake.ID(20)) {
+		t.Fatalf("relationship tombstone changed live endpoint: got %d, want 20", gotRel.EndNodeID())
+	}
+	if hist, err := bs.GetRelHistory(types.RelID(snowflake.ID(100))); err != nil || len(hist) != 0 {
+		t.Fatalf("relationship history after rejected tombstone = len %d err %v, want empty nil", len(hist), err)
+	}
+}
+
 // --- AllNodeHistoryIDs / AllRelHistoryIDs ---
 
 func TestBadgerStoreAllNodeHistoryIDs(t *testing.T) {
@@ -685,6 +1040,163 @@ func TestBadgerStoreAllNodeHistoryIDs_PendingBuffer(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreHistoryIDPendingOverlayIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	nodeKey := append(append([]byte(nil), storepkg.HistNodeKey(100, 1)...), 0x99)
+	relKey := append(append([]byte(nil), storepkg.HistRelKey(500, 1)...), 0x99)
+
+	bs.wbMu.Lock()
+	bs.pending[string(nodeKey)] = writeOp{opType: writeOpSet, key: nodeKey}
+	bs.pending[string(relKey)] = writeOp{opType: writeOpSet, key: relKey}
+	bs.wbMu.Unlock()
+
+	nodeIDs, err := bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(nodeIDs) != 0 {
+		t.Fatalf("AllNodeHistoryIDs with overlong pending key = %v, want empty", nodeIDs)
+	}
+	var iteratedNodes []types.NodeID
+	if err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		iteratedNodes = append(iteratedNodes, id)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachNodeHistoryID: %v", err)
+	}
+	if len(iteratedNodes) != 0 {
+		t.Fatalf("ForEachNodeHistoryID with overlong pending key = %v, want empty", iteratedNodes)
+	}
+
+	relIDs, err := bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(relIDs) != 0 {
+		t.Fatalf("AllRelHistoryIDs with overlong pending key = %v, want empty", relIDs)
+	}
+	var iteratedRels []types.RelID
+	if err := bs.ForEachRelHistoryID(func(id types.RelID) bool {
+		iteratedRels = append(iteratedRels, id)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachRelHistoryID: %v", err)
+	}
+	if len(iteratedRels) != 0 {
+		t.Fatalf("ForEachRelHistoryID with overlong pending key = %v, want empty", iteratedRels)
+	}
+}
+
+func TestBadgerStoreGetHistoryIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	node := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	nodeData, err := msgpack.Marshal(storepkg.NodeToWire(node))
+	if err != nil {
+		t.Fatalf("marshal node wire: %v", err)
+	}
+	nodeExactKey := storepkg.HistNodeKey(100, 0)
+	nodePersistedOverlongKey := append(append([]byte(nil), storepkg.HistNodeKey(100, 1)...), 0x99)
+	nodePendingOverlongKey := append(append([]byte(nil), storepkg.HistNodeKey(100, 2)...), 0x99)
+
+	rel := types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	relData, err := msgpack.Marshal(storepkg.RelToWire(rel))
+	if err != nil {
+		t.Fatalf("marshal rel wire: %v", err)
+	}
+	relExactKey := storepkg.HistRelKey(500, 0)
+	relPersistedOverlongKey := append(append([]byte(nil), storepkg.HistRelKey(500, 1)...), 0x99)
+	relPendingOverlongKey := append(append([]byte(nil), storepkg.HistRelKey(500, 2)...), 0x99)
+
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Set(nodeExactKey, nodeData); err != nil {
+			return err
+		}
+		if err := txn.Set(nodePersistedOverlongKey, nodeData); err != nil {
+			return err
+		}
+		if err := txn.Set(relExactKey, relData); err != nil {
+			return err
+		}
+		return txn.Set(relPersistedOverlongKey, relData)
+	}); err != nil {
+		t.Fatalf("seed raw history keys: %v", err)
+	}
+
+	bs.wbMu.Lock()
+	bs.pending[string(nodePendingOverlongKey)] = writeOp{opType: writeOpSet, key: nodePendingOverlongKey, value: nodeData}
+	bs.pending[string(relPendingOverlongKey)] = writeOp{opType: writeOpSet, key: relPendingOverlongKey, value: relData}
+	bs.wbMu.Unlock()
+
+	nodeHistory, err := bs.GetNodeHistory(types.NodeID(100))
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(nodeHistory) != 1 {
+		t.Fatalf("GetNodeHistory with overlong keys returned %d entries, want 1", len(nodeHistory))
+	}
+
+	relHistory, err := bs.GetRelHistory(types.RelID(500))
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(relHistory) != 1 {
+		t.Fatalf("GetRelHistory with overlong keys returned %d entries, want 1", len(relHistory))
+	}
+}
+
+func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	n100 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	if err := bs.PutNodeVersion(types.NodeID(100), 0, n100); err != nil {
+		t.Fatalf("PutNodeVersion(100): %v", err)
+	}
+	n300v0 := types.NewNode(types.NodeID(snowflake.ID(300)), 1, nil)
+	n300v0.SetVersion(0)
+	if err := bs.PutNodeVersion(types.NodeID(300), 0, n300v0); err != nil {
+		t.Fatalf("PutNodeVersion(300,0): %v", err)
+	}
+	n300v1 := types.NewNode(types.NodeID(snowflake.ID(300)), 1, nil)
+	n300v1.SetVersion(1)
+	if err := bs.PutNodeVersion(types.NodeID(300), 1, n300v1); err != nil {
+		t.Fatalf("PutNodeVersion(300,1): %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	if err := bs.TruncateNodeHistory(types.NodeID(100), 0); err != nil {
+		t.Fatalf("TruncateNodeHistory(100,0): %v", err)
+	}
+	if err := bs.TruncateNodeHistory(types.NodeID(300), 1); err != nil {
+		t.Fatalf("TruncateNodeHistory(300,1): %v", err)
+	}
+
+	ids, err := bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != types.NodeID(300) {
+		t.Fatalf("AllNodeHistoryIDs after pending truncate = %v, want [300]", ids)
+	}
+
+	var iterated []types.NodeID
+	if err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		iterated = append(iterated, id)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachNodeHistoryID: %v", err)
+	}
+	if len(iterated) != 1 || iterated[0] != types.NodeID(300) {
+		t.Fatalf("ForEachNodeHistoryID after pending truncate = %v, want [300]", iterated)
+	}
+}
+
 func TestBadgerStoreAllRelHistoryIDs(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -747,5 +1259,88 @@ func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
 	}
 	if len(ids) != 1 {
 		t.Fatalf("expected 1 history ID after flush, got %d", len(ids))
+	}
+}
+
+func TestBadgerStoreAllRelHistoryIDsHonorsPendingDeletes(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	r100 := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r100); err != nil {
+		t.Fatalf("PutRelVersion(100): %v", err)
+	}
+	r300v0 := types.NewRelationship(types.RelID(snowflake.ID(300)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	r300v0.SetVersion(0)
+	if err := bs.PutRelVersion(types.RelID(300), 0, r300v0); err != nil {
+		t.Fatalf("PutRelVersion(300,0): %v", err)
+	}
+	r300v1 := types.NewRelationship(types.RelID(snowflake.ID(300)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	r300v1.SetVersion(1)
+	if err := bs.PutRelVersion(types.RelID(300), 1, r300v1); err != nil {
+		t.Fatalf("PutRelVersion(300,1): %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	if err := bs.TruncateRelHistory(types.RelID(100), 0); err != nil {
+		t.Fatalf("TruncateRelHistory(100,0): %v", err)
+	}
+	if err := bs.TruncateRelHistory(types.RelID(300), 1); err != nil {
+		t.Fatalf("TruncateRelHistory(300,1): %v", err)
+	}
+
+	ids, err := bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != types.RelID(300) {
+		t.Fatalf("AllRelHistoryIDs after pending truncate = %v, want [300]", ids)
+	}
+
+	var iterated []types.RelID
+	if err := bs.ForEachRelHistoryID(func(id types.RelID) bool {
+		iterated = append(iterated, id)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachRelHistoryID: %v", err)
+	}
+	if len(iterated) != 1 || iterated[0] != types.RelID(300) {
+		t.Fatalf("ForEachRelHistoryID after pending truncate = %v, want [300]", iterated)
+	}
+}
+
+func corruptNodeHistoryWireAfterFlush(t *testing.T, bs *Store, version uint32, w storepkg.NodeWire) {
+	t.Helper()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal corrupt node history wire: %v", err)
+	}
+	key := storepkg.HistNodeKey(snowflake.ID(w.ID), uint64(version))
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(key, data)
+	}); err != nil {
+		t.Fatalf("corrupt node history wire: %v", err)
+	}
+}
+
+func corruptRelHistoryWireAfterFlush(t *testing.T, bs *Store, version uint32, w storepkg.RelWire) {
+	t.Helper()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	data, err := msgpack.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal corrupt rel history wire: %v", err)
+	}
+	key := storepkg.HistRelKey(snowflake.ID(w.ID), uint64(version))
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(key, data)
+	}); err != nil {
+		t.Fatalf("corrupt rel history wire: %v", err)
 	}
 }

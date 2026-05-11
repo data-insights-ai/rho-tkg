@@ -6,6 +6,17 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func maxRelValidFrom(c *Core, rels ...*types.Relationship) types.Instant {
+	var out types.Instant
+	for _, r := range rels {
+		v := c.relValidFrom(r)
+		if v > out {
+			out = v
+		}
+	}
+	return out
+}
+
 // These tests guarantee Relationship-side parity with the Node-side
 // temporal query convenience methods (CLAUDE.md rules 2 and 17). Each test
 // follows the two-phase shape required by rule 15: create → mutate → query
@@ -92,10 +103,7 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship rOtherType: %v", err)
 	}
-	t0 := g.relValidFrom(rKept)
-	if v := g.relValidFrom(rDeleted); v < t0 {
-		t0 = v
-	}
+	t0 := maxRelValidFrom(g, rKept, rDeleted, rOtherType)
 
 	if err := g.Rels.Delete(rDeleted.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
@@ -180,13 +188,7 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
 	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
 
-	t0 := g.relValidFrom(rDraft)
-	if v := g.relValidFrom(rPublished); v < t0 {
-		t0 = v
-	}
-	if v := g.relValidFrom(rOtherType); v < t0 {
-		t0 = v
-	}
+	t0 := maxRelValidFrom(g, rDraft, rPublished, rOtherType)
 
 	if _, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
@@ -243,10 +245,7 @@ func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 	// the rel-history index, so its ID appears in forEachRelCandidateID's
 	// union when querying KNOWS. The HasTypeTokenRaw filter must reject it.
 	rLikes, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
-	t0 := g.relValidFrom(rKnows)
-	if v := g.relValidFrom(rLikes); v < t0 {
-		t0 = v
-	}
+	t0 := maxRelValidFrom(g, rKnows, rLikes)
 
 	if _, err := g.Rels.Update(rLikes.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship rLikes: %v", err)
@@ -353,13 +352,7 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
 	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
 
-	start := g.relValidFrom(rDraft)
-	if v := g.relValidFrom(rNever); v < start {
-		start = v
-	}
-	if v := g.relValidFrom(rOtherType); v < start {
-		start = v
-	}
+	start := maxRelValidFrom(g, rDraft, rNever, rOtherType)
 
 	updated, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"})
 	if err != nil {

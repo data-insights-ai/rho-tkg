@@ -1,10 +1,12 @@
 package badger
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -81,6 +83,41 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	checks := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{name: "node negative limit", run: func() error {
+			_, err := bs.AllNodeHistoryIDsFrom(types.NodeID(0), -1)
+			return err
+		}, want: storecontract.ErrInvalidQueryLimit},
+		{name: "node negative cursor", run: func() error {
+			_, err := bs.AllNodeHistoryIDsFrom(types.NodeID(-1), 0)
+			return err
+		}, want: storecontract.ErrInvalidQueryCursor},
+		{name: "rel negative limit", run: func() error {
+			_, err := bs.AllRelHistoryIDsFrom(types.RelID(0), -1)
+			return err
+		}, want: storecontract.ErrInvalidQueryLimit},
+		{name: "rel negative cursor", run: func() error {
+			_, err := bs.AllRelHistoryIDsFrom(types.RelID(-1), 0)
+			return err
+		}, want: storecontract.ErrInvalidQueryCursor},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if err := check.run(); !errors.Is(err, check.want) {
+				t.Fatalf("err = %v, want %v", err, check.want)
+			}
+		})
+	}
+}
+
 func TestBadgerStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -114,6 +151,21 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_AfterPastLast(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("AllNodeHistoryIDsFrom(past-last) = %v; want empty", got)
+	}
+}
+
+func TestBadgerStore_AllNodeHistoryIDsFrom_MaxCursor(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+	_ = seedBadgerNodeHistory(t, bs, 10, false)
+
+	const maxSnowflake = snowflake.ID(1<<63 - 1)
+	got, err := bs.AllNodeHistoryIDsFrom(types.NodeID(maxSnowflake), 64)
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDsFrom(max cursor): %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("AllNodeHistoryIDsFrom(max cursor) = %v; want empty", got)
 	}
 }
 
@@ -271,5 +323,20 @@ func TestBadgerStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, all) {
 		t.Fatal("limit=0 result must equal AllRelHistoryIDs result")
+	}
+}
+
+func TestBadgerStore_AllRelHistoryIDsFrom_MaxCursor(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+	_ = seedBadgerRelHistory(t, bs, 10, false)
+
+	const maxSnowflake = snowflake.ID(1<<63 - 1)
+	got, err := bs.AllRelHistoryIDsFrom(types.RelID(maxSnowflake), 64)
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDsFrom(max cursor): %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("AllRelHistoryIDsFrom(max cursor) = %v; want empty", got)
 	}
 }

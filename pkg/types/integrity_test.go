@@ -72,6 +72,15 @@ func TestNodeIntegrity_DeepCopy_NilSignature(t *testing.T) {
 	}
 }
 
+func TestNodeIntegrity_DeepCopy_NilReceiver(t *testing.T) {
+	t.Parallel()
+
+	var ig *NodeIntegrity
+	if cp := ig.DeepCopy(); cp != nil {
+		t.Fatalf("DeepCopy() on nil receiver = %#v, want nil", cp)
+	}
+}
+
 func TestRelIntegrity_DeepCopy(t *testing.T) {
 	t.Parallel()
 	orig := &RelIntegrity{
@@ -103,6 +112,15 @@ func TestRelIntegrity_DeepCopy_NilSignature(t *testing.T) {
 	cp := orig.DeepCopy()
 	if cp.Signature != nil {
 		t.Fatal("expected nil Signature in copy")
+	}
+}
+
+func TestRelIntegrity_DeepCopy_NilReceiver(t *testing.T) {
+	t.Parallel()
+
+	var ig *RelIntegrity
+	if cp := ig.DeepCopy(); cp != nil {
+		t.Fatalf("DeepCopy() on nil receiver = %#v, want nil", cp)
 	}
 }
 

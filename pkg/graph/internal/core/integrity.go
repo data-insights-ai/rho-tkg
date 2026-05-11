@@ -22,6 +22,16 @@ func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 	if err := c.checkOpen(); err != nil {
 		return false, err
 	}
+	valid := false
+	err := c.readUnderRLock(func() error {
+		var err error
+		valid, err = c.verifyNodeChainLocked(id)
+		return err
+	})
+	return valid, err
+}
+
+func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
 	current, err := c.store.GetNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return false, err
@@ -69,8 +79,11 @@ func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 		// Hash recomputation below still verifies content integrity.
 
 		// Recompute hash and compare with stored.
-		labels := c.Nodes.Labels(entry)
-		computed := integrity.ComputeNodeHash(entry, labels)
+		labels := c.nodeLabelsUnlocked(entry)
+		computed, err := integrity.ComputeNodeHashChecked(entry, labels)
+		if err != nil {
+			return false, err
+		}
 		if ig.Hash != computed {
 			return false, nil
 		}
@@ -91,6 +104,16 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 	if err := c.checkOpen(); err != nil {
 		return false, err
 	}
+	valid := false
+	err := c.readUnderRLock(func() error {
+		var err error
+		valid, err = c.verifyRelChainLocked(id)
+		return err
+	})
+	return valid, err
+}
+
+func (c *Core) verifyRelChainLocked(id types.RelID) (bool, error) {
 	current, err := c.store.GetRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return false, err
@@ -118,7 +141,7 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 	if typeSource == nil {
 		typeSource = chain[len(chain)-1]
 	}
-	typeName := c.Rels.Type(typeSource)
+	typeName := c.relTypeUnlocked(typeSource)
 
 	for i, entry := range chain {
 		ig := entry.Integrity()
@@ -144,7 +167,10 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 		// else: i == 0 && version != 0 → truncated history, skip link check.
 
 		// Recompute hash and compare with stored.
-		computed := integrity.ComputeRelHash(entry, typeName)
+		computed, err := integrity.ComputeRelHashChecked(entry, typeName)
+		if err != nil {
+			return false, err
+		}
 		if ig.Hash != computed {
 			return false, nil
 		}

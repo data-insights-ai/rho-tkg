@@ -3,13 +3,14 @@
 package constraints
 
 import (
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 )
 
 // Ops is the subset of *core.ConstraintOps the constraints sub-API forwards to.
 type Ops interface {
-	Set(cs temporalpkg.ConstraintSet)
-	Add(c temporalpkg.TemporalConstraint)
+	Set(cs temporalpkg.ConstraintSet) error
+	Add(c temporalpkg.TemporalConstraint) error
 	Get() temporalpkg.ConstraintSet
 }
 
@@ -19,11 +20,35 @@ type API struct{ ops Ops }
 // New constructs a constraints sub-API.
 func New(ops Ops) *API { return &API{ops: ops} }
 
+func (a *API) ready() (Ops, error) {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return nil, grapherr.ErrNilGraph
+	}
+	return a.ops, nil
+}
+
 // Set replaces the entire constraint set.
-func (a *API) Set(cs temporalpkg.ConstraintSet) { a.ops.Set(cs) }
+func (a *API) Set(cs temporalpkg.ConstraintSet) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.Set(cs)
+}
 
 // Add appends a single constraint.
-func (a *API) Add(c temporalpkg.TemporalConstraint) { a.ops.Add(c) }
+func (a *API) Add(c temporalpkg.TemporalConstraint) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.Add(c)
+}
 
 // Get returns the current constraint set.
-func (a *API) Get() temporalpkg.ConstraintSet { return a.ops.Get() }
+func (a *API) Get() temporalpkg.ConstraintSet {
+	if a == nil || grapherr.IsNil(a.ops) {
+		return temporalpkg.ConstraintSet{}
+	}
+	return a.ops.Get()
+}

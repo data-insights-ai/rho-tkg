@@ -15,18 +15,23 @@ import (
 // names keeps the moved file readable. The canonical sentinel-error
 // declarations live in pkg/graph/store (public contract).
 var (
-	ErrNodeExists            = storecontract.ErrNodeExists
-	ErrNodeNotFound          = storecontract.ErrNodeNotFound
-	ErrRelExists             = storecontract.ErrRelExists
-	ErrRelNotFound           = storecontract.ErrRelNotFound
-	ErrVersionNotFound       = storecontract.ErrVersionNotFound
-	ErrIndexExists           = storecontract.ErrIndexExists
-	ErrIndexNotFound         = storecontract.ErrIndexNotFound
-	ErrTemporalIndexExists   = storecontract.ErrTemporalIndexExists
-	ErrTemporalIndexNotFound = storecontract.ErrTemporalIndexNotFound
-	ErrVectorIndexExists     = indexpkg.ErrVectorIndexExists
-	ErrVectorIndexNotFound   = indexpkg.ErrVectorIndexNotFound
-	ErrDimensionMismatch     = indexpkg.ErrDimensionMismatch
+	ErrNodeExists                 = storecontract.ErrNodeExists
+	ErrNodeNotFound               = storecontract.ErrNodeNotFound
+	ErrRelExists                  = storecontract.ErrRelExists
+	ErrRelNotFound                = storecontract.ErrRelNotFound
+	ErrVersionNotFound            = storecontract.ErrVersionNotFound
+	ErrIndexExists                = storecontract.ErrIndexExists
+	ErrIndexNotFound              = storecontract.ErrIndexNotFound
+	ErrTemporalIndexExists        = storecontract.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound      = storecontract.ErrTemporalIndexNotFound
+	ErrInvalidTemporalIndexConfig = storecontract.ErrInvalidTemporalIndexConfig
+	ErrVectorIndexExists          = storecontract.ErrVectorIndexExists
+	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
+	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
+	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
+	ErrNilStore                   = storecontract.ErrNilStore
+	ErrStoreClosed                = storecontract.ErrStoreClosed
 )
 
 // QueryOpts is a Store-contract alias; canonical declaration lives in
@@ -41,12 +46,15 @@ type DistanceMetric = storecontract.DistanceMetric
 // pkg/graph/store.
 type RelTombstone = storecontract.RelTombstone
 
-// Store is a thread-safe in-memory Store implementation.
+// Store is a thread-safe in-memory Store implementation. Its zero value is a
+// usable empty store; maps are initialized lazily at the lifecycle gate.
 // Uses maps for O(1) entity lookup and nested hash-sets for O(1) index maintenance.
 type Store struct {
-	mu    sync.RWMutex
-	nodes map[types.NodeID]*types.Node
-	rels  map[types.RelID]*types.Relationship
+	initOnce sync.Once
+	mu       sync.RWMutex
+	closed   bool
+	nodes    map[types.NodeID]*types.Node
+	rels     map[types.RelID]*types.Relationship
 
 	// Label index: labelToken → set of node IDs.
 	labelIdx map[uint16]map[types.NodeID]struct{}
@@ -78,27 +86,64 @@ type Store struct {
 
 // New creates an empty Store with all indexes initialized.
 func New() *Store {
-	return &Store{
-		nodes:           make(map[types.NodeID]*types.Node),
-		rels:            make(map[types.RelID]*types.Relationship),
-		labelIdx:        make(map[uint16]map[types.NodeID]struct{}),
-		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
-		outIdx:          make(map[types.NodeID]map[types.RelID]struct{}),
-		inIdx:           make(map[types.NodeID]map[types.RelID]struct{}),
-		nodeHistory:     make(map[types.NodeID]map[uint32]*types.Node),
-		relHistory:      make(map[types.RelID]map[uint32]*types.Relationship),
-		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
-		temporalIndexes: make(map[uint16]*indexpkg.TemporalIndex),
-		hfIndexes:       make(map[uint16]*indexpkg.HighFrequencyIndex),
-		vectorIndexes:   make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
-	}
+	s := &Store{}
+	s.ensureInitialized()
+	return s
+}
+
+func (ms *Store) ensureInitialized() {
+	ms.initOnce.Do(func() {
+		if ms.nodes == nil {
+			ms.nodes = make(map[types.NodeID]*types.Node)
+		}
+		if ms.rels == nil {
+			ms.rels = make(map[types.RelID]*types.Relationship)
+		}
+		if ms.labelIdx == nil {
+			ms.labelIdx = make(map[uint16]map[types.NodeID]struct{})
+		}
+		if ms.typeIdx == nil {
+			ms.typeIdx = make(map[uint16]map[types.RelID]struct{})
+		}
+		if ms.outIdx == nil {
+			ms.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
+		}
+		if ms.inIdx == nil {
+			ms.inIdx = make(map[types.NodeID]map[types.RelID]struct{})
+		}
+		if ms.nodeHistory == nil {
+			ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
+		}
+		if ms.relHistory == nil {
+			ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
+		}
+		if ms.propertyIndexes == nil {
+			ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+		}
+		if ms.temporalIndexes == nil {
+			ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
+		}
+		if ms.hfIndexes == nil {
+			ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
+		}
+		if ms.vectorIndexes == nil {
+			ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
+		}
+	})
 }
 
 // Clear removes all entities, indexes, history, and property indexes.
 // After Clear(), the Store is empty (same state as New()).
 func (ms *Store) Clear() error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
 
 	ms.nodes = make(map[types.NodeID]*types.Node)
 	ms.rels = make(map[types.RelID]*types.Relationship)
@@ -115,5 +160,29 @@ func (ms *Store) Clear() error {
 	return nil
 }
 
-// Close is a no-op for Store. Satisfies the Store interface.
-func (ms *Store) Close() error { return nil }
+// Close marks the Store closed. It is idempotent.
+func (ms *Store) Close() error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	ms.closed = true
+	return nil
+}
+
+// checkOpenLocked returns ErrStoreClosed after Close has run.
+// Caller must hold ms.mu for either reading or writing. It also initializes the
+// zero-value Store before any map access; sync.Once makes the initialization
+// safe even when several readers reach the lifecycle gate together.
+func (ms *Store) checkOpenLocked() error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	if ms.closed {
+		return ErrStoreClosed
+	}
+	ms.ensureInitialized()
+	return nil
+}

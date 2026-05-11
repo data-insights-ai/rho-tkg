@@ -22,6 +22,92 @@ func TestBadgerStorePutNodesBatchEmpty(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreRejectsZeroIDWrites(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	zeroNode := types.NewNode(types.NodeID(0), 1, nil)
+	if err := bs.PutNode(zeroNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceNode(zeroNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.PutNodesBatch([]*types.Node{zeroNode}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNodesBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeNode := types.NewNode(types.NodeID(-1), 1, nil)
+	if err := bs.PutNode(negativeNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceNode(negativeNode); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.PutNodesBatch([]*types.Node{negativeNode}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutNodesBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteNode(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteNode(types.NodeID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNode(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteNodeCascade(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodeCascade(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteNodesBatch([]types.NodeID{0}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(-1)}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if count, err := bs.NodeCount(); err != nil || count != 0 {
+		t.Fatalf("NodeCount after rejected invalid-ID nodes = %d, %v; want 0, nil", count, err)
+	}
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	zeroRel := types.NewRelationship(types.RelID(0), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelationship(zeroRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceRelationship(zeroRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeRel := types.NewRelationship(types.RelID(-1), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelationship(negativeRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.ReplaceRelationship(negativeRel); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ReplaceRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteRelationship(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationship(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteRelationship(types.RelID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationship(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteRelationshipsBatch([]types.RelID{0}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationshipsBatch(zero ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := bs.DeleteRelationshipsBatch([]types.RelID{types.RelID(-1)}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelationshipsBatch(negative ID) = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	zeroStart := types.NewRelationship(types.RelID(snowflake.ID(100)), 1, types.NodeID(0), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelationshipsBatch([]*types.Relationship{zeroStart}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationshipsBatch(zero endpoint) = %v, want ErrInvalidStoreMutation", err)
+	}
+	negativeStart := types.NewRelationship(types.RelID(snowflake.ID(101)), 1, types.NodeID(-1), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelationshipsBatch([]*types.Relationship{negativeStart}); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("PutRelationshipsBatch(negative endpoint) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if count, err := bs.RelationshipCount(); err != nil || count != 0 {
+		t.Fatalf("RelationshipCount after rejected invalid-ID relationships = %d, %v; want 0, nil", count, err)
+	}
+}
+
 func TestBadgerStorePutNodesBatch(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -195,6 +281,44 @@ func TestBadgerStoreDeleteNodesBatch(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreDeleteNodesBatchDeduplicatesInput(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+
+	if err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(1), types.NodeID(1)}); err != nil {
+		t.Fatalf("DeleteNodesBatch duplicate ID: %v", err)
+	}
+	count, _ := bs.NodeCount()
+	if count != 0 {
+		t.Fatalf("NodeCount = %d, want 0", count)
+	}
+}
+
+func TestBadgerStoreDeleteNodesBatchRejectsConnectedRelationships(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestNode(t, bs, 3, 10, nil)
+	putTestRel(t, bs, 100, 5, 1, 2)
+
+	err := bs.DeleteNodesBatch([]types.NodeID{types.NodeID(3), types.NodeID(1), types.NodeID(2)})
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteNodesBatch connected nodes = %v, want ErrInvalidStoreMutation", err)
+	}
+	for _, id := range []types.NodeID{types.NodeID(1), types.NodeID(2), types.NodeID(3)} {
+		if _, getErr := bs.GetNode(id); getErr != nil {
+			t.Fatalf("GetNode(%d) after rejected batch delete: %v", id, getErr)
+		}
+	}
+	if _, getErr := bs.GetRelationship(types.RelID(100)); getErr != nil {
+		t.Fatalf("GetRelationship after rejected batch delete: %v", getErr)
+	}
+}
+
 func TestBadgerStoreDeleteNodesBatchMissing(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -236,6 +360,23 @@ func TestBadgerStoreDeleteRelsBatch(t *testing.T) {
 		t.Fatalf("DeleteRelationshipsBatch returned error: %v", err)
 	}
 
+	count, _ := bs.RelationshipCount()
+	if count != 0 {
+		t.Fatalf("RelationshipCount = %d, want 0", count)
+	}
+}
+
+func TestBadgerStoreDeleteRelsBatchDeduplicatesInput(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestRel(t, bs, 100, 5, 1, 2)
+
+	if err := bs.DeleteRelationshipsBatch([]types.RelID{types.RelID(100), types.RelID(100)}); err != nil {
+		t.Fatalf("DeleteRelationshipsBatch duplicate ID: %v", err)
+	}
 	count, _ := bs.RelationshipCount()
 	if count != 0 {
 		t.Fatalf("RelationshipCount = %d, want 0", count)

@@ -428,6 +428,37 @@ func TestGetNeighborsValidAt_UsesHistoricalRelationships(t *testing.T) {
 	}
 }
 
+func TestGetNeighborsValidAt_DeletedTargetUsesHistory(t *testing.T) {
+	g := newTestGraph(t)
+	useTestClock(t, g)
+
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	queryTime := g.relValidFrom(r)
+
+	if err := g.Nodes.Delete(a.ID()); err != nil {
+		t.Fatalf("DeleteNode A: %v", err)
+	}
+
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), queryTime)
+	if err != nil {
+		t.Fatalf("NeighborsAt deleted target: %v", err)
+	}
+	if !containsNodeID(neighbors, b.ID()) {
+		t.Fatalf("historical neighbor for deleted target missing at %d; got %d neighbors", queryTime, len(neighbors))
+	}
+}
+
 func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 	tests := []struct {
 		name   string

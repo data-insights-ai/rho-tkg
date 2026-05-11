@@ -39,8 +39,9 @@ var ErrTypeNotDeepCopyable = errors.New("types: registered property type does no
 //     regardless of process, host, OS, Go version, or registered map ordering.
 //   - Stable across releases: do not switch encodings, add/reorder fields,
 //     change endianness, etc. once shipped.
-//   - Must never panic: panics inside HashBytes propagate up through the
-//     graph's mutation path and abort the operation.
+//   - Must never panic: graph mutation paths convert HashBytes panics into
+//     errors, but the value is still invalid and direct unchecked hashing or
+//     store/wire use can fail.
 //   - Should not depend on caller-mutable state (timestamps, random salts,
 //     unsorted maps) — same input → same bytes.
 //
@@ -94,11 +95,14 @@ var (
 
 // RegisterPropertyStructType declares that values of v's type (and pointer-to
 // that type) are valid property values. Call from an init() in packages that
-// ship first-class custom types, typically alongside a msgpack extension
-// registration so the values also round-trip through storage.
+// ship first-class custom types. Persistent stores encode registered custom
+// values through the graph wire format as a registered type name plus a MsgPack
+// payload; the value must be MsgPack-encodable and must unmarshal back to the
+// same HashBytes representation.
 //
-// Pass either a zero value or a pointer — both forms (value and pointer-to)
-// become acceptable. Registering the same type twice is a no-op.
+// Pass either a zero value or a typed pointer — both forms (value and
+// pointer-to) become acceptable. Untyped nil is rejected because it does not
+// identify a type to register. Registering the same type twice is a no-op.
 //
 // The type MUST implement both HashableValue (so integrity hashing works
 // without panicking) and DeepCopier (so the store boundary remains a true
@@ -111,7 +115,7 @@ var (
 // semantics must all hold).
 func RegisterPropertyStructType(v any) error {
 	if v == nil {
-		return nil
+		return fmt.Errorf("%w: nil property struct registration", ErrUnsupportedValueType)
 	}
 	t := reflect.TypeOf(v)
 	elemT := t
@@ -202,4 +206,37 @@ func RegisteredPropertyStructTypes() []string {
 	propertyStructRegistryMu.RUnlock()
 	sort.Strings(out)
 	return out
+}
+
+// RegisteredPropertyStructWireType reports the registered element type name for
+// v and whether the runtime value was a pointer. It returns ok=false for nil,
+// unregistered, or runtime forms that do not satisfy the custom property
+// contracts.
+func RegisteredPropertyStructWireType(v any) (typeName string, pointer bool, ok bool) {
+	if v == nil {
+		return "", false, false
+	}
+	rv := reflect.ValueOf(v)
+	if !isRegisteredPropertyStructType(rv) {
+		return "", false, false
+	}
+	t := rv.Type()
+	if t.Kind() == reflect.Pointer {
+		return t.Elem().String(), true, true
+	}
+	return t.String(), false, true
+}
+
+// NewRegisteredPropertyStructPointer creates a pointer to the registered
+// custom property struct type named by typeName. The returned value is suitable
+// as a MsgPack unmarshal target.
+func NewRegisteredPropertyStructPointer(typeName string) (any, bool) {
+	propertyStructRegistryMu.RLock()
+	defer propertyStructRegistryMu.RUnlock()
+	for t := range propertyStructRegistry {
+		if t.String() == typeName {
+			return reflect.New(t).Interface(), true
+		}
+	}
+	return nil, false
 }

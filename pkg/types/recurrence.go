@@ -34,6 +34,9 @@ const (
 	MaskAllDays   WeekdayMask = MaskWeekdays | MaskWeekend
 )
 
+// ErrInvalidTimeRange is returned when an expansion window is empty or inverted.
+var ErrInvalidTimeRange = errors.New("types: invalid time range")
+
 // Interval is a closed-open [Start, End) temporal interval.
 type Interval struct {
 	Start Instant
@@ -41,10 +44,8 @@ type Interval struct {
 }
 
 // RecurrencePattern expresses recurring temporal validity.
-// All expansion is UTC-based. DST transitions are invisible to this type;
-// callers in DST-aware locales must convert expanded instants to local time.
-// All calculations are UTC. Callers must convert timezone-aware datetimes
-// before passing from/to to Expand().
+// Expansion is defined on absolute Instant values and UTC calendar
+// boundaries. DayStart and DayEnd are offsets from UTC midnight.
 type RecurrencePattern struct {
 	// Frequency determines the iteration unit.
 	Frequency RecurrenceFrequency
@@ -55,9 +56,9 @@ type RecurrencePattern struct {
 	DayOfMonth int
 	// Month is the calendar month for Yearly frequency. 0 uses January as default.
 	Month time.Month
-	// DayStart is the time-of-day start from UTC midnight (offset into the day).
+	// DayStart is the whole-millisecond time-of-day start from UTC midnight.
 	DayStart time.Duration
-	// DayEnd is the time-of-day end from UTC midnight (exclusive).
+	// DayEnd is the whole-millisecond time-of-day end from UTC midnight (exclusive).
 	DayEnd time.Duration
 }
 
@@ -74,6 +75,12 @@ func (p RecurrencePattern) Validate() error {
 	if p.DayEnd <= p.DayStart {
 		return errors.New("recurrence: DayEnd must be > DayStart")
 	}
+	if p.DayStart%time.Millisecond != 0 {
+		return errors.New("recurrence: DayStart must be a whole millisecond")
+	}
+	if p.DayEnd%time.Millisecond != 0 {
+		return errors.New("recurrence: DayEnd must be a whole millisecond")
+	}
 	if p.DayEnd > 24*time.Hour {
 		return errors.New("recurrence: DayEnd must be <= 24h")
 	}
@@ -81,22 +88,28 @@ func (p RecurrencePattern) Validate() error {
 		if p.Days == 0 {
 			return errors.New("recurrence: Days bitmask must not be zero for Daily/Weekly frequency")
 		}
+		if extra := p.Days &^ MaskAllDays; extra != 0 {
+			return fmt.Errorf("recurrence: Days bitmask contains unsupported bits 0x%02x", uint8(extra))
+		}
 	}
 	if p.Frequency == RecurrenceMonthly || p.Frequency == RecurrenceYearly {
 		if p.DayOfMonth < 0 || p.DayOfMonth > 28 {
 			return fmt.Errorf("recurrence: DayOfMonth must be 0–28 (0 = last day), got %d", p.DayOfMonth)
 		}
 	}
+	if p.Frequency == RecurrenceYearly && (p.Month < 0 || p.Month > time.December) {
+		return fmt.Errorf("recurrence: Month must be January–December or 0 (default January), got %d", p.Month)
+	}
 	return nil
 }
 
 // Expand generates the concrete [Start, End) intervals within [from, to)
-// where the recurrence pattern fires. from and to must be in UTC.
+// where the recurrence pattern fires.
 // Returns ErrInvalidTimeRange if from >= to.
 // Returns an empty slice if no intervals match.
 func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 	if from >= to {
-		return nil, errors.New("recurrence: from must be before to")
+		return nil, fmt.Errorf("%w: from must be before to", ErrInvalidTimeRange)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err

@@ -50,6 +50,50 @@ func TestTxRun_PanicReleasesLock(t *testing.T) {
 	})
 }
 
+func TestTxRunRejectsNilCallbackBeforeBegin(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if err := g.Tx.Run(nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+		t.Fatalf("Run(nil) = %v, want ErrNilTxCallback", err)
+	}
+	if err := g.Tx.RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+		t.Fatalf("RunContext(ctx, nil) = %v, want ErrNilTxCallback", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, addErr := g.Nodes.Add([]string{"AfterNilCallback"}, nil)
+		done <- addErr
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("post-nil-callback Add: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("post-nil-callback mutation timed out")
+	}
+}
+
+func TestTxRunContextRejectsNilContext(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	var ctx context.Context
+	if err := g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
+		t.Fatalf("RunContext(nil, fn) = %v, want ErrNilContext", err)
+	}
+}
+
 // TestTxRun_FnErrorRollsBack verifies that fn returning an error rolls back
 // without leaking the lock and surfaces the original error to the caller.
 func TestTxRun_FnErrorRollsBack(t *testing.T) {

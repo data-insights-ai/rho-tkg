@@ -164,7 +164,7 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 		t.Errorf("fetched type = %q, want \"KNOWS\"", g.Rels.Type(fetched))
 	}
 
-	// Verify integrity: hash is set, endpoint hashes are empty (ByID trade-off).
+	// Verify integrity: hash and endpoint hashes match Add's semantics.
 	ig := r.Integrity()
 	if ig == nil {
 		t.Fatal("Integrity() is nil")
@@ -172,11 +172,11 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	if ig.Hash == "" {
 		t.Error("integrity hash should be non-empty")
 	}
-	if ig.FromNodeHash != "" {
-		t.Errorf("FromNodeHash should be empty for ByID path, got %q", ig.FromNodeHash)
+	if ig.FromNodeHash == "" {
+		t.Error("FromNodeHash should be non-empty for ByID path")
 	}
-	if ig.ToNodeHash != "" {
-		t.Errorf("ToNodeHash should be empty for ByID path, got %q", ig.ToNodeHash)
+	if ig.ToNodeHash == "" {
+		t.Error("ToNodeHash should be non-empty for ByID path")
 	}
 
 	// Verify adjacency: nA should have an outgoing KNOWS relationship.
@@ -218,6 +218,9 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 	if !created1 {
 		t.Error("first call: created should be true")
+	}
+	if ig := r1.Integrity(); ig == nil || ig.FromNodeHash == "" || ig.ToNodeHash == "" {
+		t.Fatalf("created relationship endpoint hashes = %#v, want both non-empty", ig)
 	}
 
 	// Second call: should return existing.
@@ -842,12 +845,9 @@ func TestGraphGetRelsByIDs(t *testing.T) {
 		r2.ID(),
 	}
 
-	got, err := g.Rels.GetByIDs(ids)
-	if err != nil {
-		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 2", len(got))
+	_, err := g.Rels.GetByIDs(ids)
+	if !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("GetRelationshipsByIDs() err = %v, want ErrRelNotFound", err)
 	}
 }
 
@@ -1128,5 +1128,30 @@ func TestGraphIncomingForNodesUnregisteredType(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("unregistered type: got %v, want nil", got)
+	}
+}
+
+func TestGraphAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	missing := types.NodeID(snowflake.ID(999))
+	if _, err := g.Rels.Outgoing(missing, ""); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("Outgoing missing err = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := g.Rels.Incoming(missing, ""); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("Incoming missing err = %v, want ErrNodeNotFound", err)
+	}
+	if got, err := g.Rels.OutgoingForNodes([]types.NodeID{a.ID(), missing}, ""); !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
+		t.Fatalf("OutgoingForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
+	}
+	if got, err := g.Rels.IncomingForNodes([]types.NodeID{b.ID(), missing}, ""); !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
+		t.Fatalf("IncomingForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
 	}
 }

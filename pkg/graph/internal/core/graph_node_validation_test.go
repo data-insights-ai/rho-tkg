@@ -2,7 +2,10 @@ package core
 
 import (
 	"errors"
+	"strings"
 	"testing"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestAddNodeTooManyLabels(t *testing.T) {
@@ -42,6 +45,21 @@ func TestAddNodeTooManyProperties(t *testing.T) {
 	}
 	if !errors.Is(err, ErrTooManyProperties) {
 		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
+	}
+}
+
+func TestAddNodeInvalidLabelPrecedesPropertyValidation(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
+
+	_, err := g.Nodes.Add([]string{" "}, map[string]any{"a": int64(1), "b": int64(2)})
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("Add invalid label with invalid props = %v, want ErrEmptyName", err)
+	}
+
+	_, err = g.Nodes.Add([]string{strings.Repeat("x", defaultMaxNameLength+1)}, map[string]any{"a": int64(1), "b": int64(2)})
+	if !errors.Is(err, ErrNameTooLong) {
+		t.Fatalf("Add overlong label with invalid props = %v, want ErrNameTooLong", err)
 	}
 }
 
@@ -115,11 +133,71 @@ func TestAddNodePropertyValueMaxSize(t *testing.T) {
 	}
 }
 
+func TestAddNodeNestedPropertyStringValueTooLarge(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		props map[string]any
+	}{
+		{
+			name:  "slice string",
+			props: map[string]any{"key": []string{"toolong"}},
+		},
+		{
+			name:  "any slice string",
+			props: map[string]any{"key": []any{map[string]any{"nested": "toolong"}}},
+		},
+		{
+			name:  "string map value",
+			props: map[string]any{"key": map[string]string{"ok": "toolong"}},
+		},
+		{
+			name:  "nested map key",
+			props: map[string]any{"key": map[string]any{"toolong": true}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+			_, err := g.Nodes.Add([]string{"X"}, tc.props)
+			if err == nil {
+				t.Fatal("expected error for nested string value too large")
+			}
+			if !errors.Is(err, ErrValueTooLarge) {
+				t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestAddNodeNestedPropertyStringValueMaxSize(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+
+	props := map[string]any{
+		"key": []any{
+			"abc",
+			map[string]string{"def": "ghi"},
+		},
+	}
+	n, err := g.Nodes.Add([]string{"X"}, props)
+	if err != nil {
+		t.Fatalf("nested at-limit strings should succeed: %v", err)
+	}
+	if n == nil {
+		t.Fatal("node should not be nil")
+	}
+}
+
 func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 1}})
 
-	// Non-string values should not be checked against MaxPropertyValueSize.
+	// Numeric values should not be checked against the string size limit.
 	props := map[string]any{"key": 99999}
 	n, err := g.Nodes.Add([]string{"X"}, props)
 	if err != nil {
@@ -127,6 +205,44 @@ func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 	}
 	if n == nil {
 		t.Fatal("node should not be nil")
+	}
+}
+
+func TestAddNodeRejectsPropertyTypesOutsideHashWireAllowlist(t *testing.T) {
+	t.Parallel()
+
+	type namedString string
+	type namedSlice []string
+
+	tests := []struct {
+		name string
+		val  any
+		want error
+	}{
+		{name: "named scalar", val: namedString("x"), want: types.ErrUnsupportedValueType},
+		{name: "unsupported slice", val: []uint{1, 2}, want: types.ErrUnsupportedValueType},
+		{name: "named slice", val: namedSlice{"x"}, want: types.ErrUnsupportedValueType},
+		{name: "unsupported map", val: map[string]int{"x": 1}, want: types.ErrUnsupportedMapType},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			defer func() {
+				if rec := recover(); rec != nil {
+					t.Fatalf("AddNode should reject %T with an error, not panic: %v", tc.val, rec)
+				}
+			}()
+
+			g, _ := New(Config{})
+			_, err := g.Nodes.Add([]string{"X"}, map[string]any{"k": tc.val})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("expected %v, got: %v", tc.want, err)
+			}
+		})
 	}
 }
 
@@ -199,6 +315,60 @@ func TestUpdateNodePropertyValueTooLarge(t *testing.T) {
 	}
 	if !errors.Is(err, ErrValueTooLarge) {
 		t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+	}
+}
+
+func TestNodeMutationsRejectNestedPropertyStringValueTooLarge(t *testing.T) {
+	t.Parallel()
+
+	oversized := map[string]any{"nested": []any{"toolong"}}
+	tests := []struct {
+		name string
+		run  func(*Core, types.NodeID) error
+	}{
+		{
+			name: "update",
+			run: func(g *Core, id types.NodeID) error {
+				_, err := g.Nodes.Update(id, map[string]any{"k": oversized})
+				return err
+			},
+		},
+		{
+			name: "update in place",
+			run: func(g *Core, id types.NodeID) error {
+				_, err := g.Nodes.UpdateInPlace(id, map[string]any{"k": oversized})
+				return err
+			},
+		},
+		{
+			name: "set property",
+			run: func(g *Core, id types.NodeID) error {
+				return g.Nodes.SetProperty(id, "k", oversized)
+			},
+		},
+		{
+			name: "compare and set",
+			run: func(g *Core, id types.NodeID) error {
+				_, err := g.Nodes.CompareAndSetProperty(id, "k", nil, oversized)
+				return err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+			n, _ := g.Nodes.Add([]string{"X"}, nil)
+
+			err := tc.run(g, n.ID())
+			if err == nil {
+				t.Fatal("expected error for nested string value too large")
+			}
+			if !errors.Is(err, ErrValueTooLarge) {
+				t.Fatalf("expected ErrValueTooLarge, got: %v", err)
+			}
+		})
 	}
 }
 

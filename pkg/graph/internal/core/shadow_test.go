@@ -3,7 +3,6 @@ package core
 import (
 	"testing"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -65,6 +64,45 @@ func makeRelWithMeta(t *testing.T) (*Core, *types.Relationship) {
 	r.SetIntegrity(&types.RelIntegrity{Hash: "xyz789", PrevHash: "uvw012"})
 	r.SetVersion(7)
 	return g, r
+}
+
+func TestResolveHelpersNilInputsReturnZeroValues(t *testing.T) {
+	t.Parallel()
+
+	g := newTestGraph(t)
+	if _, err := g.Resolve.GetOrCreateLabel("Person"); err != nil {
+		t.Fatalf("GetOrCreateLabel: %v", err)
+	}
+	if _, err := g.Resolve.GetOrCreateRelType("KNOWS"); err != nil {
+		t.Fatalf("GetOrCreateRelType: %v", err)
+	}
+
+	if labels := g.Nodes.Labels(nil); labels != nil {
+		t.Fatalf("Nodes.Labels(nil) = %v, want nil", labels)
+	}
+	if got := g.Nodes.PrimaryLabel(nil); got != "" {
+		t.Fatalf("Nodes.PrimaryLabel(nil) = %q, want empty string", got)
+	}
+	if g.Nodes.HasLabel(nil, "Person") {
+		t.Fatal("Nodes.HasLabel(nil, registered label) = true, want false")
+	}
+	if got := g.Rels.Type(nil); got != "" {
+		t.Fatalf("Rels.Type(nil) = %q, want empty string", got)
+	}
+	if g.Rels.HasType(nil, "KNOWS") {
+		t.Fatal("Rels.HasType(nil, registered type) = true, want false")
+	}
+
+	for _, key := range []string{"name", types.ShadowLabels, types.ShadowCreatedAt} {
+		if val, ok := g.Resolve.NodeProperty(nil, key); ok || val != nil {
+			t.Fatalf("Resolve.NodeProperty(nil, %q) = (%v, %v), want (nil, false)", key, val, ok)
+		}
+	}
+	for _, key := range []string{"weight", types.ShadowType, types.ShadowCreatedAt} {
+		if val, ok := g.Resolve.RelProperty(nil, key); ok || val != nil {
+			t.Fatalf("Resolve.RelProperty(nil, %q) = (%v, %v), want (nil, false)", key, val, ok)
+		}
+	}
 }
 
 // ─── Node shadow resolution ─────────────────────────────────────────────────
@@ -186,7 +224,7 @@ func TestResolveNodePropertyBaseEntity(t *testing.T) {
 	if !ok {
 		t.Fatal("tkg_base_entity should return true")
 	}
-	if val != snowflake.ID(42) {
+	if val != types.EntityID(42) {
 		t.Errorf("tkg_base_entity = %v, want 42", val)
 	}
 }
@@ -353,7 +391,7 @@ func TestResolveRelPropertyBaseEntity(t *testing.T) {
 	if !ok {
 		t.Fatal("tkg_base_entity on rel should return true")
 	}
-	if val != snowflake.ID(99) {
+	if val != types.EntityID(99) {
 		t.Errorf("tkg_base_entity = %v, want 99", val)
 	}
 }

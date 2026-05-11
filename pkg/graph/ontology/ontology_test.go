@@ -91,6 +91,37 @@ func TestOntologyMapping_ClassifyByToken_UnknownToken(t *testing.T) {
 	}
 }
 
+func TestOntologyMapping_SetLabelRegistryClearsTokenCache(t *testing.T) {
+	om := NewOntologyMapping([]string{"Case"})
+
+	reg1 := registry.NewLabelRegistry()
+	caseTok, err := reg1.GetOrCreate("Case")
+	if err != nil {
+		t.Fatalf("GetOrCreate Case: %v", err)
+	}
+	if prev := om.SetLabelRegistry(reg1); prev != nil {
+		t.Fatalf("first SetLabelRegistry previous = %v, want nil", prev)
+	}
+	if got := om.ClassifyByToken(caseTok); got != ClassReference {
+		t.Fatalf("ClassifyByToken(Case) = %d, want ClassReference", got)
+	}
+
+	reg2 := registry.NewLabelRegistry()
+	signalTok, err := reg2.GetOrCreate("Signal")
+	if err != nil {
+		t.Fatalf("GetOrCreate Signal: %v", err)
+	}
+	if signalTok != caseTok {
+		t.Fatalf("test setup token mismatch: Signal=%d Case=%d", signalTok, caseTok)
+	}
+	if prev := om.SetLabelRegistry(reg2); prev != reg1 {
+		t.Fatalf("SetLabelRegistry previous = %p, want %p", prev, reg1)
+	}
+	if got := om.ClassifyByToken(signalTok); got != ClassEvent {
+		t.Fatalf("ClassifyByToken(Signal after registry swap) = %d, want ClassEvent", got)
+	}
+}
+
 func TestOntologyMapping_RefLabels(t *testing.T) {
 	om := NewOntologyMapping([]string{"Case", "User"})
 	refs := om.RefLabels()
@@ -114,5 +145,41 @@ func TestOntologyMapping_EmptyRefLabels(t *testing.T) {
 	refs := om.RefLabels()
 	if len(refs) != 0 {
 		t.Errorf("empty mapping RefLabels() = %v, want empty", refs)
+	}
+}
+
+func TestOntologyMapping_IgnoresEmptyRefLabelNames(t *testing.T) {
+	om := NewOntologyMapping([]string{"", " \t", "Case"})
+
+	if got := om.ClassifyByName(""); got != ClassEvent {
+		t.Fatalf("ClassifyByName(empty) = %d, want ClassEvent", got)
+	}
+	if got := om.ClassifyByName(" \t"); got != ClassEvent {
+		t.Fatalf("ClassifyByName(whitespace) = %d, want ClassEvent", got)
+	}
+	if got := om.ClassifyByName("Case"); got != ClassReference {
+		t.Fatalf("ClassifyByName(Case) = %d, want ClassReference", got)
+	}
+	refs := om.RefLabels()
+	if len(refs) != 1 || refs[0] != "Case" {
+		t.Fatalf("RefLabels() = %v, want [Case]", refs)
+	}
+}
+
+func TestOntologyMappingNilReceiverMethodsFailClosed(t *testing.T) {
+	var om *OntologyMapping
+	reg := registry.NewLabelRegistry()
+
+	if got := om.ClassifyByName("Case"); got != ClassEvent {
+		t.Fatalf("ClassifyByName on nil receiver = %d, want ClassEvent", got)
+	}
+	if got := om.ClassifyByToken(1); got != ClassEvent {
+		t.Fatalf("ClassifyByToken on nil receiver = %d, want ClassEvent", got)
+	}
+	if prev := om.SetLabelRegistry(reg); prev != nil {
+		t.Fatalf("SetLabelRegistry on nil receiver = %v, want nil", prev)
+	}
+	if refs := om.RefLabels(); refs != nil {
+		t.Fatalf("RefLabels on nil receiver = %v, want nil", refs)
 	}
 }

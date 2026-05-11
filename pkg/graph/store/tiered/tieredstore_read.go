@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -14,6 +15,14 @@ import (
 func stripDepth(opts QueryOpts) QueryOpts {
 	opts.Depth = 0
 	return opts
+}
+
+func validateDepth(depth ShardDepth) error {
+	return storecontract.ValidateShardDepth(depth)
+}
+
+func validateQueryOpts(opts QueryOpts) error {
+	return storecontract.ValidateQueryOpts(opts)
 }
 
 // Internal slice converters bridging typed entity IDs and raw snowflake.ID

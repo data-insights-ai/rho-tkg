@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"encoding/binary"
 	"errors"
 	"sync"
 	"testing"
@@ -8,6 +9,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -44,6 +46,104 @@ func putTestRel(t *testing.T, bs *Store, id int64, relType uint16, startID, endI
 		t.Fatalf("PutRelationship(%d): %v", id, err)
 	}
 	return r
+}
+
+func updateRawBadgerDir(t *testing.T, dir string, fn func(*badgerv4.Txn) error) {
+	t.Helper()
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+	if err != nil {
+		t.Fatalf("raw badger open: %v", err)
+	}
+	if err := db.Update(fn); err != nil {
+		_ = db.Close()
+		t.Fatalf("raw badger update: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("raw badger close: %v", err)
+	}
+}
+
+func TestBadgerStoreLoadIndexesIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	nodeID := snowflake.ID(100)
+	node := types.NewNode(types.NodeID(nodeID), 1, nil)
+	nodeData, err := storepkg.MarshalNodeWire(node)
+	if err != nil {
+		t.Fatalf("marshal node: %v", err)
+	}
+	relID := snowflake.ID(500)
+	rel := types.NewRelationship(types.RelID(relID), 7, types.NodeID(10), types.NodeID(20))
+	relData, err := storepkg.MarshalRelWire(rel)
+	if err != nil {
+		t.Fatalf("marshal rel: %v", err)
+	}
+
+	nodeKey := append(append([]byte(nil), storepkg.NodeKey(nodeID)...), 0x99)
+	relKey := append(append([]byte(nil), storepkg.RelKey(relID)...), 0x99)
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		if err := txn.Set(nodeKey, nodeData); err != nil {
+			return err
+		}
+		return txn.Set(relKey, relData)
+	})
+
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs.Close()
+
+	nodeCount, err := bs.NodeCount()
+	if err != nil {
+		t.Fatalf("NodeCount: %v", err)
+	}
+	if nodeCount != 0 {
+		t.Fatalf("NodeCount with only overlong node key = %d, want 0", nodeCount)
+	}
+	relCount, err := bs.RelationshipCount()
+	if err != nil {
+		t.Fatalf("RelationshipCount: %v", err)
+	}
+	if relCount != 0 {
+		t.Fatalf("RelationshipCount with only overlong rel key = %d, want 0", relCount)
+	}
+}
+
+func TestBadgerStoreHistoryIDScansIgnoreOverlongFixedWidthKeys(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	nodeKey := append(append([]byte(nil), storepkg.HistNodeKey(100, 1)...), 0x99)
+	relKey := append(append([]byte(nil), storepkg.HistRelKey(500, 1)...), 0x99)
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		if err := txn.Set(nodeKey, []byte("ignored")); err != nil {
+			return err
+		}
+		return txn.Set(relKey, []byte("ignored"))
+	})
+
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs.Close()
+
+	nodeIDs, err := bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDsFrom: %v", err)
+	}
+	if len(nodeIDs) != 0 {
+		t.Fatalf("AllNodeHistoryIDsFrom with only overlong key = %v, want nil/empty", nodeIDs)
+	}
+	relIDs, err := bs.AllRelHistoryIDsFrom(types.RelID(0), 0)
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDsFrom: %v", err)
+	}
+	if len(relIDs) != 0 {
+		t.Fatalf("AllRelHistoryIDsFrom with only overlong key = %v, want nil/empty", relIDs)
+	}
 }
 
 // ─── Counts ──────────────────────────────────────────────────────────────────
@@ -404,6 +504,227 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreLoadIndexesRebuildsRelationshipIndexesFromEntityRow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 10, 1, nil)
+	putTestNode(t, bs1, 20, 1, nil)
+	putTestRel(t, bs1, 500, 3, 10, 20)
+	if err := bs1.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(storepkg.RelTypeIndexKey(3, 500)); err != nil {
+			return err
+		}
+		if err := txn.Delete(storepkg.OutKey(10, 3, 20, 500)); err != nil {
+			return err
+		}
+		return txn.Delete(storepkg.InKey(20, 3, 10, 500))
+	})
+
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	if _, err := bs2.GetRelationship(types.RelID(500)); err != nil {
+		t.Fatalf("GetRelationship after index-key loss: %v", err)
+	}
+	ids, err := bs2.AllRelIDs(QueryOpts{})
+	if err != nil {
+		t.Fatalf("AllRelIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != types.RelID(500) {
+		t.Fatalf("AllRelIDs = %v, want [500]", ids)
+	}
+	byType, err := bs2.RelationshipsByType(3, QueryOpts{})
+	if err != nil {
+		t.Fatalf("RelationshipsByType: %v", err)
+	}
+	if len(byType) != 1 || byType[0].ID() != types.RelID(500) {
+		t.Fatalf("RelationshipsByType = %v, want rel 500", byType)
+	}
+	out, err := bs2.OutgoingRelationships(types.NodeID(10), 0)
+	if err != nil {
+		t.Fatalf("OutgoingRelationships: %v", err)
+	}
+	if len(out) != 1 || out[0].ID() != types.RelID(500) {
+		t.Fatalf("OutgoingRelationships = %v, want rel 500", out)
+	}
+	in, err := bs2.IncomingRelationships(types.NodeID(20), 0)
+	if err != nil {
+		t.Fatalf("IncomingRelationships: %v", err)
+	}
+	if len(in) != 1 || in[0].ID() != types.RelID(500) {
+		t.Fatalf("IncomingRelationships = %v, want rel 500", in)
+	}
+}
+
+func TestBadgerStoreLoadIndexesRebuildsNodeLabelsFromEntityRow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	putTestNode(t, bs1, 100, 1, []uint16{2})
+	if err := bs1.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(storepkg.LabelIndexKey(1, 100)); err != nil {
+			return err
+		}
+		return txn.Delete(storepkg.LabelIndexKey(2, 100))
+	})
+
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	if _, err := bs2.GetNode(types.NodeID(100)); err != nil {
+		t.Fatalf("GetNode after label-key loss: %v", err)
+	}
+	ids, err := bs2.AllNodeIDs(QueryOpts{})
+	if err != nil {
+		t.Fatalf("AllNodeIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != types.NodeID(100) {
+		t.Fatalf("AllNodeIDs = %v, want [100]", ids)
+	}
+	for _, label := range []uint16{1, 2} {
+		nodes, err := bs2.NodesByLabel(label, QueryOpts{})
+		if err != nil {
+			t.Fatalf("NodesByLabel(%d): %v", label, err)
+		}
+		if len(nodes) != 1 || nodes[0].ID() != types.NodeID(100) {
+			t.Fatalf("NodesByLabel(%d) = %v, want node 100", label, nodes)
+		}
+	}
+}
+
+func TestBadgerStoreLoadIndexesIgnoresStaleLabelIndexWithoutEntityRow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.LabelIndexKey(7, 100), nil)
+	})
+
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer bs.Close()
+
+	if bs.HasNodeID(100) {
+		t.Fatal("HasNodeID trusted stale label index without an entity row")
+	}
+	if ids, err := bs.AllNodeIDs(QueryOpts{}); err != nil || len(ids) != 0 {
+		t.Fatalf("AllNodeIDs = %v, %v; want empty, nil", ids, err)
+	}
+	if got, err := bs.NodeCount(); err != nil || got != 0 {
+		t.Fatalf("NodeCount = %d, %v; want 0, nil", got, err)
+	}
+	if got, err := bs.NodeCountByLabel(7); err != nil || got != 0 {
+		t.Fatalf("NodeCountByLabel(7) = %d, %v; want 0, nil", got, err)
+	}
+	if nodes, err := bs.NodesByLabel(7, QueryOpts{}); err != nil || len(nodes) != 0 {
+		t.Fatalf("NodesByLabel(7) = %v, %v; want empty, nil", nodes, err)
+	}
+	if _, err := bs.GetNode(types.NodeID(100)); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode(100) = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestBadgerStoreLoadIndexesIgnoresStaleRelationshipTypeAndOutgoingWithoutEntityRow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		if err := txn.Set(storepkg.RelTypeIndexKey(7, 100), nil); err != nil {
+			return err
+		}
+		return txn.Set(storepkg.OutKey(10, 7, 20, 100), nil)
+	})
+
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer bs.Close()
+
+	if bs.HasRelID(100) {
+		t.Fatal("HasRelID trusted stale reltype index without an entity row")
+	}
+	if ids, err := bs.AllRelIDs(QueryOpts{}); err != nil || len(ids) != 0 {
+		t.Fatalf("AllRelIDs = %v, %v; want empty, nil", ids, err)
+	}
+	if got, err := bs.RelationshipCount(); err != nil || got != 0 {
+		t.Fatalf("RelationshipCount = %d, %v; want 0, nil", got, err)
+	}
+	if got, err := bs.RelCountByType(7); err != nil || got != 0 {
+		t.Fatalf("RelCountByType(7) = %d, %v; want 0, nil", got, err)
+	}
+	if out := bs.OutgoingRelIDs(10); len(out) != 0 {
+		t.Fatalf("OutgoingRelIDs(10) = %v, want empty", out)
+	}
+	if _, err := bs.GetRelationship(types.RelID(100)); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship(100) = %v, want ErrRelNotFound", err)
+	}
+}
+
+func TestBadgerStoreLoadIndexesPreservesIncomingOnlyIndexEntry(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.InKey(20, 7, 10, 100), nil)
+	})
+
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer bs.Close()
+
+	if bs.HasRelID(100) {
+		t.Fatal("incoming-only cross-shard entry should not create a local relID")
+	}
+	entries := bs.IncomingIndexEntries()
+	if len(entries) != 1 {
+		t.Fatalf("IncomingIndexEntries = %d, want 1", len(entries))
+	}
+	if entries[0].EndID != 20 || entries[0].RelID != 100 || entries[0].RelType != 7 {
+		t.Fatalf("IncomingIndexEntries[0] = %+v, want end=20 rel=100 type=7", entries[0])
+	}
+	ids := bs.IncomingRelIDs(20, 7)
+	if len(ids) != 1 || ids[0] != 100 {
+		t.Fatalf("IncomingRelIDs(20, 7) = %v, want [100]", ids)
+	}
+	if all, err := bs.AllRelIDs(QueryOpts{}); err != nil || len(all) != 0 {
+		t.Fatalf("AllRelIDs = %v, %v; want empty, nil", all, err)
+	}
+}
+
 func TestBadgerStoreGetNodePropagatesErrorOnCacheMiss(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -475,8 +796,10 @@ func TestBadgerStoreAtomicCountsPutDelete(t *testing.T) {
 		t.Fatalf("RelationshipCount = %d, want 1", rc)
 	}
 
-	// Delete 1 node (plain delete, no cascade).
-	bs.DeleteNode(types.NodeID(30))
+	// Delete 1 unconnected node (plain delete, no cascade).
+	if err := bs.DeleteNode(types.NodeID(10)); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
 	nc, _ = bs.NodeCount()
 	if nc != 2 {
 		t.Fatalf("NodeCount = %d, want 2", nc)
@@ -541,6 +864,161 @@ func TestBadgerStoreCountInitialization(t *testing.T) {
 	}
 	if rc != 1 {
 		t.Errorf("RelationshipCount = %d, want 1", rc)
+	}
+}
+
+func TestBadgerStoreLoadRejectsNegativePersistedCounters(t *testing.T) {
+	cases := []struct {
+		name string
+		key  []byte
+	}{
+		{name: "node count", key: counterNodeCountKey},
+		{name: "relationship count", key: counterRelCountKey},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			bs1, err := New(Config{Dir: dir})
+			if err != nil {
+				t.Fatalf("open 1: %v", err)
+			}
+			if err := bs1.Close(); err != nil {
+				t.Fatalf("close 1: %v", err)
+			}
+
+			db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+			if err != nil {
+				t.Fatalf("raw badger open: %v", err)
+			}
+			var encoded [8]byte
+			binary.BigEndian.PutUint64(encoded[:], 1<<63)
+			if err := db.Update(func(txn *badgerv4.Txn) error {
+				return txn.Set(tc.key, encoded[:])
+			}); err != nil {
+				_ = db.Close()
+				t.Fatalf("write negative counter: %v", err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatalf("raw badger close: %v", err)
+			}
+
+			_, err = New(Config{Dir: dir})
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("open with negative %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestBadgerStoreLoadRejectsMismatchedPersistedCounters(t *testing.T) {
+	cases := []struct {
+		name string
+		key  []byte
+	}{
+		{name: "node count", key: counterNodeCountKey},
+		{name: "relationship count", key: counterRelCountKey},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			bs1, err := New(Config{Dir: dir})
+			if err != nil {
+				t.Fatalf("open 1: %v", err)
+			}
+			if err := bs1.Close(); err != nil {
+				t.Fatalf("close 1: %v", err)
+			}
+
+			var encoded [8]byte
+			binary.BigEndian.PutUint64(encoded[:], 1)
+			updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+				return txn.Set(tc.key, encoded[:])
+			})
+
+			_, err = New(Config{Dir: dir})
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("open with mismatched %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestBadgerStoreReadsRejectMismatchedWireIDs(t *testing.T) {
+	dir := t.TempDir()
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	nodeCurrent, err := msgpack.Marshal(storepkg.NodeWire{ID: 2, PrimaryLabel: 1})
+	if err != nil {
+		t.Fatalf("marshal node current: %v", err)
+	}
+	nodeHistory, err := msgpack.Marshal(storepkg.NodeWire{ID: 4, PrimaryLabel: 1})
+	if err != nil {
+		t.Fatalf("marshal node history: %v", err)
+	}
+	relCurrent, err := msgpack.Marshal(storepkg.RelWire{ID: 11, RelType: 1, StartID: 1, EndID: 2})
+	if err != nil {
+		t.Fatalf("marshal rel current: %v", err)
+	}
+	relHistory, err := msgpack.Marshal(storepkg.RelWire{ID: 13, RelType: 1, StartID: 1, EndID: 2})
+	if err != nil {
+		t.Fatalf("marshal rel history: %v", err)
+	}
+
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+	if err != nil {
+		t.Fatalf("raw badger open: %v", err)
+	}
+	if err := db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Set(storepkg.NodeKey(1), nodeCurrent); err != nil {
+			return err
+		}
+		if err := txn.Set(storepkg.NodeKey(2), nodeCurrent); err != nil {
+			return err
+		}
+		if err := txn.Set(storepkg.HistNodeKey(3, 0), nodeHistory); err != nil {
+			return err
+		}
+		if err := txn.Set(storepkg.RelKey(10), relCurrent); err != nil {
+			return err
+		}
+		return txn.Set(storepkg.HistRelKey(12, 0), relHistory)
+	}); err != nil {
+		_ = db.Close()
+		t.Fatalf("write mismatched wire rows: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("raw badger close: %v", err)
+	}
+
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	if _, err := bs2.GetNode(types.NodeID(1)); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode mismatched wire = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := bs2.GetNodeVersion(types.NodeID(3), 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("GetNodeVersion mismatched wire = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := bs2.GetRelationship(types.RelID(10)); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship mismatched wire = %v, want ErrRelNotFound", err)
+	}
+	if _, err := bs2.GetRelVersion(types.RelID(12), 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("GetRelVersion mismatched wire = %v, want ErrInvalidStoreMutation", err)
+	}
+	rel := types.NewRelationship(types.RelID(20), 1, types.NodeID(1), types.NodeID(2))
+	if err := bs2.PutRelationship(rel); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("PutRelationship using mismatched node key as endpoint = %v, want ErrNodeNotFound", err)
 	}
 }
 
@@ -899,6 +1377,175 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	}
 	if rc != 3 {
 		t.Errorf("RelationshipCount = %d, want 3", rc)
+	}
+}
+
+func TestBadgerStoreCascadeDeletePurgesOrphanAdjacency(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	orphan := types.RelID(snowflake.ID(999))
+	outKey := storepkg.OutKey(10, 7, 20, orphan.SnowflakeID())
+	inKey := storepkg.InKey(20, 7, 10, orphan.SnowflakeID())
+	typeKey := storepkg.RelTypeIndexKey(7, orphan.SnowflakeID())
+
+	bs.idxMu.Lock()
+	bs.relIDs[orphan] = struct{}{} // simulate pre-existing in-memory orphan state
+	bs.outIdx[types.NodeID(10)] = map[types.RelID]struct{}{orphan: {}}
+	bs.inIdx[types.NodeID(20)] = map[types.RelID]uint16{orphan: 7}
+	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	bs.getOrCreateTypeCounter(7).Store(1)
+	bs.relCount.Store(1)
+	bs.idxMu.Unlock()
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: outKey},
+		writeOp{opType: writeOpSet, key: inKey},
+		writeOp{opType: writeOpSet, key: typeKey},
+	)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush setup: %v", err)
+	}
+
+	if err := bs.DeleteNodeCascade(types.NodeID(10)); err != nil {
+		t.Fatalf("DeleteNodeCascade: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush delete: %v", err)
+	}
+
+	bs.idxMu.RLock()
+	if _, ok := bs.outIdx[types.NodeID(10)][orphan]; ok {
+		t.Error("orphan rel remained in outgoing adjacency after cascade")
+	}
+	if _, ok := bs.inIdx[types.NodeID(20)][orphan]; ok {
+		t.Error("orphan rel remained in incoming adjacency after cascade")
+	}
+	if _, ok := bs.typeIdx[7][orphan]; ok {
+		t.Error("orphan rel remained in type index after cascade")
+	}
+	bs.idxMu.RUnlock()
+
+	if got, err := bs.RelCountByType(7); err != nil || got != 0 {
+		t.Fatalf("RelCountByType(7) = %d, %v; want 0, nil", got, err)
+	}
+	if got, err := bs.RelationshipCount(); err != nil || got != 0 {
+		t.Fatalf("RelationshipCount = %d, %v; want 0, nil", got, err)
+	}
+	for _, key := range [][]byte{outKey, inKey, typeKey} {
+		err := bs.db.View(func(txn *badgerv4.Txn) error {
+			_, err := txn.Get(key)
+			return err
+		})
+		if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+			t.Fatalf("orphan key %x still present: %v", key, err)
+		}
+	}
+}
+
+func TestBadgerStorePurgeOrphanRelationshipIndexes(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	orphan := types.RelID(snowflake.ID(999))
+	outKey := storepkg.OutKey(10, 7, 20, orphan.SnowflakeID())
+	inKey := storepkg.InKey(20, 7, 10, orphan.SnowflakeID())
+	typeKey := storepkg.RelTypeIndexKey(7, orphan.SnowflakeID())
+
+	bs.idxMu.Lock()
+	bs.outIdx[types.NodeID(10)] = map[types.RelID]struct{}{orphan: {}}
+	bs.inIdx[types.NodeID(20)] = map[types.RelID]uint16{orphan: 7}
+	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
+	bs.getOrCreateTypeCounter(7).Store(1)
+	bs.idxMu.Unlock()
+	bs.appendOps(
+		writeOp{opType: writeOpSet, key: outKey},
+		writeOp{opType: writeOpSet, key: inKey},
+		writeOp{opType: writeOpSet, key: typeKey},
+	)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush setup: %v", err)
+	}
+
+	if err := bs.PurgeOrphanRelationshipIndexes(orphan); err != nil {
+		t.Fatalf("PurgeOrphanRelationshipIndexes: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush purge: %v", err)
+	}
+
+	bs.idxMu.RLock()
+	if _, ok := bs.outIdx[types.NodeID(10)][orphan]; ok {
+		t.Error("orphan rel remained in outgoing adjacency after purge")
+	}
+	if _, ok := bs.inIdx[types.NodeID(20)][orphan]; ok {
+		t.Error("orphan rel remained in incoming adjacency after purge")
+	}
+	if _, ok := bs.typeIdx[7][orphan]; ok {
+		t.Error("orphan rel remained in type index after purge")
+	}
+	bs.idxMu.RUnlock()
+
+	if got, err := bs.RelCountByType(7); err != nil || got != 0 {
+		t.Fatalf("RelCountByType(7) = %d, %v; want 0, nil", got, err)
+	}
+	for _, key := range [][]byte{outKey, inKey, typeKey} {
+		err := bs.db.View(func(txn *badgerv4.Txn) error {
+			_, err := txn.Get(key)
+			return err
+		})
+		if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+			t.Fatalf("orphan key %x still present: %v", key, err)
+		}
+	}
+}
+
+func TestBadgerStorePurgeOrphanRelationshipIndexesRejectsInvalidID(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	tests := []struct {
+		name string
+		id   types.RelID
+	}{
+		{name: "zero", id: 0},
+		{name: "negative", id: types.RelID(-1)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := bs.PurgeOrphanRelationshipIndexes(tc.id)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("PurgeOrphanRelationshipIndexes(%s) = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestBadgerStorePurgeOrphanRelationshipIndexesKeepsLiveRelationship(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+	putTestRel(t, bs, 100, 7, 10, 20)
+
+	if err := bs.PurgeOrphanRelationshipIndexes(types.RelID(100)); err != nil {
+		t.Fatalf("PurgeOrphanRelationshipIndexes live rel: %v", err)
+	}
+
+	if !bs.HasRelID(snowflake.ID(100)) {
+		t.Fatal("live relationship row was removed")
+	}
+	if got := bs.OutgoingRelIDs(snowflake.ID(10)); len(got) != 1 || got[0] != snowflake.ID(100) {
+		t.Fatalf("OutgoingRelIDs after live purge = %v, want [100]", got)
+	}
+	if got := bs.IncomingRelIDs(snowflake.ID(20), 0); len(got) != 1 || got[0] != snowflake.ID(100) {
+		t.Fatalf("IncomingRelIDs after live purge = %v, want [100]", got)
+	}
+	if got, err := bs.RelCountByType(7); err != nil || got != 1 {
+		t.Fatalf("RelCountByType(7) = %d, %v; want 1, nil", got, err)
 	}
 }
 
@@ -1332,6 +1979,26 @@ func TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency(t *testing.T) 
 
 // ─── Store ForEach ──────────────────────────────────────────────────────
 
+func TestBadgerStore_ForEachNilCallbackReturnsInvalidMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "ForEachNodeID", run: func() error { return bs.ForEachNodeID(nil) }},
+		{name: "ForEachRelID", run: func() error { return bs.ForEachRelID(nil) }},
+		{name: "ForEachNodeHistoryID", run: func() error { return bs.ForEachNodeHistoryID(nil) }},
+		{name: "ForEachRelHistoryID", run: func() error { return bs.ForEachRelHistoryID(nil) }},
+	}
+	for _, check := range checks {
+		if err := check.run(); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("%s(nil) = %v, want ErrInvalidStoreMutation", check.name, err)
+		}
+	}
+}
+
 func TestBadgerStore_ForEachNodeID(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -1531,6 +2198,154 @@ func TestBadgerStore_ForEachRelHistoryID(t *testing.T) {
 	if _, ok := seen[100]; !ok {
 		t.Fatal("expected to find rel 100 in history")
 	}
+}
+
+func TestBadgerStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	n := types.NewNode(types.NodeID(10), 1, nil)
+	if err := bs.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNodeVersion(n.ID(), 0, n); err != nil {
+		t.Fatal(err)
+	}
+
+	nodeCallbacks := 0
+	err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		nodeCallbacks++
+		if id != n.ID() {
+			t.Fatalf("ForEachNodeHistoryID visited callback-created node %d", id)
+		}
+		created := types.NewNode(types.NodeID(20), 1, nil)
+		if err := bs.PutNode(created); err != nil {
+			t.Fatalf("PutNode in callback: %v", err)
+		}
+		if err := bs.PutNodeVersion(created.ID(), 0, created); err != nil {
+			t.Fatalf("PutNodeVersion in callback: %v", err)
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEachNodeHistoryID: %v", err)
+	}
+	if nodeCallbacks != 1 {
+		t.Fatalf("node callbacks = %d, want 1", nodeCallbacks)
+	}
+
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	rel := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelationship(rel); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutRelVersion(rel.ID(), 0, rel); err != nil {
+		t.Fatal(err)
+	}
+
+	relCallbacks := 0
+	err = bs.ForEachRelHistoryID(func(id types.RelID) bool {
+		relCallbacks++
+		if id != rel.ID() {
+			t.Fatalf("ForEachRelHistoryID visited callback-created relationship %d", id)
+		}
+		created := types.NewRelationship(types.RelID(101), 1, types.NodeID(1), types.NodeID(2))
+		if err := bs.PutRelationship(created); err != nil {
+			t.Fatalf("PutRelationship in callback: %v", err)
+		}
+		if err := bs.PutRelVersion(created.ID(), 0, created); err != nil {
+			t.Fatalf("PutRelVersion in callback: %v", err)
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEachRelHistoryID: %v", err)
+	}
+	if relCallbacks != 1 {
+		t.Fatalf("rel callbacks = %d, want 1", relCallbacks)
+	}
+}
+
+func TestBadgerStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	rel := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelationship(rel); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutRelVersion(types.RelID(100), 0, rel); err != nil {
+		t.Fatal(err)
+	}
+
+	runWithTimeout := func(name string, fn func() error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- fn() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s deadlocked while callback mutated store", name)
+		}
+	}
+
+	runWithTimeout("ForEachNodeID", func() error {
+		var cbErr error
+		err := bs.ForEachNodeID(func(types.NodeID) bool {
+			cbErr = bs.PutNode(types.NewNode(types.NodeID(3), 1, nil))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachRelID", func() error {
+		var cbErr error
+		err := bs.ForEachRelID(func(types.RelID) bool {
+			cbErr = bs.PutRelationship(types.NewRelationship(types.RelID(101), 1, types.NodeID(1), types.NodeID(2)))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachNodeHistoryID", func() error {
+		var cbErr error
+		err := bs.ForEachNodeHistoryID(func(types.NodeID) bool {
+			cbErr = bs.PutNodeVersion(types.NodeID(1), 1, types.NewNode(types.NodeID(1), 1, nil))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachRelHistoryID", func() error {
+		var cbErr error
+		err := bs.ForEachRelHistoryID(func(types.RelID) bool {
+			cbErr = bs.PutRelVersion(types.RelID(100), 1, rel)
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
 }
 
 // ─── Store pagination ───────────────────────────────────────────────────

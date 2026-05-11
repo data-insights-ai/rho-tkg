@@ -1,13 +1,35 @@
 package memory
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // ─── Store ForEach ──────────────────────────────────────────────────────
+
+func TestMemoryStore_ForEachNilCallbackReturnsInvalidMutation(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "ForEachNodeID", run: func() error { return ms.ForEachNodeID(nil) }},
+		{name: "ForEachRelID", run: func() error { return ms.ForEachRelID(nil) }},
+		{name: "ForEachNodeHistoryID", run: func() error { return ms.ForEachNodeHistoryID(nil) }},
+		{name: "ForEachRelHistoryID", run: func() error { return ms.ForEachRelHistoryID(nil) }},
+	}
+	for _, check := range checks {
+		if err := check.run(); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("%s(nil) = %v, want ErrInvalidStoreMutation", check.name, err)
+		}
+	}
+}
 
 func TestMemoryStore_ForEachNodeID(t *testing.T) {
 	t.Parallel()
@@ -191,4 +213,83 @@ func TestMemoryStore_ForEachRelHistoryID(t *testing.T) {
 	if _, ok := seen[100]; !ok {
 		t.Error("rel 100 should appear (has history)")
 	}
+}
+
+func TestMemoryStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	ms := New()
+	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	rel := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNodeVersion(types.NodeID(1), 0, types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutRelVersion(types.RelID(100), 0, rel); err != nil {
+		t.Fatal(err)
+	}
+
+	runWithTimeout := func(name string, fn func() error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- fn() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s deadlocked while callback mutated store", name)
+		}
+	}
+
+	runWithTimeout("ForEachNodeID", func() error {
+		var cbErr error
+		err := ms.ForEachNodeID(func(types.NodeID) bool {
+			cbErr = ms.PutNode(types.NewNode(types.NodeID(3), 1, nil))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachRelID", func() error {
+		var cbErr error
+		err := ms.ForEachRelID(func(types.RelID) bool {
+			cbErr = ms.PutRelationship(types.NewRelationship(types.RelID(101), 1, types.NodeID(1), types.NodeID(2)))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachNodeHistoryID", func() error {
+		var cbErr error
+		err := ms.ForEachNodeHistoryID(func(types.NodeID) bool {
+			cbErr = ms.PutNodeVersion(types.NodeID(1), 1, types.NewNode(types.NodeID(1), 1, nil))
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
+	runWithTimeout("ForEachRelHistoryID", func() error {
+		var cbErr error
+		err := ms.ForEachRelHistoryID(func(types.RelID) bool {
+			cbErr = ms.PutRelVersion(types.RelID(100), 1, rel)
+			return false
+		})
+		if err != nil {
+			return err
+		}
+		return cbErr
+	})
 }

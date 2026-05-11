@@ -61,13 +61,14 @@ var (
 	ErrIncompatibleExport   = tkgio.ErrIncompatibleExport
 	ErrIncompatibleRegistry = tkgio.ErrIncompatibleRegistry
 	ErrCorruptExport        = tkgio.ErrCorruptExport
+	ErrNilWriter            = tkgio.ErrNilWriter
 )
 
 // maxExportRecordSize caps the per-record allocation in readExportRecord.
 // A node with 1000 max-size properties is ~66 MiB; 128 MiB gives safe headroom.
 const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 
-// Export writes a portable snapshot of the graph to w under c.mu.RLock.
+// Export writes a portable snapshot of the graph to w under c.mu.Lock.
 //
 // The snapshot includes every current node and relationship, their full version
 // history, and the label/reltype registries. The format is a sequence of
@@ -75,27 +76,32 @@ const maxExportRecordSize = 128 * 1024 * 1024 // 128 MiB
 // 4-byte big-endian body length. This layout allows forward-compatible streaming
 // without loading the whole file into memory.
 //
-// The RLock excludes tx/batch (which take c.mu.Lock) and Reset, but does
-// NOT exclude individual standalone Add/Update/Delete mutations, which
-// also use c.mu.RLock. The streamed snapshot is therefore best-effort
-// against standalone mutations. For a strict snapshot (no concurrent
-// writers at all), call (*GraphTx).Export from inside g.Tx.Run; the tx
-// already holds c.mu.Lock, so the underlying exportLocked runs without
-// re-entering the lock.
+// The write lock excludes standalone mutations, tx/batch, and Reset for
+// the duration of the streamed snapshot. Code that is already inside a
+// transaction must call (*GraphTx).Export instead of this method because
+// sync.RWMutex is not reentrant.
 func (o *IOOps) Export(w io.Writer) error {
 	c := o.c
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	if isNilInterfaceValue(w) {
+		return ErrNilWriter
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
 	return c.exportLocked(w)
 }
 
-// exportLocked writes the snapshot. Caller must hold c.mu.RLock OR
-// c.mu.Lock — the tx path uses the write lock, the standalone path the
-// read lock. exportLocked itself takes no graph-level locks.
+// exportLocked writes the snapshot. Caller must hold c.mu.Lock.
+// exportLocked itself takes no graph-level locks.
 func (c *Core) exportLocked(w io.Writer) error {
+	if isNilInterfaceValue(w) {
+		return ErrNilWriter
+	}
 	// --- Header ---
 	nc, err := c.store.NodeCount()
 	if err != nil {
@@ -135,7 +141,10 @@ func (c *Core) exportLocked(w io.Writer) error {
 			return fmt.Errorf("export: fetch nodes: %w", err)
 		}
 		for _, n := range nodes {
-			w2 := storeutil.NodeToWire(n)
+			w2, err := storeutil.NodeToWireChecked(n)
+			if err != nil {
+				return fmt.Errorf("export: encode node %d: %w", n.ID().SnowflakeID(), err)
+			}
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
 				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
@@ -167,7 +176,10 @@ func (c *Core) exportLocked(w io.Writer) error {
 					return fmt.Errorf("export: get node history %d: %w", id, err)
 				}
 				for _, entry := range history {
-					w2 := storeutil.NodeToWire(entry)
+					w2, err := storeutil.NodeToWireChecked(entry)
+					if err != nil {
+						return fmt.Errorf("export: encode node history %d v%d: %w", id, entry.Version(), err)
+					}
 					if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
 						return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
 					}
@@ -188,7 +200,10 @@ func (c *Core) exportLocked(w io.Writer) error {
 			return fmt.Errorf("export: fetch rels: %w", err)
 		}
 		for _, r := range rels {
-			w2 := storeutil.RelToWire(r)
+			w2, err := storeutil.RelToWireChecked(r)
+			if err != nil {
+				return fmt.Errorf("export: encode rel %d: %w", r.ID().SnowflakeID(), err)
+			}
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
 				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
@@ -216,7 +231,10 @@ func (c *Core) exportLocked(w io.Writer) error {
 					return fmt.Errorf("export: get rel history %d: %w", id, err)
 				}
 				for _, entry := range history {
-					w2 := storeutil.RelToWire(entry)
+					w2, err := storeutil.RelToWireChecked(entry)
+					if err != nil {
+						return fmt.Errorf("export: encode rel history %d v%d: %w", id, entry.Version(), err)
+					}
 					if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
 						return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
 					}

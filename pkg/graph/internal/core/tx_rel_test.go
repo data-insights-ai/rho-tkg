@@ -1,7 +1,10 @@
 package core
 
 import (
+	"errors"
 	"testing"
+
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
@@ -82,6 +85,43 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	}
 }
 
+func TestGraphTx_UpdateRelationshipValidatesUpdatesBeforeSnapshot(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	tests := []struct {
+		name    string
+		updates map[string]any
+		want    error
+	}{
+		{
+			name:    "reserved shadow key",
+			updates: map[string]any{"tkg_hash": "x"},
+			want:    types.ErrReservedPrefix,
+		},
+		{
+			name:    "unsupported value",
+			updates: map[string]any{"bad": make(chan int)},
+			want:    types.ErrUnsupportedValueType,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tx, err := g.BeginTx()
+			if err != nil {
+				t.Fatalf("BeginTx: %v", err)
+			}
+			defer func() { _ = tx.Rollback() }()
+
+			_, err = tx.UpdateRelationship(types.RelID(1), tc.updates)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("UpdateRelationship error = %v, want errors.Is(..., %v)", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestTxAddRelationshipByID(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
@@ -115,6 +155,9 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	got, err := g.Rels.Get(r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
+	}
+	if ig := got.Integrity(); ig == nil || ig.FromNodeHash == "" || ig.ToNodeHash == "" {
+		t.Fatalf("transaction ByID endpoint hashes = %#v, want both non-empty", ig)
 	}
 	since, ok := got.GetProperty("since")
 	if !ok || since != int64(2024) {
@@ -177,6 +220,9 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 	if r == nil {
 		t.Fatal("relationship is nil")
+	}
+	if ig := r.Integrity(); ig == nil || ig.FromNodeHash == "" || ig.ToNodeHash == "" {
+		t.Fatalf("transaction ByIDIfAbsent endpoint hashes = %#v, want both non-empty", ig)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)

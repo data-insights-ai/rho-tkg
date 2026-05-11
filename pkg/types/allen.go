@@ -40,6 +40,12 @@ const (
 // allenRelationCount is the total number of defined relations (13).
 const allenRelationCount = 13
 
+const allenRelationMask AllenRelationSet = (1 << allenRelationCount) - 1
+
+func (r AllenRelation) valid() bool {
+	return r >= 1 && r <= allenRelationCount
+}
+
 // String returns the human-readable name of the relation.
 func (r AllenRelation) String() string {
 	switch r {
@@ -144,7 +150,10 @@ func (r AllenRelation) Inverse() AllenRelation {
 
 // Set returns a singleton AllenRelationSet containing only this relation.
 func (r AllenRelation) Set() AllenRelationSet {
-	return AllenRelationSet(1 << (r - 1))
+	if !r.valid() {
+		return 0
+	}
+	return AllenRelationSet(1) << (r - 1)
 }
 
 // Relate classifies the Allen relation between intervals [aStart, aEnd) and
@@ -201,33 +210,36 @@ type AllenRelationSet uint16
 
 // Contains reports whether the set includes r.
 func (s AllenRelationSet) Contains(r AllenRelation) bool {
+	if !r.valid() {
+		return false
+	}
 	return s&r.Set() != 0
 }
 
 // Add returns a new set with r added.
 func (s AllenRelationSet) Add(r AllenRelation) AllenRelationSet {
-	return s | r.Set()
+	return (s | r.Set()) & allenRelationMask
 }
 
 // Union returns the set union of s and other.
 func (s AllenRelationSet) Union(other AllenRelationSet) AllenRelationSet {
-	return s | other
+	return (s | other) & allenRelationMask
 }
 
 // Intersection returns the set intersection of s and other.
 func (s AllenRelationSet) Intersection(other AllenRelationSet) AllenRelationSet {
-	return s & other
+	return (s & other) & allenRelationMask
 }
 
 // IsEmpty reports whether the set contains no relations.
 func (s AllenRelationSet) IsEmpty() bool {
-	return s == 0
+	return s&allenRelationMask == 0
 }
 
 // Len returns the number of relations in the set (popcount).
 func (s AllenRelationSet) Len() int {
 	n := 0
-	bits := uint16(s)
+	bits := uint16(s & allenRelationMask)
 	for bits != 0 {
 		n++
 		bits &= bits - 1

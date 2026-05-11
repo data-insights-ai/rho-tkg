@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 func TestPaginateIDs_EmptyInput(t *testing.T) {
@@ -84,5 +85,22 @@ func TestPaginateIDs_LimitLargerThanRemaining(t *testing.T) {
 	}
 	if result[0] != 20 || result[1] != 30 {
 		t.Fatalf("unexpected result: %v", result)
+	}
+}
+
+func TestToRelIDs(t *testing.T) {
+	if got := ToRelIDs(nil); got != nil {
+		t.Fatalf("ToRelIDs(nil) = %v, want nil", got)
+	}
+
+	got := ToRelIDs([]snowflake.ID{10, 20, 30})
+	want := []types.RelID{types.RelID(10), types.RelID(20), types.RelID(30)}
+	if len(got) != len(want) {
+		t.Fatalf("ToRelIDs len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ToRelIDs[%d] = %d, want %d", i, got[i], want[i])
+		}
 	}
 }
