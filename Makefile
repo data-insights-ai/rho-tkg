@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large cover cover-gate vet fmt fmt-check lint security vulncheck check ci clean
+.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck check ci clean
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -76,6 +76,10 @@ bench-graph-all: bench-graph-baseline bench-graph-production-small
 
 # Run both baseline and large production-shaped benchmark suites.
 bench-graph-all-large: bench-graph-baseline bench-graph-production-large
+
+# Compare the common graph benchmarks against historical release tags.
+bench-compare:
+	./scripts/bench-compare-revisions.sh HEAD 4ee8c9e d0706de
 
 # Run tests with coverage report
 cover:
