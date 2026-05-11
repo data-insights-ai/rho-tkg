@@ -32,7 +32,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
 	if n != nil {
 		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
+		tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
 	}
 	if err != nil {
 		return n, err
@@ -54,7 +54,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
 	if r != nil {
 		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
 	}
 	if err != nil {
 		return r, err
@@ -76,7 +76,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
 	if r != nil {
 		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
 	}
 	if err != nil {
 		return r, err
@@ -100,7 +100,7 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
 	if created && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
 	}
 	if err != nil {
 		return r, created, err
@@ -122,7 +122,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 	n, err := tx.g.importNodeWithIDInternal(ctx, id, labels, props)
 	if n != nil {
 		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdNodes = append(tx.createdNodes, n.ID().SnowflakeID())
+		tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
 	}
 	if err != nil {
 		return n, err
@@ -144,7 +144,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 	r, err := tx.g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
 	if r != nil {
 		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.createdRels = append(tx.createdRels, r.ID().SnowflakeID())
+		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
 	}
 	if err != nil {
 		return r, err
@@ -331,6 +331,10 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	}
 
 	tx.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
+	tx.trackDeletedNodeLocked(id.SnowflakeID())
+	for _, r := range relCopies {
+		tx.trackDeletedRelLocked(r.rel.ID().SnowflakeID())
+	}
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
 		node:        nodeCopy,
 		nodeHistory: nodeHistory,
@@ -370,6 +374,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	}
 
 	tx.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
+	tx.trackDeletedRelLocked(id.SnowflakeID())
 	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{rel: relCopy, history: history})
 
 	return nil

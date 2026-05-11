@@ -597,6 +597,162 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	}
 }
 
+func TestGraphTx_DeleteThenImportSameNodeID_RollbackRestoresOriginal(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "before"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := original.ID()
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	if err := tx.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if _, err := tx.ImportNodeWithID(context.Background(), id, []string{"Replacement"}, map[string]any{"state": "after"}); err != nil {
+		t.Fatalf("ImportNodeWithID same ID: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	got, err := g.Nodes.Get(id)
+	if err != nil {
+		t.Fatalf("GetNode after rollback: %v", err)
+	}
+	state, _ := got.GetProperty("state")
+	if state != "before" {
+		t.Fatalf("state after rollback = %v, want before", state)
+	}
+	if !g.Nodes.HasLabel(got, "Original") {
+		t.Fatal("rollback did not restore original label")
+	}
+	if g.Nodes.HasLabel(got, "Replacement") {
+		t.Fatal("rollback left replacement label on original node")
+	}
+	if _, ok := g.Resolve.LookupLabel("Replacement"); ok {
+		t.Fatal("rollback kept replacement label token")
+	}
+}
+
+func TestGraphTx_DeleteThenImportSameRelID_RollbackRestoresOriginal(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "before"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	id := original.ID()
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	if err := tx.DeleteRelationship(id); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	if _, err := tx.ImportRelationshipWithID(context.Background(), id, "REPLACEMENT_REL", a, b, map[string]any{"state": "after"}); err != nil {
+		t.Fatalf("ImportRelationshipWithID same ID: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	got, err := g.Rels.Get(id)
+	if err != nil {
+		t.Fatalf("GetRelationship after rollback: %v", err)
+	}
+	state, _ := got.GetProperty("state")
+	if state != "before" {
+		t.Fatalf("state after rollback = %v, want before", state)
+	}
+	if typ := g.Rels.Type(got); typ != "ORIGINAL_REL" {
+		t.Fatalf("relationship type after rollback = %q, want ORIGINAL_REL", typ)
+	}
+	if _, ok := g.Resolve.LookupRelType("REPLACEMENT_REL"); ok {
+		t.Fatal("rollback kept replacement relationship type token")
+	}
+}
+
+func TestGraphTx_CreateDeleteImportSameNodeID_RollbackRemovesNode(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	created, err := tx.AddNode([]string{"Temp"}, map[string]any{"state": "created"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := created.ID()
+	if err := tx.DeleteNode(id); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if _, err := tx.ImportNodeWithID(context.Background(), id, []string{"Replacement"}, map[string]any{"state": "replacement"}); err != nil {
+		t.Fatalf("ImportNodeWithID same ID: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	if _, err := g.Nodes.Get(id); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("GetNode after rollback = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestGraphTx_CreateDeleteImportSameRelID_RollbackRemovesRelationship(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	created, err := tx.AddRelationship("TEMP_REL", a, b, map[string]any{"state": "created"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	id := created.ID()
+	if err := tx.DeleteRelationship(id); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	if _, err := tx.ImportRelationshipWithID(context.Background(), id, "REPLACEMENT_REL", a, b, map[string]any{"state": "replacement"}); err != nil {
+		t.Fatalf("ImportRelationshipWithID same ID: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	if _, err := g.Rels.Get(id); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Fatalf("GetRelationship after rollback = %v, want ErrRelNotFound", err)
+	}
+}
+
 func TestGraphTx_DeleteRelThenEndpoint_RollbackRestoresRelationship(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)

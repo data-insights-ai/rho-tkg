@@ -198,3 +198,16 @@ GOOD: if !initialized.Load() { once.Do(init) } // or guard every access with Loc
 If zero-value lazy initialization can run under a shared read lock, any separate
 initialized marker must be atomic or protected by an exclusive lock. `sync.Once`
 serializes the init function, not unrelated reads of a plain flag.
+
+## 17. Rollback Logs Track Pre-Transaction Existence
+
+```
+BAD:  deleted(id); importedSameID(id); createdIDs = append(createdIDs, id)
+GOOD: createdIDs includes only IDs absent at BeginTx
+```
+
+Caller-specified imports can reuse an ID that was deleted earlier in the same
+transaction. Rollback must restore the pre-transaction row and must not later
+delete it as a created row. Keep create/delete rollback logs keyed by
+pre-transaction existence, not only by the operation name that produced the
+current row.

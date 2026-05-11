@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -84,7 +85,11 @@ type GraphTx struct {
 	opSnapshot      opCounterSnapshot      // graph operation counters at BeginTx, restored on successful Rollback
 	pendingEvents   []eventspkg.Event      // buffered events — published on Commit, discarded on Rollback
 	snapshotSet     map[txSnapshotKey]bool // tracks already-snapshotted entities (first mutation only)
-	mu              sync.Mutex             // protects done flag and snapshot tracking
+	createdNodeSet  map[snowflake.ID]struct{}
+	createdRelSet   map[snowflake.ID]struct{}
+	deletedNodeSet  map[snowflake.ID]struct{}
+	deletedRelSet   map[snowflake.ID]struct{}
+	mu              sync.Mutex // protects done flag and snapshot tracking
 	done            bool
 }
 
@@ -107,6 +112,10 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		relTypeSnapshot: c.relTypes.ExportNames(),
 		opSnapshot:      c.snapshotOpCounters(),
 		snapshotSet:     make(map[txSnapshotKey]bool),
+		createdNodeSet:  make(map[snowflake.ID]struct{}),
+		createdRelSet:   make(map[snowflake.ID]struct{}),
+		deletedNodeSet:  make(map[snowflake.ID]struct{}),
+		deletedRelSet:   make(map[snowflake.ID]struct{}),
 	}
 	c.txEventBuffer = &tx.pendingEvents
 	return tx, nil
@@ -210,6 +219,40 @@ func copyRelHistory(history []*types.Relationship, err error) ([]*types.Relation
 	return out, nil
 }
 
+// trackCreated* records only entities that did not exist at transaction start.
+// Caller must hold tx.mu. Imported caller-specified IDs can reuse a row deleted
+// earlier in the same transaction; those replacements must not be deleted again
+// after rollback restores the original row.
+func (tx *GraphTx) trackCreatedNodeLocked(id snowflake.ID) {
+	if _, ok := tx.createdNodeSet[id]; ok {
+		return
+	}
+	if _, ok := tx.deletedNodeSet[id]; ok {
+		return
+	}
+	tx.createdNodeSet[id] = struct{}{}
+	tx.createdNodes = append(tx.createdNodes, id)
+}
+
+func (tx *GraphTx) trackCreatedRelLocked(id snowflake.ID) {
+	if _, ok := tx.createdRelSet[id]; ok {
+		return
+	}
+	if _, ok := tx.deletedRelSet[id]; ok {
+		return
+	}
+	tx.createdRelSet[id] = struct{}{}
+	tx.createdRels = append(tx.createdRels, id)
+}
+
+func (tx *GraphTx) trackDeletedNodeLocked(id snowflake.ID) {
+	tx.deletedNodeSet[id] = struct{}{}
+}
+
+func (tx *GraphTx) trackDeletedRelLocked(id snowflake.ID) {
+	tx.deletedRelSet[id] = struct{}{}
+}
+
 // =============================================================================
 // Commit / Rollback
 // =============================================================================
@@ -294,7 +337,7 @@ func (tx *GraphTx) Rollback() error {
 	// relationship restores must wait until all deleted endpoints are live again.
 	for i := len(tx.deletedNodes) - 1; i >= 0; i-- {
 		snap := tx.deletedNodes[i]
-		capture(tx.g.store.PutNode(snap.node))
+		capture(tx.restoreDeletedNodeRow(snap.node))
 		capture(tx.restoreNodeHistory(snap.node.ID(), snap.nodeHistory))
 	}
 
@@ -302,7 +345,7 @@ func (tx *GraphTx) Rollback() error {
 	for i := len(tx.deletedNodes) - 1; i >= 0; i-- {
 		snap := tx.deletedNodes[i]
 		for _, r := range snap.rels {
-			capture(tx.g.store.PutRelationship(r.rel))
+			capture(tx.restoreDeletedRelRow(r.rel))
 			capture(tx.restoreRelHistory(r.rel.ID(), r.history))
 		}
 	}
@@ -310,7 +353,7 @@ func (tx *GraphTx) Rollback() error {
 	// 3. Restore standalone-deleted relationships (reverse order).
 	for i := len(tx.deletedRels) - 1; i >= 0; i-- {
 		snap := tx.deletedRels[i]
-		capture(tx.g.store.PutRelationship(snap.rel))
+		capture(tx.restoreDeletedRelRow(snap.rel))
 		capture(tx.restoreRelHistory(snap.rel.ID(), snap.history))
 	}
 
@@ -348,6 +391,37 @@ func (tx *GraphTx) Rollback() error {
 	}
 
 	return firstErr
+}
+
+func (tx *GraphTx) restoreDeletedNodeRow(n *types.Node) error {
+	current, err := tx.g.store.GetNode(n.ID())
+	if errors.Is(err, storepkg.ErrNodeNotFound) {
+		return tx.g.store.PutNode(n)
+	} else if err != nil {
+		return err
+	}
+	if !sameNodeLabelTokens(current, n) {
+		if err := tx.restoreNodeLabels(n.ID(), current, n); err != nil {
+			return err
+		}
+	}
+	return tx.g.store.ReplaceNode(n)
+}
+
+func (tx *GraphTx) restoreDeletedRelRow(r *types.Relationship) error {
+	current, err := tx.g.store.GetRelationship(r.ID())
+	if errors.Is(err, storepkg.ErrRelNotFound) {
+		return tx.g.store.PutRelationship(r)
+	} else if err != nil {
+		return err
+	}
+	if current.TypeToken().Value() != r.TypeToken().Value() {
+		if err := tx.g.store.DeleteRelationship(r.ID()); err != nil {
+			return err
+		}
+		return tx.g.store.PutRelationship(r)
+	}
+	return tx.g.store.ReplaceRelationship(r)
 }
 
 func (c *Core) snapshotOpCounters() opCounterSnapshot {

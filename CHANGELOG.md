@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — Transaction rollback same-ID replacement (2026-05-11)
+
+- **Rollback preserves pre-transaction entities when caller-specified imports
+  reuse a deleted ID inside the same transaction.**
+  Transaction create bookkeeping now distinguishes rows that were absent at
+  transaction start from replacements of rows deleted earlier in the same
+  transaction. Rollback restores original node and relationship rows, labels,
+  relationship types, and registry state without deleting the restored row as a
+  newly-created entity.
+
 ### Fixed — MemoryStore lazy initialization race (2026-05-11)
 
 - **Zero-value MemoryStore concurrent first use is race-free.**
