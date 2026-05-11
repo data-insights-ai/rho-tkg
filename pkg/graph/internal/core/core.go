@@ -37,20 +37,24 @@ import (
 // Core is the central graph implementation. Customers see *graph.Graph, which
 // is a thin facade holding *Core plus sub-API accessors.
 type Core struct {
-	labels        *registrypkg.LabelRegistry
-	relTypes      *registrypkg.RelTypeRegistry
-	nodeIDGen     *snowflake.Node
-	relIDGen      *snowflake.Node
-	store         storepkg.MandatoryStore
-	entityLocks   *locks.Manager
-	validation    ValidationLimits
-	constraints   ConstraintSet
-	events        eventspkg.Publisher
-	txEventBuffer *[]eventspkg.Event
-	mu            sync.RWMutex
-	registryMu    sync.Mutex
-	closeOnce     sync.Once
-	closed        atomic.Bool
+	labels         *registrypkg.LabelRegistry
+	relTypes       *registrypkg.RelTypeRegistry
+	nodeIDGen      *snowflake.Node
+	relIDGen       *snowflake.Node
+	store          storepkg.MandatoryStore
+	endpointHash   storepkg.EndpointIntegrityHashCapability
+	nodeHash       storepkg.NodeIntegrityHashCapability
+	entityLocks    *locks.Manager
+	validation     ValidationLimits
+	constraints    ConstraintSet
+	events         eventspkg.Publisher
+	txEventBuffer  *[]eventspkg.Event
+	mu             sync.RWMutex
+	registryMu     sync.Mutex
+	relTypeCache   map[string]uint16
+	relTypeCacheMu sync.RWMutex
+	closeOnce      sync.Once
+	closed         atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -274,6 +278,7 @@ func New(config Config) (*Core, error) {
 		entityLocks:    locks.NewManager(),
 		validation:     v,
 		indexProviders: make(map[string]*indexProviderEntry),
+		relTypeCache:   make(map[string]uint16),
 		clock:          time.Now,
 	}
 	c.Nodes = &NodeOps{c: c}
@@ -336,6 +341,8 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.store = store
+	c.endpointHash, _ = store.(storepkg.EndpointIntegrityHashCapability)
+	c.nodeHash, _ = store.(storepkg.NodeIntegrityHashCapability)
 
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the

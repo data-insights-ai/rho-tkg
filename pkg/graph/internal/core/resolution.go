@@ -87,12 +87,25 @@ func (n *NodeOps) Labels(node *types.Node) []string {
 }
 
 func (c *Core) nodeLabelsUnlocked(node *types.Node) []string {
-	tokens := node.AllLabelTokens()
-	raw := make([]uint16, len(tokens))
-	for i, t := range tokens {
-		raw[i] = t.Value()
+	if node == nil {
+		return nil
 	}
-	return c.labels.ResolveAll(raw)
+	count := node.LabelTokenCount()
+	if count == 0 {
+		return nil
+	}
+	return c.appendNodeLabelsUnlocked(make([]string, 0, count), node)
+}
+
+func (c *Core) appendNodeLabelsUnlocked(dst []string, node *types.Node) []string {
+	dst = append(dst, c.labels.Resolve(node.PrimaryLabelToken().Value()))
+	if node.LabelTokenCount() == 1 {
+		return dst
+	}
+	for _, tok := range node.ExtraLabelTokens() {
+		dst = append(dst, c.labels.Resolve(tok.Value()))
+	}
+	return dst
 }
 
 // PrimaryLabel resolves the node's primary label token to a string.

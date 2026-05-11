@@ -170,6 +170,18 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 	return nil
 }
 
+// SetOwnedProperties replaces the node's property slice without copying it.
+// The caller transfers ownership of ps and must not mutate it after this call.
+// This is intended for graph-layer construction paths that just received ps
+// from NewPropertySlice; general callers should use SetProperties.
+func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
+	if n == nil {
+		return ErrNilNode
+	}
+	n.properties = ps.ps
+	return nil
+}
+
 // SetProperty sets a property on the node.
 // Returns an error if the key has the reserved "tkg_" prefix.
 func (n *Node) SetProperty(key string, value any) error {

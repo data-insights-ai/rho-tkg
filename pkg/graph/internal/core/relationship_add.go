@@ -44,7 +44,7 @@ func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode,
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil {
+	if err == nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err
@@ -82,7 +82,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	}
 
 	// Bulk-build properties first — fail fast before generating an ID.
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
@@ -106,26 +106,25 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	// Fetch live endpoints from the store under the endpoint locks so
-	// hash refresh and temporal-constraint checks see the current
-	// state, not whatever the caller happened to hold (R4-F5). Stale
-	// caller pointers can otherwise record FromNodeHash/ToNodeHash
-	// values that were never true at write time, and bypass
-	// ConstraintRelWithinEndpoints by checking against an
-	// out-of-date validity window.
-	liveStart, err := c.store.GetNode(startID)
-	if err != nil {
-		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
-	}
-	liveEnd, err := c.store.GetNode(endID)
-	if err != nil {
-		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-	}
-
 	id := c.nextRelID()
+	var fromHash, toHash string
 	if c.constraints.Len() > 0 {
+		// Fetch live endpoints from the store under the endpoint locks so
+		// hash refresh and temporal-constraint checks see the current state,
+		// not whatever the caller happened to hold (R4-F5).
+		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+		if err != nil {
+			return nil, err
+		}
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, err
+		}
+		fromHash = nodeIntegrityHash(liveStart)
+		toHash = nodeIntegrityHash(liveEnd)
+	} else {
+		fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -154,7 +153,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	}()
 
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetProperties(ps); err != nil {
+	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
 
@@ -174,12 +173,8 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := liveStart.Integrity(); startIg != nil {
-		ig.FromNodeHash = startIg.Hash
-	}
-	if endIg := liveEnd.Integrity(); endIg != nil {
-		ig.ToNodeHash = endIg.Hash
-	}
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
 	r.SetIntegrity(ig)
 
 	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
@@ -194,6 +189,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	if err := finishRelType(nil); err != nil {
 		return r, err
 	}
+	c.rememberRelType(typeName, typeToken)
 
 	c.opRelAdds.Add(1)
 	return r, nil
@@ -223,6 +219,58 @@ func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo,
 	}
 }
 
+func (c *Core) liveEndpointNodes(startID, endID types.NodeID) (*types.Node, *types.Node, error) {
+	liveStart, err := c.store.GetNode(startID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
+	}
+	if startID == endID {
+		return liveStart, liveStart, nil
+	}
+	liveEnd, err := c.store.GetNode(endID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
+	}
+	return liveStart, liveEnd, nil
+}
+
+func (c *Core) liveEndpointHashes(startID, endID types.NodeID) (string, string, error) {
+	if c.endpointHash != nil {
+		fromHash, toHash, err := c.endpointHash.EndpointIntegrityHashes(startID, endID)
+		if err != nil {
+			return "", "", fmt.Errorf("graph: live endpoint integrity fetch under endpoint lock: %w", err)
+		}
+		return fromHash, toHash, nil
+	}
+	if c.nodeHash != nil {
+		fromHash, err := c.nodeHash.NodeIntegrityHash(startID)
+		if err != nil {
+			return "", "", fmt.Errorf("graph: live start-node integrity fetch under endpoint lock: %w", err)
+		}
+		if startID == endID {
+			return fromHash, fromHash, nil
+		}
+		toHash, err := c.nodeHash.NodeIntegrityHash(endID)
+		if err != nil {
+			return "", "", fmt.Errorf("graph: live end-node integrity fetch under endpoint lock: %w", err)
+		}
+		return fromHash, toHash, nil
+	}
+
+	liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+	if err != nil {
+		return "", "", err
+	}
+	return nodeIntegrityHash(liveStart), nodeIntegrityHash(liveEnd), nil
+}
+
+func nodeIntegrityHash(n *types.Node) string {
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
 // AddByIDWithContext creates a relationship using endpoint snowflake IDs.
 // It has the same live-endpoint verification, endpoint-hash capture, and
 // constraint enforcement semantics as RelOps.AddWithContext; it only changes
@@ -242,7 +290,7 @@ func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startI
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil {
+	if err == nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err
@@ -277,7 +325,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	}
 
 	// Bulk-build properties first — fail fast before generating an ID.
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
@@ -298,24 +346,22 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
-	liveStart, err := c.store.GetNode(startID)
-	if err != nil {
-		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
-	}
-	var liveEnd *types.Node
-	if startID == endID {
-		liveEnd = liveStart
-	} else {
-		liveEnd, err = c.store.GetNode(endID)
-		if err != nil {
-			return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-		}
-	}
-
 	id := c.nextRelID()
+	var fromHash, toHash string
 	if c.constraints.Len() > 0 {
+		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+		if err != nil {
+			return nil, err
+		}
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
+			return nil, err
+		}
+		fromHash = nodeIntegrityHash(liveStart)
+		toHash = nodeIntegrityHash(liveEnd)
+	} else {
+		fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -342,7 +388,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	}()
 
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetProperties(ps); err != nil {
+	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
 
@@ -359,12 +405,8 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := liveStart.Integrity(); startIg != nil {
-		ig.FromNodeHash = startIg.Hash
-	}
-	if endIg := liveEnd.Integrity(); endIg != nil {
-		ig.ToNodeHash = endIg.Hash
-	}
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
 	r.SetIntegrity(ig)
 
 	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
@@ -379,6 +421,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	if err := finishRelType(nil); err != nil {
 		return r, err
 	}
+	c.rememberRelType(typeName, typeToken)
 
 	c.opRelAdds.Add(1)
 	return r, nil
@@ -409,7 +452,7 @@ func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string
 	if closeErr != nil {
 		return nil, false, closeErr
 	}
-	if err == nil && created {
+	if err == nil && created && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, created, err
@@ -445,7 +488,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	}
 
 	// Bulk-build properties first — fail fast before entity locking.
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: relationship properties: %w", err)
 	}
@@ -524,7 +567,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 	}()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetProperties(ps); err != nil {
+	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, false, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
 
@@ -561,6 +604,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	if err := finishRelType(nil); err != nil {
 		return r, true, err
 	}
+	c.rememberRelType(typeName, typeToken)
 
 	c.opRelAdds.Add(1)
 	return r, true, nil

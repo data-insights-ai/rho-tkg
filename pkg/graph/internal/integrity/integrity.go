@@ -34,11 +34,10 @@ var hashBufPool = sync.Pool{
 // The hash covers: id, version, sorted labels, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeNodeHash(n *types.Node, labels []string) string {
-	hash, err := ComputeNodeHashChecked(n, labels)
-	if err != nil {
-		panic(err)
+	if n == nil {
+		panic(types.ErrNilNode)
 	}
-	return hash
+	return computeNodeHashFromProps(n, labels, n.Properties())
 }
 
 // ComputeNodeHashChecked computes a SHA-256 hash of the node's content and
@@ -47,6 +46,14 @@ func ComputeNodeHashChecked(n *types.Node, labels []string) (hash string, err er
 	if n == nil {
 		return "", types.ErrNilNode
 	}
+	props := n.Properties()
+	if propertySliceNeedsHashRecover(props) {
+		return computeNodeHashCheckedWithRecover(n, labels, props)
+	}
+	return computeNodeHashFromProps(n, labels, props), nil
+}
+
+func computeNodeHashCheckedWithRecover(n *types.Node, labels []string, props types.PropertySlice) (hash string, err error) {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 	defer func() {
@@ -57,38 +64,57 @@ func ComputeNodeHashChecked(n *types.Node, labels []string) (hash string, err er
 			err = fmt.Errorf("%w: compute node hash panic: %v", types.ErrUnsupportedValueType, r)
 		}
 	}()
+	hash, buf = computeNodeHashWithBuffer(buf, n, labels, props)
+	return hash, nil
+}
 
+func computeNodeHashFromProps(n *types.Node, labels []string, props types.PropertySlice) string {
+	bp := hashBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
+	hash, buf := computeNodeHashWithBuffer(buf, n, labels, props)
+
+	*bp = buf
+	hashBufPool.Put(bp)
+
+	return hash
+}
+
+func computeNodeHashWithBuffer(buf []byte, n *types.Node, labels []string, props types.PropertySlice) (string, []byte) {
 	buf = binary.BigEndian.AppendUint64(buf, uint64(n.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, n.Version())
 
-	// Defensive sort — caller may pass unsorted labels.
-	sorted := make([]string, len(labels))
-	copy(sorted, labels)
-	sort.Strings(sorted)
+	// Defensive sort — caller may pass unsorted labels. The single-label
+	// create path is already canonical, so avoid an otherwise guaranteed
+	// one-element slice allocation there.
+	sorted := labels
+	if len(labels) > 1 {
+		sorted = make([]string, len(labels))
+		copy(sorted, labels)
+		sort.Strings(sorted)
+	}
 
 	for _, label := range sorted {
 		buf = binary.BigEndian.AppendUint32(buf, uint32(len(label))) // #nosec G115 — label length bounded by MaxNameLength (256)
 		buf = append(buf, label...)
 	}
 
-	buf = appendProperties(buf, n.Properties())
+	buf = appendProperties(buf, props)
 
 	sum := sha256.Sum256(buf)
 	var hexBuf [64]byte
 	hex.Encode(hexBuf[:], sum[:])
 
-	return string(hexBuf[:]), nil
+	return string(hexBuf[:]), buf
 }
 
 // ComputeRelHash computes a SHA-256 hash of the relationship's content.
 // The hash covers: id, version, type name, start ID, end ID, and sorted properties.
 // Returns the hex-encoded hash string (64 characters).
 func ComputeRelHash(r *types.Relationship, typeName string) string {
-	hash, err := ComputeRelHashChecked(r, typeName)
-	if err != nil {
-		panic(err)
+	if r == nil {
+		panic(types.ErrNilRelationship)
 	}
-	return hash
+	return computeRelHashFromProps(r, typeName, r.Properties())
 }
 
 // ComputeRelHashChecked computes a SHA-256 hash of the relationship's content
@@ -97,6 +123,14 @@ func ComputeRelHashChecked(r *types.Relationship, typeName string) (hash string,
 	if r == nil {
 		return "", types.ErrNilRelationship
 	}
+	props := r.Properties()
+	if propertySliceNeedsHashRecover(props) {
+		return computeRelHashCheckedWithRecover(r, typeName, props)
+	}
+	return computeRelHashFromProps(r, typeName, props), nil
+}
+
+func computeRelHashCheckedWithRecover(r *types.Relationship, typeName string, props types.PropertySlice) (hash string, err error) {
 	bp := hashBufPool.Get().(*[]byte)
 	buf := (*bp)[:0]
 	defer func() {
@@ -107,7 +141,22 @@ func ComputeRelHashChecked(r *types.Relationship, typeName string) (hash string,
 			err = fmt.Errorf("%w: compute relationship hash panic: %v", types.ErrUnsupportedValueType, recovered)
 		}
 	}()
+	hash, buf = computeRelHashWithBuffer(buf, r, typeName, props)
+	return hash, nil
+}
 
+func computeRelHashFromProps(r *types.Relationship, typeName string, props types.PropertySlice) string {
+	bp := hashBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
+	hash, buf := computeRelHashWithBuffer(buf, r, typeName, props)
+
+	*bp = buf
+	hashBufPool.Put(bp)
+
+	return hash
+}
+
+func computeRelHashWithBuffer(buf []byte, r *types.Relationship, typeName string, props types.PropertySlice) (string, []byte) {
 	buf = binary.BigEndian.AppendUint64(buf, uint64(r.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, r.Version())
 	buf = binary.BigEndian.AppendUint32(buf, uint32(len(typeName))) // #nosec G115 — type name bounded by MaxNameLength (256)
@@ -115,13 +164,52 @@ func ComputeRelHashChecked(r *types.Relationship, typeName string) (hash string,
 	buf = binary.BigEndian.AppendUint64(buf, uint64(r.StartNodeID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint64(buf, uint64(r.EndNodeID().SnowflakeID()))   // #nosec G115 — snowflake IDs use 63 bits
 
-	buf = appendProperties(buf, r.Properties())
+	buf = appendProperties(buf, props)
 
 	sum := sha256.Sum256(buf)
 	var hexBuf [64]byte
 	hex.Encode(hexBuf[:], sum[:])
 
-	return string(hexBuf[:]), nil
+	return string(hexBuf[:]), buf
+}
+
+func propertySliceNeedsHashRecover(props types.PropertySlice) bool {
+	for _, p := range props {
+		if propertyValueNeedsHashRecover(p.Value) {
+			return true
+		}
+	}
+	return false
+}
+
+func propertyValueNeedsHashRecover(v any) bool {
+	switch val := v.(type) {
+	case nil,
+		bool, string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		[]string, []int, []int64, []float32, []float64, []byte, []bool,
+		map[string]string:
+		return false
+	case []any:
+		for _, elem := range val {
+			if propertyValueNeedsHashRecover(elem) {
+				return true
+			}
+		}
+		return false
+	case map[string]any:
+		for _, elem := range val {
+			if propertyValueNeedsHashRecover(elem) {
+				return true
+			}
+		}
+		return false
+	default:
+		_, ok := v.(types.HashableValue)
+		return ok
+	}
 }
 
 // appendProperties appends sorted properties to buf in a deterministic format.

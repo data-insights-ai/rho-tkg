@@ -319,6 +319,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				typeErr = tErr
 				return
 			}
+			b.g.rememberRelType(pr.typeName, typeToken)
 		}()
 
 		if refresh != nil {

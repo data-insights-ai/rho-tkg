@@ -35,7 +35,7 @@ func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil {
+	if err == nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return node, err
@@ -79,7 +79,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	}
 
 	// Bulk-build properties first — fail fast before generating an ID.
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: node properties: %w", err)
 	}
@@ -105,13 +105,16 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 
 	id := c.nextNodeID()
 	n := types.NewNode(id, primaryToken, extraTokens)
-	if err := n.SetProperties(ps); err != nil {
+	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
 	}
 
 	// Hash from canonical (deduplicated) labels, not raw user input.
 	// NewNode deduplicates tokens; NodeLabels resolves the canonical set.
-	canonicalLabels := c.nodeLabelsUnlocked(n)
+	canonicalLabels := labels
+	if len(labels) != 1 {
+		canonicalLabels = c.nodeLabelsUnlocked(n)
+	}
 	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
 	if err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))
@@ -179,7 +182,7 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil {
+	if err == nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return node, err
@@ -224,7 +227,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, err
 	}
 
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: node properties: %w", err)
 	}
@@ -259,11 +262,14 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	}()
 
 	n := types.NewNode(id, primaryToken, extraTokens)
-	if err := n.SetProperties(ps); err != nil {
+	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
 	}
 
-	canonicalLabels := c.nodeLabelsUnlocked(n)
+	canonicalLabels := labels
+	if len(labels) != 1 {
+		canonicalLabels = c.nodeLabelsUnlocked(n)
+	}
 	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
 	if err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: compute node hash: %w", err))

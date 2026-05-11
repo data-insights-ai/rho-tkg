@@ -47,7 +47,7 @@ func ValidateNodeHistorySnapshot(id types.NodeID, n *types.Node) error {
 	if err := validateNodeLabels(n); err != nil {
 		return err
 	}
-	return validateExplicitTemporalRange("node", n.ID(), n.Temporal())
+	return validateNodeExplicitTemporalRange(n.ID(), n.Temporal())
 }
 
 // ValidateRelationshipHistorySnapshot verifies that a relationship payload can
@@ -59,7 +59,7 @@ func ValidateRelationshipHistorySnapshot(id types.RelID, r *types.Relationship) 
 	if err := ValidateRelationshipIndexEntry(r.StartNodeID(), r.EndNodeID(), r.TypeToken().Value(), r.ID()); err != nil {
 		return err
 	}
-	return validateExplicitTemporalRange("relationship", r.ID(), r.Temporal())
+	return validateRelExplicitTemporalRange(r.ID(), r.Temporal())
 }
 
 // ValidateNodeID verifies that a Store mutation targets a real node ID.
@@ -93,17 +93,31 @@ func ValidateNodeWrite(n *types.Node) error {
 	if n == nil {
 		return fmt.Errorf("%w: nil node", ErrInvalidStoreMutation)
 	}
-	return ValidateNodeHistorySnapshot(n.ID(), n)
+	if err := ValidateNodeID(n.ID()); err != nil {
+		return err
+	}
+	if err := validateNodeLabels(n); err != nil {
+		return err
+	}
+	return validateNodeExplicitTemporalRange(n.ID(), n.Temporal())
 }
 
 func validateNodeLabels(n *types.Node) error {
-	labels := n.AllLabelTokens()
-	if len(labels) == 0 {
+	count := n.LabelTokenCount()
+	if count == 0 {
 		return fmt.Errorf("%w: node %d has no labels", ErrInvalidStoreMutation, n.ID())
 	}
-	for _, label := range labels {
-		if err := ValidateLabelToken(label.Value()); err != nil {
-			return fmt.Errorf("%w: invalid node label token %d for %d", err, label.Value(), n.ID())
+	primary := n.PrimaryLabelToken().Value()
+	if err := ValidateLabelToken(primary); err != nil {
+		return fmt.Errorf("%w: invalid node label token %d for %d", err, primary, n.ID())
+	}
+	if count == 1 {
+		return nil
+	}
+	for _, label := range n.ExtraLabelTokens() {
+		value := label.Value()
+		if err := ValidateLabelToken(value); err != nil {
+			return fmt.Errorf("%w: invalid node label token %d for %d", err, value, n.ID())
 		}
 	}
 	return nil
@@ -118,13 +132,19 @@ func ValidateNodeReplacement(old, current *types.Node) error {
 	if err := ValidateNodeHistorySnapshot(old.ID(), current); err != nil {
 		return err
 	}
-	oldLabels := old.AllLabelTokens()
-	currentLabels := current.AllLabelTokens()
-	if len(oldLabels) != len(currentLabels) {
+	if old.LabelTokenCount() != current.LabelTokenCount() {
 		return fmt.Errorf("%w: node labels changed for %d", ErrInvalidStoreMutation, old.ID())
 	}
-	for i := range oldLabels {
-		if oldLabels[i] != currentLabels[i] {
+	if old.PrimaryLabelToken() != current.PrimaryLabelToken() {
+		return fmt.Errorf("%w: node labels changed for %d", ErrInvalidStoreMutation, old.ID())
+	}
+	if old.LabelTokenCount() == 1 {
+		return nil
+	}
+	oldExtras := old.ExtraLabelTokens()
+	currentExtras := current.ExtraLabelTokens()
+	for i := range oldExtras {
+		if oldExtras[i] != currentExtras[i] {
 			return fmt.Errorf("%w: node labels changed for %d", ErrInvalidStoreMutation, old.ID())
 		}
 	}
@@ -196,9 +216,16 @@ func validateNodeLabelMutation(old, current *types.Node, tok uint16) error {
 }
 
 func nodeLabelTokenSet(n *types.Node) map[uint16]struct{} {
-	labels := n.AllLabelTokens()
-	out := make(map[uint16]struct{}, len(labels))
-	for _, label := range labels {
+	count := n.LabelTokenCount()
+	out := make(map[uint16]struct{}, count)
+	if count == 0 {
+		return out
+	}
+	out[n.PrimaryLabelToken().Value()] = struct{}{}
+	if count == 1 {
+		return out
+	}
+	for _, label := range n.ExtraLabelTokens() {
 		out[label.Value()] = struct{}{}
 	}
 	return out
@@ -210,15 +237,38 @@ func ValidateRelationshipWrite(r *types.Relationship) error {
 	if r == nil {
 		return fmt.Errorf("%w: nil relationship", ErrInvalidStoreMutation)
 	}
-	return ValidateRelationshipHistorySnapshot(r.ID(), r)
+	id := r.ID()
+	if err := ValidateRelID(id); err != nil {
+		return err
+	}
+	if err := ValidateRelTypeToken(r.TypeToken().Value()); err != nil {
+		return err
+	}
+	if err := ValidateNodeID(r.StartNodeID()); err != nil {
+		return fmt.Errorf("%w: invalid relationship start node ID %d", err, r.StartNodeID())
+	}
+	if err := ValidateNodeID(r.EndNodeID()); err != nil {
+		return fmt.Errorf("%w: invalid relationship end node ID %d", err, r.EndNodeID())
+	}
+	return validateRelExplicitTemporalRange(id, r.Temporal())
 }
 
-func validateExplicitTemporalRange(kind string, id any, tm *types.TemporalMetadata) error {
+func validateNodeExplicitTemporalRange(id types.NodeID, tm *types.TemporalMetadata) error {
 	if tm == nil {
 		return nil
 	}
 	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
-		return fmt.Errorf("%w: %s %v valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, kind, id, tm.ValidFrom, tm.ValidTo)
+		return fmt.Errorf("%w: node %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
+	}
+	return nil
+}
+
+func validateRelExplicitTemporalRange(id types.RelID, tm *types.TemporalMetadata) error {
+	if tm == nil {
+		return nil
+	}
+	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
+		return fmt.Errorf("%w: relationship %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
 	}
 	return nil
 }

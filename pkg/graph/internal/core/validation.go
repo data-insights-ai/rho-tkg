@@ -225,9 +225,6 @@ func (c *Core) validateProperties(props map[string]any) error {
 		return fmt.Errorf("%w: %d > %d", ErrTooManyProperties, len(props), c.validation.MaxPropertiesPerEntity)
 	}
 	for key, val := range props {
-		if err := types.ValidatePropertyValue(val); err != nil {
-			return fmt.Errorf("graph: property %q: %w", key, err)
-		}
 		if err := c.validatePropertyEntry(key, val); err != nil {
 			return err
 		}

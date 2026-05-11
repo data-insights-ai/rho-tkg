@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 )
 
@@ -69,6 +70,14 @@ type Property struct {
 // The sorted invariant is maintained by Set; never modify entries directly.
 type PropertySlice []Property
 
+// OwnedPropertySlice is an already validated, canonical property slice whose
+// ownership can be transferred into an entity without another defensive copy.
+// The unexported field prevents callers from fabricating one around unchecked
+// data; use NewOwnedPropertySlice to construct it.
+type OwnedPropertySlice struct {
+	ps PropertySlice
+}
+
 // Set inserts or overwrites the property at key.
 // Returns an error if key has the reserved "tkg_" prefix.
 // Recursively validates the value using an exact allowlist — only the concrete
@@ -109,6 +118,9 @@ func (ps *PropertySlice) Set(key string, value any) error {
 }
 
 func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
+	if isScalarPropertyValue(value) {
+		return value, nil
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			copied = nil
@@ -120,6 +132,19 @@ func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
 		return nil, fmt.Errorf("%w: %q after deep copy (got %T)", err, key, copied)
 	}
 	return copied, nil
+}
+
+func isScalarPropertyValue(v any) bool {
+	switch v.(type) {
+	case nil,
+		bool, string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // Get returns the value for key and whether it was found.
@@ -476,8 +501,9 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 		return nil, nil
 	}
 
-	latest := make(map[string]any, len(ps))
-	for _, p := range ps {
+	out := make(PropertySlice, len(ps))
+	sortedUnique := true
+	for i, p := range ps {
 		if IsShadowKey(p.Key) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
 		}
@@ -488,20 +514,45 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 		if err != nil {
 			return nil, err
 		}
-		latest[p.Key] = copied
+		out[i] = Property{Key: p.Key, Value: copied}
+		if i > 0 && p.Key <= ps[i-1].Key {
+			sortedUnique = false
+		}
+	}
+	if sortedUnique {
+		return out, nil
 	}
 
+	latest := make(map[string]any, len(out))
+	for _, p := range out {
+		latest[p.Key] = p.Value
+	}
 	keys := make([]string, 0, len(latest))
 	for key := range latest {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
-	out := make(PropertySlice, len(keys))
+	out = make(PropertySlice, len(keys))
 	for i, key := range keys {
 		out[i] = Property{Key: key, Value: latest[key]}
 	}
 	return out, nil
+}
+
+func validateCanonicalPropertySlice(ps PropertySlice) error {
+	for i, p := range ps {
+		if IsShadowKey(p.Key) {
+			return fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
+		}
+		if err := ValidatePropertyValue(p.Value); err != nil {
+			return fmt.Errorf("%w: %q (got %T)", err, p.Key, p.Value)
+		}
+		if i > 0 && p.Key <= ps[i-1].Key {
+			return fmt.Errorf("%w: non-canonical property order at %q", ErrUnsupportedValueType, p.Key)
+		}
+	}
+	return nil
 }
 
 // NewPropertySlice creates a PropertySlice from a map in O(N log N) time.
@@ -528,6 +579,24 @@ func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 		}
 		ps = append(ps, Property{Key: k, Value: copied})
 	}
-	sort.Slice(ps, func(i, j int) bool { return ps[i].Key < ps[j].Key })
+	slices.SortFunc(ps, func(a, b Property) int {
+		if a.Key < b.Key {
+			return -1
+		}
+		if a.Key > b.Key {
+			return 1
+		}
+		return 0
+	})
 	return ps, nil
+}
+
+// NewOwnedPropertySlice creates a validated, canonical property slice for
+// ownership transfer into a newly constructed entity.
+func NewOwnedPropertySlice(m map[string]any) (OwnedPropertySlice, error) {
+	ps, err := NewPropertySlice(m)
+	if err != nil {
+		return OwnedPropertySlice{}, err
+	}
+	return OwnedPropertySlice{ps: ps}, nil
 }

@@ -37,14 +37,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 
 	ms.nodes[nid] = n.DeepCopy()
 
-	// Index all label tokens.
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		if ms.labelIdx[tv] == nil {
-			ms.labelIdx[tv] = make(map[types.NodeID]struct{})
-		}
-		ms.labelIdx[tv][nid] = struct{}{}
-	}
+	ms.addNodeLabelIndexes(nid, n)
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
@@ -75,6 +68,67 @@ func (ms *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	return n.DeepCopy(), nil
 }
 
+// NodeIntegrityHash returns the live node's integrity hash without exposing the
+// stored node pointer or copying the whole entity.
+func (ms *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return "", err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return "", err
+	}
+
+	n, ok := ms.nodes[nid]
+	if !ok {
+		return "", ErrNodeNotFound
+	}
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash, nil
+	}
+	return "", nil
+}
+
+// EndpointIntegrityHashes returns both live endpoint integrity hashes under one
+// store read lock.
+func (ms *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return "", "", err
+	}
+	if err := storecontract.ValidateNodeID(startID); err != nil {
+		return "", "", err
+	}
+	if err := storecontract.ValidateNodeID(endID); err != nil {
+		return "", "", err
+	}
+
+	start, ok := ms.nodes[startID]
+	if !ok {
+		return "", "", ErrNodeNotFound
+	}
+	fromHash := nodeIntegrityHash(start)
+	if startID == endID {
+		return fromHash, fromHash, nil
+	}
+	end, ok := ms.nodes[endID]
+	if !ok {
+		return "", "", ErrNodeNotFound
+	}
+	return fromHash, nodeIntegrityHash(end), nil
+}
+
+func nodeIntegrityHash(n *types.Node) string {
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
 // DeleteNode removes a node and its label index entries.
 // Returns ErrInvalidStoreMutation if the node still has connected relationships.
 // Returns ErrNodeNotFound if the node does not exist.
@@ -97,16 +151,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 		return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 	}
 
-	// Remove label index entries.
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		if set, exists := ms.labelIdx[tv]; exists {
-			delete(set, nid)
-			if len(set) == 0 {
-				delete(ms.labelIdx, tv)
-			}
-		}
-	}
+	ms.removeNodeLabelIndexes(nid, n)
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -293,16 +338,7 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 		}
 	}
 
-	// Remove label index entries.
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		if set, exists := ms.labelIdx[tv]; exists {
-			delete(set, nid)
-			if len(set) == 0 {
-				delete(ms.labelIdx, tv)
-			}
-		}
-	}
+	ms.removeNodeLabelIndexes(nid, n)
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -356,13 +392,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		id := n.ID()
 		ms.nodes[id] = n.DeepCopy()
 
-		for _, tok := range n.AllLabelTokens() {
-			tv := tok.Value()
-			if ms.labelIdx[tv] == nil {
-				ms.labelIdx[tv] = make(map[types.NodeID]struct{})
-			}
-			ms.labelIdx[tv][id] = struct{}{}
-		}
+		ms.addNodeLabelIndexes(id, n)
 		rawID := id.SnowflakeID()
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 		indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
@@ -410,15 +440,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	// Phase 2: apply — all validated, safe to mutate.
 	for _, id := range typedIDs {
 		n := ms.nodes[id]
-		for _, tok := range n.AllLabelTokens() {
-			tv := tok.Value()
-			if set, exists := ms.labelIdx[tv]; exists {
-				delete(set, id)
-				if len(set) == 0 {
-					delete(ms.labelIdx, tv)
-				}
-			}
-		}
+		ms.removeNodeLabelIndexes(id, n)
 		rawID := id.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
@@ -441,4 +463,48 @@ func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (ms *Store) addNodeLabelIndexes(id types.NodeID, n *types.Node) {
+	count := n.LabelTokenCount()
+	if count == 0 {
+		return
+	}
+	ms.addNodeLabelIndex(id, n.PrimaryLabelToken().Value())
+	if count == 1 {
+		return
+	}
+	for _, tok := range n.ExtraLabelTokens() {
+		ms.addNodeLabelIndex(id, tok.Value())
+	}
+}
+
+func (ms *Store) addNodeLabelIndex(id types.NodeID, tok uint16) {
+	if ms.labelIdx[tok] == nil {
+		ms.labelIdx[tok] = make(map[types.NodeID]struct{})
+	}
+	ms.labelIdx[tok][id] = struct{}{}
+}
+
+func (ms *Store) removeNodeLabelIndexes(id types.NodeID, n *types.Node) {
+	count := n.LabelTokenCount()
+	if count == 0 {
+		return
+	}
+	ms.removeNodeLabelIndex(id, n.PrimaryLabelToken().Value())
+	if count == 1 {
+		return
+	}
+	for _, tok := range n.ExtraLabelTokens() {
+		ms.removeNodeLabelIndex(id, tok.Value())
+	}
+}
+
+func (ms *Store) removeNodeLabelIndex(id types.NodeID, tok uint16) {
+	if set, exists := ms.labelIdx[tok]; exists {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.labelIdx, tok)
+		}
+	}
 }

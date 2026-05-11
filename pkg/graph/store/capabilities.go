@@ -60,6 +60,21 @@ type NodeCRUDCapability interface {
 	AddNodeLabelToken(id types.NodeID, tok uint16, updatedNode *types.Node) error
 }
 
+// NodeIntegrityHashCapability is OPTIONAL. Backends that can expose a live
+// node's integrity hash without returning the full node can implement this to
+// let relationship creation capture endpoint hashes without forcing a defensive
+// node deep copy. The method must still validate that the node currently exists.
+type NodeIntegrityHashCapability interface {
+	NodeIntegrityHash(id types.NodeID) (string, error)
+}
+
+// EndpointIntegrityHashCapability is OPTIONAL. It is the batched form of
+// NodeIntegrityHashCapability for relationship creation paths that need both
+// endpoint hashes under one backend read window.
+type EndpointIntegrityHashCapability interface {
+	EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error)
+}
+
 // RelationshipCRUDCapability is the relationship-mutation surface.
 type RelationshipCRUDCapability interface {
 	PutRelationship(r *types.Relationship) error

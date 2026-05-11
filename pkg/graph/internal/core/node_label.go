@@ -30,7 +30,7 @@ func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err == nil && mutated {
+	if err == nil && mutated && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
@@ -113,7 +113,8 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.nodeLabelsUnlocked(copy)
+	nodeLabels := c.appendNodeLabelsUnlocked(make([]string, 0, current.LabelTokenCount()+1), current)
+	nodeLabels = append(nodeLabels, label)
 	hash, err := integrity.ComputeNodeHashChecked(copy, nodeLabels)
 	if err != nil {
 		return false, finishLabel(fmt.Errorf("graph: compute node hash: %w", err))
@@ -162,7 +163,7 @@ func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err == nil {
+	if err == nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return err
@@ -215,7 +216,7 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	if ig := current.Integrity(); ig != nil {
 		prevHash = ig.Hash
 	}
-	nodeLabels := c.nodeLabelsUnlocked(copy)
+	nodeLabels := c.nodeLabelsWithoutTokenUnlocked(current, tok)
 	hash, err := integrity.ComputeNodeHashChecked(copy, nodeLabels)
 	if err != nil {
 		return fmt.Errorf("graph: compute node hash: %w", err)
@@ -245,4 +246,22 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	}
 	c.opNodeUpdates.Add(1)
 	return nil
+}
+
+func (c *Core) nodeLabelsWithoutTokenUnlocked(node *types.Node, tok uint16) []string {
+	count := node.LabelTokenCount()
+	if count <= 1 {
+		return nil
+	}
+	labels := make([]string, 0, count-1)
+	primary := node.PrimaryLabelToken().Value()
+	if primary != tok {
+		labels = append(labels, c.labels.Resolve(primary))
+	}
+	for _, extra := range node.ExtraLabelTokens() {
+		if extra.Value() != tok {
+			labels = append(labels, c.labels.Resolve(extra.Value()))
+		}
+	}
+	return labels
 }

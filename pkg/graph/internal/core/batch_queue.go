@@ -59,7 +59,7 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 		return nil, err
 	}
 
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node properties: %w", err)
 	}
@@ -71,7 +71,7 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 
 	id := b.g.nextNodeID()
 	n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
-	if err := n.SetProperties(ps); err != nil {
+	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: batch node properties: %w", err)
 	}
 
@@ -154,7 +154,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, err
 	}
 
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
 	}
@@ -184,7 +184,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	id := b.g.nextRelID()
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetProperties(ps); err != nil {
+	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
 	}
 

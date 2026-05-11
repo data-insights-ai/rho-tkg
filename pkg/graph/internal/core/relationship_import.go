@@ -74,7 +74,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, err
 	}
 
-	ps, err := types.NewPropertySlice(props)
+	ps, err := types.NewOwnedPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship properties: %w", err)
 	}
@@ -153,7 +153,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	}()
 
 	r := types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetProperties(ps); err != nil {
+	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship import properties: %w", err))
 	}
 
@@ -204,6 +204,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err := finishRelType(nil); err != nil {
 		return r, err
 	}
+	c.rememberRelType(typeName, typeToken)
 
 	c.opRelAdds.Add(1)
 	return r, nil
