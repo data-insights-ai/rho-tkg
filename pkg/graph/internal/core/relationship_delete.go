@@ -89,8 +89,9 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	}
 	tmR.DeletedAt = now
 	tmR.ValidTo = now
-	// Transaction time: this tombstone version was committed at now.
-	tmR.TxFrom = now
+	if tmR.TxFrom == 0 {
+		tmR.TxFrom = now
+	}
 	tmR.TxTo = now
 
 	// Single atomic call: PutRelVersion + DeleteRelationship.

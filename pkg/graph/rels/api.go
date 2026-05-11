@@ -364,7 +364,7 @@ func (a *API) PreviousVersion(id types.RelID, version uint32) (*types.Relationsh
 
 // NextID generates and returns the next relationship ID.
 func (a *API) NextID() types.RelID {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return 0
 	}
 	return a.ops.NextID()

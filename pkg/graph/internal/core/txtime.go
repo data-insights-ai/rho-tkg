@@ -40,7 +40,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			return nil, ErrNoVersionAsOf
 		}
-		return n, err
+		return nodeVisibleAtTxTime(n, txTime), err
 	}
 
 	// Try current node first.
@@ -50,7 +50,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return current, nil
+			return nodeVisibleAtTxTime(current, txTime), nil
 		}
 	}
 
@@ -74,7 +74,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 		}
 	}
 	if best != nil {
-		return best, nil
+		return nodeVisibleAtTxTime(best, txTime), nil
 	}
 	return nil, ErrNoVersionAsOf
 }
@@ -101,7 +101,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			return nil, ErrNoVersionAsOf
 		}
-		return r, err
+		return relVisibleAtTxTime(r, txTime), err
 	}
 
 	current, err := c.store.GetRelationship(id)
@@ -110,7 +110,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return current, nil
+			return relVisibleAtTxTime(current, txTime), nil
 		}
 	}
 
@@ -132,7 +132,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 		}
 	}
 	if best != nil {
-		return best, nil
+		return relVisibleAtTxTime(best, txTime), nil
 	}
 	return nil, ErrNoVersionAsOf
 }
@@ -153,6 +153,9 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			nodes, err := c.txTimeQuery.NodesAsOf(txTime)
 			if err != nil {
 				return err
+			}
+			for _, n := range nodes {
+				nodeVisibleAtTxTime(n, txTime)
 			}
 			result = nodes
 			return nil
@@ -205,6 +208,9 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 			if err != nil {
 				return err
 			}
+			for _, r := range rels {
+				relVisibleAtTxTime(r, txTime)
+			}
 			result = rels
 			return nil
 		}
@@ -239,4 +245,35 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+func nodeVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
+	if n == nil {
+		return nil
+	}
+	normalizeTemporalVisibleAtTxTime(n.Temporal(), txTime)
+	return n
+}
+
+func relVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Relationship {
+	if r == nil {
+		return nil
+	}
+	normalizeTemporalVisibleAtTxTime(r.Temporal(), txTime)
+	return r
+}
+
+func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
+	if tm == nil {
+		return
+	}
+	if tm.TxTo > txTime {
+		tm.TxTo = 0
+	}
+	if tm.DeletedAt > txTime {
+		if tm.ValidTo == tm.DeletedAt {
+			tm.ValidTo = 0
+		}
+		tm.DeletedAt = 0
+	}
 }

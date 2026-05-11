@@ -32,13 +32,16 @@ type Ops interface {
 }
 
 // API is the admin sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs an admin sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
@@ -118,7 +121,7 @@ func (a *API) Reset() error {
 
 // DecomposeID extracts time/node/step from a snowflake ID.
 func (a *API) DecomposeID(id snowflake.ID) IDComponents {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return IDComponents{}
 	}
 	return a.ops.DecomposeID(id)

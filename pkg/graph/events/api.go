@@ -13,13 +13,16 @@ type Ops interface {
 }
 
 // API is the events sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs an events sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
@@ -45,7 +48,7 @@ func (a *API) SetAsync(bus *AsyncEventBus) error {
 
 // GetSync returns the currently installed synchronous EventBus, if any.
 func (a *API) GetSync() *EventBus {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil
 	}
 	return a.ops.GetSync()

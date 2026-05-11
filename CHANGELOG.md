@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — Transaction-time deleted entity visibility (2026-05-11)
+
+- **Transaction-time queries preserve deleted entities before deletion.**
+  Node and relationship delete tombstones now keep the deleted live version's
+  original `TxFrom` and set only `TxTo` to the delete time. `g.Temporal.NodeAsOf`,
+  `NodesAsOf`, `RelAsOf`, and `RelsAsOf` can now resolve deleted entities at
+  transaction times when those entities were still live without exposing future
+  delete markers (`TxTo`, `ValidTo`, `DeletedAt`) before the delete transaction,
+  including relationships removed by cascade node delete.
+
 ### Changed — Maintainability review round 9 (2026-05-09)
 
 - **Allen relation sets ignore invalid relation bits.**

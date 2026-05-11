@@ -13,13 +13,16 @@ type Ops interface {
 }
 
 // API is the hash sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs a hash sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil

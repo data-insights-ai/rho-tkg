@@ -18,6 +18,22 @@ func newTxTimeGraph(t *testing.T) *Core {
 	return g
 }
 
+func assertTxTimeVisibleBeforeDelete(t *testing.T, tm *types.TemporalMetadata) {
+	t.Helper()
+	if tm == nil {
+		t.Fatal("as-of entity has nil temporal metadata")
+	}
+	if tm.TxTo != 0 {
+		t.Fatalf("as-of TxTo = %d, want 0 before delete transaction", tm.TxTo)
+	}
+	if tm.ValidTo != 0 {
+		t.Fatalf("as-of ValidTo = %d, want 0 before delete transaction", tm.ValidTo)
+	}
+	if tm.DeletedAt != 0 {
+		t.Fatalf("as-of DeletedAt = %d, want 0 before delete transaction", tm.DeletedAt)
+	}
+}
+
 func TestTxFromSetOnAdd(t *testing.T) {
 	// TxFrom should be set on new node and rel. The test asserts
 	// "TxFrom is captured between two clock samples bracketing Add" —
@@ -113,6 +129,7 @@ func TestTxToSetOnDelete(t *testing.T) {
 
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
 	nid := n.ID()
+	origTxFrom := n.Temporal().TxFrom
 
 	if err := g.Nodes.Delete(nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
@@ -133,6 +150,15 @@ func TestTxToSetOnDelete(t *testing.T) {
 	}
 	if tm.TxFrom == 0 {
 		t.Error("tombstone TxFrom should be set")
+	}
+	if tm.TxFrom != origTxFrom {
+		t.Fatalf("tombstone TxFrom = %d, want original live TxFrom %d", tm.TxFrom, origTxFrom)
+	}
+	if tm.TxTo == 0 {
+		t.Error("tombstone TxTo should be set")
+	}
+	if tm.TxTo <= tm.TxFrom {
+		t.Fatalf("tombstone TxTo %d should be after TxFrom %d", tm.TxTo, tm.TxFrom)
 	}
 }
 
@@ -243,6 +269,172 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	}
 	if found2 {
 		t.Error("n2 should NOT be returned (created after midTime)")
+	}
+}
+
+func TestNodeAsOfDeletedEntityBeforeDelete(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	nid := n.ID()
+	asOf := n.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+
+	if err := g.Nodes.Delete(nid); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	got, err := g.Temporal.NodeAsOf(nid, asOf)
+	if err != nil {
+		t.Fatalf("NodeAsOf before delete: %v", err)
+	}
+	if got.ID() != nid {
+		t.Fatalf("NodeAsOf returned %d, want %d", got.ID(), nid)
+	}
+	assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+	name, _ := got.GetProperty("name")
+	if name != "live" {
+		t.Fatalf("NodeAsOf property name = %v, want live", name)
+	}
+
+	_, err = g.Temporal.NodeAsOf(nid, clk.PeekInstant())
+	if !errors.Is(err, ErrNoVersionAsOf) {
+		t.Fatalf("NodeAsOf after delete = %v, want ErrNoVersionAsOf", err)
+	}
+}
+
+func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	nid := n.ID()
+	asOf := n.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+
+	if err := g.Nodes.Delete(nid); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	nodes, err := g.Temporal.NodesAsOf(asOf)
+	if err != nil {
+		t.Fatalf("NodesAsOf before delete: %v", err)
+	}
+	found := false
+	for _, got := range nodes {
+		if got.ID() == nid {
+			found = true
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+			name, _ := got.GetProperty("name")
+			if name != "live" {
+				t.Fatalf("NodesAsOf node name = %v, want live", name)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("NodesAsOf before delete did not include node %d", nid)
+	}
+
+	nodes, err = g.Temporal.NodesAsOf(clk.PeekInstant())
+	if err != nil {
+		t.Fatalf("NodesAsOf after delete: %v", err)
+	}
+	for _, got := range nodes {
+		if got.ID() == nid {
+			t.Fatalf("NodesAsOf after delete included node %d", nid)
+		}
+	}
+}
+
+func TestRelAsOfDeletedEntityBeforeDelete(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	rid := r.ID()
+	asOf := r.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+
+	if err := g.Rels.Delete(rid); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	got, err := g.Temporal.RelAsOf(rid, asOf)
+	if err != nil {
+		t.Fatalf("RelAsOf before delete: %v", err)
+	}
+	if got.ID() != rid {
+		t.Fatalf("RelAsOf returned %d, want %d", got.ID(), rid)
+	}
+	assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+	state, _ := got.GetProperty("state")
+	if state != "live" {
+		t.Fatalf("RelAsOf property state = %v, want live", state)
+	}
+
+	_, err = g.Temporal.RelAsOf(rid, clk.PeekInstant())
+	if !errors.Is(err, ErrNoVersionAsOf) {
+		t.Fatalf("RelAsOf after delete = %v, want ErrNoVersionAsOf", err)
+	}
+}
+
+func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	rid := r.ID()
+	asOf := r.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+
+	if err := g.Nodes.Delete(n1.ID()); err != nil {
+		t.Fatalf("DeleteNode cascade: %v", err)
+	}
+
+	rels, err := g.Temporal.RelsAsOf(asOf)
+	if err != nil {
+		t.Fatalf("RelsAsOf before cascade delete: %v", err)
+	}
+	found := false
+	for _, got := range rels {
+		if got.ID() == rid {
+			found = true
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+			state, _ := got.GetProperty("state")
+			if state != "live" {
+				t.Fatalf("RelsAsOf relationship state = %v, want live", state)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("RelsAsOf before cascade delete did not include relationship %d", rid)
+	}
+
+	rels, err = g.Temporal.RelsAsOf(clk.PeekInstant())
+	if err != nil {
+		t.Fatalf("RelsAsOf after cascade delete: %v", err)
+	}
+	for _, got := range rels {
+		if got.ID() == rid {
+			t.Fatalf("RelsAsOf after cascade delete included relationship %d", rid)
+		}
 	}
 }
 

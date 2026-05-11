@@ -8,6 +8,22 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func assertAsOfTemporalBeforeDelete(t *testing.T, tm *types.TemporalMetadata) {
+	t.Helper()
+	if tm == nil {
+		t.Fatal("as-of entity has nil temporal metadata")
+	}
+	if tm.TxTo != 0 {
+		t.Fatalf("as-of TxTo = %d, want 0 before delete transaction", tm.TxTo)
+	}
+	if tm.ValidTo != 0 {
+		t.Fatalf("as-of ValidTo = %d, want 0 before delete transaction", tm.ValidTo)
+	}
+	if tm.DeletedAt != 0 {
+		t.Fatalf("as-of DeletedAt = %d, want 0 before delete transaction", tm.DeletedAt)
+	}
+}
+
 // --- TestDeleteRelWithHistory ---
 
 func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
@@ -70,6 +86,55 @@ func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	}
 	if htm.ValidTo == 0 {
 		t.Error("tombstone ValidTo not set")
+	}
+}
+
+func TestDeleteRelWithHistory_RelAsOfBeforeDeleteHidesFutureDeleteMarkers(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	defer ms.Close() //nolint:errcheck
+
+	nA := types.NewNode(types.NodeID(10), 1, nil)
+	nB := types.NewNode(types.NodeID(20), 2, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	r := types.NewRelationship(types.RelID(100), 1, nA.ID(), nB.ID())
+	r.SetTemporal(&types.TemporalMetadata{TxFrom: 100})
+	if err := ms.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	tomb := r.DeepCopy()
+	tm := tomb.Temporal()
+	tm.DeletedAt = 200
+	tm.ValidTo = 200
+	tm.TxTo = 200
+	if err := ms.DeleteRelWithHistory(r.ID(), r.Version(), tomb); err != nil {
+		t.Fatalf("DeleteRelWithHistory: %v", err)
+	}
+
+	got, err := ms.RelAsOf(r.ID(), 100)
+	if err != nil {
+		t.Fatalf("RelAsOf before delete: %v", err)
+	}
+	assertAsOfTemporalBeforeDelete(t, got.Temporal())
+	rels, err := ms.RelsAsOf(100)
+	if err != nil {
+		t.Fatalf("RelsAsOf before delete: %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("RelsAsOf before delete returned %d relationships, want 1", len(rels))
+	}
+	assertAsOfTemporalBeforeDelete(t, rels[0].Temporal())
+
+	if _, err := ms.RelAsOf(r.ID(), 200); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("RelAsOf at delete = %v, want ErrVersionNotFound", err)
 	}
 }
 
@@ -183,6 +248,46 @@ func TestDeleteNodeWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 		if relHist.Temporal() == nil || relHist.Temporal().DeletedAt == 0 {
 			t.Errorf("rel tombstone %d DeletedAt not set in history", rt.ID)
 		}
+	}
+}
+
+func TestDeleteNodeWithHistory_NodeAsOfBeforeDeleteHidesFutureDeleteMarkers(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	defer ms.Close() //nolint:errcheck
+
+	n := types.NewNode(types.NodeID(10), 1, nil)
+	n.SetTemporal(&types.TemporalMetadata{TxFrom: 100})
+	if err := ms.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	tomb := n.DeepCopy()
+	tm := tomb.Temporal()
+	tm.DeletedAt = 200
+	tm.ValidTo = 200
+	tm.TxTo = 200
+	if err := ms.DeleteNodeWithHistory(n.ID(), n.Version(), tomb, nil); err != nil {
+		t.Fatalf("DeleteNodeWithHistory: %v", err)
+	}
+
+	got, err := ms.NodeAsOf(n.ID(), 100)
+	if err != nil {
+		t.Fatalf("NodeAsOf before delete: %v", err)
+	}
+	assertAsOfTemporalBeforeDelete(t, got.Temporal())
+	nodes, err := ms.NodesAsOf(100)
+	if err != nil {
+		t.Fatalf("NodesAsOf before delete: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("NodesAsOf before delete returned %d nodes, want 1", len(nodes))
+	}
+	assertAsOfTemporalBeforeDelete(t, nodes[0].Temporal())
+
+	if _, err := ms.NodeAsOf(n.ID(), 200); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("NodeAsOf at delete = %v, want ErrVersionNotFound", err)
 	}
 }
 

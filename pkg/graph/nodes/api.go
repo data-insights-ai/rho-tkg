@@ -336,7 +336,7 @@ func (a *API) PreviousVersion(id types.NodeID, version uint32) (*types.Node, err
 
 // NextID generates and returns the next node ID.
 func (a *API) NextID() types.NodeID {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return 0
 	}
 	return a.ops.NextID()

@@ -629,7 +629,7 @@ func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
-	return best.DeepCopy(), nil
+	return nodeCopyVisibleAtTxTime(best, txTime), nil
 }
 
 // RelAsOf returns the relationship version visible at txTime without
@@ -648,7 +648,7 @@ func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
-	return best.DeepCopy(), nil
+	return relCopyVisibleAtTxTime(best, txTime), nil
 }
 
 // NodesAsOf returns all node versions visible at txTime. It inspects current
@@ -665,7 +665,7 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	result := make([]*types.Node, 0, len(ms.nodes))
 	for id, current := range ms.nodes {
 		if best := nodeAsOfLocked(current, ms.nodeHistory[id], txTime); best != nil {
-			result = append(result, best.DeepCopy())
+			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
 		}
 	}
 	for id, history := range ms.nodeHistory {
@@ -673,7 +673,7 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			continue
 		}
 		if best := nodeAsOfLocked(nil, history, txTime); best != nil {
-			result = append(result, best.DeepCopy())
+			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
 		}
 	}
 	if len(result) == 0 {
@@ -695,7 +695,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	result := make([]*types.Relationship, 0, len(ms.rels))
 	for id, current := range ms.rels {
 		if best := relAsOfLocked(current, ms.relHistory[id], txTime); best != nil {
-			result = append(result, best.DeepCopy())
+			result = append(result, relCopyVisibleAtTxTime(best, txTime))
 		}
 	}
 	for id, history := range ms.relHistory {
@@ -703,7 +703,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 			continue
 		}
 		if best := relAsOfLocked(nil, history, txTime); best != nil {
-			result = append(result, best.DeepCopy())
+			result = append(result, relCopyVisibleAtTxTime(best, txTime))
 		}
 	}
 	if len(result) == 0 {
@@ -766,6 +766,39 @@ func relMatchesTxTime(r *types.Relationship, txTime types.Instant) bool {
 	}
 	tm := r.Temporal()
 	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
+}
+
+func nodeCopyVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
+	if n == nil {
+		return nil
+	}
+	out := n.DeepCopy()
+	normalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	return out
+}
+
+func relCopyVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Relationship {
+	if r == nil {
+		return nil
+	}
+	out := r.DeepCopy()
+	normalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	return out
+}
+
+func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
+	if tm == nil {
+		return
+	}
+	if tm.TxTo > txTime {
+		tm.TxTo = 0
+	}
+	if tm.DeletedAt > txTime {
+		if tm.ValidTo == tm.DeletedAt {
+			tm.ValidTo = 0
+		}
+		tm.DeletedAt = 0
+	}
 }
 
 // TrimNodeHistoryFrom removes all node history entries at or after minVersion.

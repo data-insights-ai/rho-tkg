@@ -245,8 +245,9 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 		}
 		tmR.DeletedAt = now
 		tmR.ValidTo = now
-		// Transaction time: this tombstone version was committed at now.
-		tmR.TxFrom = now
+		if tmR.TxFrom == 0 {
+			tmR.TxFrom = now
+		}
 		tmR.TxTo = now
 		relTombstones = append(relTombstones, storepkg.RelTombstone{
 			ID:          types.RelID(rid),
@@ -264,8 +265,9 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 	}
 	tmN.DeletedAt = now
 	tmN.ValidTo = now
-	// Transaction time: this tombstone version was committed at now.
-	tmN.TxFrom = now
+	if tmN.TxFrom == 0 {
+		tmN.TxFrom = now
+	}
 	tmN.TxTo = now
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.

@@ -30,13 +30,16 @@ type Ops interface {
 }
 
 // API is the index sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs an index sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
@@ -152,7 +155,7 @@ func (a *API) UnregisterProvider(name string) error {
 
 // Providers lists registered IndexProvider names.
 func (a *API) Providers() []string {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil
 	}
 	return a.ops.Providers()

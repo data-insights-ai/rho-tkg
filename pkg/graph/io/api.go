@@ -28,7 +28,8 @@ var (
 
 	// ErrIncompatibleExport is returned when the export format
 	// version on the wire differs from the runtime's
-	// exportFormatVersion. Phase 1 surfaces it from header parsing.
+	// exportFormatVersion. Import surfaces it before replaying staged
+	// records into graph state.
 	ErrIncompatibleExport = errors.New("graph: incompatible export format version")
 
 	// ErrIncompatibleRegistry is returned when an existing non-empty
@@ -79,13 +80,16 @@ type Ops interface {
 }
 
 // API is the io sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs an io sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
