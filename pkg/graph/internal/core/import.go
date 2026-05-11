@@ -836,6 +836,7 @@ func (rb *importRollback) restoreRegistries() error {
 	}
 	rb.c.labels = labels
 	rb.c.relTypes = relTypes
+	rb.c.clearRelTypeCache()
 	if ts, ok := rb.c.store.(*tiered.Store); ok {
 		ts.SetLabelRegistry(rb.c.labels)
 	}

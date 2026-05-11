@@ -637,6 +637,7 @@ func (tx *GraphTx) restoreRegistries() error {
 	}
 	tx.g.labels = labels
 	tx.g.relTypes = relTypes
+	tx.g.clearRelTypeCache()
 	if ts, ok := tx.g.store.(*tiered.Store); ok {
 		ts.SetLabelRegistry(tx.g.labels)
 	}

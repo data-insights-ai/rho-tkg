@@ -575,13 +575,13 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 	}
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
-		if err := c.validateIndexName(relType); err != nil {
+		if err := c.validateRelTypeQueryName(relType); err != nil {
 			return err
 		}
 		if err := c.validateIndexPropertyKey(key); err != nil {
 			return err
 		}
-		tok, ok := c.relTypes.Lookup(relType)
+		tok, ok := c.lookupRelTypeQueryToken(relType)
 		if !ok {
 			return nil
 		}
@@ -650,13 +650,13 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 	end = resolvedEnd
 	var result []*types.Relationship
 	err = c.readUnderRLock(func() error {
-		if err := c.validateIndexName(relType); err != nil {
+		if err := c.validateRelTypeQueryName(relType); err != nil {
 			return err
 		}
 		if err := c.validateIndexPropertyKey(key); err != nil {
 			return err
 		}
-		tok, ok := c.relTypes.Lookup(relType)
+		tok, ok := c.lookupRelTypeQueryToken(relType)
 		if !ok {
 			return nil
 		}

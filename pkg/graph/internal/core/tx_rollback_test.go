@@ -223,6 +223,51 @@ func TestGraphTx_RollbackRestoresRegistries(t *testing.T) {
 	}
 }
 
+func TestGraphTx_RollbackInvalidatesRelTypeCache(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Existing"}, nil)
+	if err != nil {
+		t.Fatalf("Add node a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Existing"}, nil)
+	if err != nil {
+		t.Fatalf("Add node b: %v", err)
+	}
+
+	const typ = "TX_CACHE_ROLLBACK_REL"
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	if _, err := tx.AddRelationship(typ, a, b, nil); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddRelationship: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	if tok, ok := g.Resolve.LookupRelType(typ); ok || tok != 0 {
+		t.Fatalf("LookupRelType after rollback = (%d, %v), want (0, false)", tok, ok)
+	}
+
+	rel, err := g.Rels.Add(typ, a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship after rollback: %v", err)
+	}
+	tok, ok := g.Resolve.LookupRelType(typ)
+	if !ok || tok == 0 {
+		t.Fatalf("LookupRelType after re-add = (%d, %v), want registered token", tok, ok)
+	}
+	if got := rel.TypeToken().Value(); got != tok {
+		t.Fatalf("relationship type token = %d, registry token = %d", got, tok)
+	}
+	if got := g.Rels.Type(rel); got != typ {
+		t.Fatalf("relationship type resolution = %q, want %q", got, typ)
+	}
+}
+
 func TestGraphTx_PublicResolverReadsWaitForRollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)

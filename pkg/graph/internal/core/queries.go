@@ -10,6 +10,20 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func (c *Core) validateRelTypeQueryName(typeName string) error {
+	if _, ok := c.cachedRelType(typeName); ok {
+		return nil
+	}
+	return c.validateIndexName(typeName)
+}
+
+func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
+	if tok, ok := c.cachedRelType(typeName); ok {
+		return tok, true
+	}
+	return c.relTypes.Lookup(typeName)
+}
+
 // --- Store passthrough queries ---
 
 // Get retrieves a node by snowflake ID.
@@ -110,7 +124,7 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := c.validateIndexName(typeName); err != nil {
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
@@ -118,7 +132,7 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	}
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
-		tok, ok := c.relTypes.Lookup(typeName)
+		tok, ok := c.lookupRelTypeQueryToken(typeName)
 		if !ok {
 			return nil
 		}
@@ -172,7 +186,7 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 		return nil, err
 	}
 	if typeName != "" {
-		if err := c.validateIndexName(typeName); err != nil {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
 		}
 	}
@@ -183,7 +197,7 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 	err := c.readUnderRLock(func() error {
 		var tok uint16
 		if typeName != "" {
-			t, ok := c.relTypes.Lookup(typeName)
+			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
 				return nil
 			}
@@ -207,7 +221,7 @@ func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 		return nil, err
 	}
 	if typeName != "" {
-		if err := c.validateIndexName(typeName); err != nil {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
 		}
 	}
@@ -223,7 +237,7 @@ func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 	err := c.readUnderRLock(func() error {
 		var tok uint16
 		if typeName != "" {
-			t, ok := c.relTypes.Lookup(typeName)
+			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
 				return nil
 			}
@@ -247,7 +261,7 @@ func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 		return nil, err
 	}
 	if typeName != "" {
-		if err := c.validateIndexName(typeName); err != nil {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
 		}
 	}
@@ -263,7 +277,7 @@ func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 	err := c.readUnderRLock(func() error {
 		var tok uint16
 		if typeName != "" {
-			t, ok := c.relTypes.Lookup(typeName)
+			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
 				return nil
 			}
@@ -285,7 +299,7 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 		return nil, err
 	}
 	if typeName != "" {
-		if err := c.validateIndexName(typeName); err != nil {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
 		}
 	}
@@ -296,7 +310,7 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 	err := c.readUnderRLock(func() error {
 		var tok uint16
 		if typeName != "" {
-			t, ok := c.relTypes.Lookup(typeName)
+			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
 				return nil
 			}
@@ -496,13 +510,10 @@ func (r *RelOps) CountByType(typeName string) (int, error) {
 	if c.closed.Load() {
 		return 0, ErrGraphClosed
 	}
-	if err := c.validateIndexName(typeName); err != nil {
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
-	tok, ok := c.cachedRelType(typeName)
-	if !ok {
-		tok, ok = c.relTypes.Lookup(typeName)
-	}
+	tok, ok := c.lookupRelTypeQueryToken(typeName)
 	if !ok {
 		return 0, nil
 	}

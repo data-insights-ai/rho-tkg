@@ -252,9 +252,22 @@ func (c *Core) cachedRelType(typeName string) (uint16, bool) {
 func (c *Core) rememberRelType(typeName string, tok uint16) {
 	if tok != 0 {
 		c.relTypeCacheMu.Lock()
+		if c.relTypeCache == nil {
+			c.relTypeCache = make(map[string]uint16)
+		}
 		c.relTypeCache[typeName] = tok
 		c.relTypeCacheMu.Unlock()
 	}
+}
+
+func (c *Core) clearRelTypeCache() {
+	c.relTypeCacheMu.Lock()
+	if c.relTypeCache == nil {
+		c.relTypeCache = make(map[string]uint16)
+	} else {
+		clear(c.relTypeCache)
+	}
+	c.relTypeCacheMu.Unlock()
 }
 
 func (c *Core) restoreNewLabelOnError(snapshot []string, allocated bool, label string, err error) error {
