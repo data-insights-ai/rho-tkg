@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -58,7 +57,7 @@ func (r *RelTypeRegistry) ensureInitialized() {
 // Returns ErrEmptyName if name is empty or whitespace-only.
 // Returns an error if the registry is full (65535 tokens).
 func (r *RelTypeRegistry) GetOrCreate(name string) (uint16, error) {
-	if strings.TrimSpace(name) == "" {
+	if isBlankName(name) {
 		return 0, ErrEmptyName
 	}
 	r.ensureInitialized()
@@ -185,7 +184,7 @@ func (r *RelTypeRegistry) ImportNames(names []string) error {
 	// Validate entries before acquiring lock: reject empty or duplicate names.
 	seen := make(map[string]struct{}, len(names)-1)
 	for i := 1; i < len(names); i++ {
-		if strings.TrimSpace(names[i]) == "" {
+		if isBlankName(names[i]) {
 			return fmt.Errorf("graph: reltype import: empty name at index %d", i)
 		}
 		if _, dup := seen[names[i]]; dup {

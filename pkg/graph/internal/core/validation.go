@@ -3,7 +3,8 @@ package core
 import (
 	"fmt"
 	"reflect"
-	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -59,13 +60,35 @@ func (co *ConstraintOps) Get() ConstraintSet {
 
 // validateName checks a label or relationship type name against name limits.
 func (c *Core) validateName(name string) error {
-	if strings.TrimSpace(name) == "" {
+	if isBlankName(name) {
 		return ErrEmptyName
 	}
 	if len(name) > c.validation.MaxNameLength {
 		return fmt.Errorf("%w: %q (%d > %d)", ErrNameTooLong, name, len(name), c.validation.MaxNameLength)
 	}
 	return nil
+}
+
+func isBlankName(name string) bool {
+	if name == "" {
+		return true
+	}
+	for i := 0; i < len(name); {
+		c := name[i]
+		if c < utf8.RuneSelf {
+			if c != ' ' && (c < '\t' || c > '\r') {
+				return false
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(name[i:])
+		if !unicode.IsSpace(r) {
+			return false
+		}
+		i += size
+	}
+	return true
 }
 
 func (c *Core) validateRegistryNames(kind string, names []string) error {

@@ -48,6 +48,7 @@ type Core struct {
 	nodeHash          storepkg.NodeIntegrityHashCapability
 	txTimeQuery       storepkg.TransactionTimeQueryCapability
 	historyTrim       storepkg.HistoryRollbackTrimCapability
+	nativeAdjacency   bool
 	entityLocks       *locks.Manager
 	validation        ValidationLimits
 	constraints       ConstraintSet
@@ -204,6 +205,15 @@ func nativeRelationshipEndpointHashWrite(store storepkg.MandatoryStore) generate
 		return cap
 	default:
 		return nil
+	}
+}
+
+func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
+	switch store.(type) {
+	case *memory.Store, *badger.Store, *tiered.Store:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -366,6 +376,7 @@ func New(config Config) (*Core, error) {
 	c.nodeHash, _ = store.(storepkg.NodeIntegrityHashCapability)
 	c.txTimeQuery, _ = store.(storepkg.TransactionTimeQueryCapability)
 	c.historyTrim, _ = store.(storepkg.HistoryRollbackTrimCapability)
+	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
 
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the

@@ -222,3 +222,16 @@ GOOD: ids := sortedKeys(seen); for _, id := range ids { append(result, load(id))
 Any public query assembled from maps or dedup sets must sort by entity ID before
 returning. Store and graph query surfaces should not expose Go map iteration
 order, even when the logical result set is correct.
+
+## 19. Native Fast Paths Must Respect Store Wrappers
+
+```
+BAD:  if cap, ok := store.(fastPath); ok { cap.FastPath(...) }
+GOOD: enable fast paths only for exact in-tree stores, or prove wrappers cannot
+      override the operation being optimized
+```
+
+Tests and consumers embed in-tree stores to inject failures or stale reads. A
+native optimization must not bypass those overrides. Keep the generic Store
+contract path as the default and opt into exact-store shortcuts only when the
+in-tree implementation itself provides the invariant.

@@ -99,9 +99,11 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				phaseAErr = err
 				return
 			}
-			if _, err := c.store.GetNode(id); err != nil {
-				phaseAErr = err
-				return
+			if !c.nativeAdjacency {
+				if _, err := c.store.GetNode(id); err != nil {
+					phaseAErr = err
+					return
+				}
 			}
 			outRels, err := c.store.OutgoingRelationships(id, 0)
 			if err != nil {
@@ -128,8 +130,13 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 			done      bool
 		)
 		func() {
-			c.entityLocks.LockMany(allIDs)
-			defer c.entityLocks.UnlockMany(allIDs)
+			if len(allIDs) == 1 {
+				c.entityLocks.LockEntity(allIDs[0])
+				defer c.entityLocks.UnlockEntity(allIDs[0])
+			} else {
+				c.entityLocks.LockMany(allIDs)
+				defer c.entityLocks.UnlockMany(allIDs)
+			}
 
 			current, err := c.store.GetNode(id)
 			if err != nil {
@@ -181,6 +188,9 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 // for the LockMany locking surface, which uses a single 256-shard pool keyed by
 // snowflake bits regardless of entity kind. See tasks/todo.md, Tier D.
 func collectDeleteIDs(nodeID snowflake.ID, outRels, inRels []*types.Relationship) []snowflake.ID {
+	if len(outRels) == 0 && len(inRels) == 0 {
+		return []snowflake.ID{nodeID}
+	}
 	seen := make(map[snowflake.ID]struct{}, 1+len(outRels)+len(inRels))
 	seen[nodeID] = struct{}{}
 	for _, r := range outRels {
@@ -206,6 +216,9 @@ func sameIDSet(a, b []snowflake.ID) bool {
 	if len(a) != len(b) {
 		return false
 	}
+	if len(a) == 1 {
+		return a[0] == b[0]
+	}
 	set := make(map[snowflake.ID]struct{}, len(a))
 	for _, id := range a {
 		set[id] = struct{}{}
@@ -226,42 +239,43 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 	now := c.now()
 
 	// Build relationship tombstones (dedup self-loops).
-	seen := make(map[snowflake.ID]struct{})
-	allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
-	allRels = append(allRels, outRels...)
-	allRels = append(allRels, inRels...)
-	relTombstones := make([]storepkg.RelTombstone, 0, len(allRels))
-	for _, r := range allRels {
-		rid := r.ID().SnowflakeID()
-		if _, ok := seen[rid]; ok {
-			continue // dedup self-loops
+	var relTombstones []storepkg.RelTombstone
+	if len(outRels) != 0 || len(inRels) != 0 {
+		seen := make(map[snowflake.ID]struct{}, len(outRels)+len(inRels))
+		allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
+		allRels = append(allRels, outRels...)
+		allRels = append(allRels, inRels...)
+		relTombstones = make([]storepkg.RelTombstone, 0, len(allRels))
+		for _, r := range allRels {
+			rid := r.ID().SnowflakeID()
+			if _, ok := seen[rid]; ok {
+				continue // dedup self-loops
+			}
+			seen[rid] = struct{}{}
+			tmR := r.Temporal()
+			if tmR == nil {
+				tmR = &types.TemporalMetadata{}
+				r.SetTemporal(tmR)
+			}
+			tmR.DeletedAt = now
+			tmR.ValidTo = now
+			if tmR.TxFrom == 0 {
+				tmR.TxFrom = now
+			}
+			tmR.TxTo = now
+			relTombstones = append(relTombstones, storepkg.RelTombstone{
+				ID:          types.RelID(rid),
+				PrevVersion: r.Version(),
+				Tombstone:   r,
+			})
 		}
-		seen[rid] = struct{}{}
-		tombR := r.DeepCopy()
-		tmR := tombR.Temporal()
-		if tmR == nil {
-			tmR = &types.TemporalMetadata{}
-			tombR.SetTemporal(tmR)
-		}
-		tmR.DeletedAt = now
-		tmR.ValidTo = now
-		if tmR.TxFrom == 0 {
-			tmR.TxFrom = now
-		}
-		tmR.TxTo = now
-		relTombstones = append(relTombstones, storepkg.RelTombstone{
-			ID:          types.RelID(rid),
-			PrevVersion: r.Version(),
-			Tombstone:   tombR,
-		})
 	}
 
 	// Build node tombstone.
-	tombN := current.DeepCopy()
-	tmN := tombN.Temporal()
+	tmN := current.Temporal()
 	if tmN == nil {
 		tmN = &types.TemporalMetadata{}
-		tombN.SetTemporal(tmN)
+		current.SetTemporal(tmN)
 	}
 	tmN.DeletedAt = now
 	tmN.ValidTo = now
@@ -271,7 +285,7 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 	tmN.TxTo = now
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
-	if err := c.store.DeleteNodeWithHistory(id, current.Version(), tombN, relTombstones); err != nil {
+	if err := c.store.DeleteNodeWithHistory(id, current.Version(), current, relTombstones); err != nil {
 		return err
 	}
 	c.opNodeDeletes.Add(1)

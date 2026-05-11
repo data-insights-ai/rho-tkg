@@ -9,9 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ErrRegistryNotEmpty is returned when importing into a non-empty registry.
@@ -73,11 +74,33 @@ func (r *LabelRegistry) ensureInitialized() {
 	})
 }
 
+func isBlankName(name string) bool {
+	if name == "" {
+		return true
+	}
+	for i := 0; i < len(name); {
+		c := name[i]
+		if c < utf8.RuneSelf {
+			if c != ' ' && (c < '\t' || c > '\r') {
+				return false
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(name[i:])
+		if !unicode.IsSpace(r) {
+			return false
+		}
+		i += size
+	}
+	return true
+}
+
 // GetOrCreate returns the token for name, creating it if it doesn't exist.
 // Returns ErrEmptyName if name is empty or whitespace-only.
 // Returns an error if the registry is full (65535 tokens).
 func (r *LabelRegistry) GetOrCreate(name string) (uint16, error) {
-	if strings.TrimSpace(name) == "" {
+	if isBlankName(name) {
 		return 0, ErrEmptyName
 	}
 	r.ensureInitialized()
@@ -204,7 +227,7 @@ func (r *LabelRegistry) ImportNames(names []string) error {
 	// Validate entries before acquiring lock: reject empty or duplicate names.
 	seen := make(map[string]struct{}, len(names)-1)
 	for i := 1; i < len(names); i++ {
-		if strings.TrimSpace(names[i]) == "" {
+		if isBlankName(names[i]) {
 			return fmt.Errorf("graph: label import: empty name at index %d", i)
 		}
 		if _, dup := seen[names[i]]; dup {

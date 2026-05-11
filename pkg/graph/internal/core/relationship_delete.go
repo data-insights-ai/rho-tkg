@@ -81,11 +81,10 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	}
 
 	now := c.now()
-	tombR := current.DeepCopy()
-	tmR := tombR.Temporal()
+	tmR := current.Temporal()
 	if tmR == nil {
 		tmR = &types.TemporalMetadata{}
-		tombR.SetTemporal(tmR)
+		current.SetTemporal(tmR)
 	}
 	tmR.DeletedAt = now
 	tmR.ValidTo = now
@@ -95,7 +94,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	tmR.TxTo = now
 
 	// Single atomic call: PutRelVersion + DeleteRelationship.
-	if err := c.store.DeleteRelWithHistory(id, current.Version(), tombR); err != nil {
+	if err := c.store.DeleteRelWithHistory(id, current.Version(), current); err != nil {
 		return err
 	}
 	c.opRelDeletes.Add(1)

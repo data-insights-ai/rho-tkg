@@ -173,10 +173,13 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 // NodeCount returns the number of stored nodes.
 // Store never returns an error.
 func (ms *Store) NodeCount() (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if err := ms.checkOpenLocked(); err != nil {
-		return 0, err
+	if ms.closed {
+		return 0, ErrStoreClosed
 	}
 	return len(ms.nodes), nil
 }
@@ -184,10 +187,13 @@ func (ms *Store) NodeCount() (int, error) {
 // RelationshipCount returns the number of stored relationships.
 // Store never returns an error.
 func (ms *Store) RelationshipCount() (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if err := ms.checkOpenLocked(); err != nil {
-		return 0, err
+	if ms.closed {
+		return 0, ErrStoreClosed
 	}
 	return len(ms.rels), nil
 }
@@ -195,10 +201,13 @@ func (ms *Store) RelationshipCount() (int, error) {
 // NodeCountByLabel returns the number of nodes with the given label token. O(1).
 // Store never returns an error.
 func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if err := ms.checkOpenLocked(); err != nil {
-		return 0, err
+	if ms.closed {
+		return 0, ErrStoreClosed
 	}
 	if token == 0 {
 		return 0, storecontract.ValidateLabelToken(token)
@@ -209,10 +218,13 @@ func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
 // RelCountByType returns the number of relationships with the given type token. O(1).
 // Store never returns an error.
 func (ms *Store) RelCountByType(token uint16) (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if err := ms.checkOpenLocked(); err != nil {
-		return 0, err
+	if ms.closed {
+		return 0, ErrStoreClosed
 	}
 	if token == 0 {
 		return 0, storecontract.ValidateRelTypeToken(token)

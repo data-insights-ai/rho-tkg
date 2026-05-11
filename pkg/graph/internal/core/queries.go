@@ -312,31 +312,23 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 // Count returns the number of nodes in the store.
 func (n *NodeOps) Count() (int, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return 0, ErrGraphClosed
 	}
-	var count int
-	err := c.readUnderRLock(func() error {
-		var err error
-		count, err = c.store.NodeCount()
-		return err
-	})
-	return count, err
+	return c.store.NodeCount()
 }
 
 // Count returns the number of relationships in the store.
 func (r *RelOps) Count() (int, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return 0, ErrGraphClosed
 	}
-	var count int
-	err := c.readUnderRLock(func() error {
-		var err error
-		count, err = c.store.RelationshipCount()
-		return err
-	})
-	return count, err
+	return c.store.RelationshipCount()
 }
 
 // All returns all nodes in the store, with optional pagination.
@@ -480,46 +472,41 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // Returns 0 if the label has never been registered.
 func (n *NodeOps) CountByLabel(label string) (int, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return 0, ErrGraphClosed
 	}
 	if err := c.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
-	var count int
-	err := c.readUnderRLock(func() error {
-		tok, ok := c.labels.Lookup(label)
-		if !ok {
-			return nil
-		}
-		var err error
-		count, err = c.store.NodeCountByLabel(tok)
-		return err
-	})
-	return count, err
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return 0, nil
+	}
+	return c.store.NodeCountByLabel(tok)
 }
 
 // CountByType returns the number of relationships with the given type. O(1).
 // Returns 0 if the type has never been registered.
 func (r *RelOps) CountByType(typeName string) (int, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return 0, ErrGraphClosed
 	}
 	if err := c.validateIndexName(typeName); err != nil {
 		return 0, err
 	}
-	var count int
-	err := c.readUnderRLock(func() error {
-		tok, ok := c.relTypes.Lookup(typeName)
-		if !ok {
-			return nil
-		}
-		var err error
-		count, err = c.store.RelCountByType(tok)
-		return err
-	})
-	return count, err
+	tok, ok := c.cachedRelType(typeName)
+	if !ok {
+		tok, ok = c.relTypes.Lookup(typeName)
+	}
+	if !ok {
+		return 0, nil
+	}
+	return c.store.RelCountByType(tok)
 }
 
 // (AllLabelCounts and AllRelTypeCounts moved to StatOps in stats.go.)

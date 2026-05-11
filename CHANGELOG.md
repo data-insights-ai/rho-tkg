@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — Count and delete hot paths (2026-05-11)
+
+- **Count reads avoid generic helper overhead on the graph and MemoryStore hot
+  paths.**
+  `Count`, `CountByLabel`, and `CountByType` still participate in graph
+  lifecycle isolation and validate malformed names before empty-result
+  shortcuts, but no longer allocate closures or run MemoryStore lazy-init
+  checks for pure `len` reads.
+- **Delete tombstones reuse caller-owned defensive copies.**
+  Graph delete paths now mutate the defensive copies already returned by Store
+  reads instead of deep-copying them again before `Delete*WithHistory`; native
+  in-tree stores also skip the Phase A node snapshot read for unconnected node
+  deletes while wrapper stores keep the conservative two-read behavior.
+
 ### Changed — MemoryStore generated relationship create fast path (2026-05-11)
 
 - **MemoryStore relationship creates can capture endpoint hashes during the
