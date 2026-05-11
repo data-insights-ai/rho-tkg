@@ -2,6 +2,8 @@ package memory
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,6 +80,47 @@ func TestMemoryStoreZeroValueSupportsBasicCRUD(t *testing.T) {
 	}
 	if len(history) != 1 || history[0].ID() != n1.ID() {
 		t.Fatalf("zero-value history = %v, want node %d", history, n1.ID())
+	}
+}
+
+func TestMemoryStoreZeroValueConcurrentFirstUse(t *testing.T) {
+	t.Parallel()
+	var ms Store
+
+	const goroutines = 32
+	start := make(chan struct{})
+	errs := make(chan error, goroutines*5)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			<-start
+
+			if _, err := ms.GetNode(types.NodeID(id + 1)); !errors.Is(err, ErrNodeNotFound) {
+				errs <- fmt.Errorf("GetNode = %v, want ErrNodeNotFound", err)
+			}
+			if _, err := ms.GetRelationship(types.RelID(id + 1)); !errors.Is(err, ErrRelNotFound) {
+				errs <- fmt.Errorf("GetRelationship = %v, want ErrRelNotFound", err)
+			}
+			if count, err := ms.NodeCount(); err != nil || count != 0 {
+				errs <- fmt.Errorf("NodeCount = (%d, %v), want (0, nil)", count, err)
+			}
+			if count, err := ms.RelationshipCount(); err != nil || count != 0 {
+				errs <- fmt.Errorf("RelationshipCount = (%d, %v), want (0, nil)", count, err)
+			}
+			if count, err := ms.NodeCountByLabel(1); err != nil || count != 0 {
+				errs <- fmt.Errorf("NodeCountByLabel = (%d, %v), want (0, nil)", count, err)
+			}
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }
 

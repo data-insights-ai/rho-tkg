@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — MemoryStore lazy initialization race (2026-05-11)
+
+- **Zero-value MemoryStore concurrent first use is race-free.**
+  The lazy initialization marker is now atomic, so concurrent read-path first
+  use of a zero-value `memory.Store` cannot race while `sync.Once` initializes
+  the backing maps.
+
 ### Changed — Read-path performance pass (2026-05-11)
 
 - **Hot read and resolver paths avoid unnecessary helper overhead.**

@@ -187,3 +187,14 @@ sentinel, and malformed-input cases.
 Tiny fixtures hide O(N) behavior. Keep both microbenchmarks and production
 shapes: baseline graph operations, high-fanout relationships, history-heavy
 temporal queries, export/import, batch writes, and Tiered hot/warm routing.
+
+## 16. Lazy Init Flags Must Be Synchronized
+
+```
+BAD:  if !initialized { once.Do(init) } // initialized written during init under RLock
+GOOD: if !initialized.Load() { once.Do(init) } // or guard every access with Lock
+```
+
+If zero-value lazy initialization can run under a shared read lock, any separate
+initialized marker must be atomic or protected by an exclusive lock. `sync.Once`
+serializes the init function, not unrelated reads of a plain flag.

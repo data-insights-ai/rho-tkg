@@ -5,6 +5,7 @@ package memory
 
 import (
 	"sync"
+	"sync/atomic"
 
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -51,8 +52,8 @@ type RelTombstone = storecontract.RelTombstone
 // Uses maps for O(1) entity lookup and nested hash-sets for O(1) index maintenance.
 type Store struct {
 	initOnce    sync.Once
+	initialized atomic.Bool
 	mu          sync.RWMutex
-	initialized bool
 	closed      bool
 	nodes       map[types.NodeID]*types.Node
 	rels        map[types.RelID]*types.Relationship
@@ -130,7 +131,7 @@ func (ms *Store) ensureInitialized() {
 		if ms.vectorIndexes == nil {
 			ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 		}
-		ms.initialized = true
+		ms.initialized.Store(true)
 	})
 }
 
@@ -185,7 +186,7 @@ func (ms *Store) checkOpenLocked() error {
 	if ms.closed {
 		return ErrStoreClosed
 	}
-	if !ms.initialized {
+	if !ms.initialized.Load() {
 		ms.ensureInitialized()
 	}
 	return nil
