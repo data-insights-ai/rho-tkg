@@ -48,15 +48,17 @@ func (bs *Store) PutNode(n *types.Node) error {
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 
 	// Build write ops.
-	ops := []writeOp{{opType: writeOpSet, key: storepkg.NodeKey(id), value: data}}
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		if bs.labelIdx[tv] == nil {
-			bs.labelIdx[tv] = make(map[types.NodeID]struct{})
+	labelCount := n.LabelTokenCount()
+	ops := make([]writeOp, 0, 1+labelCount)
+	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
+	for i := 0; i < labelCount; i++ {
+		tok := n.LabelTokenRawAt(i)
+		if bs.labelIdx[tok] == nil {
+			bs.labelIdx[tok] = make(map[types.NodeID]struct{})
 		}
-		bs.labelIdx[tv][nid] = struct{}{}
-		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tv, id)})
-		bs.getOrCreateLabelCounter(tv).Add(1)
+		bs.labelIdx[tok][nid] = struct{}{}
+		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
+		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
 
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)

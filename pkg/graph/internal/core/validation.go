@@ -108,6 +108,14 @@ func (c *Core) validatePropertyEntry(key string, val any) error {
 	if len(key) > c.validation.MaxPropertyKeyLength {
 		return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
 	}
+	return c.validatePropertyValueLimitTyped(key, val, 0)
+}
+
+func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) error {
+	if depth > maxPropertyValueLimitDepth {
+		return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+	}
+
 	switch v := val.(type) {
 	case nil,
 		bool,
@@ -120,8 +128,78 @@ func (c *Core) validatePropertyEntry(key string, val any) error {
 			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyValueSize)
 		}
 		return nil
+	case []int:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []int64:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []float32:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []float64:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []byte:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []bool:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		return nil
+	case []string:
+		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
+			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		}
+		for _, s := range v {
+			if len(s) > c.validation.MaxPropertyValueSize {
+				return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(s), c.validation.MaxPropertyValueSize)
+			}
+		}
+		return nil
+	case []any:
+		for _, item := range v {
+			if err := c.validatePropertyValueLimitTyped(key, item, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]string:
+		for nestedKey, nestedValue := range v {
+			if len(nestedKey) > c.validation.MaxPropertyValueSize {
+				return fmt.Errorf("%w: key %q nested map key (%d > %d)", ErrValueTooLarge, key, len(nestedKey), c.validation.MaxPropertyValueSize)
+			}
+			if depth+1 > maxPropertyValueLimitDepth {
+				return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+			}
+			if len(nestedValue) > c.validation.MaxPropertyValueSize {
+				return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(nestedValue), c.validation.MaxPropertyValueSize)
+			}
+		}
+		return nil
+	case map[string]any:
+		for nestedKey, nestedValue := range v {
+			if len(nestedKey) > c.validation.MaxPropertyValueSize {
+				return fmt.Errorf("%w: key %q nested map key (%d > %d)", ErrValueTooLarge, key, len(nestedKey), c.validation.MaxPropertyValueSize)
+			}
+			if err := c.validatePropertyValueLimitTyped(key, nestedValue, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	if err := c.validatePropertyValueLimit(key, reflect.ValueOf(val), 0); err != nil {
+	if err := c.validatePropertyValueLimit(key, reflect.ValueOf(val), depth); err != nil {
 		return err
 	}
 	return nil

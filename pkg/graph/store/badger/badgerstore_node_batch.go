@@ -365,14 +365,15 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
-		for _, tok := range n.AllLabelTokens() {
-			tv := tok.Value()
-			if bs.labelIdx[tv] == nil {
-				bs.labelIdx[tv] = make(map[types.NodeID]struct{})
+		labelCount := n.LabelTokenCount()
+		for j := 0; j < labelCount; j++ {
+			tok := n.LabelTokenRawAt(j)
+			if bs.labelIdx[tok] == nil {
+				bs.labelIdx[tok] = make(map[types.NodeID]struct{})
 			}
-			bs.labelIdx[tv][nd.nid] = struct{}{}
-			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tv, nd.id)})
-			bs.getOrCreateLabelCounter(tv).Add(1)
+			bs.labelIdx[tok][nd.nid] = struct{}{}
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
+			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)

@@ -208,6 +208,37 @@ func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 	}
 }
 
+func TestAddNodePropertyValueNonStringContainersIgnored(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  any
+	}{
+		{name: "int slice", val: []int{1, 2, 3}},
+		{name: "int64 slice", val: []int64{1, 2, 3}},
+		{name: "float32 slice", val: []float32{1, 2, 3}},
+		{name: "float64 slice", val: []float64{1, 2, 3}},
+		{name: "byte slice", val: []byte("longer than limit")},
+		{name: "bool slice", val: []bool{true, false}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 1}})
+
+			n, err := g.Nodes.Add([]string{"X"}, map[string]any{"key": tc.val})
+			if err != nil {
+				t.Fatalf("non-string container should be ignored: %v", err)
+			}
+			if n == nil {
+				t.Fatal("node should not be nil")
+			}
+		})
+	}
+}
+
 func TestAddNodeRejectsPropertyTypesOutsideHashWireAllowlist(t *testing.T) {
 	t.Parallel()
 
