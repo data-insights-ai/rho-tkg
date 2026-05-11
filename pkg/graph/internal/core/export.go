@@ -291,3 +291,25 @@ func readExportRecord(r io.Reader) (tag byte, data []byte, err error) {
 	}
 	return header[0], data, nil
 }
+
+func readExportRecordBytes(src []byte, offset *int) (tag byte, data []byte, err error) {
+	if *offset == len(src) {
+		return 0, nil, io.EOF
+	}
+	if len(src)-*offset < 5 {
+		return 0, nil, io.ErrUnexpectedEOF
+	}
+	header := src[*offset : *offset+5]
+	length := binary.BigEndian.Uint32(header[1:5])
+	if length > maxExportRecordSize {
+		return 0, nil, fmt.Errorf("import: record too large (tag=0x%02x, len=%d, max=%d)", header[0], length, maxExportRecordSize)
+	}
+	*offset += 5
+	if uint64(len(src)-*offset) < uint64(length) {
+		return 0, nil, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, io.ErrUnexpectedEOF)
+	}
+	bodyStart := *offset
+	bodyEnd := bodyStart + int(length)
+	*offset = bodyEnd
+	return header[0], src[bodyStart:bodyEnd], nil
+}

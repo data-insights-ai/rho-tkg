@@ -44,6 +44,8 @@ type Core struct {
 	store          storepkg.MandatoryStore
 	endpointHash   storepkg.EndpointIntegrityHashCapability
 	nodeHash       storepkg.NodeIntegrityHashCapability
+	txTimeQuery    storepkg.TransactionTimeQueryCapability
+	historyTrim    storepkg.HistoryRollbackTrimCapability
 	entityLocks    *locks.Manager
 	validation     ValidationLimits
 	constraints    ConstraintSet
@@ -343,6 +345,8 @@ func New(config Config) (*Core, error) {
 	c.store = store
 	c.endpointHash, _ = store.(storepkg.EndpointIntegrityHashCapability)
 	c.nodeHash, _ = store.(storepkg.NodeIntegrityHashCapability)
+	c.txTimeQuery, _ = store.(storepkg.TransactionTimeQueryCapability)
+	c.historyTrim, _ = store.(storepkg.HistoryRollbackTrimCapability)
 
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the

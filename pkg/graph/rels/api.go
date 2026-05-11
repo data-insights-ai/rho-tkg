@@ -55,13 +55,16 @@ type Ops interface {
 }
 
 // API is the rels sub-API accessor.
-type API struct{ ops Ops }
+type API struct {
+	ops Ops
+	ok  bool
+}
 
 // New constructs a rels sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
@@ -309,7 +312,7 @@ func (a *API) DeleteProperty(id types.RelID, key string) error {
 
 // HasType reports whether the relationship has the given type name.
 func (a *API) HasType(r *types.Relationship, typ string) bool {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return false
 	}
 	return a.ops.HasType(r, typ)
@@ -317,7 +320,7 @@ func (a *API) HasType(r *types.Relationship, typ string) bool {
 
 // Type returns the relationship's type name.
 func (a *API) Type(r *types.Relationship) string {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return ""
 	}
 	return a.ops.Type(r)

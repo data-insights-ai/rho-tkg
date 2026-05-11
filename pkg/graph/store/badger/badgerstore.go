@@ -148,13 +148,14 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu    sync.RWMutex
-	nodeIDs  map[types.NodeID]struct{}                 // O(1) node existence check
-	relIDs   map[types.RelID]struct{}                  // O(1) rel existence check
-	labelIdx map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID)
-	typeIdx  map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
-	outIdx   map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
-	inIdx    map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
+	idxMu      sync.RWMutex
+	nodeIDs    map[types.NodeID]struct{}                 // O(1) node existence check
+	nodeHashes map[types.NodeID]string                   // current node integrity hash for live endpoint validation
+	relIDs     map[types.RelID]struct{}                  // O(1) rel existence check
+	labelIdx   map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID)
+	typeIdx    map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
+	outIdx     map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
+	inIdx      map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
 
 	// Entity caches (internal sync via entityLRU mutex).
 	nodeCache *indexpkg.Cache[*types.Node]
@@ -298,6 +299,7 @@ func New(cfg Config) (*Store, error) {
 	bs := &Store{
 		db:              db,
 		nodeIDs:         make(map[types.NodeID]struct{}),
+		nodeHashes:      make(map[types.NodeID]string),
 		relIDs:          make(map[types.RelID]struct{}),
 		labelIdx:        make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
@@ -393,6 +395,7 @@ func (bs *Store) loadIndexes() error {
 				continue
 			}
 			bs.nodeIDs[nid] = struct{}{}
+			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
 			decodedNodeLabels[nid] = labels
 		}
@@ -888,6 +891,7 @@ func (bs *Store) Clear() error {
 
 	// Clear in-memory indexes.
 	bs.nodeIDs = make(map[types.NodeID]struct{})
+	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})

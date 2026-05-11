@@ -94,6 +94,9 @@ func TestNodeNilReceiverMethodsFailClosed(t *testing.T) {
 	if n.LabelTokenCount() != 0 {
 		t.Fatalf("LabelTokenCount() = %d, want 0", n.LabelTokenCount())
 	}
+	if n.LabelTokenRawAt(0) != 0 {
+		t.Fatalf("LabelTokenRawAt(0) = %d, want 0", n.LabelTokenRawAt(0))
+	}
 	if err := n.SetProperties(nil); !errors.Is(err, ErrNilNode) {
 		t.Fatalf("SetProperties(nil) = %v, want ErrNilNode", err)
 	}
@@ -180,6 +183,26 @@ func TestNewNodeRemovesPrimaryFromExtras(t *testing.T) {
 	}
 	if n.LabelTokenCount() != 2 {
 		t.Errorf("LabelTokenCount() = %d, want 2", n.LabelTokenCount())
+	}
+}
+
+func TestNodeLabelTokenRawAt(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
+	for _, tc := range []struct {
+		index int
+		want  uint16
+	}{
+		{index: -1, want: 0},
+		{index: 0, want: 10},
+		{index: 1, want: 20},
+		{index: 2, want: 30},
+		{index: 3, want: 0},
+	} {
+		if got := n.LabelTokenRawAt(tc.index); got != tc.want {
+			t.Fatalf("LabelTokenRawAt(%d) = %d, want %d", tc.index, got, tc.want)
+		}
 	}
 }
 

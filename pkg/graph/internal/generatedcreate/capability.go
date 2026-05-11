@@ -27,3 +27,11 @@ type Capability interface {
 	PutRelationshipGeneratedID(r *types.Relationship, proof Proof) error
 	PutNodesBatchGeneratedID(nodes []*types.Node, proof Proof) error
 }
+
+// RelationshipEndpointHashCapability is an optional generated-ID fast path for
+// stores that can verify relationship endpoints, capture their integrity
+// hashes, and persist the relationship in one routed write path. The returned
+// hashes are the values persisted on the relationship.
+type RelationshipEndpointHashCapability interface {
+	PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof Proof) (string, string, error)
+}

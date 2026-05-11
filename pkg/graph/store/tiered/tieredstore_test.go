@@ -188,6 +188,53 @@ func TestTieredStore_PutGetNode_Event(t *testing.T) {
 	}
 }
 
+func TestTieredStore_NodeIntegrityHashCapabilities(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	ref.SetIntegrity(&types.NodeIntegrity{Hash: "ref-hash"})
+	if err := ts.PutNode(ref); err != nil {
+		t.Fatalf("PutNode(ref): %v", err)
+	}
+	event := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	event.SetIntegrity(&types.NodeIntegrity{Hash: "event-hash"})
+	if err := ts.PutNode(event); err != nil {
+		t.Fatalf("PutNode(event): %v", err)
+	}
+
+	hash, err := ts.NodeIntegrityHash(ref.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash(ref): %v", err)
+	}
+	if hash != "ref-hash" {
+		t.Fatalf("NodeIntegrityHash(ref) = %q, want ref-hash", hash)
+	}
+	fromHash, toHash, err := ts.EndpointIntegrityHashes(event.ID(), ref.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes(event, ref): %v", err)
+	}
+	if fromHash != "event-hash" || toHash != "ref-hash" {
+		t.Fatalf("EndpointIntegrityHashes = %q, %q; want event-hash, ref-hash", fromHash, toHash)
+	}
+	fromHash, toHash, err = ts.EndpointIntegrityHashes(event.ID(), event.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes self: %v", err)
+	}
+	if fromHash != "event-hash" || toHash != "event-hash" {
+		t.Fatalf("EndpointIntegrityHashes self = %q, %q; want event-hash twice", fromHash, toHash)
+	}
+	if _, err := ts.NodeIntegrityHash(types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("NodeIntegrityHash missing = %v, want ErrNodeNotFound", err)
+	}
+}
+
 func TestTieredStore_RemoveNodeLabelToken_UpdatesIndexes(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()

@@ -1034,6 +1034,43 @@ func TestTieredStoreGeneratedRelationshipRequiresFreshProof(t *testing.T) {
 	}
 }
 
+func TestTieredStoreGeneratedRelationshipWithEndpointHashes(t *testing.T) {
+	ts, caseTok, signalTok := setupBatchDelete(t)
+	nodeGen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	signal := types.NewNode(types.NodeID(nodeGen.Generate()), signalTok, nil)
+	signal.SetIntegrity(&types.NodeIntegrity{Hash: "signal-hash"})
+	if err := ts.PutNode(signal); err != nil {
+		t.Fatalf("PutNode signal: %v", err)
+	}
+	cas := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
+	cas.SetIntegrity(&types.NodeIntegrity{Hash: "case-hash"})
+	if err := ts.PutNode(cas); err != nil {
+		t.Fatalf("PutNode case: %v", err)
+	}
+
+	rel := types.NewRelationship(types.RelID(relGen.Generate()), 1, signal.ID(), cas.ID())
+	rel.SetIntegrity(&types.RelIntegrity{Hash: "rel-hash"})
+	fromHash, toHash, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID)
+	if err != nil {
+		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
+	}
+	if fromHash != "signal-hash" || toHash != "case-hash" {
+		t.Fatalf("returned endpoint hashes = %q, %q; want signal-hash, case-hash", fromHash, toHash)
+	}
+	if ig := rel.Integrity(); ig == nil || ig.FromNodeHash != "signal-hash" || ig.ToNodeHash != "case-hash" {
+		t.Fatalf("caller relationship integrity = %+v; want endpoint hashes", ig)
+	}
+	stored, err := ts.GetRelationship(rel.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if ig := stored.Integrity(); ig == nil || ig.FromNodeHash != "signal-hash" || ig.ToNodeHash != "case-hash" {
+		t.Fatalf("stored relationship integrity = %+v; want endpoint hashes", ig)
+	}
+}
+
 func setupDiskBatchDelete(t *testing.T) (*Store, uint16, uint16) {
 	t.Helper()
 	ts := newDiskTestTieredStore(t)

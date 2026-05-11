@@ -254,13 +254,10 @@ func (c *Core) nodeLabelsWithoutTokenUnlocked(node *types.Node, tok uint16) []st
 		return nil
 	}
 	labels := make([]string, 0, count-1)
-	primary := node.PrimaryLabelToken().Value()
-	if primary != tok {
-		labels = append(labels, c.labels.Resolve(primary))
-	}
-	for _, extra := range node.ExtraLabelTokens() {
-		if extra.Value() != tok {
-			labels = append(labels, c.labels.Resolve(extra.Value()))
+	for i := 0; i < count; i++ {
+		labelTok := node.LabelTokenRawAt(i)
+		if labelTok != tok {
+			labels = append(labels, c.labels.Resolve(labelTok))
 		}
 	}
 	return labels

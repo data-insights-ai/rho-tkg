@@ -110,6 +110,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		delete(bs.nodeHashes, nid)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
 		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
@@ -139,6 +140,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	delete(bs.nodeHashes, nid)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
 
@@ -360,6 +362,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 
 		bs.nodeCache.Put(nd.id, n.DeepCopy())
 		bs.nodeIDs[nd.nid] = struct{}{}
+		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		for _, tok := range n.AllLabelTokens() {
@@ -455,6 +458,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		delete(bs.nodeHashes, nid)
 		bs.appendOps(ops...)
 	}
 

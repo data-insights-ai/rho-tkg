@@ -16,16 +16,20 @@ import (
 
 // nodeSnapshot captures pre-mutation state for rollback.
 type nodeSnapshot struct {
-	id      snowflake.ID
-	prev    *types.Node   // DeepCopy before first mutation
-	history []*types.Node // DeepCopy of history before first mutation
+	id              snowflake.ID
+	prev            *types.Node   // DeepCopy before first mutation
+	history         []*types.Node // DeepCopy fallback for stores without history trimming
+	historyTrimFrom uint32        // First history version written by this tx for the entity
+	useHistoryTrim  bool
 }
 
 // relSnapshot captures pre-mutation state for rollback.
 type relSnapshot struct {
-	id      snowflake.ID
-	prev    *types.Relationship   // DeepCopy before first mutation
-	history []*types.Relationship // DeepCopy of history before first mutation
+	id              snowflake.ID
+	prev            *types.Relationship   // DeepCopy before first mutation
+	history         []*types.Relationship // DeepCopy fallback for stores without history trimming
+	historyTrimFrom uint32                // First history version written by this tx for the entity
+	useHistoryTrim  bool
 }
 
 // deletedNodeSnapshot captures a deleted node and its cascade-deleted relationships.
@@ -129,6 +133,17 @@ func (tx *GraphTx) snapshotNodeLocked(id snowflake.ID) error {
 		return err
 	}
 	prev := node.DeepCopy()
+	if tx.g.historyTrim != nil {
+		tx.snapshotSet[key] = true
+		tx.updatedNodes = append(tx.updatedNodes, nodeSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: node.Version(),
+			useHistoryTrim:  true,
+		})
+		return nil
+	}
+
 	history, err := copyNodeHistory(tx.g.store.GetNodeHistory(types.NodeID(id)))
 	if err != nil {
 		return err
@@ -152,6 +167,17 @@ func (tx *GraphTx) snapshotRelLocked(id snowflake.ID) error {
 		return err
 	}
 	prev := rel.DeepCopy()
+	if tx.g.historyTrim != nil {
+		tx.snapshotSet[key] = true
+		tx.updatedRels = append(tx.updatedRels, relSnapshot{
+			id:              id,
+			prev:            prev,
+			historyTrimFrom: rel.Version(),
+			useHistoryTrim:  true,
+		})
+		return nil
+	}
+
 	history, err := copyRelHistory(tx.g.store.GetRelHistory(types.RelID(id)))
 	if err != nil {
 		return err
@@ -292,14 +318,14 @@ func (tx *GraphTx) Rollback() error {
 	for i := len(tx.updatedRels) - 1; i >= 0; i-- {
 		snap := tx.updatedRels[i]
 		capture(tx.g.store.ReplaceRelationship(snap.prev))
-		capture(tx.restoreRelHistory(types.RelID(snap.id), snap.history))
+		capture(tx.restoreRelSnapshotHistory(types.RelID(snap.id), snap))
 	}
 
 	// 5. Restore updated nodes to pre-mutation snapshot (reverse order).
 	for i := len(tx.updatedNodes) - 1; i >= 0; i-- {
 		snap := tx.updatedNodes[i]
 		capture(tx.restoreUpdatedNode(snap))
-		capture(tx.restoreNodeHistory(types.NodeID(snap.id), snap.history))
+		capture(tx.restoreNodeSnapshotHistory(types.NodeID(snap.id), snap))
 	}
 
 	// 6. Delete created relationships in reverse creation order.
@@ -510,6 +536,20 @@ func (tx *GraphTx) restoreRelHistory(id types.RelID, history []*types.Relationsh
 		}
 	}
 	return nil
+}
+
+func (tx *GraphTx) restoreNodeSnapshotHistory(id types.NodeID, snap nodeSnapshot) error {
+	if snap.useHistoryTrim {
+		return tx.g.historyTrim.TrimNodeHistoryFrom(id, snap.historyTrimFrom)
+	}
+	return tx.restoreNodeHistory(id, snap.history)
+}
+
+func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) error {
+	if snap.useHistoryTrim {
+		return tx.g.historyTrim.TrimRelHistoryFrom(id, snap.historyTrimFrom)
+	}
+	return tx.restoreRelHistory(id, snap.history)
 }
 
 func (tx *GraphTx) restoreRegistries() error {

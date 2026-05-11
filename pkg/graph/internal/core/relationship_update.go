@@ -173,28 +173,8 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		AuthorizedBy:       prov.authorizedBy,
 		AuthorizationLevel: prov.authLevel,
 	}
-	// Endpoint hash refresh: only ErrNodeNotFound is silent (the endpoint
-	// was deleted out from under us; FromNodeHash/ToNodeHash stay empty).
-	// Any other store error is operational — surface it instead of writing
-	// a relationship with stale or empty endpoint hashes (F5 in the
-	// maintainability review).
-	sn, sErr := c.store.GetNode(current.StartNodeID())
-	if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
-		return nil, fmt.Errorf("graph: refresh start-node hash: %w", sErr)
-	}
-	if sErr == nil {
-		if sIg := sn.Integrity(); sIg != nil {
-			relIG.FromNodeHash = sIg.Hash
-		}
-	}
-	en, eErr := c.store.GetNode(current.EndNodeID())
-	if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
-		return nil, fmt.Errorf("graph: refresh end-node hash: %w", eErr)
-	}
-	if eErr == nil {
-		if eIg := en.Integrity(); eIg != nil {
-			relIG.ToNodeHash = eIg.Hash
-		}
+	if err := c.refreshRelationshipEndpointHashes(current, relIG); err != nil {
+		return nil, err
 	}
 	current.SetIntegrity(relIG)
 
@@ -209,6 +189,63 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 
 	c.opRelUpdates.Add(1)
 	return current, nil
+}
+
+func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG *types.RelIntegrity) error {
+	startID := rel.StartNodeID()
+	endID := rel.EndNodeID()
+	if c.endpointHash != nil {
+		fromHash, toHash, err := c.endpointHash.EndpointIntegrityHashes(startID, endID)
+		if err == nil {
+			relIG.FromNodeHash = fromHash
+			relIG.ToNodeHash = toHash
+			return nil
+		}
+		if !errors.Is(err, storepkg.ErrNodeNotFound) {
+			return fmt.Errorf("graph: refresh endpoint hashes: %w", err)
+		}
+	}
+
+	fromHash, found, err := c.refreshNodeHash(startID)
+	if err != nil {
+		return fmt.Errorf("graph: refresh start-node hash: %w", err)
+	}
+	if found {
+		relIG.FromNodeHash = fromHash
+	}
+	if startID == endID {
+		relIG.ToNodeHash = relIG.FromNodeHash
+		return nil
+	}
+	toHash, found, err := c.refreshNodeHash(endID)
+	if err != nil {
+		return fmt.Errorf("graph: refresh end-node hash: %w", err)
+	}
+	if found {
+		relIG.ToNodeHash = toHash
+	}
+	return nil
+}
+
+func (c *Core) refreshNodeHash(id types.NodeID) (string, bool, error) {
+	if c.nodeHash != nil {
+		hash, err := c.nodeHash.NodeIntegrityHash(id)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNodeNotFound) {
+				return "", false, nil
+			}
+			return "", false, err
+		}
+		return hash, true, nil
+	}
+	node, err := c.store.GetNode(id)
+	if err != nil {
+		if errors.Is(err, storepkg.ErrNodeNotFound) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return nodeIntegrityHash(node), true, nil
 }
 
 // UpdateInPlace applies property updates to a relationship without creating a version history entry.

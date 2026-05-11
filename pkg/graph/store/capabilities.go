@@ -151,6 +151,28 @@ type HistoryCapability interface {
 	DeleteRelWithHistory(id types.RelID, prevVersion uint32, tombstone *types.Relationship) error
 }
 
+// TransactionTimeQueryCapability is OPTIONAL. Backends that can inspect
+// current rows and version history under one backend read window can implement
+// this to avoid materializing every history slice for transaction-time reads.
+// Single-entity misses return ErrVersionNotFound; bulk queries omit misses and
+// return nil, nil when no entity existed at the requested transaction time.
+type TransactionTimeQueryCapability interface {
+	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
+	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
+	NodesAsOf(txTime types.Instant) ([]*types.Node, error)
+	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
+}
+
+// HistoryRollbackTrimCapability is OPTIONAL. It supports transaction rollback
+// without eager deep copies of entire history chains. Graph mutation paths
+// append superseded versions at the entity's previous Version(); rollback can
+// therefore restore the pre-transaction current row and trim history entries
+// written at or after that version.
+type HistoryRollbackTrimCapability interface {
+	TrimNodeHistoryFrom(id types.NodeID, minVersion uint32) error
+	TrimRelHistoryFrom(id types.RelID, minVersion uint32) error
+}
+
 // StatsCapability is the counter surface used by `g.Stats.*` and by the
 // graph layer's internal accounting.
 type StatsCapability interface {

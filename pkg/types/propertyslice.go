@@ -181,6 +181,9 @@ func ValidatePropertyValue(v any) error {
 	if v == nil {
 		return nil
 	}
+	if isScalarPropertyValue(v) {
+		return nil
+	}
 	return validateReflectValue(reflect.ValueOf(v), 0)
 }
 

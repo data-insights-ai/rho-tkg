@@ -85,6 +85,19 @@ func (c *Core) validatePropertyEntry(key string, val any) error {
 	if len(key) > c.validation.MaxPropertyKeyLength {
 		return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
 	}
+	switch v := val.(type) {
+	case nil,
+		bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return nil
+	case string:
+		if len(v) > c.validation.MaxPropertyValueSize {
+			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyValueSize)
+		}
+		return nil
+	}
 	if err := c.validatePropertyValueLimit(key, reflect.ValueOf(val), 0); err != nil {
 		return err
 	}

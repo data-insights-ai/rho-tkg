@@ -47,6 +47,81 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreNodeIntegrityHashCapabilities(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	start := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	start.SetIntegrity(&types.NodeIntegrity{Hash: "start-hash"})
+	if err := bs.PutNode(start); err != nil {
+		t.Fatalf("PutNode(start): %v", err)
+	}
+	end := types.NewNode(types.NodeID(snowflake.ID(101)), 1, nil)
+	end.SetIntegrity(&types.NodeIntegrity{Hash: "end-hash"})
+	if err := bs.PutNode(end); err != nil {
+		t.Fatalf("PutNode(end): %v", err)
+	}
+
+	hash, err := bs.NodeIntegrityHash(start.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash: %v", err)
+	}
+	if hash != "start-hash" {
+		t.Fatalf("NodeIntegrityHash = %q, want start-hash", hash)
+	}
+
+	fromHash, toHash, err := bs.EndpointIntegrityHashes(start.ID(), end.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes: %v", err)
+	}
+	if fromHash != "start-hash" || toHash != "end-hash" {
+		t.Fatalf("EndpointIntegrityHashes = %q, %q; want start-hash, end-hash", fromHash, toHash)
+	}
+
+	fromHash, toHash, err = bs.EndpointIntegrityHashes(start.ID(), start.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes self: %v", err)
+	}
+	if fromHash != "start-hash" || toHash != "start-hash" {
+		t.Fatalf("EndpointIntegrityHashes self = %q, %q; want start-hash twice", fromHash, toHash)
+	}
+
+	if _, err := bs.NodeIntegrityHash(types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("NodeIntegrityHash missing = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestBadgerStoreNodeIntegrityHashTracksCurrentRowMutations(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: "initial-hash"})
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	updated := n.DeepCopy()
+	updated.SetIntegrity(&types.NodeIntegrity{Hash: "updated-hash"})
+	if err := bs.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode: %v", err)
+	}
+	hash, err := bs.NodeIntegrityHash(n.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash after replace: %v", err)
+	}
+	if hash != "updated-hash" {
+		t.Fatalf("NodeIntegrityHash after replace = %q, want updated-hash", hash)
+	}
+
+	if err := bs.DeleteNode(n.ID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if _, err := bs.NodeIntegrityHash(n.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("NodeIntegrityHash after delete = %v, want ErrNodeNotFound", err)
+	}
+}
+
 type badgerCustomProperty struct {
 	Name  string
 	Count int

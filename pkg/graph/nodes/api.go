@@ -54,13 +54,14 @@ type Ops interface {
 // API is the nodes sub-API accessor.
 type API struct {
 	ops Ops
+	ok  bool
 }
 
 // New constructs a nodes sub-API.
-func New(ops Ops) *API { return &API{ops: ops} }
+func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
 func (a *API) ready() (Ops, error) {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil, grapherr.ErrNilGraph
 	}
 	return a.ops, nil
@@ -275,7 +276,7 @@ func (a *API) RemoveLabel(id types.NodeID, label string) error {
 
 // HasLabel reports whether the node carries the label.
 func (a *API) HasLabel(n *types.Node, label string) bool {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return false
 	}
 	return a.ops.HasLabel(n, label)
@@ -283,7 +284,7 @@ func (a *API) HasLabel(n *types.Node, label string) bool {
 
 // Labels returns the node's labels.
 func (a *API) Labels(n *types.Node) []string {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return nil
 	}
 	return a.ops.Labels(n)
@@ -291,7 +292,7 @@ func (a *API) Labels(n *types.Node) []string {
 
 // PrimaryLabel returns the node's primary label.
 func (a *API) PrimaryLabel(n *types.Node) string {
-	if a == nil || grapherr.IsNil(a.ops) {
+	if a == nil || !a.ok {
 		return ""
 	}
 	return a.ops.PrimaryLabel(n)

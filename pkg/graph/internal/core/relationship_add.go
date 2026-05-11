@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
@@ -108,6 +109,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 
 	id := c.nextRelID()
 	var fromHash, toHash string
+	storeCanCaptureEndpointHashes := false
 	if c.constraints.Len() > 0 {
 		// Fetch live endpoints from the store under the endpoint locks so
 		// hash refresh and temporal-constraint checks see the current state,
@@ -123,9 +125,13 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		fromHash = nodeIntegrityHash(liveStart)
 		toHash = nodeIntegrityHash(liveEnd)
 	} else {
-		fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
-		if err != nil {
-			return nil, err
+		if _, ok := c.store.(generatedcreate.RelationshipEndpointHashCapability); ok {
+			storeCanCaptureEndpointHashes = true
+		} else {
+			fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -183,8 +189,17 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		return nil, finishRelType(err)
 	}
 
-	if err := putGeneratedRelationship(c.store, r); err != nil {
-		return nil, finishRelType(err)
+	if storeCanCaptureEndpointHashes {
+		fromHash, toHash, _, err = putGeneratedRelationshipWithEndpointHashes(c.store, r)
+		if err != nil {
+			return nil, finishRelType(err)
+		}
+		ig.FromNodeHash = fromHash
+		ig.ToNodeHash = toHash
+	} else {
+		if err := putGeneratedRelationship(c.store, r); err != nil {
+			return nil, finishRelType(err)
+		}
 	}
 	if err := finishRelType(nil); err != nil {
 		return r, err
@@ -348,6 +363,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 
 	id := c.nextRelID()
 	var fromHash, toHash string
+	storeCanCaptureEndpointHashes := false
 	if c.constraints.Len() > 0 {
 		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
 		if err != nil {
@@ -360,9 +376,13 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		fromHash = nodeIntegrityHash(liveStart)
 		toHash = nodeIntegrityHash(liveEnd)
 	} else {
-		fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
-		if err != nil {
-			return nil, err
+		if _, ok := c.store.(generatedcreate.RelationshipEndpointHashCapability); ok {
+			storeCanCaptureEndpointHashes = true
+		} else {
+			fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -415,8 +435,17 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		return nil, finishRelType(err)
 	}
 
-	if err := putGeneratedRelationship(c.store, r); err != nil {
-		return nil, finishRelType(err)
+	if storeCanCaptureEndpointHashes {
+		fromHash, toHash, _, err = putGeneratedRelationshipWithEndpointHashes(c.store, r)
+		if err != nil {
+			return nil, finishRelType(err)
+		}
+		ig.FromNodeHash = fromHash
+		ig.ToNodeHash = toHash
+	} else {
+		if err := putGeneratedRelationship(c.store, r); err != nil {
+			return nil, finishRelType(err)
+		}
 	}
 	if err := finishRelType(nil); err != nil {
 		return r, err

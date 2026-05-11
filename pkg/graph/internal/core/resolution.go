@@ -17,6 +17,10 @@ func (r *ResolveOps) GetOrCreateLabel(name string) (uint16, error) {
 	}
 	var tok uint16
 	err := c.readUnderRLock(func() error {
+		if existing, ok := c.labels.Lookup(name); ok {
+			tok = existing
+			return nil
+		}
 		var err error
 		tok, err = c.getOrCreateLabelLocked(name)
 		return err
@@ -35,6 +39,10 @@ func (r *ResolveOps) GetOrCreateRelType(name string) (uint16, error) {
 	}
 	var tok uint16
 	err := c.readUnderRLock(func() error {
+		if existing, ok := c.relTypes.Lookup(name); ok {
+			tok = existing
+			return nil
+		}
 		var err error
 		tok, err = c.getOrCreateRelTypeLocked(name)
 		return err
@@ -98,12 +106,9 @@ func (c *Core) nodeLabelsUnlocked(node *types.Node) []string {
 }
 
 func (c *Core) appendNodeLabelsUnlocked(dst []string, node *types.Node) []string {
-	dst = append(dst, c.labels.Resolve(node.PrimaryLabelToken().Value()))
-	if node.LabelTokenCount() == 1 {
-		return dst
-	}
-	for _, tok := range node.ExtraLabelTokens() {
-		dst = append(dst, c.labels.Resolve(tok.Value()))
+	count := node.LabelTokenCount()
+	for i := 0; i < count; i++ {
+		dst = append(dst, c.labels.Resolve(node.LabelTokenRawAt(i)))
 	}
 	return dst
 }

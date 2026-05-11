@@ -26,6 +26,9 @@ var (
 	ErrNilReader       = tkgio.ErrNilReader
 )
 
+const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
+const importPreallocLimit = 1 << 20    // avoid trusting unbounded header counts for map capacity.
+
 // Import reads a portable graph snapshot from r using default options
 // (platform default temp dir, no size cap). See ImportWithOptions for
 // the option-bearing variant.
@@ -79,18 +82,10 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 		return fmt.Errorf("%w: negative cap %d", ErrImportSizeLimit, opts.MaxStagedBytes)
 	}
 
-	// --- Phase 1: stream all records into a temp staging file (no lock) ---
-	staging, err := os.CreateTemp(opts.StagingDir, "tkg-import-*.stage")
-	if err != nil {
-		return fmt.Errorf("import: create staging file: %w", err)
-	}
-	stagingPath := staging.Name()
-	defer func() {
-		_ = staging.Close()
-		_ = os.Remove(stagingPath)
-	}()
+	// --- Phase 1: stream all records into a bounded stage (no lock) ---
+	stage := newImportStage(opts.StagingDir, importMemoryStageLimit)
+	defer stage.close()
 
-	bw := bufio.NewWriterSize(staging, 1<<20) // 1 MiB write buffer
 	var staged int64
 	for {
 		tag, data, rerr := readExportRecord(r)
@@ -107,30 +102,38 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 		if importStageCapExceeded(staged, recordSize, opts.MaxStagedBytes) {
 			return fmt.Errorf("%w: staged %d bytes + record %d bytes > cap %d", ErrImportSizeLimit, staged, recordSize, opts.MaxStagedBytes)
 		}
-		if werr := writeExportRecord(bw, tag, data); werr != nil {
+		if werr := stage.writeRecord(tag, data, recordSize); werr != nil {
 			return fmt.Errorf("import: stage record: %w", werr)
 		}
 		staged += recordSize
 	}
-	if err := bw.Flush(); err != nil {
-		return fmt.Errorf("import: flush staging: %w", err)
-	}
-	if _, err := staging.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("import: rewind staging: %w", err)
+	var (
+		br  *bufio.Reader
+		err error
+	)
+	if stage.file != nil {
+		br, err = stage.reader()
+		if err != nil {
+			return err
+		}
 	}
 
 	// --- Phase 2: replay staged records under write lock ---
 	// Reads are from a local temp file (bounded latency, no network) so the
 	// time-under-lock cost is dominated by deserialization + store writes,
 	// not I/O. A buffered reader keeps the actual disk syscalls cheap.
-	br := bufio.NewReaderSize(staging, 1<<20)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
 	rollback := newImportRollback(c)
-	if err := c.importReplayLocked(br, rollback); err != nil {
+	emptyTarget, err := c.importTargetEmptyLocked()
+	if err != nil {
+		return err
+	}
+	rollback.emptyTarget = emptyTarget
+	if err := c.importReplayStageLocked(stage, br, rollback); err != nil {
 		if rbErr := rollback.rollback(); rbErr != nil {
 			return fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
 		}
@@ -146,8 +149,122 @@ func importStageCapExceeded(staged, recordSize, cap int64) bool {
 	return staged > cap || recordSize > cap-staged
 }
 
+func (c *Core) importTargetEmptyLocked() (bool, error) {
+	nodeCount, err := c.store.NodeCount()
+	if err != nil {
+		return false, fmt.Errorf("import: node count: %w", err)
+	}
+	if nodeCount != 0 {
+		return false, nil
+	}
+	relCount, err := c.store.RelationshipCount()
+	if err != nil {
+		return false, fmt.Errorf("import: relationship count: %w", err)
+	}
+	if relCount != 0 {
+		return false, nil
+	}
+	nodeHistory, err := c.store.AllNodeHistoryIDsFrom(0, 1)
+	if err != nil {
+		return false, fmt.Errorf("import: node history probe: %w", err)
+	}
+	if len(nodeHistory) != 0 {
+		return false, nil
+	}
+	relHistory, err := c.store.AllRelHistoryIDsFrom(0, 1)
+	if err != nil {
+		return false, fmt.Errorf("import: relationship history probe: %w", err)
+	}
+	return len(relHistory) == 0, nil
+}
+
+type importStage struct {
+	stagingDir string
+	memLimit   int64
+	mem        bytes.Buffer
+	file       *os.File
+	writer     *bufio.Writer
+	path       string
+}
+
+func newImportStage(stagingDir string, memLimit int64) *importStage {
+	return &importStage{stagingDir: stagingDir, memLimit: memLimit}
+}
+
+func (s *importStage) writeRecord(tag byte, data []byte, recordSize int64) error {
+	if s.file == nil && int64(s.mem.Len())+recordSize <= s.memLimit {
+		return writeExportRecord(&s.mem, tag, data)
+	}
+	if err := s.ensureFile(); err != nil {
+		return err
+	}
+	return writeExportRecord(s.writer, tag, data)
+}
+
+func (s *importStage) ensureFile() error {
+	if s.file != nil {
+		return nil
+	}
+	f, err := os.CreateTemp(s.stagingDir, "tkg-import-*.stage")
+	if err != nil {
+		return fmt.Errorf("create staging file: %w", err)
+	}
+	s.file = f
+	s.path = f.Name()
+	s.writer = bufio.NewWriterSize(f, 1<<20)
+	if s.mem.Len() == 0 {
+		return nil
+	}
+	if _, err := s.writer.Write(s.mem.Bytes()); err != nil {
+		return fmt.Errorf("spill memory stage: %w", err)
+	}
+	s.mem.Reset()
+	return nil
+}
+
+func (s *importStage) reader() (*bufio.Reader, error) {
+	if s.file == nil {
+		return bufio.NewReaderSize(bytes.NewReader(s.mem.Bytes()), 1<<20), nil
+	}
+	if err := s.writer.Flush(); err != nil {
+		return nil, fmt.Errorf("import: flush staging: %w", err)
+	}
+	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("import: rewind staging: %w", err)
+	}
+	return bufio.NewReaderSize(s.file, 1<<20), nil
+}
+
+func (s *importStage) close() {
+	if s.file == nil {
+		return
+	}
+	_ = s.file.Close()
+	_ = os.Remove(s.path)
+}
+
+func (c *Core) importReplayStageLocked(stage *importStage, br *bufio.Reader, rollback *importRollback) error {
+	if stage.file != nil {
+		return c.importReplayLocked(br, rollback)
+	}
+	return c.importReplayBytesLocked(stage.mem.Bytes(), rollback)
+}
+
 // importReplayLocked replays staged records. Caller must hold c.mu.Lock.
 func (c *Core) importReplayLocked(br *bufio.Reader, rollback *importRollback) error {
+	return c.importReplayRecordsLocked(func() (byte, []byte, error) {
+		return readExportRecord(br)
+	}, rollback)
+}
+
+func (c *Core) importReplayBytesLocked(data []byte, rollback *importRollback) error {
+	offset := 0
+	return c.importReplayRecordsLocked(func() (byte, []byte, error) {
+		return readExportRecordBytes(data, &offset)
+	}, rollback)
+}
+
+func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error), rollback *importRollback) error {
 	// R4-F11: track whether we've seen a header and a registry before
 	// any tokenized entity record. Tokenized records (nodes / rels and
 	// their histories) reference label/rel-type tokens that resolve
@@ -162,7 +279,7 @@ func (c *Core) importReplayLocked(br *bufio.Reader, rollback *importRollback) er
 	)
 
 	for {
-		tag, data, rerr := readExportRecord(br)
+		tag, data, rerr := readRecord()
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
 				break
@@ -188,6 +305,8 @@ func (c *Core) importReplayLocked(br *bufio.Reader, rollback *importRollback) er
 				return fmt.Errorf("%w: negative relationship count %d", ErrCorruptExport, hdr.RelCount)
 			}
 			header = hdr
+			seenRecords.reserve(hdr)
+			rollback.reserve(hdr)
 			seenHeader = true
 
 		case exportTagRegistry:
@@ -292,6 +411,15 @@ func newImportReplaySeen() *importReplaySeen {
 		nodeHist: make(map[importNodeHistKey]struct{}),
 		rels:     make(map[types.RelID]struct{}),
 		relHist:  make(map[importRelHistKey]struct{}),
+	}
+}
+
+func (s *importReplaySeen) reserve(h exportHeader) {
+	if nodeCap := importCountCap(h.NodeCount); nodeCap > len(s.nodes) {
+		s.nodes = make(map[types.NodeID]struct{}, nodeCap)
+	}
+	if relCap := importCountCap(h.RelCount); relCap > len(s.rels) {
+		s.rels = make(map[types.RelID]struct{}, relCap)
 	}
 }
 
@@ -515,10 +643,11 @@ type importRollback struct {
 	labels   []string
 	relTypes []string
 
-	nodes     map[types.NodeID]importNodeSnapshot
-	nodeOrder []types.NodeID
-	rels      map[types.RelID]importRelSnapshot
-	relOrder  []types.RelID
+	emptyTarget bool
+	nodes       map[types.NodeID]importNodeSnapshot
+	nodeOrder   []types.NodeID
+	rels        map[types.RelID]importRelSnapshot
+	relOrder    []types.RelID
 }
 
 type importNodeSnapshot struct {
@@ -541,8 +670,34 @@ func newImportRollback(c *Core) *importRollback {
 	}
 }
 
+func (rb *importRollback) reserve(h exportHeader) {
+	if nodeCap := importCountCap(h.NodeCount); nodeCap > len(rb.nodes) {
+		rb.nodes = make(map[types.NodeID]importNodeSnapshot, nodeCap)
+		rb.nodeOrder = make([]types.NodeID, 0, nodeCap)
+	}
+	if relCap := importCountCap(h.RelCount); relCap > len(rb.rels) {
+		rb.rels = make(map[types.RelID]importRelSnapshot, relCap)
+		rb.relOrder = make([]types.RelID, 0, relCap)
+	}
+}
+
+func importCountCap(n int64) int {
+	if n <= 0 {
+		return 0
+	}
+	if n > importPreallocLimit {
+		return importPreallocLimit
+	}
+	return int(n)
+}
+
 func (rb *importRollback) captureNode(id types.NodeID) error {
 	if _, ok := rb.nodes[id]; ok {
+		return nil
+	}
+	if rb.emptyTarget {
+		rb.nodes[id] = importNodeSnapshot{}
+		rb.nodeOrder = append(rb.nodeOrder, id)
 		return nil
 	}
 
@@ -568,6 +723,11 @@ func (rb *importRollback) captureNode(id types.NodeID) error {
 
 func (rb *importRollback) captureRel(id types.RelID) error {
 	if _, ok := rb.rels[id]; ok {
+		return nil
+	}
+	if rb.emptyTarget {
+		rb.rels[id] = importRelSnapshot{}
+		rb.relOrder = append(rb.relOrder, id)
 		return nil
 	}
 

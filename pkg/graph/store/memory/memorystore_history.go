@@ -612,3 +612,207 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	ms.rels[id] = current.DeepCopy()
 	return nil
 }
+
+// NodeAsOf returns the node version visible at txTime without materializing
+// the full history slice. Returns ErrVersionNotFound when no version matches.
+func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	best := nodeAsOfLocked(ms.nodes[nid], ms.nodeHistory[nid], txTime)
+	if best == nil {
+		return nil, ErrVersionNotFound
+	}
+	return best.DeepCopy(), nil
+}
+
+// RelAsOf returns the relationship version visible at txTime without
+// materializing the full history slice.
+func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	best := relAsOfLocked(ms.rels[rid], ms.relHistory[rid], txTime)
+	if best == nil {
+		return nil, ErrVersionNotFound
+	}
+	return best.DeepCopy(), nil
+}
+
+// NodesAsOf returns all node versions visible at txTime. It inspects current
+// rows and history under one read lock and deep-copies only the selected
+// version for each entity.
+func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+
+	result := make([]*types.Node, 0, len(ms.nodes))
+	for id, current := range ms.nodes {
+		if best := nodeAsOfLocked(current, ms.nodeHistory[id], txTime); best != nil {
+			result = append(result, best.DeepCopy())
+		}
+	}
+	for id, history := range ms.nodeHistory {
+		if _, live := ms.nodes[id]; live {
+			continue
+		}
+		if best := nodeAsOfLocked(nil, history, txTime); best != nil {
+			result = append(result, best.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// RelsAsOf returns all relationship versions visible at txTime. It mirrors
+// NodesAsOf for relationship history.
+func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+
+	result := make([]*types.Relationship, 0, len(ms.rels))
+	for id, current := range ms.rels {
+		if best := relAsOfLocked(current, ms.relHistory[id], txTime); best != nil {
+			result = append(result, best.DeepCopy())
+		}
+	}
+	for id, history := range ms.relHistory {
+		if _, live := ms.rels[id]; live {
+			continue
+		}
+		if best := relAsOfLocked(nil, history, txTime); best != nil {
+			result = append(result, best.DeepCopy())
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime types.Instant) *types.Node {
+	if nodeMatchesTxTime(current, txTime) {
+		return current
+	}
+
+	var best *types.Node
+	var bestTx types.Instant
+	for _, v := range history {
+		tm := v.Temporal()
+		if tm == nil || tm.TxFrom == 0 {
+			continue
+		}
+		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) && (best == nil || tm.TxFrom > bestTx) {
+			best = v
+			bestTx = tm.TxFrom
+		}
+	}
+	return best
+}
+
+func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relationship, txTime types.Instant) *types.Relationship {
+	if relMatchesTxTime(current, txTime) {
+		return current
+	}
+
+	var best *types.Relationship
+	var bestTx types.Instant
+	for _, v := range history {
+		tm := v.Temporal()
+		if tm == nil || tm.TxFrom == 0 {
+			continue
+		}
+		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) && (best == nil || tm.TxFrom > bestTx) {
+			best = v
+			bestTx = tm.TxFrom
+		}
+	}
+	return best
+}
+
+func nodeMatchesTxTime(n *types.Node, txTime types.Instant) bool {
+	if n == nil {
+		return false
+	}
+	tm := n.Temporal()
+	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
+}
+
+func relMatchesTxTime(r *types.Relationship, txTime types.Instant) bool {
+	if r == nil {
+		return false
+	}
+	tm := r.Temporal()
+	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
+}
+
+// TrimNodeHistoryFrom removes all node history entries at or after minVersion.
+// Transaction rollback uses this after restoring the pre-transaction current
+// row, because graph mutation paths append history at the previous Version().
+func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	inner := ms.nodeHistory[nid]
+	for version := range inner {
+		if version >= minVersion {
+			delete(inner, version)
+		}
+	}
+	if len(inner) == 0 {
+		delete(ms.nodeHistory, nid)
+	}
+	return nil
+}
+
+// TrimRelHistoryFrom removes all relationship history entries at or after
+// minVersion. See TrimNodeHistoryFrom for the rollback invariant.
+func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
+	inner := ms.relHistory[rid]
+	for version := range inner {
+		if version >= minVersion {
+			delete(inner, version)
+		}
+	}
+	if len(inner) == 0 {
+		delete(ms.relHistory, rid)
+	}
+	return nil
+}

@@ -249,24 +249,24 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		return nil, nil
 	}
 
-	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
+	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
 		if err := storecontract.ValidateNodeID(nid); err != nil {
 			return nil, err
 		}
-		if _, done := seen[nid]; done {
+		if _, done := result[nid]; done {
 			continue
 		}
-		seen[nid] = struct{}{}
 		if _, ok := ms.nodes[nid]; !ok {
 			return nil, ErrNodeNotFound
 		}
+		result[nid] = nil
 	}
 
-	result := make(map[types.NodeID][]*types.Relationship, len(seen))
-	for nid := range seen {
+	for nid := range result {
 		set := ms.outIdx[nid]
 		if len(set) == 0 {
+			delete(result, nid)
 			continue
 		}
 		rels := make([]*types.Relationship, 0, len(set))
@@ -282,6 +282,8 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		if len(rels) > 0 {
 			storepkg.SortRelsByID(rels)
 			result[nid] = rels
+		} else {
+			delete(result, nid)
 		}
 	}
 
@@ -341,24 +343,24 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		return nil, nil
 	}
 
-	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
+	result := make(map[types.NodeID][]*types.Relationship, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
 		if err := storecontract.ValidateNodeID(nid); err != nil {
 			return nil, err
 		}
-		if _, done := seen[nid]; done {
+		if _, done := result[nid]; done {
 			continue
 		}
-		seen[nid] = struct{}{}
 		if _, ok := ms.nodes[nid]; !ok {
 			return nil, ErrNodeNotFound
 		}
+		result[nid] = nil
 	}
 
-	result := make(map[types.NodeID][]*types.Relationship, len(seen))
-	for nid := range seen {
+	for nid := range result {
 		set := ms.inIdx[nid]
 		if len(set) == 0 {
+			delete(result, nid)
 			continue
 		}
 		rels := make([]*types.Relationship, 0, len(set))
@@ -374,6 +376,8 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		if len(rels) > 0 {
 			storepkg.SortRelsByID(rels)
 			result[nid] = rels
+		} else {
+			delete(result, nid)
 		}
 	}
 

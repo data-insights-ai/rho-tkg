@@ -107,17 +107,10 @@ func validateNodeLabels(n *types.Node) error {
 	if count == 0 {
 		return fmt.Errorf("%w: node %d has no labels", ErrInvalidStoreMutation, n.ID())
 	}
-	primary := n.PrimaryLabelToken().Value()
-	if err := ValidateLabelToken(primary); err != nil {
-		return fmt.Errorf("%w: invalid node label token %d for %d", err, primary, n.ID())
-	}
-	if count == 1 {
-		return nil
-	}
-	for _, label := range n.ExtraLabelTokens() {
-		value := label.Value()
-		if err := ValidateLabelToken(value); err != nil {
-			return fmt.Errorf("%w: invalid node label token %d for %d", err, value, n.ID())
+	for i := 0; i < count; i++ {
+		tok := n.LabelTokenRawAt(i)
+		if err := ValidateLabelToken(tok); err != nil {
+			return fmt.Errorf("%w: invalid node label token %d for %d", err, tok, n.ID())
 		}
 	}
 	return nil
@@ -138,13 +131,8 @@ func ValidateNodeReplacement(old, current *types.Node) error {
 	if old.PrimaryLabelToken() != current.PrimaryLabelToken() {
 		return fmt.Errorf("%w: node labels changed for %d", ErrInvalidStoreMutation, old.ID())
 	}
-	if old.LabelTokenCount() == 1 {
-		return nil
-	}
-	oldExtras := old.ExtraLabelTokens()
-	currentExtras := current.ExtraLabelTokens()
-	for i := range oldExtras {
-		if oldExtras[i] != currentExtras[i] {
+	for i := 1; i < old.LabelTokenCount(); i++ {
+		if old.LabelTokenRawAt(i) != current.LabelTokenRawAt(i) {
 			return fmt.Errorf("%w: node labels changed for %d", ErrInvalidStoreMutation, old.ID())
 		}
 	}
@@ -164,16 +152,15 @@ func ValidateNodeLabelRemoval(old, current *types.Node, tok uint16) error {
 	if current.HasLabelTokenRaw(tok) {
 		return fmt.Errorf("%w: node %d still has removed label token %d", ErrInvalidStoreMutation, old.ID(), tok)
 	}
-	oldLabels := nodeLabelTokenSet(old)
-	currentLabels := nodeLabelTokenSet(current)
-	if len(currentLabels) != len(oldLabels)-1 {
+	if current.LabelTokenCount() != old.LabelTokenCount()-1 {
 		return fmt.Errorf("%w: node labels changed beyond removal of token %d for %d", ErrInvalidStoreMutation, tok, old.ID())
 	}
-	for label := range oldLabels {
+	for i := 0; i < old.LabelTokenCount(); i++ {
+		label := old.LabelTokenRawAt(i)
 		if label == tok {
 			continue
 		}
-		if _, ok := currentLabels[label]; !ok {
+		if !current.HasLabelTokenRaw(label) {
 			return fmt.Errorf("%w: node labels changed beyond removal of token %d for %d", ErrInvalidStoreMutation, tok, old.ID())
 		}
 	}
@@ -192,13 +179,11 @@ func ValidateNodeLabelAddition(old, current *types.Node, tok uint16) error {
 	if !current.HasLabelTokenRaw(tok) {
 		return fmt.Errorf("%w: node %d is missing added label token %d", ErrInvalidStoreMutation, old.ID(), tok)
 	}
-	oldLabels := nodeLabelTokenSet(old)
-	currentLabels := nodeLabelTokenSet(current)
-	if len(currentLabels) != len(oldLabels)+1 {
+	if current.LabelTokenCount() != old.LabelTokenCount()+1 {
 		return fmt.Errorf("%w: node labels changed beyond addition of token %d for %d", ErrInvalidStoreMutation, tok, old.ID())
 	}
-	for label := range oldLabels {
-		if _, ok := currentLabels[label]; !ok {
+	for i := 0; i < old.LabelTokenCount(); i++ {
+		if !current.HasLabelTokenRaw(old.LabelTokenRawAt(i)) {
 			return fmt.Errorf("%w: node labels changed beyond addition of token %d for %d", ErrInvalidStoreMutation, tok, old.ID())
 		}
 	}
@@ -213,22 +198,6 @@ func validateNodeLabelMutation(old, current *types.Node, tok uint16) error {
 		return err
 	}
 	return ValidateLabelToken(tok)
-}
-
-func nodeLabelTokenSet(n *types.Node) map[uint16]struct{} {
-	count := n.LabelTokenCount()
-	out := make(map[uint16]struct{}, count)
-	if count == 0 {
-		return out
-	}
-	out[n.PrimaryLabelToken().Value()] = struct{}{}
-	if count == 1 {
-		return out
-	}
-	for _, label := range n.ExtraLabelTokens() {
-		out[label.Value()] = struct{}{}
-	}
-	return out
 }
 
 // ValidateRelationshipWrite verifies that a current relationship payload can

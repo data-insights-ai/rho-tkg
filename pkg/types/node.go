@@ -155,6 +155,23 @@ func (n *Node) LabelTokenCount() int {
 	return 1 + len(n.extraLabels)
 }
 
+// LabelTokenRawAt returns the raw label token at index i, with the primary
+// label at index 0 followed by extra labels. It returns 0 for nil receivers
+// and out-of-range indexes.
+func (n *Node) LabelTokenRawAt(i int) uint16 {
+	if n == nil || i < 0 {
+		return 0
+	}
+	if i == 0 {
+		return uint16(n.primaryLabel)
+	}
+	i--
+	if i >= len(n.extraLabels) {
+		return 0
+	}
+	return uint16(n.extraLabels[i])
+}
+
 // SetProperties replaces the node's property slice.
 // The input is validated, canonicalized by key, and deep-copied before being
 // installed. If a key appears more than once, the last value wins.

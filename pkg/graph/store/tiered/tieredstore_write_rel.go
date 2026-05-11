@@ -54,6 +54,29 @@ func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generat
 	return ts.putRelationshipLocked(r, false)
 }
 
+func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof generatedcreate.Proof) (string, string, error) {
+	if !proof.Valid() {
+		err := ts.PutRelationship(r)
+		if err != nil {
+			return "", "", err
+		}
+		if ig := r.Integrity(); ig != nil {
+			return ig.FromNodeHash, ig.ToNodeHash, nil
+		}
+		return "", "", nil
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return "", "", err
+	}
+	if err := ts.checkRotation(); err != nil {
+		return "", "", err
+	}
+	ts.relCreateMu.Lock()
+	defer ts.relCreateMu.Unlock()
+
+	return ts.putRelationshipWithEndpointHashesLocked(r, false)
+}
+
 func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate bool) error {
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
@@ -132,6 +155,96 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate boo
 		return err
 	}
 	return nil
+}
+
+func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship, checkDuplicate bool) (string, string, error) {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return "", "", err
+	}
+	startID := r.StartNodeID().SnowflakeID()
+	endID := r.EndNodeID().SnowflakeID()
+	relType := r.TypeToken().Value()
+	relID := r.ID().SnowflakeID()
+
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(r.StartNodeID())
+	if err != nil {
+		return "", "", err
+	}
+	defer startCheckin()
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(r.EndNodeID())
+	if err != nil {
+		return "", "", err
+	}
+	defer endCheckin()
+
+	entityShard := startShard
+	inShard := endShard
+
+	fromHash, err := entityShard.NodeIntegrityHash(r.StartNodeID())
+	if err != nil {
+		return "", "", err
+	}
+	toHash := fromHash
+	if r.StartNodeID() != r.EndNodeID() {
+		toHash, err = inShard.NodeIntegrityHash(r.EndNodeID())
+		if err != nil {
+			return "", "", err
+		}
+	}
+	if checkDuplicate {
+		exists, err := ts.relIDExists(r.ID())
+		if err != nil {
+			return "", "", err
+		}
+		if exists {
+			return "", "", ErrRelExists
+		}
+	}
+
+	ig := r.Integrity()
+	if ig == nil {
+		ig = &types.RelIntegrity{}
+		r.SetIntegrity(ig)
+	}
+	prevFrom, prevTo := ig.FromNodeHash, ig.ToNodeHash
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
+	restoreHashes := func(err error) (string, string, error) {
+		ig.FromNodeHash = prevFrom
+		ig.ToNodeHash = prevTo
+		return "", "", err
+	}
+
+	if startShard == endShard {
+		if err := startShard.PutRelationship(r); err != nil {
+			return restoreHashes(err)
+		}
+		return fromHash, toHash, nil
+	}
+
+	if endShard == ts.refShard {
+		if err := inShard.PutRelIncoming(endID, startID, relType, relID); err != nil {
+			return restoreHashes(err)
+		}
+		if err := entityShard.PutRelEntityAndOut(r); err != nil {
+			info := RelDeleteInfo{ID: relID, RelType: relType, StartID: startID, EndID: endID}
+			if rbErr := inShard.DeleteRelIncoming(info); rbErr != nil {
+				return restoreHashes(fmt.Errorf("tiered: put cross-shard relationship entity failed after in/ write: %w (rollback in/ failed: %v)", err, rbErr))
+			}
+			return restoreHashes(err)
+		}
+		return fromHash, toHash, nil
+	}
+	if err := entityShard.PutRelEntityAndOut(r); err != nil {
+		return restoreHashes(err)
+	}
+	if err := inShard.PutRelIncoming(endID, startID, relType, relID); err != nil {
+		if _, rbErr := entityShard.DeleteRelEntityAndOut(relID); rbErr != nil {
+			return restoreHashes(fmt.Errorf("tiered: put cross-shard relationship in/ failed after entity write: %w (rollback entity/out failed: %v)", err, rbErr))
+		}
+		return restoreHashes(err)
+	}
+	return fromHash, toHash, nil
 }
 
 func (ts *Store) ReplaceRelationship(r *types.Relationship) error {

@@ -467,15 +467,8 @@ func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
 
 func (ms *Store) addNodeLabelIndexes(id types.NodeID, n *types.Node) {
 	count := n.LabelTokenCount()
-	if count == 0 {
-		return
-	}
-	ms.addNodeLabelIndex(id, n.PrimaryLabelToken().Value())
-	if count == 1 {
-		return
-	}
-	for _, tok := range n.ExtraLabelTokens() {
-		ms.addNodeLabelIndex(id, tok.Value())
+	for i := 0; i < count; i++ {
+		ms.addNodeLabelIndex(id, n.LabelTokenRawAt(i))
 	}
 }
 
@@ -488,15 +481,8 @@ func (ms *Store) addNodeLabelIndex(id types.NodeID, tok uint16) {
 
 func (ms *Store) removeNodeLabelIndexes(id types.NodeID, n *types.Node) {
 	count := n.LabelTokenCount()
-	if count == 0 {
-		return
-	}
-	ms.removeNodeLabelIndex(id, n.PrimaryLabelToken().Value())
-	if count == 1 {
-		return
-	}
-	for _, tok := range n.ExtraLabelTokens() {
-		ms.removeNodeLabelIndex(id, tok.Value())
+	for i := 0; i < count; i++ {
+		ms.removeNodeLabelIndex(id, n.LabelTokenRawAt(i))
 	}
 }
 

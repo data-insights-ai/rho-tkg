@@ -45,6 +45,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 	// Update in-memory state.
 	bs.nodeCache.Put(id, n.DeepCopy())
 	bs.nodeIDs[nid] = struct{}{}
+	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 
 	// Build write ops.
 	ops := []writeOp{{opType: writeOpSet, key: storepkg.NodeKey(id), value: data}}
@@ -137,6 +138,107 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	return n.DeepCopy(), nil
 }
 
+// NodeIntegrityHash returns a live node's integrity hash without exposing or
+// defensive-copying the whole node value.
+func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
+	if err := bs.checkOpen(); err != nil {
+		return "", err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return "", err
+	}
+	id := nid.SnowflakeID()
+	bs.idxMu.RLock()
+	_, exists := bs.nodeIDs[nid]
+	hash, hasHash := bs.nodeHashes[nid]
+	bs.idxMu.RUnlock()
+	if !exists {
+		return "", ErrNodeNotFound
+	}
+	if hasHash {
+		return hash, nil
+	}
+
+	v, status := bs.nodeCache.Get(id)
+	switch status {
+	case indexpkg.CacheHit:
+		hash := badgerNodeIntegrityHash(v)
+		bs.idxMu.Lock()
+		if _, exists := bs.nodeIDs[nid]; exists {
+			bs.nodeHashes[nid] = hash
+			bs.idxMu.Unlock()
+			return hash, nil
+		}
+		bs.idxMu.Unlock()
+		return "", ErrNodeNotFound
+	case indexpkg.CacheDeleted:
+		return "", ErrNodeNotFound
+	}
+
+	var n *types.Node
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.NodeKey(id))
+		if err == badgerv4.ErrKeyNotFound {
+			return ErrNodeNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			var w storepkg.NodeWire
+			if err := msgpack.Unmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal node: %w", err)
+			}
+			decoded, err := decodeNodeWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode node: %w", err)
+			}
+			n = decoded
+			return nil
+		})
+	})
+	if err != nil {
+		return "", err
+	}
+	hash = badgerNodeIntegrityHash(n)
+	bs.nodeCache.LoadClean(id, n)
+	bs.idxMu.Lock()
+	if _, exists := bs.nodeIDs[nid]; exists {
+		bs.nodeHashes[nid] = hash
+		bs.idxMu.Unlock()
+		return hash, nil
+	}
+	bs.idxMu.Unlock()
+	return "", ErrNodeNotFound
+}
+
+// EndpointIntegrityHashes returns both endpoint hashes while avoiding the
+// defensive copies required by GetNode.
+func (bs *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error) {
+	fromHash, err := bs.NodeIntegrityHash(startID)
+	if err != nil {
+		return "", "", err
+	}
+	if startID == endID {
+		return fromHash, fromHash, nil
+	}
+	toHash, err := bs.NodeIntegrityHash(endID)
+	if err != nil {
+		return "", "", err
+	}
+	return fromHash, toHash, nil
+}
+
+func badgerNodeIntegrityHash(n *types.Node) string {
+	if n == nil {
+		return ""
+	}
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
 // DeleteNode removes a node and its label index entries.
 // Returns ErrInvalidStoreMutation if the node still has connected relationships.
 // Returns ErrNodeNotFound if the node does not exist.
@@ -204,6 +306,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	delete(bs.nodeHashes, nid)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
 	bs.idxMu.Unlock()
@@ -267,6 +370,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	bs.nodeCache.Put(id, n.DeepCopy())
+	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
@@ -345,6 +449,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
@@ -424,6 +529,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.getOrCreateLabelCounter(tok).Add(1)
 
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)

@@ -487,11 +487,6 @@ func setPendingNodeLabels(pn pendingNode, tokens nodeLabelTokens) error {
 				}
 			}
 			if same {
-				hash, err := integrity.ComputeNodeHashChecked(pn.node, pn.labels)
-				if err != nil {
-					return fmt.Errorf("graph: batch node hash: %w", err)
-				}
-				pn.nodeIntegrity.Hash = hash
 				pn.node.SetIntegrity(pn.nodeIntegrity)
 				return nil
 			}

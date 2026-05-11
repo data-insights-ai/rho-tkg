@@ -39,6 +39,18 @@ func (c *Core) existingLabelsOrNextProbeTokens(labels []string) (nodeLabelTokens
 	c.registryMu.Lock()
 	defer c.registryMu.Unlock()
 
+	if len(labels) == 1 {
+		label := labels[0]
+		if tok, ok := c.labels.Lookup(label); ok {
+			return nodeLabelTokens{primary: tok}, []string{label}, nil
+		}
+		nextToken := c.labels.Len() + 1
+		if nextToken > int(registrypkg.TokenCapacityMax) {
+			return nodeLabelTokens{}, nil, fmt.Errorf("graph: label registry full (%d tokens)", registrypkg.TokenCapacityMax)
+		}
+		return nodeLabelTokens{primary: uint16(nextToken)}, []string{label}, nil // #nosec G115 -- bounded by TokenCapacityMax above.
+	}
+
 	nextToken := c.labels.Len() + 1
 	probeByName := make(map[string]uint16)
 	seen := make(map[string]struct{}, len(labels))

@@ -29,6 +29,69 @@ func (ts *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	return store.GetNode(nid)
 }
 
+// NodeIntegrityHash returns a live node's integrity hash via the owning shard
+// without fetching a defensive copy of the full node.
+func (ts *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
+	if err := ts.checkOpen(); err != nil {
+		return "", err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return "", err
+	}
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return "", err
+	}
+	defer checkin()
+	return store.NodeIntegrityHash(nid)
+}
+
+// EndpointIntegrityHashes returns both endpoint integrity hashes while each
+// owning shard is pinned. It preserves live-endpoint validation without
+// materializing endpoint node copies in relationship create paths.
+func (ts *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error) {
+	if err := ts.checkOpen(); err != nil {
+		return "", "", err
+	}
+	if err := storecontract.ValidateNodeID(startID); err != nil {
+		return "", "", err
+	}
+	if err := storecontract.ValidateNodeID(endID); err != nil {
+		return "", "", err
+	}
+	startShard, startCheckin, err := ts.shardForNodeIDChecked(startID)
+	if err != nil {
+		return "", "", err
+	}
+	defer startCheckin()
+	if startID == endID {
+		hash, err := startShard.NodeIntegrityHash(startID)
+		if err != nil {
+			return "", "", err
+		}
+		return hash, hash, nil
+	}
+
+	endShard, endCheckin, err := ts.shardForNodeIDChecked(endID)
+	if err != nil {
+		return "", "", err
+	}
+	defer endCheckin()
+	if startShard == endShard {
+		return startShard.EndpointIntegrityHashes(startID, endID)
+	}
+
+	fromHash, err := startShard.NodeIntegrityHash(startID)
+	if err != nil {
+		return "", "", err
+	}
+	toHash, err := endShard.NodeIntegrityHash(endID)
+	if err != nil {
+		return "", "", err
+	}
+	return fromHash, toHash, nil
+}
+
 func (ts *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
