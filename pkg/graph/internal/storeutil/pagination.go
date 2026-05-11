@@ -175,6 +175,9 @@ func PaginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []type
 // SortNodesByID sorts nodes by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func SortNodesByID(nodes []*types.Node) {
+	if len(nodes) < 2 {
+		return
+	}
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].ID() < nodes[j].ID()
 	})
@@ -183,6 +186,9 @@ func SortNodesByID(nodes []*types.Node) {
 // SortRelsByID sorts relationships by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func SortRelsByID(rels []*types.Relationship) {
+	if len(rels) < 2 {
+		return
+	}
 	sort.Slice(rels, func(i, j int) bool {
 		return rels[i].ID() < rels[j].ID()
 	})

@@ -104,3 +104,52 @@ func TestToRelIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestSortNodesByID(t *testing.T) {
+	nodes := []*types.Node{
+		types.NewNode(types.NodeID(30), 1, nil),
+		types.NewNode(types.NodeID(10), 1, nil),
+		types.NewNode(types.NodeID(20), 1, nil),
+	}
+	SortNodesByID(nodes)
+	for i, want := range []types.NodeID{10, 20, 30} {
+		if got := nodes[i].ID(); got != want {
+			t.Fatalf("nodes[%d].ID = %d, want %d", i, got, want)
+		}
+	}
+}
+
+func TestSortRelsByID(t *testing.T) {
+	rels := []*types.Relationship{
+		types.NewRelationship(types.RelID(30), 1, 1, 2),
+		types.NewRelationship(types.RelID(10), 1, 1, 2),
+		types.NewRelationship(types.RelID(20), 1, 1, 2),
+	}
+	SortRelsByID(rels)
+	for i, want := range []types.RelID{10, 20, 30} {
+		if got := rels[i].ID(); got != want {
+			t.Fatalf("rels[%d].ID = %d, want %d", i, got, want)
+		}
+	}
+}
+
+func TestSortByIDSingletonsDoNotAllocate(t *testing.T) {
+	node := types.NewNode(types.NodeID(10), 1, nil)
+	rel := types.NewRelationship(types.RelID(10), 1, 1, 2)
+	nodes := []*types.Node{node}
+	rels := []*types.Relationship{rel}
+
+	nodeAllocs := testing.AllocsPerRun(1000, func() {
+		SortNodesByID(nodes)
+	})
+	if nodeAllocs != 0 {
+		t.Fatalf("SortNodesByID singleton allocations = %v, want 0", nodeAllocs)
+	}
+
+	relAllocs := testing.AllocsPerRun(1000, func() {
+		SortRelsByID(rels)
+	})
+	if relAllocs != 0 {
+		t.Fatalf("SortRelsByID singleton allocations = %v, want 0", relAllocs)
+	}
+}
