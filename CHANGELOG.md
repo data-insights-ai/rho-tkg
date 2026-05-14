@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-05-14
+
+### Fixed - Tx-read deadlock against c.mu (2026-05-14)
+
+- **`g.Nodes.Labels`, `g.Nodes.HasLabel`, `g.Nodes.PrimaryLabel`,
+  `g.Rels.Type`, `g.Rels.HasType`, `g.Resolve.NodeProperty`, and
+  `g.Resolve.RelProperty` deadlocked when called from inside an open
+  `*GraphTx`.** Every accessor takes `c.mu.RLock`; `BeginTx` holds
+  `c.mu.Lock` for the whole tx lifetime; `sync.RWMutex` is not reentrant
+  (lesson 9), so the read accessor blocked forever waiting for a lock the
+  same goroutine already owns through the tx. Operationally critical:
+  every Cypher `CREATE ... RETURN n` flow that resolves labels on the
+  returned entity inside the tx hit this.
+- **Fix.** Added tx-side mirrors that call the lock-free `*Unlocked`
+  helpers directly without re-entering `c.mu`. See "Added".
+- The non-tx accessors are unchanged — they remain correct outside a tx.
+  Inside a tx, callers must now use the `*GraphTx` mirrors.
+
+### Added - Tx-side resolution and shadow-property accessors (2026-05-14)
+
+- **`(*GraphTx).Labels(n)`, `PrimaryLabel(n)`, `HasLabel(n, name)`,
+  `RelType(r)`, `HasType(r, name)`, `NodeProperty(n, key)`,
+  `RelProperty(r, key)`.** Mirror the seven `g.{Nodes,Rels,Resolve}.*`
+  read accessors that previously deadlocked when called inside a
+  transaction. Each guards only `tx.mu` (returns the zero value of its
+  return type after Commit/Rollback) and dispatches to the existing
+  `nodeLabelsUnlocked`, `nodePrimaryLabelUnlocked`, `nodeHasLabelUnlocked`,
+  `relTypeUnlocked`, `relHasTypeUnlocked` helpers plus two new
+  `nodePropertyUnlocked` / `relPropertyUnlocked` extracted from the
+  inline `ResolveOps.NodeProperty` / `RelProperty` switch bodies.
+- Lives in `pkg/graph/internal/core/tx_consistent_reads.go` next to the
+  existing `tx.Export` / `tx.Snapshot` / `tx.VerifyShard` consistent-read
+  family.
+
 ## [4.0.0] - 2026-05-14
 
 ### Changed - Module path bump v3 → v4 (2026-05-14)

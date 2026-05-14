@@ -18,6 +18,17 @@ func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
 	if c.closed.Load() {
 		return nil, false
 	}
+	return c.nodePropertyUnlocked(n, key)
+}
+
+// nodePropertyUnlocked is the lock-free body of NodeProperty. Callers must
+// hold c.mu (read or write). Used by both the public NodeProperty (which
+// takes c.mu.RLock) and (*GraphTx).NodeProperty (which inherits c.mu.Lock
+// from BeginTx and would deadlock if it re-acquired the lock).
+func (c *Core) nodePropertyUnlocked(n *types.Node, key string) (any, bool) {
+	if n == nil {
+		return nil, false
+	}
 	if !types.IsShadowKey(key) {
 		return n.GetProperty(key)
 	}
@@ -138,6 +149,14 @@ func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.closed.Load() {
+		return nil, false
+	}
+	return c.relPropertyUnlocked(rel, key)
+}
+
+// relPropertyUnlocked is the lock-free body of RelProperty. See nodePropertyUnlocked.
+func (c *Core) relPropertyUnlocked(rel *types.Relationship, key string) (any, bool) {
+	if rel == nil {
 		return nil, false
 	}
 	if !types.IsShadowKey(key) {

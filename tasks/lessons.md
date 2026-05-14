@@ -430,3 +430,23 @@ Split into 4 files (`store_capabilities.go`, `store_validation.go`,
 The signal isn't line count alone. It's the gap between the file's
 self-described purpose (per its top comment) and what's actually inside.
 A 900-line file is fine if it does one thing; a 200-line grab-bag is not.
+
+## 31. Tx Holds The Write Lock — Mirror Every Read Accessor
+
+```
+BAD:  tx := g.Tx.Begin(); defer tx.Rollback()
+      n, _ := tx.GetNode(id)
+      labels := g.Nodes.Labels(n)   // deadlocks: RLock waits on tx's Lock
+GOOD: labels := tx.Labels(n)        // calls *Unlocked helper, no c.mu re-entry
+```
+
+`BeginTx` holds `c.mu.Lock` for the entire transaction. Any public read
+accessor that opens with `c.mu.RLock` (resolution, shadow properties,
+snapshot, export, verification) deadlocks the calling goroutine because
+`sync.RWMutex` is not reentrant (lesson 9). Whenever you add a public
+read accessor that does `c.mu.RLock(); … c.fooUnlocked(…)`, you owe a
+matching `(tx *GraphTx) Foo(...)` in `tx_consistent_reads.go` that calls
+`tx.g.fooUnlocked` directly under `tx.mu`. Audit by grepping
+`c\.mu\.RLock\(\)` and listing every entry point — each must have a tx
+mirror or a written reason it never gets called inside a tx.
+
