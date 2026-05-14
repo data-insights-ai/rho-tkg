@@ -428,6 +428,90 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 	return result, nil
 }
 
+// OutgoingRelsAt returns relationships where nodeID was the start endpoint and
+// the relationship was valid at the given instant. History-aware: includes
+// relationships that have since been deleted but were valid at time t, and
+// returns the version of each relationship that was current at t (not the
+// most recent version). Relationship endpoints are immutable so a rel's
+// start/end never change between versions.
+//
+// Results are sorted by relationship ID. Returns ErrNodeNotFound if nodeID
+// was not valid at the given instant.
+func (t *TempOps) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
+	return t.directionalRelsAt(nodeID, at, true)
+}
+
+// IncomingRelsAt returns relationships where nodeID was the end endpoint and
+// the relationship was valid at the given instant. Mirror of OutgoingRelsAt;
+// see that method's documentation for semantics.
+func (t *TempOps) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
+	return t.directionalRelsAt(nodeID, at, false)
+}
+
+// directionalRelsAt is the shared implementation behind OutgoingRelsAt and
+// IncomingRelsAt. outgoing=true selects the start-endpoint direction.
+func (t *TempOps) directionalRelsAt(nodeID types.NodeID, at types.Instant, outgoing bool) ([]*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		if _, err := c.nodeAtLocked(nodeID, at); err != nil {
+			return err
+		}
+
+		// Indexed candidate set: current adjacency in the chosen direction,
+		// unioned with all history rel IDs (covering deleted rels whose
+		// endpoints — which are immutable — still pointed at this node).
+		var (
+			rows []*types.Relationship
+			err  error
+		)
+		if outgoing {
+			rows, err = c.store.OutgoingRelationships(nodeID, 0)
+		} else {
+			rows, err = c.store.IncomingRelationships(nodeID, 0)
+		}
+		if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+			return err
+		}
+		var currentIDs []types.RelID
+		if outgoing {
+			currentIDs, err = c.outgoingRelIDsFromRows(nodeID, 0, rows)
+		} else {
+			currentIDs, err = c.incomingRelIDsFromRows(nodeID, 0, rows)
+		}
+		if err != nil {
+			return err
+		}
+
+		return c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+			r, err := c.relAtLocked(id, at)
+			if err != nil {
+				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+					return nil
+				}
+				return err
+			}
+			if outgoing && r.StartNodeID() == nodeID {
+				result = append(result, r)
+			} else if !outgoing && r.EndNodeID() == nodeID {
+				result = append(result, r)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortRelsByID(result)
+	return result, nil
+}
+
 // --- Combined label + property + temporal queries ---
 
 // NodesByLabelPropertyAt returns nodes matching the label and property value

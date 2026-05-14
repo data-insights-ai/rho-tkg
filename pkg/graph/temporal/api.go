@@ -19,6 +19,8 @@ type Ops interface {
 	RelsAt(t types.Instant) ([]*types.Relationship, error)
 	RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error)
 	NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error)
+	OutgoingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error)
+	IncomingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error)
 	NodesByLabelPropertyAt(label, key string, value any, t types.Instant) ([]*types.Node, error)
 	RelsByTypePropertyAt(relType, key string, value any, t types.Instant) ([]*types.Relationship, error)
 
@@ -123,6 +125,28 @@ func (a *API) NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, 
 		return nil, err
 	}
 	return ops.NeighborsAt(nodeID, t)
+}
+
+// OutgoingRelsAt returns relationships where nodeID is the start endpoint and
+// the relationship was valid at t. History-aware: includes deleted rels that
+// were valid at t and returns the version-at-t of each. Sorted by rel ID.
+// Returns ErrNodeNotFound if nodeID was not valid at t.
+func (a *API) OutgoingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.OutgoingRelsAt(nodeID, t)
+}
+
+// IncomingRelsAt returns relationships where nodeID is the end endpoint and
+// the relationship was valid at t. Mirror of OutgoingRelsAt.
+func (a *API) IncomingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.IncomingRelsAt(nodeID, t)
 }
 
 // NodesByLabelPropertyAt returns nodes labeled with the given (label,key,value) at t.

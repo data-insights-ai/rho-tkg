@@ -60,6 +60,12 @@ s/\.PreviousVersion(/.VersionBefore(/g
 # 7. Admin.DecomposeID(snowflake.ID) split into typed variants.
 # Replace .Admin.DecomposeID(nodeID.SnowflakeID()) with .Admin.DecomposeNodeID(nodeID).
 # Replace .Admin.DecomposeID(relID.SnowflakeID()) with .Admin.DecomposeRelID(relID).
+
+# 8. Stats.Get now returns (GraphStats, error). Callers that ignored the
+# error before need `, _ :=` (or `, _ =` for re-assignment). Inline field
+# accessors like `g.Stats.Get().NodesRead` must split into two lines:
+#   snap, _ := g.Stats.Get()
+#   v := snap.NodesRead
 ```
 
 **Complete change list:**
@@ -93,8 +99,26 @@ s/\.PreviousVersion(/.VersionBefore(/g
 - `pkg/graph/subapi.go`: new `BatchAPI.Run(fn) (*BatchResult, error)` —
   parallel to `TxAPI.Run`. `TxAPI.Begin` docstring strengthened to direct
   callers to `Run`.
+- `pkg/graph/stats`: `Stats.Get()` now returns `(GraphStats, error)`
+  instead of `GraphStats`. Every other `g.Stats.*` method already returned
+  an error; collapsing this last odd-one-out lets callers treat the sub-API
+  uniformly. Migrate with `, _ :=` (or split into two lines when the result
+  was field-accessed inline — `snap, _ := g.Stats.Get(); v := snap.Field`).
+  In practice the error path is `ErrNilGraph` (zero-value API) or
+  `ErrGraphClosed`; runtime callers can keep ignoring it with `, _`.
 - `graph.ErrDepthTemporalUnsupported` removed (legacy sentinel, never
   returned in production).
+
+### Added - Temporal directional accessors (2026-05-14)
+
+- **`g.Temporal.OutgoingRelsAt(nodeID, t)` and `g.Temporal.IncomingRelsAt(nodeID, t)`.**
+  Return the relationships incident to `nodeID` in the chosen direction that
+  were valid at instant `t`. History-aware: includes rels that have since
+  been deleted but were valid at `t`, and returns the version-at-`t` (not
+  the most recent) of each. Sorted by relationship ID. Returns
+  `ErrNodeNotFound` if the node was not valid at `t`. Endpoint immutability
+  is exploited — start/end on the returned versions equal the routing
+  endpoint by construction.
 
 ### Fixed - Hardening sweep correctness items (2026-05-14)
 
