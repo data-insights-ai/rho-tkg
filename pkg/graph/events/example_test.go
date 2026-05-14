@@ -1,8 +1,8 @@
 package events_test
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
 )
 
 // ExampleAPI_SetSync demonstrates installing a synchronous event bus and

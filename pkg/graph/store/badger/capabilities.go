@@ -1,7 +1,7 @@
 package badger
 
 import (
-	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 )
 
 // Compile-time assertions: badger.Store satisfies every capability interface

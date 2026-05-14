@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // =============================================================================

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v4/options"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
 )
 
 func TestCompression_Graph_ConfigPassthrough(t *testing.T) {

@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 type relCreateFailAfterInstallStore struct {

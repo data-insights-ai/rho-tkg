@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // ref is 2026-03-04 15:30:45.123 UTC (Wednesday)

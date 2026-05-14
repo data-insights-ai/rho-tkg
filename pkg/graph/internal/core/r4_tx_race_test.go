@@ -18,7 +18,7 @@ import (
 	"sync"
 	"testing"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 )
 
 // Drives concurrent AddNode + Rollback on the same *GraphTx and

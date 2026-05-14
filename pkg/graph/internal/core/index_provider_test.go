@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // mockIndexProvider implements the new (Phase 6) indexpkg.IndexProvider interface.

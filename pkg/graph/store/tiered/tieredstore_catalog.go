@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 )
 
 // --- Rotation and depth helpers ---

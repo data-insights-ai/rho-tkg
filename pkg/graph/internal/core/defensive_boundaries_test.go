@@ -8,17 +8,17 @@ import (
 	"io"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
-	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
 )
 
 // --- F1: ImportGraph must not panic on malformed records ---

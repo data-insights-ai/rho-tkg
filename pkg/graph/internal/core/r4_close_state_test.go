@@ -9,8 +9,8 @@ import (
 	"errors"
 	"testing"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
 )
 
 func TestR4_PostClose_NodeAdd_ReturnsErrGraphClosed(t *testing.T) {

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/integrity"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // CompareAndSetProperty atomically compares and swaps a single node property.

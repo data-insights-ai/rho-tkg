@@ -1,8 +1,8 @@
 package index_test
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index" // godoc anchor: ExampleAPI_<method> resolves against index.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index" // godoc anchor: ExampleAPI_<method> resolves against index.API
 )
 
 // ExampleAPI_CreateProperty demonstrates installing a property index that

@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 func putBadgerNodeTemporal(t *testing.T, bs *Store, id snowflake.ID, labelToken uint16, validFrom, validTo types.Instant) {

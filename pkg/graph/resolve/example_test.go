@@ -2,8 +2,8 @@ package resolve_test
 
 import (
 	"context"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolve" // godoc anchor: ExampleAPI_<method> resolves against resolve.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/resolve" // godoc anchor: ExampleAPI_<method> resolves against resolve.API
 )
 
 // ExampleAPI_NodeProperty demonstrates resolving any user or shadow (tkg_*)

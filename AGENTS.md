@@ -13,12 +13,12 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-**Temporal Knowledge Graph v3** — an internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
+**Temporal Knowledge Graph v4** — an internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
 
-Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
+Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.4.0 (post-cleanup) | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Headline post-v3.3.0 change: thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 13 sub-API field accessors (`g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`). The 130+ methods that historically lived directly on `*Graph` were **removed** — call them via the sub-APIs (e.g. `g.Nodes.Add(...)` instead of `g.AddNode(...)`). Post-v3.4.0 cleanup additionally renamed `*api` sub-API packages to their short forms (`adminapi→admin`, `constraintsapi→constraints`, `hashapi→hash`, `ioapi→io`, `resolveapi→resolve`, `statsapi→stats`) and the `Graph.Statistics` field to `Graph.Stats`. Stdlib aliasing convention: `pkg/graph/hash` and `pkg/graph/io` shadow stdlib — alias the local one as `tkghash`/`tkgio` at consumer sites that also need stdlib `hash`/`io`. Internal architecture: `*core.Core` is a coordinator holding 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `pkg/graph/internal/core/subops.go`. The 130+ method bodies live on the sub-Core types; method names drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`) so the call chain `g.Nodes.Add → nodes.API.Add → core.NodeOps.Add` is uniform. Sub-API wrappers in `pkg/graph/<name>/api.go` use a local `Ops` interface matching the sub-Core method shapes 1:1. v3.3.0 baseline (audience-based public sub-package layout) still applies: `pkg/graph/store`, `pkg/graph/store/{memory,badger,tiered}`, `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for migration details.
+Status: v4.0.0 (Unreleased — API cleanup pass) | See CLAUDE.md for the full status line and CHANGELOG.md for version history. Thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 14 sub-API field accessors (`g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`). The 130+ methods that historically lived directly on `*Graph` were removed — call them via the sub-APIs (e.g. `g.Nodes.Add(...)` instead of `g.AddNode(...)`). v4.0 split `g.Admin` into a backend-agnostic `g.Admin` (Reset + DecomposeNodeID + DecomposeRelID) and a tiered-only `g.Tier` (Archive/Restore/ForceRotate/ListShards/RebuildCatalog/Repair/VerifyShard); `g.Tier` reuses `core.AdminOps` as its `Ops` (no `TierOps` in core). Stdlib aliasing convention: `pkg/graph/hash` and `pkg/graph/io` shadow stdlib — alias the local one as `tkghash`/`tkgio` at consumer sites that also need stdlib `hash`/`io`. Internal architecture: `*core.Core` is a coordinator holding 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `pkg/graph/internal/core/subops.go`. Method bodies live on the sub-Core types; method names drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`) so the call chain `g.Nodes.Add → nodes.API.Add → core.NodeOps.Add` is uniform. Sub-API wrappers in `pkg/graph/<name>/api.go` use a local `Ops` interface matching the sub-Core method shapes 1:1. See CHANGELOG.md `[Unreleased]` for the full v3.4.0 → v4.0.0 migration recipe.
 
 ## Build & Test Commands
 
@@ -441,8 +441,8 @@ Resolved shadow values must keep their public wrapper types. In particular, `tkg
 
 | Module | Role |
 |---|---|
-| `rho/tkg/v3` | Internal library — graph types, persistence, registries (this repo) |
+| `rho/tkg/v4` | Internal library — graph types, persistence, registries (this repo) |
 | `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP/gRPC server |
 | `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
 
-tkg/v3 does **not** depend on kit. tkgd-v3 depends on both.
+tkg/v4 does **not** depend on kit. tkgd-v3 depends on both.

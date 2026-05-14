@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
 )
 
 func TestR5_Import_MalformedRegistryRecordsAreCorruptExport(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 func TestAddNodeTooManyLabels(t *testing.T) {

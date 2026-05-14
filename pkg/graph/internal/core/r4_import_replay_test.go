@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
 )
 
 // R4-F11: a stream that emits an entity record before any registry

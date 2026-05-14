@@ -5,7 +5,7 @@
 // snapshot.
 package stats
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
 
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;

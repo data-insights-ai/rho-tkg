@@ -1,6 +1,6 @@
 package store
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 
 // DistanceMetric determines how similarity is measured between two vectors
 // stored in a Store-backed vector index.

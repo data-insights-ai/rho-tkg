@@ -7,7 +7,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // This file exposes a curated set of unexported Store and EventShard

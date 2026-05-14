@@ -13,70 +13,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## MR Review Protocol
 
-When asked to analyse or review a merge request, execute these three phases in order:
+Execute these three phases in order when reviewing a merge request.
 
 ### Phase 1 — Correctness of the MR itself
 
-For each changed or added file:
-
-1. **Read the full diff** with `git diff origin/main...origin/<branch>`.
-2. **Verify the implementation against the spec** — does every new method/test deliver exactly what its name promises? Check edge cases the author may have assumed away.
-3. **Lessons and CHANGELOG hygiene**:
-   - Confirm any new lesson entry has the correct next sequential number (grep `^## B` in `tasks/lessons.md`).
-   - Confirm the lesson body is not a duplicate of an existing entry (same title or same code pattern).
-   - Confirm the CHANGELOG section (`[Unreleased]` or explicit version) is placed above the current latest release, not above an older one — rebase issues leave the context pointing at a stale anchor.
-4. **Test quality** (apply all 17 testing rules from "Testing Rules"):
+1. Read the full diff: `git diff origin/main...origin/<branch>`.
+2. Verify each new method/test delivers what its name promises; check edge cases the author may have assumed away.
+3. Lessons & CHANGELOG hygiene:
+   - New lesson entries use the correct next sequential number (`grep '^## B' tasks/lessons.md`).
+   - No duplicate lesson body (same title or same code pattern).
+   - CHANGELOG section (`[Unreleased]` or explicit version) is above the current latest release, not above an older one.
+4. Test quality (apply all 17 rules in "Testing Rules"):
    - Two-phase tests for every temporal/history-aware method (rule 15).
    - Adversarial scenarios with exact-set assertions, not just happy-path (rule 16).
    - Negative assertions: "must NOT contain Y" and phantom-value returns-empty cases.
    - For interval queries: the "predicate held during part of interval but not on most-recent version" case must be asserted.
    - Sentinel errors tested with `errors.Is` at every call layer (rule 4).
-5. **Run the tests**: `make test-race` on the branch. A test suite that fails for one backend is not mergeable.
+5. Run `make test-race` on the branch. A suite that fails for one backend is not mergeable.
 
-### Phase 2 — Is the addressed issue also present elsewhere?
+### Phase 2 — Is the issue also present elsewhere?
 
-After understanding what problem the MR fixes or tests:
+1. Grep for the same pattern across the whole codebase (see "Audit Checklists" and lesson A1).
+2. Check symmetric types: Node and Relationship are structural mirrors; same for `Get*ValidAt` (named) vs `*By*(opts QueryOpts)` (generic) — rule 17.
+3. Check all Store implementations: a fix to `MemoryStore` must be checked against `BadgerStore` and `TieredStore`, and vice versa.
+4. Check batch paths: standalone mutation fixes must also land in `BatchBuilder` paths.
 
-1. **Grep for the same pattern** across the whole codebase — the same bug often hides behind multiple doors (see lessons A1, Code Review Lessons section). Use the audit checklists in "Audit Checklists".
-2. **Check symmetric types**: Node and Relationship are structural mirrors; fixes to one without the other are incomplete. Same for `Get*ValidAt` (named temporal) vs `*By*(opts QueryOpts)` (generic temporal) — rule 17.
-3. **Check all Store implementations**: If a fix touches `MemoryStore`, verify `BadgerStore` and `TieredStore` are consistent, and vice versa.
-4. **Check batch paths**: Any fix to standalone mutation paths must be verified against `BatchBuilder` paths (same logic often duplicated — see lesson A1).
+### Phase 3 — Are the tests sufficient?
 
-### Phase 3 — Are the MR's tests sufficient?
-
-After confirming the implementation is correct and the issue isn't duplicated elsewhere:
-
-1. **Coverage**: Run `make cover`. Every new public method must appear in coverage. No new code below 80%.
-2. **Missing scenarios checklist**:
+1. `make cover`. Every new public method must appear in coverage. No new code below 80%.
+2. Missing scenarios:
    - Cross-shard relationships (for TieredStore) — not just same-shard.
    - Deleted entities: history must be queryable after deletion (B32).
-   - Concurrent access: if the MR touches shared state, confirm a `test-race` run exists.
-   - Cold→warm shard transitions (for TieredStore): use `demoteToCold` helper, not sub-second `ShardWindow`.
-3. **Confirm tests would have caught the original bug**: For each test, ask "if the implementation silently returned current state instead of historical state, would my assertions fail?" If not, the test is happy-path regardless of coverage (see Code Review Lessons).
-4. **State whether the MR is mergeable**: List blocking issues (tests that fail, wrong numbering, missing parity) and non-blocking issues separately.
+   - Concurrent access: if shared state is touched, confirm a `test-race` run exists.
+   - Cold→warm shard transitions: use `demoteToCold` helper, not sub-second `ShardWindow`.
+3. For each test ask: "If the implementation silently returned current state instead of historical state, would my assertions fail?" If not, the test is happy-path regardless of coverage.
+4. State whether the MR is mergeable. List blocking and non-blocking issues separately.
 
 ## Project Overview
 
-**Temporal Knowledge Graph v3** — an internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
+**Temporal Knowledge Graph v4** — internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
 
-Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
+Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.0.0 (Unreleased — API cleanup pass) | Thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 14 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
+Status: v4.0.0 (Unreleased — API cleanup pass). Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
 
-**v4.0 API changes vs v3.4.0** (see CHANGELOG.md for the full migration recipe):
-- `*WithContext` method pairs collapsed: `Nodes.Add(ctx, …)`, `Nodes.Get(ctx, id)`, `Nodes.Update`, `Nodes.UpdateInPlace`, `Nodes.Delete`, `Nodes.CompareAndSetProperty` and the Rel equivalents (`Add`, `AddByID`, `AddByIDIfAbsent`, `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`) now take `ctx` as first arg. The `*WithContext` siblings no longer exist.
-- `Nodes.NextVersion` / `PreviousVersion` renamed to `VersionAfter` / `VersionBefore`; same on Rels.
-- `temporal.Relationships*` long form collapsed to `temporal.Rels*` (At/ByTypeAt/During).
-- `g.Admin` split — tiered-only methods (Archive/Restore/ForceRotate/ListShards/RebuildCatalog/Repair/VerifyShard) moved to a new `g.Tier` sub-API. `g.Admin` now exposes only Reset + DecomposeNodeID + DecomposeRelID, which work on every backend.
-- `g.Admin.DecomposeID(snowflake.ID)` replaced with typed `g.Admin.DecomposeNodeID(types.NodeID)` / `g.Admin.DecomposeRelID(types.RelID)`. Same split on the top-level `graph.DecomposeNodeID` / `graph.DecomposeRelID` helpers.
-- `g.Resolve.LabelToken` / `RelTypeToken` / `LookupLabel` / `LookupRelType` removed — leaked uint16 token representation. Shadow-property accessors (`NodeProperty`, `RelProperty`) kept.
-- `index.LegacyIndexProvider` interface + `Index.RegisterLegacyProvider` removed. External providers must migrate to `IndexProvider` + optional `Initializable`.
-- `IO.Import(r)` and `IO.ImportWithOptions(r, opts)` collapsed into `IO.Import(r, opts)`. Pass `ImportOptions{}` for the previous defaults.
-- New `BatchAPI.Run(fn) (*BatchResult, error)` parallel to `TxAPI.Run`.
-- `graph.ErrDepthTemporalUnsupported` removed (unreachable sentinel).
-
-v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`.
+See `CHANGELOG.md` `[Unreleased]` for the full v3.4.0 → v4.0.0 migration recipe.
 
 **Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 
@@ -139,78 +121,64 @@ These rules exist because every single one was violated at least once. Do not sk
 | `granularity.go` | `TimeGranularity` (8 levels), `TruncateInstant`, `RoundInstant`, `CeilInstant` — ISO 8601 week truncation |
 | `recurrence.go` | `RecurrencePattern`, `RecurrenceFrequency`, `WeekdayMask`, `Interval` — `Validate()` + `Expand(from, to)` |
 
-### `pkg/graph`
+### `pkg/graph` (thin façade)
 
-After v3.4.0 (Option 3), `pkg/graph/` is a thin façade. The `Graph` type holds a `*core.Core` plus the 13 sub-API field accessors. All ~130 implementation methods live on `*core.Core` in `pkg/graph/internal/core/`. Customers interact via the sub-APIs (`g.Nodes.Add(...)`, `g.Temporal.NodesAt(...)`, etc.); the old direct `g.AddNode(...)` form was removed.
+`Graph` holds `core *core.Core` + 14 sub-API field accessors. Customers interact via the sub-APIs (`g.Nodes.Add(...)`, `g.Temporal.NodesAt(...)`, etc.); the old direct `g.AddNode(...)` form was removed.
 
 | File | Purpose |
 |---|---|
-| `graph.go` | `Graph` thin façade: holds `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
-| `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`. They live in `pkg/graph` itself (not a sibling package) because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types defined inside `pkg/graph/internal/core`. `TxAPI.Run` / `TxAPI.RunContext` add closure-style helpers. |
-| `errors.go` | Public sentinel re-exports — store sentinels (`ErrNodeNotFound`, …, 12 entries), vector-index sentinels (`ErrVectorIndexExists`, …), registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`), index-provider sentinels (`ErrIndexProviderExists`, …). Canonical declarations in `internal/core/core.go`. |
-| `subapi_smoke_test.go` | `TestSubAPISmoke` — compile-and-run smoke test exercising every sub-API accessor end-to-end. |
+| `graph.go` | Thin façade — `Graph` struct with `core *core.Core` + 14 sub-API fields. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
+| `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`. Live in `pkg/graph` itself (not a sibling) because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types defined inside `pkg/graph/internal/core`. `TxAPI.Run` / `TxAPI.RunContext` add closure-style helpers. |
+| `errors.go` | Public sentinel re-exports — store sentinels (`ErrNodeNotFound`, … 12 entries), vector-index sentinels, registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`), index-provider sentinels. Canonical declarations in `internal/core/core.go`. |
+| `subapi_smoke_test.go` | Compile-and-run smoke test exercising every sub-API accessor end-to-end. |
 | `doc.go` | Package documentation. |
 
-That's it — 4 production files + 1 smoke test in `pkg/graph/` itself.
+### Sub-API & types packages under `pkg/graph/`
 
-### `pkg/graph/<sub-api>/` sub-API accessor packages (v3.4.0)
-
-Each package declares a local `Core` interface listing only the methods its wrappers forward to. `*core.Core` (in `internal/core`) satisfies each interface implicitly. Sub-API constructors take `*core.Core` directly. Wrappers are 1-2 lines, single indirect dispatch each. Customer-facing names use the field on Graph (column 2), not the import path.
+Each sub-API package declares a local `Ops` interface listing only the methods its wrappers forward to. `*core.Core` (in `internal/core`) satisfies each interface implicitly. Wrappers are 1–2 lines. Some packages (temporal, index, events) export both the sub-API and the public types customers reference; others are pure types-only or pure wrapper-only. Customer-facing names use the field on Graph (column 2), not the import path.
 
 | Package | Field on Graph | Purpose |
-|---------|----------------|---------|
+|---|---|---|
 | `pkg/graph/nodes` | `g.Nodes` | Node CRUD, label, property, version chain (~31 wrappers). |
 | `pkg/graph/rels` | `g.Rels` | Relationship CRUD, adjacency, property, version chain (~30 wrappers). |
-| `pkg/graph/temporal` | `g.Temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations (~24 wrappers). The temporal types (`GraphSnapshot`, `SnapshotDiff`, constraint types) live in the same package. |
-| `pkg/graph/index` | `g.Index` | Property / vector / high-frequency index management + `SearchNearest` + IndexProvider registration (~13 wrappers). The index types (`IndexProvider`, `Initializable`, `GraphReader`) live in the same package. |
-| `pkg/graph/events` | `g.Events` | Sync / async EventBus management (~3 wrappers). The `EventBus` / `AsyncEventBus` types live in the same package. |
+| `pkg/graph/temporal` | `g.Temporal` | Point-in-time, interval, bitemporal, snapshot/diff, Allen relations (~24 wrappers). Also exports `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, 7 constraint sentinels. |
+| `pkg/graph/index` | `g.Index` | Property/vector/high-freq index management + `SearchNearest` + provider registration (~13 wrappers). Also exports `IndexProvider`, `Initializable`, `GraphReader`, IndexProvider sentinels. |
+| `pkg/graph/events` | `g.Events` | Sync/async EventBus management (~3 wrappers). Also exports `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, constructors. |
 | `pkg/graph/constraints` | `g.Constraints` | Temporal-constraint set management (~3 wrappers). |
-| `pkg/graph/io` | `g.IO` | Export / Import (~2 wrappers). Shadows stdlib `io` — alias as `tkgio` at consumer sites that also need stdlib `io`. |
-| `pkg/graph/admin` | `g.Admin` | Tiered-store admin: archive, repair, shards, rotate, reset, decompose-id (~9 wrappers). |
+| `pkg/graph/io` | `g.IO` | Export / Import (~2 wrappers). Shadows stdlib `io` — alias `tkgio` at consumer sites. |
+| `pkg/graph/admin` | `g.Admin` | Backend-agnostic admin: `Reset`, `DecomposeNodeID`, `DecomposeRelID`. |
+| `pkg/graph/tier` | `g.Tier` | Tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard`. Reuses `core.AdminOps` as its `Ops`. |
 | `pkg/graph/stats` | `g.Stats` | Count helpers (~6 wrappers). |
-| `pkg/graph/hash` | `g.Hash` | Hash-chain verification (~2 wrappers). Shadows stdlib `hash` — alias as `tkghash` at consumer sites that also need stdlib `hash`. |
-| `pkg/graph/resolve` | `g.Resolve` | Shadow-property + registry resolution (~6 wrappers). |
+| `pkg/graph/hash` | `g.Hash` | Hash-chain verification (~2 wrappers). Shadows stdlib `hash` — alias `tkghash` at consumer sites. |
+| `pkg/graph/resolve` | `g.Resolve` | Shadow-property accessors: `NodeProperty`, `RelProperty`. |
+| `pkg/graph/store` | — | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, 12 store sentinels. |
+| `pkg/graph/store/memory` | — | `memory.Store`, `memory.New()`. |
+| `pkg/graph/store/badger` | — | `badger.Store`, `badger.Config`, `badger.New()`. |
+| `pkg/graph/store/tiered` | — | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`, 4 sentinels. |
+| `pkg/graph/ontology` | — | `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`, `ClassReference`. |
 
-In addition: `g.Tx` (`*TxAPI`) and `g.Batch` (`*BatchAPI`) are in-package types in `pkg/graph/subapi.go` (they wrap `*GraphTx` / `*BatchBuilder` types declared in `internal/core`).
-
-### `pkg/graph/<types-package>/` public types packages (v3.3.0)
-
-These are sibling public packages from Option A — they hold types customers need to reference (return types from sub-API methods, parameter types, sentinels). The post-v3.4.0 cleanup additionally collapsed three matching `*api` siblings into `pkg/graph/{temporal,index,events}`, so those three packages now expose both the types **and** the sub-API `API` struct customers reach through `g.Temporal` / `g.Index` / `g.Events`. The other entries below are still pure type declarations.
-
-| Package | Purpose |
-|---|---|
-| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, 12 store sentinels. |
-| `pkg/graph/store/memory` | `memory.Store`, `memory.New()` — in-memory backend. |
-| `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()` — Badger v4 backend. |
-| `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`, 4 sentinels. |
-| `pkg/graph/events` | Types: `Event`, `EventType`, `EventPriority`, `EventHandler`, `EventBus`, `AsyncEventBus`, `BackpressureStrategy`, `NewEventBus`, `NewAsyncEventBus`. Sub-API: `events.API` (reached via `g.Events`). |
-| `pkg/graph/index` | Types: `IndexProvider`, `Initializable`, `GraphReader`, `LegacyIndexProvider`, IndexProvider sentinels. Sub-API: `index.API` (reached via `g.Index`). |
-| `pkg/graph/temporal` | Types: `GraphSnapshot`, `SnapshotDiff`, `NodeUpdate`, `RelUpdate`, `TemporalConstraint`, `ConstraintSet`, 7 constraint sentinels. Sub-API: `temporal.API` (reached via `g.Temporal`). |
-| `pkg/graph/ontology` | `EntityClass`, `OntologyMapping`, `NewOntologyMapping`, `ClassEvent`, `ClassReference`. |
-
-### `pkg/graph/internal/*` subpackages
+### `pkg/graph/internal/*`
 
 | Package | Purpose |
 |---|---|
-| `internal/core` | (v3.4.0 + post-cleanup) `Core` type holding shared unexported state (mu, store, registries, locks, generators, indexProviders, …) plus 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `subops.go`. Sub-Core types hold a `c *Core` back-reference; method bodies live on the sub-Core types. Wired in `core.New` as exported fields (`c.Nodes`, `c.Rels`, …) so the wrapper packages can satisfy each sub-API's local `Ops` interface. The thin `*Graph` façade in pkg/graph/ wraps a `*core.Core` and constructs `nodes.New(c.Nodes)`, `rels.New(c.Rels)`, etc. Method names on sub-Core types drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`, `VerifyNodeHashChain → HashOps.VerifyNodeChain`, etc.) so the call chain is uniform across the wrapper boundary. ~7.5K LOC of implementation across ~30 files; ~28K LOC of internal tests across 53 test files. |
+| `internal/core` | `Core` type holding shared unexported state (mu, store, registries, locks, generators, indexProviders, …) plus 11 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`) declared in `subops.go`. Sub-Core types hold a `c *Core` back-reference; method bodies live on the sub-Core types. Wired in `core.New` as exported fields (`c.Nodes`, `c.Rels`, …) so the wrapper packages can satisfy each sub-API's local `Ops` interface. Method names on sub-Core types drop their type prefix (`AddNode → NodeOps.Add`, `GetRelationship → RelOps.Get`, `VerifyNodeHashChain → HashOps.VerifyNodeChain`, etc.) so the call chain is uniform across the wrapper boundary. ~7.5K LOC of implementation across ~30 files; ~28K LOC of internal tests across 53 test files. `g.Tier` reuses `c.Admin` (there is no `TierOps`). |
 | `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. Imported by `internal/locks`, `internal/storeutil`, `internal/core`, `pkg/graph/store/{badger,tiered}`. |
-| `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). The public Store contract lives in `pkg/graph/store`. |
+| `internal/storeutil` | Store-internal helpers: key encoding (`NodeKey`, `RelKey`, `LabelIndexKey`, etc.), msgpack wire types (`NodeWire`, `RelWire`), pagination helpers (`PaginateIDs`, `PaginateNodes`, etc.), temporal-filter push-down (`EntityValidFrom`, `MatchesTemporalFilter`). The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | `Manager` — 256-shard entity-lock manager, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
-| `internal/registry` | `LabelRegistry` and `RelTypeRegistry` — thread-safe string-to-uint16 token registries. Internal types — not part of public API. |
+| `internal/registry` | `LabelRegistry` and `RelTypeRegistry` — thread-safe string-to-uint16 token registries. Internal — not public API. |
 | `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. The label/reltype registries live in `internal/registry`. |
 | `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue`. Five fixed-vector hash anchors lock the on-disk hash format. |
 
 ### Configuration
 
-- **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected.
+- **`Graph.Config`**: `SnowflakeNodeID` (0–15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected. Also accepts `SyncWrites bool`, `Compression`, `ZSTDCompressionLevel` — these pass through to the underlying `BadgerStoreConfig`.
 - **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
-- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (for warm/cold shards), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0), `Compression` (`options.None`/`Snappy`/`ZSTD`, zero = Badger default Snappy), `ZSTDCompressionLevel` (1-15, zero = Badger default 1).
-- **`Graph.Config`**: also accepts `SyncWrites bool`, `Compression`, `ZSTDCompressionLevel` which pass through to `BadgerStoreConfig`.
-- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled), `Compression` (applied to all shards, zero = Badger default Snappy), `ZSTDCompressionLevel` (1-15, zero = Badger default 1).
+- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (nil = default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (warm/cold shards), `SyncWrites` (fsync each write — disables async buffer, forces `FlushInterval=0`), `Compression` (`options.None`/`Snappy`/`ZSTD`, zero = Badger default Snappy), `ZSTDCompressionLevel` (1–15, zero = Badger default 1).
+- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never), `IdleTimeout` (5min when cold enabled), `Compression`, `ZSTDCompressionLevel`.
 
 ### Snowflake Configuration
 
-Both generator sets (nodes and relationships) are initialized with explicit parameters matching the v1.3.0 microsecond precision layout:
+Both generator sets (nodes and relationships) use the v1.3.0 microsecond layout:
 
 ```text
 +---------------------------------------------------------------+
@@ -226,7 +194,7 @@ Both generator sets (nodes and relationships) are initialized with explicit para
 | Node bits | 5 (max `SnowflakeNodeID` is 15 since it maps to `id*2` and `id*2+1`) |
 | Step bits | 10 (1024 unique IDs per microsecond) |
 
-Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-15).
+Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0–15).
 
 ## Design Rules
 
@@ -301,7 +269,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Rollback on partial failure**: Cross-shard moves (archive/restore) must undo completed steps when a later step fails. Otherwise partial failure leaves data duplicated or orphaned.
 - **Sequential ForEach**: One shard open at a time via checkout/checkin. No goroutines, no `mergeIDSlices`. Trades parallelism for memory safety.
 - **Property indexes on reference entities only**: `CreatePropertyIndex` rejects event labels (`ErrEventPropertyIndex`).
-- **Primary-label class is immutable**: `AddNodeLabelToken{,WithHistory}` and `RemoveNodeLabelToken{,WithHistory}` reject any mutation that would change the primary label's ontology class (reference ↔ event) and return `ErrPrimaryLabelClassMutation`. The check is enforced at the `TieredStore` Store-impl boundary only — `MemoryStore` and `BadgerStore` are single-shard and don't care. If you add another sharded backend, replicate the guard there. The reason: routing decisions depend on primary-label class; flipping the class would leave the live entity on its original shard while subsequent history snapshots route to a different shard, fragmenting the version chain. See lessons.md B33.
+- **Primary-label class is immutable**: `AddNodeLabelToken{,WithHistory}` and `RemoveNodeLabelToken{,WithHistory}` reject any mutation that would change the primary label's ontology class (reference ↔ event) and return `ErrPrimaryLabelClassMutation`. Enforced at the `TieredStore` Store-impl boundary only — `MemoryStore` and `BadgerStore` are single-shard and don't care. If you add another sharded backend, replicate the guard. Reason: routing decisions depend on primary-label class; flipping the class would leave the live entity on its original shard while subsequent history snapshots route to a different shard, fragmenting the version chain. See lessons.md B33.
 
 ### Integrity & Indexes
 
@@ -322,19 +290,19 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Vector Indexes
 
-- **Not persisted**: Vector indexes are rebuilt from node properties on restart. This is a documented limitation — acceptable for brute-force k-NN.
+- **Not persisted**: Vector indexes are rebuilt from node properties on restart. Documented limitation — acceptable for brute-force k-NN.
 - **Store-level scope in TieredStore**: Vector indexes live at the `TieredStore` level (not per-shard) with their own `vectorIdxMu sync.RWMutex`.
 - **Auto-maintenance**: All mutation paths (`PutNode`, `ReplaceNode`, `DeleteNode`, `RemoveNodeLabelToken`) update vector indexes.
 
-### Code Review Lessons
+### Code Review Meta-Lessons
 
-- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer. When the library changes its layout, hardcoded shifts break silently across dozens of call sites. The library's API encapsulates the layout — use it.
+(Beyond what Testing Rules 15–17 already capture.)
+
+- **Use library APIs, never reimplement internals**: If a dependency provides an API (e.g. `snowflake.Node.Decompose()`), use it. Never duplicate internal knowledge like bit layouts or hardcoded shifts in the consumer.
 - **Every fix needs a grep audit**: When fixing a pattern in one call site, grep for the same pattern across all files. The canonical hash bug (A1) was fixed in `context.go` but missed in `batch.go`, requiring a second review round.
-- **Fix descriptions must include exact signatures**: Telling a developer to "use lazy iterators" without specifying the callback shape led to 5 rounds of partial fixes for the OOM issue (C4). Specify the exact interface.
-- **Review by feature, not by file**: Single-file reviews missed cross-file interactions. The `batch.go` hash bug was only caught when reviewing `batch.go`, not when reviewing `integrity.go` where the hash function lives.
-- **Repair tools complement but don't replace correctness**: The cross-shard rollback issue (B7) was accepted as "mitigated" by `RunRepair` when it should have been fixed inline.
-- **High coverage ≠ correct tests**: Phase 1c shipped "22 new tests, 100% coverage on all new functions" and the hash chain was still wrong for label mutations. Coverage measures whether lines executed, not whether the test would have caught the bug. After writing a test, ask: "If the implementation silently returned current state instead of historical state, would my assertions fail?" If not, the test is happy-path regardless of coverage.
-- **Most-recent-overlap is wrong for predicate-during-interval**: a "during [start,end)" query that checks the predicate only on the most-recent overlapping version misses entities whose label/property held earlier in the interval. Use `findNodeVersionMatchingDuring(id, start, end, pred)` which scans all overlapping versions. Bug introduced in MR !2 for `NodesByLabelPropertyDuring`, fixed in the same code path that added `NodesByLabel(opts)`/`NodesByLabelAndProperty(opts)` history-aware temporal handling.
+- **Review by feature, not by file**: Single-file reviews miss cross-file interactions.
+- **Repair tools don't replace correctness**: The cross-shard rollback issue (B7) was once accepted as "mitigated" by `RunRepair` when it should have been fixed inline.
+- **Most-recent-overlap is wrong for predicate-during-interval**: A "during [start,end)" query that checks the predicate only on the most-recent overlapping version misses entities whose label/property held earlier in the interval. Use `findNodeVersionMatchingDuring(id, start, end, pred)` which scans all overlapping versions.
 
 ## Audit Checklists
 
@@ -391,7 +359,7 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 
 | Module | Role |
 |---|---|
-| `rho/tkg/v3` | Internal library — graph types, persistence, registries (this repo) |
+| `rho/tkg/v4` | Internal library — graph types, persistence, registries (this repo) |
 | `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP/gRPC server |
 | `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
 

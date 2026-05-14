@@ -1,9 +1,9 @@
 package constraints_test
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraints" // godoc anchor: ExampleAPI_<method> resolves against constraints.API
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/constraints" // godoc anchor: ExampleAPI_<method> resolves against constraints.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
 )
 
 // ExampleAPI_Add demonstrates registering a temporal constraint that

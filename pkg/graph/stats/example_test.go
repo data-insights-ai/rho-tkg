@@ -2,8 +2,8 @@ package stats_test
 
 import (
 	"context"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/stats" // godoc anchor: ExampleAPI_<method> resolves against stats.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/stats" // godoc anchor: ExampleAPI_<method> resolves against stats.API
 )
 
 // ExampleAPI_NodeCount demonstrates a simple count query across the graph.

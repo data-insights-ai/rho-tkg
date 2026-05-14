@@ -1,7 +1,7 @@
 package core
 
 import (
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
 )
 
 // checkOpen returns ErrGraphClosed if the graph has been closed. Every

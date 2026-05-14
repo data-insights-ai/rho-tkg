@@ -3,7 +3,7 @@ package core
 import (
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
 )
 
 func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {

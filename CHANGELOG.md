@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-05-14
+
+### Changed - Module path bump v3 → v4 (2026-05-14)
+
+- **`go.mod` module path** rewritten from `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3` to `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`. All 372 Go source files updated to the new import path. Historical CHANGELOG entries under `[3.2.0]` and `[3.0.54]` retain their original `/v3` references as accurate snapshots of those releases.
+- **Documentation refresh for v4.** README, AGENTS, CLAUDE, and `docs/{architecture,persistence,SPEC}.md` updated to v4 branding: heading, intro prose, ecosystem-table labels, status paragraph. `docs/architecture.md` adds a `g.Tier` row to the sub-API table and corrects the `g.Admin` row to its v4 backend-agnostic surface (`Reset`, `DecomposeNodeID`, `DecomposeRelID`). Sub-API field-accessor count updated `13 → 14` across CLAUDE.md, AGENTS.md, and `docs/architecture.md`.
+- **CLAUDE.md consolidation.** Collapsed the duplicated `pkg/graph/<sub-api>/` and `pkg/graph/<types-package>/` tables into a single table; merged the `BadgerStoreConfig` / `Graph.Config` duplication; replaced the inline v4 migration recipe with a pointer to this section. ~30 lines tighter, no rule removed. `git log --follow` still works.
+
 ### Changed - API 4.0 surface cleanup (2026-05-14)
 
 Breaking changes — all customer call sites need updating. The shape changes
@@ -2492,7 +2500,7 @@ local sub-API package, alias the local one with a `tkg` prefix:
 ```go
 import (
     "io"
-    tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
+    tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
 )
 
 var _ tkgio.API

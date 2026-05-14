@@ -13,8 +13,8 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
-	badger "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/index"
+	badger "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
 )
 
 // Default configuration values for Store.

@@ -13,7 +13,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 )
 
 // R5-F6: when a store error makes the live-endpoint fetch fail in

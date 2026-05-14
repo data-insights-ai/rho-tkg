@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/vmihailenco/msgpack/v5"
-	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 )
 
 // temporalIndexFileData is the store-level serialization format for temporal

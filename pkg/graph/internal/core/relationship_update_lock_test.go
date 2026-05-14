@@ -9,10 +9,10 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/locks"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/locks"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 var errRelationshipUpdateMissingCurrentEndpointLock = errors.New("relationship update did not hold current endpoint lock")

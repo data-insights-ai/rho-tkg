@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
+	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/snowflake"
 )
 
 // ShardCount is the number of mutex shards held by Manager.

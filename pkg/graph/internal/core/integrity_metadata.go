@@ -1,6 +1,6 @@
 package core
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 
 func nodeIntegrityWithHash(base *types.NodeIntegrity, hash, prevHash string) *types.NodeIntegrity {
 	ig := &types.NodeIntegrity{}

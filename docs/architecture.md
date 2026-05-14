@@ -1,9 +1,9 @@
-# Architecture — tkg/v3 (v3.4.0)
+# Architecture — tkg/v4 (v4.0.0 Unreleased)
 
-Temporal Knowledge Graph v3 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
+Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
 ```
-Module:  gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3
+Module:  gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4
 Go:      1.26.1
 License: Apache-2.0
 ```
@@ -152,7 +152,7 @@ All mutations enforce `ValidationLimits` (5 configurable limits with defaults). 
 
 ### Sub-API Accessors (v3.4.0)
 
-The 130+ implementation methods on `*core.Core` are reachable through 13 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 13 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes.Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal.
+The 130+ implementation methods on `*core.Core` are reachable through 14 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 14 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes.Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal.
 
 | Field | Package | Wraps |
 |-------|---------|-------|
@@ -163,7 +163,8 @@ The 130+ implementation methods on `*core.Core` are reachable through 13 sub-API
 | `g.Events` | `pkg/graph/events` | Sync/async EventBus install + retrieval; setters return `ErrGraphClosed` after graph close |
 | `g.Constraints` | `pkg/graph/constraints` | Temporal-constraint set management; `Add`/`Set` reject unknown kinds before changing the set, and relationship writes fail closed with `ErrInvalidTemporalConstraint` if an invalid kind reaches enforcement |
 | `g.IO` | `pkg/graph/io` | Export / Import (shadows stdlib `io` — alias as `tkgio` if both are imported) |
-| `g.Admin` | `pkg/graph/admin` | Tiered-store admin (archive, repair, shards, rotate, reset, decompose-id) |
+| `g.Admin` | `pkg/graph/admin` | Backend-agnostic admin: `Reset`, `DecomposeNodeID`, `DecomposeRelID` |
+| `g.Tier` | `pkg/graph/tier` | Tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard` (reuses `core.AdminOps`) |
 | `g.Stats` | `pkg/graph/stats` | Count helpers |
 | `g.Hash` | `pkg/graph/hash` | Hash-chain verification (shadows stdlib `hash` — alias as `tkghash` if both are imported) |
 | `g.Resolve` | `pkg/graph/resolve` | Shadow-property + registry resolution |
@@ -873,13 +874,13 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 
 ## File Map (`pkg/graph/`)
 
-After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 13 sub-API field accessors. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes.Add`, `g.Temporal.NodesAt`, etc.).
+After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 14 sub-API field accessors. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes.Add`, `g.Temporal.NodesAt`, etc.).
 
 #### `pkg/graph/` (4 production files + 1 smoke test)
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | `Graph` thin façade: `core *core.Core` + 13 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
+| `graph.go` | `Graph` thin façade: `core *core.Core` + 14 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`, kept in-package because they wrap `*GraphTx` / `*BatchBuilder` declared in `internal/core`. |
 | `errors.go` | Public sentinel re-exports: 12 store sentinels, vector-index sentinels, registry sentinels, IndexProvider sentinels. Canonical declarations in `internal/core/core.go`. |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end. |

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 )
 
 func TestCoreLockHelpersDirectBranches(t *testing.T) {

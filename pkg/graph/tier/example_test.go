@@ -1,8 +1,8 @@
 package tier_test
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/tier" // godoc anchor: ExampleAPI_<method> resolves against tier.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/tier" // godoc anchor: ExampleAPI_<method> resolves against tier.API
 )
 
 // ExampleAPI_ListShards demonstrates inspecting shard metadata. Returns

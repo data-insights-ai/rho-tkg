@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 )
 
 func (c *Core) getOrCreateLabelWithSnapshot(label string) (uint16, []string, bool, error) {

@@ -3,7 +3,7 @@
 // post-cleanup from the previous pkg/graph/eventsapi sibling.
 package events
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
+import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
 
 // Ops is the subset of *core.EventOps the events sub-API forwards to.
 type Ops interface {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"bytes"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io" // godoc anchor: ExampleAPI_<method> resolves against io.API
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io" // godoc anchor: ExampleAPI_<method> resolves against io.API
 )
 
 // ExampleAPI_Export demonstrates writing a portable graph snapshot to an

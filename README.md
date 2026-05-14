@@ -1,20 +1,20 @@
-# tkg/v3
+# tkg/v4
 
-**Temporal Knowledge Graph v3** — the internal Go library powering the core graph engine for temporal knowledge graphs.
+**Temporal Knowledge Graph v4** — the internal Go library powering the core graph engine for temporal knowledge graphs.
 
-tkg/v3 is a **pure library** (no main binary, no HTTP server, no query language). It provides the low-level graph types, persistence layer, and entity management that higher-level products build on.
+tkg/v4 is a **pure library** (no main binary, no HTTP server, no query language). It provides the low-level graph types, persistence layer, and entity management that higher-level products build on.
 
 For the full product with Cypher queries, Vadalog reasoning, and an HTTP server, see **tkgd-v3**.
 
 | Layer | Repository | What it provides |
 |---|---|---|
-| **tkg/v3** (this repo) | `rho/tkg/v3` | Graph types, registries, `memory.Store`, `badger.Store`, `tiered.Store`, entity locks |
+| **tkg/v4** (this repo) | `rho/tkg/v4` | Graph types, registries, `memory.Store`, `badger.Store`, `tiered.Store`, entity locks |
 | **tkgd-v3** | `rho/tkgd-v3` | Cypher engine, Vadalog reasoning, HTTP server, REST API |
 
 ## Module
 
 ```
-gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3
+gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4
 ```
 
 **Go:** 1.26.1

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
 )
 
 func TestPriority_GraphDeleteIsCritical(t *testing.T) {

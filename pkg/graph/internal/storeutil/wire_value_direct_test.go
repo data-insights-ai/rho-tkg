@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 type wireValueDirectCustom struct {

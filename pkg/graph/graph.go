@@ -12,20 +12,20 @@
 package graph
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/admin"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraints"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hash"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/core"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/nodes"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/rels"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolve"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/stats"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/tier"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/admin"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/constraints"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/hash"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/core"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/nodes"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/rels"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/resolve"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/stats"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/tier"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.

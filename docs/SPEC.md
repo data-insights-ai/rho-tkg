@@ -601,7 +601,7 @@ val, ok := g.Resolve.NodeProperty(node, "tkg_labels") // shadow property
 
 ### 11.5 Entity IDs
 
-`tkg/v3` does not expose a user-supplied identity for nodes or relationships. Identity is the snowflake ID (typed `NodeID` / `RelID`). Property-based lookups via `g.Nodes.ByLabelAndProperty` are the recommended pattern for application-level identity:
+`tkg/v4` does not expose a user-supplied identity for nodes or relationships. Identity is the snowflake ID (typed `NodeID` / `RelID`). Property-based lookups via `g.Nodes.ByLabelAndProperty` are the recommended pattern for application-level identity:
 
 ```go
 matches, err := g.Nodes.ByLabelAndProperty("User", "external_id", "user:alice", store.QueryOpts{})
@@ -778,7 +778,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 
 > **Note (R4-F18):** Phase 4 originally tracked a Cypher engine and HTTP/gRPC
 > API. Those concerns moved to `rho/tkgd-v3` during the v3.0 split — this
-> repository (`rho/tkg/v3`) is a pure library. The bullets below describe
+> repository (`rho/tkg/v4`) is a pure library. The bullets below describe
 > the resolver and graph-API surface that remain here; pkg/cypher/ and
 > pkg/api/ are intentionally absent. See CLAUDE.md > Project Overview for
 > the canonical scope statement.
