@@ -337,3 +337,96 @@ When collapsing or splitting sub-APIs, update each `Ops` interface to the
 minimal new shape and let `*core.Core` satisfy it implicitly. Old methods
 on the internal core type can stay if they're useful internally — what
 matters is that the public Ops interface advertises only the new contract.
+
+## 27. Don't Ship "Documented Known Limitations" In Place Of Real Fixes
+
+```
+BAD:  flagging a real perf issue with a v4.1 carry-forward note and
+      shipping v4 with the regression in place
+GOOD: implement the actual fix now; only carry forward if there is a
+      concrete reason that can be defended in review
+```
+
+B2 (history-aware adjacency O(total history) fold) was originally shipped
+as a "known limitation, v4.1 will introduce a deleted-adjacency index" note
+in CHANGELOG.md and three API doc comments. That is delay-by-documentation.
+The honest fix turned out to be small: a new optional
+`DeletedIterationCapability` (`ForEachDeletedNodeID` / `ForEachDeletedRelID`,
+plus depth variants) implemented by every in-tree backend, plus an
+adjacency-specific candidate fold (`forEachRelAdjacencyCandidateID`) in
+the graph layer. Cost drops from O(total history) to O(deleted count).
+
+Rule: every "known limitation / will fix in v4.1" note is a code smell.
+Before writing one, ask "if this had bitten me 6 months ago, would I be
+asking why we shipped with the regression?" If yes, fix it now.
+
+## 28. Adjacency Endpoint Immutability Permits Deleted-Only Folds
+
+```
+BAD:  unified "fold all history" helper used both for label/property
+      temporal queries and adjacency temporal queries
+GOOD: split into forEach*CandidateID (all-history, for queries where
+      current state can differ from at-t state) and
+      forEachRelAdjacencyCandidateID (deleted-only, for adjacency where
+      endpoints are immutable)
+```
+
+The first attempt at B2 collapsed all candidate folds to "deleted only".
+That broke history-aware label/property queries because an entity whose
+CURRENT label is Y but historically was X at t is NOT deleted — it has a
+current row — yet still must be visited so the predicate can match its
+at-t version.
+
+Adjacency is the special case: rel endpoints are immutable, so a rel that
+ever pointed at node N still does if alive. Therefore the only rels
+missing from the live adjacency index for N are DELETED rels.
+
+When optimising a generic helper used in multiple semantic contexts, split
+the helper before changing one of its callers — never let one call site's
+optimization break another's correctness.
+
+## 29. PublishBatch "Atomic" Ordering Survives Saturation Only With A Floor
+
+```
+BAD:  docstring promises "no lower-priority event before all higher-
+      priority batch events" but BackpressureBlock fires an in-batch
+      wake-up that lets the dispatcher do exactly that
+GOOD: per-batch priority ceiling enforced by the dispatcher
+```
+
+`AsyncEventBus.PublishBatch` documented strict priority ordering across the
+whole batch. Implementation reality: when a priority queue saturates
+mid-batch under BackpressureBlock, `enqueueLocked` signals the dispatcher
+to drain space (avoids deadlock). The dispatcher wakes, drains the
+saturated priority, then — before the batch's later same-or-higher
+priority events arrive — can pick up a pre-existing lower-priority event.
+
+Fix: `batchPriorityCeiling` atomic Int32. PublishBatch raises it to the
+current priority index+1 at the top of each pass, clears it at end of
+batch. Dispatcher's priority scan skips `priorityOrder[i]` for
+`i >= ceiling`, so the in-batch wake-up serves only same-or-higher
+priorities. Liveness preserved (existing
+`TestAsyncEventBusPublishBatchBlockWakesBeforeFullQueueWait` still passes).
+
+Test pattern: stage a pre-existing lower-priority event, force a batch
+saturation with QueueSize smaller than the per-priority slice, then assert
+the dispatched order has all batch events before the lower-priority one.
+
+## 30. File Size Is A Signal, Not A Rule
+
+```
+BAD:  one growing file becomes a grab-bag because every helper has the
+      same receiver type
+GOOD: split when the file claims to be one thing in its top comment but
+      has accumulated multiple unrelated responsibilities
+```
+
+`store_capabilities.go` started as the four capability getters (~50 LOC)
+and grew to 917 LOC of validators, row copiers, entity fetchers, and ID
+iterators — all glued together because they share `c *Core` as receiver.
+Split into 4 files (`store_capabilities.go`, `store_validation.go`,
+`store_copy.go`, `store_fetch.go`) along "what does this return" lines.
+
+The signal isn't line count alone. It's the gap between the file's
+self-described purpose (per its top comment) and what's actually inside.
+A 900-line file is fine if it does one thing; a 200-line grab-bag is not.

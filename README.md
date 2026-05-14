@@ -43,7 +43,13 @@ Detailed documentation has been split into the `docs/` directory:
 - `g.Resolve.LabelToken` / `RelTypeToken` / `LookupLabel` / `LookupRelType` removed. Shadow-property accessors kept.
 - `index.LegacyIndexProvider` interface + `Index.RegisterLegacyProvider` removed. External providers must migrate to `IndexProvider` + optional `Initializable`.
 - `IO.Import(r)` + `IO.ImportWithOptions(r, opts)` collapsed into `IO.Import(r, opts)`. Pass `ImportOptions{}` for the previous defaults.
-- New `g.Batch.Run(fn)` parallel to `g.Tx.Run` for the closure-style batch idiom.
+- New `g.Batch.Run(fn)` parallel to `g.Tx.Run` for the closure-style batch idiom. `g.Tx.RunContext` and `g.Batch.RunContext` also accept a context for cancellation parity with the explicit-context update methods.
+- `g.Nodes.AddByIDIfAbsent(ctx, id, labels, props)` parallels the existing `g.Rels.AddByIDIfAbsent` — both sub-APIs now have an idempotent "ensure exists" verb.
+- `g.Index.DropProperty` / `DropTemporal` / `DropVector` / `DropHighFrequency` renamed `DeleteProperty` / `DeleteTemporal` / `DeleteVector` / `DeleteHighFrequency` for verb consistency with the rest of the API surface.
+
+**History-aware adjacency queries cost O(deleted) instead of O(total history).** `g.Temporal.OutgoingRelsAt`, `IncomingRelsAt`, and `NeighborsAt` previously folded every relationship history ID onto the narrow indexed candidate set to catch deleted-but-historically-valid rels. The fold now goes through a new optional store capability (`DeletedIterationCapability`) which yields only IDs whose history exists but whose current row is absent — every in-tree backend (memory, badger, tiered) implements it. External stores that omit the capability transparently fall back to the wider history scan with identical correctness.
+
+**PublishBatch priority ordering is preserved under queue saturation.** `AsyncEventBus.PublishBatch` previously promised "no lower-priority event before all higher-priority batch events have been made visible", but the in-batch wake-up (added so a saturating batch under `BackpressureBlock` does not deadlock) could let a pre-existing lower-priority event slip in between batch enqueues. The bus now raises a per-batch priority ceiling for each priority pass; the dispatcher honours it so the in-batch wake-up drains only same-or-higher priorities and the ordering guarantee holds even with `QueueSize` smaller than the per-priority batch slice.
 
 **Transaction rollback restores endpoints before relationships.** `GraphTx.Rollback` now restores all deleted node rows before recreating deleted relationships, so a rollback after `DeleteRelationship` followed by `DeleteNode(endpoint)` restores the edge instead of failing on a missing endpoint.
 
@@ -247,7 +253,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Badger index metadata fails closed.** Badger now rejects corrupt MsgPack property, temporal, high-frequency, and vector index-definition records on open instead of silently dropping persisted index metadata.
 
-**Graph index target operations fail on invalid targets.** `g.Index.DropProperty`, `DropTemporal`, `DropHighFrequency`, `DropVector`, and `SearchNearest` validate labels and return the matching not-found sentinel for unknown labels instead of reporting a successful no-op or empty result. Property/vector target operations also enforce property-key length limits.
+**Graph index target operations fail on invalid targets.** `g.Index.DeleteProperty`, `DeleteTemporal`, `DeleteHighFrequency`, `DeleteVector`, and `SearchNearest` validate labels and return the matching not-found sentinel for unknown labels instead of reporting a successful no-op or empty result. Property/vector target operations also enforce property-key length limits.
 
 **Vector index configuration is explicit.** `CreateVectorIndex` rejects non-positive dimensions and unsupported distance metrics with `ErrInvalidVectorIndexConfig`; Badger and Tiered reopen paths reject invalid persisted vector-index definitions.
 

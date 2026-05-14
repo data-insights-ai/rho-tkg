@@ -111,14 +111,15 @@ s/\.PreviousVersion(/.VersionBefore(/g
 
 ### Fixed - Temporal adjacency O(history) fold (2026-05-14)
 
-- **`g.Temporal.OutgoingRelsAt`, `IncomingRelsAt`, `NeighborsAt`** and the
-  history-aware label/property queries that fold deleted entities onto a
-  narrow indexed candidate set no longer scan the entire history ID space.
-  The fold now uses a new optional store capability,
-  `DeletedIterationCapability` (with depth-aware companion
+- **`g.Temporal.OutgoingRelsAt`, `IncomingRelsAt`, `NeighborsAt`** no longer
+  scan the entire rel-history ID space to catch deleted-but-historically-
+  valid edges. The adjacency-at-t fold now uses a new optional store
+  capability, `DeletedIterationCapability` (with depth-aware companion
   `DepthDeletedIterationCapability`), that yields ONLY IDs whose history
   exists but whose current row is absent. Cost drops from O(total history)
-  to O(deleted_count) for the candidate-fold step.
+  to O(deleted_count). Rel endpoints are immutable, so a rel that ever
+  pointed at a node still does if alive — the only rels missing from the
+  live adjacency index are deleted ones.
 - **Store contract additions (`pkg/graph/store/capabilities.go`).**
   - `ForEachDeletedNodeID(fn) error` / `ForEachDeletedRelID(fn) error`
   - `ForEachDeletedNodeIDByDepth(depth, fn) error` /
@@ -126,6 +127,26 @@ s/\.PreviousVersion(/.VersionBefore(/g
   - All three in-tree backends (memory, badger, tiered) implement the
     capability. External stores that omit it transparently fall back to
     the previous history-scan path — correct, just slower.
+- Label/property temporal queries (`g.Nodes.ByLabel(opts)`,
+  `ByLabelAndProperty(...)`, etc.) keep the full-history candidate fold
+  because an entity's CURRENT label/property can differ from its at-t state
+  — those queries can match entities whose history overlaps the predicate
+  even when the entity is currently live with different labels.
+
+### Fixed - PublishBatch priority ordering under queue saturation (2026-05-14)
+
+- **`events.AsyncEventBus.PublishBatch`** now preserves its documented
+  priority guarantee even when a priority queue saturates mid-batch under
+  `BackpressureBlock`. Previously, the in-batch wake-up that drains space
+  (necessary to avoid deadlock when `QueueSize < per-priority batch size`)
+  could let the dispatcher pick up a pre-existing lower-priority event
+  between batch enqueues, inverting the "no lower-priority event before all
+  higher-priority batch events are visible" contract.
+- A per-batch priority ceiling (atomic `batchPriorityCeiling` on the bus)
+  is raised for each priority pass and cleared at end-of-batch; the
+  dispatcher honours it so the in-batch wake-up drains only same-or-higher
+  priorities. Liveness preserved (existing
+  `TestAsyncEventBusPublishBatchBlockWakesBeforeFullQueueWait` still passes).
 
 ### Added - Temporal directional accessors (2026-05-14)
 
