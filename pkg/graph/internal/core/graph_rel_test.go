@@ -1159,7 +1159,7 @@ func TestGraphSetRelationshipProperty(t *testing.T) {
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
-	if err := g.Rels.SetProperty(id, "weight", 0.5); err != nil {
+	if err := g.Rels.SetProperty(context.Background(), id, "weight", 0.5); err != nil {
 		t.Fatalf("SetRelationshipProperty: %v", err)
 	}
 
@@ -1179,7 +1179,7 @@ func TestGraphDeleteRelationshipProperty(t *testing.T) {
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"weight": 0.5})
 	id := r.ID()
 
-	if err := g.Rels.DeleteProperty(id, "weight"); err != nil {
+	if err := g.Rels.DeleteProperty(context.Background(), id, "weight"); err != nil {
 		t.Fatalf("DeleteRelationshipProperty: %v", err)
 	}
 

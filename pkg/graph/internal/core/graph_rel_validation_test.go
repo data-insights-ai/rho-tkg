@@ -140,7 +140,7 @@ func TestRelationshipMutationsRejectNestedPropertyStringValueTooLarge(t *testing
 		{
 			name: "set property",
 			run: func(g *Core, id types.RelID) error {
-				return g.Rels.SetProperty(id, "k", oversized)
+				return g.Rels.SetProperty(context.Background(), id, "k", oversized)
 			},
 		},
 		{

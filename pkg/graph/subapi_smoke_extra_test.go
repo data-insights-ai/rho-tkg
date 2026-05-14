@@ -66,10 +66,10 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 		t.Errorf("UpdateInPlaceWithContext: %v", err)
 	}
 
-	if err := g.Nodes.SetProperty(a.ID(), "since", int64(2026)); err != nil {
+	if err := g.Nodes.SetProperty(context.Background(), a.ID(), "since", int64(2026)); err != nil {
 		t.Errorf("SetProperty: %v", err)
 	}
-	if err := g.Nodes.DeleteProperty(a.ID(), "since"); err != nil {
+	if err := g.Nodes.DeleteProperty(context.Background(), a.ID(), "since"); err != nil {
 		t.Errorf("DeleteProperty: %v", err)
 	}
 	if _, err := g.Nodes.CompareAndSetProperty(context.Background(), a.ID(), "age", int64(34), int64(35)); err != nil {
@@ -79,10 +79,10 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 		t.Errorf("CompareAndSetPropertyWithContext: %v", err)
 	}
 
-	if err := g.Nodes.AddLabel(a.ID(), "VIP"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), a.ID(), "VIP"); err != nil {
 		t.Errorf("AddLabel: %v", err)
 	}
-	if err := g.Nodes.RemoveLabel(a.ID(), "VIP"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), a.ID(), "VIP"); err != nil {
 		t.Errorf("RemoveLabel: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if _, err := g.Nodes.VersionBefore(a.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
 		t.Errorf("VersionBefore: %v", err)
 	}
-	if err := g.Nodes.CloseVersion(a.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), a.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
 	}
 	_ = g.Nodes.NextID() // pure ID generator — coverage only
@@ -176,7 +176,7 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if _, err := g.Rels.UpdateInPlace(ctx, r1.ID(), map[string]any{"weight": float64(0.8)}); err != nil {
 		t.Errorf("UpdateInPlaceWithContext: %v", err)
 	}
-	if err := g.Rels.SetProperty(r1.ID(), "since", int64(2026)); err != nil {
+	if err := g.Rels.SetProperty(context.Background(), r1.ID(), "since", int64(2026)); err != nil {
 		t.Errorf("SetProperty: %v", err)
 	}
 	if _, err := g.Rels.CompareAndSetProperty(context.Background(), r1.ID(), "since", int64(2026), int64(2027)); err != nil {
@@ -185,7 +185,7 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if _, err := g.Rels.CompareAndSetProperty(ctx, r1.ID(), "since", int64(2027), int64(2028)); err != nil {
 		t.Errorf("CompareAndSetPropertyWithContext: %v", err)
 	}
-	if err := g.Rels.DeleteProperty(r1.ID(), "since"); err != nil {
+	if err := g.Rels.DeleteProperty(context.Background(), r1.ID(), "since"); err != nil {
 		t.Errorf("DeleteProperty: %v", err)
 	}
 
@@ -217,7 +217,7 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if _, err := g.Rels.VersionBefore(r1.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
 		t.Errorf("VersionBefore: %v", err)
 	}
-	if err := g.Rels.CloseVersion(r1.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r1.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
 	}
 	_ = g.Rels.NextID()
@@ -319,20 +319,20 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	// the open versions before exercising the wrappers so each entity
 	// carries a finite [valid_from, valid_to) window.
 	endTime := types.Instant(time.Now().Add(time.Hour).UnixMilli())
-	if err := g.Nodes.CloseVersion(a.ID(), endTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), a.ID(), endTime); err != nil {
 		t.Fatalf("CloseVersion(a): %v", err)
 	}
-	if err := g.Nodes.CloseVersion(b.ID(), endTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), b.ID(), endTime); err != nil {
 		t.Fatalf("CloseVersion(b): %v", err)
 	}
-	if err := g.Rels.CloseVersion(r.ID(), endTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r.ID(), endTime); err != nil {
 		t.Fatalf("CloseVersion(r): %v", err)
 	}
 	r2, err := g.Rels.Add(context.Background(), "ALT", a, b, nil)
 	if err != nil {
 		t.Fatalf("Rels.Add(ALT): %v", err)
 	}
-	if err := g.Rels.CloseVersion(r2.ID(), endTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r2.ID(), endTime); err != nil {
 		t.Fatalf("CloseVersion(r2): %v", err)
 	}
 

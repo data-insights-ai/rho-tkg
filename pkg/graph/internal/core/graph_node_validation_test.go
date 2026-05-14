@@ -415,7 +415,7 @@ func TestNodeMutationsRejectNestedPropertyStringValueTooLarge(t *testing.T) {
 		{
 			name: "set property",
 			run: func(g *Core, id types.NodeID) error {
-				return g.Nodes.SetProperty(id, "k", oversized)
+				return g.Nodes.SetProperty(context.Background(), id, "k", oversized)
 			},
 		},
 		{

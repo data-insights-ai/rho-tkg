@@ -583,7 +583,7 @@ func TestNodeAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 	beforeCloseTx := clk.PeekInstant() - 1
 	closeTx := clk.PeekInstant()
 	closeValidTo := g.nodeValidFrom(n) + 2000
-	if err := g.Nodes.CloseVersion(n.ID(), closeValidTo); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), n.ID(), closeValidTo); err != nil {
 		t.Fatalf("CloseVersion: %v", err)
 	}
 
@@ -738,7 +738,7 @@ func TestRelAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 	beforeCloseTx := clk.PeekInstant() - 1
 	closeTx := clk.PeekInstant()
 	closeValidTo := g.relValidFrom(r) + 2000
-	if err := g.Rels.CloseVersion(r.ID(), closeValidTo); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r.ID(), closeValidTo); err != nil {
 		t.Fatalf("CloseVersion: %v", err)
 	}
 

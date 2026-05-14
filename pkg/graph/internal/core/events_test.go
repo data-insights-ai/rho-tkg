@@ -388,7 +388,7 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
 
 	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
-	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
 
@@ -410,7 +410,7 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	events := collectEvents(g, eventspkg.EventRelUpdate)
 
 	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
-	if err := g.Rels.CloseVersion(rid, closeTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), rid, closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
 

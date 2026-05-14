@@ -7,7 +7,7 @@ package core
 // must fail to compile until the upstream methods are implemented.
 //
 // Requirements under test:
-//   Graph.Nodes.AddLabel(id, label) error
+//   Graph.Nodes.AddLabel(context.Background(), id, label) error
 //     - adds label to existing node
 //     - idempotent when label already present (no error, no version bump)
 //     - validates name length (ErrNameTooLong)
@@ -18,13 +18,13 @@ package core
 //     - writes version history entry
 //     - publishes eventspkg.EventNodeUpdate
 //
-//   GraphTx.Nodes.AddLabel(id, label) error
+//   GraphTx.Nodes.AddLabel(context.Background(), id, label) error
 //     - applies inside transaction
 //     - rollback undoes the add (label gone after Rollback)
 //     - Commit persists the added label
 //     - storepkg.ErrTxDone after Commit/Rollback
 //
-//   GraphTx.Nodes.RemoveLabel(id, label) error
+//   GraphTx.Nodes.RemoveLabel(context.Background(), id, label) error
 //     - wraps g.removeNodeLabelInternal under tx lock
 //     - rollback restores the removed label
 //     - returns ErrLastLabel when removing the only label
@@ -51,7 +51,7 @@ func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.AddLabel(id, "Employee"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "Employee"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 	before, _ := g.Nodes.Get(context.Background(), id)
 	beforeVersion := before.Version()
 
-	if err := g.Nodes.AddLabel(id, "Employee"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "Employee"); err != nil {
 		t.Fatalf("AddNodeLabel on existing label should be a no-op, got: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry(t *testing.T) {
 		t.Fatal("wrapper store must be treated as untrusted")
 	}
 
-	err = g.Nodes.AddLabel(id, "Corrupt")
+	err = g.Nodes.AddLabel(context.Background(), id, "Corrupt")
 	if !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
 		t.Fatalf("AddLabel corrupt future token = %v, want ErrInvalidStoreMutation", err)
 	}
@@ -131,7 +131,7 @@ func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.AddLabel(id, ""); err == nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, ""); err == nil {
 		t.Fatal("expected error for empty label name")
 	}
 }
@@ -141,7 +141,7 @@ func TestAddNodeLabel_NameTooLong(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Short"}, nil)
 	id := n.ID()
 
-	err := g.Nodes.AddLabel(id, strings.Repeat("a", 6))
+	err := g.Nodes.AddLabel(context.Background(), id, strings.Repeat("a", 6))
 	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("expected ErrNameTooLong, got %v", err)
 	}
@@ -152,7 +152,7 @@ func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
-	err := g.Nodes.AddLabel(id, "C")
+	err := g.Nodes.AddLabel(context.Background(), id, "C")
 	if !errors.Is(err, ErrTooManyLabels) {
 		t.Fatalf("expected ErrTooManyLabels, got %v", err)
 	}
@@ -162,7 +162,7 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 
-	err := g.Nodes.AddLabel(n.ID(), "Rejected")
+	err := g.Nodes.AddLabel(context.Background(), n.ID(), "Rejected")
 	if !errors.Is(err, ErrTooManyLabels) {
 		t.Fatalf("AddLabel error = %v, want ErrTooManyLabels", err)
 	}
@@ -173,7 +173,7 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 	g, _ := New(Config{})
-	err := g.Nodes.AddLabel(999, "Person")
+	err := g.Nodes.AddLabel(context.Background(), 999, "Person")
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -187,10 +187,10 @@ func TestNodeLabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
 		run  func() error
 	}{
 		{name: "add", run: func() error {
-			return g.Nodes.AddLabel(types.NodeID(999), " ")
+			return g.Nodes.AddLabel(context.Background(), types.NodeID(999), " ")
 		}},
 		{name: "remove", run: func() error {
-			return g.Nodes.RemoveLabel(types.NodeID(999), " ")
+			return g.Nodes.RemoveLabel(context.Background(), types.NodeID(999), " ")
 		}},
 	}
 
@@ -213,7 +213,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 		origHash = ig.Hash
 	}
 
-	if err := g.Nodes.AddLabel(id, "B"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
@@ -240,7 +240,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 		t.Fatalf("expected 0 history entries before, got %d", len(before))
 	}
 
-	if err := g.Nodes.AddLabel(id, "B"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
@@ -263,7 +263,7 @@ func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.AddLabel(id, "Tag"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "Tag"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
@@ -294,7 +294,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	})
 	events = nil // clear AddNode event
 
-	if err := g.Nodes.AddLabel(id, "B"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
@@ -398,7 +398,7 @@ func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 	closeTime := g.nodeValidFrom(n) + 1000
-	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
 		t.Fatalf("CloseVersion: %v", err)
 	}
 

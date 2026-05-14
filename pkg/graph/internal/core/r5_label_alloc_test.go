@@ -73,7 +73,7 @@ func TestR5_AddNodeLabel_WriteFailureDoesNotKeepNewLabelToken(t *testing.T) {
 	}
 
 	const label = "ADD_LABEL_FAIL"
-	if err := g.Nodes.AddLabel(n.ID(), label); !errors.Is(err, injected) {
+	if err := g.Nodes.AddLabel(context.Background(), n.ID(), label); !errors.Is(err, injected) {
 		t.Fatalf("AddLabel error = %v, want injected AddNodeLabelTokenWithHistory fault", err)
 	}
 	if _, ok := g.labels.Lookup(label); ok {

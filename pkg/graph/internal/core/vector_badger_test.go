@@ -21,7 +21,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 	}
 	id := n.ID()
 
-	if err := g.Nodes.RemoveLabel(id, "Admin"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Admin"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

@@ -637,6 +637,92 @@ func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 	}
 }
 
+// TestNeighborsAt_TwoPhase_DeletedNeighborStillReturnedAtT0 (S6) is the
+// two-phase test the legacy NeighborsAt cases above don't deliver: they
+// poke at TemporalMetadata directly to simulate expiry, which only
+// exercises the temporal-window filter. The real semantic guarantee is
+// "querying at t0 returns the neighbors that existed at t0 even if they
+// have since been deleted". This test creates neighbors, captures t0,
+// deletes one AFTER t0, then queries at t0 and asserts both neighbors are
+// returned. Mirrors the findings_regression_test.go pattern and CLAUDE.md
+// rule 15 (history-aware methods need two-phase tests).
+func TestNeighborsAt_TwoPhase_DeletedNeighborStillReturnedAtT0(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	useTestClock(t, g)
+	ctx := context.Background()
+
+	a, _ := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "B"})
+	c, _ := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "C"})
+	rab, _ := g.Rels.Add(ctx, "KNOWS", a, b, nil)
+	rac, _ := g.Rels.Add(ctx, "KNOWS", a, c, nil)
+
+	// t0 = a moment when all three nodes and both rels exist.
+	t0 := g.relValidFrom(rac)
+
+	// Phase 2: delete c AFTER t0.
+	if err := g.Nodes.Delete(ctx, c.ID()); err != nil {
+		t.Fatalf("Delete c: %v", err)
+	}
+
+	got, err := g.Temporal.NeighborsAt(a.ID(), t0)
+	if err != nil {
+		t.Fatalf("NeighborsAt at t0: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 — got = %v (deleted-neighbor coverage failed)", len(got), nodeNamesFromList(got))
+	}
+	names := nodeNamesFromList(got)
+	if !contains(names, "B") || !contains(names, "C") {
+		t.Fatalf("names = %v, want both B and C", names)
+	}
+	_ = rab
+}
+
+// TestNeighborsAt_TwoPhase_DeletedRelStillCoveredAtT0 mirrors the above
+// but with the rel deleted instead of the neighbor node.
+func TestNeighborsAt_TwoPhase_DeletedRelStillCoveredAtT0(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	useTestClock(t, g)
+	ctx := context.Background()
+
+	a, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "B"})
+	rab, _ := g.Rels.Add(ctx, "KNOWS", a, b, nil)
+	t0 := g.relValidFrom(rab)
+	if err := g.Rels.Delete(ctx, rab.ID()); err != nil {
+		t.Fatalf("DeleteRel: %v", err)
+	}
+	got, err := g.Temporal.NeighborsAt(a.ID(), t0)
+	if err != nil {
+		t.Fatalf("NeighborsAt: %v", err)
+	}
+	if names := nodeNamesFromList(got); !contains(names, "B") {
+		t.Fatalf("names = %v, want B (rel deleted-at-t0+ε)", names)
+	}
+}
+
+func nodeNamesFromList(nodes []*types.Node) []string {
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if v, ok := n.GetProperty("name"); ok {
+			out = append(out, v.(string))
+		}
+	}
+	return out
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 	t.Parallel()
 

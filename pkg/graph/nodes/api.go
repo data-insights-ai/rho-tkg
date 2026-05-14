@@ -34,17 +34,17 @@ type Ops interface {
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
 
-	SetProperty(id types.NodeID, key string, value any) error
-	DeleteProperty(id types.NodeID, key string) error
+	SetProperty(ctx context.Context, id types.NodeID, key string, value any) error
+	DeleteProperty(ctx context.Context, id types.NodeID, key string) error
 	CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error)
 
-	AddLabel(id types.NodeID, label string) error
-	RemoveLabel(id types.NodeID, label string) error
+	AddLabel(ctx context.Context, id types.NodeID, label string) error
+	RemoveLabel(ctx context.Context, id types.NodeID, label string) error
 	HasLabel(n *types.Node, label string) bool
 	Labels(n *types.Node) []string
 	PrimaryLabel(n *types.Node) string
 
-	CloseVersion(id types.NodeID, t types.Instant) error
+	CloseVersion(ctx context.Context, id types.NodeID, t types.Instant) error
 	History(id types.NodeID) ([]*types.Node, error)
 	VersionAfter(id types.NodeID, version uint32) (*types.Node, error)
 	VersionBefore(id types.NodeID, version uint32) (*types.Node, error)
@@ -189,22 +189,22 @@ func (a *API) CountByLabel(label string) (int, error) {
 	return ops.CountByLabel(label)
 }
 
-// SetProperty sets a single property (internally uses context.Background()).
-func (a *API) SetProperty(id types.NodeID, key string, value any) error {
+// SetProperty sets a single property honoring ctx.
+func (a *API) SetProperty(ctx context.Context, id types.NodeID, key string, value any) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.SetProperty(id, key, value)
+	return ops.SetProperty(ctx, id, key, value)
 }
 
-// DeleteProperty deletes a single property (internally uses context.Background()).
-func (a *API) DeleteProperty(id types.NodeID, key string) error {
+// DeleteProperty deletes a single property honoring ctx.
+func (a *API) DeleteProperty(ctx context.Context, id types.NodeID, key string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DeleteProperty(id, key)
+	return ops.DeleteProperty(ctx, id, key)
 }
 
 // CompareAndSetProperty atomically updates a property honoring ctx.
@@ -216,22 +216,22 @@ func (a *API) CompareAndSetProperty(ctx context.Context, id types.NodeID, key st
 	return ops.CompareAndSetProperty(ctx, id, key, expected, newVal)
 }
 
-// AddLabel adds a label to a node.
-func (a *API) AddLabel(id types.NodeID, label string) error {
+// AddLabel adds a label to a node, honoring ctx.
+func (a *API) AddLabel(ctx context.Context, id types.NodeID, label string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.AddLabel(id, label)
+	return ops.AddLabel(ctx, id, label)
 }
 
-// RemoveLabel removes a label from a node.
-func (a *API) RemoveLabel(id types.NodeID, label string) error {
+// RemoveLabel removes a label from a node, honoring ctx.
+func (a *API) RemoveLabel(ctx context.Context, id types.NodeID, label string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.RemoveLabel(id, label)
+	return ops.RemoveLabel(ctx, id, label)
 }
 
 // HasLabel reports whether the node carries the label.
@@ -258,13 +258,13 @@ func (a *API) PrimaryLabel(n *types.Node) string {
 	return a.ops.PrimaryLabel(n)
 }
 
-// CloseVersion closes the open-ended ValidTo of the current node version.
-func (a *API) CloseVersion(id types.NodeID, t types.Instant) error {
+// CloseVersion closes the open-ended ValidTo of the current node version, honoring ctx.
+func (a *API) CloseVersion(ctx context.Context, id types.NodeID, t types.Instant) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.CloseVersion(id, t)
+	return ops.CloseVersion(ctx, id, t)
 }
 
 // History returns the version chain for a node.

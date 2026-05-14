@@ -79,6 +79,97 @@ func TestOutgoingRelsAt_HistoryAfterDelete(t *testing.T) {
 	}
 }
 
+// TestOutgoingRelsAt_HistoryReturnsT0PropertyValues (S7) is the stronger
+// two-phase test: an Update after t0 changes the rel's properties; querying
+// at t0 must return the pre-update property value, not the current value.
+// This proves the function returns the version-at-t, not the most-recent
+// version that happens to have an endpoint at this node.
+func TestOutgoingRelsAt_HistoryReturnsT0PropertyValues(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	useTestClock(t, g)
+	ctx := context.Background()
+
+	a, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	r, err := g.Rels.Add(ctx, "KNOWS", a, b, map[string]any{"strength": "weak"})
+	if err != nil {
+		t.Fatalf("Add rel: %v", err)
+	}
+	t0 := g.relValidFrom(r)
+
+	// Phase 2: mutate the property after t0.
+	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"strength": "strong"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, err := g.Temporal.OutgoingRelsAt(a.ID(), t0)
+	if err != nil {
+		t.Fatalf("OutgoingRelsAt: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != r.ID() {
+		t.Fatalf("got = %v, want [%d]", relIDsOf(got), r.ID())
+	}
+	if v, ok := got[0].GetProperty("strength"); !ok || v != "weak" {
+		t.Fatalf("rel property at t0 = (%v, %v), want (\"weak\", true) — function returned post-mutation state instead of t0 state", v, ok)
+	}
+}
+
+// TestIncomingRelsAt_FuturePoint mirrors TestOutgoingRelsAt_FuturePoint —
+// pin Node/Rel parity (rule 2) and force the symmetric audit path
+// through directionalRelsAt(outgoing=false) (rule 17).
+func TestIncomingRelsAt_FuturePoint(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	clk := useTestClock(t, g)
+	ctx := context.Background()
+
+	a, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	r, _ := g.Rels.Add(ctx, "KNOWS", b, a, nil) // incoming on a
+
+	clk.Advance(2 * time.Second)
+	if err := g.Rels.Delete(ctx, r.ID()); err != nil {
+		t.Fatalf("DeleteRel: %v", err)
+	}
+	tFuture := clk.PeekInstant() + 1
+
+	got, err := g.Temporal.IncomingRelsAt(a.ID(), tFuture)
+	if err != nil {
+		t.Fatalf("IncomingRelsAt at future: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("future-point incoming rels = %v, want empty", relIDsOf(got))
+	}
+}
+
+// TestIncomingRelsAt_HistoryReturnsT0PropertyValues mirrors the property
+// preservation guarantee for the incoming direction (S7).
+func TestIncomingRelsAt_HistoryReturnsT0PropertyValues(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	useTestClock(t, g)
+	ctx := context.Background()
+
+	a, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	r, _ := g.Rels.Add(ctx, "KNOWS", b, a, map[string]any{"trust": "low"})
+	t0 := g.relValidFrom(r)
+	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"trust": "high"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, err := g.Temporal.IncomingRelsAt(a.ID(), t0)
+	if err != nil {
+		t.Fatalf("IncomingRelsAt: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got = %v, want exactly r", relIDsOf(got))
+	}
+	if v, _ := got[0].GetProperty("trust"); v != "low" {
+		t.Fatalf("rel property at t0 = %v, want \"low\"", v)
+	}
+}
+
 // TestOutgoingRelsAt_FuturePoint asserts a query in the future (after delete)
 // returns the empty set — the deleted rel must NOT leak through as current.
 func TestOutgoingRelsAt_FuturePoint(t *testing.T) {

@@ -37,7 +37,7 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.Nodes.AddLabel(ids[i], labels[i]); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), ids[i], labels[i]); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -61,7 +61,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.Nodes.AddLabel(id, "Extra"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "Extra"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -91,7 +91,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := g.Nodes.RemoveLabel(ids[i], labels[i]); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), ids[i], labels[i]); err != nil {
 			b.Fatal(err)
 		}
 	}

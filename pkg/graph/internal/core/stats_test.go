@@ -376,7 +376,7 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 
 	before, _ := g.Stats.Get()
 	nodeCloseTime := g.nodeValidFrom(a) + 1000
-	if err := g.Nodes.CloseVersion(a.ID(), nodeCloseTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), a.ID(), nodeCloseTime); err != nil {
 		t.Fatalf("CloseVersion node: %v", err)
 	}
 	afterNode, _ := g.Stats.Get()
@@ -385,7 +385,7 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 	}
 
 	relCloseTime := g.relValidFrom(r) + 1000
-	if err := g.Rels.CloseVersion(r.ID(), relCloseTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r.ID(), relCloseTime); err != nil {
 		t.Fatalf("CloseVersion rel: %v", err)
 	}
 	afterRel, _ := g.Stats.Get()
@@ -393,10 +393,10 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 		t.Fatalf("RelsUpdated after rel CloseVersion = %d, want %d", afterRel.RelsUpdated, before.RelsUpdated+1)
 	}
 
-	if err := g.Nodes.CloseVersion(a.ID(), nodeCloseTime+1000); !errors.Is(err, ErrAlreadyClosed) {
+	if err := g.Nodes.CloseVersion(context.Background(), a.ID(), nodeCloseTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second node CloseVersion = %v, want ErrAlreadyClosed", err)
 	}
-	if err := g.Rels.CloseVersion(r.ID(), relCloseTime+1000); !errors.Is(err, ErrAlreadyClosed) {
+	if err := g.Rels.CloseVersion(context.Background(), r.ID(), relCloseTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second rel CloseVersion = %v, want ErrAlreadyClosed", err)
 	}
 	afterRejected, _ := g.Stats.Get()

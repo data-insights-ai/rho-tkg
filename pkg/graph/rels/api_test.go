@@ -50,14 +50,14 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Incoming", run: func() error { _, err := nilAPI.Incoming(nodeID, "KNOWS"); return err }},
 		{name: "OutgoingForNodes", run: func() error { _, err := nilAPI.OutgoingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "IncomingForNodes", run: func() error { _, err := nilAPI.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
-		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(relID, "since", 2026) }},
-		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(relID, "since") }},
+		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, relID, "since", 2026) }},
+		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026); return err }},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
 			_, err := nilAPI.CompareAndSetProperty(ctx, relID, "since", 2025, 2026)
 			return err
 		}},
-		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(relID, 100) }},
+		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(ctx, relID, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(relID); return err }},
 		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(relID, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(relID, 1); return err }},
@@ -146,8 +146,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Incoming", run: func() error { _, err := api.Incoming(nodeID, "KNOWS"); return err }},
 		{name: "OutgoingForNodes", run: func() error { _, err := api.OutgoingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "IncomingForNodes", run: func() error { _, err := api.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
-		{name: "SetProperty", run: func() error { return api.SetProperty(relID, "since", 2026) }},
-		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(relID, "since") }},
+		{name: "SetProperty", run: func() error { return api.SetProperty(ctx, relID, "since", 2026) }},
+		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
 			ok, err := api.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026)
 			if !ok {
@@ -162,7 +162,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return err
 		}},
-		{name: "CloseVersion", run: func() error { return api.CloseVersion(relID, 100) }},
+		{name: "CloseVersion", run: func() error { return api.CloseVersion(ctx, relID, 100) }},
 		{name: "History", run: func() error { _, err := api.History(relID); return err }},
 		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(relID, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(relID, 1); return err }},
@@ -383,14 +383,14 @@ func (s *relOpsSpy) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (m
 	return nil, s.err
 }
 
-func (s *relOpsSpy) SetProperty(id types.RelID, key string, value any) error {
+func (s *relOpsSpy) SetProperty(ctx context.Context, id types.RelID, key string, value any) error {
 	s.record("SetProperty")
 	s.lastRelID = id
 	s.lastKey = key
 	return s.err
 }
 
-func (s *relOpsSpy) DeleteProperty(id types.RelID, key string) error {
+func (s *relOpsSpy) DeleteProperty(ctx context.Context, id types.RelID, key string) error {
 	s.record("DeleteProperty")
 	s.lastRelID = id
 	s.lastKey = key
@@ -422,7 +422,7 @@ func (s *relOpsSpy) Type(r *types.Relationship) string {
 	return s.typeName
 }
 
-func (s *relOpsSpy) CloseVersion(id types.RelID, tm types.Instant) error {
+func (s *relOpsSpy) CloseVersion(ctx context.Context, id types.RelID, tm types.Instant) error {
 	s.record("CloseVersion")
 	s.lastRelID = id
 	return s.err

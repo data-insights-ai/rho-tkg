@@ -266,7 +266,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	id := n.ID()
 
 	// Remove "User" label via Graph API (uses RemoveNodeLabelTokenWithHistory internally).
-	if err := g.Nodes.RemoveLabel(id, "User"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "User"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
@@ -302,7 +302,7 @@ func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
 	}
 	id := n.ID()
 
-	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

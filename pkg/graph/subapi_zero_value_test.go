@@ -117,8 +117,8 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireZero(t, got)
 			return err
 		}},
-		{name: "Nodes.SetProperty", fn: func(t *testing.T) error { var a nodespkg.API; return a.SetProperty(0, "", nil) }},
-		{name: "Nodes.DeleteProperty", fn: func(t *testing.T) error { var a nodespkg.API; return a.DeleteProperty(0, "") }},
+		{name: "Nodes.SetProperty", fn: func(t *testing.T) error { var a nodespkg.API; return a.SetProperty(ctx, 0, "", nil) }},
+		{name: "Nodes.DeleteProperty", fn: func(t *testing.T) error { var a nodespkg.API; return a.DeleteProperty(ctx, 0, "") }},
 		{name: "Nodes.CompareAndSetProperty", fn: func(t *testing.T) error {
 			var a nodespkg.API
 			got, err := a.CompareAndSetProperty(context.Background(), 0, "", nil, nil)
@@ -131,9 +131,9 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireFalse(t, got)
 			return err
 		}},
-		{name: "Nodes.AddLabel", fn: func(t *testing.T) error { var a nodespkg.API; return a.AddLabel(0, "") }},
-		{name: "Nodes.RemoveLabel", fn: func(t *testing.T) error { var a nodespkg.API; return a.RemoveLabel(0, "") }},
-		{name: "Nodes.CloseVersion", fn: func(t *testing.T) error { var a nodespkg.API; return a.CloseVersion(0, now) }},
+		{name: "Nodes.AddLabel", fn: func(t *testing.T) error { var a nodespkg.API; return a.AddLabel(ctx, 0, "") }},
+		{name: "Nodes.RemoveLabel", fn: func(t *testing.T) error { var a nodespkg.API; return a.RemoveLabel(ctx, 0, "") }},
+		{name: "Nodes.CloseVersion", fn: func(t *testing.T) error { var a nodespkg.API; return a.CloseVersion(ctx, 0, now) }},
 		{name: "Nodes.History", fn: func(t *testing.T) error { var a nodespkg.API; got, err := a.History(0); requireNil(t, got); return err }},
 		{name: "Nodes.VersionAfter", fn: func(t *testing.T) error {
 			var a nodespkg.API
@@ -274,8 +274,8 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Rels.SetProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.SetProperty(0, "", nil) }},
-		{name: "Rels.DeleteProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.DeleteProperty(0, "") }},
+		{name: "Rels.SetProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.SetProperty(ctx, 0, "", nil) }},
+		{name: "Rels.DeleteProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.DeleteProperty(ctx, 0, "") }},
 		{name: "Rels.CompareAndSetProperty", fn: func(t *testing.T) error {
 			var a relspkg.API
 			got, err := a.CompareAndSetProperty(context.Background(), 0, "", nil, nil)
@@ -288,7 +288,7 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireFalse(t, got)
 			return err
 		}},
-		{name: "Rels.CloseVersion", fn: func(t *testing.T) error { var a relspkg.API; return a.CloseVersion(0, now) }},
+		{name: "Rels.CloseVersion", fn: func(t *testing.T) error { var a relspkg.API; return a.CloseVersion(ctx, 0, now) }},
 		{name: "Rels.History", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.History(0); requireNil(t, got); return err }},
 		{name: "Rels.VersionAfter", fn: func(t *testing.T) error {
 			var a relspkg.API

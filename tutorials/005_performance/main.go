@@ -416,7 +416,7 @@ func main() {
 	}
 	for i := range tempClosed {
 		id := tempNodes[i].ID()
-		if err := gTemp.Nodes.CloseVersion(id, closeTime); err != nil {
+		if err := gTemp.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
 			log.Fatalf("CloseNodeVersion: %v", err)
 		}
 	}

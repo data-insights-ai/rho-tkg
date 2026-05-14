@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
@@ -15,9 +16,12 @@ import (
 // node already has the label. Validates label name length and enforces
 // MaxLabelsPerNode. Returns storepkg.ErrNodeNotFound if the node does not exist.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (n *NodeOps) AddLabel(id types.NodeID, label string) error {
+func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 	var (
@@ -158,9 +162,12 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 
 // RemoveLabel removes the given label from an existing node.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (n *NodeOps) RemoveLabel(id types.NodeID, label string) error {
+func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 	var err error

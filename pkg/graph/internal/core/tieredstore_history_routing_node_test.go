@@ -29,7 +29,7 @@ func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
 	}
 	id := n.ID()
 
-	err = g.Nodes.RemoveLabel(id, "Case")
+	err = g.Nodes.RemoveLabel(context.Background(), id, "Case")
 	if !errors.Is(err, tiered.ErrPrimaryLabelClassMutation) {
 		t.Fatalf("RemoveNodeLabel(primary ref→event) err = %v, want tiered.ErrPrimaryLabelClassMutation", err)
 	}
@@ -44,7 +44,7 @@ func TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := n.ID()
-	if err := g.Nodes.RemoveLabel(id, "User"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "User"); err != nil {
 		t.Fatalf("RemoveNodeLabel(non-primary, same class) failed: %v", err)
 	}
 }
@@ -57,7 +57,7 @@ func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := n.ID()
-	if err := g.Nodes.AddLabel(id, "User"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "User"); err != nil {
 		t.Fatalf("AddNodeLabel(same class) failed: %v", err)
 	}
 }
@@ -74,7 +74,7 @@ func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testin
 	}
 	id := n.ID()
 	// Removing primary "Case" promotes "User" — also reference class.
-	if err := g.Nodes.RemoveLabel(id, "Case"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Case"); err != nil {
 		t.Fatalf("RemoveNodeLabel(primary, same-class promotion) failed: %v", err)
 	}
 }

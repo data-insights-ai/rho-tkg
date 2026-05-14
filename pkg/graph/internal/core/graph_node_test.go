@@ -1192,7 +1192,7 @@ func TestGraphSetNodeProperty(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.SetProperty(id, "name", "Alice"); err != nil {
+	if err := g.Nodes.SetProperty(context.Background(), id, "name", "Alice"); err != nil {
 		t.Fatalf("SetNodeProperty: %v", err)
 	}
 
@@ -1210,7 +1210,7 @@ func TestGraphDeleteNodeProperty(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	if err := g.Nodes.DeleteProperty(id, "name"); err != nil {
+	if err := g.Nodes.DeleteProperty(context.Background(), id, "name"); err != nil {
 		t.Fatalf("DeleteNodeProperty: %v", err)
 	}
 

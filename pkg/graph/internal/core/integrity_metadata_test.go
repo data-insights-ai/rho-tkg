@@ -60,7 +60,7 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	if err := g.Nodes.AddLabel(n.ID(), "Reviewed"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), n.ID(), "Reviewed"); err != nil {
 		t.Fatalf("AddLabel: %v", err)
 	}
 	loaded, err := g.Nodes.Get(context.Background(), n.ID())
@@ -69,7 +69,7 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 	}
 	assertNodeIntegrityMetadata(t, loaded, "node-author", "node-signature", "policy", 6)
 
-	if err := g.Nodes.RemoveLabel(n.ID(), "Reviewed"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), n.ID(), "Reviewed"); err != nil {
 		t.Fatalf("RemoveLabel: %v", err)
 	}
 	loaded, err = g.Nodes.Get(context.Background(), n.ID())

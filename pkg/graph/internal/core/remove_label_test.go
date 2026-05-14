@@ -15,7 +15,7 @@ func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.RemoveLabel(id, "Employee"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Employee"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
@@ -33,7 +33,7 @@ func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Primary", "Secondary"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.RemoveLabel(id, "Primary"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Primary"); err != nil {
 		t.Fatalf("RemoveNodeLabel primary: %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Solo"}, nil)
 	id := n.ID()
 
-	err := g.Nodes.RemoveLabel(id, "Solo")
+	err := g.Nodes.RemoveLabel(context.Background(), id, "Solo")
 	if !errors.Is(err, ErrLastLabel) {
 		t.Errorf("expected ErrLastLabel, got %v", err)
 	}
@@ -61,7 +61,7 @@ func TestRemoveNodeLabel_LabelNotFoundError(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	err := g.Nodes.RemoveLabel(id, "Ghost")
+	err := g.Nodes.RemoveLabel(context.Background(), id, "Ghost")
 	if !errors.Is(err, ErrLabelNotFound) {
 		t.Errorf("expected ErrLabelNotFound, got %v", err)
 	}
@@ -73,7 +73,7 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 	// Register the label so Lookup() succeeds.
 	_, _ = g.Resolve.GetOrCreateLabel("Person")
 
-	err := g.Nodes.RemoveLabel(999, "Person")
+	err := g.Nodes.RemoveLabel(context.Background(), 999, "Person")
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 		origHash = ig.Hash
 	}
 
-	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 		t.Fatal("expected node in Tag label index before removal")
 	}
 
-	if err := g.Nodes.RemoveLabel(id, "Tag"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Tag"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
@@ -141,7 +141,7 @@ func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	})
 	events = nil // clear AddNode event
 
-	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

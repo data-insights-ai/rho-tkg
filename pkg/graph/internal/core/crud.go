@@ -17,34 +17,34 @@ import (
 // Pass context.Background() for the previous no-ctx behavior.
 
 // SetProperty sets a single property on an existing node. Internally delegates
-// to Update with a background context.
-func (n *NodeOps) SetProperty(id types.NodeID, key string, value any) error {
+// to Update; ctx is honoured by the Update lifecycle gates (S1).
+func (n *NodeOps) SetProperty(ctx context.Context, id types.NodeID, key string, value any) error {
 	c := n.c
-	_, err := c.Nodes.Update(context.Background(), id, map[string]any{key: value})
+	_, err := c.Nodes.Update(ctx, id, map[string]any{key: value})
 	return err
 }
 
 // DeleteProperty removes a single property from an existing node. Internally
-// delegates to Update with a background context.
-func (n *NodeOps) DeleteProperty(id types.NodeID, key string) error {
+// delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+func (n *NodeOps) DeleteProperty(ctx context.Context, id types.NodeID, key string) error {
 	c := n.c
-	_, err := c.Nodes.Update(context.Background(), id, map[string]any{key: nil})
+	_, err := c.Nodes.Update(ctx, id, map[string]any{key: nil})
 	return err
 }
 
 // SetProperty sets a single property on an existing relationship. Internally
-// delegates to Update with a background context.
-func (r *RelOps) SetProperty(id types.RelID, key string, value any) error {
+// delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+func (r *RelOps) SetProperty(ctx context.Context, id types.RelID, key string, value any) error {
 	c := r.c
-	_, err := c.Rels.Update(context.Background(), id, map[string]any{key: value})
+	_, err := c.Rels.Update(ctx, id, map[string]any{key: value})
 	return err
 }
 
 // DeleteProperty removes a single property from an existing relationship.
-// Internally delegates to Update with a background context.
-func (r *RelOps) DeleteProperty(id types.RelID, key string) error {
+// Internally delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+func (r *RelOps) DeleteProperty(ctx context.Context, id types.RelID, key string) error {
 	c := r.c
-	_, err := c.Rels.Update(context.Background(), id, map[string]any{key: nil})
+	_, err := c.Rels.Update(ctx, id, map[string]any{key: nil})
 	return err
 }
 

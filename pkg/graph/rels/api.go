@@ -39,14 +39,14 @@ type Ops interface {
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 
-	SetProperty(id types.RelID, key string, value any) error
-	DeleteProperty(id types.RelID, key string) error
+	SetProperty(ctx context.Context, id types.RelID, key string, value any) error
+	DeleteProperty(ctx context.Context, id types.RelID, key string) error
 	CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error)
 
 	HasType(r *types.Relationship, typ string) bool
 	Type(r *types.Relationship) string
 
-	CloseVersion(id types.RelID, t types.Instant) error
+	CloseVersion(ctx context.Context, id types.RelID, t types.Instant) error
 	History(id types.RelID) ([]*types.Relationship, error)
 	VersionAfter(id types.RelID, version uint32) (*types.Relationship, error)
 	VersionBefore(id types.RelID, version uint32) (*types.Relationship, error)
@@ -226,22 +226,22 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 	return ops.IncomingForNodes(nodeIDs, typeName)
 }
 
-// SetProperty sets a single property on the relationship (uses context.Background()).
-func (a *API) SetProperty(id types.RelID, key string, value any) error {
+// SetProperty sets a single property on the relationship honoring ctx.
+func (a *API) SetProperty(ctx context.Context, id types.RelID, key string, value any) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.SetProperty(id, key, value)
+	return ops.SetProperty(ctx, id, key, value)
 }
 
-// DeleteProperty deletes a single property from the relationship (uses context.Background()).
-func (a *API) DeleteProperty(id types.RelID, key string) error {
+// DeleteProperty deletes a single property from the relationship honoring ctx.
+func (a *API) DeleteProperty(ctx context.Context, id types.RelID, key string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DeleteProperty(id, key)
+	return ops.DeleteProperty(ctx, id, key)
 }
 
 // CompareAndSetProperty atomically updates a relationship property honoring ctx.
@@ -269,13 +269,13 @@ func (a *API) Type(r *types.Relationship) string {
 	return a.ops.Type(r)
 }
 
-// CloseVersion closes the open-ended ValidTo of the current relationship version.
-func (a *API) CloseVersion(id types.RelID, t types.Instant) error {
+// CloseVersion closes the open-ended ValidTo of the current relationship version, honoring ctx.
+func (a *API) CloseVersion(ctx context.Context, id types.RelID, t types.Instant) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.CloseVersion(id, t)
+	return ops.CloseVersion(ctx, id, t)
 }
 
 // History returns the version chain for a relationship.

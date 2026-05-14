@@ -104,13 +104,13 @@ func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.Nodes.AddLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
-		if err := g.Nodes.AddLabel(id, "C"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "C"); err != nil {
 			t.Fatalf("AddNodeLabel C: %v", err)
 		}
 
@@ -142,10 +142,10 @@ func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.Nodes.AddLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
 
@@ -225,13 +225,13 @@ func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 			t.Fatalf("AddNode: %v", err)
 		}
 		id := n.ID()
-		if err := g.Nodes.AddLabel(id, "B"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("AddNodeLabel B: %v", err)
 		}
-		if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 			t.Fatalf("RemoveNodeLabel B: %v", err)
 		}
-		if err := g.Nodes.AddLabel(id, "C"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), id, "C"); err != nil {
 			t.Fatalf("AddNodeLabel C: %v", err)
 		}
 		if err := g.Nodes.Delete(context.Background(), id); err != nil {
@@ -282,7 +282,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	v0Hash := v0.Hash
 
 	// v1: AddNodeLabel must change Hash (labels feed input) AND link PrevHash to v0.
-	if err := g.Nodes.AddLabel(id, "B"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 	current, err := g.Nodes.Get(context.Background(), id)
@@ -302,7 +302,7 @@ func TestNodeHashChain_InspectsHashValues(t *testing.T) {
 	v1Hash := v1.Hash
 
 	// v2: RemoveNodeLabel must change Hash AND link PrevHash to v1.
-	if err := g.Nodes.RemoveLabel(id, "B"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 	current, err = g.Nodes.Get(context.Background(), id)
@@ -350,7 +350,7 @@ func TestGetNodesByLabelValidAt_UsesHistoricalLabelVersion(t *testing.T) {
 	id := n.ID()
 	queryTime := g.nodeValidFrom(n)
 
-	if err := g.Nodes.RemoveLabel(id, "Legacy"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Legacy"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
@@ -469,14 +469,14 @@ func TestLabelMutations_UpdateTransactionTimeBounds(t *testing.T) {
 			name:   "add",
 			labels: []string{"A"},
 			mutate: func(g *Core, id types.NodeID) error {
-				return g.Nodes.AddLabel(id, "B")
+				return g.Nodes.AddLabel(context.Background(), id, "B")
 			},
 		},
 		{
 			name:   "remove",
 			labels: []string{"A", "B"},
 			mutate: func(g *Core, id types.NodeID) error {
-				return g.Nodes.RemoveLabel(id, "B")
+				return g.Nodes.RemoveLabel(context.Background(), id, "B")
 			},
 		},
 	}
@@ -532,7 +532,7 @@ func TestNoOpMutations_DoNotPublishUpdateEvents(t *testing.T) {
 		}
 		events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-		if err := g.Nodes.AddLabel(n.ID(), "B"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), n.ID(), "B"); err != nil {
 			t.Fatalf("AddNodeLabel: %v", err)
 		}
 		if got := drain(events); len(got) != 0 {
@@ -754,10 +754,10 @@ func TestNodesByLabel_TemporalOpts_Adversarial(t *testing.T) {
 	// t0: carol was created last, so her snowflake time is within v0 of all three.
 	t0 := g.nodeValidFrom(carol)
 
-	if err := g.Nodes.RemoveLabel(aliceID, "Pending"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), aliceID, "Pending"); err != nil {
 		t.Fatalf("RemoveNodeLabel alice: %v", err)
 	}
-	if err := g.Nodes.AddLabel(bobID, "Pending"); err != nil {
+	if err := g.Nodes.AddLabel(context.Background(), bobID, "Pending"); err != nil {
 		t.Fatalf("AddNodeLabel bob: %v", err)
 	}
 	if err := g.Nodes.Delete(context.Background(), carolID); err != nil {
@@ -1047,7 +1047,7 @@ func TestRemoveNodeLabel_PreservesHistory(t *testing.T) {
 	}
 
 	// Remove a label — should write version 0 to history and bump current to version 1.
-	if err := g.Nodes.RemoveLabel(id, "Admin"); err != nil {
+	if err := g.Nodes.RemoveLabel(context.Background(), id, "Admin"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 

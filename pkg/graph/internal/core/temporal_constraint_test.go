@@ -558,7 +558,7 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		}
 
 		closeAt := g.nodeValidFrom(a) + 10_000
-		err = g.Nodes.CloseVersion(a.ID(), closeAt)
+		err = g.Nodes.CloseVersion(context.Background(), a.ID(), closeAt)
 		if err == nil {
 			t.Fatal("expected node close to reject open relationship, got nil")
 		}
@@ -595,7 +595,7 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		}
 
 		closeAt := g.nodeValidFrom(b) + 10_000
-		err = g.Nodes.CloseVersion(b.ID(), closeAt)
+		err = g.Nodes.CloseVersion(context.Background(), b.ID(), closeAt)
 		if err == nil {
 			t.Fatal("expected node close to reject open incoming relationship, got nil")
 		}
@@ -625,7 +625,7 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 			t.Fatal(err)
 		}
 
-		if err := g.Nodes.CloseVersion(a.ID(), closeAt); err != nil {
+		if err := g.Nodes.CloseVersion(context.Background(), a.ID(), closeAt); err != nil {
 			t.Fatalf("CloseVersion with contained relationship: %v", err)
 		}
 		loaded, getErr := g.Nodes.Get(context.Background(), a.ID())
@@ -661,7 +661,7 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		}
 		addRelWithinEndpointsConstraint(t, g)
 
-		err = g.Rels.CloseVersion(r.ID(), nodeTo+1)
+		err = g.Rels.CloseVersion(context.Background(), r.ID(), nodeTo+1)
 		if err == nil {
 			t.Fatal("expected relationship close to reject endpoint overrun, got nil")
 		}
@@ -703,7 +703,7 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		addRelWithinEndpointsConstraint(t, g)
 
 		closeAt := nodeTo - 1
-		if err := g.Rels.CloseVersion(r.ID(), closeAt); err != nil {
+		if err := g.Rels.CloseVersion(context.Background(), r.ID(), closeAt); err != nil {
 			t.Fatalf("CloseVersion within endpoint bounds: %v", err)
 		}
 		loaded, getErr := g.Rels.Get(context.Background(), r.ID())

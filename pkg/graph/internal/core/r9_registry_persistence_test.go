@@ -445,7 +445,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		callsAfterFailure := st.saveCalls
 
 		st.err = nil
-		if err := g.Nodes.AddLabel(target.ID(), "DirtyRetryAttached"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), target.ID(), "DirtyRetryAttached"); err != nil {
 			t.Fatalf("AddLabel with existing dirty label: %v", err)
 		}
 		if st.saveCalls <= callsAfterFailure {
@@ -471,7 +471,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		callsAfterFailure := st.saveCalls
 
 		st.err = nil
-		if err := g.Nodes.RemoveLabel(n.ID(), "DirtyRetryRemoveAttached"); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), n.ID(), "DirtyRetryRemoveAttached"); err != nil {
 			t.Fatalf("RemoveLabel with existing dirty label: %v", err)
 		}
 		if st.saveCalls <= callsAfterFailure {
@@ -550,7 +550,7 @@ func TestR9_RemoveLabelDirtyRegistryCheckpointFailureDoesNotMutate(t *testing.T)
 	callsAfterFailure := st.saveCalls
 	beforeStats, _ := g.Stats.Get()
 
-	err = g.Nodes.RemoveLabel(n.ID(), "DirtyRemoveFailureAttached")
+	err = g.Nodes.RemoveLabel(context.Background(), n.ID(), "DirtyRemoveFailureAttached")
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("RemoveLabel dirty registry failure = %v, want injected registry persist error", err)
 	}
@@ -604,7 +604,7 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "node close version",
 			mutate: func(g *Core, n *types.Node) error {
-				return g.Nodes.CloseVersion(n.ID(), g.now()+1000)
+				return g.Nodes.CloseVersion(context.Background(), n.ID(), g.now()+1000)
 			},
 		},
 		{
@@ -663,7 +663,7 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "relationship close version",
 			mutate: func(g *Core, r *types.Relationship) error {
-				return g.Rels.CloseVersion(r.ID(), g.now()+1000)
+				return g.Rels.CloseVersion(context.Background(), r.ID(), g.now()+1000)
 			},
 		},
 		{

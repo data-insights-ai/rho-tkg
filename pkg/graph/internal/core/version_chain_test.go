@@ -332,7 +332,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	id := n.ID()
 
 	closeTime := g.nodeValidFrom(n) + 2000
-	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
 
@@ -371,7 +371,7 @@ func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 	}
 
 	closeTime := g.nodeValidFrom(n) + 2000
-	if err := g.Nodes.CloseVersion(n.ID(), closeTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), n.ID(), closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
 	loaded, err := g.Nodes.Get(context.Background(), n.ID())
@@ -407,10 +407,10 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 	id := n.ID()
 
 	closeTime := g.nodeValidFrom(n) + 1000
-	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
 		t.Fatalf("first CloseNodeVersion: %v", err)
 	}
-	if err := g.Nodes.CloseVersion(id, closeTime+1000); !errors.Is(err, ErrAlreadyClosed) {
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second CloseNodeVersion: expected ErrAlreadyClosed, got %v", err)
 	}
 }
@@ -423,7 +423,7 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("AddNode: %v", err)
 		}
 		closeTime := g.nodeValidFrom(n) + 1000
-		if err := g.Nodes.CloseVersion(n.ID(), closeTime); err != nil {
+		if err := g.Nodes.CloseVersion(context.Background(), n.ID(), closeTime); err != nil {
 			t.Fatalf("CloseVersion: %v", err)
 		}
 
@@ -437,10 +437,10 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 		if ok || !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("CompareAndSetProperty closed node = (%v, %v), want false, ErrAlreadyClosed", ok, err)
 		}
-		if err := g.Nodes.AddLabel(n.ID(), "ClosedMutation"); !errors.Is(err, ErrAlreadyClosed) {
+		if err := g.Nodes.AddLabel(context.Background(), n.ID(), "ClosedMutation"); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("AddLabel closed node = %v, want ErrAlreadyClosed", err)
 		}
-		if err := g.Nodes.RemoveLabel(n.ID(), "Active"); !errors.Is(err, ErrAlreadyClosed) {
+		if err := g.Nodes.RemoveLabel(context.Background(), n.ID(), "Active"); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("RemoveLabel closed node = %v, want ErrAlreadyClosed", err)
 		}
 
@@ -492,7 +492,7 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		closeTime := g.relValidFrom(rel) + 1000
-		if err := g.Rels.CloseVersion(rel.ID(), closeTime); err != nil {
+		if err := g.Rels.CloseVersion(context.Background(), rel.ID(), closeTime); err != nil {
 			t.Fatalf("CloseVersion: %v", err)
 		}
 
@@ -556,10 +556,10 @@ func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	if err := g.Nodes.CloseVersion(start.ID(), 0); !errors.Is(err, ErrInvalidTimeRange) {
+	if err := g.Nodes.CloseVersion(context.Background(), start.ID(), 0); !errors.Is(err, ErrInvalidTimeRange) {
 		t.Fatalf("CloseNodeVersion zero time = %v, want ErrInvalidTimeRange", err)
 	}
-	if err := g.Rels.CloseVersion(rel.ID(), 0); !errors.Is(err, ErrInvalidTimeRange) {
+	if err := g.Rels.CloseVersion(context.Background(), rel.ID(), 0); !errors.Is(err, ErrInvalidTimeRange) {
 		t.Fatalf("CloseRelVersion zero time = %v, want ErrInvalidTimeRange", err)
 	}
 
@@ -594,10 +594,10 @@ func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	if err := g.Nodes.CloseVersion(start.ID(), g.nodeValidFrom(start)); !errors.Is(err, ErrInvalidTimeRange) {
+	if err := g.Nodes.CloseVersion(context.Background(), start.ID(), g.nodeValidFrom(start)); !errors.Is(err, ErrInvalidTimeRange) {
 		t.Fatalf("CloseNodeVersion at valid-from = %v, want ErrInvalidTimeRange", err)
 	}
-	if err := g.Rels.CloseVersion(rel.ID(), g.relValidFrom(rel)-1); !errors.Is(err, ErrInvalidTimeRange) {
+	if err := g.Rels.CloseVersion(context.Background(), rel.ID(), g.relValidFrom(rel)-1); !errors.Is(err, ErrInvalidTimeRange) {
 		t.Fatalf("CloseRelVersion before valid-from = %v, want ErrInvalidTimeRange", err)
 	}
 
@@ -858,7 +858,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 		start := g.nodeValidFrom(n)
 		setFixedClockInstant(t, g, start)
 
-		if err := g.Nodes.AddLabel(n.ID(), "Extra"); err != nil {
+		if err := g.Nodes.AddLabel(context.Background(), n.ID(), "Extra"); err != nil {
 			t.Fatalf("AddLabel: %v", err)
 		}
 		atStart, err := g.Temporal.NodeAt(n.ID(), start)
@@ -879,7 +879,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 		start := g.nodeValidFrom(n)
 		setFixedClockInstant(t, g, start)
 
-		if err := g.Nodes.RemoveLabel(n.ID(), "Extra"); err != nil {
+		if err := g.Nodes.RemoveLabel(context.Background(), n.ID(), "Extra"); err != nil {
 			t.Fatalf("RemoveLabel: %v", err)
 		}
 		atStart, err := g.Temporal.NodeAt(n.ID(), start)
@@ -970,7 +970,7 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 // returns storepkg.ErrNodeNotFound.
 func TestCloseNodeVersion_NotFound(t *testing.T) {
 	g := newTestGraphForChain(t)
-	err := g.Nodes.CloseVersion(types.NodeID(999999999), types.Instant(time.Now().UnixMilli()))
+	err := g.Nodes.CloseVersion(context.Background(), types.NodeID(999999999), types.Instant(time.Now().UnixMilli()))
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
 	}
@@ -1009,7 +1009,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 
 	// CloseRelVersion.
 	closeTime := g.relValidFrom(r) + 1000
-	if err := g.Rels.CloseVersion(rid, closeTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), rid, closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
 	loaded, err := g.Rels.Get(context.Background(), rid)
@@ -1021,12 +1021,12 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	}
 
 	// AlreadyClosed.
-	if err := g.Rels.CloseVersion(rid, closeTime+1000); !errors.Is(err, ErrAlreadyClosed) {
+	if err := g.Rels.CloseVersion(context.Background(), rid, closeTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second CloseRelVersion: expected ErrAlreadyClosed, got %v", err)
 	}
 
 	// NotFound.
-	if err := g.Rels.CloseVersion(types.RelID(777777777), closeTime); !errors.Is(err, storepkg.ErrRelNotFound) {
+	if err := g.Rels.CloseVersion(context.Background(), types.RelID(777777777), closeTime); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("CloseRelVersion missing: expected storepkg.ErrRelNotFound, got %v", err)
 	}
 }
@@ -1060,7 +1060,7 @@ func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.
 	}
 
 	closeTime := g.relValidFrom(r) + 2000
-	if err := g.Rels.CloseVersion(r.ID(), closeTime); err != nil {
+	if err := g.Rels.CloseVersion(context.Background(), r.ID(), closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
 	loaded, err := g.Rels.Get(context.Background(), r.ID())

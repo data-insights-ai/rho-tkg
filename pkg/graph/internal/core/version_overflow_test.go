@@ -57,7 +57,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 				}
 				forceStoredNodeVersion(t, g, n.ID(), math.MaxUint32)
 
-				if err := g.Nodes.AddLabel(n.ID(), "OverflowLabel"); !errors.Is(err, ErrVersionOverflow) {
+				if err := g.Nodes.AddLabel(context.Background(), n.ID(), "OverflowLabel"); !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("AddLabel max-version node = %v, want ErrVersionOverflow", err)
 				}
 				if _, ok := g.labels.Lookup("OverflowLabel"); ok {
@@ -81,7 +81,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 				}
 				forceStoredNodeVersion(t, g, n.ID(), math.MaxUint32)
 
-				if err := g.Nodes.RemoveLabel(n.ID(), "Case"); !errors.Is(err, ErrVersionOverflow) {
+				if err := g.Nodes.RemoveLabel(context.Background(), n.ID(), "Case"); !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("RemoveLabel max-version node = %v, want ErrVersionOverflow", err)
 				}
 				got, err := g.Nodes.Get(context.Background(), n.ID())

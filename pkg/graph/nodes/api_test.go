@@ -40,16 +40,16 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "ByLabelAndProperty", run: func() error { _, err := nilAPI.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := nilAPI.Count(); return err }},
 		{name: "CountByLabel", run: func() error { _, err := nilAPI.CountByLabel("Node"); return err }},
-		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(id, "name", "Ada") }},
-		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(id, "name") }},
+		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, id, "name", "Ada") }},
+		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, id, "name") }},
 		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), id, "name", "old", "new"); return err }},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
 			_, err := nilAPI.CompareAndSetProperty(ctx, id, "name", "old", "new")
 			return err
 		}},
-		{name: "AddLabel", run: func() error { return nilAPI.AddLabel(id, "Admin") }},
-		{name: "RemoveLabel", run: func() error { return nilAPI.RemoveLabel(id, "Admin") }},
-		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(id, 100) }},
+		{name: "AddLabel", run: func() error { return nilAPI.AddLabel(ctx, id, "Admin") }},
+		{name: "RemoveLabel", run: func() error { return nilAPI.RemoveLabel(ctx, id, "Admin") }},
+		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(ctx, id, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(id); return err }},
 		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(id, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(id, 1); return err }},
@@ -123,8 +123,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
 		{name: "CountByLabel", run: func() error { _, err := api.CountByLabel("Node"); return err }},
-		{name: "SetProperty", run: func() error { return api.SetProperty(id, "name", "Ada") }},
-		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(id, "name") }},
+		{name: "SetProperty", run: func() error { return api.SetProperty(ctx, id, "name", "Ada") }},
+		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(ctx, id, "name") }},
 		{name: "CompareAndSetProperty", run: func() error {
 			got, err := api.CompareAndSetProperty(context.Background(), id, "name", "old", "new")
 			if !got {
@@ -139,9 +139,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return err
 		}},
-		{name: "AddLabel", run: func() error { return api.AddLabel(id, "Admin") }},
-		{name: "RemoveLabel", run: func() error { return api.RemoveLabel(id, "Admin") }},
-		{name: "CloseVersion", run: func() error { return api.CloseVersion(id, 100) }},
+		{name: "AddLabel", run: func() error { return api.AddLabel(ctx, id, "Admin") }},
+		{name: "RemoveLabel", run: func() error { return api.RemoveLabel(ctx, id, "Admin") }},
+		{name: "CloseVersion", run: func() error { return api.CloseVersion(ctx, id, 100) }},
 		{name: "History", run: func() error { _, err := api.History(id); return err }},
 		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(id, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(id, 1); return err }},
@@ -324,14 +324,14 @@ func (s *nodeOpsSpy) CountByLabel(label string) (int, error) {
 	return s.count, s.err
 }
 
-func (s *nodeOpsSpy) SetProperty(id types.NodeID, key string, value any) error {
+func (s *nodeOpsSpy) SetProperty(ctx context.Context, id types.NodeID, key string, value any) error {
 	s.record("SetProperty")
 	s.lastID = id
 	s.lastKey = key
 	return s.err
 }
 
-func (s *nodeOpsSpy) DeleteProperty(id types.NodeID, key string) error {
+func (s *nodeOpsSpy) DeleteProperty(ctx context.Context, id types.NodeID, key string) error {
 	s.record("DeleteProperty")
 	s.lastID = id
 	s.lastKey = key
@@ -352,14 +352,14 @@ func (s *nodeOpsSpy) CompareAndSetPropertyWithContext(ctx context.Context, id ty
 	return s.casResult, s.err
 }
 
-func (s *nodeOpsSpy) AddLabel(id types.NodeID, label string) error {
+func (s *nodeOpsSpy) AddLabel(ctx context.Context, id types.NodeID, label string) error {
 	s.record("AddLabel")
 	s.lastID = id
 	s.lastLabel = label
 	return s.err
 }
 
-func (s *nodeOpsSpy) RemoveLabel(id types.NodeID, label string) error {
+func (s *nodeOpsSpy) RemoveLabel(ctx context.Context, id types.NodeID, label string) error {
 	s.record("RemoveLabel")
 	s.lastID = id
 	s.lastLabel = label
@@ -382,7 +382,7 @@ func (s *nodeOpsSpy) PrimaryLabel(n *types.Node) string {
 	return s.primaryLabel
 }
 
-func (s *nodeOpsSpy) CloseVersion(id types.NodeID, tm types.Instant) error {
+func (s *nodeOpsSpy) CloseVersion(ctx context.Context, id types.NodeID, tm types.Instant) error {
 	s.record("CloseVersion")
 	s.lastID = id
 	return s.err
