@@ -241,6 +241,17 @@ type AsyncEventBus struct {
 	// priority event among everything queued by the burst.
 	wakeupCh chan struct{}
 
+	// batchPriorityCeiling enforces PublishBatch's ordering contract under
+	// queue saturation. Zero means no batch in flight; otherwise the value
+	// is (priorityOrder-index + 1), so the dispatcher considers only
+	// priorityOrder[0..value-1]. When PublishBatch is mid-enqueue and a
+	// blocking enqueue fires the in-batch wake-up (so the dispatcher can
+	// drain space), this ceiling prevents the dispatcher from picking up
+	// pre-existing lower-priority events before the rest of the batch's
+	// higher-priority events have been made visible. Cleared at end of
+	// batch followed by signalWakeup so any lower-priority work can resume.
+	batchPriorityCeiling atomic.Int32
+
 	wg        sync.WaitGroup
 	stopCh    chan struct{}
 	workers   int
@@ -360,13 +371,20 @@ func (ab *AsyncEventBus) Publish(e Event) {
 }
 
 // PublishBatch enqueues a sequence of events atomically: the publish mutex is
-// held across every enqueue and the dispatcher is woken exactly once at the end.
-// Events are enqueued by priority, preserving caller order within each priority
-// level. That way, even if the dispatcher is already in a non-blocking scan
-// while the batch is being enqueued, it cannot observe a lower-priority event
-// before all higher-priority events from the same batch have been made visible.
-// Use this for the Tx / Batch event-flush path or any caller that needs
-// deterministic ordering across multiple events.
+// held across every enqueue and the dispatcher is woken exactly once at the end
+// of the unsaturated path. Events are enqueued by priority, preserving caller
+// order within each priority level.
+//
+// Strict priority guarantee: the dispatcher does NOT observe a lower-priority
+// event before all higher-priority batch events have been made visible —
+// even when a priority queue saturates mid-batch. To preserve this under
+// queue saturation while avoiding deadlock, PublishBatch raises a per-batch
+// priority ceiling that the dispatcher honours: it will only pick events
+// from priorityOrder[0..currentBatchPriorityIdx]. Any in-batch wake-up
+// (signalled when BackpressureBlock fills a queue) therefore drains higher
+// priorities but never inverts against pre-existing lower-priority queued
+// events. Use this for the Tx / Batch event-flush path or any caller that
+// needs deterministic ordering across multiple events.
 //
 // Backpressure applies per event: if BackpressureBlock would block on
 // a single event, the batch waits there before enqueueing later
@@ -388,7 +406,12 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 		return
 	}
 	wroteAny := false
-	for _, p := range priorityOrder {
+	for i, p := range priorityOrder {
+		// Raise the dispatch ceiling to the current pass's priority before
+		// enqueueing so any in-batch wake-up (from BackpressureBlock filling
+		// a queue) drains only this level or higher, never lower-priority
+		// pre-existing events. Cleared after the final pass.
+		ab.batchPriorityCeiling.Store(int32(i + 1))
 		for _, e := range events {
 			if normalizePriority(e.Priority) != p {
 				continue
@@ -398,6 +421,7 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 			}
 		}
 	}
+	ab.batchPriorityCeiling.Store(0)
 	ab.publishMu.Unlock()
 	if wroteAny {
 		ab.signalWakeup()
@@ -508,8 +532,15 @@ func (ab *AsyncEventBus) worker() {
 		}
 
 		// Try priority queues in order: non-blocking check per priority.
+		// Honour any in-flight PublishBatch's priority ceiling so we do
+		// not invert against pre-existing lower-priority events while a
+		// batch is still enqueuing its higher-priority events.
+		ceiling := int(ab.batchPriorityCeiling.Load())
 		served := false
-		for _, p := range priorityOrder {
+		for i, p := range priorityOrder {
+			if ceiling > 0 && i >= ceiling {
+				break
+			}
 			select {
 			case e := <-ab.queues[p]:
 				ab.dispatch(e)

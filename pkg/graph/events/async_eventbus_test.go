@@ -358,6 +358,103 @@ func TestAsyncEventBusPublishBatchBlockWakesBeforeFullQueueWait(t *testing.T) {
 	}
 }
 
+// TestAsyncEventBusPublishBatch_PriorityCeiling pins the W1 contract: when a
+// PublishBatch saturates a priority queue, the in-batch wake-up MUST NOT
+// cause the dispatcher to dispatch a pre-existing lower-priority event
+// before the batch's later higher-priority events have been made visible.
+//
+// Setup forces the race window deterministically:
+//
+//  1. Subscribe a handler that blocks the first event (drains the
+//     dispatcher's first wake-up slot).
+//  2. Publish a Normal to load the dispatcher's handler — gets stuck there.
+//  3. Publish a SECOND Normal, which now sits in the Normal queue while
+//     the dispatcher is busy.
+//  4. PublishBatch of 3 Criticals with QueueSize=1 — every enqueue past
+//     the first will block, firing the in-batch wake-up.
+//  5. Release the handler. Without the priority ceiling the dispatcher
+//     would alternate Critical/Normal (priority order picks Critical
+//     when both are queued, but as soon as Critical drains and the next
+//     batch event hasn't enqueued yet, Normal sneaks in). With the
+//     ceiling the dispatcher skips Normal until the batch completes.
+func TestAsyncEventBusPublishBatch_PriorityCeiling(t *testing.T) {
+	t.Parallel()
+
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers:      1,
+		QueueSize:    1,
+		Backpressure: BackpressureBlock,
+	})
+
+	gate := make(chan struct{})
+	firstSeen := make(chan struct{})
+	var firstOnce sync.Once
+	var order []EventType
+	var orderMu sync.Mutex
+	bus.Subscribe(func(e Event) {
+		firstOnce.Do(func() {
+			close(firstSeen)
+			<-gate
+		})
+		orderMu.Lock()
+		order = append(order, e.Type)
+		orderMu.Unlock()
+	})
+
+	// First Normal: dispatcher takes it, enters handler, blocks on gate.
+	bus.Publish(Event{Type: EventNodeUpdate, Priority: PriorityNormal})
+	<-firstSeen
+
+	// Second Normal now sits in the Normal queue waiting.
+	bus.Publish(Event{Type: EventNodeUpdate, Priority: PriorityNormal})
+
+	// Critical batch — 3 events, QueueSize=1 ⇒ batch saturates and fires
+	// the in-batch wake-up.
+	done := make(chan struct{})
+	go func() {
+		bus.PublishBatch(
+			Event{Type: EventNodeCreate, Priority: PriorityCritical},
+			Event{Type: EventNodeCreate, Priority: PriorityCritical},
+			Event{Type: EventNodeCreate, Priority: PriorityCritical},
+		)
+		close(done)
+	}()
+
+	// Give the batch goroutine time to enqueue the first Critical and
+	// start the saturating second.
+	time.Sleep(50 * time.Millisecond)
+
+	close(gate) // release the dispatcher
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		bus.Close()
+		t.Fatal("PublishBatch did not complete")
+	}
+	bus.Close()
+
+	orderMu.Lock()
+	defer orderMu.Unlock()
+	if len(order) != 5 {
+		t.Fatalf("delivered = %d events (%v), want 5", len(order), order)
+	}
+	// order[0] is the staged Normal (the one in the handler).
+	if order[0] != EventNodeUpdate {
+		t.Fatalf("order[0] = %v, want EventNodeUpdate", order[0])
+	}
+	// The next THREE events must be Criticals — the ceiling prevents the
+	// queued-Normal from interleaving.
+	for i := 1; i <= 3; i++ {
+		if order[i] != EventNodeCreate {
+			t.Fatalf("order[%d] = %v, want EventNodeCreate (W1 ceiling violated: Normal interleaved with batch)", i, order[i])
+		}
+	}
+	if order[4] != EventNodeUpdate {
+		t.Fatalf("order[4] = %v, want EventNodeUpdate (queued Normal flushed last)", order[4])
+	}
+}
+
 func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 64, Backpressure: BackpressureDropLatest})
 	defer bus.Close()
