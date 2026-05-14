@@ -1,9 +1,6 @@
 package index
 
 import (
-	"fmt"
-	"strconv"
-
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -34,6 +31,14 @@ func (pi *PropertyIndex) Add(id snowflake.ID, value any) {
 		return
 	}
 	vk := PropertyValueKey(value)
+	pi.AddKey(id, vk)
+}
+
+// AddKey inserts a node ID for a precomputed property value key.
+func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
+	if pi == nil {
+		return
+	}
 	if vk == "" {
 		return
 	}
@@ -56,6 +61,13 @@ func (pi *PropertyIndex) Remove(id snowflake.ID, value any) {
 		return
 	}
 	vk := PropertyValueKey(value)
+	pi.removeKey(id, vk)
+}
+
+func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
+	if pi == nil {
+		return
+	}
 	if vk == "" {
 		return
 	}
@@ -71,7 +83,8 @@ func (pi *PropertyIndex) Remove(id snowflake.ID, value any) {
 }
 
 // Lookup returns the set of node IDs matching the given value.
-// Returns nil if no matches.
+// Returns nil if no matches. The returned map is a copy; mutating it cannot
+// alter the index.
 func (pi *PropertyIndex) Lookup(value any) map[snowflake.ID]struct{} {
 	if pi == nil {
 		return nil
@@ -80,48 +93,44 @@ func (pi *PropertyIndex) Lookup(value any) map[snowflake.ID]struct{} {
 	if vk == "" {
 		return nil
 	}
-	return pi.Entries[vk]
+	set := pi.Entries[vk]
+	if len(set) == 0 {
+		return nil
+	}
+	out := make(map[snowflake.ID]struct{}, len(set))
+	for id := range set {
+		out[id] = struct{}{}
+	}
+	return out
+}
+
+// NodeIDs returns the node IDs matching the given value as a caller-owned
+// slice. It is the allocation-conscious lookup path for store query code,
+// which needs IDs but must not receive the mutable index set.
+func (pi *PropertyIndex) NodeIDs(value any) []types.NodeID {
+	if pi == nil {
+		return nil
+	}
+	vk := PropertyValueKey(value)
+	if vk == "" {
+		return nil
+	}
+	set := pi.Entries[vk]
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]types.NodeID, 0, len(set))
+	for id := range set {
+		out = append(out, types.NodeID(id))
+	}
+	return out
 }
 
 // PropertyValueKey computes a canonical, type-safe string key for a property value.
 // Type-prefixed to prevent cross-type collisions (int(1) vs string("1")).
 // Only primitive types are indexed; complex types (maps, slices) return "" (not indexed).
 func PropertyValueKey(v any) string {
-	switch val := v.(type) {
-	case string:
-		return "s:" + val
-	case int:
-		return fmt.Sprintf("i:%d", val)
-	case int8:
-		return fmt.Sprintf("i8:%d", val)
-	case int16:
-		return fmt.Sprintf("i16:%d", val)
-	case int32:
-		return fmt.Sprintf("i32:%d", val)
-	case int64:
-		return fmt.Sprintf("i64:%d", val)
-	case uint:
-		return fmt.Sprintf("u:%d", val)
-	case uint8:
-		return fmt.Sprintf("u8:%d", val)
-	case uint16:
-		return fmt.Sprintf("u16:%d", val)
-	case uint32:
-		return fmt.Sprintf("u32:%d", val)
-	case uint64:
-		return fmt.Sprintf("u64:%d", val)
-	case float32:
-		return "f32:" + strconv.FormatFloat(float64(val), 'g', -1, 32)
-	case float64:
-		return "f64:" + strconv.FormatFloat(val, 'g', -1, 64)
-	case bool:
-		if val {
-			return "b:true"
-		}
-		return "b:false"
-	default:
-		return ""
-	}
+	return types.IndexablePropertyValueKey(v)
 }
 
 // AddNodeToPropertyIndexes indexes a node's properties into all matching property indexes.
@@ -130,14 +139,15 @@ func AddNodeToPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, n *ty
 	if len(indexes) == 0 {
 		return
 	}
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		for _, p := range n.Properties() {
-			key := PropertyIndexKey{LabelToken: tv, PropertyKey: p.Key}
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		labelToken := n.LabelTokenRawAt(i)
+		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 			if idx, ok := indexes[key]; ok {
-				idx.Add(id, p.Value)
+				idx.AddKey(id, valueKey)
 			}
-		}
+			return true
+		})
 	}
 }
 
@@ -157,6 +167,9 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 				delete(idx.Entries, valKey)
 			}
 		}
+		if idx.Mutated != nil {
+			idx.Mutated[id] = struct{}{}
+		}
 	}
 }
 
@@ -166,13 +179,14 @@ func RemoveNodeFromPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex, 
 	if len(indexes) == 0 {
 		return
 	}
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		for _, p := range n.Properties() {
-			key := PropertyIndexKey{LabelToken: tv, PropertyKey: p.Key}
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		labelToken := n.LabelTokenRawAt(i)
+		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+			key := PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 			if idx, ok := indexes[key]; ok {
-				idx.Remove(id, p.Value)
+				idx.removeKey(id, valueKey)
 			}
-		}
+			return true
+		})
 	}
 }

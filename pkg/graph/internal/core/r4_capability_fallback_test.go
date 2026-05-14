@@ -169,7 +169,7 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 	_ = got
 }
 
-func TestSearchNearest_Overfetch_KZero_NoBackendCall(t *testing.T) {
+func TestSearchNearest_Overfetch_KZero_ValidatesBackendOnce(t *testing.T) {
 	t.Parallel()
 	g, store := newCountingVectorGraph(t)
 	if _, err := g.Nodes.Add([]string{"Target"}, map[string]any{"v": []float32{1, 2, 3}}); err != nil {
@@ -186,8 +186,8 @@ func TestSearchNearest_Overfetch_KZero_NoBackendCall(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("k=0 returned %d results, want 0", len(got))
 	}
-	if len(store.calls) != 0 {
-		t.Errorf("k=0 must not call the backend at all; got %d call(s)", len(store.calls))
+	if len(store.calls) != 1 || store.calls[0] != 0 {
+		t.Errorf("k=0 must validate the vector index with one backend call at k=0; got calls %v", store.calls)
 	}
 }
 

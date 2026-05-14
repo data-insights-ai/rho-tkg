@@ -239,6 +239,75 @@ func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
 	}
 }
 
+func TestSyncWrite_HistoryMaintenancePersistsImmediately(t *testing.T) {
+	bs, err := New(Config{
+		Dir:        t.TempDir(),
+		SyncWrites: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = bs.Close() }()
+
+	nid := types.NodeID(snowflake.ID(1001))
+	for version := uint32(0); version < 3; version++ {
+		n := types.NewNode(nid, 1, nil)
+		n.SetVersion(version)
+		if err := bs.PutNodeVersion(nid, version, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", version, err)
+		}
+	}
+	for version := uint64(0); version < 3; version++ {
+		if !badgerKeyExists(t, bs, storeutil.HistNodeKey(nid.SnowflakeID(), version)) {
+			t.Fatalf("node history version %d was not flushed before maintenance", version)
+		}
+	}
+	if err := bs.TruncateNodeHistory(nid, 2); err != nil {
+		t.Fatalf("TruncateNodeHistory: %v", err)
+	}
+	if badgerKeyExists(t, bs, storeutil.HistNodeKey(nid.SnowflakeID(), 0)) {
+		t.Fatal("node history version 0 remained persisted after sync truncate")
+	}
+	if !badgerKeyExists(t, bs, storeutil.HistNodeKey(nid.SnowflakeID(), 1)) {
+		t.Fatal("node history version 1 should remain after truncate")
+	}
+	if err := bs.TrimNodeHistoryFrom(nid, 2); err != nil {
+		t.Fatalf("TrimNodeHistoryFrom: %v", err)
+	}
+	if badgerKeyExists(t, bs, storeutil.HistNodeKey(nid.SnowflakeID(), 2)) {
+		t.Fatal("node history version 2 remained persisted after sync trim")
+	}
+
+	rid := types.RelID(snowflake.ID(2001))
+	for version := uint32(0); version < 3; version++ {
+		r := types.NewRelationship(rid, 2, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+		r.SetVersion(version)
+		if err := bs.PutRelVersion(rid, version, r); err != nil {
+			t.Fatalf("PutRelVersion(%d): %v", version, err)
+		}
+	}
+	for version := uint64(0); version < 3; version++ {
+		if !badgerKeyExists(t, bs, storeutil.HistRelKey(rid.SnowflakeID(), version)) {
+			t.Fatalf("relationship history version %d was not flushed before maintenance", version)
+		}
+	}
+	if err := bs.TruncateRelHistory(rid, 2); err != nil {
+		t.Fatalf("TruncateRelHistory: %v", err)
+	}
+	if badgerKeyExists(t, bs, storeutil.HistRelKey(rid.SnowflakeID(), 0)) {
+		t.Fatal("relationship history version 0 remained persisted after sync truncate")
+	}
+	if !badgerKeyExists(t, bs, storeutil.HistRelKey(rid.SnowflakeID(), 1)) {
+		t.Fatal("relationship history version 1 should remain after truncate")
+	}
+	if err := bs.TrimRelHistoryFrom(rid, 2); err != nil {
+		t.Fatalf("TrimRelHistoryFrom: %v", err)
+	}
+	if badgerKeyExists(t, bs, storeutil.HistRelKey(rid.SnowflakeID(), 2)) {
+		t.Fatal("relationship history version 2 remained persisted after sync trim")
+	}
+}
+
 func badgerKeyExists(t *testing.T, bs *Store, key []byte) bool {
 	t.Helper()
 

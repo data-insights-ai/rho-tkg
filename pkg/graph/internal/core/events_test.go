@@ -73,6 +73,9 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	if g.Events.GetSync() != nil {
 		t.Fatal("expected nil eventspkg.EventBus by default")
 	}
+	if g.Events.GetAsync() != nil {
+		t.Fatal("expected nil async eventspkg.EventBus by default")
+	}
 
 	// Should not panic even without an event bus.
 	n, err := g.Nodes.Add([]string{"Person"}, nil)
@@ -81,6 +84,45 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	}
 	if _, err := g.Nodes.Update(n.ID(), map[string]any{"x": "y"}); err != nil {
 		t.Fatalf("UpdateNode without event bus: %v", err)
+	}
+}
+
+func TestGraph_EventBusGettersReturnNilAfterClose(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New sync graph: %v", err)
+	}
+	syncBus := eventspkg.NewEventBus()
+	if err := g.Events.SetSync(syncBus); err != nil {
+		t.Fatalf("SetSync: %v", err)
+	}
+	if got := g.Events.GetSync(); got != syncBus {
+		t.Fatalf("GetSync before Close = %p, want %p", got, syncBus)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close sync graph: %v", err)
+	}
+	if got := g.Events.GetSync(); got != nil {
+		t.Fatalf("GetSync after Close = %p, want nil", got)
+	}
+
+	g, err = New(Config{})
+	if err != nil {
+		t.Fatalf("New async graph: %v", err)
+	}
+	asyncBus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 8})
+	defer asyncBus.Close()
+	if err := g.Events.SetAsync(asyncBus); err != nil {
+		t.Fatalf("SetAsync: %v", err)
+	}
+	if got := g.Events.GetAsync(); got != asyncBus {
+		t.Fatalf("GetAsync before Close = %p, want %p", got, asyncBus)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close async graph: %v", err)
+	}
+	if got := g.Events.GetAsync(); got != nil {
+		t.Fatalf("GetAsync after Close = %p, want nil", got)
 	}
 }
 
@@ -154,6 +196,71 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 	}
 }
 
+func TestGraph_NodeCascadeDelete_RelDeleteEvents(t *testing.T) {
+	g := newTestGraphForEvents(t)
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	c, err := g.Nodes.Add([]string{"C"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode c: %v", err)
+	}
+	out, err := g.Rels.Add("OUT", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship out: %v", err)
+	}
+	in, err := g.Rels.Add("IN", c, a, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship in: %v", err)
+	}
+
+	events := collectEvents(g, eventspkg.EventRelDelete)
+	if err := g.Nodes.Delete(a.ID()); err != nil {
+		t.Fatalf("DeleteNode cascade: %v", err)
+	}
+
+	got := drain(events)
+	if len(got) != 3 {
+		t.Fatalf("cascade event count = %d, want 3: %v", len(got), got)
+	}
+	if got[2].Type != eventspkg.EventNodeDelete || got[2].EntityID != types.EntityID(a.ID()) {
+		t.Fatalf("last cascade event = %+v, want EventNodeDelete for %d", got[2], a.ID())
+	}
+	relEvents := map[types.EntityID]bool{
+		types.EntityID(out.ID()): false,
+		types.EntityID(in.ID()):  false,
+	}
+	for i, e := range got {
+		if e.Timestamp == 0 {
+			t.Fatalf("event[%d] timestamp is zero", i)
+		}
+		if e.Priority != eventspkg.PriorityCritical {
+			t.Fatalf("event[%d] priority = %v, want PriorityCritical", i, e.Priority)
+		}
+		if i == len(got)-1 {
+			continue
+		}
+		if e.Type != eventspkg.EventRelDelete {
+			t.Fatalf("event[%d].Type = %v, want EventRelDelete", i, e.Type)
+		}
+		if _, ok := relEvents[e.EntityID]; !ok {
+			t.Fatalf("unexpected rel delete entity ID %d", e.EntityID)
+		}
+		relEvents[e.EntityID] = true
+	}
+	for id, seen := range relEvents {
+		if !seen {
+			t.Fatalf("missing EventRelDelete for relationship %d", id)
+		}
+	}
+}
+
 // TestGraph_RelCreate_Event verifies that AddRelationship fires eventspkg.EventRelCreate.
 func TestGraph_RelCreate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
@@ -208,6 +315,30 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 
 	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(1)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	got := drain(events)
+	if len(got) != 1 || got[0].Type != eventspkg.EventRelUpdate || got[0].EntityID != types.EntityID(rid) {
+		t.Fatalf("expected 1 eventspkg.EventRelUpdate, got %v", got)
+	}
+}
+
+func TestGraph_RelCompareAndSetProperty_Event(t *testing.T) {
+	g := newTestGraphForEvents(t)
+
+	a, _ := g.Nodes.Add([]string{"A"}, nil)
+	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, _ := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
+	rid := r.ID()
+
+	events := collectEvents(g, eventspkg.EventRelUpdate)
+
+	ok, err := g.Rels.CompareAndSetProperty(rid, "w", int64(1), int64(2))
+	if err != nil {
+		t.Fatalf("CompareAndSetProperty: %v", err)
+	}
+	if !ok {
+		t.Fatal("CompareAndSetProperty ok = false, want true")
 	}
 
 	got := drain(events)

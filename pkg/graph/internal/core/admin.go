@@ -2,14 +2,42 @@ package core
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+type tieredAdminStore interface {
+	ArchiveNode(types.NodeID) error
+	RestoreNode(types.NodeID) error
+	ForceRotate() error
+	ListShards() ([]tiered.ShardInfo, error)
+	RebuildCatalog() error
+	RunRepair() (*tiered.RepairResult, error)
+	VerifyShard(tiered.HashChainVerifier, string) (*tiered.VerifyResult, error)
+}
+
+type tieredRegistryLoader interface {
+	LoadLabelRegistry(*registrypkg.LabelRegistry) (int, error)
+	LoadRelTypeRegistry(*registrypkg.RelTypeRegistry) (int, error)
+}
+
+type tieredLabelRegistrySetter interface {
+	SetLabelRegistry(*registrypkg.LabelRegistry)
+}
+
+func setTieredLabelRegistryIfSupported(store storepkg.MandatoryStore, labels *registrypkg.LabelRegistry) {
+	if setter, ok := store.(tieredLabelRegistrySetter); ok {
+		setter.SetLabelRegistry(labels)
+	}
+}
+
 // Archive moves a reference node and its relationships from the reference
 // shard to the reference archive. Only available with tiered.Store.
-// Returns storepkg.ErrNodeNotFound if the node is not in the reference shard.
+// Returns tiered.ErrNotReferenceEntity when the node exists but is not a
+// reference entity, and storepkg.ErrNodeNotFound when the node does not exist
+// in an archivable location.
 //
 // Concurrency: takes c.mu.Lock — same exclusion class as a transaction.
 // Archive reads adjacency, then runs cascade; without this lock a
@@ -32,7 +60,7 @@ func (a *AdminOps) Archive(id types.NodeID) error {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.ArchiveNode(id)
 	}
 	return ErrNotTieredStore
@@ -40,7 +68,9 @@ func (a *AdminOps) Archive(id types.NodeID) error {
 
 // Restore moves a reference node and its relationships from the reference
 // archive back to the reference shard. Only available with tiered.Store.
-// Returns storepkg.ErrNodeNotFound if the node is not in the archive.
+// Returns tiered.ErrNotReferenceEntity when the archived row exists but is not
+// a reference entity, and storepkg.ErrNodeNotFound when the node is not in the
+// archive.
 //
 // Concurrency: takes c.mu.Lock — see Archive for the rationale.
 func (a *AdminOps) Restore(id types.NodeID) error {
@@ -56,7 +86,7 @@ func (a *AdminOps) Restore(id types.NodeID) error {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.RestoreNode(id)
 	}
 	return ErrNotTieredStore
@@ -84,7 +114,7 @@ func (a *AdminOps) ForceRotate() error {
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.ForceRotate()
 	}
 	return ErrNotTieredStore
@@ -104,7 +134,7 @@ func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
 	if c.closed.Load() {
 		return nil, ErrGraphClosed
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.ListShards()
 	}
 	return nil, ErrNotTieredStore
@@ -126,7 +156,7 @@ func (a *AdminOps) RebuildCatalog() error {
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.RebuildCatalog()
 	}
 	return ErrNotTieredStore
@@ -150,7 +180,7 @@ func (a *AdminOps) Repair() (*tiered.RepairResult, error) {
 	if c.closed.Load() {
 		return nil, ErrGraphClosed
 	}
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.RunRepair()
 	}
 	return nil, ErrNotTieredStore
@@ -181,7 +211,7 @@ func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 // Returns ErrNotTieredStore if the store does not support shard-level
 // verification.
 func (c *Core) verifyShardLocked(shardName string) (*tiered.VerifyResult, error) {
-	if ts, ok := c.store.(*tiered.Store); ok {
+	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.VerifyShard(lockedHashVerifier{c: c}, shardName)
 	}
 	return nil, ErrNotTieredStore
@@ -199,8 +229,8 @@ func (v lockedHashVerifier) VerifyRelChain(id types.RelID) (bool, error) {
 	return v.c.verifyRelChainLocked(id)
 }
 
-// Reset atomically clears all entities, indexes, history, and counters from
-// the graph while preserving registries (label and relationship type tokens).
+// Reset clears all entities, indexes, history, and counters from the graph
+// while preserving registries (label and relationship type tokens).
 // Acquires the graph write lock to prevent concurrent operations.
 func (a *AdminOps) Reset() error {
 	c := a.c
@@ -212,5 +242,9 @@ func (a *AdminOps) Reset() error {
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
-	return c.store.Clear()
+	if err := c.store.Clear(); err != nil {
+		return err
+	}
+	c.restoreOpCounters(opCounterSnapshot{})
+	return c.persistRegistries()
 }

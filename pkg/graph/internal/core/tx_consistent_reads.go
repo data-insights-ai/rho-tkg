@@ -3,7 +3,6 @@ package core
 import (
 	"io"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -27,11 +26,10 @@ import (
 // interleave with the export's reads while the transaction is live.
 // See (*IOOps).Export for stream format details.
 func (tx *GraphTx) Export(w io.Writer) error {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return err
 	}
+	defer tx.mu.Unlock()
 	return tx.g.exportLocked(w)
 }
 
@@ -40,11 +38,10 @@ func (tx *GraphTx) Export(w io.Writer) error {
 // mutations can interleave with the snapshot's reads while the
 // transaction is live.
 func (tx *GraphTx) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 	return tx.g.snapshotAt(at)
 }
 
@@ -54,10 +51,9 @@ func (tx *GraphTx) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error
 // Returns ErrNotTieredStore if the underlying store does not support
 // shard-level verification.
 func (tx *GraphTx) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 	return tx.g.verifyShardLocked(shardName)
 }

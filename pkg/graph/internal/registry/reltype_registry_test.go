@@ -235,6 +235,18 @@ func TestRelTypeRegistryRollbackNamesRefusesChangedRegistry(t *testing.T) {
 	}
 }
 
+func TestRelTypeRegistryRollbackNamesRejectsInvalidSnapshots(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRelTypeRegistry()
+	if ok, err := reg.RollbackNames(nil); err == nil || ok {
+		t.Fatalf("RollbackNames(nil) = (%v, %v), want false/error", ok, err)
+	}
+	if ok, err := reg.RollbackNames([]string{"not-reserved"}); err == nil || ok {
+		t.Fatalf("RollbackNames(non-reserved snapshot) = (%v, %v), want false/error", ok, err)
+	}
+}
+
 func TestRelTypeRegistryToken65535IsAssignable(t *testing.T) {
 	t.Parallel()
 

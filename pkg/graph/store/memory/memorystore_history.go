@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -16,11 +17,8 @@ import (
 // writes a version history entry, and persists updatedNode under a single lock.
 func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -28,10 +26,19 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
+		return err
+	}
 
 	old, exists := ms.nodes[nid]
 	if !exists {
 		return ErrNodeNotFound
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateNodeLabelRemoval(old, updatedNode, tok); err != nil {
 		return err
@@ -40,7 +47,8 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		return err
 	}
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, updatedNode, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -69,7 +77,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -79,11 +87,8 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 // writes a version history entry, and persists updatedNode under a single lock.
 func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -91,10 +96,19 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
+		return err
+	}
 
 	old, exists := ms.nodes[nid]
 	if !exists {
 		return ErrNodeNotFound
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateNodeLabelAddition(old, updatedNode, tok); err != nil {
 		return err
@@ -103,7 +117,8 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		return err
 	}
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, updatedNode, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -132,7 +147,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -142,8 +157,8 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 // and deletes the live relationship in a single locked operation.
 // All under one lock: atomic with respect to concurrent readers.
 func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, tombstone); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -151,10 +166,16 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, prevVersion, tombstone); err != nil {
+		return err
+	}
 
 	old, ok := ms.rels[rid]
 	if !ok {
 		return ErrRelNotFound
+	}
+	if err := storecontract.ValidateRelationshipLiveVersion(old, prevVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateRelationshipReplacement(old, tombstone); err != nil {
 		return err
@@ -174,13 +195,8 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 // and all connected relationships, then performs the cascade delete.
 // All under one lock: atomic with respect to concurrent readers.
 func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, nodeTombstone); err != nil {
-		return err
-	}
-	for _, rt := range relTombstones {
-		if err := storecontract.ValidateRelationshipHistorySnapshot(rt.ID, rt.Tombstone); err != nil {
-			return err
-		}
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -188,10 +204,21 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
+		return err
+	}
+	for _, rt := range relTombstones {
+		if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rt.ID, rt.PrevVersion, rt.Tombstone); err != nil {
+			return err
+		}
+	}
 
 	n, ok := ms.nodes[nid]
 	if !ok {
 		return ErrNodeNotFound
+	}
+	if err := storecontract.ValidateNodeLiveVersion(n, prevNodeVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateNodeReplacement(n, nodeTombstone); err != nil {
 		return err
@@ -216,6 +243,9 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		old, exists := ms.rels[rt.ID]
 		if !exists {
 			return ErrRelNotFound
+		}
+		if err := storecontract.ValidateRelationshipLiveVersion(old, rt.PrevVersion); err != nil {
+			return err
 		}
 		if err := storecontract.ValidateRelationshipReplacement(old, rt.Tombstone); err != nil {
 			return err
@@ -256,12 +286,12 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 
 	// Remove label index entries.
-	for _, tok := range n.AllLabelTokens() {
-		tv := tok.Value()
-		if set, exists := ms.labelIdx[tv]; exists {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		tok := n.LabelTokenRawAt(i)
+		if set, exists := ms.labelIdx[tok]; exists {
 			delete(set, nid)
 			if len(set) == 0 {
-				delete(ms.labelIdx, tv)
+				delete(ms.labelIdx, tok)
 			}
 		}
 	}
@@ -280,13 +310,16 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 // PutNodeVersion stores a node snapshot at the given version.
 // Deep-copies the node at the store boundary.
 func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, n); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, version, n); err != nil {
 		return err
 	}
 
@@ -302,6 +335,9 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 // GetNodeVersion retrieves a node snapshot at the given version.
 // Returns ErrVersionNotFound if the version does not exist.
 func (ms *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -326,6 +362,9 @@ func (ms *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 // GetNodeHistory returns all node version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
 func (ms *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -354,9 +393,57 @@ func (ms *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	return result, nil
 }
 
+// NodeHistoryVersionsFrom returns node history snapshots with Version() >=
+// startVersion in ascending version order. limit 0 returns all remaining.
+func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
+		return nil, err
+	}
+
+	inner := ms.nodeHistory[nid]
+	if len(inner) == 0 {
+		return nil, nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		if v >= startVersion {
+			versions = append(versions, v)
+		}
+	}
+	if len(versions) == 0 {
+		return nil, nil
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+	if limit > 0 && len(versions) > limit {
+		versions = versions[:limit]
+	}
+
+	result := make([]*types.Node, len(versions))
+	for i, v := range versions {
+		result[i] = inner[v].DeepCopy()
+	}
+	return result, nil
+}
+
 // TruncateNodeHistory removes all but the N most recent node versions.
 // If keepVersions == 0, all history is cleared.
 func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -400,13 +487,16 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 // PutRelVersion stores a relationship snapshot at the given version.
 // Deep-copies the relationship at the store boundary.
 func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, r); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, version, r); err != nil {
 		return err
 	}
 
@@ -422,6 +512,9 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 // GetRelVersion retrieves a relationship snapshot at the given version.
 // Returns ErrVersionNotFound if the version does not exist.
 func (ms *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -446,6 +539,9 @@ func (ms *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 // GetRelHistory returns all relationship version snapshots in ascending version order.
 // Returns an empty slice if no history exists.
 func (ms *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -474,9 +570,57 @@ func (ms *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	return result, nil
 }
 
+// RelHistoryVersionsFrom returns relationship history snapshots with Version()
+// >= startVersion in ascending version order. limit 0 returns all remaining.
+func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
+		return nil, err
+	}
+
+	inner := ms.relHistory[rid]
+	if len(inner) == 0 {
+		return nil, nil
+	}
+
+	versions := make([]uint32, 0, len(inner))
+	for v := range inner {
+		if v >= startVersion {
+			versions = append(versions, v)
+		}
+	}
+	if len(versions) == 0 {
+		return nil, nil
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+	if limit > 0 && len(versions) > limit {
+		versions = versions[:limit]
+	}
+
+	result := make([]*types.Relationship, len(versions))
+	for i, v := range versions {
+		result[i] = inner[v].DeepCopy()
+	}
+	return result, nil
+}
+
 // TruncateRelHistory removes all but the N most recent relationship versions.
 // If keepVersions == 0, all history is cleared.
 func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -519,24 +663,29 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 // ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
-	if err := storecontract.ValidateNodeWrite(current); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	nid := current.ID()
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
-	}
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeWrite(current); err != nil {
+		return err
+	}
+	nid := current.ID()
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
+		return err
+	}
 
 	old, exists := ms.nodes[nid]
 	if !exists {
 		return ErrNodeNotFound
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateNodeReplacement(old, current); err != nil {
 		return err
@@ -545,7 +694,8 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		return err
 	}
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, current, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, current, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -565,7 +715,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, current, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -574,24 +724,29 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 // ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(current); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	id := current.ID()
-	if err := storecontract.ValidateRelationshipHistorySnapshot(id, prevState); err != nil {
-		return err
-	}
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateRelationshipWrite(current); err != nil {
+		return err
+	}
+	id := current.ID()
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(id, prevVersion, prevState); err != nil {
+		return err
+	}
 
 	old, exists := ms.rels[id]
 	if !exists {
 		return ErrRelNotFound
+	}
+	if err := storecontract.ValidateRelationshipLiveVersion(old, prevVersion); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateRelationshipReplacement(old, current); err != nil {
 		return err
@@ -616,6 +771,9 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 // NodeAsOf returns the node version visible at txTime without materializing
 // the full history slice. Returns ErrVersionNotFound when no version matches.
 func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -635,6 +793,9 @@ func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 // RelAsOf returns the relationship version visible at txTime without
 // materializing the full history slice.
 func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -655,6 +816,9 @@ func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 // rows and history under one read lock and deep-copies only the selected
 // version for each entity.
 func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -679,15 +843,16 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	if len(result) == 0 {
 		return nil, nil
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID() < result[j].ID()
-	})
+	storeutil.SortNodesByID(result)
 	return result, nil
 }
 
 // RelsAsOf returns all relationship versions visible at txTime. It mirrors
 // NodesAsOf for relationship history.
 func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -712,9 +877,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	if len(result) == 0 {
 		return nil, nil
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID() < result[j].ID()
-	})
+	storeutil.SortRelsByID(result)
 	return result, nil
 }
 
@@ -811,6 +974,9 @@ func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 // Transaction rollback uses this after restoring the pre-transaction current
 // row, because graph mutation paths append history at the previous Version().
 func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -835,6 +1001,9 @@ func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 // TrimRelHistoryFrom removes all relationship history entries at or after
 // minVersion. See TrimNodeHistoryFrom for the rollback invariant.
 func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 

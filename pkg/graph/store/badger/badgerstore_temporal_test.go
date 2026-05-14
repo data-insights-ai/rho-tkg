@@ -1,9 +1,11 @@
 package badger
 
 import (
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -155,6 +157,17 @@ func TestBadgerStore_AllNodeIDs_ValidAt(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_AllNodeIDs_ValidAtColdCacheCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putBadgerNodeTemporal(t, bs, snowflake.ID(10), 1, 100, 300)
+	corruptNodeRowAfterFlush(t, bs, snowflake.ID(10))
+
+	_, err := bs.AllNodeIDs(QueryOpts{ValidAt: 150})
+	requireCorruptNodeReadError(t, "AllNodeIDs ValidAt", err)
+}
+
 func TestBadgerStore_RelationshipsByType_ValidAt(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -248,6 +261,24 @@ func TestBadgerStore_AllRelIDs_ValidAt(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != 200 {
 		t.Fatalf("AllRelIDs ValidAt=350 = %v, want [200]", ids)
+	}
+}
+
+func TestBadgerStore_AllRelIDs_ValidAtColdCacheCorruptionError(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putBadgerNodeTemporal(t, bs, snowflake.ID(1), 1, 100, 0)
+	putBadgerNodeTemporal(t, bs, snowflake.ID(2), 1, 100, 0)
+	putBadgerRelTemporal(t, bs, snowflake.ID(100), 1, 1, 2, 100, 300)
+	corruptRelWireAfterFlush(t, bs, storepkg.RelWire{ID: 100, RelType: 0, StartID: 1, EndID: 2})
+
+	_, err := bs.AllRelIDs(QueryOpts{ValidAt: 150})
+	if err == nil {
+		t.Fatal("AllRelIDs ValidAt should return error for corrupted current relationship data")
+	}
+	if errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("AllRelIDs ValidAt returned ErrRelNotFound for corrupted relationship data: %v", err)
 	}
 }
 

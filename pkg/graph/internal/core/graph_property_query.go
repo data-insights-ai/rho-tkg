@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -35,24 +36,31 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	}
+	temporal := hasTemporalFilter(opts)
+	var targetKey string
+	if temporal {
+		targetKey = indexpkg.PropertyValueKey(value)
+	}
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
-		if err := c.validateIndexLabel(label); err != nil {
-			return err
-		}
-		if err := c.validateIndexPropertyKey(key); err != nil {
-			return err
-		}
 		tok, ok := c.labels.Lookup(label)
 		if !ok {
 			return nil
 		}
-		if !hasTemporalFilter(opts) {
+		if !temporal {
 			nodes, err := c.nodesByLabelAndProperty(tok, key, value, opts)
 			result = nodes
 			return err
 		}
-		targetKey := indexpkg.PropertyValueKey(value)
 		if targetKey == "" {
 			return nil
 		}
@@ -63,17 +71,17 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.NodeID, 0, len(currentMatching))
-		for _, n := range currentMatching {
-			currentIDs = append(currentIDs, n.ID())
+		currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
+		if err != nil {
+			return err
 		}
 
 		pred := func(n *types.Node) bool {
 			if !n.HasLabelTokenRaw(tok) {
 				return false
 			}
-			v, found := n.GetProperty(key)
-			return found && indexpkg.PropertyValueKey(v) == targetKey
+			gotKey, found := n.IndexablePropertyValueKey(key)
+			return found && gotKey == targetKey
 		}
 		if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
 			n, err := c.findNodeVersionForOpts(id, opts, pred)

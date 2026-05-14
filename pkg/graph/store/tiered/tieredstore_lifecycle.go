@@ -1,36 +1,10 @@
 package tiered
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 )
-
-// getStore returns the BadgerStore for this shard, lazily opening it if cold.
-// For hot/warm shards: zero overhead (direct pointer return).
-// For cold shards: acquires shardMu, opens BadgerStore if nil, updates lastAccess.
-func (es *EventShard) getStore(ts *Store) (*BadgerStore, error) {
-	if err := ts.backgroundError(); err != nil {
-		return nil, err
-	}
-	if es.tier != TierCold {
-		return es.store, nil // hot/warm: zero overhead
-	}
-	es.shardMu.Lock()
-	defer es.shardMu.Unlock()
-	if es.store != nil {
-		es.lastAccess.Store(time.Now().UnixMilli())
-		return es.store, nil
-	}
-	store, err := ts.openBadgerStoreWithRecovery(es.path)
-	if err != nil {
-		return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
-	}
-	es.store = store
-	es.lastAccess.Store(time.Now().UnixMilli())
-	return store, nil
-}
 
 // checkoutStore returns the BadgerStore and increments activeReqs to prevent
 // idle-close from closing the store while the caller is still using it.
@@ -53,7 +27,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 	if ts.closed.Load() {
 		return nil, ErrStoreClosed
 	}
-	if es.tier != TierCold {
+	if es.currentTier() != TierCold {
 		// Hot/warm: stores are always open, never closed by idle-close.
 		es.activeReqs.Add(1)
 		es.lastAccess.Store(time.Now().UnixMilli())
@@ -64,6 +38,22 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		if ts.closed.Load() {
 			es.activeReqs.Add(-1)
 			return nil, ErrStoreClosed
+		}
+		if es.currentTier() == TierCold {
+			es.shardMu.Lock()
+			if es.store == nil {
+				store, err := ts.openBadgerStoreWithRecovery(es.path)
+				if err != nil {
+					es.activeReqs.Add(-1)
+					es.shardMu.Unlock()
+					return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
+				}
+				es.store = store
+			}
+			es.readTransientOpen = false
+			store := es.store
+			es.shardMu.Unlock()
+			return store, nil
 		}
 		return es.store, nil
 	}
@@ -83,11 +73,122 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		}
 		es.store = store
 	}
+	es.readTransientOpen = false
 	es.activeReqs.Add(1)
+	if ts.closed.Load() {
+		es.activeReqs.Add(-1)
+		es.shardMu.Unlock()
+		return nil, ErrStoreClosed
+	}
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
 	es.shardMu.Unlock()
 	return store, nil
+}
+
+// checkoutStoreForRead pins a shard for read-only fanout work.
+//
+// Cold shards that were already open keep the normal idle-close behaviour.
+// Cold shards opened only for this checkout are closed again when the returned
+// release function runs and no other reader has checked them out. This prevents
+// DepthAll scans across many cold shards from accumulating one Badger handle
+// per historical shard until the idle-close timer eventually fires.
+func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), error) {
+	noop := func() {}
+	if es.currentTier() != TierCold {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return nil, noop, err
+		}
+		return store, es.checkinStore, nil
+	}
+	if err := ts.backgroundError(); err != nil {
+		return nil, noop, err
+	}
+	if ts.closed.Load() {
+		return nil, noop, ErrStoreClosed
+	}
+
+	es.shardMu.Lock()
+	if ts.closed.Load() {
+		es.shardMu.Unlock()
+		return nil, noop, ErrStoreClosed
+	}
+	if es.store == nil {
+		store, err := ts.openBadgerStoreWithRecovery(es.path)
+		if err != nil {
+			es.shardMu.Unlock()
+			return nil, noop, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
+		}
+		es.store = store
+		es.readTransientOpen = true
+	}
+	es.activeReqs.Add(1)
+	if ts.closed.Load() {
+		es.activeReqs.Add(-1)
+		es.shardMu.Unlock()
+		return nil, noop, ErrStoreClosed
+	}
+	es.lastAccess.Store(time.Now().UnixMilli())
+	store := es.store
+	es.shardMu.Unlock()
+
+	return store, func() { es.checkinReadStore(ts) }, nil
+}
+
+// checkoutOpenStoreForRead pins an already-open shard for informational reads
+// without lazy-opening a closed cold shard or promoting a transient cold read
+// handle into a long-lived open handle.
+func (es *EventShard) checkoutOpenStoreForRead(ts *Store) (*BadgerStore, func(), bool, error) {
+	noop := func() {}
+	if es.currentTier() != TierCold {
+		store, err := es.checkoutStore(ts)
+		if err != nil {
+			return nil, noop, false, err
+		}
+		return store, es.checkinStore, true, nil
+	}
+	if err := ts.backgroundError(); err != nil {
+		return nil, noop, false, err
+	}
+
+	es.shardMu.Lock()
+	if ts.closed.Load() {
+		es.shardMu.Unlock()
+		return nil, noop, false, ErrStoreClosed
+	}
+	if es.store == nil {
+		es.shardMu.Unlock()
+		return nil, noop, false, nil
+	}
+	es.activeReqs.Add(1)
+	if ts.closed.Load() {
+		es.activeReqs.Add(-1)
+		es.shardMu.Unlock()
+		return nil, noop, false, ErrStoreClosed
+	}
+	es.lastAccess.Store(time.Now().UnixMilli())
+	store := es.store
+	es.shardMu.Unlock()
+
+	return store, func() { es.checkinReadStore(ts) }, true, nil
+}
+
+func (es *EventShard) checkinReadStore(ts *Store) {
+	es.activeReqs.Add(-1)
+	es.shardMu.Lock()
+	defer es.shardMu.Unlock()
+	if es.store == nil || !es.readTransientOpen || es.activeReqs.Load() != 0 {
+		return
+	}
+	if err := es.store.Close(); err != nil {
+		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
+		ts.recordBackgroundError(wrapped)
+		slog.Error("tiered cold shard transient close failed", "shard", es.name, "err", err)
+		return
+	}
+	es.store = nil
+	es.readTransientOpen = false
 }
 
 // checkoutStoreIfOpen pins a shard only if its BadgerStore is already open.
@@ -98,7 +199,7 @@ func (es *EventShard) checkoutStoreIfOpen(ts *Store) (*BadgerStore, bool, error)
 	if err := ts.backgroundError(); err != nil {
 		return nil, false, err
 	}
-	if es.tier != TierCold {
+	if es.currentTier() != TierCold {
 		store, err := es.checkoutStore(ts)
 		return store, err == nil, err
 	}
@@ -112,6 +213,7 @@ func (es *EventShard) checkoutStoreIfOpen(ts *Store) (*BadgerStore, bool, error)
 		es.shardMu.Unlock()
 		return nil, false, nil
 	}
+	es.readTransientOpen = false
 	es.activeReqs.Add(1)
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store
@@ -130,11 +232,37 @@ func (es *EventShard) checkinStore() {
 	es.activeReqs.Add(-1)
 }
 
+// checkoutRefShard returns refShard pinned against a concurrent Close.
+// Callers MUST invoke the returned checkin exactly once. The reference shard
+// is not idle-closed, but Close does close it, so long-running scans and
+// writes need the same lifecycle gate as event shards and refArchive.
+func (ts *Store) checkoutRefShard() (*BadgerStore, func(), error) {
+	noop := func() {}
+	if ts == nil {
+		return nil, noop, ErrNilStore
+	}
+	if err := ts.backgroundError(); err != nil {
+		return nil, noop, err
+	}
+	if ts.closeCh == nil || ts.refShard == nil {
+		return nil, noop, ErrStoreClosed
+	}
+	if ts.closed.Load() {
+		return nil, noop, ErrStoreClosed
+	}
+	ts.refActiveReqs.Add(1)
+	if ts.closed.Load() {
+		ts.refActiveReqs.Add(-1)
+		return nil, noop, ErrStoreClosed
+	}
+	return ts.refShard, func() { ts.refActiveReqs.Add(-1) }, nil
+}
+
 // checkoutArchive returns the refArchive pointer pinned against a concurrent
-// Close. Callers MUST invoke checkin exactly once. If the store has been
-// closed or the catalog has no archive shard the returned pointer is nil
-// and checkin is a safe no-op — callers should treat nil as "no archive
-// available" and skip archive-side work.
+// Close. Callers MUST invoke checkin exactly once. If the catalog has no
+// archive shard the returned pointer is nil and checkin is a safe no-op —
+// callers should treat nil as "no archive available" and skip archive-side
+// work. Closed stores return ErrStoreClosed, matching checkoutStore.
 //
 // Cold-start handling: if the catalog records an archive shard but the
 // in-memory pointer is nil (e.g. fresh process restart, no GetNode has
@@ -150,8 +278,11 @@ func (es *EventShard) checkinStore() {
 // the spin-wait between our load and our increment.
 func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 	noop := func() {}
-	if ts.closed.Load() {
-		return nil, noop, nil
+	if err := ts.checkOpen(); err != nil {
+		return nil, noop, err
+	}
+	if err := ts.backgroundError(); err != nil {
+		return nil, noop, err
 	}
 	archive := ts.refArchive.Load()
 	if archive == nil {
@@ -162,9 +293,6 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 			return nil, noop, nil
 		}
 		if err := ts.ensureRefArchive(); err != nil {
-			if errors.Is(err, ErrStoreClosed) {
-				return nil, noop, nil
-			}
 			return nil, noop, err
 		}
 		archive = ts.refArchive.Load()
@@ -175,13 +303,13 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 	ts.archiveActiveReqs.Add(1)
 	if ts.closed.Load() {
 		ts.archiveActiveReqs.Add(-1)
-		return nil, noop, nil
+		return nil, noop, ErrStoreClosed
 	}
 	// Re-load after the increment: Close stores nil into refArchive under
 	// archiveMu, and a snapshot taken before the increment may have raced.
 	if ts.refArchive.Load() == nil {
 		ts.archiveActiveReqs.Add(-1)
-		return nil, noop, nil
+		return nil, noop, ErrStoreClosed
 	}
 	return archive, func() { ts.archiveActiveReqs.Add(-1) }, nil
 }
@@ -210,7 +338,7 @@ func (ts *Store) closeIdleShards() {
 	ts.mu.RLock()
 	var coldShards []*EventShard
 	for _, es := range ts.eventShards {
-		if es.tier == TierCold {
+		if es.currentTier() == TierCold {
 			coldShards = append(coldShards, es)
 		}
 	}
@@ -225,6 +353,7 @@ func (ts *Store) closeIdleShards() {
 				slog.Error("tiered cold shard idle-close failed", "shard", es.name, "err", err)
 			}
 			es.store = nil
+			es.readTransientOpen = false
 		}
 		es.shardMu.Unlock()
 	}

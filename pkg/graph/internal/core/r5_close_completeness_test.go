@@ -356,6 +356,12 @@ func TestR5_PostClose_Constraints_AddSetReturnErrGraphClosed(t *testing.T) {
 	if err := g.Constraints.Set(temporalpkg.NewConstraintSet()); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("Constraints.Set after close = %v, want ErrGraphClosed", err)
 	}
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{}); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("Constraints.Add invalid after close = %v, want ErrGraphClosed", err)
+	}
+	if err := g.Constraints.Set(temporalpkg.NewConstraintSet(temporalpkg.TemporalConstraint{})); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("Constraints.Set invalid after close = %v, want ErrGraphClosed", err)
+	}
 	if got := g.Constraints.Get().Len(); got != 1 {
 		t.Fatalf("Constraints.Get().Len after post-close Add/Set = %d, want 1", got)
 	}
@@ -376,14 +382,23 @@ func TestR5_PostClose_EventSettersReturnErrGraphClosed(t *testing.T) {
 	if err := g.Events.SetSync(nil); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("Events.SetSync(nil) after close = %v, want ErrGraphClosed", err)
 	}
-	if got := g.Events.GetSync(); got != bus {
-		t.Fatalf("Events.SetSync(nil) after close mutated bus: got %p, want %p", got, bus)
+	g.mu.RLock()
+	gotPublisher := g.events
+	g.mu.RUnlock()
+	if gotPublisher != bus {
+		t.Fatalf("Events.SetSync(nil) after close mutated bus: got %p, want %p", gotPublisher, bus)
+	}
+	if got := g.Events.GetSync(); got != nil {
+		t.Fatalf("Events.GetSync after close = %p, want nil", got)
 	}
 	if err := g.Events.SetAsync(nil); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("Events.SetAsync(nil) after close = %v, want ErrGraphClosed", err)
 	}
-	if got := g.Events.GetSync(); got != bus {
-		t.Fatalf("Events.SetAsync(nil) after close mutated bus: got %p, want %p", got, bus)
+	g.mu.RLock()
+	gotPublisher = g.events
+	g.mu.RUnlock()
+	if gotPublisher != bus {
+		t.Fatalf("Events.SetAsync(nil) after close mutated bus: got %p, want %p", gotPublisher, bus)
 	}
 
 	g2 := closedGraph(t)

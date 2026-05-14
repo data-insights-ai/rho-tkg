@@ -66,6 +66,9 @@ func NewShardCatalog(path string) *ShardCatalog {
 
 // Load reads the catalog from disk. Returns nil if the file doesn't exist.
 func (sc *ShardCatalog) Load() error {
+	if sc.path == "" {
+		return nil
+	}
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	data, err := os.ReadFile(sc.path)
@@ -75,12 +78,14 @@ func (sc *ShardCatalog) Load() error {
 		}
 		return fmt.Errorf("shard catalog: read: %w", err)
 	}
-	if err := json.Unmarshal(data, sc); err != nil {
+	var loaded ShardCatalog
+	if err := json.Unmarshal(data, &loaded); err != nil {
 		return fmt.Errorf("shard catalog: unmarshal: %w", err)
 	}
-	if err := sc.validateLoadedLocked(); err != nil {
+	if err := loaded.validateLoadedLocked(); err != nil {
 		return err
 	}
+	sc.Shards = cloneShardEntries(loaded.Shards)
 	return nil
 }
 
@@ -151,6 +156,9 @@ func isSafeCatalogShardPath(path string) bool {
 	if clean == "." || clean == ".." {
 		return false
 	}
+	if clean != path {
+		return false
+	}
 	return !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
@@ -160,6 +168,10 @@ func (sc *ShardCatalog) Save() error {
 		return nil
 	}
 	sc.mu.RLock()
+	if err := sc.validateLoadedLocked(); err != nil {
+		sc.mu.RUnlock()
+		return err
+	}
 	data, err := json.MarshalIndent(sc, "", "  ")
 	sc.mu.RUnlock()
 	if err != nil {
@@ -218,7 +230,7 @@ func restoreShardCatalogFile(snapshot shardCatalogFileSnapshot) error {
 func (sc *ShardCatalog) AddShard(entry ShardEntry) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	sc.Shards = append(sc.Shards, entry)
+	sc.Shards = append(sc.Shards, cloneShardEntry(entry))
 }
 
 // snapshotShards returns a deep copy of the current Shards slice. Used by
@@ -227,19 +239,7 @@ func (sc *ShardCatalog) AddShard(entry ShardEntry) {
 func (sc *ShardCatalog) snapshotShards() []ShardEntry {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
-	out := make([]ShardEntry, len(sc.Shards))
-	for i := range sc.Shards {
-		out[i] = sc.Shards[i]
-		// Defensive copy of the slice fields so a later mutation on the
-		// live catalog cannot bleed into the snapshot.
-		if sc.Shards[i].Labels != nil {
-			out[i].Labels = append([]string(nil), sc.Shards[i].Labels...)
-		}
-		if sc.Shards[i].RelTypes != nil {
-			out[i].RelTypes = append([]string(nil), sc.Shards[i].RelTypes...)
-		}
-	}
-	return out
+	return cloneShardEntries(sc.Shards)
 }
 
 // restoreShards replaces the catalog's Shards slice with the given snapshot.
@@ -248,7 +248,7 @@ func (sc *ShardCatalog) snapshotShards() []ShardEntry {
 func (sc *ShardCatalog) restoreShards(snapshot []ShardEntry) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	sc.Shards = snapshot
+	sc.Shards = cloneShardEntries(snapshot)
 }
 
 // GetShard looks up a shard by name.
@@ -257,7 +257,7 @@ func (sc *ShardCatalog) GetShard(name string) (*ShardEntry, bool) {
 	defer sc.mu.RUnlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Name == name {
-			entry := sc.Shards[i] // copy
+			entry := cloneShardEntry(sc.Shards[i])
 			return &entry, true
 		}
 	}
@@ -271,7 +271,7 @@ func (sc *ShardCatalog) EventShards() []ShardEntry {
 	var out []ShardEntry
 	for _, s := range sc.Shards {
 		if s.Kind == ShardEvent {
-			out = append(out, s)
+			out = append(out, cloneShardEntry(s))
 		}
 	}
 	return out
@@ -283,7 +283,7 @@ func (sc *ShardCatalog) HotEventShard() (*ShardEntry, bool) {
 	defer sc.mu.RUnlock()
 	for i := range sc.Shards {
 		if sc.Shards[i].Kind == ShardEvent && sc.Shards[i].Tier == TierHot {
-			entry := sc.Shards[i] // copy
+			entry := cloneShardEntry(sc.Shards[i])
 			return &entry, true
 		}
 	}
@@ -351,10 +351,31 @@ func (sc *ShardCatalog) ColdEventShards() []ShardEntry {
 	var out []ShardEntry
 	for _, s := range sc.Shards {
 		if s.Kind == ShardEvent && s.Tier == TierCold {
-			out = append(out, s)
+			out = append(out, cloneShardEntry(s))
 		}
 	}
 	return out
+}
+
+func cloneShardEntries(entries []ShardEntry) []ShardEntry {
+	if entries == nil {
+		return nil
+	}
+	out := make([]ShardEntry, len(entries))
+	for i := range entries {
+		out[i] = cloneShardEntry(entries[i])
+	}
+	return out
+}
+
+func cloneShardEntry(entry ShardEntry) ShardEntry {
+	if entry.Labels != nil {
+		entry.Labels = append([]string(nil), entry.Labels...)
+	}
+	if entry.RelTypes != nil {
+		entry.RelTypes = append([]string(nil), entry.RelTypes...)
+	}
+	return entry
 }
 
 // AddLabel tracks a label in the given shard entry (idempotent).

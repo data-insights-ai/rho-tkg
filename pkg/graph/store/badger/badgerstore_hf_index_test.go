@@ -181,6 +181,36 @@ func TestBadgerStoreHighFrequencyIndexRejectsTemporalIndexSameLabel(t *testing.T
 	}
 }
 
+func TestBadgerStoreHighFrequencyIndex_BackfillFailureRollsBackPlaceholder(t *testing.T) {
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 3_600_000})
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	bs.NodeCacheForTest().ResetForTest()
+	if err := bs.DBForTest().Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storeutil.NodeKey(n.ID().SnowflakeID()), []byte("corrupt-node-wire"))
+	}); err != nil {
+		t.Fatalf("corrupt node row: %v", err)
+	}
+
+	err := bs.CreateHighFrequencyIndex(1, time.Hour)
+	if err == nil {
+		t.Fatal("CreateHighFrequencyIndex returned nil for corrupt backfill row")
+	}
+	if bs.HasHFIndexForTest(1) {
+		t.Fatal("failed CreateHighFrequencyIndex left high-frequency index placeholder installed")
+	}
+	if err := bs.DropHighFrequencyIndex(1); !errors.Is(err, ErrTemporalIndexNotFound) {
+		t.Fatalf("DropHighFrequencyIndex after failed create = %v, want ErrTemporalIndexNotFound", err)
+	}
+}
+
 func TestBadgerStoreHighFrequencyIndexLoadRejectsInvalidDefinition(t *testing.T) {
 	dir := t.TempDir()
 

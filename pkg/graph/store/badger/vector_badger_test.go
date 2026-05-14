@@ -4,6 +4,8 @@ package badger
 
 import (
 	"errors"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,6 +175,138 @@ func TestBadgerStoreSearchNearestNodesAppliesTemporalFilterBeforeHeap(t *testing
 	}
 	if len(got) != 1 || got[0].ID() != eligible.ID() {
 		t.Fatalf("temporal result IDs = %v, want eligible farther node %d", badgerNodeIDsForTest(got), eligible.ID())
+	}
+}
+
+func TestBadgerStoreSearchNearestNodesTemporalFilterSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	keyName := "vec"
+	stale := types.NewNode(types.NodeID(snowflake.ID(1301)), labelTok+1, nil)
+	stale.SetTemporal(&types.TemporalMetadata{ValidFrom: 1})
+	if err := stale.SetProperty(keyName, []float32{0, 0}); err != nil {
+		t.Fatalf("SetProperty stale: %v", err)
+	}
+	live := types.NewNode(types.NodeID(snowflake.ID(1302)), labelTok, nil)
+	live.SetTemporal(&types.TemporalMetadata{ValidFrom: 1})
+	if err := live.SetProperty(keyName, []float32{10, 0}); err != nil {
+		t.Fatalf("SetProperty live: %v", err)
+	}
+	for _, n := range []*types.Node{stale, live} {
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", n.ID(), err)
+		}
+	}
+	if err := bs.CreateVectorIndex(labelTok, keyName, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	key := indexpkg.VectorIndexKey{LabelToken: labelTok, PropertyKey: keyName}
+	bs.idxMu.Lock()
+	if err := bs.vectorIndexes[key].Add(stale.ID().SnowflakeID(), []float32{0, 0}); err != nil {
+		bs.idxMu.Unlock()
+		t.Fatalf("seed stale vector entry: %v", err)
+	}
+	bs.idxMu.Unlock()
+
+	got, err := bs.SearchNearestNodes(labelTok, keyName, []float32{0, 0}, 1, QueryOpts{ValidAt: 5})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != live.ID() {
+		t.Fatalf("SearchNearestNodes IDs = %v, want live node %d", badgerNodeIDsForTest(got), live.ID())
+	}
+}
+
+func TestBadgerStoreSearchNearestNodesTemporalFilterValidatesQueryBeforeCandidateFetch(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	keyName := "vec"
+	n := types.NewNode(types.NodeID(snowflake.ID(1303)), labelTok, nil)
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 1})
+	if err := n.SetProperty(keyName, []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.CreateVectorIndex(labelTok, keyName, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	corruptNodeRowAfterFlush(t, bs, n.ID().SnowflakeID())
+
+	_, err := bs.SearchNearestNodes(labelTok, keyName, []float32{1}, 1, QueryOpts{ValidAt: 5})
+	if !errors.Is(err, ErrDimensionMismatch) {
+		t.Fatalf("SearchNearestNodes invalid query with temporal filter = %v, want ErrDimensionMismatch", err)
+	}
+}
+
+func TestBadgerStoreSearchNearestNodesTemporalFilterPropagatesCandidateCorruption(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	keyName := "vec"
+	n := types.NewNode(types.NodeID(snowflake.ID(1304)), labelTok, nil)
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 1})
+	if err := n.SetProperty(keyName, []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.CreateVectorIndex(labelTok, keyName, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	corruptNodeRowAfterFlush(t, bs, n.ID().SnowflakeID())
+
+	_, err := bs.SearchNearestNodes(labelTok, keyName, []float32{1, 0}, 1, QueryOpts{ValidAt: 5})
+	requireCorruptNodeReadError(t, "SearchNearestNodes temporal filter", err)
+}
+
+func TestBadgerStoreSearchNearestFilteredSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	keyName := "vec"
+	stale := types.NewNode(types.NodeID(snowflake.ID(1311)), labelTok+1, nil)
+	if err := stale.SetProperty(keyName, []float32{0, 0}); err != nil {
+		t.Fatalf("SetProperty stale: %v", err)
+	}
+	live := types.NewNode(types.NodeID(snowflake.ID(1312)), labelTok, nil)
+	if err := live.SetProperty(keyName, []float32{10, 0}); err != nil {
+		t.Fatalf("SetProperty live: %v", err)
+	}
+	for _, n := range []*types.Node{stale, live} {
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", n.ID(), err)
+		}
+	}
+	if err := bs.CreateVectorIndex(labelTok, keyName, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	key := indexpkg.VectorIndexKey{LabelToken: labelTok, PropertyKey: keyName}
+	bs.idxMu.Lock()
+	if err := bs.vectorIndexes[key].Add(stale.ID().SnowflakeID(), []float32{0, 0}); err != nil {
+		bs.idxMu.Unlock()
+		t.Fatalf("seed stale vector entry: %v", err)
+	}
+	bs.idxMu.Unlock()
+
+	filterCalls := make(map[snowflake.ID]int)
+	ids, err := bs.SearchNearestFiltered(labelTok, keyName, []float32{0, 0}, 1, func(id snowflake.ID) bool {
+		filterCalls[id]++
+		return true
+	})
+	if err != nil {
+		t.Fatalf("SearchNearestFiltered: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != live.ID().SnowflakeID() {
+		t.Fatalf("SearchNearestFiltered IDs = %v, want live node %d", ids, live.ID())
+	}
+	if filterCalls[stale.ID().SnowflakeID()] != 0 {
+		t.Fatalf("SearchNearestFiltered called external filter for stale ID %d", stale.ID())
+	}
+	if filterCalls[live.ID().SnowflakeID()] != 1 {
+		t.Fatalf("SearchNearestFiltered live filter calls = %d, want 1", filterCalls[live.ID().SnowflakeID()])
 	}
 }
 
@@ -601,6 +735,47 @@ func TestBadgerStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *testing.T) {
+	dir := t.TempDir()
+	labelTok := uint16(3)
+	key := "vec"
+
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	n := types.NewNode(types.NodeID(snowflake.ID(101)), labelTok, nil)
+	props, _ := types.NewPropertySlice(map[string]any{key: []float32{1, 0, 0}})
+	n.SetProperties(props)
+	if err := bs1.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs1.CreateVectorIndex(labelTok, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	overwriteIndexDefsForTest(t, dir, storeutil.VectorIndexDefsKey, []vectorIdxDef{
+		{LabelToken: labelTok, PropertyKey: key, Dims: 2, Metric: DistanceCosine},
+	})
+
+	bs2, err := New(Config{Dir: dir})
+	if bs2 != nil {
+		_ = bs2.Close()
+	}
+	if err == nil {
+		t.Fatal("open with mismatched indexed vector returned nil")
+	}
+	if !errors.Is(err, ErrDimensionMismatch) {
+		t.Fatalf("open with mismatched indexed vector = %v, want ErrDimensionMismatch", err)
+	}
+	if !strings.Contains(err.Error(), "rebuild node 101") {
+		t.Fatalf("open with mismatched indexed vector = %v, want vector rebuild context", err)
+	}
+}
+
 func TestBadgerStore_VectorIndex_DropDefinitionSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 
@@ -682,6 +857,160 @@ func TestBadgerStore_VectorIndex_CreateRejectsBackfillDimensionMismatch(t *testi
 	_, searchErr := bs.SearchNearestNodes(labelTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
 	if !errors.Is(searchErr, ErrVectorIndexNotFound) {
 		t.Fatalf("SearchNearestNodes after failed create = %v, want ErrVectorIndexNotFound", searchErr)
+	}
+}
+
+func TestBadgerStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	key := "vec"
+
+	existing := types.NewNode(types.NodeID(snowflake.ID(108)), labelTok, nil)
+	if err := existing.SetProperty(key, []float32{float32(math.NaN()), 0}); err != nil {
+		t.Fatalf("SetProperty existing: %v", err)
+	}
+	if err := bs.PutNode(existing); err != nil {
+		t.Fatalf("PutNode existing: %v", err)
+	}
+
+	err := bs.CreateVectorIndex(labelTok, key, 2, DistanceEuclidean)
+	if !errors.Is(err, ErrInvalidVectorValue) {
+		t.Fatalf("CreateVectorIndex error = %v, want ErrInvalidVectorValue", err)
+	}
+	if !errors.Is(err, storepkg.ErrInvalidVectorValue) {
+		t.Fatalf("CreateVectorIndex error = %v, want store.ErrInvalidVectorValue", err)
+	}
+	_, searchErr := bs.SearchNearestNodes(labelTok, key, []float32{0, 0}, 1, QueryOpts{})
+	if !errors.Is(searchErr, ErrVectorIndexNotFound) {
+		t.Fatalf("SearchNearestNodes after failed create = %v, want ErrVectorIndexNotFound", searchErr)
+	}
+
+	bs = newTestBadgerStore(t)
+	if err := bs.CreateVectorIndex(labelTok, key, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex empty: %v", err)
+	}
+	got, err := bs.SearchNearestNodes(labelTok, key, []float32{float32(math.NaN()), 0}, 0, QueryOpts{})
+	if !errors.Is(err, ErrInvalidVectorValue) || got != nil {
+		t.Fatalf("SearchNearestNodes non-finite query with k=0 = (%v, %v), want nil, ErrInvalidVectorValue", got, err)
+	}
+	bad := types.NewNode(types.NodeID(snowflake.ID(109)), labelTok, nil)
+	if err := bad.SetProperty(key, []float32{float32(math.Inf(-1)), 0}); err != nil {
+		t.Fatalf("SetProperty bad: %v", err)
+	}
+	err = bs.PutNode(bad)
+	if !errors.Is(err, ErrInvalidVectorValue) {
+		t.Fatalf("PutNode indexed non-finite vector = %v, want ErrInvalidVectorValue", err)
+	}
+	if _, err := bs.GetNode(bad.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode after failed PutNode = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestBadgerStore_VectorIndex_CreateIgnoresUnrelatedLabelRows(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(3)
+	key := "vec"
+
+	target := types.NewNode(types.NodeID(snowflake.ID(104)), labelTok, nil)
+	if err := target.SetProperty(key, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("SetProperty target: %v", err)
+	}
+	if err := bs.PutNode(target); err != nil {
+		t.Fatalf("PutNode target: %v", err)
+	}
+
+	unrelated := types.NewNode(types.NodeID(snowflake.ID(105)), labelTok+1, nil)
+	if err := unrelated.SetProperty(key, []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty unrelated: %v", err)
+	}
+	if err := bs.PutNode(unrelated); err != nil {
+		t.Fatalf("PutNode unrelated: %v", err)
+	}
+
+	if err := bs.CreateVectorIndex(labelTok, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	got, err := bs.SearchNearestNodes(labelTok, key, []float32{1, 0, 0}, 2, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != target.ID() {
+		t.Fatalf("SearchNearestNodes IDs = %v, want only %d", badgerNodeIDsForTest(got), target.ID())
+	}
+}
+
+func TestBadgerStore_VectorIndex_ReplaceNodePurgesStaleCrossLabelEntry(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	node := types.NewNode(types.NodeID(snowflake.ID(105)), 1, nil)
+	if err := node.SetProperty("vec", []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty node: %v", err)
+	}
+	if err := bs.PutNode(node); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.CreateVectorIndex(2, "vec", 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	key := indexpkg.VectorIndexKey{LabelToken: 2, PropertyKey: "vec"}
+	bs.idxMu.Lock()
+	if err := bs.vectorIndexes[key].Add(node.ID().SnowflakeID(), []float32{1, 0}); err != nil {
+		bs.idxMu.Unlock()
+		t.Fatalf("seed stale vector entry: %v", err)
+	}
+	bs.idxMu.Unlock()
+
+	updated := node.DeepCopy()
+	if err := updated.SetProperty("name", "updated"); err != nil {
+		t.Fatalf("SetProperty updated: %v", err)
+	}
+	if err := bs.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode: %v", err)
+	}
+
+	bs.idxMu.RLock()
+	rawIDs, rawErr := bs.vectorIndexes[key].SearchNearest([]float32{1, 0}, 1, nil)
+	bs.idxMu.RUnlock()
+	if rawErr != nil || len(rawIDs) != 0 {
+		t.Fatalf("raw vector index after ReplaceNode = (%v, %v), want no stale entry", rawIDs, rawErr)
+	}
+
+	got, err := bs.SearchNearestNodes(2, "vec", []float32{1, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("SearchNearestNodes returned stale cross-label vector entry IDs = %v, want none", badgerNodeIDsForTest(got))
+	}
+}
+
+func TestBadgerStore_VectorIndex_SearchNearestNodesSkipsStaleCurrentRowShape(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	node := types.NewNode(types.NodeID(snowflake.ID(106)), 1, nil)
+	if err := node.SetProperty("vec", []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty node: %v", err)
+	}
+	if err := bs.PutNode(node); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.CreateVectorIndex(2, "vec", 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	key := indexpkg.VectorIndexKey{LabelToken: 2, PropertyKey: "vec"}
+	bs.idxMu.Lock()
+	if err := bs.vectorIndexes[key].Add(node.ID().SnowflakeID(), []float32{1, 0}); err != nil {
+		bs.idxMu.Unlock()
+		t.Fatalf("seed stale vector entry: %v", err)
+	}
+	bs.idxMu.Unlock()
+
+	got, err := bs.SearchNearestNodes(2, "vec", []float32{1, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("SearchNearestNodes returned stale current-row shape IDs = %v, want none", badgerNodeIDsForTest(got))
 	}
 }
 

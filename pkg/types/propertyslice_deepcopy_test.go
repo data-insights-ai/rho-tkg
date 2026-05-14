@@ -224,6 +224,30 @@ func TestDeepCopyReflectFallbackIsIndependent(t *testing.T) {
 			t.Fatal("DeepCopy: mutating nested slice in copied map[int][]string affected the original")
 		}
 	})
+
+	t.Run("named_any_slice_with_nil_value", func(t *testing.T) {
+		t.Parallel()
+
+		type namedAnySlice []any
+
+		ps := PropertySlice{{Key: "items", Value: namedAnySlice{nil, []string{"a"}}}}
+
+		cp := ps.DeepCopy()
+		copiedVal, _ := cp.Get("items")
+		copiedSlice := copiedVal.(namedAnySlice)
+		if len(copiedSlice) != 2 {
+			t.Fatalf("DeepCopy namedAnySlice len = %d, want 2", len(copiedSlice))
+		}
+		if copiedSlice[0] != nil {
+			t.Fatalf("DeepCopy namedAnySlice[0] = %v, want nil", copiedSlice[0])
+		}
+		copiedSlice[1].([]string)[0] = "MUTATED"
+
+		origSlice := ps[0].Value.(namedAnySlice)
+		if origSlice[1].([]string)[0] == "MUTATED" {
+			t.Fatal("DeepCopy: mutating copied namedAnySlice value affected the original")
+		}
+	})
 }
 
 // ─── DeepCopy nil-value preservation tests ──────────────────────────────────

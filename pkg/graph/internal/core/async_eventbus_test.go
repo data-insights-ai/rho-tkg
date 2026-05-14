@@ -108,6 +108,12 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 	defer bus.Close()
 
 	_ = g.Events.SetAsync(bus)
+	if got := g.Events.GetAsync(); got != bus {
+		t.Fatalf("GetAsync = %p, want %p", got, bus)
+	}
+	if got := g.Events.GetSync(); got != nil {
+		t.Fatalf("GetSync with async bus = %p, want nil", got)
+	}
 
 	var received atomic.Int32
 	bus.Subscribe(func(e eventspkg.Event) {

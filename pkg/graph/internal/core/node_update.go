@@ -23,17 +23,21 @@ func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, update
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
-		node *types.Node
-		err  error
+		node    *types.Node
+		mutated bool
+		err     error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		node, err = c.updateNodeInternal(ctx, id, updates)
+		node, mutated, err = c.updateNodeInternal(ctx, id, updates)
 	})
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && len(updates) > 0 {
+	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return node, err
@@ -41,34 +45,41 @@ func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, update
 
 // updateNodeInternal is the lock-free implementation of NodeOps.UpdateWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, bool, error) {
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, false, err
 	}
 
 	if len(updates) == 0 {
-		if err := storepkg.ValidateNodeID(id); err != nil {
-			return nil, err
-		}
-		current, err := c.store.GetNode(id)
+		current, err := c.getCurrentNode(id)
 		if err == nil {
 			c.opNodeReads.Add(1)
 		}
-		return current, err
+		return current, false, err
 	}
 
 	// The no-op check above uses the original map length; after extraction
 	// the remaining updates may be empty (metadata-only update).
 	prov, updates, err := c.prepareUpdateProperties(updates, "update node")
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	return c.updateNodePreparedInternal(ctx, id, prov, updates)
+}
+
+// updateNodePreparedInternal applies a non-empty caller update after provenance
+// extraction and property validation have already run. The prepared properties
+// may be empty for metadata-only updates.
+func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, prov updateProvenance, updates map[string]any) (*types.Node, bool, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
@@ -76,19 +87,29 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if !nodePreparedUpdateMutates(current, prov, updates) {
+		c.opNodeReads.Add(1)
+		return current, false, nil
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return nil, false, err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("update node"); err != nil {
+		return nil, false, err
 	}
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
 	nextVersion, err := nextEntityVersion(prevVersion)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	prevState := current.DeepCopy()
 
@@ -99,29 +120,29 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
 		} else {
 			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
 		}
 	}
 
 	// Check final property count after mutations (under entity lock, before persist).
 	if current.PropertyCount() > c.validation.MaxPropertiesPerEntity {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
+		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
 	current.SetVersion(nextVersion)
 
-	now := c.now()
+	now := c.nodeVersionUpdateInstant(current)
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -145,7 +166,7 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
 	if err != nil {
-		return nil, fmt.Errorf("graph: compute node hash: %w", err)
+		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
 	current.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
@@ -157,16 +178,16 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 	})
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Atomic replace + history — single store call prevents orphaned history entries.
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	c.opNodeUpdates.Add(1)
-	return current, nil
+	return current, true, nil
 }
 
 // UpdateInPlace applies property updates to a node without creating a version history entry.
@@ -189,17 +210,21 @@ func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID,
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
-		node *types.Node
-		err  error
+		node    *types.Node
+		mutated bool
+		err     error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		node, err = c.updateNodeInPlaceInternal(ctx, id, updates)
+		node, mutated, err = c.updateNodeInPlaceInternal(ctx, id, updates)
 	})
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && len(updates) > 0 {
+	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return node, err
@@ -207,32 +232,29 @@ func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID,
 
 // updateNodeInPlaceInternal is the lock-free implementation of NodeOps.UpdateInPlaceWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, bool, error) {
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, false, err
 	}
 
 	if len(updates) == 0 {
-		if err := storepkg.ValidateNodeID(id); err != nil {
-			return nil, err
-		}
-		current, err := c.store.GetNode(id)
+		current, err := c.getCurrentNode(id)
 		if err == nil {
 			c.opNodeReads.Add(1)
 		}
-		return current, err
+		return current, false, err
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
 	if err := c.validatePropertyUpdates(updates, "update node in place"); err != nil {
-		return nil, err
-	}
-	if err := storepkg.ValidateNodeID(id); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
@@ -240,12 +262,22 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if !nodePropertyUpdatesMutate(current, updates) {
+		c.opNodeReads.Add(1)
+		return current, false, nil
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return nil, false, err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("update node in place"); err != nil {
+		return nil, false, err
 	}
 
 	// Preserve existing PrevHash — no new chain link for in-place updates.
@@ -255,24 +287,24 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
 		} else {
 			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update node property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update node property %q: %w", key, err)
 			}
 		}
 	}
 
 	// Check final property count.
 	if current.PropertyCount() > c.validation.MaxPropertiesPerEntity {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
+		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
 	// NO version bump — in-place update preserves version.
@@ -288,19 +320,43 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
 	if err != nil {
-		return nil, fmt.Errorf("graph: compute node hash: %w", err)
+		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
 	current.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// ReplaceNode instead of ReplaceNodeWithHistory — no history entry written.
 	if err := c.store.ReplaceNode(current); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	c.opNodeUpdates.Add(1)
-	return current, nil
+	return current, true, nil
+}
+
+func nodePreparedUpdateMutates(current *types.Node, prov updateProvenance, updates map[string]any) bool {
+	if prov.present {
+		return true
+	}
+	return nodePropertyUpdatesMutate(current, updates)
+}
+
+func nodePropertyUpdatesMutate(current *types.Node, updates map[string]any) bool {
+	for key, val := range updates {
+		if val != nil {
+			found, equal := current.PropertyValueEqual(key, val)
+			if !found || !equal {
+				return true
+			}
+			continue
+		}
+		found, _ := current.PropertyValueEqual(key, nil)
+		if found {
+			return true
+		}
+	}
+	return false
 }

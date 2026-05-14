@@ -18,6 +18,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if len(rels) == 0 {
 		return nil
 	}
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 
 	// Pre-serialize all relationships outside the lock.
 	type relData struct {
@@ -52,6 +55,13 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			relType:  r.TypeToken().Value(),
 			data:     data,
 		}
+	}
+	endpointIDs := make([]types.NodeID, 0, len(serialized)*2)
+	for _, rd := range serialized {
+		endpointIDs = append(endpointIDs, rd.startNID, rd.endNID)
+	}
+	if err := bs.ensureNodeRowsLive(endpointIDs); err != nil {
+		return err
 	}
 
 	bs.idxMu.Lock()
@@ -130,6 +140,9 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	if len(typedIDs) == 0 {
 		return nil
 	}
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	for _, id := range typedIDs {
 		if err := storecontract.ValidateRelID(id); err != nil {
 			return err
@@ -137,14 +150,40 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	}
 	typedIDs = uniqueRelIDs(typedIDs)
 
+	// Phase 1a: validate existence under a read lock. Relationship row prefetch
+	// may hit Badger, so keep that I/O outside idxMu.Lock().
+	bs.idxMu.RLock()
+	for _, rid := range typedIDs {
+		if _, exists := bs.relIDs[rid]; !exists {
+			bs.idxMu.RUnlock()
+			return ErrRelNotFound
+		}
+	}
+	bs.idxMu.RUnlock()
+
+	// Phase 1b: load relationship rows before acquiring the write lock. The
+	// locked phase re-reads from the cache-loaded current row after TOCTOU checks.
+	prefetched := make(map[types.RelID]RelDeleteInfo, len(typedIDs))
+	for _, rid := range typedIDs {
+		info, err := bs.prefetchRelDeleteInfo(rid)
+		if err != nil {
+			return fmt.Errorf("graph: batch read relationship %d: %w", rid.SnowflakeID(), err)
+		}
+		prefetched[rid] = info
+	}
+
 	bs.idxMu.Lock()
 
-	// Phase 1: validate — all must exist + pre-read metadata.
+	// Phase 1c: revalidate after the prefetch window and capture current metadata.
 	infos := make([]RelDeleteInfo, len(typedIDs))
 	for i, rid := range typedIDs {
 		if _, exists := bs.relIDs[rid]; !exists {
 			bs.idxMu.Unlock()
 			return ErrRelNotFound
+		}
+		if info, ok := prefetched[rid]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+			infos[i] = info
+			continue
 		}
 		r, err := bs.getRelLocked(rid)
 		if err != nil {

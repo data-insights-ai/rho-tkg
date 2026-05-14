@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestAddRelationshipInvalidTypePrecedesEntityAndPropertyValidation(t *testin
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
 	missingStart := types.NewNode(types.NodeID(999), 1, nil)
 	missingEnd := types.NewNode(types.NodeID(1000), 1, nil)
-	props := map[string]any{"a": int64(1), "b": int64(2)}
+	props := map[string]any{"tkg_signature": "not bytes", "a": int64(1), "b": int64(2)}
 
 	checks := []struct {
 		name string
@@ -58,6 +59,10 @@ func TestAddRelationshipInvalidTypePrecedesEntityAndPropertyValidation(t *testin
 		}},
 		{name: "AddByIDIfAbsent", run: func() error {
 			_, _, err := g.Rels.AddByIDIfAbsent(" ", missingStart.ID(), missingEnd.ID(), props)
+			return err
+		}},
+		{name: "Import", run: func() error {
+			_, err := g.Rels.Import(context.Background(), types.RelID(12345), " ", missingStart, missingEnd, props)
 			return err
 		}},
 	}
@@ -136,6 +141,13 @@ func TestRelationshipMutationsRejectNestedPropertyStringValueTooLarge(t *testing
 			name: "set property",
 			run: func(g *Core, id types.RelID) error {
 				return g.Rels.SetProperty(id, "k", oversized)
+			},
+		},
+		{
+			name: "compare and set property",
+			run: func(g *Core, id types.RelID) error {
+				_, err := g.Rels.CompareAndSetProperty(id, "k", nil, oversized)
+				return err
 			},
 		},
 	}

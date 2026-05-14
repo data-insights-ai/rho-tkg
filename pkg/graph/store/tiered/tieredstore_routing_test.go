@@ -654,9 +654,7 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
@@ -671,8 +669,7 @@ func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
 }
 
 func TestTieredStore_ShardForNodeID_Error(t *testing.T) {
-	// Verify shardForNodeID propagates errors. With in-memory stores,
-	// the only error path is through getStore on cold shards.
+	// Verify shardForNodeID succeeds for a generated but absent event ID.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -758,9 +755,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	// Verify the relationship can still be found via ShardForRelIDForTest.
 	shard, err := ts.ShardForRelIDForTest(types.RelID(relID))

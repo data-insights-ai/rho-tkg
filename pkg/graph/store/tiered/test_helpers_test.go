@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/snowflake"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -42,6 +43,26 @@ func newDiskTestTieredStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = ts.Close() })
 	return ts
+}
+
+func installDefaultTestLabelRegistry(t *testing.T, ts *Store) (caseTok, userTok, signalTok uint16) {
+	t.Helper()
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	var err error
+	caseTok, err = reg.GetOrCreate("Case")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userTok, err = reg.GetOrCreate("User")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signalTok, err = reg.GetOrCreate("Signal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return caseTok, userTok, signalTok
 }
 
 // newTestGen creates a snowflake generator for testing. Mirrors the production

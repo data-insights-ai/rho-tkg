@@ -43,7 +43,7 @@ func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
 
 	hotBefore := ts.hotShard
 	nameBefore := hotBefore.name
-	tierBefore := hotBefore.tier
+	tierBefore := hotBefore.currentTier()
 	timeEndBefore := hotBefore.timeEnd
 	shardCountBefore := len(ts.eventShards)
 	catalogBefore := ts.catalog.snapshotShards()
@@ -68,8 +68,8 @@ func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
 	if ts.hotShard.name != nameBefore {
 		t.Errorf("hotShard name = %q, want %q", ts.hotShard.name, nameBefore)
 	}
-	if ts.hotShard.tier != tierBefore {
-		t.Errorf("hotShard tier = %q, want %q", ts.hotShard.tier, tierBefore)
+	if ts.hotShard.currentTier() != tierBefore {
+		t.Errorf("hotShard tier = %q, want %q", ts.hotShard.currentTier(), tierBefore)
 	}
 	if !ts.hotShard.timeEnd.Equal(timeEndBefore) {
 		t.Errorf("hotShard timeEnd changed after failed rotate (was %v, now %v)", timeEndBefore, ts.hotShard.timeEnd)

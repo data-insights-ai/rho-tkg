@@ -9,6 +9,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -332,10 +333,8 @@ func pinNodeVersionChain(t *testing.T, c *Core, id types.NodeID, t0, tMid, tEnd 
 	}
 
 	// The history entry's temporal metadata is captured at write time and
-	// stored as a snapshot. To rewrite it we need to re-write the entire
-	// node-with-history pair. We do that via ReplaceNodeWithHistory: the
-	// current state is the (already updated) Y; the prevState we supply is
-	// a fresh copy of X with ValidFrom=t0, ValidTo=tMid.
+	// stored as a snapshot. This is test setup, so rewrite that snapshot
+	// directly after stamping the live row above.
 	hist, err := c.store.GetNodeHistory(id)
 	if err != nil {
 		t.Fatalf("GetNodeHistory: %v", err)
@@ -353,13 +352,8 @@ func pinNodeVersionChain(t *testing.T, c *Core, id types.NodeID, t0, tMid, tEnd 
 	htm.ValidFrom = t0
 	htm.ValidTo = tMid
 
-	// ReplaceNodeWithHistory(current, prevVersion, prevState) overwrites
-	// the history slot keyed by prevVersion with prevState's data and
-	// replaces the current entry. Use the existing prevVersion — the
-	// genesis version of the genesis entry is 0.
-	prevVersion := last.Version()
-	if err := c.store.ReplaceNodeWithHistory(cur, prevVersion, last); err != nil {
-		t.Fatalf("ReplaceNodeWithHistory: %v", err)
+	if err := c.store.PutNodeVersion(id, last.Version(), last); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
 	}
 }
 
@@ -519,6 +513,149 @@ func TestDiffSnapshotsCallback_NilHandlers(t *testing.T) {
 	// Empty handler set — nothing should fire, no panic.
 	if err := g.Temporal.DiffCallback(base+100, base+300, temporalpkg.DiffHandlers{}); err != nil {
 		t.Fatalf("DiffSnapshotsCallback all-nil: %v", err)
+	}
+}
+
+type diffScanTrackingStore struct {
+	*memory.Store
+	nodeScanErr   error
+	relScanErr    error
+	nodeIDScans   int
+	nodeHistScans int
+	relIDScans    int
+	relHistScans  int
+}
+
+func (s *diffScanTrackingStore) ForEachNodeID(fn func(types.NodeID) bool) error {
+	s.nodeIDScans++
+	if s.nodeScanErr != nil {
+		return s.nodeScanErr
+	}
+	return s.Store.ForEachNodeID(fn)
+}
+
+func (s *diffScanTrackingStore) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
+	s.nodeHistScans++
+	if s.nodeScanErr != nil {
+		return s.nodeScanErr
+	}
+	return s.Store.ForEachNodeHistoryID(fn)
+}
+
+func (s *diffScanTrackingStore) ForEachRelID(fn func(types.RelID) bool) error {
+	s.relIDScans++
+	if s.relScanErr != nil {
+		return s.relScanErr
+	}
+	return s.Store.ForEachRelID(fn)
+}
+
+func (s *diffScanTrackingStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
+	s.relHistScans++
+	if s.relScanErr != nil {
+		return s.relScanErr
+	}
+	return s.Store.ForEachRelHistoryID(fn)
+}
+
+func newDiffScanTrackingGraph(t *testing.T, st *diffScanTrackingStore) *Core {
+	t.Helper()
+	g, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g
+}
+
+func TestDiffSnapshotsCallback_AllNilHandlersSkipsStoreScans(t *testing.T) {
+	st := &diffScanTrackingStore{
+		Store:       memory.New(),
+		nodeScanErr: errors.New("unexpected node scan"),
+		relScanErr:  errors.New("unexpected relationship scan"),
+	}
+	g := newDiffScanTrackingGraph(t, st)
+
+	if err := g.Temporal.DiffCallback(1, 2, temporalpkg.DiffHandlers{}); err != nil {
+		t.Fatalf("DiffCallback all-nil handlers: %v", err)
+	}
+	if st.nodeIDScans != 0 || st.nodeHistScans != 0 || st.relIDScans != 0 || st.relHistScans != 0 {
+		t.Fatalf("all-nil handlers scanned store: node=%d nodeHist=%d rel=%d relHist=%d",
+			st.nodeIDScans, st.nodeHistScans, st.relIDScans, st.relHistScans)
+	}
+}
+
+func TestDiffSnapshotsCallback_NodeOnlyHandlersSkipRelationshipScans(t *testing.T) {
+	st := &diffScanTrackingStore{
+		Store:      memory.New(),
+		relScanErr: errors.New("unexpected relationship scan"),
+	}
+	g := newDiffScanTrackingGraph(t, st)
+
+	base := types.Instant(time.Now().UnixMilli())
+	n, err := g.Nodes.Add([]string{"DiffNodeOnly"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	setNodeTemporal(t, g, n.ID(), base+150, 0)
+
+	calls := 0
+	err = g.Temporal.DiffCallback(base+100, base+300, temporalpkg.DiffHandlers{
+		OnNodeCreated: func(*types.Node) error {
+			calls++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("DiffCallback node-only handlers: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("node created calls = %d, want 1", calls)
+	}
+	if st.relIDScans != 0 || st.relHistScans != 0 {
+		t.Fatalf("node-only handlers scanned relationships: rel=%d relHist=%d", st.relIDScans, st.relHistScans)
+	}
+}
+
+func TestDiffSnapshotsCallback_RelOnlyHandlersSkipNodeIDScans(t *testing.T) {
+	st := &diffScanTrackingStore{
+		Store:       memory.New(),
+		nodeScanErr: errors.New("unexpected node ID scan"),
+	}
+	g := newDiffScanTrackingGraph(t, st)
+
+	base := types.Instant(time.Now().UnixMilli())
+	a, err := g.Nodes.Add([]string{"DiffRelEndpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"DiffRelEndpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	setNodeTemporal(t, g, a.ID(), base+50, 0)
+	setNodeTemporal(t, g, b.ID(), base+50, 0)
+	r, err := g.Rels.Add("DIFF_REL_ONLY", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	setRelTemporal(t, g, r.ID(), base+150, 0)
+
+	calls := 0
+	err = g.Temporal.DiffCallback(base+100, base+300, temporalpkg.DiffHandlers{
+		OnRelCreated: func(*types.Relationship) error {
+			calls++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("DiffCallback rel-only handlers: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("rel created calls = %d, want 1", calls)
+	}
+	if st.nodeIDScans != 0 || st.nodeHistScans != 0 {
+		t.Fatalf("rel-only handlers scanned node ID spaces: node=%d nodeHist=%d", st.nodeIDScans, st.nodeHistScans)
 	}
 }
 

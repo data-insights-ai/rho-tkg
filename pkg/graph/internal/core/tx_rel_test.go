@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -82,6 +83,72 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	weight, _ := got.GetProperty("weight")
 	if weight != int64(5) {
 		t.Errorf("weight = %v, want 5", weight)
+	}
+}
+
+func TestTxGetRelationship(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := tx.GetRelationship(r.ID())
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("GetRelationship in tx: %v", err)
+	}
+	since, ok := got.GetProperty("since")
+	if !ok || since != int64(2026) {
+		_ = tx.Rollback()
+		t.Fatalf("since = %v, want 2026", since)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTxGetRelationship_AfterDone(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.GetRelationship(r.ID())
+	if !errors.Is(err, storepkg.ErrTxDone) {
+		t.Errorf("GetRelationship after commit: got %v, want storepkg.ErrTxDone", err)
 	}
 }
 

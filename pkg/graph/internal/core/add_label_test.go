@@ -34,8 +34,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -77,6 +79,49 @@ func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 	if after.Version() != beforeVersion {
 		t.Errorf("version should not bump on idempotent add: before=%d after=%d",
 			beforeVersion, after.Version())
+	}
+}
+
+type addLabelCorruptTokenStore struct {
+	*memory.Store
+}
+
+func TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry(t *testing.T) {
+	backing := memory.New()
+	id := types.NodeID(424242)
+	if err := backing.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		t.Fatalf("seed corrupt node: %v", err)
+	}
+
+	g, err := New(Config{Store: &addLabelCorruptTokenStore{Store: backing}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.storeRowsTrust {
+		t.Fatal("wrapper store must be treated as untrusted")
+	}
+
+	err = g.Nodes.AddLabel(id, "Corrupt")
+	if !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("AddLabel corrupt future token = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, ok := g.labels.Lookup("Corrupt"); ok {
+		t.Fatal("failed AddLabel left newly allocated label registered")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := g.Resolve.GetOrCreateLabel("AfterCorruptAdd")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("registry usable after corrupt AddLabel: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("registry lock was not released after corrupt AddLabel")
 	}
 }
 
@@ -302,6 +347,30 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 	}
 }
 
+func TestGraphTx_AddNodeLabel_IdempotentDoesNotSnapshot(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	id := n.ID()
+
+	tx, _ := g.BeginTx()
+	if err := tx.AddNodeLabel(id, "A"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNodeLabel existing label: %v", err)
+	}
+	if len(tx.updatedNodes) != 0 {
+		_ = tx.Rollback()
+		t.Fatalf("updated node snapshots = %d, want 0 for idempotent add-label", len(tx.updatedNodes))
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	updated, _ := g.Nodes.Get(id)
+	if updated.Version() != 0 {
+		t.Fatalf("version = %d, want 0 for idempotent add-label", updated.Version())
+	}
+}
+
 func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
 	n, _ := g.Nodes.Add([]string{"A"}, nil)
@@ -311,11 +380,36 @@ func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testi
 	if !errors.Is(err, ErrTooManyLabels) {
 		t.Fatalf("tx.AddNodeLabel error = %v, want ErrTooManyLabels", err)
 	}
+	if len(tx.updatedNodes) != 0 {
+		_ = tx.Rollback()
+		t.Fatalf("updated node snapshots = %d, want 0 for too-many-labels failure", len(tx.updatedNodes))
+	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
 	if _, ok := g.Resolve.LookupLabel("Rejected"); ok {
 		t.Fatal("rejected tx.AddNodeLabel registered label token after commit")
+	}
+}
+
+func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	id := n.ID()
+	closeTime := g.nodeValidFrom(n) + 1000
+	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
+		t.Fatalf("CloseVersion: %v", err)
+	}
+
+	tx, _ := g.BeginTx()
+	defer tx.Rollback()
+
+	err := tx.AddNodeLabel(id, "C")
+	if !errors.Is(err, ErrAlreadyClosed) {
+		t.Fatalf("tx.AddNodeLabel closed node = %v, want ErrAlreadyClosed", err)
+	}
+	if len(tx.updatedNodes) != 0 {
+		t.Fatalf("updated node snapshots = %d, want 0 for closed add-label", len(tx.updatedNodes))
 	}
 }
 
@@ -666,6 +760,44 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 	err := tx.RemoveNodeLabel(id, "Solo")
 	if !errors.Is(err, ErrLastLabel) {
 		t.Fatalf("expected ErrLastLabel, got %v", err)
+	}
+	if len(tx.updatedNodes) != 0 {
+		t.Fatalf("updated node snapshots = %d, want 0 for failed last-label removal", len(tx.updatedNodes))
+	}
+}
+
+func TestGraphTx_RemoveNodeLabel_LabelNotFoundDoesNotSnapshot(t *testing.T) {
+	g, _ := New(Config{})
+	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	id := n.ID()
+	if _, err := g.Resolve.GetOrCreateLabel("C"); err != nil {
+		t.Fatalf("GetOrCreateLabel C: %v", err)
+	}
+
+	tx, _ := g.BeginTx()
+	defer tx.Rollback()
+
+	err := tx.RemoveNodeLabel(id, "C")
+	if !errors.Is(err, ErrLabelNotFound) {
+		t.Fatalf("expected ErrLabelNotFound, got %v", err)
+	}
+	if len(tx.updatedNodes) != 0 {
+		t.Fatalf("updated node snapshots = %d, want 0 for absent-label removal", len(tx.updatedNodes))
+	}
+}
+
+func TestGraphTx_RemoveNodeLabel_UnknownLabelPrecedesNodeLookup(t *testing.T) {
+	g, _ := New(Config{})
+
+	tx, _ := g.BeginTx()
+	defer tx.Rollback()
+
+	err := tx.RemoveNodeLabel(types.NodeID(999), "Ghost")
+	if !errors.Is(err, ErrLabelNotFound) {
+		t.Fatalf("expected ErrLabelNotFound, got %v", err)
+	}
+	if len(tx.updatedNodes) != 0 {
+		t.Fatalf("updated node snapshots = %d, want 0 for unknown-label removal", len(tx.updatedNodes))
 	}
 }
 

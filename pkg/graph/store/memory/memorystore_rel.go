@@ -17,19 +17,21 @@ import (
 // Returns ErrNodeNotFound if start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (ms *Store) PutRelationship(r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	id := r.ID()
-	startID := r.StartNodeID()
-	endID := r.EndNodeID()
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	id := r.ID()
+	startID := r.StartNodeID()
+	endID := r.EndNodeID()
 
 	// Verify endpoints exist.
 	if _, ok := ms.nodes[startID]; !ok {
@@ -79,19 +81,21 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 		}
 		return "", "", nil
 	}
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
-		return "", "", err
+	if ms == nil {
+		return "", "", ErrNilStore
 	}
-	id := r.ID()
-	startID := r.StartNodeID()
-	endID := r.EndNodeID()
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return "", "", err
 	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return "", "", err
+	}
+	id := r.ID()
+	startID := r.StartNodeID()
+	endID := r.EndNodeID()
 
 	start, ok := ms.nodes[startID]
 	if !ok {
@@ -143,6 +147,9 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 // GetRelationship retrieves a relationship by its snowflake ID.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -164,17 +171,19 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	id := r.ID()
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	id := r.ID()
 
 	old, exists := ms.rels[id]
 	if !exists {
@@ -190,13 +199,16 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (ms *Store) DeleteRelationship(rid types.RelID) error {
-	if err := storecontract.ValidateRelID(rid); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
 
@@ -278,6 +290,9 @@ func (ms *Store) purgeRelIDFromIndexesLocked(id types.RelID) {
 // Results are sorted by snowflake.ID for deterministic output.
 // Returns ErrNodeNotFound if the requested node does not exist.
 func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -295,13 +310,25 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	if len(set) == 0 {
 		return nil, nil
 	}
+	var typeSet map[types.RelID]struct{}
+	if typeToken != 0 {
+		typeSet = ms.typeIdx[typeToken]
+		if len(typeSet) == 0 {
+			return nil, nil
+		}
+	}
 	result := make([]*types.Relationship, 0, len(set))
 	for relID := range set {
+		if typeToken != 0 {
+			if _, ok := typeSet[relID]; !ok {
+				continue
+			}
+		}
 		r, ok := ms.rels[relID]
 		if !ok {
 			continue
 		}
-		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+		if relationshipMatchesOutgoing(r, nid, typeToken) {
 			result = append(result, r.DeepCopy())
 		}
 	}
@@ -313,6 +340,9 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 // in a single batched operation under one read lock. Every requested node must
 // exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -337,19 +367,32 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		result[nid] = nil
 	}
 
+	var typeSet map[types.RelID]struct{}
+	if typeToken != 0 {
+		typeSet = ms.typeIdx[typeToken]
+	}
 	for nid := range result {
 		set := ms.outIdx[nid]
 		if len(set) == 0 {
 			delete(result, nid)
 			continue
 		}
+		if typeToken != 0 && len(typeSet) == 0 {
+			delete(result, nid)
+			continue
+		}
 		rels := make([]*types.Relationship, 0, len(set))
 		for relID := range set {
+			if typeToken != 0 {
+				if _, ok := typeSet[relID]; !ok {
+					continue
+				}
+			}
 			r, ok := ms.rels[relID]
 			if !ok {
 				continue
 			}
-			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			if relationshipMatchesOutgoing(r, nid, typeToken) {
 				rels = append(rels, r.DeepCopy())
 			}
 		}
@@ -372,6 +415,9 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // Results are sorted by snowflake.ID for deterministic output.
 // Returns ErrNodeNotFound if the requested node does not exist.
 func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -389,13 +435,25 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	if len(set) == 0 {
 		return nil, nil
 	}
+	var typeSet map[types.RelID]struct{}
+	if typeToken != 0 {
+		typeSet = ms.typeIdx[typeToken]
+		if len(typeSet) == 0 {
+			return nil, nil
+		}
+	}
 	result := make([]*types.Relationship, 0, len(set))
 	for relID := range set {
+		if typeToken != 0 {
+			if _, ok := typeSet[relID]; !ok {
+				continue
+			}
+		}
 		r, ok := ms.rels[relID]
 		if !ok {
 			continue
 		}
-		if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+		if relationshipMatchesIncoming(r, nid, typeToken) {
 			result = append(result, r.DeepCopy())
 		}
 	}
@@ -407,6 +465,9 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 // in a single batched operation under one read lock. Every requested node must
 // exist; missing IDs return ErrNodeNotFound instead of partial results.
 func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -431,6 +492,13 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		result[nid] = nil
 	}
 
+	var typeSet map[types.RelID]struct{}
+	if typeToken != 0 {
+		typeSet = ms.typeIdx[typeToken]
+		if len(typeSet) == 0 {
+			return nil, nil
+		}
+	}
 	for nid := range result {
 		set := ms.inIdx[nid]
 		if len(set) == 0 {
@@ -439,11 +507,16 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		}
 		rels := make([]*types.Relationship, 0, len(set))
 		for relID := range set {
+			if typeToken != 0 {
+				if _, ok := typeSet[relID]; !ok {
+					continue
+				}
+			}
 			r, ok := ms.rels[relID]
 			if !ok {
 				continue
 			}
-			if typeToken == 0 || r.HasTypeTokenRaw(typeToken) {
+			if relationshipMatchesIncoming(r, nid, typeToken) {
 				rels = append(rels, r.DeepCopy())
 			}
 		}
@@ -461,11 +534,28 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	return result, nil
 }
 
+func relationshipMatchesOutgoing(r *types.Relationship, nid types.NodeID, typeToken uint16) bool {
+	if r == nil || r.StartNodeID() != nid {
+		return false
+	}
+	return typeToken == 0 || r.HasTypeTokenRaw(typeToken)
+}
+
+func relationshipMatchesIncoming(r *types.Relationship, nid types.NodeID, typeToken uint16) bool {
+	if r == nil || r.EndNodeID() != nid {
+		return false
+	}
+	return typeToken == 0 || r.HasTypeTokenRaw(typeToken)
+}
+
 // PutRelationshipsBatch stores multiple relationships atomically using two-phase validation.
 // Phase 1: check endpoints exist, check for duplicate rel IDs.
 // Phase 2: deep-copy each, store, update type + adjacency indexes.
 // Any failure → error, zero mutations. Nil/empty input → nil error.
 func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -535,6 +625,9 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 // Missing ID → ErrRelNotFound, zero mutations. Duplicate IDs are coalesced.
 // Nil/empty input → nil error.
 func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 

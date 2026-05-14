@@ -61,6 +61,32 @@ func TestRecurrence_Weekly_Monday(t *testing.T) {
 	}
 }
 
+func TestRecurrence_WeeklySparseLargeRange(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency: types.RecurrenceWeekly,
+		Days:      types.MaskMonday,
+		DayStart:  8 * time.Hour,
+		DayEnd:    9 * time.Hour,
+	}
+
+	from := inst(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(intervals) != 10436 {
+		t.Fatalf("expected 10436 Monday intervals, got %d", len(intervals))
+	}
+	if want := inst(time.Date(1900, 1, 1, 8, 0, 0, 0, time.UTC)); intervals[0].Start != want {
+		t.Fatalf("first interval start = %d, want %d", intervals[0].Start, want)
+	}
+	if want := inst(time.Date(2099, 12, 28, 8, 0, 0, 0, time.UTC)); intervals[len(intervals)-1].Start != want {
+		t.Fatalf("last interval start = %d, want %d", intervals[len(intervals)-1].Start, want)
+	}
+}
+
 // TestRecurrence_Monthly_NthDay: 15th of each month.
 func TestRecurrence_Monthly_NthDay(t *testing.T) {
 	p := types.RecurrencePattern{
@@ -114,6 +140,30 @@ func TestRecurrence_Monthly_LastDay(t *testing.T) {
 	}
 }
 
+func TestRecurrence_Monthly_LastDayLeapYear(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency:  types.RecurrenceMonthly,
+		DayOfMonth: 0,
+		DayStart:   8 * time.Hour,
+		DayEnd:     9 * time.Hour,
+	}
+
+	from := inst(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(intervals) != 12 {
+		t.Fatalf("expected 12 month-end intervals, got %d", len(intervals))
+	}
+	wantFebruaryLeapDay := inst(time.Date(2024, 2, 29, 8, 0, 0, 0, time.UTC))
+	if intervals[1].Start != wantFebruaryLeapDay {
+		t.Fatalf("February interval start = %d, want %d", intervals[1].Start, wantFebruaryLeapDay)
+	}
+}
+
 // TestRecurrence_Yearly: March 4 each year.
 func TestRecurrence_Yearly(t *testing.T) {
 	p := types.RecurrencePattern{
@@ -133,6 +183,58 @@ func TestRecurrence_Yearly(t *testing.T) {
 	}
 	if len(intervals) != 2 {
 		t.Errorf("expected 2 yearly intervals (2026-03-04, 2027-03-04), got %d", len(intervals))
+	}
+}
+
+func TestRecurrence_YearlyLargeRange(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency:  types.RecurrenceYearly,
+		Month:      time.March,
+		DayOfMonth: 4,
+		DayStart:   8 * time.Hour,
+		DayEnd:     9 * time.Hour,
+	}
+
+	from := inst(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(intervals) != 200 {
+		t.Fatalf("expected 200 yearly intervals, got %d", len(intervals))
+	}
+	if want := inst(time.Date(1900, 3, 4, 8, 0, 0, 0, time.UTC)); intervals[0].Start != want {
+		t.Fatalf("first interval start = %d, want %d", intervals[0].Start, want)
+	}
+	if want := inst(time.Date(2099, 3, 4, 8, 0, 0, 0, time.UTC)); intervals[len(intervals)-1].Start != want {
+		t.Fatalf("last interval start = %d, want %d", intervals[len(intervals)-1].Start, want)
+	}
+}
+
+func TestRecurrence_YearlyDefaultMonthIsJanuary(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency:  types.RecurrenceYearly,
+		Month:      0,
+		DayOfMonth: 4,
+		DayStart:   8 * time.Hour,
+		DayEnd:     9 * time.Hour,
+	}
+
+	from := inst(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if len(intervals) != 1 {
+		t.Fatalf("expected 1 yearly default-month interval, got %d", len(intervals))
+	}
+	wantStart := inst(time.Date(2026, 1, 4, 8, 0, 0, 0, time.UTC))
+	if intervals[0].Start != wantStart {
+		t.Fatalf("interval start = %d, want %d", intervals[0].Start, wantStart)
 	}
 }
 

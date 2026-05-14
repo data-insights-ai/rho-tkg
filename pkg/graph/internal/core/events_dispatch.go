@@ -33,9 +33,30 @@ func (e *EventOps) SetSync(bus *eventspkg.EventBus) error {
 func (e *EventOps) GetSync() *eventspkg.EventBus {
 	c := e.c
 	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil
+	}
 	ep := c.events
 	c.mu.RUnlock()
 	if eb, ok := ep.(*eventspkg.EventBus); ok {
+		return eb
+	}
+	return nil
+}
+
+// GetAsync returns the attached asynchronous eventspkg.AsyncEventBus, or nil if none is set
+// (including when a synchronous eventspkg.EventBus is attached instead).
+func (e *EventOps) GetAsync() *eventspkg.AsyncEventBus {
+	c := e.c
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil
+	}
+	ep := c.events
+	c.mu.RUnlock()
+	if eb, ok := ep.(*eventspkg.AsyncEventBus); ok {
 		return eb
 	}
 	return nil
@@ -83,12 +104,35 @@ func (c *Core) publishEvent(typ eventspkg.EventType, id types.EntityID, t types.
 	c.events.Publish(e)
 }
 
-// dispatchEvent delivers an event to the given publisher. No-op if ep is nil.
-// Use this for event dispatch after releasing c.mu — the caller captures c.events
-// while the lock is held, then calls dispatchEvent with the captured reference.
-func dispatchEvent(ep eventspkg.Publisher, e eventspkg.Event) {
-	if ep == nil {
+func (c *Core) publishCascadeDeleteEvents(nodeID types.NodeID, relIDs []types.RelID, t types.Instant) {
+	if c.events == nil {
 		return
 	}
-	ep.Publish(e)
+	for _, relID := range relIDs {
+		c.publishEvent(eventspkg.EventRelDelete, types.EntityID(relID), t, eventspkg.PriorityCritical)
+	}
+	c.publishEvent(eventspkg.EventNodeDelete, types.EntityID(nodeID), t, eventspkg.PriorityCritical)
+}
+
+func cascadeDeleteEvents(nodeID types.NodeID, relIDs []types.RelID, t types.Instant) []eventspkg.Event {
+	events := make([]eventspkg.Event, 0, len(relIDs)+1)
+	for _, relID := range relIDs {
+		events = append(events, eventspkg.Event{Type: eventspkg.EventRelDelete, EntityID: types.EntityID(relID), Timestamp: t, Priority: eventspkg.PriorityCritical})
+	}
+	events = append(events, eventspkg.Event{Type: eventspkg.EventNodeDelete, EntityID: types.EntityID(nodeID), Timestamp: t, Priority: eventspkg.PriorityCritical})
+	return events
+}
+
+// dispatchEvent delivers events to the given publisher. No-op if ep is nil.
+// Use this for event dispatch after releasing c.mu — the caller captures c.events
+// while the lock is held, then calls dispatchEvent with the captured reference.
+func dispatchEvent(ep eventspkg.Publisher, events ...eventspkg.Event) {
+	if ep == nil || len(events) == 0 {
+		return
+	}
+	if len(events) == 1 {
+		ep.Publish(events[0])
+		return
+	}
+	ep.PublishBatch(events...)
 }

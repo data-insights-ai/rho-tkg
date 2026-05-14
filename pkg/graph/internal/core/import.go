@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -88,19 +89,12 @@ func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 
 	var staged int64
 	for {
-		tag, data, rerr := readExportRecord(r)
+		tag, data, recordSize, rerr := readImportStageRecord(r, staged, opts.MaxStagedBytes)
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
 				break // clean end of stream
 			}
 			return fmt.Errorf("import: read record: %w", rerr)
-		}
-		// Each staged record is 5 bytes of header + len(data) bytes
-		// of body. The size cap is checked BEFORE writing so a large
-		// final record cannot push the staged total above the cap.
-		recordSize := int64(5 + len(data))
-		if importStageCapExceeded(staged, recordSize, opts.MaxStagedBytes) {
-			return fmt.Errorf("%w: staged %d bytes + record %d bytes > cap %d", ErrImportSizeLimit, staged, recordSize, opts.MaxStagedBytes)
 		}
 		if werr := stage.writeRecord(tag, data, recordSize); werr != nil {
 			return fmt.Errorf("import: stage record: %w", werr)
@@ -149,29 +143,49 @@ func importStageCapExceeded(staged, recordSize, cap int64) bool {
 	return staged > cap || recordSize > cap-staged
 }
 
+func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byte, recordSize int64, err error) {
+	var header [5]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return 0, nil, 0, err
+	}
+	length := binary.BigEndian.Uint32(header[1:5])
+	if length > maxExportRecordSize {
+		return 0, nil, 0, fmt.Errorf("import: record too large (tag=0x%02x, len=%d, max=%d)", header[0], length, maxExportRecordSize)
+	}
+	recordSize = int64(5) + int64(length)
+	if importStageCapExceeded(staged, recordSize, cap) {
+		return 0, nil, 0, fmt.Errorf("%w: staged %d bytes + record %d bytes > cap %d", ErrImportSizeLimit, staged, recordSize, cap)
+	}
+	data = make([]byte, length)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return 0, nil, 0, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, err)
+	}
+	return header[0], data, recordSize, nil
+}
+
 func (c *Core) importTargetEmptyLocked() (bool, error) {
-	nodeCount, err := c.store.NodeCount()
+	nodeCount, err := c.nodeCount()
 	if err != nil {
 		return false, fmt.Errorf("import: node count: %w", err)
 	}
 	if nodeCount != 0 {
 		return false, nil
 	}
-	relCount, err := c.store.RelationshipCount()
+	relCount, err := c.relCount()
 	if err != nil {
 		return false, fmt.Errorf("import: relationship count: %w", err)
 	}
 	if relCount != 0 {
 		return false, nil
 	}
-	nodeHistory, err := c.store.AllNodeHistoryIDsFrom(0, 1)
+	nodeHistory, err := c.allNodeHistoryIDsFrom(0, 1)
 	if err != nil {
 		return false, fmt.Errorf("import: node history probe: %w", err)
 	}
 	if len(nodeHistory) != 0 {
 		return false, nil
 	}
-	relHistory, err := c.store.AllRelHistoryIDsFrom(0, 1)
+	relHistory, err := c.allRelHistoryIDsFrom(0, 1)
 	if err != nil {
 		return false, fmt.Errorf("import: relationship history probe: %w", err)
 	}
@@ -215,7 +229,7 @@ func (s *importStage) ensureFile() error {
 	if s.mem.Len() == 0 {
 		return nil
 	}
-	if _, err := s.writer.Write(s.mem.Bytes()); err != nil {
+	if err := writeFull(s.writer, s.mem.Bytes()); err != nil {
 		return fmt.Errorf("spill memory stage: %w", err)
 	}
 	s.mem.Reset()
@@ -321,14 +335,14 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 				return fmt.Errorf("%w: unmarshal registry: %v", ErrCorruptExport, err)
 			}
 			if err := c.validateRegistryNames("label", reg.Labels); err != nil {
-				return fmt.Errorf("import: label registry: %w", err)
+				return fmt.Errorf("%w: label registry: %w", ErrCorruptExport, err)
 			}
 			if err := c.validateRegistryNames("reltype", reg.RelTypes); err != nil {
-				return fmt.Errorf("import: reltype registry: %w", err)
+				return fmt.Errorf("%w: reltype registry: %w", ErrCorruptExport, err)
 			}
 			if err := c.labels.ImportNames(reg.Labels); err != nil {
 				if !errors.Is(err, ErrRegistryNotEmpty) {
-					return fmt.Errorf("import: label registry: %w", err)
+					return fmt.Errorf("%w: label registry: %w", ErrCorruptExport, err)
 				}
 				// Existing registry: identical token mapping is safe (idempotent re-import).
 				// Different mapping would silently corrupt all imported entity labels.
@@ -338,7 +352,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			}
 			if err := c.relTypes.ImportNames(reg.RelTypes); err != nil {
 				if !errors.Is(err, ErrRegistryNotEmpty) {
-					return fmt.Errorf("import: reltype registry: %w", err)
+					return fmt.Errorf("%w: reltype registry: %w", ErrCorruptExport, err)
 				}
 				if existing := c.relTypes.ExportNames(); !reflect.DeepEqual(existing, reg.RelTypes) {
 					return fmt.Errorf("import: reltype registry: %w", ErrIncompatibleRegistry)
@@ -474,18 +488,15 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := msgpack.Unmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node: %v", ErrCorruptExport, err)
 		}
-		if err := validateNodeWire(&wn); err != nil {
-			return fmt.Errorf("import: node %d: %w", wn.ID, err)
+		n, err := storeutil.WireToNodeChecked(wn)
+		if err != nil {
+			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
 		}
-		if err := c.validatePropertyWireLimits(wn.Properties); err != nil {
+		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
-		}
-		n, err := storeutil.WireToNodeChecked(wn)
-		if err != nil {
-			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
 		if err := seen.recordNode(n.ID()); err != nil {
 			return err
@@ -498,7 +509,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
 			}
 			// R4-F12: duplicate node — accept only if existing content matches.
-			existing, gerr := c.store.GetNode(n.ID())
+			existing, gerr := c.getCurrentNode(n.ID())
 			if gerr != nil {
 				return fmt.Errorf("import: load existing node %d for conflict check: %w", wn.ID, gerr)
 			}
@@ -512,24 +523,21 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := msgpack.Unmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
 		}
-		if err := validateNodeWire(&wn); err != nil {
-			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
+		n, err := storeutil.WireToNodeChecked(wn)
+		if err != nil {
+			return fmt.Errorf("import: node history %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 		}
-		if err := c.validatePropertyWireLimits(wn.Properties); err != nil {
+		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
-		}
-		n, err := storeutil.WireToNodeChecked(wn)
-		if err != nil {
-			return fmt.Errorf("import: node history %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
 		id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
 		if err := seen.recordNodeHist(id, n.Version()); err != nil {
 			return err
 		}
-		if err := rollback.captureNode(id); err != nil {
+		if err := rollback.captureNodeHistory(id, n.Version()); err != nil {
 			return fmt.Errorf("import: snapshot node history %d: %w", wn.ID, err)
 		}
 		// R5-F4: history records carry the same idempotent /
@@ -538,7 +546,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		// re-import with diverging history would replace the existing
 		// version snapshot in place — exactly the hybrid-graph hazard
 		// R4-F12 closed for current entities.
-		existing, gerr := c.store.GetNodeVersion(id, n.Version())
+		existing, gerr := c.getNodeVersion(id, n.Version())
 		switch {
 		case gerr == nil:
 			if !nodeWireMatches(existing, &wn) {
@@ -558,18 +566,15 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := msgpack.Unmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel: %v", ErrCorruptExport, err)
 		}
-		if err := validateRelWire(&wr); err != nil {
-			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
+		rel, err := storeutil.WireToRelChecked(wr)
+		if err != nil {
+			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 		}
-		if err := c.validatePropertyWireLimits(wr.Properties); err != nil {
+		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
-		}
-		rel, err := storeutil.WireToRelChecked(wr)
-		if err != nil {
-			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
 		if err := seen.recordRel(rel.ID()); err != nil {
 			return err
@@ -582,7 +587,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
 			}
 			// R4-F12: duplicate rel — accept only if existing content matches.
-			existing, gerr := c.store.GetRelationship(rel.ID())
+			existing, gerr := c.getCurrentRelationship(rel.ID())
 			if gerr != nil {
 				return fmt.Errorf("import: load existing rel %d for conflict check: %w", wr.ID, gerr)
 			}
@@ -596,31 +601,28 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := msgpack.Unmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
 		}
-		if err := validateRelWire(&wr); err != nil {
-			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
+		rel, err := storeutil.WireToRelChecked(wr)
+		if err != nil {
+			return fmt.Errorf("import: rel history %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 		}
-		if err := c.validatePropertyWireLimits(wr.Properties); err != nil {
+		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
-		}
-		rel, err := storeutil.WireToRelChecked(wr)
-		if err != nil {
-			return fmt.Errorf("import: rel history %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
 		id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
 		if err := seen.recordRelHist(id, rel.Version()); err != nil {
 			return err
 		}
-		if err := rollback.captureRel(id); err != nil {
+		if err := rollback.captureRelHistory(id, rel.Version()); err != nil {
 			return fmt.Errorf("import: snapshot rel history %d: %w", wr.ID, err)
 		}
 		// R5-F4: same idempotent / conflict-rejection contract as
 		// rel current entities (R4-F12). PutRelVersion silently
 		// overwrites, so a diverging re-import would replace the
 		// version in place without this guard.
-		existing, gerr := c.store.GetRelVersion(id, rel.Version())
+		existing, gerr := c.getRelVersion(id, rel.Version())
 		switch {
 		case gerr == nil:
 			if !relWireMatches(existing, &wr) {
@@ -651,13 +653,19 @@ type importRollback struct {
 }
 
 type importNodeSnapshot struct {
-	current *types.Node
-	history []*types.Node
+	current         *types.Node
+	history         []*types.Node
+	historyTrimFrom uint32
+	historyTouched  bool
+	useHistoryTrim  bool
 }
 
 type importRelSnapshot struct {
-	current *types.Relationship
-	history []*types.Relationship
+	current         *types.Relationship
+	history         []*types.Relationship
+	historyTrimFrom uint32
+	historyTouched  bool
+	useHistoryTrim  bool
 }
 
 func newImportRollback(c *Core) *importRollback {
@@ -702,7 +710,7 @@ func (rb *importRollback) captureNode(id types.NodeID) error {
 	}
 
 	var current *types.Node
-	n, err := rb.c.store.GetNode(id)
+	n, err := rb.c.getCurrentNode(id)
 	switch {
 	case err == nil:
 		current = n.DeepCopy()
@@ -711,13 +719,51 @@ func (rb *importRollback) captureNode(id types.NodeID) error {
 		return err
 	}
 
-	history, err := copyNodeHistory(rb.c.store.GetNodeHistory(id))
+	rb.nodes[id] = importNodeSnapshot{current: current}
+	rb.nodeOrder = append(rb.nodeOrder, id)
+	return nil
+}
+
+func (rb *importRollback) captureNodeHistory(id types.NodeID, version uint32) error {
+	if err := rb.captureNode(id); err != nil {
+		return err
+	}
+	snap := rb.nodes[id]
+	if snap.historyTouched {
+		if !snap.useHistoryTrim || version >= snap.historyTrimFrom {
+			return nil
+		}
+	}
+
+	if rb.emptyTarget {
+		snap.history = nil
+		snap.historyTrimFrom = version
+		snap.historyTouched = true
+		snap.useHistoryTrim = rb.c.historyTrim != nil
+		rb.nodes[id] = snap
+		return nil
+	}
+
+	if rb.c.historyTrim != nil {
+		history, err := rb.c.copyNodeHistoryFrom(id, version)
+		if err != nil {
+			return err
+		}
+		snap.history = history
+		snap.historyTrimFrom = version
+		snap.historyTouched = true
+		snap.useHistoryTrim = true
+		rb.nodes[id] = snap
+		return nil
+	}
+
+	history, err := rb.c.copyNodeHistory(id)
 	if err != nil {
 		return err
 	}
-
-	rb.nodes[id] = importNodeSnapshot{current: current, history: history}
-	rb.nodeOrder = append(rb.nodeOrder, id)
+	snap.history = history
+	snap.historyTouched = true
+	rb.nodes[id] = snap
 	return nil
 }
 
@@ -732,7 +778,7 @@ func (rb *importRollback) captureRel(id types.RelID) error {
 	}
 
 	var current *types.Relationship
-	rel, err := rb.c.store.GetRelationship(id)
+	rel, err := rb.c.getCurrentRelationship(id)
 	switch {
 	case err == nil:
 		current = rel.DeepCopy()
@@ -741,13 +787,51 @@ func (rb *importRollback) captureRel(id types.RelID) error {
 		return err
 	}
 
-	history, err := copyRelHistory(rb.c.store.GetRelHistory(id))
+	rb.rels[id] = importRelSnapshot{current: current}
+	rb.relOrder = append(rb.relOrder, id)
+	return nil
+}
+
+func (rb *importRollback) captureRelHistory(id types.RelID, version uint32) error {
+	if err := rb.captureRel(id); err != nil {
+		return err
+	}
+	snap := rb.rels[id]
+	if snap.historyTouched {
+		if !snap.useHistoryTrim || version >= snap.historyTrimFrom {
+			return nil
+		}
+	}
+
+	if rb.emptyTarget {
+		snap.history = nil
+		snap.historyTrimFrom = version
+		snap.historyTouched = true
+		snap.useHistoryTrim = rb.c.historyTrim != nil
+		rb.rels[id] = snap
+		return nil
+	}
+
+	if rb.c.historyTrim != nil {
+		history, err := rb.c.copyRelHistoryFrom(id, version)
+		if err != nil {
+			return err
+		}
+		snap.history = history
+		snap.historyTrimFrom = version
+		snap.historyTouched = true
+		snap.useHistoryTrim = true
+		rb.rels[id] = snap
+		return nil
+	}
+
+	history, err := rb.c.copyRelHistory(id)
 	if err != nil {
 		return err
 	}
-
-	rb.rels[id] = importRelSnapshot{current: current, history: history}
-	rb.relOrder = append(rb.relOrder, id)
+	snap.history = history
+	snap.historyTouched = true
+	rb.rels[id] = snap
 	return nil
 }
 
@@ -767,7 +851,7 @@ func (rb *importRollback) rollback() error {
 				capture(err)
 			}
 		} else {
-			if _, err := rb.c.store.GetRelationship(id); errors.Is(err, storepkg.ErrRelNotFound) {
+			if _, err := rb.c.getCurrentRelationship(id); errors.Is(err, storepkg.ErrRelNotFound) {
 				capture(rb.c.store.PutRelationship(snap.current))
 			} else if err != nil {
 				capture(err)
@@ -775,7 +859,7 @@ func (rb *importRollback) rollback() error {
 				capture(rb.c.store.ReplaceRelationship(snap.current))
 			}
 		}
-		capture(restoreImportRelHistory(rb.c, id, snap.history))
+		capture(restoreImportRelHistory(rb.c, id, snap))
 	}
 
 	for i := len(rb.nodeOrder) - 1; i >= 0; i-- {
@@ -786,7 +870,7 @@ func (rb *importRollback) rollback() error {
 				capture(err)
 			}
 		} else {
-			if _, err := rb.c.store.GetNode(id); errors.Is(err, storepkg.ErrNodeNotFound) {
+			if _, err := rb.c.getCurrentNode(id); errors.Is(err, storepkg.ErrNodeNotFound) {
 				capture(rb.c.store.PutNode(snap.current))
 			} else if err != nil {
 				capture(err)
@@ -794,18 +878,81 @@ func (rb *importRollback) rollback() error {
 				capture(rb.c.store.ReplaceNode(snap.current))
 			}
 		}
-		capture(restoreImportNodeHistory(rb.c, id, snap.history))
+		capture(restoreImportNodeHistory(rb.c, id, snap))
 	}
 
 	capture(rb.restoreRegistries())
 	return firstErr
 }
 
-func restoreImportNodeHistory(c *Core, id types.NodeID, history []*types.Node) error {
-	if err := c.store.TruncateNodeHistory(id, 0); err != nil {
+func (c *Core) copyNodeHistoryFrom(id types.NodeID, version uint32) ([]*types.Node, error) {
+	if pager := historyVersionPageCapability(c.store); pager != nil {
+		history, err := c.nodeHistoryVersionsFrom(pager, id, version, 0)
+		if err != nil {
+			return nil, err
+		}
+		return copyNodeHistoryRows(history), nil
+	}
+	history, err := c.copyNodeHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	return nodeHistoryFromVersion(history, version), nil
+}
+
+func (c *Core) copyRelHistoryFrom(id types.RelID, version uint32) ([]*types.Relationship, error) {
+	if pager := historyVersionPageCapability(c.store); pager != nil {
+		history, err := c.relHistoryVersionsFrom(pager, id, version, 0)
+		if err != nil {
+			return nil, err
+		}
+		return copyRelHistoryRows(history), nil
+	}
+	history, err := c.copyRelHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	return relHistoryFromVersion(history, version), nil
+}
+
+func nodeHistoryFromVersion(history []*types.Node, minVersion uint32) []*types.Node {
+	out := history[:0]
+	for _, n := range history {
+		if n != nil && n.Version() >= minVersion {
+			out = append(out, n)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func relHistoryFromVersion(history []*types.Relationship, minVersion uint32) []*types.Relationship {
+	out := history[:0]
+	for _, r := range history {
+		if r != nil && r.Version() >= minVersion {
+			out = append(out, r)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func restoreImportNodeHistory(c *Core, id types.NodeID, snap importNodeSnapshot) error {
+	if !snap.historyTouched {
+		return nil
+	}
+	if snap.useHistoryTrim {
+		if err := c.historyTrim.TrimNodeHistoryFrom(id, snap.historyTrimFrom); err != nil {
+			return err
+		}
+	} else if err := c.store.TruncateNodeHistory(id, 0); err != nil {
 		return err
 	}
-	for _, n := range history {
+	for _, n := range snap.history {
 		if err := c.store.PutNodeVersion(id, n.Version(), n); err != nil {
 			return err
 		}
@@ -813,11 +960,18 @@ func restoreImportNodeHistory(c *Core, id types.NodeID, history []*types.Node) e
 	return nil
 }
 
-func restoreImportRelHistory(c *Core, id types.RelID, history []*types.Relationship) error {
-	if err := c.store.TruncateRelHistory(id, 0); err != nil {
+func restoreImportRelHistory(c *Core, id types.RelID, snap importRelSnapshot) error {
+	if !snap.historyTouched {
+		return nil
+	}
+	if snap.useHistoryTrim {
+		if err := c.historyTrim.TrimRelHistoryFrom(id, snap.historyTrimFrom); err != nil {
+			return err
+		}
+	} else if err := c.store.TruncateRelHistory(id, 0); err != nil {
 		return err
 	}
-	for _, r := range history {
+	for _, r := range snap.history {
 		if err := c.store.PutRelVersion(id, r.Version(), r); err != nil {
 			return err
 		}
@@ -837,9 +991,7 @@ func (rb *importRollback) restoreRegistries() error {
 	rb.c.labels = labels
 	rb.c.relTypes = relTypes
 	rb.c.clearRelTypeCache()
-	if ts, ok := rb.c.store.(*tiered.Store); ok {
-		ts.SetLabelRegistry(rb.c.labels)
-	}
+	setTieredLabelRegistryIfSupported(rb.c.store, rb.c.labels)
 	return rb.c.persistRegistries()
 }
 
@@ -886,103 +1038,21 @@ func relWireMatches(existing *types.Relationship, want *storeutil.RelWire) bool 
 	return bytes.Equal(gotBytes, wantBytes)
 }
 
-func (c *Core) validatePropertyWireLimits(props []storeutil.PropertyWire) error {
+func (c *Core) validatePropertySliceLimits(props types.PropertySlice) error {
 	if len(props) > c.validation.MaxPropertiesPerEntity {
 		return fmt.Errorf("%w: %d > %d", ErrTooManyProperties, len(props), c.validation.MaxPropertiesPerEntity)
 	}
 	for _, p := range props {
-		if err := c.validatePropertyEntry(p.Key, p.Value); err != nil {
+		if err := c.validatePropertyEntryLimits(p.Key, p.Value); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-const maxWireVersion = int64(1<<32 - 1)
-
-// validateNodeWire defends the import boundary against malformed node records.
-// ImportGraph reads from an arbitrary io.Reader, so the wire shape is checked
-// before any entity is constructed or installed into a store.
-//
-// Returns ErrCorruptExport (wrapped with detail) on any structural violation:
-//   - ID <= 0 (zero is the API sentinel; negative IDs violate the snowflake sign bit)
-//   - Version outside [0, math.MaxUint32]
-//   - PrimaryLabel == 0 (token 0 is reserved)
-//   - PrimaryLabel outside [1, 65535] (does not fit a uint16 token)
-//   - any ExtraLabels element == 0, outside [1, 65535], duplicated, or equal to the primary
-//   - BaseEntityID < 0
-//   - malformed property slices (reserved shadow keys, unsorted/duplicate keys, invalid values)
-func validateNodeWire(w *storeutil.NodeWire) error {
-	if w.ID <= 0 {
-		return fmt.Errorf("%w: node id must be positive, got %d", ErrCorruptExport, w.ID)
-	}
-	if w.Version < 0 || int64(w.Version) > maxWireVersion {
-		return fmt.Errorf("%w: node version %d outside uint32 range", ErrCorruptExport, w.Version)
-	}
-	if w.PrimaryLabel == 0 {
-		return fmt.Errorf("%w: primary label token 0 is reserved", ErrCorruptExport)
-	}
-	if w.PrimaryLabel < 0 || w.PrimaryLabel > 65535 {
-		return fmt.Errorf("%w: primary label token %d out of uint16 range", ErrCorruptExport, w.PrimaryLabel)
-	}
-	seen := make(map[int]struct{}, len(w.ExtraLabels))
-	for i, t := range w.ExtraLabels {
-		if t == 0 {
-			return fmt.Errorf("%w: extra label[%d] token 0 is reserved", ErrCorruptExport, i)
-		}
-		if t < 0 || t > 65535 {
-			return fmt.Errorf("%w: extra label[%d] token %d out of uint16 range", ErrCorruptExport, i, t)
-		}
-		if t == w.PrimaryLabel {
-			return fmt.Errorf("%w: extra label[%d] duplicates primary label token %d", ErrCorruptExport, i, t)
-		}
-		if _, ok := seen[t]; ok {
-			return fmt.Errorf("%w: extra label[%d] duplicates token %d", ErrCorruptExport, i, t)
-		}
-		seen[t] = struct{}{}
-	}
-	if w.BaseEntityID < 0 {
-		return fmt.Errorf("%w: base entity id must be non-negative, got %d", ErrCorruptExport, w.BaseEntityID)
-	}
-	if err := storeutil.ValidatePropertyWireSlice(w.Properties); err != nil {
-		return fmt.Errorf("%w: properties: %v", ErrCorruptExport, err)
-	}
-	return nil
-}
-
-// validateRelWire defends the import boundary against malformed relationship
-// records before construction.
-func validateRelWire(w *storeutil.RelWire) error {
-	if w.ID <= 0 {
-		return fmt.Errorf("%w: relationship id must be positive, got %d", ErrCorruptExport, w.ID)
-	}
-	if w.StartID <= 0 {
-		return fmt.Errorf("%w: relationship start id must be positive, got %d", ErrCorruptExport, w.StartID)
-	}
-	if w.EndID <= 0 {
-		return fmt.Errorf("%w: relationship end id must be positive, got %d", ErrCorruptExport, w.EndID)
-	}
-	if w.Version < 0 || int64(w.Version) > maxWireVersion {
-		return fmt.Errorf("%w: relationship version %d outside uint32 range", ErrCorruptExport, w.Version)
-	}
-	if w.RelType == 0 {
-		return fmt.Errorf("%w: rel type token 0 is reserved", ErrCorruptExport)
-	}
-	if w.RelType < 0 || w.RelType > 65535 {
-		return fmt.Errorf("%w: rel type token %d out of uint16 range", ErrCorruptExport, w.RelType)
-	}
-	if w.BaseEntityID < 0 {
-		return fmt.Errorf("%w: base entity id must be non-negative, got %d", ErrCorruptExport, w.BaseEntityID)
-	}
-	if err := storeutil.ValidatePropertyWireSlice(w.Properties); err != nil {
-		return fmt.Errorf("%w: properties: %v", ErrCorruptExport, err)
-	}
-	return nil
-}
-
 // validateNodeTokensInRegistry rejects node records whose label tokens do
-// not map to a registered name in lr. validateNodeWire already proved that
-// tokens are non-zero and fit a uint16; this layer proves they were
+// not map to a registered name in lr. storeutil.WireToNodeChecked already
+// proved that tokens are non-zero and fit a uint16; this layer proves they were
 // actually issued by the registry that accompanied the export. Without
 // the check, a corrupt or hostile stream could embed token N where the
 // registry only registered M < N labels — the import would succeed and
@@ -1004,8 +1074,9 @@ func validateNodeTokensInRegistry(w *storeutil.NodeWire, lr *registrypkg.LabelRe
 }
 
 // validateRelTokensInRegistry mirrors validateNodeTokensInRegistry for
-// relationships. The reltype token must lie within the registry's issued
-// range, otherwise type-based queries against the imported edge would
+// relationships. storeutil.WireToRelChecked already proved the token is
+// non-zero and fits a uint16; this layer proves it lies within the registry's
+// issued range, otherwise type-based queries against the imported edge would
 // resolve to an empty string.
 func validateRelTokensInRegistry(w *storeutil.RelWire, rr *registrypkg.RelTypeRegistry) error {
 	max := rr.Len()

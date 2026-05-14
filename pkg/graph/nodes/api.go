@@ -287,7 +287,7 @@ func (a *API) Labels(n *types.Node) []string {
 	if a == nil || !a.ok {
 		return nil
 	}
-	return a.ops.Labels(n)
+	return cloneStrings(a.ops.Labels(n))
 }
 
 // PrimaryLabel returns the node's primary label.
@@ -340,4 +340,13 @@ func (a *API) NextID() types.NodeID {
 		return 0
 	}
 	return a.ops.NextID()
+}
+
+func cloneStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
 }

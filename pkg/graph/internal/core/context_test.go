@@ -8,11 +8,60 @@ import (
 	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // newTestGraph is declared in batch_test.go (same package).
+
+type cancelDuringStoreReadStore struct {
+	*memory.Store
+
+	afterGetNode  func()
+	afterGetRel   func()
+	afterIncoming func()
+	afterOutgoing func()
+}
+
+func (s *cancelDuringStoreReadStore) GetNode(id types.NodeID) (*types.Node, error) {
+	n, err := s.Store.GetNode(id)
+	if err == nil && s.afterGetNode != nil {
+		s.afterGetNode()
+	}
+	return n, err
+}
+
+func (s *cancelDuringStoreReadStore) GetRelationship(id types.RelID) (*types.Relationship, error) {
+	r, err := s.Store.GetRelationship(id)
+	if err == nil && s.afterGetRel != nil {
+		s.afterGetRel()
+	}
+	return r, err
+}
+
+func (s *cancelDuringStoreReadStore) IncomingRelationships(id types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	rels, err := s.Store.IncomingRelationships(id, typeToken)
+	if err == nil && s.afterIncoming != nil {
+		s.afterIncoming()
+	}
+	return rels, err
+}
+
+func (s *cancelDuringStoreReadStore) OutgoingRelationships(id types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	rels, err := s.Store.OutgoingRelationships(id, typeToken)
+	if err == nil && s.afterOutgoing != nil {
+		s.afterOutgoing()
+	}
+	return rels, err
+}
+
+func onceFunc(fn func()) func() {
+	var once sync.Once
+	return func() {
+		once.Do(fn)
+	}
+}
 
 // --- Group A: Pre-flight cancellation (8 tests) ---
 // Context already cancelled at method entry → returns context.Canceled, no side effects.
@@ -123,6 +172,109 @@ func TestDeleteRelWithContextCancelled(t *testing.T) {
 	}
 }
 
+func TestDeleteNodeWithContextCanceledAfterAdjacencyReadDoesNotPersist(t *testing.T) {
+	store := &cancelDuringStoreReadStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterIncoming = onceFunc(cancel)
+
+	if err := g.Nodes.DeleteWithContext(ctx, a.ID()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("DeleteWithContext after adjacency cancellation = %v, want context.Canceled", err)
+	}
+	if _, err := g.Nodes.Get(a.ID()); err != nil {
+		t.Fatalf("node after canceled delete: %v", err)
+	}
+	if _, err := g.Rels.Get(r.ID()); err != nil {
+		t.Fatalf("relationship after canceled cascade delete: %v", err)
+	}
+}
+
+func TestDeleteRelWithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
+	store := &cancelDuringStoreReadStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterGetRel = onceFunc(cancel)
+
+	if err := g.Rels.DeleteWithContext(ctx, r.ID()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("DeleteWithContext after relationship read cancellation = %v, want context.Canceled", err)
+	}
+	if _, err := g.Rels.Get(r.ID()); err != nil {
+		t.Fatalf("relationship after canceled delete: %v", err)
+	}
+}
+
+func TestAddByIDIfAbsentWithContextCanceledAfterExistingProbeDoesNotSucceed(t *testing.T) {
+	store := &cancelDuringStoreReadStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add B: %v", err)
+	}
+	existing, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterOutgoing = onceFunc(cancel)
+
+	got, created, err := g.Rels.AddByIDIfAbsentWithContext(ctx, "KNOWS", a.ID(), b.ID(), nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("AddByIDIfAbsentWithContext after existing probe cancellation = %v, want context.Canceled", err)
+	}
+	if got != nil || created {
+		t.Fatalf("AddByIDIfAbsentWithContext returned (%v, created=%v), want nil false on cancellation", got, created)
+	}
+	if _, err := g.Rels.Get(existing.ID()); err != nil {
+		t.Fatalf("existing relationship after canceled if-absent probe: %v", err)
+	}
+}
+
 func TestGetNodeWithContextCancelled(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -149,6 +301,180 @@ func TestGetRelWithContextCancelled(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetRelationshipWithContext err = %v, want context.Canceled", err)
 	}
+}
+
+func TestGetNodeWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
+	store := &cancelDuringStoreReadStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add node: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterGetNode = onceFunc(cancel)
+
+	got, err := g.Nodes.GetWithContext(ctx, n.ID())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetWithContext after store-read cancellation = %v, want context.Canceled", err)
+	}
+	if got != nil {
+		t.Fatalf("GetWithContext returned node %d on cancellation", got.ID())
+	}
+}
+
+func TestGetRelWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
+	store := &cancelDuringStoreReadStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.afterGetRel = onceFunc(cancel)
+
+	got, err := g.Rels.GetWithContext(ctx, r.ID())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetWithContext after store-read cancellation = %v, want context.Canceled", err)
+	}
+	if got != nil {
+		t.Fatalf("GetWithContext returned relationship %d on cancellation", got.ID())
+	}
+}
+
+func TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock(t *testing.T) {
+	g := newTestGraph(t)
+
+	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("Add node: %v", err)
+	}
+	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("Add endpoint a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("Add endpoint b: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2024)})
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	rolledBack := false
+	defer func() {
+		if !rolledBack {
+			_ = tx.Rollback()
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{name: "Nodes.AddWithContext", call: func() error {
+			_, err := g.Nodes.AddWithContext(ctx, []string{"Blocked"}, nil)
+			return err
+		}},
+		{name: "Nodes.Import", call: func() error {
+			_, err := g.Nodes.Import(ctx, types.NodeID(123456789), []string{"Blocked"}, nil)
+			return err
+		}},
+		{name: "Nodes.UpdateWithContext", call: func() error {
+			_, err := g.Nodes.UpdateWithContext(ctx, n.ID(), map[string]any{"name": "Bob"})
+			return err
+		}},
+		{name: "Nodes.UpdateInPlaceWithContext", call: func() error {
+			_, err := g.Nodes.UpdateInPlaceWithContext(ctx, n.ID(), map[string]any{"name": "Bob"})
+			return err
+		}},
+		{name: "Nodes.DeleteWithContext", call: func() error {
+			return g.Nodes.DeleteWithContext(ctx, n.ID())
+		}},
+		{name: "Nodes.CompareAndSetPropertyWithContext", call: func() error {
+			_, err := g.Nodes.CompareAndSetPropertyWithContext(ctx, n.ID(), "name", "Alice", "Bob")
+			return err
+		}},
+		{name: "Rels.AddWithContext", call: func() error {
+			_, err := g.Rels.AddWithContext(ctx, "BLOCKED", a, b, nil)
+			return err
+		}},
+		{name: "Rels.AddByIDWithContext", call: func() error {
+			_, err := g.Rels.AddByIDWithContext(ctx, "BLOCKED", a.ID(), b.ID(), nil)
+			return err
+		}},
+		{name: "Rels.AddByIDIfAbsentWithContext", call: func() error {
+			_, _, err := g.Rels.AddByIDIfAbsentWithContext(ctx, "BLOCKED", a.ID(), b.ID(), nil)
+			return err
+		}},
+		{name: "Rels.Import", call: func() error {
+			_, err := g.Rels.Import(ctx, types.RelID(987654321), "BLOCKED", a, b, nil)
+			return err
+		}},
+		{name: "Rels.UpdateWithContext", call: func() error {
+			_, err := g.Rels.UpdateWithContext(ctx, r.ID(), map[string]any{"since": int64(2025)})
+			return err
+		}},
+		{name: "Rels.UpdateInPlaceWithContext", call: func() error {
+			_, err := g.Rels.UpdateInPlaceWithContext(ctx, r.ID(), map[string]any{"since": int64(2025)})
+			return err
+		}},
+		{name: "Rels.DeleteWithContext", call: func() error {
+			return g.Rels.DeleteWithContext(ctx, r.ID())
+		}},
+		{name: "Rels.CompareAndSetPropertyWithContext", call: func() error {
+			_, err := g.Rels.CompareAndSetPropertyWithContext(ctx, r.ID(), "since", int64(2024), int64(2025))
+			return err
+		}},
+	}
+
+	for _, tc := range cases {
+		done := make(chan error, 1)
+		go func() {
+			done <- tc.call()
+		}()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("%s = %v, want context.Canceled", tc.name, err)
+			}
+		case <-time.After(50 * time.Millisecond):
+			rolledBack = true
+			_ = tx.Rollback()
+			t.Fatalf("%s waited behind active transaction despite pre-canceled context", tc.name)
+		}
+	}
+
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	rolledBack = true
 }
 
 // --- Group B: Happy path with valid context (8 tests) ---
@@ -517,6 +843,77 @@ func TestCheckCtxNilReturnsSentinel(t *testing.T) {
 	var ctx context.Context
 	if err := checkCtx(ctx); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("checkCtx(nil) = %v, want ErrNilContext", err)
+	}
+}
+
+func TestMutationWithContextNilReturnsSentinel(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"NilContextA"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add node a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"NilContextB"}, nil)
+	if err != nil {
+		t.Fatalf("Add node b: %v", err)
+	}
+	rel, err := g.Rels.Add("NIL_CONTEXT_REL", a, b, map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+
+	var ctx context.Context
+	cases := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "Nodes.AddWithContext", run: func() error {
+			_, err := g.Nodes.AddWithContext(ctx, []string{"Blocked"}, nil) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Nodes.UpdateWithContext", run: func() error {
+			_, err := g.Nodes.UpdateWithContext(ctx, a.ID(), map[string]any{"name": "b"}) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Nodes.UpdateInPlaceWithContext", run: func() error {
+			_, err := g.Nodes.UpdateInPlaceWithContext(ctx, a.ID(), map[string]any{"name": "b"}) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Nodes.DeleteWithContext", run: func() error {
+			return g.Nodes.DeleteWithContext(ctx, a.ID()) //nolint:staticcheck // intentional nil context boundary test
+		}},
+		{name: "Rels.AddWithContext", run: func() error {
+			_, err := g.Rels.AddWithContext(ctx, "BLOCKED_REL", a, b, nil) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Rels.AddByIDWithContext", run: func() error {
+			_, err := g.Rels.AddByIDWithContext(ctx, "BLOCKED_REL", a.ID(), b.ID(), nil) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Rels.AddByIDIfAbsentWithContext", run: func() error {
+			_, _, err := g.Rels.AddByIDIfAbsentWithContext(ctx, "BLOCKED_REL", a.ID(), b.ID(), nil) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Rels.UpdateWithContext", run: func() error {
+			_, err := g.Rels.UpdateWithContext(ctx, rel.ID(), map[string]any{"weight": int64(2)}) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Rels.UpdateInPlaceWithContext", run: func() error {
+			_, err := g.Rels.UpdateInPlaceWithContext(ctx, rel.ID(), map[string]any{"weight": int64(2)}) //nolint:staticcheck // intentional nil context boundary test
+			return err
+		}},
+		{name: "Rels.DeleteWithContext", run: func() error {
+			return g.Rels.DeleteWithContext(ctx, rel.ID()) //nolint:staticcheck // intentional nil context boundary test
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.run(); !errors.Is(err, ErrNilContext) {
+				t.Fatalf("%s nil context = %v, want ErrNilContext", tc.name, err)
+			}
+		})
 	}
 }
 

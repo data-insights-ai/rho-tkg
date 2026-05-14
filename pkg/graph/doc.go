@@ -6,13 +6,13 @@
 //
 // # Storage
 //
-// The Store interface defines pure persistence operations. Two implementations
+// The Store interface defines pure persistence operations. Three implementations
 // are provided:
 //
-//   - MemoryStore: thread-safe in-memory store with hash-set adjacency indexes
+//   - memory.Store: thread-safe in-memory store with hash-set adjacency indexes
 //     for O(1) insert/delete. Atomic cascade-delete under single write lock.
 //
-//   - BadgerStore: persistent store using Badger v4. In-memory state is the
+//   - badger.Store: persistent store using Badger v4. In-memory state is the
 //     source of truth while running — LRU entity caches with version-aware
 //     dirty tracking, and in-memory indexes (nodeIDs, relIDs, labelIdx,
 //     typeIdx, outIdx, inIdx) rebuilt from Badger on startup via loadIndexes().
@@ -22,7 +22,7 @@
 //     Hot→warm→cold shard rotation. Warm/cold recovery on restart. Cross-shard
 //     relationship split-writes. Depth-aware reads via storepkg.ShardDepth.
 //
-// # BadgerStore Architecture
+// # badger.Store Architecture
 //
 // Read path: LRU cache hit → return; cache tombstone → ErrNotFound;
 // nodeIDs/relIDs O(1) check → short-circuit non-existent entities without
@@ -50,21 +50,21 @@
 // # Temporal Push-Down
 //
 // storepkg.QueryOpts supports ValidAt (point-in-time) and ValidStart/ValidEnd (interval)
-// temporal filters. Both MemoryStore and BadgerStore evaluate these filters
-// before deep-copying entities, avoiding O(N) materialization waste. BadgerStore
+// temporal filters. Both memory.Store and badger.Store evaluate these filters
+// before deep-copying entities, avoiding O(N) materialization waste. badger.Store
 // uses a two-stage approach: Peek pre-filter for zero-allocation cache hits,
 // then post-filter for cache misses.
 //
 // # tiered.Store
 //
-// tiered.Store routes entities across multiple BadgerStore instances by ontology
+// tiered.Store routes entities across multiple badger.Store instances by ontology
 // classification. Reference entities (configured via RefLabels) go to a single
 // reference shard; event entities go to time-windowed event shards. The hot
 // shard receives all new event writes. On window expiry, RotateHotShard demotes
 // hot→warm (read-only) and creates a new hot shard. Warm shards recover from
 // catalog on restart. Cold shards are lazy-opened on first access and auto-closed
 // after idle timeout. Cross-shard relationships use split writes: entity+out/ in
-// start shard, in/ in end shard. Merge queries run parallel goroutines per shard.
+// start shard, in/ in end shard. Merge queries use bounded shard fan-out.
 // storepkg.ShardDepth (storepkg.DepthAll/storepkg.DepthHot/storepkg.DepthWarm) controls tier inclusion in queries.
 //
 // # Transactions
@@ -75,7 +75,7 @@
 // DeleteRelationship snapshot before deletion. Commit releases the lock.
 // Rollback restores all mutations in reverse order: re-creates deleted entities,
 // reverts updates to snapshots, deletes created entities.
-// Graph.Reset atomically clears all entities via Store.Clear while preserving
+// g.Admin.Reset atomically clears all entities via Store.Clear while preserving
 // registries.
 //
 // # Concurrency

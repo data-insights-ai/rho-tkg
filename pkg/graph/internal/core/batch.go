@@ -24,8 +24,9 @@ import (
 // Queue-time side effects (R4-F13): AddNode and AddRelationship consume
 // snowflake IDs at queue time and reuse existing registry tokens when available,
 // but defer new label/type token allocation until Execute has passed rejection
-// checks. Execute retokenizes returned entity pointers in place before
-// persistence when it had to use queue-time probe tokens. Validation rejections
+// checks. Execute retokenizes private queued entities before persistence, then
+// syncs their final state back into the caller-visible skeletons returned by
+// AddNode/AddRelationship. Validation rejections
 // (label/type-name format, property limits, self-loop) run BEFORE token
 // allocation per R4-F14.
 //
@@ -45,17 +46,14 @@ type BatchBuilder struct {
 	relDeletes  []types.RelID
 }
 
-// pendingNode and pendingRel keep aliased pointers to the entity's integrity
-// and temporal structs. AddNode/AddRelationship call SetIntegrity / construct
-// the temporal struct at queue time; Execute stamps TxFrom (and refreshes
-// rel endpoint hashes) in place. Because the pointers are aliased to the
-// entity's own fields, callers that hold a reference to the entity returned
-// from AddNode/AddRelationship observe the post-Execute state through that
-// entity — no extra SetTemporal/SetIntegrity round-trip is required after
-// the in-place mutation, and that is fine for batch's contract since the
-// entity is documented as "queue-time skeleton, finalised at Execute".
+// pendingNode and pendingRel keep private queued entities plus the
+// caller-visible queue-time skeleton returned by AddNode/AddRelationship.
+// Execute mutates the private queued entity, then copies the final state back
+// into result. That preserves the "queue-time skeleton, finalised at Execute"
+// contract without letting pre-Execute caller mutations alter queued writes.
 type pendingNode struct {
 	node               *types.Node
+	result             *types.Node
 	labels             []string
 	queuedPrimaryToken uint16
 	queuedExtraTokens  []uint16
@@ -66,6 +64,7 @@ type pendingNode struct {
 
 type pendingRel struct {
 	rel             *types.Relationship
+	result          *types.Relationship
 	typeName        string
 	startID         types.NodeID
 	endID           types.NodeID
@@ -77,16 +76,19 @@ type pendingRel struct {
 }
 
 type pendingNodeUpdate struct {
-	id      types.NodeID
-	updates map[string]any
+	id     types.NodeID
+	update preparedUpdateProperties
 }
 
 type pendingRelUpdate struct {
-	id      types.RelID
-	updates map[string]any
+	id     types.RelID
+	update preparedUpdateProperties
 }
 
-// BatchResult reports the outcome of a batch execution.
+// BatchResult reports the outcome of a batch execution. Created/Updated/Deleted
+// count rows that reached the graph state; Failed counts operations that also
+// returned an error, so a post-write durability error can contribute to both
+// Created and Failed.
 type BatchResult struct {
 	Created  int
 	Updated  int
@@ -107,6 +109,10 @@ func (e BatchError) Error() string {
 	return fmt.Sprintf("batch %s (ID %d): %v", e.Op, e.ID, e.Err)
 }
 
+func (e BatchError) Unwrap() error {
+	return e.Err
+}
+
 // NewBatchBuilder creates a new BatchBuilder for the given graph.
 // Returns ErrGraphClosed if the graph has already been closed.
 func NewBatchBuilder(c *Core) (*BatchBuilder, error) {
@@ -125,6 +131,9 @@ func NewBatchBuilder(c *Core) (*BatchBuilder, error) {
 }
 
 func (b *BatchBuilder) lockOpen() error {
+	if b == nil || b.g == nil {
+		return ErrNilGraph
+	}
 	b.mu.Lock()
 	if b.done {
 		b.mu.Unlock()

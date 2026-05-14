@@ -101,6 +101,7 @@ var (
 	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
 	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
 	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue         = storecontract.ErrInvalidVectorValue
 	ErrInvalidShardDepth          = storecontract.ErrInvalidShardDepth
 	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
 	ErrNilStore                   = storecontract.ErrNilStore

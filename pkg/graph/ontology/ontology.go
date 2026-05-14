@@ -1,9 +1,9 @@
 // Package ontology classifies entity labels as either reference (long-lived,
-// low-churn) or event (high-volume, time-windowed) so that the TieredStore
+// low-churn) or event (high-volume, time-windowed) so that tiered.Store
 // can route entities to the appropriate shard tier.
 //
-// External callers (notably tkgd-v3) construct an OntologyMapping with
-// NewOntologyMapping and pass it via TieredStoreConfig.RefLabels.
+// External callers can construct an OntologyMapping with NewOntologyMapping.
+// tiered.Store instances receive reference labels through tiered.Config.RefLabels.
 package ontology
 
 import (

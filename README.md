@@ -37,7 +37,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Transaction rollback restores version history.** Rolled-back updates and deletes no longer leave phantom node/relationship history rows; rollback restores pre-transaction history snapshots and clears history for created entities it deletes.
 
-**Metadata-blind rehashes preserve integrity metadata.** `CloseVersion`, node label add/remove, node property CAS, and in-place updates recompute hash-chain fields without erasing existing provenance, signature, authorization, or relationship endpoint-hash metadata.
+**Metadata-blind rehashes preserve integrity metadata.** `CloseVersion`, node label add/remove, node/relationship property CAS, and in-place updates recompute hash-chain fields without erasing existing provenance, signature, authorization, or relationship endpoint-hash metadata.
 
 **By-ID relationship creates preserve endpoint integrity.** `g.Rels.AddByID`, `AddByIDIfAbsent`, and transaction variants now fetch live endpoints under endpoint locks, capture `FromNodeHash`/`ToNodeHash`, and enforce configured constraints with the same relationship-state semantics as `g.Rels.Add`.
 
@@ -49,13 +49,15 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Resolver reads respect active transactions.** `LookupLabel`, `LookupRelType`, node label/type resolution, and shadow-property resolution now wait behind the graph read lock, so they cannot expose labels or relationship types created inside an uncommitted transaction. After `Close`, these no-error helpers return zero values rather than registry state.
 
-**Versioned mutations fail before `uint32` wraparound.** Updates, node label add/remove, node property CAS, transaction updates, and batch updates return `ErrVersionOverflow` when the current entity version is already `math.MaxUint32`; they do not write history, wrap to version `0`, or allocate labels for rejected add-label calls.
+**Versioned mutations fail before `uint32` wraparound.** Updates, node label add/remove, node/relationship property CAS, transaction updates, and batch updates return `ErrVersionOverflow` when the current entity version is already `math.MaxUint32`; they do not write history, wrap to version `0`, or allocate labels for rejected add-label calls.
 
 **Version-chain successor lookup does not wrap.** `g.Nodes.NextVersion(id, math.MaxUint32)` and the relationship mirror return `nil, nil` instead of treating genesis version `0` as the successor.
 
 **Version-chain navigation validates explicit IDs.** `PreviousVersion` and `NextVersion` return `ErrNodeNotFound`/`ErrRelNotFound` for unknown node or relationship IDs, while still returning `nil, nil` for missing neighboring versions on entities that exist now or in history.
 
 **Event bus setters fail closed.** `g.Events.SetSync` and `SetAsync` now return an error; after graph close they return `ErrGraphClosed` and leave the installed publisher unchanged.
+
+**Event bus getters have sync/async parity.** `g.Events.GetSync()` returns the installed synchronous bus only, and `g.Events.GetAsync()` returns the installed asynchronous bus only; both return nil for nil or zero-value API wrappers.
 
 **Transaction helpers reject nil inputs.** `g.Tx.Run(nil)` and `RunContext(ctx, nil)` return `ErrNilTxCallback` before opening a transaction; `RunContext(nil, fn)` and graph mutation context helpers return `ErrNilContext` instead of panicking on nil contexts.
 
@@ -97,7 +99,9 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Entity nil receivers fail closed.** Nil `*types.Node` and `*types.Relationship` accessors return zero values, no-error mutators no-op, and error-returning mutators return `ErrNilNode`/`ErrNilRelationship`. Nil `*types.PropertySlice` pointer mutators return `ErrNilPropertySlice`; nil `*types.TemporalMetadata` helpers and nil integrity `DeepCopy` calls also return zero/nil without panicking.
 
-**Node property CAS enforces final shape.** `g.Nodes.CompareAndSetProperty` rechecks `MaxPropertiesPerEntity` after a matched add/delete/set mutation and before writing history, so CAS cannot create a node that ordinary update paths would reject.
+**Property CAS enforces final shape.** `g.Nodes.CompareAndSetProperty` and `g.Rels.CompareAndSetProperty` recheck `MaxPropertiesPerEntity` after a matched add/delete/set mutation and before writing history, so CAS cannot create an entity that ordinary update paths would reject. CAS comparison uses exact-type property equality with NaN matching and does not return or copy stored reference values.
+
+**Scalar property queries match property equality.** `g.Nodes.ByLabelAndProperty` canonicalizes `float32`/`float64` signed zero and NaN payloads on both fallback scans and property-index lookups, preserving concrete type separation while matching the compare-and-set equality contract.
 
 **Registry resolution enforces graph name limits.** `g.Resolve.LabelToken` and `RelTypeToken` reject empty, whitespace-only, and overlong names before token allocation; `LookupLabel`, `LookupRelType`, `Nodes.HasLabel`, and `Rels.HasType` fail closed for malformed names. `IO.Import` and graph construction from persisted registries apply the same configured name limit before accepting registry mappings.
 
@@ -334,6 +338,8 @@ Detailed documentation has been split into the `docs/` directory:
 **Vector search targets fail before zero-k shortcuts.** `g.Index.SearchNearest` validates malformed label/property targets and unknown labels before returning an empty result for `k <= 0`.
 
 **Transaction updates validate before snapshots.** `GraphTx.UpdateNode` and `UpdateRelationship` reject malformed update keys and values before rollback snapshot lookup, so invalid input is not hidden by missing-entity errors. Batch update queues reuse the same validation and accept provenance shadow keys consistently with standalone updates.
+
+**Transaction reads have node/relationship parity.** `GraphTx.GetRelationship` mirrors `GetNode` so transaction callbacks can read relationships without calling standalone APIs that wait behind the transaction write lock. Successful tx-scoped node and relationship reads increment the same read counters as standalone reads, and rollback restores those counters.
 
 **Batch empty updates are no-op reads.** Queued empty node/relationship updates still check that the entity exists at execute time, but successful empty updates no longer increment `BatchResult.Updated` or publish update events.
 

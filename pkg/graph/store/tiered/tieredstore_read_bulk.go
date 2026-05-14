@@ -1,9 +1,6 @@
 package tiered
 
 import (
-	"sync"
-
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -21,7 +18,12 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refNodes, err := ts.refShard.AllNodes(stripDepth(opts))
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refNodes, err := ref.AllNodes(stripDepth(opts))
+	refCheckin()
 	if err != nil {
 		return nil, err
 	}
@@ -57,21 +59,15 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		err   error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			results[i].nodes, results[i].err = store.AllNodes(stripDepth(opts))
-		}(i, es)
-	}
-	wg.Wait()
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].nodes, results[i].err = store.AllNodes(stripDepth(opts))
+	})
 
 	var slices [][]*types.Node
 	if len(refNodes) > 0 {
@@ -104,7 +100,12 @@ func (ts *Store) NodeCount() (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
-	n, err := ts.refShard.NodeCount()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	n, err := ref.NodeCount()
+	refCheckin()
 	if err != nil {
 		return 0, err
 	}
@@ -124,17 +125,25 @@ func (ts *Store) NodeCount() (int, error) {
 		total += an
 	}
 
-	for _, es := range eventShards {
-		store, err := es.checkoutStore(ts)
+	type result struct {
+		count int
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			return 0, err
+			results[i].err = err
+			return
 		}
-		n, err := store.NodeCount()
-		es.checkinStore()
-		if err != nil {
-			return 0, err
+		defer release()
+		results[i].count, results[i].err = store.NodeCount()
+	})
+	for _, r := range results {
+		if r.err != nil {
+			return 0, r.err
 		}
-		total += n
+		total += r.count
 	}
 	return total, nil
 }
@@ -146,42 +155,55 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	if err := storecontract.ValidateLabelToken(token); err != nil {
 		return 0, err
 	}
-	if ts.ontology.ClassifyByToken(token) == ClassReference {
-		n, err := ts.refShard.NodeCountByLabel(token)
-		if err != nil {
-			return 0, err
-		}
-		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-		if archiveErr != nil {
-			return 0, archiveErr
-		}
-		if archive == nil {
-			return n, nil
-		}
+
+	total := 0
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	n, err := ref.NodeCountByLabel(token)
+	refCheckin()
+	if err != nil {
+		return 0, err
+	}
+	total += n
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
 		an, err := archive.NodeCountByLabel(token)
 		archiveCheckin()
 		if err != nil {
 			return 0, err
 		}
-		return n + an, nil
+		total += an
 	}
-	// Event label: sum across all event shards.
+
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 
-	total := 0
-	for _, es := range eventShards {
-		store, err := es.checkoutStore(ts)
+	type result struct {
+		count int
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			return 0, err
+			results[i].err = err
+			return
 		}
-		n, err := store.NodeCountByLabel(token)
-		es.checkinStore()
-		if err != nil {
-			return 0, err
+		defer release()
+		results[i].count, results[i].err = store.NodeCountByLabel(token)
+	})
+	for _, r := range results {
+		if r.err != nil {
+			return 0, r.err
 		}
-		total += n
+		total += r.count
 	}
 	return total, nil
 }
@@ -199,17 +221,22 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refTyped, err := ts.refShard.AllNodeIDs(stripDepth(opts))
+	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
-	refIDs := nodeIDsToRaw(refTyped)
+	refTyped, err := ref.AllNodeIDs(stripDepth(opts))
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+	refIDs := refTyped
 
 	// refArchive parity: AllNodeIDs must surface archived nodes whenever
 	// AllNodes / GetNode see them. Depth-gated to DepthAll — archive is
 	// the coldest tier of reference data; DepthHot/DepthWarm callers
 	// asked to exclude it. Same policy as AllNodes.
-	var archiveIDs []snowflake.ID
+	var archiveIDs []types.NodeID
 	if opts.Depth == DepthAll {
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
@@ -221,34 +248,28 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 			if err != nil {
 				return nil, err
 			}
-			archiveIDs = nodeIDsToRaw(typed)
+			archiveIDs = typed
 		}
 	}
 
 	type result struct {
-		ids []snowflake.ID
+		ids []types.NodeID
 		err error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			typed, err := store.AllNodeIDs(stripDepth(opts))
-			results[i].ids = nodeIDsToRaw(typed)
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
 			results[i].err = err
-		}(i, es)
-	}
-	wg.Wait()
+			return
+		}
+		defer release()
+		typed, err := store.AllNodeIDs(stripDepth(opts))
+		results[i].ids = typed
+		results[i].err = err
+	})
 
-	var slices [][]snowflake.ID
+	var slices [][]types.NodeID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
@@ -264,14 +285,14 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		}
 	}
 
-	merged := mergeIDSlices(slices)
-	paginated := applyIDPagination(merged, opts)
-	return rawToNodeIDs(paginated), nil
+	merged := mergeNodeIDSlices(slices)
+	return applyNodeIDPagination(merged, opts), nil
 }
 
 // --- ForEach iterators ---
-// Sequential shard iteration — one shard at a time, no goroutines, no mergeIDSlices.
-// This eliminates the O(N) per-shard slice allocations that cause OOM on large graphs.
+// Sequential shard iteration — one shard at a time, no goroutines, no ID merge.
+// This avoids materializing IDs from every shard at once while keeping callbacks
+// outside Tiered shard checkouts.
 
 func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	if err := ts.checkOpen(); err != nil {
@@ -281,12 +302,18 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 		return errNilIterationCallback()
 	}
 	ids := make([]types.NodeID, 0)
-	if err := ts.refShard.ForEachNodeID(func(id types.NodeID) bool {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	if err := ref.ForEachNodeID(func(id types.NodeID) bool {
 		ids = append(ids, id)
 		return true
 	}); err != nil {
+		refCheckin()
 		return err
 	}
+	refCheckin()
 	for _, id := range ids {
 		if !fn(id) {
 			return nil
@@ -321,7 +348,7 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, err := es.checkoutStore(ts)
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			return err
 		}
@@ -330,7 +357,7 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 			ids = append(ids, id)
 			return true
 		})
-		es.checkinStore()
+		release()
 		if err != nil {
 			return err
 		}

@@ -22,19 +22,19 @@ import (
 //
 //	Phase 1 (write Lock): Install an empty live index so concurrent PutNode/ReplaceNode
 //	writes are captured immediately. Snapshot existing node IDs.
-//	Phase 2 (no lock): Fetch node data via public GetNode to build a backfill set.
+//	Phase 2 (no lock): Prefetch node data to build a backfill set.
 //	Phase 3 (write Lock): Merge backfill entries into the live index, skipping IDs
 //	that were already handled by concurrent writes during Phase 2.
 //
 // Returns ErrIndexExists if the index already exists.
 func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 
@@ -58,11 +58,12 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	}
 	bs.idxMu.Unlock()
 
-	// Phase 2: Fetch node data OUTSIDE any lock via public GetNode.
-	// Builds a backfill index for nodes that existed before Phase 1.
+	// Phase 2: Fetch node data OUTSIDE any lock. Builds a backfill index for
+	// nodes that existed before Phase 1 without the defensive copy required by
+	// the public GetNode boundary.
 	backfill := indexpkg.NewPropertyIndex()
 	for _, nid := range nids {
-		n, err := bs.GetNode(nid)
+		n, err := bs.prefetchNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // deleted between snapshot and fetch
@@ -73,8 +74,8 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
-		if val, found := n.GetProperty(propertyKey); found {
-			backfill.Add(nid.SnowflakeID(), val)
+		if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
+			backfill.AddKey(nid.SnowflakeID(), valueKey)
 		}
 	}
 
@@ -109,13 +110,13 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 // DropPropertyIndex removes a property index.
 // Returns ErrIndexNotFound if the index does not exist.
 func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 
@@ -171,10 +172,10 @@ func highFrequencyBucketDuration(bucketMillis int64) (time.Duration, error) {
 // Three-phase approach (same as CreatePropertyIndex) for safe concurrent operation.
 // Returns ErrTemporalIndexExists if the index already exists.
 func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 
@@ -190,6 +191,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	liveTI := indexpkg.NewTemporalIndex()
 	liveTI.Building = true
+	liveTI.Mutated = make(map[snowflake.ID]struct{})
 	bs.temporalIndexes[labelToken] = liveTI
 	var nids []types.NodeID
 	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
@@ -200,7 +202,8 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	bs.idxMu.Unlock()
 
-	// Phase 2: Fetch node data OUTSIDE any lock via public GetNode.
+	// Phase 2: Fetch node data OUTSIDE any lock without the defensive copy
+	// required by the public GetNode boundary.
 	type nodeEntry struct {
 		id   snowflake.ID
 		from types.Instant
@@ -208,7 +211,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	backfill := make([]nodeEntry, 0, len(nids))
 	for _, nid := range nids {
-		n, err := bs.GetNode(nid)
+		n, err := bs.prefetchNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // deleted between snapshot and fetch
@@ -235,21 +238,13 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
 			continue // node deleted during Phase 2
 		}
-		// Only add if not already handled by a concurrent write.
-		// The live index starts empty; any entry already present was added
-		// by a concurrent PutNode/ReplaceNode that ran during Phase 2.
-		found := false
-		for _, e := range liveTI.Entries {
-			if e.ID == entry.id {
-				found = true
-				break
-			}
+		if liveTI.WasMutated(entry.id) {
+			continue
 		}
-		if !found {
-			liveTI.Add(entry.id, entry.from, entry.to)
-		}
+		liveTI.AddKnownAbsent(entry.id, entry.from, entry.to)
 	}
 	liveTI.Building = false
+	liveTI.ClearMutationTracking()
 	bs.persistTemporalIndexDefs()
 	bs.idxMu.Unlock()
 	return bs.flushIfSyncWrites()
@@ -292,10 +287,10 @@ func requireTemporalIndexCurrentForCreate(idxs map[uint16]*indexpkg.TemporalInde
 // DropTemporalIndex removes a temporal index.
 // Returns ErrTemporalIndexNotFound if the index does not exist.
 func (bs *Store) DropTemporalIndex(labelToken uint16) error {
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 
@@ -319,13 +314,13 @@ func (bs *Store) DropTemporalIndex(labelToken uint16) error {
 // returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
 // exists for this label.
 func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateHighFrequencyBucketSize(bucketSize); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 
@@ -360,7 +355,7 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 	}
 	backfill := make([]nodeEntry, 0, len(nids))
 	for _, nid := range nids {
-		n, err := bs.GetNode(nid)
+		n, err := bs.prefetchNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // deleted between snapshot and fetch
@@ -400,10 +395,10 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 // DropHighFrequencyIndex removes the high-frequency index for the given label token.
 // Returns ErrTemporalIndexNotFound if no high-frequency index exists.
 func (bs *Store) DropHighFrequencyIndex(labelToken uint16) error {
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 
@@ -439,10 +434,10 @@ func requireHighFrequencyIndexCurrentForCreate(idxs map[uint16]*indexpkg.HighFre
 // TemporalIndexState reports which temporal index kind currently exists for
 // the label token on this shard.
 func (bs *Store) TemporalIndexState(labelToken uint16) (hasTemporal bool, hasHighFrequency bool, highFrequencyBucketSize time.Duration, err error) {
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+	if err := bs.checkOpen(); err != nil {
 		return false, false, 0, err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return false, false, 0, err
 	}
 	bs.idxMu.RLock()
@@ -507,6 +502,9 @@ func (bs *Store) persistHighFrequencyIndexDefs() {
 // Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
 // Definitions are persisted and entries are rebuilt from node properties on startup.
 func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
@@ -514,9 +512,6 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 		return err
 	}
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 
@@ -531,10 +526,14 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric, Mutated: make(map[snowflake.ID]struct{})}
 	bs.vectorIndexes[key] = vi
 
-	// Snapshot existing node IDs for population scan.
-	nids := make([]types.NodeID, 0, len(bs.nodeIDs))
-	for id := range bs.nodeIDs {
-		nids = append(nids, id)
+	// Snapshot only nodes carrying this label for population scan. Scanning
+	// all nodeIDs would force full-row reads for unrelated labels.
+	var nids []types.NodeID
+	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
+		nids = make([]types.NodeID, 0, len(nodeIDs))
+		for id := range nodeIDs {
+			nids = append(nids, id)
+		}
 	}
 	bs.idxMu.Unlock()
 
@@ -544,9 +543,9 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	}
 	backfill := make([]vectorBackfillEntry, 0, len(nids))
 
-	// Phase 2: Fetch node data outside the store lock.
+	// Phase 2: Fetch node data outside the store lock without defensive copies.
 	for _, nid := range nids {
-		n, err := bs.GetNode(nid)
+		n, err := bs.prefetchNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // node may have been deleted concurrently
@@ -556,20 +555,11 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create vector index: %w", err)
 		}
-		if !n.HasLabelTokenRaw(labelToken) {
-			continue
-		}
-		val, ok := n.GetProperty(propertyKey)
+		vec, ok := n.Float32SlicePropertyCopy(propertyKey)
 		if !ok {
 			continue
 		}
-		vec, ok := indexpkg.ToFloat32Slice(val)
-		if !ok {
-			continue
-		}
-		cp := make([]float32, len(vec))
-		copy(cp, vec)
-		backfill = append(backfill, vectorBackfillEntry{id: nid.SnowflakeID(), vec: cp})
+		backfill = append(backfill, vectorBackfillEntry{id: nid.SnowflakeID(), vec: vec})
 	}
 
 	// Phase 3: Merge backfill under the store lock. Concurrent writes that
@@ -587,7 +577,7 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 		if vi.WasMutated(entry.id) {
 			continue
 		}
-		if err := vi.Add(entry.id, entry.vec); err != nil {
+		if err := vi.AddOwned(entry.id, entry.vec); err != nil {
 			indexpkg.DeleteVectorIndexIfCurrent(bs.vectorIndexes, key, vi)
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create vector index: node %d: %w", entry.id, err)
@@ -602,13 +592,13 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 // DropVectorIndex removes a vector index.
 // Returns ErrVectorIndexNotFound if the index does not exist.
 func (bs *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return err
 	}
 
@@ -630,12 +620,16 @@ func (bs *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
 // Results are ordered by ascending distance (closest first).
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns ErrInvalidVectorValue if query contains NaN or infinity.
 // Returns nil, nil if the index exists but has no entries.
 //
 // After and Limit are applied to the distance-ordered result. Depth has no
-// meaning for this single-tier backend, and temporal filtering is applied by
-// the Graph layer via SearchNearestFiltered before this path is taken.
+// meaning for this single-tier backend. Temporal filtering is applied before
+// heap selection so ineligible candidates cannot occupy top-k slots.
 func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
@@ -643,9 +637,6 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		return nil, err
 	}
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
-		return nil, err
-	}
-	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
 
@@ -660,13 +651,20 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	if vi.IsBuilding() {
 		return nil, ErrVectorIndexNotFound
 	}
+	if k <= 0 {
+		if _, err := vi.SearchNearest(query, k, nil); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
 
-	filter, err := bs.vectorTemporalFilter(vi, opts)
+	dims := vi.Dims
+	filter, filterErr := bs.vectorTemporalFilter(key, dims, opts)
+	rawIDs, err := vi.SearchNearest(query, k, filter)
 	if err != nil {
 		return nil, err
 	}
-	rawIDs, err := vi.SearchNearest(query, k, filter)
-	if err != nil {
+	if err := filterErr(); err != nil {
 		return nil, err
 	}
 	if err := bs.checkOpen(); err != nil {
@@ -679,17 +677,20 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 	result := make([]*types.Node, 0, len(rawIDs))
 	for _, id := range rawIDs {
-		n, err := bs.GetNode(types.NodeID(id))
+		n, err := bs.prefetchNode(types.NodeID(id))
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // node may have been deleted concurrently
 			}
 			return nil, fmt.Errorf("graph: resolve vector search candidate: %w", err)
 		}
+		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
+			continue
+		}
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 			continue
 		}
-		result = append(result, n)
+		result = append(result, n.DeepCopy())
 	}
 	if len(result) == 0 {
 		return nil, nil
@@ -697,47 +698,46 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	return storepkg.PaginateNodesInOrder(result, opts.After, opts.Limit), nil
 }
 
-func (bs *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, opts QueryOpts) (func(snowflake.ID) bool, error) {
+func (bs *Store) vectorTemporalFilter(key indexpkg.VectorIndexKey, dims int, opts QueryOpts) (func(snowflake.ID) bool, func() error) {
 	if !storepkg.HasTemporalFilter(opts) {
-		return nil, nil
+		return nil, func() error { return nil }
 	}
-	eligible := make(map[snowflake.ID]struct{})
-	for _, id := range vi.IDs() {
-		n, err := bs.GetNode(types.NodeID(id))
+	var filterErr error
+	return func(id snowflake.ID) bool {
+		n, err := bs.prefetchNode(types.NodeID(id))
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
-				continue
+				return false
 			}
-			return nil, err
+			if filterErr == nil {
+				filterErr = err
+			}
+			return false
 		}
-		if storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
-			eligible[id] = struct{}{}
+		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
+			return false
 		}
-	}
-	return func(id snowflake.ID) bool {
-		_, ok := eligible[id]
-		return ok
-	}, nil
+		return storepkg.MatchesTemporalFilter(id, n.Temporal(), opts)
+	}, func() error { return filterErr }
 }
 
 // SearchNearestFiltered is the package-internal entry point used by the
 // Graph layer to perform vector search with an eligibility filter applied
-// BEFORE the k-cut. The filter is invoked while the vector index is being
-// scanned; it should avoid mutating or re-entering the same vector index.
+// BEFORE the k-cut. The filter is combined with current-row shape validation
+// before the vector index heap selection.
 //
 // Returns raw snowflake.IDs in ascending distance order; the caller is
 // responsible for resolving entities (current or historical version).
 func (bs *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return nil, err
 	}
-	if err := bs.checkOpen(); err != nil {
-		return nil, err
-	}
-
 	bs.idxMu.RLock()
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	vi, exists := bs.vectorIndexes[key]
@@ -749,9 +749,30 @@ func (bs *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 	if vi.IsBuilding() {
 		return nil, ErrVectorIndexNotFound
 	}
-	ids, err := vi.SearchNearest(query, k, filter)
+	dims := vi.Dims
+	var filterErr error
+	shapeFilter := func(id snowflake.ID) bool {
+		n, err := bs.prefetchNode(types.NodeID(id))
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				return false
+			}
+			if filterErr == nil {
+				filterErr = err
+			}
+			return false
+		}
+		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
+			return false
+		}
+		return filter == nil || filter(id)
+	}
+	ids, err := vi.SearchNearest(query, k, shapeFilter)
 	if err != nil {
 		return nil, err
+	}
+	if filterErr != nil {
+		return nil, filterErr
 	}
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

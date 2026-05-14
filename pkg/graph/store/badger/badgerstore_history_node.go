@@ -20,13 +20,13 @@ import (
 
 func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -41,9 +41,9 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the node still exists after the write lock is acquired, this error is
-	// real corruption or an operational read failure and must be returned.
-	old, prefetchErr := bs.prefetchNode(nid)
+	// If the prefetched row is stale by the time the lock is acquired, fall back
+	// to the locked current row before cleaning secondary indexes.
+	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
 
@@ -55,9 +55,18 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before remove label history: %w", prefetchErr)
 	}
+	old, err := bs.currentNodeForPrefetchLocked(nid, oldInfo)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before remove label history: %w", err)
+	}
 	if old == nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before remove label history: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 	if err := storecontract.ValidateNodeLabelRemoval(old, updatedNode, tok); err != nil {
 		bs.idxMu.Unlock()
@@ -67,12 +76,13 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		bs.idxMu.Unlock()
 		return err
 	}
-	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, updatedNode, id)
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
 
-	// Update property, temporal, and vector indexes using pre-fetched old node state.
+	// Update property, temporal, and vector indexes using the current old node state.
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
@@ -90,10 +100,11 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
-	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -115,13 +126,13 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 
 func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -136,9 +147,9 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the node still exists after the write lock is acquired, this error is
-	// real corruption or an operational read failure and must be returned.
-	old, prefetchErr := bs.prefetchNode(nid)
+	// If the prefetched row is stale by the time the lock is acquired, fall back
+	// to the locked current row before cleaning secondary indexes.
+	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
 
@@ -150,9 +161,18 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before add label history: %w", prefetchErr)
 	}
+	old, err := bs.currentNodeForPrefetchLocked(nid, oldInfo)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before add label history: %w", err)
+	}
 	if old == nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before add label history: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 	if err := storecontract.ValidateNodeLabelAddition(old, updatedNode, tok); err != nil {
 		bs.idxMu.Unlock()
@@ -162,12 +182,13 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		bs.idxMu.Unlock()
 		return err
 	}
-	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, updatedNode, id)
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
 
-	// Update property, temporal, and vector indexes using pre-fetched old node state.
+	// Update property, temporal, and vector indexes using the current old node state.
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
@@ -185,10 +206,11 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, updatedNode.DeepCopy())
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
+	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
-	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, updatedNode, id); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -209,14 +231,14 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 }
 
 func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeWrite(current); err != nil {
 		return err
 	}
 	nid := current.InternalID()
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
-		return err
-	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -234,9 +256,9 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the node still exists after the write lock is acquired, this error is
-	// real corruption or an operational read failure and must be returned.
-	old, prefetchErr := bs.prefetchNode(nid)
+	// If the prefetched row is stale by the time the lock is acquired, fall back
+	// to the locked current row before cleaning secondary indexes.
+	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
 
@@ -248,9 +270,18 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before replace history: %w", prefetchErr)
 	}
+	old, err := bs.currentNodeForPrefetchLocked(nid, oldInfo)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read node before replace history: %w", err)
+	}
 	if old == nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read node before replace history: missing prefetched state")
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
+		bs.idxMu.Unlock()
+		return err
 	}
 	if err := storecontract.ValidateNodeReplacement(old, current); err != nil {
 		bs.idxMu.Unlock()
@@ -260,7 +291,8 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		bs.idxMu.Unlock()
 		return err
 	}
-	if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, current, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, current, id)
+	if err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -271,10 +303,11 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	bs.nodeCache.Put(id, current.DeepCopy())
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
+	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, current, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
-	if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, current, id); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
@@ -294,10 +327,10 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 }
 
 func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, nodeTombstone); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -311,7 +344,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	type histEntry struct{ key, data []byte }
 	relEntries := make([]histEntry, 0, len(relTombstones))
 	for _, rt := range relTombstones {
-		if err := storecontract.ValidateRelationshipHistorySnapshot(rt.ID, rt.Tombstone); err != nil {
+		if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rt.ID, rt.PrevVersion, rt.Tombstone); err != nil {
 			return err
 		}
 		data, err := marshalRelToBytes(rt.Tombstone)
@@ -323,10 +356,22 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 			data: data,
 		})
 	}
+	prefetched, err := bs.prefetchCascadeDeleteRows(nid)
+	if err != nil {
+		return err
+	}
 
 	// Acquire lock ONCE — hold it across cascade + tombstone appends (B3 + lock ordering rule).
 	bs.idxMu.Lock()
-	old, err := bs.getNodeLocked(nid)
+	var old *types.Node
+	if bs.nodeDeleteInfoStillCurrentLocked(nid, prefetched.node) {
+		old = prefetched.node.node
+	} else {
+		old, err = bs.getNodeLocked(nid)
+	}
+	if err == nil {
+		err = storecontract.ValidateNodeLiveVersion(old, prevNodeVersion)
+	}
 	if err == nil {
 		err = storecontract.ValidateNodeReplacement(old, nodeTombstone)
 	}
@@ -334,11 +379,11 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		bs.idxMu.Unlock()
 		return err
 	}
-	if err := bs.validateDeleteNodeRelTombstonesLocked(nid, relTombstones); err != nil {
+	if err := bs.validateDeleteNodeRelTombstonesLocked(nid, relTombstones, prefetched.rels); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
-	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid)
+	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched)
 	if fatalErr != nil {
 		bs.idxMu.Unlock()
 		return fatalErr
@@ -358,7 +403,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	return corruptErr
 }
 
-func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTombstones []RelTombstone) error {
+func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTombstones []RelTombstone, prefetched map[types.RelID]RelDeleteInfo) error {
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return ErrNodeNotFound
 	}
@@ -384,11 +429,20 @@ func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTomb
 		if err != nil {
 			return err
 		}
+		if err := storecontract.ValidateRelationshipLiveVersion(old, rt.PrevVersion); err != nil {
+			return err
+		}
 		if err := storecontract.ValidateRelationshipReplacement(old, rt.Tombstone); err != nil {
 			return err
 		}
 	}
 	for relID := range relIDs {
+		if info, ok := prefetched[relID]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+			if _, ok := tombed[relID]; !ok {
+				return fmt.Errorf("%w: missing relationship tombstone %d", ErrInvalidStoreMutation, relID)
+			}
+			continue
+		}
 		if _, err := bs.getRelLocked(relID); err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue
@@ -407,10 +461,10 @@ func marshalNodeToBytes(n *types.Node) ([]byte, error) {
 }
 
 func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, n); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, version, n); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -449,7 +503,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := decodeNodeWireForKey(w, id)
+		n, err := decodeNodeHistoryWireForKey(w, id, uint64(version))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
@@ -471,7 +525,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node version: %w", err)
 			}
-			decoded, err := decodeNodeWireForKey(w, id)
+			decoded, err := decodeNodeHistoryWireForKey(w, id, uint64(version))
 			if err != nil {
 				return fmt.Errorf("graph: decode node version: %w", err)
 			}
@@ -495,6 +549,21 @@ func (bs *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	return bs.getNodeHistoryByPrefix(prefix)
+}
+
+func (bs *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
+		return nil, err
+	}
+	id := nid.SnowflakeID()
+	prefix := storepkg.HistNodePrefix(id)
+	return bs.nodeHistoryVersionsFromPrefix(prefix, startVersion, limit)
 }
 
 func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
@@ -564,7 +633,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := decodeNodeWireForKey(w, expectedID)
+		n, err := decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
@@ -573,8 +642,112 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	return result, nil
 }
 
+func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint32, limit int) ([]*types.Node, error) {
+	expectedID := storepkg.ParseIDFromKey(prefix, 1)
+	pending, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, startVersion)
+	pendingKeys := make([]string, 0, len(pending))
+	for k := range pending {
+		pendingKeys = append(pendingKeys, k)
+	}
+	sort.Strings(pendingKeys)
+
+	result := make([]*types.Node, 0, capForLimit(limit))
+	reachedLimit := func() bool {
+		return limit > 0 && len(result) >= limit
+	}
+	emit := func(key string, data []byte) error {
+		var w storepkg.NodeWire
+		if err := msgpack.Unmarshal(data, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal node version: %w", err)
+		}
+		n, err := decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
+		if err != nil {
+			return fmt.Errorf("graph: decode node version: %w", err)
+		}
+		result = append(result, n.DeepCopy())
+		return nil
+	}
+
+	pendingIdx := 0
+	drainPendingBefore := func(bound string) error {
+		for pendingIdx < len(pendingKeys) && pendingKeys[pendingIdx] < bound {
+			if err := emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]]); err != nil {
+				return err
+			}
+			pendingIdx++
+			if reachedLimit() {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	seekKey := historyVersionSeekKey(prefix, startVersion)
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) != storepkg.SizeHistKey {
+				continue
+			}
+			if historyVersionFromKey(key) < uint64(startVersion) {
+				continue
+			}
+			k := string(key)
+			if err := drainPendingBefore(k); err != nil {
+				return err
+			}
+			if reachedLimit() {
+				return nil
+			}
+			if pendingIdx < len(pendingKeys) && pendingKeys[pendingIdx] == k {
+				if err := emit(k, pending[k]); err != nil {
+					return err
+				}
+				pendingIdx++
+				if reachedLimit() {
+					return nil
+				}
+				continue
+			}
+			if _, deleted := pendingDeletes[k]; deleted {
+				continue
+			}
+			if err := it.Item().Value(func(val []byte) error {
+				return emit(k, val)
+			}); err != nil {
+				return err
+			}
+			if reachedLimit() {
+				return nil
+			}
+		}
+		for pendingIdx < len(pendingKeys) {
+			if err := emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]]); err != nil {
+				return err
+			}
+			pendingIdx++
+			if reachedLimit() {
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
 func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
-	if err := bs.checkOpen(); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
@@ -583,6 +756,18 @@ func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	return bs.truncateHistoryByPrefix(prefix, keepVersions)
+}
+
+// TrimNodeHistoryFrom removes node history entries at or after minVersion.
+func (bs *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	prefix := storepkg.HistNodePrefix(nid.SnowflakeID())
+	return bs.trimHistoryFromPrefix(prefix, minVersion)
 }
 
 func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
@@ -623,6 +808,20 @@ func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	}
 }
 
+// MaxNodeHistoryID returns the highest node ID with version history visible to
+// this store. It includes pending buffered writes and the persisted Badger key
+// space, and returns zero when no node history exists.
+func (bs *Store) MaxNodeHistoryID() (types.NodeID, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
+	maxID, err := bs.maxHistoryID(storepkg.KeyHistNode)
+	if err != nil {
+		return 0, err
+	}
+	return types.NodeID(maxID), nil
+}
+
 func (bs *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	return bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
 }
@@ -644,7 +843,7 @@ func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	for id := range pending {
 		pendingSorted = append(pendingSorted, id)
 	}
-	sort.Slice(pendingSorted, func(i, j int) bool { return pendingSorted[i] < pendingSorted[j] })
+	storepkg.SortSnowflakeIDs(pendingSorted)
 
 	// Phase 2: seek-based scan of Badger. Walk pending and Badger streams in
 	// merge order, stopping at `limit`.

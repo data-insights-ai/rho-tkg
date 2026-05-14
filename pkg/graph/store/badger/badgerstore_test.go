@@ -2327,7 +2327,9 @@ func TestBadgerStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachNodeHistoryID", func() error {
 		var cbErr error
 		err := bs.ForEachNodeHistoryID(func(types.NodeID) bool {
-			cbErr = bs.PutNodeVersion(types.NodeID(1), 1, types.NewNode(types.NodeID(1), 1, nil))
+			n := types.NewNode(types.NodeID(1), 1, nil)
+			n.SetVersion(1)
+			cbErr = bs.PutNodeVersion(types.NodeID(1), 1, n)
 			return false
 		})
 		if err != nil {
@@ -2338,7 +2340,9 @@ func TestBadgerStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachRelHistoryID", func() error {
 		var cbErr error
 		err := bs.ForEachRelHistoryID(func(types.RelID) bool {
-			cbErr = bs.PutRelVersion(types.RelID(100), 1, rel)
+			snap := rel.DeepCopy()
+			snap.SetVersion(1)
+			cbErr = bs.PutRelVersion(types.RelID(100), 1, snap)
 			return false
 		})
 		if err != nil {

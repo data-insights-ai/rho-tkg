@@ -3,6 +3,8 @@ package types
 import (
 	"errors"
 	"fmt"
+	"math"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -100,6 +102,9 @@ func TestNodeNilReceiverMethodsFailClosed(t *testing.T) {
 	if err := n.SetProperties(nil); !errors.Is(err, ErrNilNode) {
 		t.Fatalf("SetProperties(nil) = %v, want ErrNilNode", err)
 	}
+	if err := n.SetOwnedProperties(OwnedPropertySlice{}); !errors.Is(err, ErrNilNode) {
+		t.Fatalf("SetOwnedProperties(nil receiver) = %v, want ErrNilNode", err)
+	}
 	if err := n.SetProperty("x", int64(1)); !errors.Is(err, ErrNilNode) {
 		t.Fatalf("SetProperty = %v, want ErrNilNode", err)
 	}
@@ -136,8 +141,57 @@ func TestNodeNilReceiverMethodsFailClosed(t *testing.T) {
 	if n.RemoveLabelTokenRaw(2) {
 		t.Fatal("RemoveLabelTokenRaw = true, want false")
 	}
+	n.SetLabelTokensRaw(1, []uint16{2})
+	if n.PrimaryLabelToken() != 0 {
+		t.Fatalf("SetLabelTokensRaw mutated nil receiver")
+	}
 	if cp := n.DeepCopy(); cp != nil {
 		t.Fatalf("DeepCopy() = %v, want nil", cp)
+	}
+}
+
+func TestNodeSetOwnedProperties(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	owned, err := NewOwnedPropertySlice(map[string]any{"name": "case-1"})
+	if err != nil {
+		t.Fatalf("NewOwnedPropertySlice: %v", err)
+	}
+	if err := n.SetOwnedProperties(owned); err != nil {
+		t.Fatalf("SetOwnedProperties: %v", err)
+	}
+	got, ok := n.GetProperty("name")
+	if !ok || got != "case-1" {
+		t.Fatalf("GetProperty(name) = (%v, %v), want (case-1, true)", got, ok)
+	}
+}
+
+func TestNodeSetOwnedPropertiesConsumesOwnership(t *testing.T) {
+	t.Parallel()
+
+	owned, err := NewOwnedPropertySlice(map[string]any{"name": []string{"case-1"}})
+	if err != nil {
+		t.Fatalf("NewOwnedPropertySlice: %v", err)
+	}
+	alias := owned
+
+	first := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	second := NewNode(NodeID(snowflake.ID(2)), 10, nil)
+	if err := first.SetOwnedProperties(owned); err != nil {
+		t.Fatalf("first SetOwnedProperties: %v", err)
+	}
+	if err := second.SetOwnedProperties(alias); err != nil {
+		t.Fatalf("second SetOwnedProperties: %v", err)
+	}
+	if _, ok := second.GetProperty("name"); ok {
+		t.Fatal("reused OwnedPropertySlice installed properties on second node")
+	}
+	if err := first.SetProperty("name", []string{"mutated"}); err != nil {
+		t.Fatalf("mutate first: %v", err)
+	}
+	if _, ok := second.GetProperty("name"); ok {
+		t.Fatal("mutating first node affected second node after owned reuse")
 	}
 }
 
@@ -167,6 +221,30 @@ func TestNewNodeDeduplicatesExtraLabels(t *testing.T) {
 	}
 	if n.LabelTokenCount() != 3 {
 		t.Errorf("LabelTokenCount() = %d, want 3", n.LabelTokenCount())
+	}
+}
+
+func TestNodeSetLabelTokensRawCanonicalizesExtras(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20, 30})
+	n.SetLabelTokensRaw(40, []uint16{40, 50, 50, 0})
+
+	if got := n.PrimaryLabelToken(); got != labelToken(40) {
+		t.Fatalf("PrimaryLabelToken() = %d, want 40", got)
+	}
+	extras := n.ExtraLabelTokens()
+	if len(extras) != 2 {
+		t.Fatalf("ExtraLabelTokens len = %d, want 2", len(extras))
+	}
+	if extras[0] != labelToken(50) || extras[1] != labelToken(0) {
+		t.Fatalf("ExtraLabelTokens = %v, want [50 0]", extras)
+	}
+	if n.HasLabelTokenRaw(40) != true || n.HasLabelTokenRaw(50) != true {
+		t.Fatal("SetLabelTokensRaw did not install expected labels")
+	}
+	if n.HasLabelTokenRaw(0) {
+		t.Fatal("HasLabelTokenRaw(0) = true, want false")
 	}
 }
 
@@ -203,6 +281,33 @@ func TestNodeLabelTokenRawAt(t *testing.T) {
 		if got := n.LabelTokenRawAt(tc.index); got != tc.want {
 			t.Fatalf("LabelTokenRawAt(%d) = %d, want %d", tc.index, got, tc.want)
 		}
+	}
+}
+
+func TestAddLabelTokenRawBranches(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{20})
+	if n.AddLabelTokenRaw(0) {
+		t.Fatal("AddLabelTokenRaw(0) = true, want false")
+	}
+	if n.AddLabelTokenRaw(10) {
+		t.Fatal("AddLabelTokenRaw(primary) = true, want false")
+	}
+	if n.AddLabelTokenRaw(20) {
+		t.Fatal("AddLabelTokenRaw(existing extra) = true, want false")
+	}
+	if !n.AddLabelTokenRaw(30) {
+		t.Fatal("AddLabelTokenRaw(new extra) = false, want true")
+	}
+	if n.AddLabelTokenRaw(30) {
+		t.Fatal("AddLabelTokenRaw(duplicate added extra) = true, want false")
+	}
+	if !n.HasLabelTokenRaw(30) {
+		t.Fatal("HasLabelTokenRaw(30) = false after add, want true")
+	}
+	if n.LabelTokenCount() != 3 {
+		t.Fatalf("LabelTokenCount() = %d, want 3", n.LabelTokenCount())
 	}
 }
 
@@ -385,6 +490,214 @@ func TestNodeGetProperty(t *testing.T) {
 	_, found = n.GetProperty("missing")
 	if found {
 		t.Error("GetProperty(\"missing\") found, want not found")
+	}
+}
+
+func TestNodeGetPropertyReturnsIndependentValue(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	if err := n.SetProperty("meta", map[string]any{
+		"tags": []any{"alpha", "beta"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := n.GetProperty("meta")
+	if !ok {
+		t.Fatal("GetProperty(\"meta\") missing")
+	}
+	got.(map[string]any)["tags"].([]any)[0] = "mutated"
+
+	again, ok := n.GetProperty("meta")
+	if !ok {
+		t.Fatal("GetProperty(\"meta\") missing after returned-value mutation")
+	}
+	if again.(map[string]any)["tags"].([]any)[0] != "alpha" {
+		t.Fatalf("GetProperty returned internal mutable state: %v", again)
+	}
+}
+
+func TestNodePropertyValueEqual(t *testing.T) {
+	t.Parallel()
+
+	var nilNode *Node
+	if found, equal := nilNode.PropertyValueEqual("score", math.NaN()); found || equal {
+		t.Fatalf("nil PropertyValueEqual = (%v, %v), want (false, false)", found, equal)
+	}
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	if err := n.SetProperty("score", math.NaN()); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("trail", []float32{1, float32(math.NaN())}); err != nil {
+		t.Fatal(err)
+	}
+
+	if found, equal := n.PropertyValueEqual("score", math.NaN()); !found || !equal {
+		t.Fatalf("PropertyValueEqual(score) = (%v, %v), want (true, true)", found, equal)
+	}
+	if found, equal := n.PropertyValueEqual("trail", []float32{1, float32(math.NaN())}); !found || !equal {
+		t.Fatalf("PropertyValueEqual(trail) = (%v, %v), want (true, true)", found, equal)
+	}
+	if found, equal := n.PropertyValueEqual("trail", []float64{1, math.NaN()}); !found || equal {
+		t.Fatalf("PropertyValueEqual(type mismatch) = (%v, %v), want (true, false)", found, equal)
+	}
+	if found, equal := n.PropertyValueEqual("missing", nil); found || equal {
+		t.Fatalf("PropertyValueEqual(missing) = (%v, %v), want (false, false)", found, equal)
+	}
+
+	var nilTrail []float32
+	if err := n.SetProperty("nil_trail", nilTrail); err != nil {
+		t.Fatal(err)
+	}
+	if found, equal := n.PropertyValueEqual("nil_trail", nilTrail); !found || !equal {
+		t.Fatalf("PropertyValueEqual(nil_trail typed nil) = (%v, %v), want (true, true)", found, equal)
+	}
+	if found, equal := n.PropertyValueEqual("nil_trail", []float32{}); !found || equal {
+		t.Fatalf("PropertyValueEqual(nil_trail empty) = (%v, %v), want (true, false)", found, equal)
+	}
+
+	var nilMeta map[string]any
+	if err := n.SetProperty("nil_meta", nilMeta); err != nil {
+		t.Fatal(err)
+	}
+	if found, equal := n.PropertyValueEqual("nil_meta", nilMeta); !found || !equal {
+		t.Fatalf("PropertyValueEqual(nil_meta typed nil) = (%v, %v), want (true, true)", found, equal)
+	}
+	if found, equal := n.PropertyValueEqual("nil_meta", map[string]any{}); !found || equal {
+		t.Fatalf("PropertyValueEqual(nil_meta empty) = (%v, %v), want (true, false)", found, equal)
+	}
+}
+
+func TestNodeIndexablePropertyValueKey(t *testing.T) {
+	t.Parallel()
+
+	var nilNode *Node
+	if got, ok := nilNode.IndexablePropertyValueKey("name"); got != "" || ok {
+		t.Fatalf("nil IndexablePropertyValueKey = (%q, %v), want (\"\", false)", got, ok)
+	}
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	if err := n.SetProperty("name", "Alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("meta", map[string]any{"tags": []any{"alpha"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("zero", math.Copysign(0, -1)); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, ok := n.IndexablePropertyValueKey("name"); got != "s:Alice" || !ok {
+		t.Fatalf("IndexablePropertyValueKey(name) = (%q, %v), want (s:Alice, true)", got, ok)
+	}
+	if got, ok := n.IndexablePropertyValueKey("zero"); got != "f64:0" || !ok {
+		t.Fatalf("IndexablePropertyValueKey(zero) = (%q, %v), want (f64:0, true)", got, ok)
+	}
+	if got, ok := n.IndexablePropertyValueKey("meta"); got != "" || !ok {
+		t.Fatalf("IndexablePropertyValueKey(meta) = (%q, %v), want (\"\", true)", got, ok)
+	}
+	if got, ok := n.IndexablePropertyValueKey("missing"); got != "" || ok {
+		t.Fatalf("IndexablePropertyValueKey(missing) = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+func TestNodeForEachIndexablePropertyValueKey(t *testing.T) {
+	t.Parallel()
+
+	var nilNode *Node
+	nilNode.ForEachIndexablePropertyValueKey(func(string, string) bool {
+		t.Fatal("nil node invoked callback")
+		return false
+	})
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	if err := n.SetProperty("name", "Alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("age", int64(42)); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("meta", map[string]any{"tags": []any{"alpha"}}); err != nil {
+		t.Fatal(err)
+	}
+	n.ForEachIndexablePropertyValueKey(nil)
+
+	got := make(map[string]string)
+	n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		got[propertyKey] = valueKey
+		return true
+	})
+	want := map[string]string{"age": "i64:42", "name": "s:Alice"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ForEachIndexablePropertyValueKey = %v, want %v", got, want)
+	}
+
+	calls := 0
+	n.ForEachIndexablePropertyValueKey(func(string, string) bool {
+		calls++
+		return false
+	})
+	if calls != 1 {
+		t.Fatalf("early-stop callback calls = %d, want 1", calls)
+	}
+}
+
+func TestNodeFloat32SlicePropertyCopy(t *testing.T) {
+	t.Parallel()
+
+	var nilNode *Node
+	if got, ok := nilNode.Float32SlicePropertyCopy("embedding"); got != nil || ok {
+		t.Fatalf("nil Float32SlicePropertyCopy = (%v, %v), want (nil, false)", got, ok)
+	}
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	if err := n.SetProperty("embedding", []float32{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("wire", []any{float32(1), float64(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("bad", []any{float32(1), "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetProperty("tags", []string{"a"}); err != nil {
+		t.Fatal(err)
+	}
+	var nilEmbedding []float32
+	if err := n.SetProperty("nil_embedding", nilEmbedding); err != nil {
+		t.Fatal(err)
+	}
+	var nilWire []any
+	if err := n.SetProperty("nil_wire", nilWire); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := n.Float32SlicePropertyCopy("embedding")
+	if !ok || len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != 3 {
+		t.Fatalf("Float32SlicePropertyCopy(embedding) = (%v, %v), want ([1 2 3], true)", got, ok)
+	}
+	got[0] = 99
+	again, ok := n.Float32SlicePropertyCopy("embedding")
+	if !ok || again[0] != 1 {
+		t.Fatalf("Float32SlicePropertyCopy returned alias; second read = (%v, %v), want first value 1", again, ok)
+	}
+
+	wire, ok := n.Float32SlicePropertyCopy("wire")
+	if !ok || len(wire) != 2 || wire[0] != 1 || wire[1] != 2 {
+		t.Fatalf("Float32SlicePropertyCopy(wire) = (%v, %v), want ([1 2], true)", wire, ok)
+	}
+	if got, ok := n.Float32SlicePropertyCopy("nil_embedding"); got != nil || !ok {
+		t.Fatalf("Float32SlicePropertyCopy(nil_embedding) = (%v, %v), want (nil, true)", got, ok)
+	}
+	if got, ok := n.Float32SlicePropertyCopy("nil_wire"); got != nil || !ok {
+		t.Fatalf("Float32SlicePropertyCopy(nil_wire) = (%v, %v), want (nil, true)", got, ok)
+	}
+	for _, key := range []string{"bad", "tags", "missing"} {
+		if got, ok := n.Float32SlicePropertyCopy(key); got != nil || ok {
+			t.Fatalf("Float32SlicePropertyCopy(%s) = (%v, %v), want (nil, false)", key, got, ok)
+		}
 	}
 }
 
@@ -674,6 +987,26 @@ func TestNodeSetPropertiesCanonicalizesAndCopies(t *testing.T) {
 	gotTags := got.([]string)
 	if gotTags[0] != "alpha" {
 		t.Fatalf("SetProperties retained caller slice alias: %q", gotTags[0])
+	}
+}
+
+func TestNodeSetPropertiesDuplicateKeyValidatesWinningValueOnly(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
+	ps := PropertySlice{
+		{Key: "z", Value: make(chan int)},
+		{Key: "a", Value: "kept"},
+		{Key: "z", Value: "winner"},
+	}
+	if err := n.SetProperties(ps); err != nil {
+		t.Fatalf("SetProperties duplicate overwritten invalid value: %v", err)
+	}
+	if val, ok := n.GetProperty("z"); !ok || val != "winner" {
+		t.Fatalf("duplicate key value = (%v, %v), want (winner, true)", val, ok)
+	}
+	if got := n.PropertyCount(); got != 2 {
+		t.Fatalf("PropertyCount = %d, want 2", got)
 	}
 }
 

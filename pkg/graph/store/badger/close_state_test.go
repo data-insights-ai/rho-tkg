@@ -21,6 +21,41 @@ func TestBadgerStoreNilLifecycleReturnsNilStore(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreNilNoErrorHelpersReturnZero(t *testing.T) {
+	t.Parallel()
+	var bs *Store
+	if bs.HasNodeID(snowflake.ID(1)) {
+		t.Fatal("nil HasNodeID returned true")
+	}
+	if bs.HasRelID(snowflake.ID(1)) {
+		t.Fatal("nil HasRelID returned true")
+	}
+	if ids := bs.IncomingRelIDs(snowflake.ID(1), 0); ids != nil {
+		t.Fatalf("nil IncomingRelIDs = %v, want nil", ids)
+	}
+	if entries := bs.IncomingIndexEntries(); entries != nil {
+		t.Fatalf("nil IncomingIndexEntries = %v, want nil", entries)
+	}
+	if ids := bs.OutgoingRelIDs(snowflake.ID(1)); ids != nil {
+		t.Fatalf("nil OutgoingRelIDs = %v, want nil", ids)
+	}
+	if hits := bs.NodeCacheHits(); hits != 0 {
+		t.Fatalf("nil NodeCacheHits = %d, want 0", hits)
+	}
+	if misses := bs.NodeCacheMisses(); misses != 0 {
+		t.Fatalf("nil NodeCacheMisses = %d, want 0", misses)
+	}
+	if hits := bs.RelCacheHits(); hits != 0 {
+		t.Fatalf("nil RelCacheHits = %d, want 0", hits)
+	}
+	if misses := bs.RelCacheMisses(); misses != 0 {
+		t.Fatalf("nil RelCacheMisses = %d, want 0", misses)
+	}
+	if stats := bs.IndexRebuildStats(); stats != (IndexRebuildStats{}) {
+		t.Fatalf("nil IndexRebuildStats = %+v, want zero", stats)
+	}
+}
+
 func TestBadgerStoreZeroValueLifecycleReturnsStoreClosed(t *testing.T) {
 	t.Parallel()
 	var bs Store
@@ -32,6 +67,147 @@ func TestBadgerStoreZeroValueLifecycleReturnsStoreClosed(t *testing.T) {
 	}
 	if _, err := bs.GetNode(types.NodeID(1)); !errors.Is(err, ErrStoreClosed) {
 		t.Fatalf("GetNode zero-value store = %v, want ErrStoreClosed", err)
+	}
+}
+
+func TestBadgerStoreClosingStateFailsPublicOperations(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+	bs.closing.Store(true)
+
+	checks := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "PutNode", run: func() error { return bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)) }},
+		{name: "GetNode", run: func() error { _, err := bs.GetNode(types.NodeID(1)); return err }},
+		{name: "Flush", run: func() error { return bs.Flush() }},
+	}
+	for _, check := range checks {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("%s while closing = %v, want ErrStoreClosed", check.name, err)
+		}
+	}
+}
+
+func TestBadgerStoreIndexAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	checks := func(bs *Store) []struct {
+		name string
+		run  func() error
+	} {
+		return []struct {
+			name string
+			run  func() error
+		}{
+			{name: "CreatePropertyIndex", run: func() error { return bs.CreatePropertyIndex(0, "") }},
+			{name: "DropPropertyIndex", run: func() error { return bs.DropPropertyIndex(0, "") }},
+			{name: "CreateTemporalIndex", run: func() error { return bs.CreateTemporalIndex(0) }},
+			{name: "DropTemporalIndex", run: func() error { return bs.DropTemporalIndex(0) }},
+			{name: "CreateHighFrequencyIndex", run: func() error { return bs.CreateHighFrequencyIndex(0, 0) }},
+			{name: "DropHighFrequencyIndex", run: func() error { return bs.DropHighFrequencyIndex(0) }},
+			{name: "TemporalIndexState", run: func() error {
+				_, _, _, err := bs.TemporalIndexState(0)
+				return err
+			}},
+			{name: "CreateVectorIndex", run: func() error { return bs.CreateVectorIndex(0, "", 0, DistanceMetric(99)) }},
+			{name: "DropVectorIndex", run: func() error { return bs.DropVectorIndex(0, "") }},
+			{name: "SearchNearestNodes", run: func() error {
+				_, err := bs.SearchNearestNodes(0, "", nil, -1, QueryOpts{Limit: -1})
+				return err
+			}},
+			{name: "SearchNearestFiltered", run: func() error {
+				_, err := bs.SearchNearestFiltered(0, "", nil, -1, nil)
+				return err
+			}},
+			{name: "NodesByLabelAndProperty", run: func() error {
+				_, err := bs.NodesByLabelAndProperty(0, "", nil, QueryOpts{Limit: -1})
+				return err
+			}},
+		}
+	}
+
+	var nilStore *Store
+	for _, check := range checks(nilStore) {
+		if err := check.run(); !errors.Is(err, ErrNilStore) {
+			t.Fatalf("nil %s error = %v, want ErrNilStore", check.name, err)
+		}
+	}
+
+	bs := newTestBadgerStore(t)
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, check := range checks(bs) {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("closed %s error = %v, want ErrStoreClosed", check.name, err)
+		}
+	}
+}
+
+func TestBadgerStoreMutationAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	checks := func(bs *Store) []struct {
+		name string
+		run  func() error
+	} {
+		return []struct {
+			name string
+			run  func() error
+		}{
+			{name: "PutNode", run: func() error { return bs.PutNode(nil) }},
+			{name: "ReplaceNode", run: func() error { return bs.ReplaceNode(nil) }},
+			{name: "DeleteNode", run: func() error { return bs.DeleteNode(0) }},
+			{name: "DeleteNodeCascade", run: func() error { return bs.DeleteNodeCascade(0) }},
+			{name: "RemoveNodeLabelToken", run: func() error { return bs.RemoveNodeLabelToken(0, 0, nil) }},
+			{name: "AddNodeLabelToken", run: func() error { return bs.AddNodeLabelToken(0, 0, nil) }},
+			{name: "PutRelationship", run: func() error { return bs.PutRelationship(nil) }},
+			{name: "ReplaceRelationship", run: func() error { return bs.ReplaceRelationship(nil) }},
+			{name: "DeleteRelationship", run: func() error { return bs.DeleteRelationship(0) }},
+			{name: "PutRelEntityAndOut", run: func() error { return bs.PutRelEntityAndOut(nil) }},
+			{name: "PutRelIncoming", run: func() error { return bs.PutRelIncoming(0, 0, 0, 0) }},
+			{name: "DeleteRelEntityAndOut", run: func() error {
+				_, err := bs.DeleteRelEntityAndOut(0)
+				return err
+			}},
+			{name: "DeleteRelIncoming", run: func() error { return bs.DeleteRelIncoming(RelDeleteInfo{}) }},
+			{name: "DeleteIncomingByRelID", run: func() error { return bs.DeleteIncomingByRelID(0, 0) }},
+			{name: "ScanAndDeleteIncoming", run: func() error { return bs.ScanAndDeleteIncoming(0, 0) }},
+			{name: "PurgeOrphanRelationshipIndexes", run: func() error { return bs.PurgeOrphanRelationshipIndexes(0) }},
+			{name: "RemoveNodeLabelTokenWithHistory", run: func() error {
+				return bs.RemoveNodeLabelTokenWithHistory(0, 0, nil, 0, nil)
+			}},
+			{name: "AddNodeLabelTokenWithHistory", run: func() error {
+				return bs.AddNodeLabelTokenWithHistory(0, 0, nil, 0, nil)
+			}},
+			{name: "ReplaceNodeWithHistory", run: func() error { return bs.ReplaceNodeWithHistory(nil, 0, nil) }},
+			{name: "DeleteNodeWithHistory", run: func() error { return bs.DeleteNodeWithHistory(0, 0, nil, nil) }},
+			{name: "PutNodeVersion", run: func() error { return bs.PutNodeVersion(0, 0, nil) }},
+			{name: "TrimNodeHistoryFrom", run: func() error { return bs.TrimNodeHistoryFrom(0, 0) }},
+			{name: "ReplaceRelWithHistory", run: func() error { return bs.ReplaceRelWithHistory(nil, 0, nil) }},
+			{name: "DeleteRelWithHistory", run: func() error { return bs.DeleteRelWithHistory(0, 0, nil) }},
+			{name: "PutRelVersion", run: func() error { return bs.PutRelVersion(0, 0, nil) }},
+			{name: "TrimRelHistoryFrom", run: func() error { return bs.TrimRelHistoryFrom(0, 0) }},
+		}
+	}
+
+	var nilStore *Store
+	for _, check := range checks(nilStore) {
+		if err := check.run(); !errors.Is(err, ErrNilStore) {
+			t.Fatalf("nil %s error = %v, want ErrNilStore", check.name, err)
+		}
+	}
+
+	bs := newTestBadgerStore(t)
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, check := range checks(bs) {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("closed %s error = %v, want ErrStoreClosed", check.name, err)
+		}
 	}
 }
 
@@ -151,6 +327,7 @@ func TestBadgerStorePublicAPIsReturnStoreClosedAfterClose(t *testing.T) {
 		}},
 		{name: "AllNodeHistoryIDs", run: func() error { _, err := bs.AllNodeHistoryIDs(); return err }},
 		{name: "AllNodeHistoryIDsFrom", run: func() error { _, err := bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0); return err }},
+		{name: "MaxNodeHistoryID", run: func() error { _, err := bs.MaxNodeHistoryID(); return err }},
 		{name: "ReplaceRelWithHistory", run: func() error { return bs.ReplaceRelWithHistory(replacementRel, 0, rel) }},
 		{name: "DeleteRelWithHistory", run: func() error { return bs.DeleteRelWithHistory(types.RelID(100), 0, rel) }},
 		{name: "PutRelVersion", run: func() error { return bs.PutRelVersion(types.RelID(100), 1, rel) }},
@@ -162,6 +339,7 @@ func TestBadgerStorePublicAPIsReturnStoreClosedAfterClose(t *testing.T) {
 		}},
 		{name: "AllRelHistoryIDs", run: func() error { _, err := bs.AllRelHistoryIDs(); return err }},
 		{name: "AllRelHistoryIDsFrom", run: func() error { _, err := bs.AllRelHistoryIDsFrom(types.RelID(0), 0); return err }},
+		{name: "MaxRelHistoryID", run: func() error { _, err := bs.MaxRelHistoryID(); return err }},
 		{name: "CreatePropertyIndex", run: func() error { return bs.CreatePropertyIndex(1, "other") }},
 		{name: "DropPropertyIndex", run: func() error { return bs.DropPropertyIndex(1, "name") }},
 		{name: "CreateTemporalIndex", run: func() error { return bs.CreateTemporalIndex(2) }},

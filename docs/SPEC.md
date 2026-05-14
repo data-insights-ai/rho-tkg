@@ -234,6 +234,7 @@ func (n *Node) InternalID() nodeID
 
 ```go
 func (n *Node) GetProperty(key string) (any, bool)         // binary search
+func (n *Node) PropertyValueEqual(key string, expected any) (bool, bool) // found + exact property equality without copying
 func (n *Node) SetProperty(key string, value any) error    // binary search insert, rejects tkg_ prefix, deep-copies reference values
 func (n *Node) SetProperties(ps PropertySlice) error       // validate, sort, deduplicate, deep-copy
 func (n *Node) Properties() PropertySlice                  // defensive deep copy
@@ -268,7 +269,7 @@ func (r *Relationship) EndNodeID() nodeID
 func (r *Relationship) InternalID() relID
 ```
 
-**Property methods:** Same as Node — `GetProperty`, `SetProperty` (with `tkg_` rejection and reference-value copy), `SetProperties` (validate, sort, de-duplicate, deep-copy), `Properties`, `PropertiesMap`.
+**Property methods:** Same as Node — `GetProperty`, `PropertyValueEqual` (found + exact property equality without copying), `SetProperty` (with `tkg_` rejection and reference-value copy), `SetProperties` (validate, sort, de-duplicate, deep-copy), `Properties`, `PropertiesMap`.
 
 ---
 
@@ -647,7 +648,9 @@ r, err := g.Rels.Add("KNOWS", a, b, nil)
 n, err := g.Nodes.Get(a.ID())
 
 // By label + property (uses the property index when present, falls back to
-// label scan + property filter when PropertyIndexCapability is absent):
+// label scan + property filter when PropertyIndexCapability is absent; scalar
+// float matching canonicalizes signed zero and NaN payloads within the same
+// concrete type):
 matches, err := g.Nodes.ByLabelAndProperty("User", "name", "Alice", store.QueryOpts{})
 
 // All nodes carrying a label:
@@ -892,7 +895,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43m2 | By-ID relationship creates preserve endpoint integrity | `AddByID` and `AddByIDIfAbsent` use endpoint IDs as input, but create-time behavior still fetches live endpoints under endpoint locks, captures `FromNodeHash`/`ToNodeHash`, enforces constraints, and defers relationship-type token allocation until endpoint fetches succeed |
 | 43n | Failed batch relationship creates restore queue-time state | Relationship pointers returned from `BatchBuilder.AddRelationship` must not retain execute-time `TxFrom`, endpoint hashes, or real type tokens unless the relationship create commits |
 | 43o | Batch update queues snapshot mutable inputs | Mutating caller-owned update maps, nested property slices/maps, or provenance signatures after queueing must not change what `Execute` applies |
-| 43p | Metadata-blind rehashes preserve non-hash integrity metadata | `CloseVersion`, node label add/remove, node property CAS, and in-place updates recompute `Hash`/`PrevHash` without clearing provenance, signature, authorization, or relationship endpoint hashes |
+| 43p | Metadata-blind rehashes preserve non-hash integrity metadata | `CloseVersion`, node label add/remove, node/relationship property CAS, and in-place updates recompute `Hash`/`PrevHash` without clearing provenance, signature, authorization, or relationship endpoint hashes |
 | 43q | Temporal label queries validate malformed targets | `g.Temporal.NodesByLabelAt` rejects empty, whitespace-only, and overlong labels before registry lookup instead of treating malformed labels as unregistered empty namespaces |
 | 43r | Registry token helpers enforce name limits | `g.Resolve.LabelToken` and `RelTypeToken` reject empty, whitespace-only, and overlong names before registry allocation; boolean name helpers fail closed for malformed inputs |
 | 43s | Registry import and rehydration enforce name limits | `IO.Import` and graph construction from persisted registries validate label/type names against active `MaxNameLength` before accepting serialized or stored mappings |

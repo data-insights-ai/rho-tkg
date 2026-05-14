@@ -55,6 +55,72 @@ func (c *Core) relValidFrom(r *types.Relationship) types.Instant {
 	return types.Instant(c.relIDGen.CreatedAt(r.ID().SnowflakeID()).UnixMilli())
 }
 
+func validInstantAfter(at, start types.Instant) types.Instant {
+	if at <= start {
+		return start + 1
+	}
+	return at
+}
+
+func (c *Core) deleteInstantForNodeCascade(current *types.Node, outRels, inRels []*types.Relationship) types.Instant {
+	at := validInstantAfter(c.now(), c.nodeValidFrom(current))
+	for _, r := range outRels {
+		at = validInstantAfter(at, c.relValidFrom(r))
+	}
+	for _, r := range inRels {
+		at = validInstantAfter(at, c.relValidFrom(r))
+	}
+	return at
+}
+
+func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.Instant {
+	return validInstantAfter(c.now(), c.relValidFrom(current))
+}
+
+func (c *Core) nodeCurrentVersionStart(n *types.Node) types.Instant {
+	if n.Version() != 0 {
+		if tm := n.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			return tm.UpdatedAt
+		}
+	}
+	return c.nodeValidFrom(n)
+}
+
+func (c *Core) relCurrentVersionStart(r *types.Relationship) types.Instant {
+	if r.Version() != 0 {
+		if tm := r.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+			return tm.UpdatedAt
+		}
+	}
+	return c.relValidFrom(r)
+}
+
+func (c *Core) nodeVersionUpdateInstant(current *types.Node) types.Instant {
+	return validInstantAfter(c.now(), c.nodeCurrentVersionStart(current))
+}
+
+func (c *Core) relVersionUpdateInstant(current *types.Relationship) types.Instant {
+	return validInstantAfter(c.now(), c.relCurrentVersionStart(current))
+}
+
+func isClosedTemporal(tm *types.TemporalMetadata) bool {
+	return tm != nil && tm.ValidTo != 0
+}
+
+func rejectClosedNodeMutation(n *types.Node) error {
+	if isClosedTemporal(n.Temporal()) {
+		return ErrAlreadyClosed
+	}
+	return nil
+}
+
+func rejectClosedRelMutation(r *types.Relationship) error {
+	if isClosedTemporal(r.Temporal()) {
+		return ErrAlreadyClosed
+	}
+	return nil
+}
+
 // isNodeValidAt checks if a node is valid at the given instant.
 // Valid when: effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t).
 func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
@@ -109,9 +175,12 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 	}
 	// vEnd == 0 means open-ended (current version).
 
-	// Explicit ValidFrom/ValidTo override derived values.
+	// Explicit ValidFrom/ValidTo override derived values. A create-time
+	// ValidFrom is copied into later versions by ordinary property updates; do
+	// not let that inherited value make the latest version valid all the way
+	// back to the genesis window.
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 {
+		if tm.ValidFrom != 0 && !nodeVersionInheritedValidFrom(chain, i, tm) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -120,6 +189,14 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 	}
 
 	return vStart, vEnd
+}
+
+func nodeVersionInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetadata) bool {
+	if i == 0 || tm.UpdatedAt == 0 {
+		return false
+	}
+	prevTM := chain[i-1].Temporal()
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // resolveRelVersionAt finds the version valid at time t from a pre-built chain.
@@ -160,7 +237,7 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 	}
 
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 {
+		if tm.ValidFrom != 0 && !relVersionInheritedValidFrom(chain, i, tm) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -169,6 +246,14 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 	}
 
 	return vStart, vEnd
+}
+
+func relVersionInheritedValidFrom(chain []*types.Relationship, i int, tm *types.TemporalMetadata) bool {
+	if i == 0 || tm.UpdatedAt == 0 {
+		return false
+	}
+	prevTM := chain[i-1].Temporal()
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // --- Private helpers for history-aware queries ---
@@ -260,14 +345,14 @@ func (c *Core) collectKnownNodeIDsByDepth(depth storepkg.ShardDepth) ([]types.No
 
 	// Phase 1: collect unique IDs (no store method calls in callbacks — lock reentrancy).
 	if depth == storepkg.DepthAll {
-		if err := c.store.ForEachNodeID(func(id types.NodeID) bool {
+		if err := c.forEachNodeID(func(id types.NodeID) bool {
 			seen[id] = struct{}{}
 			return true
 		}); err != nil {
 			return nil, err
 		}
 	} else {
-		ids, err := c.store.AllNodeIDs(storepkg.QueryOpts{Depth: depth})
+		ids, err := c.allNodeIDs(storepkg.QueryOpts{Depth: depth})
 		if err != nil {
 			return nil, err
 		}
@@ -317,14 +402,14 @@ func (c *Core) collectKnownRelIDsByDepth(depth storepkg.ShardDepth) ([]types.Rel
 
 	// Phase 1: collect unique IDs.
 	if depth == storepkg.DepthAll {
-		if err := c.store.ForEachRelID(func(id types.RelID) bool {
+		if err := c.forEachRelID(func(id types.RelID) bool {
 			seen[id] = struct{}{}
 			return true
 		}); err != nil {
 			return nil, err
 		}
 	} else {
-		ids, err := c.store.AllRelIDs(storepkg.QueryOpts{Depth: depth})
+		ids, err := c.allRelIDs(storepkg.QueryOpts{Depth: depth})
 		if err != nil {
 			return nil, err
 		}
@@ -347,21 +432,61 @@ func (c *Core) collectKnownRelIDsByDepth(depth storepkg.ShardDepth) ([]types.Rel
 }
 
 func (c *Core) forEachNodeHistoryIDByDepth(depth storepkg.ShardDepth, fn func(types.NodeID) bool) error {
+	wrapped := fn
+	if !c.storeRowsTrust {
+		var invalid error
+		wrapped = func(id types.NodeID) bool {
+			if err := storepkg.ValidateNodeID(id); err != nil {
+				invalid = err
+				return false
+			}
+			return fn(id)
+		}
+		err := c.forEachNodeHistoryIDByDepthTrusted(depth, wrapped)
+		if invalid != nil {
+			return invalid
+		}
+		return err
+	}
+	return c.forEachNodeHistoryIDByDepthTrusted(depth, wrapped)
+}
+
+func (c *Core) forEachNodeHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn func(types.NodeID) bool) error {
 	if depth == storepkg.DepthAll {
 		return c.store.ForEachNodeHistoryID(fn)
 	}
-	if cap, ok := c.store.(storepkg.DepthHistoryIterationCapability); ok {
-		return cap.ForEachNodeHistoryIDByDepth(depth, fn)
+	if c.depthHistory != nil {
+		return c.depthHistory.ForEachNodeHistoryIDByDepth(depth, fn)
 	}
 	return c.store.ForEachNodeHistoryID(fn)
 }
 
 func (c *Core) forEachRelHistoryIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	wrapped := fn
+	if !c.storeRowsTrust {
+		var invalid error
+		wrapped = func(id types.RelID) bool {
+			if err := storepkg.ValidateRelID(id); err != nil {
+				invalid = err
+				return false
+			}
+			return fn(id)
+		}
+		err := c.forEachRelHistoryIDByDepthTrusted(depth, wrapped)
+		if invalid != nil {
+			return invalid
+		}
+		return err
+	}
+	return c.forEachRelHistoryIDByDepthTrusted(depth, wrapped)
+}
+
+func (c *Core) forEachRelHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
 	if depth == storepkg.DepthAll {
 		return c.store.ForEachRelHistoryID(fn)
 	}
-	if cap, ok := c.store.(storepkg.DepthHistoryIterationCapability); ok {
-		return cap.ForEachRelHistoryIDByDepth(depth, fn)
+	if c.depthHistory != nil {
+		return c.depthHistory.ForEachRelHistoryIDByDepth(depth, fn)
 	}
 	return c.store.ForEachRelHistoryID(fn)
 }
@@ -443,12 +568,12 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 	// between iterations could be included or excluded
 	// non-deterministically. The entry-point resolution gives every
 	// candidate the same upper bound.
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 
-	history, err := c.store.GetNodeHistory(id)
+	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -479,12 +604,12 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (c *Core) findRelVersionMatchingDuring(id types.RelID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	// See findNodeVersionMatchingDuring: callers must pre-resolve end == 0.
-	current, err := c.store.GetRelationship(id)
+	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 
-	history, err := c.store.GetRelHistory(id)
+	history, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,6 @@
 package tiered
 
 import (
-	"sync"
-
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -22,7 +19,12 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refRels, err := ts.refShard.AllRelationships(stripDepth(opts))
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refRels, err := ref.AllRelationships(stripDepth(opts))
+	refCheckin()
 	if err != nil {
 		return nil, err
 	}
@@ -50,21 +52,15 @@ func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		err  error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			results[i].rels, results[i].err = store.AllRelationships(stripDepth(opts))
-		}(i, es)
-	}
-	wg.Wait()
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].rels, results[i].err = store.AllRelationships(stripDepth(opts))
+	})
 
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
@@ -95,7 +91,12 @@ func (ts *Store) RelationshipCount() (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
-	n, err := ts.refShard.RelationshipCount()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	n, err := ref.RelationshipCount()
+	refCheckin()
 	if err != nil {
 		return 0, err
 	}
@@ -115,17 +116,25 @@ func (ts *Store) RelationshipCount() (int, error) {
 		total += ar
 	}
 
-	for _, es := range eventShards {
-		store, err := es.checkoutStore(ts)
+	type result struct {
+		count int
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			return 0, err
+			results[i].err = err
+			return
 		}
-		n, err := store.RelationshipCount()
-		es.checkinStore()
-		if err != nil {
-			return 0, err
+		defer release()
+		results[i].count, results[i].err = store.RelationshipCount()
+	})
+	for _, r := range results {
+		if r.err != nil {
+			return 0, r.err
 		}
-		total += n
+		total += r.count
 	}
 	return total, nil
 }
@@ -142,7 +151,12 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
-	n, err := ts.refShard.RelCountByType(token)
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	n, err := ref.RelCountByType(token)
+	refCheckin()
 	if err != nil {
 		return 0, err
 	}
@@ -162,17 +176,25 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 		total += an
 	}
 
-	for _, es := range eventShards {
-		store, err := es.checkoutStore(ts)
+	type result struct {
+		count int
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			return 0, err
+			results[i].err = err
+			return
 		}
-		n, err := store.RelCountByType(token)
-		es.checkinStore()
-		if err != nil {
-			return 0, err
+		defer release()
+		results[i].count, results[i].err = store.RelCountByType(token)
+	})
+	for _, r := range results {
+		if r.err != nil {
+			return 0, r.err
 		}
-		total += n
+		total += r.count
 	}
 	return total, nil
 }
@@ -188,14 +210,19 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refTyped, err := ts.refShard.AllRelIDs(stripDepth(opts))
+	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
-	refIDs := relIDsToRaw(refTyped)
+	refTyped, err := ref.AllRelIDs(stripDepth(opts))
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+	refIDs := refTyped
 
 	// refArchive parity: see AllNodeIDs above. Depth-gated to DepthAll.
-	var archiveIDs []snowflake.ID
+	var archiveIDs []types.RelID
 	if opts.Depth == DepthAll {
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
@@ -207,34 +234,28 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 			if err != nil {
 				return nil, err
 			}
-			archiveIDs = relIDsToRaw(typed)
+			archiveIDs = typed
 		}
 	}
 
 	type result struct {
-		ids []snowflake.ID
+		ids []types.RelID
 		err error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			typed, err := store.AllRelIDs(stripDepth(opts))
-			results[i].ids = relIDsToRaw(typed)
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
 			results[i].err = err
-		}(i, es)
-	}
-	wg.Wait()
+			return
+		}
+		defer release()
+		typed, err := store.AllRelIDs(stripDepth(opts))
+		results[i].ids = typed
+		results[i].err = err
+	})
 
-	var slices [][]snowflake.ID
+	var slices [][]types.RelID
 	if len(refIDs) > 0 {
 		slices = append(slices, refIDs)
 	}
@@ -250,9 +271,8 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		}
 	}
 
-	merged := mergeIDSlices(slices)
-	paginated := applyIDPagination(merged, opts)
-	return rawToRelIDs(paginated), nil
+	merged := mergeRelIDSlices(slices)
+	return applyRelIDPagination(merged, opts), nil
 }
 
 func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
@@ -263,12 +283,18 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 		return errNilIterationCallback()
 	}
 	ids := make([]types.RelID, 0)
-	if err := ts.refShard.ForEachRelID(func(id types.RelID) bool {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	if err := ref.ForEachRelID(func(id types.RelID) bool {
 		ids = append(ids, id)
 		return true
 	}); err != nil {
+		refCheckin()
 		return err
 	}
+	refCheckin()
 	for _, id := range ids {
 		if !fn(id) {
 			return nil
@@ -301,7 +327,7 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, err := es.checkoutStore(ts)
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			return err
 		}
@@ -310,7 +336,7 @@ func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
 			ids = append(ids, id)
 			return true
 		})
-		es.checkinStore()
+		release()
 		if err != nil {
 			return err
 		}

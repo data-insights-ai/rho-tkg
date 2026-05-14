@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -19,6 +20,34 @@ import (
 )
 
 // --- helpers ---
+
+func TestPutHashBufferKeepsReusableSmallBuffers(t *testing.T) {
+	buf := make([]byte, 17, initialHashBufferCap*2)
+	bp := &[]byte{}
+
+	putHashBuffer(bp, buf)
+
+	if len(*bp) != 0 {
+		t.Fatalf("pooled buffer len = %d, want 0", len(*bp))
+	}
+	if cap(*bp) != cap(buf) {
+		t.Fatalf("pooled buffer cap = %d, want original cap %d", cap(*bp), cap(buf))
+	}
+}
+
+func TestPutHashBufferDropsOversizedBuffers(t *testing.T) {
+	buf := make([]byte, 1, maxPooledHashBufferCap+1)
+	bp := &[]byte{}
+
+	putHashBuffer(bp, buf)
+
+	if len(*bp) != 0 {
+		t.Fatalf("pooled buffer len = %d, want 0", len(*bp))
+	}
+	if cap(*bp) != initialHashBufferCap {
+		t.Fatalf("pooled buffer cap = %d, want reset cap %d", cap(*bp), initialHashBufferCap)
+	}
+}
 
 // newNodeForHash builds a *types.Node with a fixed snowflake id, a single
 // primary label token, and the given properties (already-validated map).
@@ -85,6 +114,24 @@ func hashRelOnce(t *testing.T, r *types.Relationship, typeName string) string {
 		t.Fatalf("hash length: got %d want 64", len(h1))
 	}
 	return h1
+}
+
+func requirePanicIs(t *testing.T, want error, fn func()) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic matching %v", want)
+		}
+		err, ok := r.(error)
+		if !ok {
+			t.Fatalf("panic value = %T %[1]v, want error", r)
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("panic error = %v, want errors.Is %v", err, want)
+		}
+	}()
+	fn()
 }
 
 // hashPropOnly hashes a single property in isolation by manually constructing
@@ -274,6 +321,72 @@ func TestComputeRelHash_SensitiveToType(t *testing.T) {
 	r := newRelForHash(t, 10, 1, 2, 0, nil)
 	if ComputeRelHash(r, "KNOWS") == ComputeRelHash(r, "LIKES") {
 		t.Fatal("hash ignored type name")
+	}
+}
+
+// TestComputeNodeHash_NilPanicsWithSentinel documents the unchecked API
+// contract: callers that pass nil get the same sentinel used by type-layer
+// nil guards, but as a panic because this is the fast unchecked path.
+func TestComputeNodeHash_NilPanicsWithSentinel(t *testing.T) {
+	requirePanicIs(t, types.ErrNilNode, func() {
+		_ = ComputeNodeHash(nil, nil)
+	})
+}
+
+func TestComputeRelHash_NilPanicsWithSentinel(t *testing.T) {
+	requirePanicIs(t, types.ErrNilRelationship, func() {
+		_ = ComputeRelHash(nil, "")
+	})
+}
+
+func TestComputeNodeHashChecked_NilReturnsSentinel(t *testing.T) {
+	got, err := ComputeNodeHashChecked(nil, nil)
+	if got != "" {
+		t.Fatalf("hash = %q, want empty", got)
+	}
+	if !errors.Is(err, types.ErrNilNode) {
+		t.Fatalf("error = %v, want ErrNilNode", err)
+	}
+}
+
+func TestComputeRelHashChecked_NilReturnsSentinel(t *testing.T) {
+	got, err := ComputeRelHashChecked(nil, "")
+	if got != "" {
+		t.Fatalf("hash = %q, want empty", got)
+	}
+	if !errors.Is(err, types.ErrNilRelationship) {
+		t.Fatalf("error = %v, want ErrNilRelationship", err)
+	}
+}
+
+func TestComputeNodeHashChecked_MatchesUncheckedFastPath(t *testing.T) {
+	n := newNodeForHash(t, 12, 3, map[string]any{
+		"name": "alpha",
+		"rank": int64(7),
+	})
+	labels := []string{"Z", "A"}
+	want := ComputeNodeHash(n, labels)
+	got, err := ComputeNodeHashChecked(n, labels)
+	if err != nil {
+		t.Fatalf("ComputeNodeHashChecked: %v", err)
+	}
+	if got != want {
+		t.Fatalf("hash = %q, want %q", got, want)
+	}
+}
+
+func TestComputeRelHashChecked_MatchesUncheckedFastPath(t *testing.T) {
+	r := newRelForHash(t, 12, 3, 4, 2, map[string]any{
+		"name": "alpha",
+		"rank": int64(7),
+	})
+	want := ComputeRelHash(r, "EDGE")
+	got, err := ComputeRelHashChecked(r, "EDGE")
+	if err != nil {
+		t.Fatalf("ComputeRelHashChecked: %v", err)
+	}
+	if got != want {
+		t.Fatalf("hash = %q, want %q", got, want)
 	}
 }
 
@@ -636,12 +749,24 @@ func (h hashableStub) HashBytes() []byte {
 
 func (h hashableStub) DeepCopyValue() any { return h }
 
+type panicHashableStub struct {
+	X int
+}
+
+func (p panicHashableStub) HashBytes() []byte {
+	panic("panicHashableStub.HashBytes")
+}
+
+func (p panicHashableStub) DeepCopyValue() any { return p }
+
 // initHashableStub registers hashableStub once; the registry is global and
 // idempotent. A package-level init keeps the registration outside the test
 // hot path.
 func init() {
-	if err := types.RegisterPropertyStructType(hashableStub{}); err != nil {
-		panic("integrity_test: register hashableStub: " + err.Error())
+	for _, v := range []any{hashableStub{}, panicHashableStub{}} {
+		if err := types.RegisterPropertyStructType(v); err != nil {
+			panic(fmt.Sprintf("integrity_test: register %T: %v", v, err))
+		}
 	}
 }
 
@@ -659,6 +784,115 @@ func TestAppendPropertyValue_HashableValue_Deterministic(t *testing.T) {
 	h2 := hashPropOnly(t, "geom", v)
 	if h1 != h2 {
 		t.Fatalf("HashableValue nondeterministic: %q vs %q", h1, h2)
+	}
+}
+
+func TestPropertyValueNeedsHashRecoverBranches(t *testing.T) {
+	tests := []struct {
+		name string
+		v    any
+		want bool
+	}{
+		{name: "nil", v: nil, want: false},
+		{name: "primitive", v: int64(1), want: false},
+		{name: "map string string", v: map[string]string{"x": "y"}, want: false},
+		{name: "slice any supported", v: []any{int64(1), map[string]any{"ok": "yes"}}, want: false},
+		{name: "slice any hashable", v: []any{hashableStub{X: 1}}, want: true},
+		{name: "map string any supported", v: map[string]any{"ok": []any{"yes"}}, want: false},
+		{name: "map string any hashable", v: map[string]any{"h": hashableStub{X: 1}}, want: true},
+		{name: "map string any unsupported", v: map[string]any{"bad": unsupportedStub{Z: 1}}, want: true},
+		{name: "hashable", v: hashableStub{X: 1}, want: true},
+		{name: "unsupported non hashable", v: unsupportedStub{Z: 1}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := propertyValueNeedsHashRecover(tt.v)
+			if got != tt.want {
+				t.Fatalf("propertyValueNeedsHashRecover(%T) = %v, want %v", tt.v, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPropertySliceNeedsHashRecover(t *testing.T) {
+	plain, err := types.NewPropertySlice(map[string]any{
+		"nested": []any{int64(1), map[string]any{"ok": true}},
+	})
+	if err != nil {
+		t.Fatalf("NewPropertySlice plain: %v", err)
+	}
+	if propertySliceNeedsHashRecover(plain) {
+		t.Fatal("plain property slice required hash recovery")
+	}
+
+	custom, err := types.NewPropertySlice(map[string]any{
+		"custom": hashableStub{X: 1},
+	})
+	if err != nil {
+		t.Fatalf("NewPropertySlice custom: %v", err)
+	}
+	if !propertySliceNeedsHashRecover(custom) {
+		t.Fatal("custom property slice did not require hash recovery")
+	}
+}
+
+func TestComputeNodeHashChecked_HashableValueMatchesUnchecked(t *testing.T) {
+	n := newNodeForHash(t, 21, 1, map[string]any{
+		"custom": hashableStub{X: 7},
+	})
+	want := ComputeNodeHash(n, []string{"Custom"})
+	got, err := ComputeNodeHashChecked(n, []string{"Custom"})
+	if err != nil {
+		t.Fatalf("ComputeNodeHashChecked: %v", err)
+	}
+	if got != want {
+		t.Fatalf("hash = %q, want %q", got, want)
+	}
+}
+
+func TestComputeRelHashChecked_HashableValueMatchesUnchecked(t *testing.T) {
+	r := newRelForHash(t, 21, 1, 2, 1, map[string]any{
+		"custom": hashableStub{X: 7},
+	})
+	want := ComputeRelHash(r, "CUSTOM")
+	got, err := ComputeRelHashChecked(r, "CUSTOM")
+	if err != nil {
+		t.Fatalf("ComputeRelHashChecked: %v", err)
+	}
+	if got != want {
+		t.Fatalf("hash = %q, want %q", got, want)
+	}
+}
+
+func TestComputeNodeHashChecked_RecoversHashablePanic(t *testing.T) {
+	n := newNodeForHash(t, 22, 1, map[string]any{
+		"custom": panicHashableStub{X: 7},
+	})
+	got, err := ComputeNodeHashChecked(n, nil)
+	if got != "" {
+		t.Fatalf("hash = %q, want empty", got)
+	}
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("error = %v, want ErrUnsupportedValueType", err)
+	}
+	if !strings.Contains(err.Error(), "compute node hash panic") {
+		t.Fatalf("error does not identify node hash panic: %v", err)
+	}
+}
+
+func TestComputeRelHashChecked_RecoversHashablePanic(t *testing.T) {
+	r := newRelForHash(t, 22, 1, 2, 1, map[string]any{
+		"custom": panicHashableStub{X: 7},
+	})
+	got, err := ComputeRelHashChecked(r, "CUSTOM")
+	if got != "" {
+		t.Fatalf("hash = %q, want empty", got)
+	}
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("error = %v, want ErrUnsupportedValueType", err)
+	}
+	if !strings.Contains(err.Error(), "compute relationship hash panic") {
+		t.Fatalf("error does not identify relationship hash panic: %v", err)
 	}
 }
 

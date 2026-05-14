@@ -1,11 +1,8 @@
 package tiered
 
 import (
-	"errors"
 	"fmt"
-	"sort"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -99,30 +96,164 @@ func (ts *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	shard, checkin, err := ts.shardForRelIDChecked(rid)
+	return ts.getRelationshipChecked(rid)
+}
+
+// getRelationshipChecked returns a defensive relationship copy from whichever
+// shard owns rid. It preserves the stale-index guard from shardForRelIDChecked
+// but returns the verified row directly so callers do not read the same row
+// twice after routing.
+func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, error) {
+	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
-	defer checkin()
-	return shard.GetRelationship(rid)
+	rel, found, err := relationshipRow(ref, rid)
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return rel, nil
+	}
+
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, err
+	}
+	if archive != nil {
+		rel, found, err = relationshipRow(archive, rid)
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return rel, nil
+		}
+	}
+
+	candidateEntry := ts.timestampToEventShardEntry(rid.SnowflakeID())
+	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
+	if err != nil {
+		return nil, err
+	}
+	rel, found, err = relationshipRow(candidate, rid)
+	candidateRelease()
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return rel, nil
+	}
+
+	ts.mu.RLock()
+	probe := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		if es == candidateEntry {
+			continue
+		}
+		probe = append(probe, es)
+	}
+	ts.mu.RUnlock()
+
+	for _, es := range probe {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return nil, err
+		}
+		rel, found, err = relationshipRow(store, rid)
+		release()
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return rel, nil
+		}
+	}
+	return nil, ErrRelNotFound
 }
 
 func (ts *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	for _, id := range ids {
 		if err := storecontract.ValidateNodeID(id); err != nil {
 			return nil, err
 		}
 	}
-	var result []*types.Node
-	for _, id := range ids {
-		n, err := ts.GetNode(id)
+	if len(ids) == 1 {
+		n, err := ts.GetNode(ids[0])
 		if err != nil {
-			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", ids[0], err)
 		}
-		result = append(result, n)
+		return []*types.Node{n}, nil
+	}
+
+	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(ids); ok {
+		return ts.getNodesByIDsWithDuplicates(ids, unique)
+	}
+
+	batches, err := ts.groupNodeIDsByShard(ids)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*types.Node, 0, len(ids))
+	for _, batch := range batches {
+		store, release, err := batch.checkout()
+		if err != nil {
+			return nil, err
+		}
+		nodes, err := store.GetNodesByIDs(batch.ids)
+		release()
+		if err != nil {
+			return nil, fmt.Errorf("graph: get nodes by IDs: %w", err)
+		}
+		result = append(result, nodes...)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	storepkg.SortNodesByID(result)
+	return result, nil
+}
+
+func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*types.Node, error) {
+	batches, err := ts.groupNodeIDsByShard(unique)
+	if err != nil {
+		return nil, err
+	}
+
+	found := make(map[types.NodeID]*types.Node, len(unique))
+	for _, batch := range batches {
+		store, release, err := batch.checkout()
+		if err != nil {
+			return nil, err
+		}
+		nodes, err := store.GetNodesByIDs(batch.ids)
+		release()
+		if err != nil {
+			return nil, fmt.Errorf("graph: get nodes by IDs: %w", err)
+		}
+		for _, node := range nodes {
+			found[node.ID()] = node
+		}
+	}
+
+	result := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		node, ok := found[id]
+		if !ok {
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
+		}
+		result = append(result, node.DeepCopy())
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 	storepkg.SortNodesByID(result)
 	return result, nil
@@ -132,21 +263,261 @@ func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	for _, id := range ids {
 		if err := storecontract.ValidateRelID(id); err != nil {
 			return nil, err
 		}
 	}
-	var result []*types.Relationship
-	for _, id := range ids {
-		r, err := ts.GetRelationship(id)
+	if len(ids) == 1 {
+		r, err := ts.GetRelationship(ids[0])
 		if err != nil {
-			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
+			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", ids[0], err)
 		}
-		result = append(result, r)
+		return []*types.Relationship{r}, nil
+	}
+
+	unique := uniqueRelIDsPreserveOrder(ids)
+	found, err := ts.getUniqueRelationshipsByIDs(unique)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*types.Relationship, 0, len(ids))
+	for _, id := range ids {
+		rel, ok := found[id]
+		if !ok {
+			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
+		}
+		result = append(result, rel.DeepCopy())
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 	storepkg.SortRelsByID(result)
 	return result, nil
+}
+
+func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
+	unique := make([]types.NodeID, 0, len(ids))
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}
+
+func uniqueNodeIDsPreserveOrderIfDuplicate(ids []types.NodeID) ([]types.NodeID, bool) {
+	if len(ids) < 2 {
+		return nil, false
+	}
+	if len(ids) <= 32 {
+		for i, id := range ids {
+			for _, prev := range ids[:i] {
+				if id == prev {
+					return uniqueNodeIDsPreserveOrder(ids), true
+				}
+			}
+		}
+		return nil, false
+	}
+
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			return uniqueNodeIDsPreserveOrder(ids), true
+		}
+		seen[id] = struct{}{}
+	}
+	return nil, false
+}
+
+func uniqueRelIDsPreserveOrder(ids []types.RelID) []types.RelID {
+	unique := make([]types.RelID, 0, len(ids))
+	seen := make(map[types.RelID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}
+
+func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID) (map[types.RelID]*types.Relationship, error) {
+	found := make(map[types.RelID]*types.Relationship, len(ids))
+	pending := make(map[types.RelID]struct{}, len(ids))
+	for _, id := range ids {
+		pending[id] = struct{}{}
+	}
+
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	err = collectRelationshipsFromStore(ref, ids, found, pending)
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return found, nil
+	}
+
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, err
+	}
+	if archive != nil {
+		err = collectRelationshipsFromStore(archive, ids, found, pending)
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		if len(pending) == 0 {
+			return found, nil
+		}
+	}
+
+	candidateBuckets := make(map[*EventShard][]types.RelID)
+	for id := range pending {
+		es := ts.timestampToEventShardEntry(id.SnowflakeID())
+		candidateBuckets[es] = append(candidateBuckets[es], id)
+	}
+	checkedCandidates := make(map[*EventShard]struct{}, len(candidateBuckets))
+	for es, bucket := range candidateBuckets {
+		checkedCandidates[es] = struct{}{}
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return nil, err
+		}
+		err = collectRelationshipsFromStore(store, bucket, found, pending)
+		release()
+		if err != nil {
+			return nil, err
+		}
+		if len(pending) == 0 {
+			return found, nil
+		}
+	}
+
+	ts.mu.RLock()
+	probe := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		if _, checked := checkedCandidates[es]; checked {
+			continue
+		}
+		probe = append(probe, es)
+	}
+	ts.mu.RUnlock()
+
+	for _, es := range probe {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return nil, err
+		}
+		err = collectPendingRelationshipsFromStore(store, found, pending)
+		release()
+		if err != nil {
+			return nil, err
+		}
+		if len(pending) == 0 {
+			return found, nil
+		}
+	}
+	return found, nil
+}
+
+func collectRelationshipsFromStore(store *BadgerStore, ids []types.RelID, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}) error {
+	for _, id := range ids {
+		if _, want := pending[id]; !want {
+			continue
+		}
+		rel, ok, err := relationshipRow(store, id)
+		if err != nil {
+			return fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
+		}
+		if !ok {
+			continue
+		}
+		found[id] = rel
+		delete(pending, id)
+	}
+	return nil
+}
+
+func collectPendingRelationshipsFromStore(store *BadgerStore, found map[types.RelID]*types.Relationship, pending map[types.RelID]struct{}) error {
+	for id := range pending {
+		rel, ok, err := relationshipRow(store, id)
+		if err != nil {
+			return fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
+		}
+		if !ok {
+			continue
+		}
+		found[id] = rel
+		delete(pending, id)
+	}
+	return nil
+}
+
+type nodeShardIDBatch struct {
+	ids      []types.NodeID
+	checkout func() (*BadgerStore, func(), error)
+}
+
+func (ts *Store) groupNodeIDsByShard(ids []types.NodeID) ([]nodeShardIDBatch, error) {
+	batches := make([]nodeShardIDBatch, 0, 2)
+	byKey := make(map[any]int, 2)
+
+	add := func(key any, checkout func() (*BadgerStore, func(), error), id types.NodeID) {
+		if idx, ok := byKey[key]; ok {
+			batches[idx].ids = append(batches[idx].ids, id)
+			return
+		}
+		byKey[key] = len(batches)
+		batches = append(batches, nodeShardIDBatch{
+			ids:      []types.NodeID{id},
+			checkout: checkout,
+		})
+	}
+
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	defer refCheckin()
+
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, err
+	}
+	defer archiveCheckin()
+
+	for _, id := range ids {
+		raw := id.SnowflakeID()
+		if ref.HasNodeID(raw) {
+			add(ref, ts.checkoutRefShard, id)
+			continue
+		}
+		if archive != nil && archive.HasNodeID(raw) {
+			add(archive, ts.checkoutArchive, id)
+			continue
+		}
+
+		es := ts.timestampToEventShardEntry(raw)
+		add(es, func() (*BadgerStore, func(), error) {
+			return es.checkoutStoreForRead(ts)
+		}, id)
+	}
+	return batches, nil
 }
 
 // --- Adjacency queries ---
@@ -171,11 +542,9 @@ func (ts *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	return shard.OutgoingRelationships(nid, typeToken)
 }
 
-// OutgoingRelationshipsForNodes batches outgoing relationship queries across shards.
-// Groups nodeIDs by shard, delegates per-shard, and merges results.
-//
-// Each owner shard is checked out via shardForNodeIDChecked so cold shards
-// remain pinned for the per-shard delegated read.
+// OutgoingRelationshipsForNodes batches outgoing relationship queries across
+// shards. Each owner shard is pinned once for the delegated batch read so cold
+// shards cannot be closed while the shard-local query is running.
 func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -189,37 +558,24 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 		}
 	}
 
-	// Partition nodeIDs by shard. Track checkin functions so each owner shard
-	// can be released once we are done with it.
-	shardBuckets := make(map[*BadgerStore][]types.NodeID)
-	checkins := make(map[*BadgerStore][]func())
-	releaseAll := func() {
-		for _, fns := range checkins {
-			for _, fn := range fns {
-				fn()
-			}
-		}
+	queryNodeIDs := nodeIDs
+	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(nodeIDs); ok {
+		queryNodeIDs = unique
 	}
-	for _, id := range nodeIDs {
-		shard, checkin, err := ts.shardForNodeIDChecked(id)
+
+	batches, err := ts.groupNodeIDsByShard(queryNodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[types.NodeID][]*types.Relationship, len(queryNodeIDs))
+	for _, batch := range batches {
+		store, release, err := batch.checkout()
 		if err != nil {
-			releaseAll()
 			return nil, err
 		}
-		if !shard.HasNodeID(id.SnowflakeID()) {
-			checkin()
-			releaseAll()
-			return nil, ErrNodeNotFound
-		}
-		shardBuckets[shard] = append(shardBuckets[shard], id)
-		checkins[shard] = append(checkins[shard], checkin)
-	}
-	defer releaseAll()
-
-	// Delegate per-shard and merge.
-	result := make(map[types.NodeID][]*types.Relationship, len(nodeIDs))
-	for shard, bucket := range shardBuckets {
-		m, err := shard.OutgoingRelationshipsForNodes(bucket, typeToken)
+		m, err := store.OutgoingRelationshipsForNodes(batch.ids, typeToken)
+		release()
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +603,12 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	if err != nil {
 		return nil, err
 	}
-	if !shard.HasNodeID(nid.SnowflakeID()) {
+	live, liveErr := nodeRowLive(shard, nid)
+	if liveErr != nil {
+		checkin()
+		return nil, liveErr
+	}
+	if !live {
 		checkin()
 		return nil, ErrNodeNotFound
 	}
@@ -258,29 +619,28 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		return nil, nil
 	}
 
-	// Fetch each rel entity via checked shard resolution so cross-shard rels
-	// stored on shards that have aged to cold remain reachable.
+	// Fetch relationship entities through the batched resolver so cross-shard
+	// rels stored on shards that have aged to cold remain reachable without
+	// repeating the full shard probe sequence for every incoming relID.
 	result := make([]*types.Relationship, 0, len(relIDs))
+	typedRelIDs := make([]types.RelID, 0, len(relIDs))
 	for _, relID := range relIDs {
-		rid := types.RelID(relID)
-		relShard, checkin, err := ts.shardForRelIDChecked(rid)
-		if err != nil {
-			return nil, err
+		typedRelIDs = append(typedRelIDs, types.RelID(relID))
+	}
+	found, err := ts.getUniqueRelationshipsByIDs(typedRelIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, relID := range typedRelIDs {
+		if r, ok := found[relID]; ok && relationshipMatchesIncoming(r, nid, typeToken) {
+			result = append(result, r.DeepCopy())
 		}
-		r, err := relShard.GetRelationship(rid)
-		checkin()
-		if errors.Is(err, ErrRelNotFound) {
-			continue // orphan from partial failure
-		}
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, r)
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID().SnowflakeID() < result[j].ID().SnowflakeID()
-	})
+	storepkg.SortRelsByID(result)
 	return result, nil
 }
 
@@ -303,59 +663,69 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 
 	// Phase 1: collect relIDs per node from each node's shard inIdx.
 	type relRef struct {
-		nodeID snowflake.ID
-		relID  snowflake.ID
+		nodeID types.NodeID
+		relID  types.RelID
 	}
 	var refs []relRef
-	seen := make(map[snowflake.ID]struct{}, len(typedNodeIDs))
+	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
+	uniqueNodeIDs := make([]types.NodeID, 0, len(typedNodeIDs))
 
 	for _, tnid := range typedNodeIDs {
-		nid := tnid.SnowflakeID()
-		if _, dup := seen[nid]; dup {
+		if _, dup := seen[tnid]; dup {
 			continue
 		}
-		seen[nid] = struct{}{}
+		seen[tnid] = struct{}{}
+		uniqueNodeIDs = append(uniqueNodeIDs, tnid)
+	}
 
-		// Check out the node's owner shard so a cold owner stays pinned for
-		// the inIdx scan; release immediately afterwards because the rel
-		// fetch below uses its own checkout against the rel-owner shard.
-		shard, checkin, err := ts.shardForNodeIDChecked(tnid)
+	batches, err := ts.groupNodeIDsByShard(uniqueNodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, batch := range batches {
+		store, release, err := batch.checkout()
 		if err != nil {
 			return nil, err
 		}
-		if !shard.HasNodeID(nid) {
-			checkin()
-			return nil, ErrNodeNotFound
+		for _, tnid := range batch.ids {
+			live, liveErr := nodeRowLive(store, tnid)
+			if liveErr != nil {
+				release()
+				return nil, liveErr
+			}
+			if !live {
+				release()
+				return nil, ErrNodeNotFound
+			}
+			relIDs := store.IncomingRelIDs(tnid.SnowflakeID(), typeToken)
+			for _, rid := range relIDs {
+				refs = append(refs, relRef{nodeID: tnid, relID: types.RelID(rid)})
+			}
 		}
-		relIDs := shard.IncomingRelIDs(nid, typeToken)
-		checkin()
-		for _, rid := range relIDs {
-			refs = append(refs, relRef{nodeID: nid, relID: rid})
-		}
+		release()
 	}
 
 	if len(refs) == 0 {
 		return nil, nil
 	}
 
-	// Phase 2: fetch each rel entity via checked shard resolution so cross-shard
-	// rels stored on shards that have aged to cold remain reachable.
+	// Phase 2: fetch rel entities through the batched resolver so cross-shard
+	// rels stored on shards that have aged to cold remain reachable without
+	// repeating the full shard probe sequence for every incoming relID.
 	result := make(map[types.NodeID][]*types.Relationship, len(seen))
+	relIDs := make([]types.RelID, 0, len(refs))
 	for _, ref := range refs {
-		relShard, checkin, err := ts.shardForRelIDChecked(types.RelID(ref.relID))
-		if err != nil {
-			return nil, err
+		relIDs = append(relIDs, ref.relID)
+	}
+	found, err := ts.getUniqueRelationshipsByIDs(relIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, ref := range refs {
+		if r, ok := found[ref.relID]; ok && relationshipMatchesIncoming(r, ref.nodeID, typeToken) {
+			result[ref.nodeID] = append(result[ref.nodeID], r.DeepCopy())
 		}
-		r, err := relShard.GetRelationship(types.RelID(ref.relID))
-		checkin()
-		if errors.Is(err, ErrRelNotFound) {
-			continue // orphan from partial failure
-		}
-		if err != nil {
-			return nil, err
-		}
-		key := types.NodeID(ref.nodeID)
-		result[key] = append(result[key], r)
 	}
 
 	// Sort per-node slices for deterministic output.
@@ -367,4 +737,11 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		return nil, nil
 	}
 	return result, nil
+}
+
+func relationshipMatchesIncoming(r *types.Relationship, nid types.NodeID, typeToken uint16) bool {
+	if r == nil || r.EndNodeID() != nid {
+		return false
+	}
+	return typeToken == 0 || r.HasTypeTokenRaw(typeToken)
 }

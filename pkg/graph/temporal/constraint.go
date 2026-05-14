@@ -14,8 +14,8 @@ const (
 	//   (2) relFrom >= endNode.effectiveValidFrom
 	//   (3) if startNode.ValidTo != 0: relFrom < startNode.ValidTo
 	//   (4) if endNode.ValidTo   != 0: relFrom < endNode.ValidTo
-	//   (5) if r.Temporal().ValidTo != 0 AND startNode.ValidTo != 0:
-	//           r.ValidTo <= startNode.ValidTo
+	//   (5) if startNode.ValidTo != 0:
+	//           r.ValidTo != 0 AND r.ValidTo <= startNode.ValidTo
 	//   (6) same for endNode
 	ConstraintRelWithinEndpoints TemporalConstraintKind = iota + 1
 )

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -22,13 +23,16 @@ func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node,
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
 	var node *types.Node
 	err := c.readUnderRLock(func() error {
 		if version == 0 {
 			return c.requireKnownNodeUnlocked(id)
 		}
 		var err error
-		node, err = c.store.GetNodeVersion(id, version-1)
+		node, err = c.getNodeVersion(id, version-1)
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			if err := c.requireKnownNodeUnlocked(id); err != nil {
 				return err
@@ -49,13 +53,16 @@ func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, err
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
 	var node *types.Node
 	err := c.readUnderRLock(func() error {
 		if version == math.MaxUint32 {
 			return c.requireKnownNodeUnlocked(id)
 		}
 		var err error
-		node, err = c.store.GetNodeVersion(id, version+1)
+		node, err = c.getNodeVersion(id, version+1)
 		if err == nil {
 			return nil
 		}
@@ -63,7 +70,7 @@ func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, err
 			return err
 		}
 		// Not in history: the current node itself may be version+1.
-		current, err2 := c.store.GetNode(id)
+		current, err2 := c.getCurrentNode(id)
 		if err2 != nil {
 			if errors.Is(err2, storepkg.ErrNodeNotFound) {
 				if err := c.requireNodeHistoryUnlocked(id); err != nil {
@@ -118,13 +125,33 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
 	// GetNode returns a deep copy (Store contract). Mutations below are safe.
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil {
 		return err
 	}
 
 	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
 		return ErrAlreadyClosed
+	}
+	if start := c.nodeValidFrom(current); t <= start {
+		return fmt.Errorf("%w: close time %d must be after node valid-from %d", ErrInvalidTimeRange, t, start)
+	}
+	if err := c.checkNodeCloseTemporalConstraints(id, current, t); err != nil {
+		return err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("close node version"); err != nil {
+		return err
+	}
+
+	prevVersion := current.Version()
+	prevState := current.DeepCopy()
+	now := c.nodeVersionUpdateInstant(current)
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm = &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm)
+		ptm.TxTo = now
+	} else {
+		ptm.TxTo = now
 	}
 
 	tm := current.Temporal()
@@ -133,6 +160,8 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		current.SetTemporal(tm)
 	}
 	tm.ValidTo = t
+	tm.UpdatedAt = now
+	tm.TxFrom = now
 
 	// Preserve existing chain position; recompute hash after temporal change.
 	prevHash := ""
@@ -146,7 +175,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	}
 	current.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
-	if err := c.store.ReplaceNode(current); err != nil {
+	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return err
 	}
 	c.opNodeUpdates.Add(1)
@@ -160,13 +189,16 @@ func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relatio
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
 	var rel *types.Relationship
 	err := c.readUnderRLock(func() error {
 		if version == 0 {
 			return c.requireKnownRelUnlocked(id)
 		}
 		var err error
-		rel, err = c.store.GetRelVersion(id, version-1)
+		rel, err = c.getRelVersion(id, version-1)
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
 			if err := c.requireKnownRelUnlocked(id); err != nil {
 				return err
@@ -187,13 +219,16 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
 	var rel *types.Relationship
 	err := c.readUnderRLock(func() error {
 		if version == math.MaxUint32 {
 			return c.requireKnownRelUnlocked(id)
 		}
 		var err error
-		rel, err = c.store.GetRelVersion(id, version+1)
+		rel, err = c.getRelVersion(id, version+1)
 		if err == nil {
 			return nil
 		}
@@ -201,7 +236,7 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 			return err
 		}
 		// Not in history: the current rel itself may be version+1.
-		current, err2 := c.store.GetRelationship(id)
+		current, err2 := c.getCurrentRelationship(id)
 		if err2 != nil {
 			if errors.Is(err2, storepkg.ErrRelNotFound) {
 				if err := c.requireRelHistoryUnlocked(id); err != nil {
@@ -223,7 +258,10 @@ func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationshi
 }
 
 func (c *Core) requireKnownNodeUnlocked(id types.NodeID) error {
-	if _, err := c.store.GetNode(id); err == nil {
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	if _, err := c.getCurrentNode(id); err == nil {
 		return nil
 	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return err
@@ -232,7 +270,10 @@ func (c *Core) requireKnownNodeUnlocked(id types.NodeID) error {
 }
 
 func (c *Core) requireNodeHistoryUnlocked(id types.NodeID) error {
-	history, err := c.store.GetNodeHistory(id)
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return err
 	}
@@ -243,7 +284,10 @@ func (c *Core) requireNodeHistoryUnlocked(id types.NodeID) error {
 }
 
 func (c *Core) requireKnownRelUnlocked(id types.RelID) error {
-	if _, err := c.store.GetRelationship(id); err == nil {
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return err
+	}
+	if _, err := c.getCurrentRelationship(id); err == nil {
 		return nil
 	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
 		return err
@@ -252,7 +296,10 @@ func (c *Core) requireKnownRelUnlocked(id types.RelID) error {
 }
 
 func (c *Core) requireRelHistoryUnlocked(id types.RelID) error {
-	history, err := c.store.GetRelHistory(id)
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return err
+	}
+	history, err := c.getRelHistory(id)
 	if err != nil {
 		return err
 	}
@@ -292,17 +339,41 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	if t == 0 {
 		return fmt.Errorf("%w: close time must be non-zero", ErrInvalidTimeRange)
 	}
-	c.entityLocks.LockEntity(id.SnowflakeID())
-	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
-	// GetRelationship returns a deep copy (Store contract). Mutations below are safe.
-	current, err := c.store.GetRelationship(id)
+	current, startID, endID, err := c.lockRelationshipCurrentEndpoints(context.Background(), id)
 	if err != nil {
 		return err
 	}
+	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 
 	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
 		return ErrAlreadyClosed
+	}
+	if start := c.relValidFrom(current); t <= start {
+		return fmt.Errorf("%w: close time %d must be after relationship valid-from %d", ErrInvalidTimeRange, t, start)
+	}
+	if c.constraints.Len() > 0 {
+		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+		if err != nil {
+			return err
+		}
+		if err := c.checkTemporalConstraints(relWithValidTo(current, t), liveStart, liveEnd); err != nil {
+			return err
+		}
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("close relationship version"); err != nil {
+		return err
+	}
+
+	prevVersion := current.Version()
+	prevState := current.DeepCopy()
+	now := c.relVersionUpdateInstant(current)
+	if ptm := prevState.Temporal(); ptm == nil {
+		ptm = &types.TemporalMetadata{}
+		prevState.SetTemporal(ptm)
+		ptm.TxTo = now
+	} else {
+		ptm.TxTo = now
 	}
 
 	tm := current.Temporal()
@@ -311,6 +382,8 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		current.SetTemporal(tm)
 	}
 	tm.ValidTo = t
+	tm.UpdatedAt = now
+	tm.TxFrom = now
 
 	// Preserve existing chain position; recompute hash after temporal change.
 	prevHash := ""
@@ -324,7 +397,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 	current.SetIntegrity(relIntegrityWithHash(current.Integrity(), hash, prevHash))
 
-	if err := c.store.ReplaceRelationship(current); err != nil {
+	if err := c.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
 		return err
 	}
 	c.opRelUpdates.Add(1)

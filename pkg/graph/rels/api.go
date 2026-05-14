@@ -42,6 +42,8 @@ type Ops interface {
 
 	SetProperty(id types.RelID, key string, value any) error
 	DeleteProperty(id types.RelID, key string) error
+	CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error)
+	CompareAndSetPropertyWithContext(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error)
 
 	HasType(r *types.Relationship, typ string) bool
 	Type(r *types.Relationship) string
@@ -308,6 +310,24 @@ func (a *API) DeleteProperty(id types.RelID, key string) error {
 		return err
 	}
 	return ops.DeleteProperty(id, key)
+}
+
+// CompareAndSetProperty atomically updates a relationship property.
+func (a *API) CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.CompareAndSetProperty(id, key, expected, newVal)
+}
+
+// CompareAndSetPropertyWithContext atomically updates a relationship property honoring ctx.
+func (a *API) CompareAndSetPropertyWithContext(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.CompareAndSetPropertyWithContext(ctx, id, key, expected, newVal)
 }
 
 // HasType reports whether the relationship has the given type name.

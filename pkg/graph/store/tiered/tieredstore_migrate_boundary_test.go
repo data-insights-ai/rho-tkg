@@ -127,6 +127,96 @@ func TestMigrateFromBadgerRejectsNonEmptyDestination(t *testing.T) {
 	}
 }
 
+func TestMigrateFromBadgerRejectsDestinationWithHistoryOnly(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	labels := registrypkg.NewLabelRegistry()
+	caseTok, err := labels.GetOrCreate("Case")
+	if err != nil {
+		t.Fatalf("GetOrCreate Case: %v", err)
+	}
+	relTypes := registrypkg.NewRelTypeRegistry()
+	if err := src.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries source: %v", err)
+	}
+
+	dst := newTestTieredStore(t)
+	dst.SetLabelRegistry(labels)
+	stale := types.NewNode(types.NodeID(newTestGen(t, 0).Generate()), caseTok, nil)
+	if err := dst.PutNodeVersion(stale.ID(), stale.Version(), stale); err != nil {
+		t.Fatalf("PutNodeVersion destination: %v", err)
+	}
+	if got, err := dst.NodeCount(); err != nil {
+		t.Fatalf("NodeCount destination: %v", err)
+	} else if got != 0 {
+		t.Fatalf("NodeCount with history-only destination = %d, want 0", got)
+	}
+
+	err = MigrateFromBadger(src, dst)
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("MigrateFromBadger history-only destination error = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, err := dst.GetNodeHistory(stale.ID())
+	if err != nil {
+		t.Fatalf("GetNodeHistory after rejected migration: %v", err)
+	}
+	if len(history) != 1 || history[0].ID() != stale.ID() {
+		t.Fatalf("history after rejected migration = %#v, want stale snapshot preserved", history)
+	}
+}
+
+func TestMigrateFromBadgerRejectsDestinationWithRelationshipHistoryOnly(t *testing.T) {
+	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+	if err != nil {
+		t.Fatalf("NewBadgerStore: %v", err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	labels := registrypkg.NewLabelRegistry()
+	if _, err := labels.GetOrCreate("Case"); err != nil {
+		t.Fatalf("GetOrCreate Case: %v", err)
+	}
+	relTypes := registrypkg.NewRelTypeRegistry()
+	relTok, err := relTypes.GetOrCreate("LINKS")
+	if err != nil {
+		t.Fatalf("GetOrCreate LINKS: %v", err)
+	}
+	if err := src.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries source: %v", err)
+	}
+
+	dst := newTestTieredStore(t)
+	dst.SetLabelRegistry(labels)
+	nodeGen := newTestGen(t, 0)
+	startID := types.NodeID(nodeGen.Generate())
+	endID := types.NodeID(nodeGen.Generate())
+	stale := types.NewRelationship(types.RelID(newTestGen(t, 1).Generate()), relTok, startID, endID)
+	if err := dst.PutRelVersion(stale.ID(), stale.Version(), stale); err != nil {
+		t.Fatalf("PutRelVersion destination: %v", err)
+	}
+	if got, err := dst.RelationshipCount(); err != nil {
+		t.Fatalf("RelationshipCount destination: %v", err)
+	} else if got != 0 {
+		t.Fatalf("RelationshipCount with history-only destination = %d, want 0", got)
+	}
+
+	err = MigrateFromBadger(src, dst)
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("MigrateFromBadger relationship-history-only destination error = %v, want ErrInvalidStoreMutation", err)
+	}
+	history, err := dst.GetRelHistory(stale.ID())
+	if err != nil {
+		t.Fatalf("GetRelHistory after rejected migration: %v", err)
+	}
+	if len(history) != 1 || history[0].ID() != stale.ID() {
+		t.Fatalf("relationship history after rejected migration = %#v, want stale snapshot preserved", history)
+	}
+}
+
 func TestMigrateFromBadgerRejectsNodeTokenOutsideSourceRegistry(t *testing.T) {
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -204,6 +294,107 @@ func TestMigrateFromBadgerRejectsRelTypeOutsideSourceRegistry(t *testing.T) {
 	if !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("MigrateFromBadger rel token error = %v, want ErrInvalidStoreMutation", err)
 	}
+}
+
+func TestMigrateFromBadgerRejectsRelationshipMissingEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		missingStart bool
+	}{
+		{name: "missing start", missingStart: true},
+		{name: "missing end", missingStart: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+			if err != nil {
+				t.Fatalf("NewBadgerStore: %v", err)
+			}
+			t.Cleanup(func() { _ = src.Close() })
+
+			labels := registrypkg.NewLabelRegistry()
+			caseTok, err := labels.GetOrCreate("Case")
+			if err != nil {
+				t.Fatalf("GetOrCreate Case: %v", err)
+			}
+			relTypes := registrypkg.NewRelTypeRegistry()
+			relTok, err := relTypes.GetOrCreate("RELATED")
+			if err != nil {
+				t.Fatalf("GetOrCreate RELATED: %v", err)
+			}
+			if err := src.SaveRegistries(labels, relTypes); err != nil {
+				t.Fatalf("SaveRegistries: %v", err)
+			}
+
+			nodeGen := newTestGen(t, 0)
+			relGen := newTestGen(t, 1)
+			existing := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
+			if err := src.PutNode(existing); err != nil {
+				t.Fatalf("PutNode existing: %v", err)
+			}
+			missing := types.NodeID(nodeGen.Generate())
+			start := existing.ID()
+			end := existing.ID()
+			if tc.missingStart {
+				start = missing
+			} else {
+				end = missing
+			}
+			rel := types.NewRelationship(types.RelID(relGen.Generate()), relTok, start, end)
+			if err := src.PutRelEntityAndOut(rel); err != nil {
+				t.Fatalf("PutRelEntityAndOut corrupt source rel: %v", err)
+			}
+
+			dst := newTestTieredStore(t)
+			err = MigrateFromBadger(src, dst)
+			if !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("MigrateFromBadger missing endpoint error = %v, want ErrInvalidStoreMutation", err)
+			}
+			if got, countErr := dst.NodeCount(); countErr != nil {
+				t.Fatalf("NodeCount destination: %v", countErr)
+			} else if got != 0 {
+				t.Fatalf("NodeCount after preflight endpoint failure = %d, want 0", got)
+			}
+			if got, countErr := dst.RelationshipCount(); countErr != nil {
+				t.Fatalf("RelationshipCount destination: %v", countErr)
+			} else if got != 0 {
+				t.Fatalf("RelationshipCount after preflight endpoint failure = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestValidateMigrateRelEndpointsPropagatesSourceReadErrors(t *testing.T) {
+	t.Run("start read error", func(t *testing.T) {
+		src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+		if err != nil {
+			t.Fatalf("NewBadgerStore: %v", err)
+		}
+		if err := src.Close(); err != nil {
+			t.Fatalf("Close source: %v", err)
+		}
+
+		rel := types.NewRelationship(types.RelID(1), 1, types.NodeID(10), types.NodeID(20))
+		if err := validateMigrateRelEndpoints(src, rel); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("validateMigrateRelEndpoints closed source = %v, want ErrStoreClosed", err)
+		}
+	})
+
+	t.Run("end read error", func(t *testing.T) {
+		src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
+		if err != nil {
+			t.Fatalf("NewBadgerStore: %v", err)
+		}
+		t.Cleanup(func() { _ = src.Close() })
+
+		start := types.NewNode(types.NodeID(10), 1, nil)
+		if err := src.PutNode(start); err != nil {
+			t.Fatalf("PutNode start: %v", err)
+		}
+		rel := types.NewRelationship(types.RelID(1), 1, start.ID(), 0)
+		if err := validateMigrateRelEndpoints(src, rel); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("validateMigrateRelEndpoints invalid end = %v, want ErrInvalidStoreMutation", err)
+		}
+	})
 }
 
 func TestMigrateFromBadgerRollsBackDestinationWritesOnPutFailure(t *testing.T) {

@@ -153,6 +153,26 @@ func validateMigrateDestinationEmpty(dst *Store) error {
 	if nodeCount != 0 || relCount != 0 {
 		return fmt.Errorf("%w: destination tiered store is not empty", ErrInvalidStoreMutation)
 	}
+	hasNodeHistory := false
+	if err := dst.ForEachNodeHistoryID(func(types.NodeID) bool {
+		hasNodeHistory = true
+		return false
+	}); err != nil {
+		return fmt.Errorf("graph: migrate: destination node history scan: %w", err)
+	}
+	if hasNodeHistory {
+		return fmt.Errorf("%w: destination tiered store has node history", ErrInvalidStoreMutation)
+	}
+	hasRelHistory := false
+	if err := dst.ForEachRelHistoryID(func(types.RelID) bool {
+		hasRelHistory = true
+		return false
+	}); err != nil {
+		return fmt.Errorf("graph: migrate: destination relationship history scan: %w", err)
+	}
+	if hasRelHistory {
+		return fmt.Errorf("%w: destination tiered store has relationship history", ErrInvalidStoreMutation)
+	}
 	return nil
 }
 
@@ -221,8 +241,8 @@ func preflightMigrateSource(src *BadgerStore, labels *registrypkg.LabelRegistry,
 
 func validateMigrateNodeTokens(n *types.Node, labels *registrypkg.LabelRegistry) error {
 	max := labels.Len()
-	for _, tok := range n.AllLabelTokens() {
-		raw := tok.Value()
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		raw := n.LabelTokenRawAt(i)
 		if raw == 0 || int(raw) > max {
 			return fmt.Errorf("%w: node %d label token %d not in source registry (size %d)",
 				ErrInvalidStoreMutation, n.ID(), raw, max)

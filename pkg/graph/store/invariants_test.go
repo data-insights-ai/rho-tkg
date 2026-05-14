@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -52,6 +53,47 @@ func TestValidateHistoryRetentionRejectsNegativeOnly(t *testing.T) {
 	}
 	if err := ValidateHistoryRetention(0); err != nil {
 		t.Fatalf("ValidateHistoryRetention(0): %v", err)
+	}
+}
+
+func TestValidateHistoryPageLimitRejectsNegativeOnly(t *testing.T) {
+	t.Parallel()
+	if err := ValidateHistoryPageLimit(-1); !errors.Is(err, ErrInvalidQueryLimit) {
+		t.Fatalf("ValidateHistoryPageLimit(-1) = %v, want ErrInvalidQueryLimit", err)
+	}
+	if err := ValidateHistoryPageLimit(0); err != nil {
+		t.Fatalf("ValidateHistoryPageLimit(0): %v", err)
+	}
+	if err := ValidateHistoryPageLimit(1); err != nil {
+		t.Fatalf("ValidateHistoryPageLimit(1): %v", err)
+	}
+}
+
+func TestValidateHistoryVersionSnapshotRequiresPayloadVersionMatch(t *testing.T) {
+	t.Parallel()
+
+	n := types.NewNode(types.NodeID(10), 1, nil)
+	n.SetVersion(2)
+	if err := ValidateNodeHistoryVersionSnapshot(n.ID(), 2, n); err != nil {
+		t.Fatalf("ValidateNodeHistoryVersionSnapshot matching version: %v", err)
+	}
+	if err := ValidateNodeHistoryVersionSnapshot(n.ID(), 3, n); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ValidateNodeHistoryVersionSnapshot mismatched version = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ValidateNodeHistoryKeySnapshot(n.ID(), uint64(^uint32(0))+1, n); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ValidateNodeHistoryKeySnapshot impossible version = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	r := types.NewRelationship(types.RelID(20), 1, types.NodeID(10), types.NodeID(11))
+	r.SetVersion(4)
+	if err := ValidateRelationshipHistoryVersionSnapshot(r.ID(), 4, r); err != nil {
+		t.Fatalf("ValidateRelationshipHistoryVersionSnapshot matching version: %v", err)
+	}
+	if err := ValidateRelationshipHistoryVersionSnapshot(r.ID(), 5, r); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ValidateRelationshipHistoryVersionSnapshot mismatched version = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err := ValidateRelationshipHistoryKeySnapshot(r.ID(), uint64(^uint32(0))+1, r); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("ValidateRelationshipHistoryKeySnapshot impossible version = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -142,6 +184,151 @@ func TestValidateNodeWriteRejectsReservedLabelTokens(t *testing.T) {
 	removeCurrent := types.NewNode(types.NodeID(5), 1, []uint16{0})
 	if err := ValidateNodeLabelRemoval(removeOld, removeCurrent, 2); !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("ValidateNodeLabelRemoval with preserved zero label = %v, want ErrInvalidStoreMutation", err)
+	}
+}
+
+func TestValidateNodeReplacementPreservesExactLabelSequence(t *testing.T) {
+	t.Parallel()
+
+	validOld := types.NewNode(types.NodeID(30), 1, []uint16{2, 3})
+	validCurrent := validOld.DeepCopy()
+	if err := validCurrent.SetProperty("name", "updated"); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ValidateNodeReplacement(validOld, validCurrent); err != nil {
+		t.Fatalf("ValidateNodeReplacement valid replacement: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		old     *types.Node
+		current *types.Node
+	}{
+		{
+			name:    "nil existing",
+			old:     nil,
+			current: types.NewNode(types.NodeID(31), 1, nil),
+		},
+		{
+			name:    "label count changed",
+			old:     types.NewNode(types.NodeID(32), 1, []uint16{2}),
+			current: types.NewNode(types.NodeID(32), 1, nil),
+		},
+		{
+			name:    "primary label changed",
+			old:     types.NewNode(types.NodeID(33), 1, []uint16{2}),
+			current: types.NewNode(types.NodeID(33), 2, []uint16{1}),
+		},
+		{
+			name:    "extra label changed",
+			old:     types.NewNode(types.NodeID(34), 1, []uint16{2, 3}),
+			current: types.NewNode(types.NodeID(34), 1, []uint16{2, 4}),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidateNodeReplacement(tc.old, tc.current); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ValidateNodeReplacement %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestValidateNodeLabelAdditionRequiresExactlyOneAddedToken(t *testing.T) {
+	t.Parallel()
+
+	validOld := types.NewNode(types.NodeID(40), 1, []uint16{3})
+	validCurrent := types.NewNode(types.NodeID(40), 1, []uint16{3, 2})
+	if err := ValidateNodeLabelAddition(validOld, validCurrent, 2); err != nil {
+		t.Fatalf("ValidateNodeLabelAddition valid add: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		old     *types.Node
+		current *types.Node
+		tok     uint16
+	}{
+		{
+			name:    "already present",
+			old:     types.NewNode(types.NodeID(41), 1, []uint16{2}),
+			current: types.NewNode(types.NodeID(41), 1, []uint16{2}),
+			tok:     2,
+		},
+		{
+			name:    "missing added token",
+			old:     types.NewNode(types.NodeID(42), 1, nil),
+			current: types.NewNode(types.NodeID(42), 1, []uint16{3}),
+			tok:     2,
+		},
+		{
+			name:    "too many labels",
+			old:     types.NewNode(types.NodeID(43), 1, nil),
+			current: types.NewNode(types.NodeID(43), 1, []uint16{2, 3}),
+			tok:     2,
+		},
+		{
+			name:    "dropped existing label",
+			old:     types.NewNode(types.NodeID(44), 1, []uint16{3}),
+			current: types.NewNode(types.NodeID(44), 1, []uint16{2, 4}),
+			tok:     2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidateNodeLabelAddition(tc.old, tc.current, tc.tok); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ValidateNodeLabelAddition %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestValidateNodeLabelRemovalRequiresExactlyOneRemovedToken(t *testing.T) {
+	t.Parallel()
+
+	validOld := types.NewNode(types.NodeID(50), 1, []uint16{2, 3})
+	validCurrent := types.NewNode(types.NodeID(50), 1, []uint16{3})
+	if err := ValidateNodeLabelRemoval(validOld, validCurrent, 2); err != nil {
+		t.Fatalf("ValidateNodeLabelRemoval valid removal: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		old     *types.Node
+		current *types.Node
+		tok     uint16
+	}{
+		{
+			name:    "missing removed token",
+			old:     types.NewNode(types.NodeID(51), 1, []uint16{3}),
+			current: types.NewNode(types.NodeID(51), 1, []uint16{3}),
+			tok:     2,
+		},
+		{
+			name:    "still has removed token",
+			old:     types.NewNode(types.NodeID(52), 1, []uint16{2}),
+			current: types.NewNode(types.NodeID(52), 1, []uint16{2}),
+			tok:     2,
+		},
+		{
+			name:    "too many labels",
+			old:     types.NewNode(types.NodeID(53), 1, []uint16{2, 3}),
+			current: types.NewNode(types.NodeID(53), 1, []uint16{3, 4}),
+			tok:     2,
+		},
+		{
+			name:    "dropped preserved label",
+			old:     types.NewNode(types.NodeID(54), 1, []uint16{2, 3}),
+			current: types.NewNode(types.NodeID(54), 1, []uint16{4}),
+			tok:     2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidateNodeLabelRemoval(tc.old, tc.current, tc.tok); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ValidateNodeLabelRemoval %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
 	}
 }
 
@@ -243,5 +430,83 @@ func TestValidateQueryOptsValidAtTakesPrecedenceOverInterval(t *testing.T) {
 	opts := QueryOpts{ValidAt: 5, ValidStart: 20, ValidEnd: 10}
 	if err := ValidateQueryOpts(opts); err != nil {
 		t.Fatalf("ValidateQueryOpts with ValidAt precedence: %v", err)
+	}
+}
+
+func TestValidateIndexPropertyKeyRejectsShadowKeys(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateIndexPropertyKey("name"); err != nil {
+		t.Fatalf("ValidateIndexPropertyKey regular key: %v", err)
+	}
+	if err := ValidateIndexPropertyKey("tkg_id"); !errors.Is(err, types.ErrReservedPrefix) {
+		t.Fatalf("ValidateIndexPropertyKey shadow key = %v, want ErrReservedPrefix", err)
+	}
+}
+
+func TestValidateHighFrequencyBucketSize(t *testing.T) {
+	t.Parallel()
+
+	for _, bucket := range []time.Duration{time.Millisecond, time.Hour} {
+		if err := ValidateHighFrequencyBucketSize(bucket); err != nil {
+			t.Fatalf("ValidateHighFrequencyBucketSize(%v): %v", bucket, err)
+		}
+	}
+	for _, bucket := range []time.Duration{0, -time.Second, time.Nanosecond, 1500 * time.Microsecond} {
+		if err := ValidateHighFrequencyBucketSize(bucket); !errors.Is(err, ErrInvalidTemporalIndexConfig) {
+			t.Fatalf("ValidateHighFrequencyBucketSize(%v) = %v, want ErrInvalidTemporalIndexConfig", bucket, err)
+		}
+	}
+}
+
+func TestValidateRelationshipReplacementPreservesIndexedFields(t *testing.T) {
+	t.Parallel()
+
+	validOld := types.NewRelationship(types.RelID(60), 1, types.NodeID(1), types.NodeID(2))
+	validCurrent := validOld.DeepCopy()
+	if err := validCurrent.SetProperty("name", "updated"); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ValidateRelationshipReplacement(validOld, validCurrent); err != nil {
+		t.Fatalf("ValidateRelationshipReplacement valid replacement: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		old     *types.Relationship
+		current *types.Relationship
+	}{
+		{
+			name:    "nil existing",
+			old:     nil,
+			current: types.NewRelationship(types.RelID(61), 1, types.NodeID(1), types.NodeID(2)),
+		},
+		{
+			name:    "id mismatch",
+			old:     types.NewRelationship(types.RelID(62), 1, types.NodeID(1), types.NodeID(2)),
+			current: types.NewRelationship(types.RelID(63), 1, types.NodeID(1), types.NodeID(2)),
+		},
+		{
+			name:    "type changed",
+			old:     types.NewRelationship(types.RelID(64), 1, types.NodeID(1), types.NodeID(2)),
+			current: types.NewRelationship(types.RelID(64), 2, types.NodeID(1), types.NodeID(2)),
+		},
+		{
+			name:    "start changed",
+			old:     types.NewRelationship(types.RelID(65), 1, types.NodeID(1), types.NodeID(2)),
+			current: types.NewRelationship(types.RelID(65), 1, types.NodeID(3), types.NodeID(2)),
+		},
+		{
+			name:    "end changed",
+			old:     types.NewRelationship(types.RelID(66), 1, types.NodeID(1), types.NodeID(2)),
+			current: types.NewRelationship(types.RelID(66), 1, types.NodeID(1), types.NodeID(3)),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := ValidateRelationshipReplacement(tc.old, tc.current); !errors.Is(err, ErrInvalidStoreMutation) {
+				t.Fatalf("ValidateRelationshipReplacement %s = %v, want ErrInvalidStoreMutation", tc.name, err)
+			}
+		})
 	}
 }

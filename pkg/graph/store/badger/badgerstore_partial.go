@@ -20,8 +20,8 @@ import (
 //   Entity shard: entity (0x02) + typeIdx (0x04) + outIdx (0x05)
 //   In shard:     inIdx (0x06)
 //
-// These unexported helpers perform the partial writes/deletes that
-// TieredStore needs for cross-shard relationship routing.
+// These split helpers perform the partial writes/deletes that TieredStore needs
+// for cross-shard relationship routing.
 
 // IncomingIndexEntry is a snapshot row from the incoming adjacency index.
 type IncomingIndexEntry struct {
@@ -36,10 +36,10 @@ type IncomingIndexEntry struct {
 // TieredStore verifies endpoint existence before invoking this split-write leg.
 // Acquires idxMu.Lock internally.
 func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
 	rid := r.ID()
@@ -98,10 +98,10 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 // on the endpoint node find the relationship.
 // Acquires idxMu.Lock internally.
 func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
-	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(startID), types.NodeID(endID), relType, types.RelID(relID)); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(startID), types.NodeID(endID), relType, types.RelID(relID)); err != nil {
 		return err
 	}
 	endNID := types.NodeID(endID)
@@ -129,15 +129,20 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 // the companion in-shard deletion.
 // Acquires idxMu.Lock internally.
 func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
+	if err := bs.checkWritable(); err != nil {
+		return RelDeleteInfo{}, err
+	}
 	rid := types.RelID(id)
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return RelDeleteInfo{}, err
 	}
-	if err := bs.checkOpen(); err != nil {
-		return RelDeleteInfo{}, err
-	}
 
 	bs.idxMu.Lock()
+
+	if _, exists := bs.relIDs[rid]; !exists {
+		bs.idxMu.Unlock()
+		return RelDeleteInfo{}, ErrRelNotFound
+	}
 
 	r, err := bs.getRelLocked(rid)
 	if err != nil {
@@ -193,10 +198,10 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 // cross-shard relationship.
 // Acquires idxMu.Lock internally.
 func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
-	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(info.StartID), types.NodeID(info.EndID), info.RelType, types.RelID(info.ID)); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(info.StartID), types.NodeID(info.EndID), info.RelType, types.RelID(info.ID)); err != nil {
 		return err
 	}
 	endNID := types.NodeID(info.EndID)
@@ -205,9 +210,15 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	bs.idxMu.Lock()
 
 	if set, exists := bs.inIdx[endNID]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.inIdx, endNID)
+		if tok, ok := set[rid]; ok {
+			if tok != info.RelType {
+				bs.idxMu.Unlock()
+				return ErrRelNotFound
+			}
+			delete(set, rid)
+			if len(set) == 0 {
+				delete(bs.inIdx, endNID)
+			}
 		}
 	}
 
@@ -229,24 +240,18 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 // endpoint prefix and queue a delete for the matching in/ key.
 // Acquires idxMu.Lock internally.
 func (bs *Store) DeleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.ID) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := validateIncomingDeleteTarget(endNodeID, relID); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
-		return err
-	}
-	if !bs.deleteIncomingMemoryEntry(endNodeID, relID) {
-		return nil // nothing to remove
-	}
+	bs.deleteIncomingMemoryEntry(endNodeID, relID)
 
 	// Scan pending buffer to find and convert the Set op to a Delete op.
 	// The key format: 0x06 | endID(8B) | relType(2B) | startID(8B) | relID(8B) = 27B.
 	// The relID is at offset 19.
-	if bs.deletePendingIncoming(endNodeID, relID) {
-		return bs.flushIfSyncWrites()
-	}
-
-	// Not in pending buffer — scan Badger for the matching key.
+	bs.deletePendingIncoming(endNodeID, relID)
 	if err := bs.scanAndDeleteIncomingPersisted(endNodeID, relID); err != nil {
 		return err
 	}
@@ -256,16 +261,14 @@ func (bs *Store) DeleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.I
 // ScanAndDeleteIncoming scans Badger for the 0x06 key matching (endNodeID, relID)
 // and queues a delete op if found. Repair-only path; not performance critical.
 func (bs *Store) ScanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := validateIncomingDeleteTarget(endNodeID, relID); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
-		return err
-	}
 	bs.deleteIncomingMemoryEntry(endNodeID, relID)
-	if bs.deletePendingIncoming(endNodeID, relID) {
-		return bs.flushIfSyncWrites()
-	}
+	bs.deletePendingIncoming(endNodeID, relID)
 	if err := bs.scanAndDeleteIncomingPersisted(endNodeID, relID); err != nil {
 		return err
 	}
@@ -277,7 +280,8 @@ func (bs *Store) scanAndDeleteIncomingPersisted(endNodeID, relID snowflake.ID) e
 	prefix[0] = storepkg.KeyIn
 	storepkg.PutUint64(prefix, 1, int64(endNodeID))
 
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	var ops []writeOp
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Prefix = prefix
@@ -290,16 +294,21 @@ func (bs *Store) scanAndDeleteIncomingPersisted(endNodeID, relID snowflake.ID) e
 				if storepkg.ParseRelIDFromAdjKey(key) == relID {
 					delKey := make([]byte, len(key))
 					copy(delKey, key)
-					bs.appendOps(writeOp{opType: writeOpDelete, key: delKey})
-					return nil
+					ops = append(ops, writeOp{opType: writeOpDelete, key: delKey})
 				}
 			}
 		}
 		return nil // not found — already cleaned up or was never persisted
-	})
+	}); err != nil {
+		return err
+	}
+	if len(ops) > 0 {
+		bs.appendOps(ops...)
+	}
+	return nil
 }
 
-func (bs *Store) deleteIncomingMemoryEntry(endNodeID, relID snowflake.ID) bool {
+func (bs *Store) deleteIncomingMemoryEntry(endNodeID, relID snowflake.ID) {
 	endNID := types.NodeID(endNodeID)
 	rid := types.RelID(relID)
 
@@ -308,20 +317,19 @@ func (bs *Store) deleteIncomingMemoryEntry(endNodeID, relID snowflake.ID) bool {
 
 	set, exists := bs.inIdx[endNID]
 	if !exists {
-		return false
+		return
 	}
 	if _, ok := set[rid]; !ok {
-		return false
+		return
 	}
 
 	delete(set, rid)
 	if len(set) == 0 {
 		delete(bs.inIdx, endNID)
 	}
-	return true
 }
 
-func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) bool {
+func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) {
 	bs.wbMu.Lock()
 	defer bs.wbMu.Unlock()
 
@@ -332,10 +340,8 @@ func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) bool {
 		}
 		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
 			bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
-			return true
 		}
 	}
-	return false
 }
 
 func validateIncomingDeleteTarget(endNodeID, relID snowflake.ID) error {
@@ -352,7 +358,7 @@ func validateIncomingDeleteTarget(endNodeID, relID snowflake.ID) error {
 
 // HasNodeID checks whether the given node ID exists in this shard. O(1).
 func (bs *Store) HasNodeID(id snowflake.ID) bool {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.dbClosed.Load() {
 		return false
 	}
 	bs.idxMu.RLock()
@@ -363,7 +369,7 @@ func (bs *Store) HasNodeID(id snowflake.ID) bool {
 
 // HasRelID checks whether the given relationship ID exists in this shard. O(1).
 func (bs *Store) HasRelID(id snowflake.ID) bool {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.dbClosed.Load() {
 		return false
 	}
 	bs.idxMu.RLock()
@@ -375,7 +381,7 @@ func (bs *Store) HasRelID(id snowflake.ID) bool {
 // IncomingRelIDs returns relationship IDs from the inIdx for the given node.
 // typeToken 0 = all types. Returns a sorted slice. Snapshot under RLock.
 func (bs *Store) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowflake.ID {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
 	bs.idxMu.RLock()
@@ -393,14 +399,14 @@ func (bs *Store) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowfla
 	}
 	bs.idxMu.RUnlock()
 
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }
 
 // IncomingIndexEntries returns a sorted snapshot of all incoming adjacency
 // entries in this shard, including entries whose end node no longer exists.
 func (bs *Store) IncomingIndexEntries() []IncomingIndexEntry {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
 	bs.idxMu.RLock()
@@ -428,7 +434,7 @@ func (bs *Store) IncomingIndexEntries() []IncomingIndexEntry {
 // OutgoingRelIDs returns relationship IDs from the outIdx for the given node.
 // Returns a sorted slice. Snapshot under RLock.
 func (bs *Store) OutgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.dbClosed.Load() {
 		return nil
 	}
 	bs.idxMu.RLock()
@@ -443,6 +449,6 @@ func (bs *Store) OutgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
 	}
 	bs.idxMu.RUnlock()
 
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }

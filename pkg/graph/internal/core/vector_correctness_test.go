@@ -16,6 +16,7 @@ package core
 //       temporal eligibility and k-cut.
 
 import (
+	"errors"
 	"math"
 	"sort"
 	"testing"
@@ -59,6 +60,23 @@ func TestSearchNearestNodes_NonPositiveK_NoPanic(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("k=-1: expected 0 results, got %d", len(results))
+	}
+}
+
+func TestSearchNearestNodes_NonFiniteQueryRejectedBeforeNonPositiveK(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	label := "Vec"
+	key := "v"
+	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	results, err := g.Index.SearchNearest(label, key, []float32{float32(math.NaN()), 0}, 0, storepkg.QueryOpts{})
+	if !errors.Is(err, ErrInvalidVectorValue) || results != nil {
+		t.Fatalf("SearchNearest non-finite query with k=0 = (%v, %v), want nil, ErrInvalidVectorValue", results, err)
 	}
 }
 

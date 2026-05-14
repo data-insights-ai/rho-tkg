@@ -87,6 +87,16 @@ func TestShardCatalog_LoadMissing(t *testing.T) {
 	}
 }
 
+func TestShardCatalog_LoadEmptyPathNoop(t *testing.T) {
+	sc := NewShardCatalog("")
+	if err := sc.Load(); err != nil {
+		t.Fatalf("Load empty path: %v", err)
+	}
+	if len(sc.Shards) != 0 {
+		t.Fatalf("Load empty path populated shards: %v", sc.Shards)
+	}
+}
+
 func TestShardCatalog_LoadRejectsInvalidPersistedTopology(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -111,6 +121,12 @@ func TestShardCatalog_LoadRejectsInvalidPersistedTopology(t *testing.T) {
 			name: "path traversal",
 			json: `{"shards":[` +
 				`{"name":"reference","kind":"reference","tier":"hot","path":"../outside"}` +
+				`]}`,
+		},
+		{
+			name: "normalizing path alias",
+			json: `{"shards":[` +
+				`{"name":"reference","kind":"reference","tier":"hot","path":"events/../reference"}` +
 				`]}`,
 		},
 		{
@@ -148,11 +164,162 @@ func TestShardCatalog_LoadRejectsInvalidPersistedTopology(t *testing.T) {
 	}
 }
 
+func TestShardCatalogLoadRejectsInvalidFileWithoutMutatingCatalog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	sc := NewShardCatalog(path)
+	sc.AddShard(ShardEntry{
+		Name: "reference",
+		Kind: ShardReference,
+		Tier: TierHot,
+		Path: "reference",
+	})
+	invalid := `{"shards":[` +
+		`{"name":"reference","kind":"reference","tier":"hot","path":"reference"},` +
+		`{"name":"reference","kind":"reference","tier":"hot","path":"reference-copy"}` +
+		`]}`
+	if err := os.WriteFile(path, []byte(invalid), 0o600); err != nil {
+		t.Fatalf("write invalid catalog: %v", err)
+	}
+
+	if err := sc.Load(); err == nil {
+		t.Fatal("Load returned nil for invalid catalog")
+	}
+	got, ok := sc.GetShard("reference")
+	if !ok {
+		t.Fatal("existing reference shard missing after rejected Load")
+	}
+	if got.Path != "reference" {
+		t.Fatalf("rejected Load mutated catalog path: got %q", got.Path)
+	}
+}
+
+func TestShardCatalogSaveRejectsInvalidCurrentTopology(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	original := []byte(`{"shards":[]}`)
+	if err := atomicWriteFile(path, original, "test catalog setup"); err != nil {
+		t.Fatalf("write original catalog: %v", err)
+	}
+
+	sc := NewShardCatalog(path)
+	sc.AddShard(ShardEntry{
+		Name: "reference",
+		Kind: ShardReference,
+		Tier: TierCold,
+		Path: "reference",
+	})
+
+	if err := sc.Save(); err == nil {
+		t.Fatal("Save returned nil for invalid current topology")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read catalog after rejected save: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("rejected Save changed catalog bytes: got %q want %q", got, original)
+	}
+}
+
 func TestShardCatalog_GetShard_NotFound(t *testing.T) {
 	sc := NewShardCatalog("")
 	_, ok := sc.GetShard("nope")
 	if ok {
 		t.Error("GetShard should return false for missing shard")
+	}
+}
+
+func TestShardCatalog_AddShardCopiesSliceFields(t *testing.T) {
+	labels := []string{"Case"}
+	relTypes := []string{"RELATES_TO"}
+	sc := NewShardCatalog("")
+	sc.AddShard(ShardEntry{
+		Name:     "reference",
+		Kind:     ShardReference,
+		Tier:     TierHot,
+		Labels:   labels,
+		RelTypes: relTypes,
+	})
+
+	labels[0] = "Mutated"
+	relTypes[0] = "MUTATED"
+
+	got, ok := sc.GetShard("reference")
+	if !ok {
+		t.Fatal("GetShard(reference) not found")
+	}
+	if got.Labels[0] != "Case" {
+		t.Fatalf("catalog label aliases caller slice: got %q", got.Labels[0])
+	}
+	if got.RelTypes[0] != "RELATES_TO" {
+		t.Fatalf("catalog reltype aliases caller slice: got %q", got.RelTypes[0])
+	}
+}
+
+func TestShardCatalogReturnedEntriesDoNotAliasSliceFields(t *testing.T) {
+	sc := NewShardCatalog("")
+	sc.AddShard(ShardEntry{
+		Name:     "hot",
+		Kind:     ShardEvent,
+		Tier:     TierHot,
+		Labels:   []string{"Signal"},
+		RelTypes: []string{"RELATES_TO"},
+	})
+	sc.AddShard(ShardEntry{
+		Name:     "cold",
+		Kind:     ShardEvent,
+		Tier:     TierCold,
+		Labels:   []string{"ArchiveEvent"},
+		RelTypes: []string{"ARCHIVED_BY"},
+	})
+
+	got, ok := sc.GetShard("hot")
+	if !ok {
+		t.Fatal("GetShard(hot) not found")
+	}
+	got.Labels[0] = "MutatedGet"
+	got.RelTypes[0] = "MUTATED_GET"
+
+	hot, ok := sc.HotEventShard()
+	if !ok {
+		t.Fatal("HotEventShard not found")
+	}
+	hot.Labels[0] = "MutatedHot"
+	hot.RelTypes[0] = "MUTATED_HOT"
+
+	events := sc.EventShards()
+	if len(events) != 2 {
+		t.Fatalf("EventShards len = %d, want 2", len(events))
+	}
+	events[0].Labels[0] = "MutatedEvents"
+	events[0].RelTypes[0] = "MUTATED_EVENTS"
+
+	cold := sc.ColdEventShards()
+	if len(cold) != 1 {
+		t.Fatalf("ColdEventShards len = %d, want 1", len(cold))
+	}
+	cold[0].Labels[0] = "MutatedCold"
+	cold[0].RelTypes[0] = "MUTATED_COLD"
+
+	got, ok = sc.GetShard("hot")
+	if !ok {
+		t.Fatal("GetShard(hot) after mutations not found")
+	}
+	if got.Labels[0] != "Signal" {
+		t.Fatalf("hot label aliases returned slice: got %q", got.Labels[0])
+	}
+	if got.RelTypes[0] != "RELATES_TO" {
+		t.Fatalf("hot reltype aliases returned slice: got %q", got.RelTypes[0])
+	}
+
+	got, ok = sc.GetShard("cold")
+	if !ok {
+		t.Fatal("GetShard(cold) after mutations not found")
+	}
+	if got.Labels[0] != "ArchiveEvent" {
+		t.Fatalf("cold label aliases returned slice: got %q", got.Labels[0])
+	}
+	if got.RelTypes[0] != "ARCHIVED_BY" {
+		t.Fatalf("cold reltype aliases returned slice: got %q", got.RelTypes[0])
 	}
 }
 
@@ -232,7 +399,7 @@ func TestShardCatalog_SaveAtomicity(t *testing.T) {
 	path := filepath.Join(dir, "catalog.json")
 
 	sc := NewShardCatalog(path)
-	sc.AddShard(ShardEntry{Name: "ref", Kind: ShardReference})
+	sc.AddShard(ShardEntry{Name: "ref", Kind: ShardReference, Tier: TierHot, Path: "ref"})
 	if err := sc.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}

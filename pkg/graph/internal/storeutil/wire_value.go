@@ -400,67 +400,20 @@ func validateWireStringMap(v any) error {
 
 // PropertyTypeTag returns the type tag for a property value.
 func PropertyTypeTag(v any) byte {
-	switch v.(type) {
-	case bool:
-		return ptBool
-	case int:
-		return ptInt
-	case int8:
-		return ptInt8
-	case int16:
-		return ptInt16
-	case int32:
-		return ptInt32
-	case int64:
-		return ptInt64
-	case uint:
-		return ptUint
-	case uint8:
-		return ptUint8
-	case uint16:
-		return ptUint16
-	case uint32:
-		return ptUint32
-	case uint64:
-		return ptUint64
-	case float32:
-		return ptFloat32
-	case float64:
-		return ptFloat64
-	case string:
-		return ptString
-	case []string:
-		return ptSliceStr
-	case []int:
-		return ptSliceInt
-	case []int64:
-		return ptSliceInt64
-	case []float32:
-		return ptSliceF32
-	case []float64:
-		return ptSliceF64
-	case []byte:
-		return ptSliceByte
-	case []bool:
-		return ptSliceBool
-	case []any:
-		return ptSliceAny
-	case map[string]any:
-		return ptMapStrAny
-	case map[string]string:
-		return ptMapStrStr
-	default:
-		if _, _, ok := types.RegisteredPropertyStructWireType(v); ok {
-			return ptCustom
-		}
-		return ptUnknown
-	}
+	return types.PropertyHashTypeTag(v)
 }
 
 func propertyToWire(p types.Property) (PropertyWire, error) {
 	tag := PropertyTypeTag(p.Value)
 	pw := PropertyWire{Key: p.Key, Type: tag}
 	if tag != ptCustom {
+		if tag == ptUnknown && p.Value != nil {
+			return PropertyWire{}, fmt.Errorf("%w: unsupported property wire value %T", types.ErrUnsupportedValueType, p.Value)
+		}
+		if isTypedNilPropertyValue(p.Value) {
+			pw.Nil = true
+			return pw, nil
+		}
 		pw.Value = p.Value
 		return pw, nil
 	}
@@ -517,6 +470,12 @@ func hashBytesChecked(v types.HashableValue) (hash []byte, err error) {
 // becomes []any, int64 becomes int8 for small values, etc. The type tag
 // reverses this loss.
 func reconstructPropertyWireValue(p PropertyWire) (any, error) {
+	if p.Nil {
+		if p.Value != nil {
+			return nil, fmt.Errorf("typed nil property %q carries value type %T", p.Key, p.Value)
+		}
+		return typedNilPropertyWireValue(p.Type)
+	}
 	if p.Type == ptCustom {
 		data, ok := p.Value.([]byte)
 		if !ok {
@@ -525,6 +484,56 @@ func reconstructPropertyWireValue(p PropertyWire) (any, error) {
 		return reconstructCustomPropertyValue(data, p.CustomType, p.CustomPointer)
 	}
 	return reconstructTypedValue(p.Value, p.Type), nil
+}
+
+func isTypedNilPropertyValue(v any) bool {
+	if v == nil {
+		return false
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Map:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
+func isNillablePropertyWireType(tag byte) bool {
+	switch tag {
+	case ptSliceStr, ptSliceInt, ptSliceInt64, ptSliceF32, ptSliceF64,
+		ptSliceByte, ptSliceBool, ptSliceAny, ptMapStrAny, ptMapStrStr:
+		return true
+	default:
+		return false
+	}
+}
+
+func typedNilPropertyWireValue(tag byte) (any, error) {
+	switch tag {
+	case ptSliceStr:
+		return []string(nil), nil
+	case ptSliceInt:
+		return []int(nil), nil
+	case ptSliceInt64:
+		return []int64(nil), nil
+	case ptSliceF32:
+		return []float32(nil), nil
+	case ptSliceF64:
+		return []float64(nil), nil
+	case ptSliceByte:
+		return []byte(nil), nil
+	case ptSliceBool:
+		return []bool(nil), nil
+	case ptSliceAny:
+		return []any(nil), nil
+	case ptMapStrAny:
+		return map[string]any(nil), nil
+	case ptMapStrStr:
+		return map[string]string(nil), nil
+	default:
+		return nil, fmt.Errorf("type tag %d cannot represent typed nil", tag)
+	}
 }
 
 func reconstructCustomPropertyValue(data []byte, typeName string, pointer bool) (any, error) {

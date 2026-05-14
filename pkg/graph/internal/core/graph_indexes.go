@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,10 +36,20 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 		labelFinished := false
 		defer func() {
 			if !labelFinished {
-				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during property index create"))
+				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+					fmt.Errorf("panic during property index create"),
+					func() error { return cap.DropPropertyIndex(tok, propertyKey) },
+					storepkg.ErrIndexNotFound,
+					storepkg.ErrIndexExists,
+				)
 			}
 		}()
-		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreatePropertyIndex(tok, propertyKey))
+		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+			cap.CreatePropertyIndex(tok, propertyKey),
+			func() error { return cap.DropPropertyIndex(tok, propertyKey) },
+			storepkg.ErrIndexNotFound,
+			storepkg.ErrIndexExists,
+		)
 		labelFinished = true
 		return err
 	})
@@ -94,10 +105,20 @@ func (i *IndexOps) CreateTemporal(label string) error {
 		labelFinished := false
 		defer func() {
 			if !labelFinished {
-				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during temporal index create"))
+				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+					fmt.Errorf("panic during temporal index create"),
+					func() error { return cap.DropTemporalIndex(tok) },
+					storepkg.ErrTemporalIndexNotFound,
+					storepkg.ErrTemporalIndexExists,
+				)
 			}
 		}()
-		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateTemporalIndex(tok))
+		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+			cap.CreateTemporalIndex(tok),
+			func() error { return cap.DropTemporalIndex(tok) },
+			storepkg.ErrTemporalIndexNotFound,
+			storepkg.ErrTemporalIndexExists,
+		)
 		labelFinished = true
 		return err
 	})
@@ -161,10 +182,20 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 		labelFinished := false
 		defer func() {
 			if !labelFinished {
-				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during high-frequency index create"))
+				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+					fmt.Errorf("panic during high-frequency index create"),
+					func() error { return cap.DropHighFrequencyIndex(tok) },
+					storepkg.ErrTemporalIndexNotFound,
+					storepkg.ErrTemporalIndexExists,
+				)
 			}
 		}()
-		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateHighFrequencyIndex(tok, bucketSize))
+		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+			cap.CreateHighFrequencyIndex(tok, bucketSize),
+			func() error { return cap.DropHighFrequencyIndex(tok) },
+			storepkg.ErrTemporalIndexNotFound,
+			storepkg.ErrTemporalIndexExists,
+		)
 		labelFinished = true
 		return err
 	})
@@ -225,10 +256,20 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 		labelFinished := false
 		defer func() {
 			if !labelFinished {
-				_ = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, fmt.Errorf("panic during vector index create"))
+				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+					fmt.Errorf("panic during vector index create"),
+					func() error { return cap.DropVectorIndex(tok, propertyKey) },
+					storepkg.ErrVectorIndexNotFound,
+					storepkg.ErrVectorIndexExists,
+				)
 			}
 		}()
-		err = c.restoreNewLabelOnError(labelSnapshot, allocatedLabel, label, cap.CreateVectorIndex(tok, propertyKey, dims, metric))
+		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+			cap.CreateVectorIndex(tok, propertyKey, dims, metric),
+			func() error { return cap.DropVectorIndex(tok, propertyKey) },
+			storepkg.ErrVectorIndexNotFound,
+			storepkg.ErrVectorIndexExists,
+		)
 		labelFinished = true
 		return err
 	})
@@ -258,6 +299,52 @@ func (i *IndexOps) DropVector(label, propertyKey string) error {
 		}
 		return cap.DropVectorIndex(tok, propertyKey)
 	})
+}
+
+func (c *Core) restoreNewLabelIndexOnError(snapshot []string, allocated bool, label string, err error, cleanup func() error, notFound, exists error) error {
+	if err != nil && cleanup != nil {
+		if !allocated && exists != nil && errors.Is(err, exists) {
+			return c.restoreNewLabelOnError(snapshot, allocated, label, err)
+		}
+		if cleanupErr := runRollbackCleanup(cleanup); cleanupErr != nil && (notFound == nil || !errors.Is(cleanupErr, notFound)) {
+			err = fmt.Errorf("%w; additionally failed to remove partial index for rolled-back label %q: %v", err, label, cleanupErr)
+			if allocated {
+				if persistErr := c.persistRegistries(); persistErr != nil {
+					err = fmt.Errorf("%w; additionally failed to persist retained label registry after partial index cleanup failure: %v", err, persistErr)
+				}
+				c.registryMu.Unlock()
+				return err
+			}
+		}
+	}
+	if err == nil && allocated {
+		if persistErr := c.persistRegistries(); persistErr != nil {
+			err = persistErr
+			if cleanup != nil {
+				if cleanupErr := runRollbackCleanup(cleanup); cleanupErr != nil && (notFound == nil || !errors.Is(cleanupErr, notFound)) {
+					err = fmt.Errorf("%w; additionally failed to remove partial index for rolled-back label %q: %v", err, label, cleanupErr)
+					if persistRetainedErr := c.persistRegistries(); persistRetainedErr != nil {
+						err = fmt.Errorf("%w; additionally failed to persist retained label registry after partial index cleanup failure: %v", err, persistRetainedErr)
+					}
+					c.registryMu.Unlock()
+					return err
+				}
+			}
+			return c.restoreNewLabelOnError(snapshot, allocated, label, err)
+		}
+		c.registryMu.Unlock()
+		return nil
+	}
+	return c.restoreNewLabelOnError(snapshot, allocated, label, err)
+}
+
+func runRollbackCleanup(cleanup func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return cleanup()
 }
 
 func (c *Core) validateIndexLabel(label string) error {

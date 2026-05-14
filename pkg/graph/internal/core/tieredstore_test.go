@@ -272,9 +272,7 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 
 	// Rotate.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	_, _ = g.Rels.Add("TRIGGERED", sig2, case1, nil)
 
@@ -445,13 +443,12 @@ func TestTieredStore_ArchiveDepthAll(t *testing.T) {
 	}
 }
 func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
-	// ArchiveNode should fail for event nodes (not in refShard).
 	g, ts := newTestTieredGraph(t)
 
 	sigNode, _ := g.Nodes.Add([]string{"Signal"}, nil)
 	err := ts.ArchiveNode(sigNode.ID())
-	if !errors.Is(err, storepkg.ErrNodeNotFound) {
-		t.Errorf("expected storepkg.ErrNodeNotFound for event node archive, got %v", err)
+	if !errors.Is(err, tiered.ErrNotReferenceEntity) {
+		t.Errorf("expected tiered.ErrNotReferenceEntity for event node archive, got %v", err)
 	}
 }
 
@@ -811,12 +808,9 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 
 	// Rotate hot→warm, demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	// Find the cold shard.
@@ -889,9 +883,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -962,12 +954,9 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 
 	r, err := g.Rels.Add("OBSERVED", a, b, nil)
 	if err != nil {

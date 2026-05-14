@@ -82,6 +82,7 @@ type PropertyWire struct {
 	Key           string `msgpack:"k"`
 	Value         any    `msgpack:"v"`
 	Type          byte   `msgpack:"t"`            // property type tag for faithful reconstruction
+	Nil           bool   `msgpack:"n,omitempty"`  // typed nil slice/map marker
 	CustomType    string `msgpack:"ct,omitempty"` // registered custom property element type
 	CustomPointer bool   `msgpack:"cp,omitempty"` // original custom property form was *T
 }
@@ -217,7 +218,7 @@ func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) e
 // Use this on data read from durable stores, where valid MsgPack can still carry
 // semantically invalid fields that must not enter Store state.
 func WireToNodeChecked(w NodeWire) (*types.Node, error) {
-	if err := ValidateNodeWire(w); err != nil {
+	if err := validateNodeWireFields(w); err != nil {
 		return nil, err
 	}
 	props, err := wireToPropertiesChecked(w.Properties)
@@ -357,7 +358,7 @@ func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySl
 // wire data. Use this at store read boundaries instead of calling WireToRel
 // directly on bytes that came from disk.
 func WireToRelChecked(w RelWire) (*types.Relationship, error) {
-	if err := ValidateRelWire(w); err != nil {
+	if err := validateRelWireFields(w); err != nil {
 		return nil, err
 	}
 	props, err := wireToPropertiesChecked(w.Properties)
@@ -408,43 +409,66 @@ func propertiesToWireChecked(ps types.PropertySlice) ([]PropertyWire, error) {
 // semantically corrupt rows from old bugs, disk corruption, or hostile fixtures.
 // Both should validate property wire before constructing entities.
 func ValidatePropertyWireSlice(pw []PropertyWire) error {
-	var prev string
-	for i, p := range pw {
-		if types.IsShadowKey(p.Key) {
-			return fmt.Errorf("property[%d] key %q uses reserved tkg_ prefix", i, p.Key)
-		}
-		if i > 0 && p.Key <= prev {
-			return fmt.Errorf("property[%d] key %q is not in strict sorted order after %q", i, p.Key, prev)
-		}
-		if p.Type > ptCustom {
-			return fmt.Errorf("property[%d] key %q has unknown type tag %d", i, p.Key, p.Type)
-		}
-		if err := validatePropertyWireValue(p.Value, p.Type); err != nil {
-			return fmt.Errorf("property[%d] key %q type tag: %w", i, p.Key, err)
-		}
-		if err := types.ValidatePropertyValue(p.Value); err != nil {
-			return fmt.Errorf("property[%d] key %q raw value: %w", i, p.Key, err)
-		}
-		value, err := reconstructPropertyWireValue(p)
-		if err != nil {
-			return fmt.Errorf("property[%d] key %q reconstruct: %w", i, p.Key, err)
-		}
-		if err := types.ValidatePropertyValue(value); err != nil {
-			return fmt.Errorf("property[%d] key %q reconstructed value: %w", i, p.Key, err)
-		}
-		var probe types.PropertySlice
-		if err := probe.Set(p.Key, value); err != nil {
-			return fmt.Errorf("property[%d] key %q reconstructed value install: %w", i, p.Key, err)
-		}
-		prev = p.Key
+	_, err := wireToPropertiesChecked(pw)
+	return err
+}
+
+func validatePropertyWire(p PropertyWire, index int, prev string) (types.Property, error) {
+	if types.IsShadowKey(p.Key) {
+		return types.Property{}, fmt.Errorf("property[%d] key %q uses reserved tkg_ prefix", index, p.Key)
 	}
-	return nil
+	if index > 0 && p.Key <= prev {
+		return types.Property{}, fmt.Errorf("property[%d] key %q is not in strict sorted order after %q", index, p.Key, prev)
+	}
+	if p.Type > ptCustom {
+		return types.Property{}, fmt.Errorf("property[%d] key %q has unknown type tag %d", index, p.Key, p.Type)
+	}
+	if p.Type != ptCustom && (p.CustomType != "" || p.CustomPointer) {
+		return types.Property{}, fmt.Errorf("property[%d] key %q has custom property metadata on non-custom type tag %d", index, p.Key, p.Type)
+	}
+	if p.Nil {
+		if p.Value != nil {
+			return types.Property{}, fmt.Errorf("property[%d] key %q marks typed nil but carries value type %T", index, p.Key, p.Value)
+		}
+		if !isNillablePropertyWireType(p.Type) {
+			return types.Property{}, fmt.Errorf("property[%d] key %q marks non-nillable type tag %d as typed nil", index, p.Key, p.Type)
+		}
+	} else {
+		if err := validatePropertyWireValue(p.Value, p.Type); err != nil {
+			return types.Property{}, fmt.Errorf("property[%d] key %q type tag: %w", index, p.Key, err)
+		}
+	}
+	if err := types.ValidatePropertyValue(p.Value); err != nil {
+		return types.Property{}, fmt.Errorf("property[%d] key %q raw value: %w", index, p.Key, err)
+	}
+	value, err := reconstructPropertyWireValue(p)
+	if err != nil {
+		return types.Property{}, fmt.Errorf("property[%d] key %q reconstruct: %w", index, p.Key, err)
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value: %w", index, p.Key, err)
+	}
+	var probe types.PropertySlice
+	if err := probe.Set(p.Key, value); err != nil {
+		return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value install: %w", index, p.Key, err)
+	}
+	return types.Property{Key: p.Key, Value: value}, nil
 }
 
 // ValidateNodeWire checks that a NodeWire can be reconstructed without
 // truncating tokens, accepting non-canonical label lists, or panicking in the
 // types layer.
 func ValidateNodeWire(w NodeWire) error {
+	if err := validateNodeWireFields(w); err != nil {
+		return err
+	}
+	if _, err := wireToPropertiesChecked(w.Properties); err != nil {
+		return fmt.Errorf("node wire: properties: %w", err)
+	}
+	return nil
+}
+
+func validateNodeWireFields(w NodeWire) error {
 	if w.ID <= 0 {
 		return fmt.Errorf("node wire: id must be positive, got %d", w.ID)
 	}
@@ -476,18 +500,41 @@ func ValidateNodeWire(w NodeWire) error {
 	if w.BaseEntityID < 0 {
 		return fmt.Errorf("node wire: base entity id must be non-negative, got %d", w.BaseEntityID)
 	}
+	if !w.HasTemporal && nodeWireHasTemporalPayload(w) {
+		return fmt.Errorf("node wire: temporal fields set while has_temporal is false")
+	}
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("node wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
-	if err := ValidatePropertyWireSlice(w.Properties); err != nil {
-		return fmt.Errorf("node wire: properties: %w", err)
-	}
 	return nil
+}
+
+func nodeWireHasTemporalPayload(w NodeWire) bool {
+	return w.ValidFrom != 0 ||
+		w.ValidTo != 0 ||
+		w.TxFrom != 0 ||
+		w.TxTo != 0 ||
+		w.CreatedAt != 0 ||
+		w.UpdatedAt != 0 ||
+		w.DeletedAt != 0 ||
+		w.CreatedBy != "" ||
+		w.UpdatedBy != "" ||
+		w.BaseEntityID != 0
 }
 
 // ValidateRelWire checks that a RelWire can be reconstructed without
 // truncating tokens or panicking in the types layer.
 func ValidateRelWire(w RelWire) error {
+	if err := validateRelWireFields(w); err != nil {
+		return err
+	}
+	if _, err := wireToPropertiesChecked(w.Properties); err != nil {
+		return fmt.Errorf("relationship wire: properties: %w", err)
+	}
+	return nil
+}
+
+func validateRelWireFields(w RelWire) error {
 	if w.ID <= 0 {
 		return fmt.Errorf("relationship wire: id must be positive, got %d", w.ID)
 	}
@@ -509,31 +556,45 @@ func ValidateRelWire(w RelWire) error {
 	if w.BaseEntityID < 0 {
 		return fmt.Errorf("relationship wire: base entity id must be non-negative, got %d", w.BaseEntityID)
 	}
+	if !w.HasTemporal && relWireHasTemporalPayload(w) {
+		return fmt.Errorf("relationship wire: temporal fields set while has_temporal is false")
+	}
 	if w.ValidFrom != 0 && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("relationship wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
-	}
-	if err := ValidatePropertyWireSlice(w.Properties); err != nil {
-		return fmt.Errorf("relationship wire: properties: %w", err)
 	}
 	return nil
 }
 
+func relWireHasTemporalPayload(w RelWire) bool {
+	return w.ValidFrom != 0 ||
+		w.ValidTo != 0 ||
+		w.TxFrom != 0 ||
+		w.TxTo != 0 ||
+		w.CreatedAt != 0 ||
+		w.UpdatedAt != 0 ||
+		w.DeletedAt != 0 ||
+		w.CreatedBy != "" ||
+		w.UpdatedBy != "" ||
+		w.BaseEntityID != 0
+}
+
 // wireToProperties converts wire properties back to a PropertySlice.
-// Wire data comes from our own serialization, so values are already validated
-// and sorted — build the slice directly without re-validation.
+// The unchecked path preserves the historical normalization behavior used by
+// tests and by WireToNode/WireToRel; checked store reads use
+// wireToPropertiesChecked so corrupt wire rows fail closed.
 //
 // The Type tag drives faithful reconstruction of the original Go type.
 // Old data without Type (decoded as 0/ptUnknown) falls through to
 // normalizeIntegersRecursive — same behavior as before the type tag was added.
 func wireToProperties(pw []PropertyWire) types.PropertySlice {
-	ps, err := wireToPropertiesChecked(pw)
+	ps, err := wireToPropertiesUnchecked(pw)
 	if err != nil {
 		panic(fmt.Sprintf("storeutil: wireToProperties with invalid prevalidated property: %v", err))
 	}
 	return ps
 }
 
-func wireToPropertiesChecked(pw []PropertyWire) (types.PropertySlice, error) {
+func wireToPropertiesUnchecked(pw []PropertyWire) (types.PropertySlice, error) {
 	if len(pw) == 0 {
 		return nil, nil
 	}
@@ -544,6 +605,23 @@ func wireToPropertiesChecked(pw []PropertyWire) (types.PropertySlice, error) {
 			return nil, fmt.Errorf("property[%d] key %q: %w", i, p.Key, err)
 		}
 		ps[i] = types.Property{Key: p.Key, Value: value}
+	}
+	return ps, nil
+}
+
+func wireToPropertiesChecked(pw []PropertyWire) (types.PropertySlice, error) {
+	if len(pw) == 0 {
+		return nil, nil
+	}
+	ps := make(types.PropertySlice, len(pw))
+	var prev string
+	for i, p := range pw {
+		prop, err := validatePropertyWire(p, i, prev)
+		if err != nil {
+			return nil, err
+		}
+		ps[i] = prop
+		prev = p.Key
 	}
 	return ps, nil
 }

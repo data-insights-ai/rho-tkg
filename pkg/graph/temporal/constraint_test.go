@@ -3,6 +3,7 @@ package temporal
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +71,49 @@ func TestConstraintSet_AddOnNonEmpty(t *testing.T) {
 	items := cs.Items()
 	if items[0] != first || items[1] != second {
 		t.Fatalf("Items() = %v, want [%v %v]", items, first, second)
+	}
+}
+
+func TestTemporalConstraintValidate(t *testing.T) {
+	t.Parallel()
+
+	if err := (TemporalConstraint{Kind: ConstraintRelWithinEndpoints}).Validate(); err != nil {
+		t.Fatalf("valid constraint Validate = %v, want nil", err)
+	}
+
+	err := (TemporalConstraint{Kind: TemporalConstraintKind(99)}).Validate()
+	if !errors.Is(err, ErrTemporalConstraint) {
+		t.Fatalf("invalid constraint Validate = %v, want ErrTemporalConstraint", err)
+	}
+	if !errors.Is(err, ErrInvalidTemporalConstraint) {
+		t.Fatalf("invalid constraint Validate = %v, want ErrInvalidTemporalConstraint", err)
+	}
+}
+
+func TestConstraintSetValidate(t *testing.T) {
+	t.Parallel()
+
+	valid := NewConstraintSet(
+		TemporalConstraint{Kind: ConstraintRelWithinEndpoints},
+		TemporalConstraint{Kind: ConstraintRelWithinEndpoints},
+	)
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid set Validate = %v, want nil", err)
+	}
+
+	invalid := NewConstraintSet(
+		TemporalConstraint{Kind: ConstraintRelWithinEndpoints},
+		TemporalConstraint{Kind: TemporalConstraintKind(99)},
+	)
+	err := invalid.Validate()
+	if !errors.Is(err, ErrTemporalConstraint) {
+		t.Fatalf("invalid set Validate = %v, want ErrTemporalConstraint", err)
+	}
+	if !errors.Is(err, ErrInvalidTemporalConstraint) {
+		t.Fatalf("invalid set Validate = %v, want ErrInvalidTemporalConstraint", err)
+	}
+	if !strings.Contains(err.Error(), "constraint[1]") {
+		t.Fatalf("invalid set Validate error = %q, want failing index", err)
 	}
 }
 

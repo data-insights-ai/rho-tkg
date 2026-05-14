@@ -30,4 +30,5 @@ var (
 	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch
 	ErrInvalidTemporalIndexConfig = storepkg.ErrInvalidTemporalIndexConfig
 	ErrInvalidVectorIndexConfig   = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue         = storepkg.ErrInvalidVectorValue
 )

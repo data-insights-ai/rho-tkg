@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
@@ -24,6 +25,32 @@ func validateRelationshipEndpointIDs(startID, endID types.NodeID) error {
 	return nil
 }
 
+func (c *Core) restoreNewRelTypeCreateOnError(snapshot []string, allocated bool, typeName string, err error, cleanup func() error, partialLive *bool) error {
+	if err != nil && cleanup != nil {
+		if cleanupErr := runRollbackCleanup(cleanup); cleanupErr != nil && !errors.Is(cleanupErr, storepkg.ErrRelNotFound) {
+			if partialLive != nil {
+				*partialLive = true
+			}
+			err = fmt.Errorf("%w; additionally failed to remove partial relationship for reltype %q after create failure: %v", err, typeName, cleanupErr)
+			if allocated {
+				if persistErr := c.persistRegistries(); persistErr != nil {
+					err = fmt.Errorf("%w; additionally failed to persist retained reltype registry after partial relationship cleanup failure: %v", err, persistErr)
+				}
+				c.registryMu.Unlock()
+				return err
+			}
+		}
+	}
+	return c.restoreNewRelTypeOnError(snapshot, allocated, typeName, err)
+}
+
+func (c *Core) deletePartialRelationshipForRollback(r *types.Relationship) error {
+	if r == nil {
+		return storepkg.ErrRelNotFound
+	}
+	return c.store.DeleteRelationship(r.ID())
+}
+
 // =============================================================================
 // Relationship — Add (Create / IfAbsent / ByID)
 // =============================================================================
@@ -33,6 +60,9 @@ func validateRelationshipEndpointIDs(startID, endID types.NodeID) error {
 func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
 	var (
@@ -45,7 +75,7 @@ func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode,
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && ep != nil {
+	if rel != nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err
@@ -62,22 +92,20 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		return nil, ErrNilNode
 	}
 
-	// Extract reserved provenance fields before validation.
+	if err := c.validateName(typeName); err != nil {
+		return nil, err
+	}
+
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract reserved temporal fields (tkg_valid_from, tkg_valid_to, tkg_created_at).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validation limits.
-	if err := c.validateName(typeName); err != nil {
-		return nil, err
-	}
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -107,6 +135,10 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
 	id := c.nextRelID()
 	var fromHash, toHash string
 	storeCanCaptureEndpointHashes := false
@@ -134,6 +166,9 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 			}
 		}
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 
 	// R5-F6: defer rel-type token allocation past every endpoint-fetch
 	// failure path. A missing endpoint, store error, or context
@@ -152,13 +187,24 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 		relTypeFinished = true
 		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
 	}
+	var r *types.Relationship
+	finishRelCreateError := func(err error) (error, bool) {
+		relTypeFinished = true
+		partialLive := false
+		err = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, err, func() error {
+			return c.deletePartialRelationshipForRollback(r)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
 		if !relTypeFinished {
-			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+			_ = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"), func() error {
+				return c.deletePartialRelationshipForRollback(r)
+			}, nil)
 		}
 	}()
 
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r = types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
@@ -192,16 +238,27 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	if storeCanCaptureEndpointHashes {
 		fromHash, toHash, err = c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
 		if err != nil {
-			return nil, finishRelType(err)
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, err
+			}
+			return nil, err
 		}
 		ig.FromNodeHash = fromHash
 		ig.ToNodeHash = toHash
 	} else {
-		if err := putGeneratedRelationship(c.store, r); err != nil {
-			return nil, finishRelType(err)
+		if err := c.putGeneratedRelationship(r); err != nil {
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, err
+			}
+			return nil, err
 		}
 	}
 	if err := finishRelType(nil); err != nil {
+		c.opRelAdds.Add(1)
 		return r, err
 	}
 	c.rememberRelType(typeName, typeToken)
@@ -235,14 +292,14 @@ func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo,
 }
 
 func (c *Core) liveEndpointNodes(startID, endID types.NodeID) (*types.Node, *types.Node, error) {
-	liveStart, err := c.store.GetNode(startID)
+	liveStart, err := c.getCurrentNode(startID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
 	}
 	if startID == endID {
 		return liveStart, liveStart, nil
 	}
-	liveEnd, err := c.store.GetNode(endID)
+	liveEnd, err := c.getCurrentNode(endID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
 	}
@@ -254,6 +311,9 @@ func (c *Core) liveEndpointHashes(startID, endID types.NodeID) (string, string, 
 		fromHash, toHash, err := c.endpointHash.EndpointIntegrityHashes(startID, endID)
 		if err != nil {
 			return "", "", fmt.Errorf("graph: live endpoint integrity fetch under endpoint lock: %w", err)
+		}
+		if startID == endID {
+			toHash = fromHash
 		}
 		return fromHash, toHash, nil
 	}
@@ -295,6 +355,9 @@ func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startI
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
 		rel *types.Relationship
 		err error
@@ -305,7 +368,7 @@ func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startI
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && ep != nil {
+	if rel != nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err
@@ -319,22 +382,20 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		return nil, err
 	}
 
-	// Extract reserved provenance fields before validation.
+	if err := c.validateName(typeName); err != nil {
+		return nil, err
+	}
+
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract reserved temporal fields (tkg_valid_from, tkg_valid_to, tkg_created_at).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validation limits.
-	if err := c.validateName(typeName); err != nil {
-		return nil, err
-	}
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -361,6 +422,10 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
 	id := c.nextRelID()
 	var fromHash, toHash string
 	storeCanCaptureEndpointHashes := false
@@ -385,6 +450,9 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 			}
 		}
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 
 	// R5-F6: allocate rel-type token AFTER endpoint locks are held
 	// (and, when constraints are active, AFTER the live-endpoint
@@ -401,13 +469,24 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 		relTypeFinished = true
 		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
 	}
+	var r *types.Relationship
+	finishRelCreateError := func(err error) (error, bool) {
+		relTypeFinished = true
+		partialLive := false
+		err = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, err, func() error {
+			return c.deletePartialRelationshipForRollback(r)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
 		if !relTypeFinished {
-			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+			_ = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"), func() error {
+				return c.deletePartialRelationshipForRollback(r)
+			}, nil)
 		}
 	}()
 
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r = types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
@@ -438,16 +517,27 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	if storeCanCaptureEndpointHashes {
 		fromHash, toHash, err = c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
 		if err != nil {
-			return nil, finishRelType(err)
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, err
+			}
+			return nil, err
 		}
 		ig.FromNodeHash = fromHash
 		ig.ToNodeHash = toHash
 	} else {
-		if err := putGeneratedRelationship(c.store, r); err != nil {
-			return nil, finishRelType(err)
+		if err := c.putGeneratedRelationship(r); err != nil {
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, err
+			}
+			return nil, err
 		}
 	}
 	if err := finishRelType(nil); err != nil {
+		c.opRelAdds.Add(1)
 		return r, err
 	}
 	c.rememberRelType(typeName, typeToken)
@@ -470,6 +560,9 @@ func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string
 	if err := c.checkOpen(); err != nil {
 		return nil, false, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
 	var (
 		rel     *types.Relationship
 		created bool
@@ -481,7 +574,7 @@ func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string
 	if closeErr != nil {
 		return nil, false, closeErr
 	}
-	if err == nil && created && ep != nil {
+	if rel != nil && created && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, created, err
@@ -496,22 +589,20 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		return nil, false, err
 	}
 
-	// Extract reserved provenance fields before validation.
+	if err := c.validateName(typeName); err != nil {
+		return nil, false, err
+	}
+
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, false, err
 	}
 
-	// Extract reserved temporal fields.
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, false, err
 	}
 
-	// Validation limits.
-	if err := c.validateName(typeName); err != nil {
-		return nil, false, err
-	}
 	if err := c.validateProperties(props); err != nil {
 		return nil, false, err
 	}
@@ -537,6 +628,10 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
 
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+
 	// R5-F6: probe the registry for an existing token via Lookup
 	// (zero side effect) before committing to GetOrCreate. If the type
 	// was never registered, no relationship of this type can exist for
@@ -549,33 +644,50 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		if err != nil {
 			return nil, false, fmt.Errorf("graph: check existing relationships: %w", err)
 		}
+		if !c.storeRowsTrust {
+			if err := c.validateOutgoingRelationshipRows(startID, existingTok, existing); err != nil {
+				return nil, false, fmt.Errorf("graph: check existing relationships: %w", err)
+			}
+		}
+		if err := checkCtx(ctx); err != nil {
+			return nil, false, err
+		}
 		for _, r := range existing {
 			if r.EndNodeID() == endID {
+				if !c.storeRowsTrust {
+					return r.DeepCopy(), false, nil
+				}
 				return r, false, nil
 			}
 		}
 	}
 
-	liveStart, err := c.store.GetNode(startID)
-	if err != nil {
-		return nil, false, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
-	}
-	var liveEnd *types.Node
-	if startID == endID {
-		liveEnd = liveStart
-	} else {
-		liveEnd, err = c.store.GetNode(endID)
-		if err != nil {
-			return nil, false, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-		}
-	}
-
 	id := c.nextRelID()
+	var fromHash, toHash string
+	storeCanCaptureEndpointHashes := false
 	if c.constraints.Len() > 0 {
+		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+		if err != nil {
+			return nil, false, err
+		}
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return nil, false, err
 		}
+		fromHash = nodeIntegrityHash(liveStart)
+		toHash = nodeIntegrityHash(liveEnd)
+	} else {
+		if c.endpointHashWrite != nil {
+			storeCanCaptureEndpointHashes = true
+		} else {
+			fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+			if err != nil {
+				return nil, false, err
+			}
+		}
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
 	}
 
 	// Not found — allocate the token now and create. The allocation
@@ -590,12 +702,23 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		relTypeFinished = true
 		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
 	}
+	var r *types.Relationship
+	finishRelCreateError := func(err error) (error, bool) {
+		relTypeFinished = true
+		partialLive := false
+		err = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, err, func() error {
+			return c.deletePartialRelationshipForRollback(r)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
 		if !relTypeFinished {
-			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"))
+			_ = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship create"), func() error {
+				return c.deletePartialRelationshipForRollback(r)
+			}, nil)
 		}
 	}()
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r = types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, false, finishRelType(fmt.Errorf("graph: relationship properties: %w", err))
 	}
@@ -613,12 +736,8 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := liveStart.Integrity(); startIg != nil {
-		ig.FromNodeHash = startIg.Hash
-	}
-	if endIg := liveEnd.Integrity(); endIg != nil {
-		ig.ToNodeHash = endIg.Hash
-	}
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
 	r.SetIntegrity(ig)
 
 	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
@@ -627,10 +746,30 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		return nil, false, finishRelType(err)
 	}
 
-	if err := putGeneratedRelationship(c.store, r); err != nil {
-		return nil, false, finishRelType(err)
+	if storeCanCaptureEndpointHashes {
+		fromHash, toHash, err = c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
+		if err != nil {
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, true, err
+			}
+			return nil, false, err
+		}
+		ig.FromNodeHash = fromHash
+		ig.ToNodeHash = toHash
+	} else {
+		if err := c.putGeneratedRelationship(r); err != nil {
+			err, partialLive := finishRelCreateError(err)
+			if partialLive {
+				c.opRelAdds.Add(1)
+				return r, true, err
+			}
+			return nil, false, err
+		}
 	}
 	if err := finishRelType(nil); err != nil {
+		c.opRelAdds.Add(1)
 		return r, true, err
 	}
 	c.rememberRelType(typeName, typeToken)

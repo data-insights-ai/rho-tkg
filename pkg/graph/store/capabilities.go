@@ -21,10 +21,10 @@ import (
 // implementations.
 //
 // Optional capabilities (DepthHistoryIterationCapability,
-// PropertyIndexCapability, TemporalIndexCapability, VectorIndexCapability,
-// HighFrequencyIndexCapability) can be removed from a backend's Store
-// implementation in a future major version; consumers that rely on them
-// type-assert before calling.
+// HistoryVersionPageCapability, PropertyIndexCapability,
+// TemporalIndexCapability, VectorIndexCapability, HighFrequencyIndexCapability)
+// can be removed from a backend's Store implementation in a future major
+// version; consumers that rely on them type-assert before calling.
 
 // Lifecycle is the always-mandatory housekeeping subset every backend must
 // implement. Close releases resources; Clear truncates without removing
@@ -173,6 +173,16 @@ type HistoryRollbackTrimCapability interface {
 	TrimRelHistoryFrom(id types.RelID, minVersion uint32) error
 }
 
+// HistoryVersionPageCapability is OPTIONAL. Backends that can page through an
+// individual entity's history chain implement it so export and other streaming
+// readers do not have to materialize every version for one heavily updated
+// entity. startVersion is inclusive, and limit 0 returns all remaining versions.
+// Results must be sorted by ascending Version().
+type HistoryVersionPageCapability interface {
+	NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error)
+	RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error)
+}
+
 // StatsCapability is the counter surface used by `g.Stats.*` and by the
 // graph layer's internal accounting.
 type StatsCapability interface {
@@ -241,6 +251,8 @@ type TemporalIndexCapability interface {
 // VectorIndexCapability is OPTIONAL. The reference implementation is a
 // brute-force in-memory k-NN. Backends backed by a remote vector store
 // should plug in here without having to implement the rest of Store.
+// Implementations must reject indexed vectors and search queries containing
+// NaN or infinity with ErrInvalidVectorValue.
 type VectorIndexCapability interface {
 	CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error
 	DropVectorIndex(labelToken uint16, propertyKey string) error

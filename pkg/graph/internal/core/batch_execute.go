@@ -7,7 +7,7 @@ import (
 	"time"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -66,13 +66,18 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 1. Create nodes via batch store method.
 	//
-	// Track failed node IDs so step 2 can short-circuit rels referencing
-	// them with a clear "endpoint create failed" error rather than letting
-	// the rel write surface a confusing "node not found" downstream.
-	var failedNodeIDs map[types.NodeID]struct{}
+	// Track node IDs that did not reach the store so step 2 can short-circuit
+	// rels referencing them with a clear "endpoint create failed" error rather
+	// than letting the rel write surface a confusing "node not found"
+	// downstream. A post-write registry checkpoint failure still reports node
+	// errors, but the node rows are live and can be used by later batch ops.
+	var unavailableNodeIDs map[types.NodeID]struct{}
 	if len(b.nodes) > 0 {
 		labelTokens, labelSnapshot, allocatedLabels, labelsLocked, err := b.g.getOrCreateBatchNodeLabelsWithSnapshot(b.nodes)
 		labelsFinished := !labelsLocked
+		nodesWriteAttempted := false
+		nodesCommitted := false
+		nodesCreateFinished := false
 		finishLabels := func(err error) error {
 			if !labelsLocked || labelsFinished {
 				return err
@@ -80,23 +85,47 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			labelsFinished = true
 			return b.g.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, err)
 		}
+		deletePartialBatchNodes := func() error {
+			var errs []error
+			for _, pn := range b.nodes {
+				if err := b.g.deletePartialNodeForRollback(pn.node); err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+					errs = append(errs, err)
+				}
+			}
+			return errors.Join(errs...)
+		}
+		finishNodeCreateError := func(err error) (error, bool) {
+			partialLive := false
+			if !labelsLocked {
+				if cleanupErr := runRollbackCleanup(deletePartialBatchNodes); cleanupErr != nil {
+					partialLive = true
+					err = fmt.Errorf("%w; additionally failed to remove partial batch nodes after create failure: %v", err, cleanupErr)
+				}
+				return err, partialLive
+			}
+			labelsFinished = true
+			err = b.g.restoreNewLabelsCreateOnError(labelSnapshot, allocatedLabels, err, deletePartialBatchNodes, &partialLive)
+			return err, partialLive
+		}
 		defer func() {
-			if !labelsFinished {
-				restoreQueuedPendingNodeLabels(b.nodes)
-				_ = b.g.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during batch node create"))
+			if !nodesCreateFinished {
+				if nodesWriteAttempted && !nodesCommitted {
+					if _, partialLive := finishNodeCreateError(fmt.Errorf("panic during batch node create")); !partialLive {
+						restoreQueuedPendingNodeLabels(b.nodes)
+					}
+				} else {
+					restoreQueuedPendingNodeLabels(b.nodes)
+					_ = finishLabels(fmt.Errorf("panic during batch node create"))
+				}
 			}
 		}()
 
 		if err == nil {
 			for i, pn := range b.nodes {
-				if setErr := setPendingNodeLabels(pn, labelTokens[i]); setErr != nil {
-					err = setErr
-					break
-				}
+				setPendingNodeLabels(pn, labelTokens[i])
 			}
 		}
 
-		nodesCommitted := false
 		if err == nil {
 			// Stamp TxFrom at execute time so the recorded transaction time
 			// reflects when the batch actually commits, not when AddNode was
@@ -112,7 +141,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			for i, pn := range b.nodes {
 				nodes[i] = pn.node
 			}
-			err = putGeneratedNodesBatch(b.g.store, nodes)
+			nodesWriteAttempted = true
+			err = b.g.putGeneratedNodesBatch(nodes)
 			nodesCommitted = err == nil
 			if err == nil {
 				err = finishLabels(nil)
@@ -121,32 +151,53 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				result.Created += len(b.nodes)
 				b.g.opNodeAdds.Add(int64(len(b.nodes)))
 				for _, pn := range b.nodes {
+					syncPendingNodeResult(pn)
 					b.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(pn.node.ID()), txNow, eventspkg.PriorityHigh)
 				}
+				nodesCreateFinished = true
 			}
 		}
 
 		if err != nil {
-			err = finishLabels(err)
-			// PutNodesBatch is all-or-nothing — every queued node failed.
-			// The TxFrom stamp above mutates the entity through the aliased
-			// pendingNode.temporal pointer and is observable through the
-			// caller's reference returned from AddNode. Roll the stamp and
-			// label tokens back only if the store write did not commit. A
-			// post-write registry checkpoint failure is still a hard error,
-			// but the rows already exist and the returned node pointers must
-			// keep matching persisted state.
+			var txNow types.Instant
+			if nodesWriteAttempted && !nodesCommitted {
+				var partialLive bool
+				err, partialLive = finishNodeCreateError(err)
+				nodesCommitted = partialLive
+			} else {
+				err = finishLabels(err)
+			}
+			// In-tree PutNodesBatch implementations are all-or-nothing, but
+			// wrapper stores can still report an error after installing rows.
+			// Roll the stamp and label tokens back only when cleanup proves the
+			// rows are not live. A post-write registry checkpoint failure or
+			// cleanup failure is still a hard error, but the rows exist and the
+			// returned node skeletons must stay in their committed shape.
 			if !nodesCommitted {
 				for _, pn := range b.nodes {
 					pn.temporal.TxFrom = 0
 					pn.node.SetTemporal(pn.temporal)
 				}
 				restoreQueuedPendingNodeLabels(b.nodes)
+			} else {
+				result.Created += len(b.nodes)
+				b.g.opNodeAdds.Add(int64(len(b.nodes)))
+				for _, pn := range b.nodes {
+					if pn.temporal != nil {
+						txNow = pn.temporal.TxFrom
+					}
+					b.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(pn.node.ID()), txNow, eventspkg.PriorityHigh)
+				}
 			}
-			failedNodeIDs = make(map[types.NodeID]struct{}, len(b.nodes))
+			if !nodesCommitted {
+				unavailableNodeIDs = make(map[types.NodeID]struct{}, len(b.nodes))
+			}
 			for _, pn := range b.nodes {
+				syncPendingNodeResult(pn)
 				id := pn.node.ID()
-				failedNodeIDs[id] = struct{}{}
+				if unavailableNodeIDs != nil {
+					unavailableNodeIDs[id] = struct{}{}
+				}
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
@@ -154,6 +205,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 					Err: err,
 				})
 			}
+			nodesCreateFinished = true
 		}
 	}
 
@@ -168,8 +220,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// Short-circuit when a queued endpoint failed in step 1: surface a
 		// clear dependency error rather than letting PutRelationship report
 		// a generic "endpoint not found" that hides the real cause.
-		if failedNodeIDs != nil {
-			if _, badStart := failedNodeIDs[pr.startID]; badStart {
+		if unavailableNodeIDs != nil {
+			if _, badStart := unavailableNodeIDs[pr.startID]; badStart {
+				syncPendingRelationshipResult(pr)
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddRelationship",
@@ -178,7 +231,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				})
 				continue
 			}
-			if _, badEnd := failedNodeIDs[pr.endID]; badEnd {
+			if _, badEnd := unavailableNodeIDs[pr.endID]; badEnd {
+				syncPendingRelationshipResult(pr)
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddRelationship",
@@ -207,9 +261,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			constraint error
 			typeErr    error
 			txNow      types.Instant
+			committed  bool
 		)
 		func() {
-			committed := false
 			defer func() {
 				if !committed {
 					restorePendingRelationshipCreateState(pr, queuedFromHash, queuedToHash)
@@ -220,61 +274,42 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			defer b.g.entityLocks.UnlockTwo(pr.startID.SnowflakeID(), pr.endID.SnowflakeID())
 
 			// Endpoint hash refresh + temporal-constraint check.
-			// ErrNodeNotFound is silent (the endpoint was deleted
-			// while we held only the rel lock); any other store
-			// error is operational and must surface as a per-rel
-			// BatchError rather than letting the rel be written with
-			// stale or empty endpoint hashes (F5). Both endpoints
-			// are also fed into checkTemporalConstraints so the
-			// batch path enforces the same invariants as
-			// addRelationshipInternal (R4-F6).
+			// Constraint checks need live endpoint rows. Otherwise, use
+			// the same hash capability ladder as the standalone create
+			// path and let endpoint-hash write support validate endpoints
+			// while persisting the relationship.
+			storeCanCaptureEndpointHashes := false
 			var startNode, endNode *types.Node
-			if pr.startID == pr.endID {
-				n, err := b.g.store.GetNode(pr.startID)
-				if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
-					refresh = fmt.Errorf("graph: batch rel self-loop endpoint hash refresh: %w", err)
+			if b.g.constraints.Len() > 0 {
+				liveStart, liveEnd, err := b.g.liveEndpointNodes(pr.startID, pr.endID)
+				if err != nil {
+					if errors.Is(err, storepkg.ErrNodeNotFound) {
+						outErr = err
+					} else {
+						refresh = err
+					}
 					return
 				}
-				if err == nil {
-					if ig := n.Integrity(); ig != nil {
-						pr.relIntegrity.FromNodeHash = ig.Hash
-						pr.relIntegrity.ToNodeHash = ig.Hash
-					}
-					startNode = n
-					endNode = n
-				}
+				startNode = liveStart
+				endNode = liveEnd
+				pr.relIntegrity.FromNodeHash = nodeIntegrityHash(liveStart)
+				pr.relIntegrity.ToNodeHash = nodeIntegrityHash(liveEnd)
+			} else if b.g.endpointHashWrite != nil {
+				storeCanCaptureEndpointHashes = true
 			} else {
-				sn, sErr := b.g.store.GetNode(pr.startID)
-				if sErr != nil && !errors.Is(sErr, storepkg.ErrNodeNotFound) {
-					refresh = fmt.Errorf("graph: batch rel start-node hash refresh: %w", sErr)
+				fromHash, toHash, err := b.g.liveEndpointHashes(pr.startID, pr.endID)
+				if err != nil {
+					if errors.Is(err, storepkg.ErrNodeNotFound) {
+						outErr = err
+					} else {
+						refresh = err
+					}
 					return
 				}
-				if sErr == nil {
-					if sIg := sn.Integrity(); sIg != nil {
-						pr.relIntegrity.FromNodeHash = sIg.Hash
-					}
-					startNode = sn
-				}
-				en, eErr := b.g.store.GetNode(pr.endID)
-				if eErr != nil && !errors.Is(eErr, storepkg.ErrNodeNotFound) {
-					refresh = fmt.Errorf("graph: batch rel end-node hash refresh: %w", eErr)
-					return
-				}
-				if eErr == nil {
-					if eIg := en.Integrity(); eIg != nil {
-						pr.relIntegrity.ToNodeHash = eIg.Hash
-					}
-					endNode = en
-				}
+				pr.relIntegrity.FromNodeHash = fromHash
+				pr.relIntegrity.ToNodeHash = toHash
 			}
-			if startNode == nil {
-				outErr = fmt.Errorf("graph: batch rel start node %d: %w", pr.startID, storepkg.ErrNodeNotFound)
-				return
-			}
-			if endNode == nil {
-				outErr = fmt.Errorf("graph: batch rel end node %d: %w", pr.endID, storepkg.ErrNodeNotFound)
-				return
-			}
+
 			// SetIntegrity is a no-op against the same pointer the
 			// rel already holds, but keep the call so the queue-time
 			// alias is not load-bearing.
@@ -284,9 +319,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			pr.temporal.TxFrom = txNow
 			pr.rel.SetTemporal(pr.temporal)
 
-			if cErr := b.g.checkTemporalConstraints(pr.rel, startNode, endNode); cErr != nil {
-				constraint = cErr
-				return
+			if startNode != nil || endNode != nil {
+				if cErr := b.g.checkTemporalConstraints(pr.rel, startNode, endNode); cErr != nil {
+					constraint = cErr
+					return
+				}
 			}
 
 			typeToken, relTypeSnapshot, allocatedRelType, tErr := b.g.getOrCreateRelTypeWithSnapshot(pr.typeName)
@@ -299,20 +336,37 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				relTypeFinished = true
 				return b.g.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, pr.typeName, err)
 			}
+			finishRelCreateError := func(err error) (error, bool) {
+				relTypeFinished = true
+				partialLive := false
+				err = b.g.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, pr.typeName, err, func() error {
+					return b.g.deletePartialRelationshipForRollback(pr.rel)
+				}, &partialLive)
+				return err, partialLive
+			}
 			defer func() {
 				if !relTypeFinished {
-					_ = b.g.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, pr.typeName, fmt.Errorf("panic during batch relationship create"))
+					_ = b.g.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, pr.typeName, fmt.Errorf("panic during batch relationship create"), func() error {
+						return b.g.deletePartialRelationshipForRollback(pr.rel)
+					}, nil)
 				}
 			}()
-			if tErr := setPendingRelationshipType(pr, typeToken); tErr != nil {
-				typeErr = finishRelType(tErr)
-				return
-			}
+			setPendingRelationshipType(pr, typeToken)
 
-			outErr = putGeneratedRelationship(b.g.store, pr.rel)
-			if outErr != nil {
-				outErr = finishRelType(outErr)
-				return
+			if storeCanCaptureEndpointHashes {
+				fromHash, toHash, err := b.g.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(pr.rel, generatedcreate.FreshGraphID)
+				if err != nil {
+					outErr, committed = finishRelCreateError(err)
+					return
+				}
+				pr.relIntegrity.FromNodeHash = fromHash
+				pr.relIntegrity.ToNodeHash = toHash
+			} else {
+				outErr = b.g.putGeneratedRelationship(pr.rel)
+				if outErr != nil {
+					outErr, committed = finishRelCreateError(outErr)
+					return
+				}
 			}
 			committed = true
 			if tErr := finishRelType(nil); tErr != nil {
@@ -321,6 +375,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			}
 			b.g.rememberRelType(pr.typeName, typeToken)
 		}()
+		syncPendingRelationshipResult(pr)
 
 		if refresh != nil {
 			result.Failed++
@@ -343,6 +398,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 
 		if typeErr != nil {
+			if committed {
+				result.Created++
+				b.g.opRelAdds.Add(1)
+				b.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(pr.rel.ID()), txNow, eventspkg.PriorityHigh)
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
@@ -354,6 +414,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 		err := outErr
 		if err != nil {
+			if committed {
+				result.Created++
+				b.g.opRelAdds.Add(1)
+				b.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(pr.rel.ID()), txNow, eventspkg.PriorityHigh)
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "AddRelationship",
@@ -369,7 +434,15 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 3. Update nodes (internal — batch already holds c.mu.Lock).
 	for _, pu := range b.nodeUpdates {
-		_, err := b.g.updateNodeInternal(context.Background(), pu.id, pu.updates)
+		var (
+			mutated bool
+			err     error
+		)
+		if pu.update.originalLen == 0 {
+			_, mutated, err = b.g.updateNodeInternal(context.Background(), pu.id, pu.update.properties)
+		} else {
+			_, mutated, err = b.g.updateNodePreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.properties)
+		}
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
@@ -377,7 +450,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				ID:  types.EntityID(pu.id),
 				Err: err,
 			})
-		} else if len(pu.updates) > 0 {
+		} else if mutated {
 			result.Updated++
 			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
 		}
@@ -385,7 +458,15 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 4. Update relationships (internal — batch already holds c.mu.Lock).
 	for _, pu := range b.relUpdates {
-		_, err := b.g.updateRelationshipInternal(context.Background(), pu.id, pu.updates)
+		var (
+			mutated bool
+			err     error
+		)
+		if pu.update.originalLen == 0 {
+			_, mutated, err = b.g.updateRelationshipInternal(context.Background(), pu.id, pu.update.properties)
+		} else {
+			_, mutated, err = b.g.updateRelationshipPreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.properties)
+		}
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
@@ -393,7 +474,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				ID:  types.EntityID(pu.id),
 				Err: err,
 			})
-		} else if len(pu.updates) > 0 {
+		} else if mutated {
 			result.Updated++
 			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
 		}
@@ -416,7 +497,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 6. Delete nodes (internal — batch already holds c.mu.Lock).
 	for _, id := range b.nodeDeletes {
-		if err := b.g.deleteNodeInternal(context.Background(), id); err != nil {
+		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id)
+		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
 				Op:  "DeleteNode",
@@ -424,8 +506,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				Err: err,
 			})
 		} else {
-			result.Deleted++
-			b.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
+			result.Deleted += 1 + len(cascadeRelIDs)
+			b.g.publishCascadeDeleteEvents(id, cascadeRelIDs, b.g.now())
 		}
 	}
 
@@ -451,19 +533,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	return result, nil
 }
 
-func setPendingRelationshipType(pr pendingRel, typeToken uint16) error {
-	if pr.rel.HasTypeTokenRaw(typeToken) {
-		return nil
-	}
-	rebuilt := types.NewRelationship(pr.rel.ID(), typeToken, pr.startID, pr.endID)
-	if err := rebuilt.SetProperties(pr.rel.Properties()); err != nil {
-		return fmt.Errorf("graph: batch relationship properties: %w", err)
-	}
-	rebuilt.SetVersion(pr.rel.Version())
-	rebuilt.SetIntegrity(pr.relIntegrity)
-	rebuilt.SetTemporal(pr.temporal)
-	*pr.rel = *rebuilt
-	return nil
+func setPendingRelationshipType(pr pendingRel, typeToken uint16) {
+	pr.rel.SetTypeTokenRaw(typeToken)
+	pr.rel.SetIntegrity(pr.relIntegrity)
+	pr.rel.SetTemporal(pr.temporal)
 }
 
 func restorePendingRelationshipCreateState(pr pendingRel, fromHash, toHash string) {
@@ -472,10 +545,10 @@ func restorePendingRelationshipCreateState(pr pendingRel, fromHash, toHash strin
 	pr.relIntegrity.FromNodeHash = fromHash
 	pr.relIntegrity.ToNodeHash = toHash
 	pr.rel.SetIntegrity(pr.relIntegrity)
-	_ = setPendingRelationshipType(pr, pr.queuedTypeToken)
+	setPendingRelationshipType(pr, pr.queuedTypeToken)
 }
 
-func setPendingNodeLabels(pn pendingNode, tokens nodeLabelTokens) error {
+func setPendingNodeLabels(pn pendingNode, tokens nodeLabelTokens) {
 	if pn.node.HasLabelTokenRaw(tokens.primary) {
 		currentExtras := pn.node.ExtraLabelTokens()
 		if len(currentExtras) == len(tokens.extras) {
@@ -488,31 +561,28 @@ func setPendingNodeLabels(pn pendingNode, tokens nodeLabelTokens) error {
 			}
 			if same {
 				pn.node.SetIntegrity(pn.nodeIntegrity)
-				return nil
+				return
 			}
 		}
 	}
-	rebuilt := types.NewNode(pn.node.ID(), tokens.primary, tokens.extras)
-	if err := rebuilt.SetProperties(pn.node.Properties()); err != nil {
-		return fmt.Errorf("graph: batch node properties: %w", err)
-	}
-	rebuilt.SetVersion(pn.node.Version())
-	rebuilt.SetTemporal(pn.temporal)
-	hash, err := integrity.ComputeNodeHashChecked(rebuilt, pn.labels)
-	if err != nil {
-		return fmt.Errorf("graph: batch node hash: %w", err)
-	}
-	pn.nodeIntegrity.Hash = hash
-	rebuilt.SetIntegrity(pn.nodeIntegrity)
-	*pn.node = *rebuilt
-	return nil
+	pn.node.SetLabelTokensRaw(tokens.primary, tokens.extras)
+	pn.node.SetTemporal(pn.temporal)
+	pn.node.SetIntegrity(pn.nodeIntegrity)
 }
 
 func restoreQueuedPendingNodeLabels(nodes []pendingNode) {
 	for _, pn := range nodes {
-		_ = setPendingNodeLabels(pn, nodeLabelTokens{
+		setPendingNodeLabels(pn, nodeLabelTokens{
 			primary: pn.queuedPrimaryToken,
 			extras:  pn.queuedExtraTokens,
 		})
 	}
+}
+
+func syncPendingNodeResult(pn pendingNode) {
+	*pn.result = *pn.node
+}
+
+func syncPendingRelationshipResult(pr pendingRel) {
+	*pr.result = *pr.rel
 }

@@ -2,14 +2,61 @@ package core
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type verifyHistoryPageTrackingStore struct {
+	storepkg.MandatoryStore
+	historyPager        storepkg.HistoryVersionPageCapability
+	nodeHistoryPageHits atomic.Int64
+	relHistoryPageHits  atomic.Int64
+}
+
+func (s *verifyHistoryPageTrackingStore) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	s.nodeHistoryPageHits.Add(1)
+	return s.historyPager.NodeHistoryVersionsFrom(id, startVersion, limit)
+}
+
+func (s *verifyHistoryPageTrackingStore) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	s.relHistoryPageHits.Add(1)
+	return s.historyPager.RelHistoryVersionsFrom(id, startVersion, limit)
+}
+
+type verifyNilHistoryPager struct{}
+
+func (verifyNilHistoryPager) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	return []*types.Node{nil}, nil
+}
+
+func (verifyNilHistoryPager) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	return []*types.Relationship{nil}, nil
+}
+
+var errHashInvalidIDProbeStoreTouched = errors.New("hash invalid-id probe touched store")
+
+type hashInvalidIDProbeStore struct {
+	storepkg.MandatoryStore
+	nodeReads atomic.Int64
+	relReads  atomic.Int64
+}
+
+func (s *hashInvalidIDProbeStore) GetNode(types.NodeID) (*types.Node, error) {
+	s.nodeReads.Add(1)
+	return nil, errHashInvalidIDProbeStoreTouched
+}
+
+func (s *hashInvalidIDProbeStore) GetRelationship(types.RelID) (*types.Relationship, error) {
+	s.relReads.Add(1)
+	return nil, errHashInvalidIDProbeStoreTouched
+}
 
 // --- ComputeNodeHash unit tests ---
 
@@ -350,6 +397,44 @@ func TestVerifyNodeChain_NonExistent(t *testing.T) {
 	}
 }
 
+func TestVerifyChain_InvalidIDsRejectedBeforeStoreRead(t *testing.T) {
+	t.Parallel()
+
+	store := &hashInvalidIDProbeStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	for _, id := range []types.NodeID{0, types.NodeID(-1)} {
+		valid, err := g.Hash.VerifyNodeChain(id)
+		if valid || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("VerifyNodeChain(%d) = (%v, %v), want (false, ErrInvalidStoreMutation)", id, valid, err)
+		}
+		valid, err = g.verifyNodeChainLocked(id)
+		if valid || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("verifyNodeChainLocked(%d) = (%v, %v), want (false, ErrInvalidStoreMutation)", id, valid, err)
+		}
+	}
+	for _, id := range []types.RelID{0, types.RelID(-1)} {
+		valid, err := g.Hash.VerifyRelChain(id)
+		if valid || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("VerifyRelChain(%d) = (%v, %v), want (false, ErrInvalidStoreMutation)", id, valid, err)
+		}
+		valid, err = g.verifyRelChainLocked(id)
+		if valid || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("verifyRelChainLocked(%d) = (%v, %v), want (false, ErrInvalidStoreMutation)", id, valid, err)
+		}
+	}
+	if got := store.nodeReads.Load(); got != 0 {
+		t.Fatalf("invalid node hash verification touched store %d time(s)", got)
+	}
+	if got := store.relReads.Load(); got != 0 {
+		t.Fatalf("invalid relationship hash verification touched store %d time(s)", got)
+	}
+}
+
 func TestVerifyNodeChain_NilIntegrity(t *testing.T) {
 	t.Parallel()
 
@@ -529,6 +614,123 @@ func TestVerifyRelChain_PropertyChange(t *testing.T) {
 	}
 	if !valid {
 		t.Fatal("property-mutation rel chain should be valid")
+	}
+}
+
+func TestVerifyChain_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
+	t.Parallel()
+
+	base := memory.New()
+	store := &verifyHistoryPageTrackingStore{MandatoryStore: base, historyPager: base}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	rel, err := g.Rels.Add("LINKS", start, end, map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		t.Fatalf("Update relationship: %v", err)
+	}
+
+	if valid, err := g.Hash.VerifyNodeChain(start.ID()); err != nil || !valid {
+		t.Fatalf("VerifyNodeChain = (%v, %v), want (true, nil)", valid, err)
+	}
+	if valid, err := g.Hash.VerifyRelChain(rel.ID()); err != nil || !valid {
+		t.Fatalf("VerifyRelChain = (%v, %v), want (true, nil)", valid, err)
+	}
+
+	if got := store.nodeHistoryPageHits.Load(); got == 0 {
+		t.Fatal("VerifyNodeChain did not call NodeHistoryVersionsFrom")
+	}
+	if got := store.relHistoryPageHits.Load(); got == 0 {
+		t.Fatal("VerifyRelChain did not call RelHistoryVersionsFrom")
+	}
+}
+
+func TestVerifyChain_IgnoresInheritedNativeHistoryPagerOnWrapper(t *testing.T) {
+	t.Parallel()
+
+	store := &exportEmbeddedNativeHistoryWrapper{Store: memory.New()}
+	if _, ok := any(store).(storepkg.HistoryVersionPageCapability); !ok {
+		t.Fatal("test wrapper no longer inherits HistoryVersionPageCapability")
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	rel, err := g.Rels.Add("LINKS", start, end, map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("Add relationship: %v", err)
+	}
+	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		t.Fatalf("Update relationship: %v", err)
+	}
+
+	if valid, err := g.Hash.VerifyNodeChain(start.ID()); err != nil || !valid {
+		t.Fatalf("VerifyNodeChain = (%v, %v), want (true, nil)", valid, err)
+	}
+	if valid, err := g.Hash.VerifyRelChain(rel.ID()); err != nil || !valid {
+		t.Fatalf("VerifyRelChain = (%v, %v), want (true, nil)", valid, err)
+	}
+
+	if got := store.getNodeHistoryCalls.Load(); got == 0 {
+		t.Fatal("VerifyNodeChain used inherited native NodeHistoryVersionsFrom instead of wrapper GetNodeHistory")
+	}
+	if got := store.getRelHistoryCalls.Load(); got == 0 {
+		t.Fatal("VerifyRelChain used inherited native RelHistoryVersionsFrom instead of wrapper GetRelHistory")
+	}
+}
+
+func TestVerifyChainRejectsNilHistoryRows(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if valid, err := g.verifyNodeChainRowsLocked(nil, []*types.Node{nil}); !errors.Is(err, ErrNilNode) || valid {
+		t.Fatalf("verifyNodeChainRowsLocked nil history = (%v, %v), want (false, ErrNilNode)", valid, err)
+	}
+	if valid, err := g.verifyRelChainRowsLocked(nil, []*types.Relationship{nil}); !errors.Is(err, ErrNilRelationship) || valid {
+		t.Fatalf("verifyRelChainRowsLocked nil history = (%v, %v), want (false, ErrNilRelationship)", valid, err)
+	}
+
+	pager := verifyNilHistoryPager{}
+	if valid, err := g.verifyNodeChainPagedLocked(types.NodeID(1), nil, pager); !errors.Is(err, ErrNilNode) || valid {
+		t.Fatalf("verifyNodeChainPagedLocked nil history = (%v, %v), want (false, ErrNilNode)", valid, err)
+	}
+	if valid, err := g.verifyRelChainPagedLocked(types.RelID(2), nil, pager); !errors.Is(err, ErrNilRelationship) || valid {
+		t.Fatalf("verifyRelChainPagedLocked nil history = (%v, %v), want (false, ErrNilRelationship)", valid, err)
 	}
 }
 

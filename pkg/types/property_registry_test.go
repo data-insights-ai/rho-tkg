@@ -5,6 +5,9 @@ import (
 	"math"
 	"reflect"
 	"testing"
+
+	collisionone "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types/internal/collisionone"
+	collisiontwo "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types/internal/collisiontwo"
 )
 
 // Modification rationale: spatialStub originally had no HashableValue or
@@ -61,6 +64,18 @@ type hashCopyStub struct {
 func (h hashCopyStub) HashBytes() []byte  { return []byte{byte(h.Z)} }
 func (h hashCopyStub) DeepCopyValue() any { return h }
 
+type registeredNamedInt int
+
+func (n registeredNamedInt) HashBytes() []byte  { return []byte{byte(n)} }
+func (n registeredNamedInt) DeepCopyValue() any { return n }
+
+type pointerOnlyPropertyStub struct {
+	V byte
+}
+
+func (p *pointerOnlyPropertyStub) HashBytes() []byte  { return []byte{p.V} }
+func (p *pointerOnlyPropertyStub) DeepCopyValue() any { cp := *p; return &cp }
+
 // mustRegister is a test-only helper that fails the test if registration
 // returns an error. Tests in this file are happy-path registration tests
 // for known-good stubs; an error here is a regression in the registration
@@ -69,6 +84,62 @@ func mustRegister(t *testing.T, v any) {
 	t.Helper()
 	if err := RegisterPropertyStructType(v); err != nil {
 		t.Fatalf("RegisterPropertyStructType(%T): unexpected error: %v", v, err)
+	}
+}
+
+func TestRegisteredPropertyStructWireTypeDirectBranches(t *testing.T) {
+	t.Cleanup(resetRegistry)
+
+	if typeName, pointer, ok := RegisteredPropertyStructWireType(nil); ok || typeName != "" || pointer {
+		t.Fatalf("nil wire type = (%q, %v, %v), want zero false tuple", typeName, pointer, ok)
+	}
+	if typeName, pointer, ok := RegisteredPropertyStructWireType(spatialStub{}); ok || typeName != "" || pointer {
+		t.Fatalf("unregistered wire type = (%q, %v, %v), want zero false tuple", typeName, pointer, ok)
+	}
+
+	mustRegister(t, spatialStub{})
+	typeName, pointer, ok := RegisteredPropertyStructWireType(spatialStub{X: 1, Y: 2})
+	if !ok || pointer || typeName != "types.spatialStub" {
+		t.Fatalf("value wire type = (%q, %v, %v), want types.spatialStub false true", typeName, pointer, ok)
+	}
+	typeName, pointer, ok = RegisteredPropertyStructWireType(&spatialStub{X: 3, Y: 4})
+	if !ok || !pointer || typeName != "types.spatialStub" {
+		t.Fatalf("pointer wire type = (%q, %v, %v), want types.spatialStub true true", typeName, pointer, ok)
+	}
+}
+
+func TestRegisteredPropertyStructWireTypeRejectsPointerReceiverValue(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	mustRegister(t, (*pointerOnlyPropertyStub)(nil))
+
+	typeName, pointer, ok := RegisteredPropertyStructWireType(pointerOnlyPropertyStub{V: 7})
+	if ok || typeName != "" || pointer {
+		t.Fatalf("pointer-receiver value wire type = (%q, %v, %v), want zero false tuple", typeName, pointer, ok)
+	}
+
+	typeName, pointer, ok = RegisteredPropertyStructWireType(&pointerOnlyPropertyStub{V: 7})
+	if !ok || !pointer || typeName != "types.pointerOnlyPropertyStub" {
+		t.Fatalf("pointer-receiver pointer wire type = (%q, %v, %v), want types.pointerOnlyPropertyStub true true", typeName, pointer, ok)
+	}
+}
+
+func TestNewRegisteredPropertyStructPointerDirectBranches(t *testing.T) {
+	t.Cleanup(resetRegistry)
+
+	if got, ok := NewRegisteredPropertyStructPointer("types.spatialStub"); ok || got != nil {
+		t.Fatalf("unregistered constructor = (%T, %v), want nil false", got, ok)
+	}
+
+	mustRegister(t, spatialStub{})
+	got, ok := NewRegisteredPropertyStructPointer("types.spatialStub")
+	if !ok {
+		t.Fatal("registered constructor returned ok=false")
+	}
+	if _, ok := got.(*spatialStub); !ok {
+		t.Fatalf("registered constructor returned %T, want *spatialStub", got)
+	}
+	if got, ok := NewRegisteredPropertyStructPointer("types.missing"); ok || got != nil {
+		t.Fatalf("missing constructor = (%T, %v), want nil false", got, ok)
 	}
 }
 
@@ -117,6 +188,26 @@ func TestRegisterPropertyStructType_UntypedNilRejected(t *testing.T) {
 	}
 }
 
+func TestRegisterPropertyStructType_NonStructRejected(t *testing.T) {
+	t.Cleanup(resetRegistry)
+
+	err := RegisterPropertyStructType(registeredNamedInt(1))
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("RegisterPropertyStructType(named int): got %v, want ErrUnsupportedValueType", err)
+	}
+	if got := RegisteredPropertyStructTypes(); len(got) != 0 {
+		t.Fatalf("RegisterPropertyStructType(named int) mutated registry: %v", got)
+	}
+
+	err = RegisterPropertyStructType((*registeredNamedInt)(nil))
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("RegisterPropertyStructType(*named int): got %v, want ErrUnsupportedValueType", err)
+	}
+	if got := RegisteredPropertyStructTypes(); len(got) != 0 {
+		t.Fatalf("RegisterPropertyStructType(*named int) mutated registry: %v", got)
+	}
+}
+
 func TestRegisterPropertyStructType_UnregisteredRejected(t *testing.T) {
 	t.Cleanup(resetRegistry)
 
@@ -160,6 +251,30 @@ func TestRegisterPropertyStructType_Idempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 registration, found %d: %v", count, names)
+	}
+}
+
+func TestRegisterPropertyStructType_RejectsWireNameCollision(t *testing.T) {
+	t.Cleanup(resetRegistry)
+
+	if err := RegisterPropertyStructType(collisionone.Value{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType(collisionone.Value): %v", err)
+	}
+	err := RegisterPropertyStructType(collisiontwo.Value{})
+	if !errors.Is(err, ErrPropertyTypeNameCollision) {
+		t.Fatalf("RegisterPropertyStructType(collisiontwo.Value) = %v, want ErrPropertyTypeNameCollision", err)
+	}
+
+	names := RegisteredPropertyStructTypes()
+	if len(names) != 1 || names[0] != "collision.Value" {
+		t.Fatalf("registered names after collision = %v, want [collision.Value]", names)
+	}
+	typeName, _, ok := RegisteredPropertyStructWireType(collisionone.Value{})
+	if !ok || typeName != "collision.Value" {
+		t.Fatalf("registered collisionone wire type = (%q, %v), want collision.Value true", typeName, ok)
+	}
+	if typeName, _, ok := RegisteredPropertyStructWireType(collisiontwo.Value{}); ok || typeName != "" {
+		t.Fatalf("rejected collisiontwo wire type = (%q, %v), want empty false", typeName, ok)
 	}
 }
 

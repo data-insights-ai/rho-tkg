@@ -5,7 +5,6 @@ package memory
 
 import (
 	"fmt"
-	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
@@ -22,6 +21,9 @@ func errNilIterationCallback() error {
 // Uses the temporal index for fast filtering when one exists and a temporal filter is set.
 // Store never returns an error.
 func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -56,17 +58,12 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			temporalQuery = true
 		}
 		if temporalQuery {
-			rawIDs = storepkg.PaginateIDs(rawIDs, opts.After, opts.Limit)
 			if len(rawIDs) == 0 {
 				return nil, nil
 			}
-			result := make([]*types.Node, 0, len(rawIDs))
-			for _, id := range rawIDs {
-				if n, ok := ms.nodes[types.NodeID(id)]; ok {
-					result = append(result, n.DeepCopy())
-				}
-			}
-			return result, nil
+			ids := storepkg.ToNodeIDs(rawIDs)
+			storepkg.SortNodeIDs(ids)
+			return ms.nodesByLabelFromIDs(token, ids, opts), nil
 		}
 	}
 
@@ -85,19 +82,8 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 				return nil, nil
 			}
 			ids = uniqueNodeIDs(ids)
-			sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-			ids = ms.filterNodeIDsByTemporal(ids, opts)
-			ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
-			if len(ids) == 0 {
-				return nil, nil
-			}
-			result := make([]*types.Node, 0, len(ids))
-			for _, id := range ids {
-				if n, ok := ms.nodes[id]; ok {
-					result = append(result, n.DeepCopy())
-				}
-			}
-			return result, nil
+			storepkg.SortNodeIDs(ids)
+			return ms.nodesByLabelFromIDs(token, ids, opts), nil
 		}
 	}
 
@@ -106,29 +92,50 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	for id := range set {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortNodeIDs(ids)
 
-	// Temporal pre-filter: read in-memory entity pointer (no deep-copy).
-	ids = ms.filterNodeIDsByTemporal(ids, opts)
+	return ms.nodesByLabelFromIDs(token, ids, opts), nil
+}
 
-	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
+func (ms *Store) nodesByLabelFromIDs(token uint16, ids []types.NodeID, opts QueryOpts) []*types.Node {
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
-		return nil, nil
+		return nil
 	}
 
-	result := make([]*types.Node, 0, len(ids))
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	capHint := len(ids)
+	if opts.Limit > 0 && opts.Limit < capHint {
+		capHint = opts.Limit
+	}
+	result := make([]*types.Node, 0, capHint)
 	for _, id := range ids {
 		if n, ok := ms.nodes[id]; ok {
+			if !n.HasLabelTokenRaw(token) {
+				continue
+			}
+			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+				continue
+			}
 			result = append(result, n.DeepCopy())
+			if opts.Limit > 0 && len(result) >= opts.Limit {
+				break
+			}
 		}
 	}
-	return result, nil
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // RelationshipsByType returns relationships with the given type token, with optional pagination
 // and temporal filtering. Results are sorted by snowflake.ID for deterministic output.
 // Store never returns an error.
 func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -151,21 +158,35 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	for id := range set {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortRelIDs(ids)
 
-	// Temporal pre-filter.
-	ids = ms.filterRelIDsByTemporal(ids, opts)
-
-	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
+	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
 		return nil, nil
 	}
 
-	result := make([]*types.Relationship, 0, len(ids))
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	capHint := len(ids)
+	if opts.Limit > 0 && opts.Limit < capHint {
+		capHint = opts.Limit
+	}
+	result := make([]*types.Relationship, 0, capHint)
 	for _, id := range ids {
 		if r, ok := ms.rels[id]; ok {
+			if !r.HasTypeTokenRaw(token) {
+				continue
+			}
+			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+				continue
+			}
 			result = append(result, r.DeepCopy())
+			if opts.Limit > 0 && len(result) >= opts.Limit {
+				break
+			}
 		}
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 	return result, nil
 }
@@ -178,8 +199,8 @@ func (ms *Store) NodeCount() (int, error) {
 	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if ms.closed {
-		return 0, ErrStoreClosed
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
 	}
 	return len(ms.nodes), nil
 }
@@ -192,8 +213,8 @@ func (ms *Store) RelationshipCount() (int, error) {
 	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if ms.closed {
-		return 0, ErrStoreClosed
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
 	}
 	return len(ms.rels), nil
 }
@@ -206,8 +227,8 @@ func (ms *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if ms.closed {
-		return 0, ErrStoreClosed
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
 	}
 	if token == 0 {
 		return 0, storecontract.ValidateLabelToken(token)
@@ -223,8 +244,8 @@ func (ms *Store) RelCountByType(token uint16) (int, error) {
 	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if ms.closed {
-		return 0, ErrStoreClosed
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
 	}
 	if token == 0 {
 		return 0, storecontract.ValidateRelTypeToken(token)
@@ -236,6 +257,9 @@ func (ms *Store) RelCountByType(token uint16) (int, error) {
 // filtering and pagination. Non-temporal calls return only IDs without entity
 // deserialization; temporal calls inspect current entity metadata.
 func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -249,12 +273,8 @@ func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if len(ms.nodes) == 0 {
 		return nil, nil
 	}
-	ids := make([]types.NodeID, 0, len(ms.nodes))
-	for id := range ms.nodes {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	ids = ms.filterNodeIDsByTemporal(ids, opts)
+	ids := ms.collectNodeIDsByTemporalLocked(opts)
+	storepkg.SortNodeIDs(ids)
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -266,6 +286,9 @@ func (ms *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 // temporal filtering and pagination. Non-temporal calls return only IDs without
 // entity deserialization; temporal calls inspect current entity metadata.
 func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -279,12 +302,8 @@ func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	if len(ms.rels) == 0 {
 		return nil, nil
 	}
-	ids := make([]types.RelID, 0, len(ms.rels))
-	for id := range ms.rels {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	ids = ms.filterRelIDsByTemporal(ids, opts)
+	ids := ms.collectRelIDsByTemporalLocked(opts)
+	storepkg.SortRelIDs(ids)
 	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -295,6 +314,9 @@ func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 // ForEachNodeID iterates over all current node IDs, calling fn for each.
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.RUnlock()
@@ -320,6 +342,9 @@ func (ms *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 // ForEachRelID iterates over all current relationship IDs, calling fn for each.
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachRelID(fn func(types.RelID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.RUnlock()
@@ -345,6 +370,9 @@ func (ms *Store) ForEachRelID(fn func(types.RelID) bool) error {
 // ForEachNodeHistoryID iterates over all node IDs with version history entries.
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.RUnlock()
@@ -370,6 +398,9 @@ func (ms *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 // ForEachRelHistoryID iterates over all relationship IDs with version history entries.
 // Iteration stops early if fn returns false. No ordering guarantee.
 func (ms *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.RUnlock()
@@ -407,6 +438,9 @@ func (ms *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 // AllNodeHistoryIDsFrom returns the IDs of nodes with version history, sorted
 // ascending, starting strictly after `after`. limit 0 returns all remaining.
 func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -424,7 +458,7 @@ func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	for id := range ms.nodeHistory {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortNodeIDs(ids)
 	ids = storepkg.PaginateNodeIDs(ids, types.EntityID(after), limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -435,6 +469,9 @@ func (ms *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 // AllRelHistoryIDsFrom returns the IDs of relationships with version history,
 // sorted ascending, starting strictly after `after`. limit 0 returns all remaining.
 func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -452,7 +489,7 @@ func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	for id := range ms.relHistory {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortRelIDs(ids)
 	ids = storepkg.PaginateRelIDs(ids, types.EntityID(after), limit)
 	if len(ids) == 0 {
 		return nil, nil
@@ -465,6 +502,9 @@ func (ms *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 // AllNodes returns all stored nodes, with optional pagination and temporal filtering.
 // Results are sorted by snowflake.ID for deterministic output.
 func (ms *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -479,14 +519,8 @@ func (ms *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, nil
 	}
 
-	ids := make([]types.NodeID, 0, len(ms.nodes))
-	for id := range ms.nodes {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	// Temporal pre-filter.
-	ids = ms.filterNodeIDsByTemporal(ids, opts)
+	ids := ms.collectNodeIDsByTemporalLocked(opts)
+	storepkg.SortNodeIDs(ids)
 
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
@@ -505,6 +539,9 @@ func (ms *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 // AllRelationships returns all stored relationships, with optional pagination and temporal filtering.
 // Results are sorted by snowflake.ID for deterministic output.
 func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -519,14 +556,8 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		return nil, nil
 	}
 
-	ids := make([]types.RelID, 0, len(ms.rels))
-	for id := range ms.rels {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	// Temporal pre-filter.
-	ids = ms.filterRelIDsByTemporal(ids, opts)
+	ids := ms.collectRelIDsByTemporalLocked(opts)
+	storepkg.SortRelIDs(ids)
 
 	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
@@ -545,6 +576,9 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 // GetNodesByIDs returns nodes for every requested ID.
 // Missing IDs return ErrNodeNotFound. Results are sorted by snowflake.ID.
 func (ms *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -578,6 +612,9 @@ func (ms *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 // GetRelationshipsByIDs returns relationships for every requested ID.
 // Missing IDs return ErrRelNotFound. Results are sorted by snowflake.ID.
 func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -610,42 +647,37 @@ func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 
 // --- Temporal filtering helpers ---
 
-// filterNodeIDsByTemporal removes IDs that don't match the temporal filter in opts.
-// Reads the in-memory entity pointer directly — no deep-copy, no allocation per entity.
-// Caller must hold ms.mu (read or write).
-func (ms *Store) filterNodeIDsByTemporal(ids []types.NodeID, opts QueryOpts) []types.NodeID {
-	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
-		return ids // no filter
-	}
-	filtered := ids[:0] // reuse backing array
-	for _, id := range ids {
-		n, ok := ms.nodes[id]
-		if !ok {
+// collectNodeIDsByTemporalLocked collects current node IDs, applying active
+// temporal filters before sorting so large temporal scans sort only candidates
+// that can appear in the page. Caller must hold ms.mu (read or write).
+func (ms *Store) collectNodeIDsByTemporalLocked(opts QueryOpts) []types.NodeID {
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	ids := make([]types.NodeID, 0, len(ms.nodes))
+	for id, n := range ms.nodes {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
 			continue
 		}
-		if storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
-			filtered = append(filtered, id)
-		}
+		ids = append(ids, id)
 	}
-	return filtered
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
-// filterRelIDsByTemporal removes IDs that don't match the temporal filter in opts.
-// Reads the in-memory entity pointer directly — no deep-copy.
-// Caller must hold ms.mu (read or write).
-func (ms *Store) filterRelIDsByTemporal(ids []types.RelID, opts QueryOpts) []types.RelID {
-	if opts.ValidAt == 0 && (opts.ValidStart == 0 || opts.ValidEnd == 0) {
-		return ids // no filter
-	}
-	filtered := ids[:0] // reuse backing array
-	for _, id := range ids {
-		r, ok := ms.rels[id]
-		if !ok {
+// collectRelIDsByTemporalLocked is the relationship counterpart to
+// collectNodeIDsByTemporalLocked. Caller must hold ms.mu (read or write).
+func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) []types.RelID {
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	ids := make([]types.RelID, 0, len(ms.rels))
+	for id, r := range ms.rels {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
-		if storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
-			filtered = append(filtered, id)
-		}
+		ids = append(ids, id)
 	}
-	return filtered
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }

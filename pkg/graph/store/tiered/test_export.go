@@ -21,6 +21,9 @@ import (
 // RefShardForTest returns the reference shard's BadgerStore.
 func (ts *Store) RefShardForTest() *BadgerStore { return ts.refShard }
 
+// RefActiveReqsForTest returns the refcount on the reference shard.
+func (ts *Store) RefActiveReqsForTest() *atomic.Int64 { return &ts.refActiveReqs }
+
 // RefArchiveForTest returns the atomic pointer to the reference archive.
 func (ts *Store) RefArchiveForTest() *atomic.Pointer[BadgerStore] { return &ts.refArchive }
 
@@ -120,11 +123,11 @@ func (es *EventShard) Name() string { return es.name }
 func (es *EventShard) Path() string { return es.path }
 
 // Tier returns the shard's tier (hot, warm, cold).
-func (es *EventShard) Tier() ShardTier { return es.tier }
+func (es *EventShard) Tier() ShardTier { return es.currentTier() }
 
 // SetTierForTest mutates the tier without rotating. Tests use this to
 // simulate demote-to-cold without shipping bytes between shards.
-func (es *EventShard) SetTierForTest(t ShardTier) { es.tier = t }
+func (es *EventShard) SetTierForTest(t ShardTier) { es.setTier(t) }
 
 // ReadOnlyForTest reports whether the shard is marked read-only.
 func (es *EventShard) ReadOnlyForTest() bool { return es.readOnly }
@@ -133,16 +136,16 @@ func (es *EventShard) ReadOnlyForTest() bool { return es.readOnly }
 func (es *EventShard) Store() *BadgerStore { return es.store }
 
 // SetStoreForTest replaces the underlying store. Used by close-idle tests.
-func (es *EventShard) SetStoreForTest(bs *BadgerStore) { es.store = bs }
+func (es *EventShard) SetStoreForTest(bs *BadgerStore) {
+	es.store = bs
+	if bs == nil {
+		es.readTransientOpen = false
+	}
+}
 
 // LockShardMuForTest / UnlockShardMuForTest expose the lazy-open mutex.
 func (es *EventShard) LockShardMuForTest()   { es.shardMu.Lock() }
 func (es *EventShard) UnlockShardMuForTest() { es.shardMu.Unlock() }
-
-// GetStoreForTest exposes the lazy-open path.
-func (es *EventShard) GetStoreForTest(ts *Store) (*BadgerStore, error) {
-	return es.getStore(ts)
-}
 
 // CheckoutStoreForTest exposes the activeReqs-pinned checkout path.
 func (es *EventShard) CheckoutStoreForTest(ts *Store) (*BadgerStore, error) {

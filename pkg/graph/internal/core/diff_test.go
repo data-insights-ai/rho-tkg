@@ -2,10 +2,14 @@ package core
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -18,6 +22,100 @@ func newDiffGraph(t *testing.T) *Core {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 	return g
+}
+
+type orderedDiffStore struct {
+	storepkg.Store
+	nodeOrder []types.NodeID
+	relOrder  []types.RelID
+}
+
+func (s *orderedDiffStore) ForEachNodeID(fn func(types.NodeID) bool) error {
+	if len(s.nodeOrder) == 0 {
+		return s.Store.ForEachNodeID(fn)
+	}
+	for _, id := range s.nodeOrder {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *orderedDiffStore) ForEachRelID(fn func(types.RelID) bool) error {
+	if len(s.relOrder) == 0 {
+		return s.Store.ForEachRelID(fn)
+	}
+	for _, id := range s.relOrder {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func sortedNodeIDsDescending(ids ...types.NodeID) []types.NodeID {
+	out := append([]types.NodeID(nil), ids...)
+	sort.Slice(out, func(i, j int) bool { return out[i] > out[j] })
+	return out
+}
+
+func sortedRelIDsDescending(ids ...types.RelID) []types.RelID {
+	out := append([]types.RelID(nil), ids...)
+	sort.Slice(out, func(i, j int) bool { return out[i] > out[j] })
+	return out
+}
+
+func assertDiffNodesSorted(t *testing.T, name string, nodes []*types.Node) {
+	t.Helper()
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i-1].ID() > nodes[i].ID() {
+			t.Fatalf("%s not sorted by ID: %d before %d", name, nodes[i-1].ID(), nodes[i].ID())
+		}
+	}
+}
+
+func assertDiffRelsSorted(t *testing.T, name string, rels []*types.Relationship) {
+	t.Helper()
+	for i := 1; i < len(rels); i++ {
+		if rels[i-1].ID() > rels[i].ID() {
+			t.Fatalf("%s not sorted by ID: %d before %d", name, rels[i-1].ID(), rels[i].ID())
+		}
+	}
+}
+
+func assertDiffNodeUpdatesSorted(t *testing.T, updates []temporalpkg.NodeUpdate) {
+	t.Helper()
+	for i := 1; i < len(updates); i++ {
+		if updates[i-1].After.ID() > updates[i].After.ID() {
+			t.Fatalf("NodesUpdated not sorted by ID: %d before %d", updates[i-1].After.ID(), updates[i].After.ID())
+		}
+	}
+}
+
+func assertDiffRelUpdatesSorted(t *testing.T, updates []temporalpkg.RelUpdate) {
+	t.Helper()
+	for i := 1; i < len(updates); i++ {
+		if updates[i-1].After.ID() > updates[i].After.ID() {
+			t.Fatalf("RelsUpdated not sorted by ID: %d before %d", updates[i-1].After.ID(), updates[i].After.ID())
+		}
+	}
+}
+
+func advanceClockPast(t *testing.T, clk *testClock, target types.Instant) {
+	t.Helper()
+	now := clk.PeekInstant()
+	if now >= target {
+		return
+	}
+	clk.Advance(time.Duration(target-now) * time.Millisecond)
+}
+
+func requireDiffLen(t *testing.T, name string, got, want int) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s length = %d, want %d", name, got, want)
+	}
 }
 
 // setNodeTemporal directly sets ValidFrom/ValidTo on a stored node.
@@ -58,6 +156,112 @@ func setRelTemporal(t *testing.T, g *Core, id types.RelID, validFrom, validTo ty
 	if err := g.store.ReplaceRelationship(r); err != nil {
 		t.Fatalf("setRelTemporal ReplaceRelationship: %v", err)
 	}
+}
+
+func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
+	store := &orderedDiffStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	clk := useTestClock(t, g)
+
+	addNode := func(label string, props map[string]any) *types.Node {
+		t.Helper()
+		n, err := g.Nodes.Add([]string{label}, props)
+		if err != nil {
+			t.Fatalf("AddNode %s: %v", label, err)
+		}
+		return n
+	}
+	addRel := func(typeName string, props map[string]any, start, end *types.Node) *types.Relationship {
+		t.Helper()
+		r, err := g.Rels.Add(typeName, start, end, props)
+		if err != nil {
+			t.Fatalf("AddRelationship %s: %v", typeName, err)
+		}
+		return r
+	}
+
+	endA := addNode("EndpointA", nil)
+	endB := addNode("EndpointB", nil)
+
+	const perKind = 8
+	createdNodes := make([]*types.Node, 0, perKind)
+	deletedNodes := make([]*types.Node, 0, perKind)
+	updatedNodes := make([]*types.Node, 0, perKind)
+	createdRels := make([]*types.Relationship, 0, perKind)
+	deletedRels := make([]*types.Relationship, 0, perKind)
+	updatedRels := make([]*types.Relationship, 0, perKind)
+
+	for i := 0; i < perKind; i++ {
+		createdNodes = append(createdNodes, addNode("Created", map[string]any{"seq": int64(i)}))
+		deletedNodes = append(deletedNodes, addNode("Deleted", map[string]any{"seq": int64(i)}))
+		updatedNodes = append(updatedNodes, addNode("Updated", map[string]any{"seq": int64(i), "state": "before"}))
+		createdRels = append(createdRels, addRel("CREATED_SORT", map[string]any{"seq": int64(i)}, endA, endB))
+		deletedRels = append(deletedRels, addRel("DELETED_SORT", map[string]any{"seq": int64(i)}, endA, endB))
+		updatedRels = append(updatedRels, addRel("UPDATED_SORT", map[string]any{"seq": int64(i), "state": "before"}, endA, endB))
+	}
+
+	t1 := clk.PeekInstant() + 20
+	t2 := t1 + 10_000
+	validBeforeT1 := t1 - 20
+	validAfterT1 := t1 + 1
+
+	setNodeTemporal(t, g, endA.ID(), validBeforeT1, 0)
+	setNodeTemporal(t, g, endB.ID(), validBeforeT1, 0)
+	for i := 0; i < perKind; i++ {
+		setNodeTemporal(t, g, createdNodes[i].ID(), validAfterT1, 0)
+		setNodeTemporal(t, g, deletedNodes[i].ID(), validBeforeT1, validAfterT1)
+		setNodeTemporal(t, g, updatedNodes[i].ID(), validBeforeT1, 0)
+		setRelTemporal(t, g, createdRels[i].ID(), validAfterT1, 0)
+		setRelTemporal(t, g, deletedRels[i].ID(), validBeforeT1, validAfterT1)
+		setRelTemporal(t, g, updatedRels[i].ID(), validBeforeT1, 0)
+	}
+
+	advanceClockPast(t, clk, t1+10)
+	for i, n := range updatedNodes {
+		if _, err := g.Nodes.Update(n.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
+			t.Fatalf("UpdateNode %d: %v", i, err)
+		}
+	}
+	for i, r := range updatedRels {
+		if _, err := g.Rels.Update(r.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
+			t.Fatalf("UpdateRelationship %d: %v", i, err)
+		}
+	}
+
+	nodeOrder := make([]types.NodeID, 0, 2+3*perKind)
+	nodeOrder = append(nodeOrder, endA.ID(), endB.ID())
+	for i := 0; i < perKind; i++ {
+		nodeOrder = append(nodeOrder, createdNodes[i].ID(), deletedNodes[i].ID(), updatedNodes[i].ID())
+	}
+	relOrder := make([]types.RelID, 0, 3*perKind)
+	for i := 0; i < perKind; i++ {
+		relOrder = append(relOrder, createdRels[i].ID(), deletedRels[i].ID(), updatedRels[i].ID())
+	}
+	store.nodeOrder = sortedNodeIDsDescending(nodeOrder...)
+	store.relOrder = sortedRelIDsDescending(relOrder...)
+
+	diff, err := g.Temporal.Diff(t1, t2)
+	if err != nil {
+		t.Fatalf("DiffSnapshots: %v", err)
+	}
+
+	requireDiffLen(t, "NodesCreated", len(diff.NodesCreated), perKind)
+	requireDiffLen(t, "NodesDeleted", len(diff.NodesDeleted), perKind)
+	requireDiffLen(t, "NodesUpdated", len(diff.NodesUpdated), perKind)
+	requireDiffLen(t, "RelsCreated", len(diff.RelsCreated), perKind)
+	requireDiffLen(t, "RelsDeleted", len(diff.RelsDeleted), perKind)
+	requireDiffLen(t, "RelsUpdated", len(diff.RelsUpdated), perKind)
+
+	assertDiffNodesSorted(t, "NodesCreated", diff.NodesCreated)
+	assertDiffNodesSorted(t, "NodesDeleted", diff.NodesDeleted)
+	assertDiffNodeUpdatesSorted(t, diff.NodesUpdated)
+	assertDiffRelsSorted(t, "RelsCreated", diff.RelsCreated)
+	assertDiffRelsSorted(t, "RelsDeleted", diff.RelsDeleted)
+	assertDiffRelUpdatesSorted(t, diff.RelsUpdated)
 }
 
 // TestDiffSnapshots_InvalidRange verifies that invalid time ranges return ErrInvalidTimeRange.

@@ -322,6 +322,42 @@ func TestAsyncEventBusPublishBatchStrictPriorityDuringClose(t *testing.T) {
 	}
 }
 
+func TestAsyncEventBusPublishBatchBlockWakesBeforeFullQueueWait(t *testing.T) {
+	t.Parallel()
+
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers:      1,
+		QueueSize:    1,
+		Backpressure: BackpressureBlock,
+	})
+
+	var delivered atomic.Int32
+	bus.Subscribe(func(Event) {
+		delivered.Add(1)
+	})
+
+	done := make(chan struct{})
+	go func() {
+		bus.PublishBatch(
+			Event{Type: EventNodeCreate, Priority: PriorityNormal},
+			Event{Type: EventNodeUpdate, Priority: PriorityNormal},
+		)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		bus.Close()
+		t.Fatal("PublishBatch blocked after filling the priority queue before waking the dispatcher")
+	}
+
+	bus.Close()
+	if got := delivered.Load(); got != 2 {
+		t.Fatalf("delivered events = %d, want 2", got)
+	}
+}
+
 func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
 	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 64, Backpressure: BackpressureDropLatest})
 	defer bus.Close()
@@ -509,6 +545,58 @@ func TestAsyncEventBus_Close_DrainsQueue(t *testing.T) {
 
 	if counter.Load() < n {
 		t.Errorf("Close did not drain queue: received %d/%d events", counter.Load(), n)
+	}
+}
+
+func TestAsyncEventBusCloseFinalDrainAfterPublisherGate(t *testing.T) {
+	var bus AsyncEventBus
+	var delivered atomic.Int32
+	wrongType := make(chan EventType, 1)
+	bus.handlers = map[int]EventHandler{
+		1: func(e Event) {
+			if e.Type != EventNodeCreate {
+				wrongType <- e.Type
+				return
+			}
+			delivered.Add(1)
+		},
+	}
+	bus.stopCh = make(chan struct{})
+	bus.wakeupCh = make(chan struct{}, 1)
+	for i := range bus.queues {
+		bus.queues[i] = make(chan Event, 1)
+	}
+	bus.startOnce.Do(func() {})
+
+	bus.publishMu.Lock()
+	closed := make(chan struct{})
+	go func() {
+		bus.Close()
+		close(closed)
+	}()
+
+	select {
+	case <-bus.stopCh:
+	case <-time.After(time.Second):
+		bus.publishMu.Unlock()
+		t.Fatal("Close did not signal stop")
+	}
+
+	bus.queues[PriorityNormal] <- Event{Type: EventNodeCreate}
+	bus.publishMu.Unlock()
+
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after publisher gate released")
+	}
+	if got := delivered.Load(); got != 1 {
+		t.Fatalf("delivered events after final drain = %d, want 1", got)
+	}
+	select {
+	case got := <-wrongType:
+		t.Fatalf("event type = %v, want EventNodeCreate", got)
+	default:
 	}
 }
 

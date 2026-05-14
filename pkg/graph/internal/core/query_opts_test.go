@@ -6,8 +6,27 @@ import (
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+var errEmptyBulkReadProbeStoreTouched = errors.New("empty bulk read probe touched store")
+
+type emptyBulkReadProbeStore struct {
+	storepkg.MandatoryStore
+	nodeBulkReads int
+	relBulkReads  int
+}
+
+func (s *emptyBulkReadProbeStore) GetNodesByIDs([]types.NodeID) ([]*types.Node, error) {
+	s.nodeBulkReads++
+	return nil, errEmptyBulkReadProbeStoreTouched
+}
+
+func (s *emptyBulkReadProbeStore) GetRelationshipsByIDs([]types.RelID) ([]*types.Relationship, error) {
+	s.relBulkReads++
+	return nil, errEmptyBulkReadProbeStoreTouched
+}
 
 func TestGraphQueryAPIsRejectInvalidDepthBeforeEmptyShortcuts(t *testing.T) {
 	t.Parallel()
@@ -54,6 +73,28 @@ func TestGraphQueryAPIsRejectInvalidDepthBeforeEmptyShortcuts(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidShardDepth", err)
 			}
 		})
+	}
+}
+
+func TestNodesByLabelAndPropertyRejectsInvalidQueryValueBeforeEmptyShortcuts(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	_, err = g.Nodes.ByLabelAndProperty("Missing", "color", struct{ Bad int }{Bad: 1}, storepkg.QueryOpts{})
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("ByLabelAndProperty invalid value with unknown label = %v, want ErrUnsupportedValueType", err)
+	}
+
+	nodes, err := g.Nodes.ByLabelAndProperty("Missing", "color", []string{"valid", "unindexable"}, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabelAndProperty valid unindexable value: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("ByLabelAndProperty valid unindexable value returned %d nodes, want 0", len(nodes))
 	}
 }
 
@@ -201,6 +242,44 @@ func TestGraphQueryAPIsRejectNegativeCursorBeforeEmptyShortcuts(t *testing.T) {
 	}
 }
 
+func TestGraphGetByIDsEmptyInputsDoNotTouchStore(t *testing.T) {
+	t.Parallel()
+
+	store := &emptyBulkReadProbeStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	emptyNodeIDs := []types.NodeID{}
+	for _, ids := range [][]types.NodeID{nil, emptyNodeIDs} {
+		got, err := g.Nodes.GetByIDs(ids)
+		if err != nil {
+			t.Fatalf("Nodes.GetByIDs(%v) returned error: %v", ids, err)
+		}
+		if got != nil {
+			t.Fatalf("Nodes.GetByIDs(%v) = %v, want nil", ids, got)
+		}
+	}
+	emptyRelIDs := []types.RelID{}
+	for _, ids := range [][]types.RelID{nil, emptyRelIDs} {
+		got, err := g.Rels.GetByIDs(ids)
+		if err != nil {
+			t.Fatalf("Rels.GetByIDs(%v) returned error: %v", ids, err)
+		}
+		if got != nil {
+			t.Fatalf("Rels.GetByIDs(%v) = %v, want nil", ids, got)
+		}
+	}
+	if store.nodeBulkReads != 0 {
+		t.Fatalf("empty node bulk reads touched store %d time(s)", store.nodeBulkReads)
+	}
+	if store.relBulkReads != 0 {
+		t.Fatalf("empty relationship bulk reads touched store %d time(s)", store.relBulkReads)
+	}
+}
+
 func TestGraphReadAPIsRejectInvalidIDs(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{})
@@ -280,6 +359,16 @@ func TestGraphReadAPIsRejectInvalidIDs(t *testing.T) {
 		{name: "Rels.History zero", run: func() error { _, err := g.Rels.History(0); return err }},
 		{name: "Rels.History negative", run: func() error {
 			_, err := g.Rels.History(types.RelID(-1))
+			return err
+		}},
+		{name: "Temporal.NodeAt zero", run: func() error { _, err := g.Temporal.NodeAt(0, 1); return err }},
+		{name: "Temporal.NodeAt negative", run: func() error {
+			_, err := g.Temporal.NodeAt(types.NodeID(-1), 1)
+			return err
+		}},
+		{name: "Temporal.RelAt zero", run: func() error { _, err := g.Temporal.RelAt(0, 1); return err }},
+		{name: "Temporal.RelAt negative", run: func() error {
+			_, err := g.Temporal.RelAt(types.RelID(-1), 1)
 			return err
 		}},
 	}

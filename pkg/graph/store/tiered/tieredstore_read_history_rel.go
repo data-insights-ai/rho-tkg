@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -31,10 +32,26 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 
 	// If the live rel entity is on this shard, the local ErrVersionNotFound is
 	// authoritative — no need to wake other shards.
-	// Skip the optimisation when the live rel sits on refArchive: ArchiveNode
-	// only migrates the current entity, so pre-archive rel history versions
-	// remain on refShard and must be discovered via the fan-out below.
-	if relationshipRowExists(shard, rid) && !isArchive {
+	// Reference relationships are the exception: archive/restore can leave
+	// history in refArchive while the restored live row is back on refShard.
+	liveHere, err := relationshipRowLive(shard, rid)
+	if err != nil {
+		return nil, err
+	}
+	if liveHere && !isArchive {
+		if shard == ts.refShard {
+			archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+			if archiveErr != nil {
+				return nil, archiveErr
+			}
+			if archive != nil {
+				r, err := archive.GetRelVersion(rid, version)
+				archiveCheckin()
+				if err == nil || !errors.Is(err, ErrVersionNotFound) {
+					return r, err
+				}
+			}
+		}
 		return nil, ErrVersionNotFound
 	}
 
@@ -72,36 +89,118 @@ func (ts *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
 	}
 	defer checkin()
 	history, err := shard.GetRelHistory(rid)
-	if err != nil || len(history) > 0 {
-		return history, err
+	if err != nil {
+		return nil, err
 	}
 
-	// If the live rel entity is on this shard, an empty history here is
-	// authoritative — skip the deleted-rel fan-out so cold shards are not
-	// needlessly opened.
-	// Skip the optimisation when the live rel sits on refArchive: pre-archive
-	// rel history remains on refShard, so fall through to the fan-out below.
-	if relationshipRowExists(shard, rid) && !isArchive {
-		return nil, nil
+	liveHere, err := relationshipRowLive(shard, rid)
+	if err != nil {
+		return nil, err
+	}
+	if liveHere && !isArchive {
+		if shard == ts.refShard {
+			return ts.relHistoryWithArchive(rid, shard, history)
+		}
+		return history, nil
+	}
+	if isArchive {
+		return ts.relHistoryWithReference(rid, shard, history)
 	}
 
-	var found []*types.Relationship
+	sources := relHistorySourcesFrom(shard, history)
 	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetRelHistory(rid)
 		if err != nil {
 			return false, err
 		}
-		if len(history) == 0 {
-			return false, nil
-		}
-		found = history
-		return true, nil
+		appendRelHistorySource(&sources, candidate, history)
+		return false, nil
 	})
 	if searchErr != nil {
 		return nil, searchErr
 	}
-	return found, nil
+	return mergeRelHistorySources(sources), nil
 }
+
+func (ts *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateHistoryPageLimit(limit); err != nil {
+		return nil, err
+	}
+	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	history, err := shard.RelHistoryVersionsFrom(rid, startVersion, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	liveHere, err := relationshipRowLive(shard, rid)
+	if err != nil {
+		return nil, err
+	}
+	if liveHere && !isArchive {
+		if shard == ts.refShard {
+			sources := relHistorySourcesFrom(shard, history)
+			archive, archiveCheckin, err := ts.checkoutArchive()
+			if err != nil {
+				return nil, err
+			}
+			if archive != nil && archive != shard {
+				archiveHistory, err := archive.RelHistoryVersionsFrom(rid, startVersion, limit)
+				archiveCheckin()
+				if err != nil {
+					return nil, err
+				}
+				appendRelHistorySource(&sources, archive, archiveHistory)
+			} else if archive != nil {
+				archiveCheckin()
+			}
+			return trimRelHistoryPage(mergeRelHistorySources(sources), limit), nil
+		}
+		return history, nil
+	}
+	if isArchive {
+		sources := relHistorySourcesFrom(shard, history)
+		ref, refCheckin, err := ts.checkoutRefShard()
+		if err != nil {
+			return nil, err
+		}
+		if ref != shard {
+			refHistory, err := ref.RelHistoryVersionsFrom(rid, startVersion, limit)
+			refCheckin()
+			if err != nil {
+				return nil, err
+			}
+			appendRelHistorySource(&sources, ref, refHistory)
+		} else {
+			refCheckin()
+		}
+		return trimRelHistoryPage(mergeRelHistorySources(sources), limit), nil
+	}
+
+	sources := relHistorySourcesFrom(shard, history)
+	searchErr := ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
+		history, err := candidate.RelHistoryVersionsFrom(rid, startVersion, limit)
+		if err != nil {
+			return false, err
+		}
+		appendRelHistorySource(&sources, candidate, history)
+		return false, nil
+	})
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	return trimRelHistoryPage(mergeRelHistorySources(sources), limit), nil
+}
+
 func (ts *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 	const pageSize = 65536
 	var (
@@ -152,7 +251,12 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 		}
 	}
 
-	refIDs, err := ts.refShard.AllRelHistoryIDsFrom(after, limit)
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refIDs, err := ref.AllRelHistoryIDsFrom(after, limit)
+	refCheckin()
 	if err != nil {
 		return nil, err
 	}
@@ -175,12 +279,12 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		store, err := es.checkoutStore(ts)
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			return nil, err
 		}
 		ids, scanErr := store.AllRelHistoryIDsFrom(after, limit)
-		es.checkinStore()
+		release()
 		if scanErr != nil {
 			return nil, scanErr
 		}
@@ -190,7 +294,7 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	sort.Slice(raw, func(i, j int) bool { return raw[i] < raw[j] })
+	storeutil.SortSnowflakeIDs(raw)
 	if limit > 0 && limit < len(raw) {
 		raw = raw[:limit]
 	}
@@ -210,24 +314,52 @@ func (ts *Store) ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	var archive *BadgerStore
-	var archiveCheckin func()
-	if depth != DepthAll {
-		var archiveErr error
-		archive, archiveCheckin, archiveErr = ts.checkoutArchive()
-		if archiveErr != nil {
-			return archiveErr
-		}
+	if depth == DepthAll {
+		return ts.forEachRelHistoryIDAll(fn)
+	}
+	return ts.forEachRelHistoryIDByDepth(depth, fn)
+}
+
+func (ts *Store) forEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error {
+	maxID, err := ts.maxRelHistoryIDByDepth(depth)
+	if err != nil {
+		return err
+	}
+	if maxID == 0 {
+		return nil
+	}
+	maxRaw := maxID.SnowflakeID()
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
 	}
 
 	ids := make([]types.RelID, 0)
 	var archiveProbeErr error
-	if err := ts.refShard.ForEachRelHistoryID(func(id types.RelID) bool {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		if archive != nil {
+			archiveCheckin()
+		}
+		return err
+	}
+	if err := ref.ForEachRelHistoryID(func(id types.RelID) bool {
 		if archive != nil {
 			// Restored reference relationships can have archive history, but
 			// current ref-shard ownership makes them eligible for hot/warm depth.
-			if !relationshipRowExists(ts.refShard, id) {
-				if relationshipRowExists(archive, id) {
+			refLive, err := relationshipRowLive(ref, id)
+			if err != nil {
+				archiveProbeErr = err
+				return false
+			}
+			if !refLive {
+				archiveLive, err := relationshipRowLive(archive, id)
+				if err != nil {
+					archiveProbeErr = err
+					return false
+				}
+				if archiveLive {
 					return true
 				}
 				hasHistory, err := archiveHasRelHistoryID(archive, id)
@@ -240,14 +372,19 @@ func (ts *Store) ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 				}
 			}
 		}
+		if id.SnowflakeID() > maxRaw {
+			return true
+		}
 		ids = append(ids, id)
 		return true
 	}); err != nil {
+		refCheckin()
 		if archive != nil {
 			archiveCheckin()
 		}
 		return err
 	}
+	refCheckin()
 	if archiveProbeErr != nil {
 		if archive != nil {
 			archiveCheckin()
@@ -263,44 +400,24 @@ func (ts *Store) ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 		}
 	}
 
-	if depth == DepthAll {
-		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-		if archiveErr != nil {
-			return archiveErr
-		}
-		if archive != nil {
-			ids = ids[:0]
-			err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
-				ids = append(ids, id)
-				return true
-			})
-			archiveCheckin()
-			if err != nil {
-				return err
-			}
-			for _, id := range ids {
-				if !fn(id) {
-					return nil
-				}
-			}
-		}
-	}
-
 	ts.mu.RLock()
 	shards := ts.eventShardSnapshot(depth)
 	ts.mu.RUnlock()
 
 	for _, es := range shards {
-		store, err := es.checkoutStore(ts)
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			return err
 		}
 		ids = ids[:0]
 		err = store.ForEachRelHistoryID(func(id types.RelID) bool {
+			if id.SnowflakeID() > maxRaw {
+				return true
+			}
 			ids = append(ids, id)
 			return true
 		})
-		es.checkinStore()
+		release()
 		if err != nil {
 			return err
 		}
@@ -311,6 +428,191 @@ func (ts *Store) ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelI
 		}
 	}
 	return nil
+}
+
+func (ts *Store) forEachRelHistoryIDAll(fn func(types.RelID) bool) error {
+	maxID, err := ts.maxRelHistoryIDAll()
+	if err != nil {
+		return err
+	}
+	if maxID == 0 {
+		return nil
+	}
+	maxRaw := maxID.SnowflakeID()
+
+	var after types.RelID
+	for {
+		ids, err := ts.AllRelHistoryIDsFrom(after, 1024)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		for _, id := range ids {
+			if id.SnowflakeID() > maxRaw {
+				return nil
+			}
+			if !fn(id) {
+				return nil
+			}
+		}
+		after = ids[len(ids)-1]
+		if after.SnowflakeID() >= maxRaw {
+			return nil
+		}
+	}
+}
+
+func (ts *Store) maxRelHistoryIDByDepth(depth ShardDepth) (types.RelID, error) {
+	if depth == DepthAll {
+		return ts.maxRelHistoryIDAll()
+	}
+	var max types.RelID
+	observe := func(id types.RelID) {
+		if id.SnowflakeID() > max.SnowflakeID() {
+			max = id
+		}
+	}
+
+	var archive *BadgerStore
+	var archiveCheckin func()
+	if depth != DepthAll {
+		var archiveErr error
+		archive, archiveCheckin, archiveErr = ts.checkoutArchive()
+		if archiveErr != nil {
+			return 0, archiveErr
+		}
+		defer archiveCheckin()
+	}
+
+	var archiveProbeErr error
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	err = ref.ForEachRelHistoryID(func(id types.RelID) bool {
+		if archive != nil {
+			refLive, err := relationshipRowLive(ref, id)
+			if err != nil {
+				archiveProbeErr = err
+				return false
+			}
+			if !refLive {
+				archiveLive, err := relationshipRowLive(archive, id)
+				if err != nil {
+					archiveProbeErr = err
+					return false
+				}
+				if archiveLive {
+					return true
+				}
+				hasHistory, err := archiveHasRelHistoryID(archive, id)
+				if err != nil {
+					archiveProbeErr = err
+					return false
+				}
+				if hasHistory {
+					return true
+				}
+			}
+		}
+		observe(id)
+		return true
+	})
+	refCheckin()
+	if err != nil {
+		return 0, err
+	}
+	if archiveProbeErr != nil {
+		return 0, archiveProbeErr
+	}
+
+	if depth == DepthAll {
+		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+		if archiveErr != nil {
+			return 0, archiveErr
+		}
+		if archive != nil {
+			err := archive.ForEachRelHistoryID(func(id types.RelID) bool {
+				observe(id)
+				return true
+			})
+			archiveCheckin()
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(depth)
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return 0, err
+		}
+		err = store.ForEachRelHistoryID(func(id types.RelID) bool {
+			observe(id)
+			return true
+		})
+		release()
+		if err != nil {
+			return 0, err
+		}
+	}
+	return max, nil
+}
+
+func (ts *Store) maxRelHistoryIDAll() (types.RelID, error) {
+	var max types.RelID
+	observe := func(id types.RelID) {
+		if id.SnowflakeID() > max.SnowflakeID() {
+			max = id
+		}
+	}
+
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	id, err := ref.MaxRelHistoryID()
+	refCheckin()
+	if err != nil {
+		return 0, err
+	}
+	observe(id)
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		id, err := archive.MaxRelHistoryID()
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		observe(id)
+	}
+
+	ts.mu.RLock()
+	shards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+	for _, es := range shards {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			return 0, err
+		}
+		id, scanErr := store.MaxRelHistoryID()
+		release()
+		if scanErr != nil {
+			return 0, scanErr
+		}
+		observe(id)
+	}
+	return max, nil
 }
 
 func archiveHasRelHistoryID(archive *BadgerStore, id types.RelID) (bool, error) {
@@ -324,4 +626,99 @@ func archiveHasRelHistoryID(archive *BadgerStore, id types.RelID) (bool, error) 
 		return false, err
 	}
 	return len(ids) > 0 && ids[0] == id, nil
+}
+
+type relHistorySource struct {
+	store   *BadgerStore
+	history []*types.Relationship
+}
+
+func relHistorySourcesFrom(store *BadgerStore, history []*types.Relationship) []relHistorySource {
+	if len(history) == 0 {
+		return nil
+	}
+	return []relHistorySource{{store: store, history: history}}
+}
+
+func appendRelHistorySource(sources *[]relHistorySource, store *BadgerStore, history []*types.Relationship) {
+	if len(history) == 0 {
+		return
+	}
+	*sources = append(*sources, relHistorySource{store: store, history: history})
+}
+
+func (ts *Store) relHistoryWithArchive(rid types.RelID, skip *BadgerStore, history []*types.Relationship) ([]*types.Relationship, error) {
+	sources := relHistorySourcesFrom(skip, history)
+	archive, archiveCheckin, err := ts.checkoutArchive()
+	if err != nil {
+		return nil, err
+	}
+	if archive != nil && archive != skip {
+		archiveHistory, err := archive.GetRelHistory(rid)
+		archiveCheckin()
+		if err != nil {
+			return nil, err
+		}
+		appendRelHistorySource(&sources, archive, archiveHistory)
+	} else if archive != nil {
+		archiveCheckin()
+	}
+	return mergeRelHistorySources(sources), nil
+}
+
+func (ts *Store) relHistoryWithReference(rid types.RelID, skip *BadgerStore, history []*types.Relationship) ([]*types.Relationship, error) {
+	sources := relHistorySourcesFrom(skip, history)
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	if ref != skip {
+		refHistory, err := ref.GetRelHistory(rid)
+		refCheckin()
+		if err != nil {
+			return nil, err
+		}
+		appendRelHistorySource(&sources, ref, refHistory)
+	} else {
+		refCheckin()
+	}
+	return mergeRelHistorySources(sources), nil
+}
+
+func mergeRelHistorySources(sources []relHistorySource) []*types.Relationship {
+	if len(sources) == 0 {
+		return nil
+	}
+	if len(sources) == 1 {
+		return sources[0].history
+	}
+	total := 0
+	for _, source := range sources {
+		total += len(source.history)
+	}
+	if total == 0 {
+		return nil
+	}
+	out := make([]*types.Relationship, 0, total)
+	for _, source := range sources {
+		out = append(out, source.history...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Version() < out[j].Version() })
+	deduped := out[:0]
+	var last uint32
+	for i, r := range out {
+		if i > 0 && r.Version() == last {
+			continue
+		}
+		deduped = append(deduped, r)
+		last = r.Version()
+	}
+	return deduped
+}
+
+func trimRelHistoryPage(history []*types.Relationship, limit int) []*types.Relationship {
+	if limit > 0 && len(history) > limit {
+		return history[:limit]
+	}
+	return history
 }

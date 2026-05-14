@@ -1,10 +1,12 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -79,10 +81,42 @@ type indexProviderEntry struct {
 	provider    indexpkg.IndexProvider
 	unsubscribe func()
 	initDone    chan struct{}
+	eventMu     sync.Mutex
+	eventsWG    sync.WaitGroup
+	stopping    bool
 }
 
 func (e *indexProviderEntry) waitInit() {
 	<-e.initDone
+}
+
+func (e *indexProviderEntry) handleEvent(name string, ev eventspkg.Event) {
+	e.eventMu.Lock()
+	if e.stopping {
+		e.eventMu.Unlock()
+		return
+	}
+	e.eventsWG.Add(1)
+	e.eventMu.Unlock()
+	defer e.eventsWG.Done()
+
+	// OnEvent errors are best-effort diagnostics; we deliberately do
+	// not surface them to the originating mutation goroutine because
+	// the mutation has already committed.
+	if err := e.provider.OnEvent(ev); err != nil {
+		slog.Error("graph: index provider event handler failed",
+			"provider", name,
+			"eventType", ev.Type,
+			"entityID", ev.EntityID,
+			"error", err)
+	}
+}
+
+func (e *indexProviderEntry) stopEvents() {
+	e.eventMu.Lock()
+	e.stopping = true
+	e.eventMu.Unlock()
+	e.eventsWG.Wait()
 }
 
 // subscribeFunc is the abstraction over eventspkg.EventBus.Subscribe and
@@ -168,40 +202,46 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 		c.mu.Unlock()
 		return err
 	}
+	entry := &indexProviderEntry{provider: p, initDone: make(chan struct{})}
 	unsub := subscribe(func(ev eventspkg.Event) {
-		// OnEvent errors are best-effort diagnostics; we deliberately do
-		// not surface them to the originating mutation goroutine because
-		// the mutation has already committed.
-		if err := p.OnEvent(ev); err != nil {
-			slog.Error("graph: index provider event handler failed",
-				"provider", name,
-				"eventType", ev.Type,
-				"entityID", ev.EntityID,
-				"error", err)
-		}
+		entry.handleEvent(name, ev)
 	})
-	entry := &indexProviderEntry{provider: p, unsubscribe: unsub, initDone: make(chan struct{})}
+	entry.unsubscribe = unsub
 	c.indexProviders[name] = entry
 	c.mu.Unlock()
 
+	rollbackInitFailure := func(regErr error) error {
+		c.mu.Lock()
+		if current, present := c.indexProviders[name]; present && current == entry {
+			delete(c.indexProviders, name)
+			c.mu.Unlock()
+			entry.unsubscribe()
+			if closeErr := closeIndexProvider(entry); closeErr != nil {
+				return errors.Join(regErr, fmt.Errorf("graph: index provider %q close after Init failure: %w", name, closeErr))
+			}
+		} else {
+			c.mu.Unlock()
+		}
+		return regErr
+	}
+
 	if init, ok := p.(indexpkg.Initializable); ok {
 		var initErr error
+		var initPanic any
 		func() {
 			defer close(entry.initDone)
+			defer func() {
+				if r := recover(); r != nil {
+					initPanic = r
+				}
+			}()
 			initErr = init.Init(graphReaderView{g: c})
 		}()
+		if initPanic != nil {
+			return rollbackInitFailure(fmt.Errorf("graph: index provider %q Init panic: %v", name, initPanic))
+		}
 		if initErr != nil {
-			// Roll back the registration so the caller does not have to
-			// worry about a half-wired provider observing future events.
-			c.mu.Lock()
-			if current, present := c.indexProviders[name]; present && current == entry {
-				delete(c.indexProviders, name)
-				c.mu.Unlock()
-				entry.unsubscribe()
-			} else {
-				c.mu.Unlock()
-			}
-			return fmt.Errorf("graph: index provider %q Init failed: %w", name, initErr)
+			return rollbackInitFailure(fmt.Errorf("graph: index provider %q Init failed: %w", name, initErr))
 		}
 	} else {
 		close(entry.initDone)
@@ -261,7 +301,7 @@ func (i *IndexOps) UnregisterProvider(name string) error {
 
 	entry.unsubscribe()
 	entry.waitInit()
-	return entry.provider.Close()
+	return closeIndexProvider(entry)
 }
 
 // Providers returns the names of registered providers in

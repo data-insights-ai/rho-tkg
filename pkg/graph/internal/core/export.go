@@ -29,10 +29,11 @@ const exportFormatVersion byte = 1
 const exportBatchSize = 1024
 
 // exportHistoryBatchSize is the page size for cursor-paginated history-ID
-// scans during export. The per-ID history payload is unbounded (deeply
-// versioned nodes carry many entries), so we keep the cursor page narrow:
-// at most ~32 KiB of types.NodeID/types.RelID values resident at once.
+// scans during export. exportHistoryVersionBatchSize caps the number of
+// per-entity history versions materialized when the backend supports paged
+// history reads.
 const exportHistoryBatchSize = 4096
+const exportHistoryVersionBatchSize = 4096
 
 // Record type tags for the export stream. Values ≥ 0x80 are reserved for future use.
 const (
@@ -103,11 +104,11 @@ func (c *Core) exportLocked(w io.Writer) error {
 		return ErrNilWriter
 	}
 	// --- Header ---
-	nc, err := c.store.NodeCount()
+	nc, err := c.nodeCount()
 	if err != nil {
 		return fmt.Errorf("export: node count: %w", err)
 	}
-	rc, err := c.store.RelationshipCount()
+	rc, err := c.relCount()
 	if err != nil {
 		return fmt.Errorf("export: rel count: %w", err)
 	}
@@ -131,16 +132,20 @@ func (c *Core) exportLocked(w io.Writer) error {
 	}
 
 	// --- Current nodes (paginated) ---
-	// AllNodes with cursor-based pagination caps memory to exportBatchSize entities
-	// per iteration. Avoids the OOM that results from collecting all IDs into a
-	// single monolithic slice before fetching (8+ GB for 1B nodes).
+	// Page IDs, then fetch one entity at a time. Paging full entities would
+	// still retain exportBatchSize deep-copied payloads, which is too much for
+	// large property-heavy graphs.
 	var nodeCursor types.EntityID
 	for {
-		nodes, err := c.store.AllNodes(storepkg.QueryOpts{Limit: exportBatchSize, After: nodeCursor})
+		nodeIDs, err := c.allNodeIDs(storepkg.QueryOpts{Limit: exportBatchSize, After: nodeCursor})
 		if err != nil {
-			return fmt.Errorf("export: fetch nodes: %w", err)
+			return fmt.Errorf("export: fetch node IDs: %w", err)
 		}
-		for _, n := range nodes {
+		for _, id := range nodeIDs {
+			n, err := c.getCurrentNode(id)
+			if err != nil {
+				return fmt.Errorf("export: get node %d: %w", id.SnowflakeID(), err)
+			}
 			w2, err := storeutil.NodeToWireChecked(n)
 			if err != nil {
 				return fmt.Errorf("export: encode node %d: %w", n.ID().SnowflakeID(), err)
@@ -148,22 +153,22 @@ func (c *Core) exportLocked(w io.Writer) error {
 			if err := marshalAndWrite(w, exportTagNode, &w2); err != nil {
 				return fmt.Errorf("export: write node %d: %w", n.ID().SnowflakeID(), err)
 			}
-			nodeCursor = types.EntityID(n.ID().SnowflakeID())
+			nodeCursor = types.EntityID(id.SnowflakeID())
 		}
-		if len(nodes) < exportBatchSize {
+		if len(nodeIDs) < exportBatchSize {
 			break
 		}
 	}
 
 	// --- Node history (paginated) ---
-	// AllNodeHistoryIDsFrom caps memory to exportHistoryBatchSize IDs per call,
-	// eliminating the OOM risk at large history depths (e.g., 10K nodes × 1K
-	// versions = 10M IDs). Each iteration loads at most batch-size IDs plus
-	// the per-ID history list, never the entire history-ID set.
+	// AllNodeHistoryIDsFrom caps the ID set. Backends with
+	// HistoryVersionPageCapability also cap each individual entity's version
+	// slice so one deeply updated node cannot dominate export memory.
 	{
+		historyPager := historyVersionPageCapability(c.store)
 		var nodeHistCursor types.NodeID
 		for {
-			nodeHistIDs, err := c.store.AllNodeHistoryIDsFrom(nodeHistCursor, exportHistoryBatchSize)
+			nodeHistIDs, err := c.allNodeHistoryIDsFrom(nodeHistCursor, exportHistoryBatchSize)
 			if err != nil {
 				return fmt.Errorf("export: node history IDs: %w", err)
 			}
@@ -171,18 +176,8 @@ func (c *Core) exportLocked(w io.Writer) error {
 				break
 			}
 			for _, id := range nodeHistIDs {
-				history, err := c.store.GetNodeHistory(id)
-				if err != nil {
-					return fmt.Errorf("export: get node history %d: %w", id, err)
-				}
-				for _, entry := range history {
-					w2, err := storeutil.NodeToWireChecked(entry)
-					if err != nil {
-						return fmt.Errorf("export: encode node history %d v%d: %w", id, entry.Version(), err)
-					}
-					if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
-						return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
-					}
+				if err := c.exportNodeHistory(w, historyPager, id); err != nil {
+					return err
 				}
 			}
 			if len(nodeHistIDs) < exportHistoryBatchSize {
@@ -195,11 +190,15 @@ func (c *Core) exportLocked(w io.Writer) error {
 	// --- Current relationships (paginated) ---
 	var relCursor types.EntityID
 	for {
-		rels, err := c.store.AllRelationships(storepkg.QueryOpts{Limit: exportBatchSize, After: relCursor})
+		relIDs, err := c.allRelIDs(storepkg.QueryOpts{Limit: exportBatchSize, After: relCursor})
 		if err != nil {
-			return fmt.Errorf("export: fetch rels: %w", err)
+			return fmt.Errorf("export: fetch rel IDs: %w", err)
 		}
-		for _, r := range rels {
+		for _, id := range relIDs {
+			r, err := c.getCurrentRelationship(id)
+			if err != nil {
+				return fmt.Errorf("export: get rel %d: %w", id.SnowflakeID(), err)
+			}
 			w2, err := storeutil.RelToWireChecked(r)
 			if err != nil {
 				return fmt.Errorf("export: encode rel %d: %w", r.ID().SnowflakeID(), err)
@@ -207,18 +206,19 @@ func (c *Core) exportLocked(w io.Writer) error {
 			if err := marshalAndWrite(w, exportTagRel, &w2); err != nil {
 				return fmt.Errorf("export: write rel %d: %w", r.ID().SnowflakeID(), err)
 			}
-			relCursor = types.EntityID(r.ID().SnowflakeID())
+			relCursor = types.EntityID(id.SnowflakeID())
 		}
-		if len(rels) < exportBatchSize {
+		if len(relIDs) < exportBatchSize {
 			break
 		}
 	}
 
 	// --- Relationship history (paginated) ---
 	{
+		historyPager := historyVersionPageCapability(c.store)
 		var relHistCursor types.RelID
 		for {
-			relHistIDs, err := c.store.AllRelHistoryIDsFrom(relHistCursor, exportHistoryBatchSize)
+			relHistIDs, err := c.allRelHistoryIDsFrom(relHistCursor, exportHistoryBatchSize)
 			if err != nil {
 				return fmt.Errorf("export: rel history IDs: %w", err)
 			}
@@ -226,18 +226,8 @@ func (c *Core) exportLocked(w io.Writer) error {
 				break
 			}
 			for _, id := range relHistIDs {
-				history, err := c.store.GetRelHistory(id)
-				if err != nil {
-					return fmt.Errorf("export: get rel history %d: %w", id, err)
-				}
-				for _, entry := range history {
-					w2, err := storeutil.RelToWireChecked(entry)
-					if err != nil {
-						return fmt.Errorf("export: encode rel history %d v%d: %w", id, entry.Version(), err)
-					}
-					if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
-						return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
-					}
+				if err := c.exportRelHistory(w, historyPager, id); err != nil {
+					return err
 				}
 			}
 			if len(relHistIDs) < exportHistoryBatchSize {
@@ -247,6 +237,108 @@ func (c *Core) exportLocked(w io.Writer) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *Core) exportNodeHistory(w io.Writer, pager storepkg.HistoryVersionPageCapability, id types.NodeID) error {
+	if pager == nil {
+		history, err := c.getNodeHistory(id)
+		if err != nil {
+			return fmt.Errorf("export: get node history %d: %w", id, err)
+		}
+		return writeNodeHistoryEntries(w, id, history)
+	}
+
+	var startVersion uint32
+	for {
+		history, err := c.nodeHistoryVersionsFrom(pager, id, startVersion, exportHistoryVersionBatchSize)
+		if err != nil {
+			return fmt.Errorf("export: get node history %d from v%d: %w", id, startVersion, err)
+		}
+		if len(history) == 0 {
+			return nil
+		}
+		if err := writeNodeHistoryEntries(w, id, history); err != nil {
+			return err
+		}
+		if len(history) < exportHistoryVersionBatchSize {
+			return nil
+		}
+		lastVersion := history[len(history)-1].Version()
+		if lastVersion < startVersion {
+			return fmt.Errorf("export: node history %d returned non-advancing page at v%d", id, startVersion)
+		}
+		if lastVersion == ^uint32(0) {
+			return nil
+		}
+		startVersion = lastVersion + 1
+	}
+}
+
+func writeNodeHistoryEntries(w io.Writer, id types.NodeID, history []*types.Node) error {
+	for i, entry := range history {
+		if entry == nil {
+			return fmt.Errorf("export: encode node history %d entry %d: %w", id, i, ErrNilNode)
+		}
+		w2, err := storeutil.NodeToWireChecked(entry)
+		if err != nil {
+			return fmt.Errorf("export: encode node history %d v%d: %w", id, entry.Version(), err)
+		}
+		if err := marshalAndWrite(w, exportTagNodeHist, &w2); err != nil {
+			return fmt.Errorf("export: write node history %d v%d: %w", id, entry.Version(), err)
+		}
+	}
+	return nil
+}
+
+func (c *Core) exportRelHistory(w io.Writer, pager storepkg.HistoryVersionPageCapability, id types.RelID) error {
+	if pager == nil {
+		history, err := c.getRelHistory(id)
+		if err != nil {
+			return fmt.Errorf("export: get rel history %d: %w", id, err)
+		}
+		return writeRelHistoryEntries(w, id, history)
+	}
+
+	var startVersion uint32
+	for {
+		history, err := c.relHistoryVersionsFrom(pager, id, startVersion, exportHistoryVersionBatchSize)
+		if err != nil {
+			return fmt.Errorf("export: get rel history %d from v%d: %w", id, startVersion, err)
+		}
+		if len(history) == 0 {
+			return nil
+		}
+		if err := writeRelHistoryEntries(w, id, history); err != nil {
+			return err
+		}
+		if len(history) < exportHistoryVersionBatchSize {
+			return nil
+		}
+		lastVersion := history[len(history)-1].Version()
+		if lastVersion < startVersion {
+			return fmt.Errorf("export: rel history %d returned non-advancing page at v%d", id, startVersion)
+		}
+		if lastVersion == ^uint32(0) {
+			return nil
+		}
+		startVersion = lastVersion + 1
+	}
+}
+
+func writeRelHistoryEntries(w io.Writer, id types.RelID, history []*types.Relationship) error {
+	for i, entry := range history {
+		if entry == nil {
+			return fmt.Errorf("export: encode rel history %d entry %d: %w", id, i, ErrNilRelationship)
+		}
+		w2, err := storeutil.RelToWireChecked(entry)
+		if err != nil {
+			return fmt.Errorf("export: encode rel history %d v%d: %w", id, entry.Version(), err)
+		}
+		if err := marshalAndWrite(w, exportTagRelHist, &w2); err != nil {
+			return fmt.Errorf("export: write rel history %d v%d: %w", id, entry.Version(), err)
+		}
+	}
 	return nil
 }
 
@@ -263,14 +355,30 @@ func marshalAndWrite(w io.Writer, tag byte, v any) error {
 // writeExportRecord writes a 1-byte tag, a 4-byte big-endian body length, and
 // the body bytes to w.
 func writeExportRecord(w io.Writer, tag byte, data []byte) error {
+	if err := validateExportRecordSize("export", tag, uint64(len(data))); err != nil {
+		return err
+	}
 	var header [5]byte
 	header[0] = tag
 	binary.BigEndian.PutUint32(header[1:5], uint32(len(data))) // #nosec G115 — len fits in uint32 for any reasonable record
-	if _, err := w.Write(header[:]); err != nil {
+	if err := writeFull(w, header[:]); err != nil {
 		return err
 	}
-	_, err := w.Write(data)
-	return err
+	return writeFull(w, data)
+}
+
+func writeFull(w io.Writer, data []byte) error {
+	for len(data) > 0 {
+		n, err := w.Write(data)
+		if err != nil {
+			return err
+		}
+		if n <= 0 || n > len(data) {
+			return io.ErrShortWrite
+		}
+		data = data[n:]
+	}
+	return nil
 }
 
 // readExportRecord reads one tagged length-prefixed record from r.
@@ -282,8 +390,8 @@ func readExportRecord(r io.Reader) (tag byte, data []byte, err error) {
 		return 0, nil, err
 	}
 	length := binary.BigEndian.Uint32(header[1:5])
-	if length > maxExportRecordSize {
-		return 0, nil, fmt.Errorf("import: record too large (tag=0x%02x, len=%d, max=%d)", header[0], length, maxExportRecordSize)
+	if err := validateExportRecordSize("import", header[0], uint64(length)); err != nil {
+		return 0, nil, err
 	}
 	data = make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
@@ -301,15 +409,23 @@ func readExportRecordBytes(src []byte, offset *int) (tag byte, data []byte, err 
 	}
 	header := src[*offset : *offset+5]
 	length := binary.BigEndian.Uint32(header[1:5])
-	if length > maxExportRecordSize {
-		return 0, nil, fmt.Errorf("import: record too large (tag=0x%02x, len=%d, max=%d)", header[0], length, maxExportRecordSize)
+	if err := validateExportRecordSize("import", header[0], uint64(length)); err != nil {
+		return 0, nil, err
 	}
 	*offset += 5
-	if uint64(len(src)-*offset) < uint64(length) {
+	recordLen := int(length) // #nosec G115 -- validateExportRecordSize caps records to 128 MiB, well below int max.
+	if len(src)-*offset < recordLen {
 		return 0, nil, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, io.ErrUnexpectedEOF)
 	}
 	bodyStart := *offset
-	bodyEnd := bodyStart + int(length)
+	bodyEnd := bodyStart + recordLen
 	*offset = bodyEnd
 	return header[0], src[bodyStart:bodyEnd], nil
+}
+
+func validateExportRecordSize(operation string, tag byte, length uint64) error {
+	if length > maxExportRecordSize {
+		return fmt.Errorf("%s: record too large (tag=0x%02x, len=%d, max=%d)", operation, tag, length, maxExportRecordSize)
+	}
+	return nil
 }

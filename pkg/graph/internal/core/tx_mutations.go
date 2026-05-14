@@ -2,12 +2,12 @@ package core
 
 import (
 	"context"
-
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
-
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	"errors"
+	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -23,17 +23,13 @@ import (
 // section so concurrent goroutines using the same *GraphTx serialize
 // instead of racing Commit/Rollback against an in-flight method.
 func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 
 	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
-	if n != nil {
-		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
-	}
+	tx.noteNodeCreateResultLocked(n)
 	if err != nil {
 		return n, err
 	}
@@ -45,17 +41,13 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 // The relationship ID is tracked for rollback. Delegates to Graph.Rels.Add.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 
 	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
-	if r != nil {
-		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
-	}
+	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
 	}
@@ -67,17 +59,13 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 // The relationship ID is tracked for rollback. Delegates to Graph.addRelationshipByIDInternal.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 
 	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
-	if r != nil {
-		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
-	}
+	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
 	}
@@ -91,16 +79,14 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 // The relationship ID is tracked for rollback only if created.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, false, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, false, err
 	}
+	defer tx.mu.Unlock()
 
 	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
 	if created && r != nil {
-		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
+		tx.noteRelCreateResultLocked(r)
 	}
 	if err != nil {
 		return r, created, err
@@ -113,17 +99,18 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 // The node ID is tracked for rollback. Delegates to Graph.Nodes.Import.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
-	tx.mu.Lock()
+	if err := tx.lockActiveContext(ctx); err != nil {
+		return nil, err
+	}
 	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if _, deletedInTx := tx.deletedNodeSet[id.SnowflakeID()]; deletedInTx {
+		if err := tx.materializeDeletedNodeHistoryLocked(id); err != nil {
+			return nil, err
+		}
 	}
 
 	n, err := tx.g.importNodeWithIDInternal(ctx, id, labels, props)
-	if n != nil {
-		tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
-	}
+	tx.noteNodeCreateResultLocked(n)
 	if err != nil {
 		return n, err
 	}
@@ -135,22 +122,39 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 // The relationship ID is tracked for rollback. Delegates to Graph.Rels.Import.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	tx.mu.Lock()
+	if err := tx.lockActiveContext(ctx); err != nil {
+		return nil, err
+	}
 	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if _, deletedInTx := tx.deletedRelSet[id.SnowflakeID()]; deletedInTx {
+		if err := tx.materializeDeletedRelHistoryLocked(id); err != nil {
+			return nil, err
+		}
 	}
 
 	r, err := tx.g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
-	if r != nil {
-		tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
-		tx.trackCreatedRelLocked(r.ID().SnowflakeID())
-	}
+	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
 	}
 
 	return r, nil
+}
+
+func (tx *GraphTx) noteNodeCreateResultLocked(n *types.Node) {
+	if n == nil {
+		return
+	}
+	tx.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(n.ID()), tx.g.now(), eventspkg.PriorityHigh)
+	tx.trackCreatedNodeLocked(n.ID().SnowflakeID())
+}
+
+func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
+	if r == nil {
+		return
+	}
+	tx.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(r.ID()), tx.g.now(), eventspkg.PriorityHigh)
+	tx.trackCreatedRelLocked(r.ID().SnowflakeID())
 }
 
 // =============================================================================
@@ -162,41 +166,52 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 // Delegates the actual update to Graph.Nodes.Update.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
 	if len(updates) == 0 {
-		if err := storepkg.ValidateNodeID(id); err != nil {
-			return nil, err
-		}
 		// Empty-update no-op. Read directly from the store rather than via
 		// the exported wrapper: the tx already holds c.mu.Lock(), and any
 		// future addition of c.mu.RLock() to GetNodeWithContext would
 		// deadlock the tx. The tx convention is: never call exported
 		// methods, always reach the store via *Internal helpers or
 		// tx.g.store directly.
-		n, err := tx.g.store.GetNode(id)
+		n, err := tx.g.getCurrentNode(id)
 		if err == nil {
 			tx.g.opNodeReads.Add(1)
 		}
 		return n, err
 	}
 
-	if _, _, err := tx.g.prepareUpdateProperties(updates, "update node"); err != nil {
+	prov, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update node")
+	if err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateNodeID(id); err != nil {
-		return nil, err
-	}
-	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
-		return nil, err
+	if preparedUpdateCanBeReadOnlyNoOp(prov) {
+		current, err := tx.g.getCurrentNode(id)
+		if err != nil {
+			return nil, err
+		}
+		if !nodePropertyUpdatesMutate(current, preparedUpdates) {
+			tx.g.opNodeReads.Add(1)
+			return current, nil
+		}
+		if err := tx.snapshotCurrentNodeLocked(current); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+			return nil, err
+		}
 	}
 
-	n, err := tx.g.updateNodeInternal(context.Background(), id, updates)
-	if err == nil {
+	n, mutated, err := tx.g.updateNodePreparedInternal(context.Background(), id, prov, preparedUpdates)
+	if err == nil && mutated {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
 	return n, err
@@ -207,37 +222,48 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 // Delegates the actual update to Graph.Rels.Update.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return nil, storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return nil, err
 	}
+	defer tx.mu.Unlock()
 
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
 	if len(updates) == 0 {
-		if err := storepkg.ValidateRelID(id); err != nil {
-			return nil, err
-		}
 		// Empty-update no-op. See UpdateNode for why this avoids the
 		// exported wrapper.
-		r, err := tx.g.store.GetRelationship(id)
+		r, err := tx.g.getCurrentRelationship(id)
 		if err == nil {
 			tx.g.opRelReads.Add(1)
 		}
 		return r, err
 	}
 
-	if _, _, err := tx.g.prepareUpdateProperties(updates, "update relationship"); err != nil {
+	prov, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update relationship")
+	if err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateRelID(id); err != nil {
-		return nil, err
-	}
-	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
-		return nil, err
+	if preparedUpdateCanBeReadOnlyNoOp(prov) {
+		current, err := tx.g.getCurrentRelationship(id)
+		if err != nil {
+			return nil, err
+		}
+		if !relPropertyUpdatesMutate(current, preparedUpdates) {
+			tx.g.opRelReads.Add(1)
+			return current, nil
+		}
+		if err := tx.snapshotCurrentRelLocked(current); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
+			return nil, err
+		}
 	}
 
-	r, err := tx.g.updateRelationshipInternal(context.Background(), id, updates)
-	if err == nil {
+	r, mutated, err := tx.g.updateRelationshipPreparedInternal(context.Background(), id, prov, preparedUpdates)
+	if err == nil && mutated {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
 	return r, err
@@ -276,22 +302,21 @@ func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error 
 // Delegates the actual deletion to Graph.Nodes.Delete.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) DeleteNode(id types.NodeID) error {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return err
 	}
+	defer tx.mu.Unlock()
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
 
 	// Snapshot the node before deletion.
-	node, err := tx.g.store.GetNode(id)
+	node, err := tx.g.getCurrentNode(id)
 	if err != nil {
 		return err
 	}
 	nodeCopy := node.DeepCopy()
-	nodeHistory, err := copyNodeHistory(tx.g.store.GetNodeHistory(id))
+	nodeHistory, nodeHistoryTrimFrom, useNodeHistoryTrim, err := tx.deletedNodeHistorySnapshot(id, node)
 	if err != nil {
 		return err
 	}
@@ -304,6 +329,14 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	inRels, err := tx.g.store.IncomingRelationships(id, 0)
 	if err != nil {
 		return err
+	}
+	if !tx.g.storeRowsTrust {
+		if err := tx.g.validateOutgoingRelationshipRows(id, 0, outRels); err != nil {
+			return err
+		}
+		if err := tx.g.validateIncomingRelationshipRows(id, 0, inRels); err != nil {
+			return err
+		}
 	}
 
 	// Deduplicate self-loop rels and deep copy all.
@@ -318,27 +351,35 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 			continue
 		}
 		seen[rid] = true
-		history, err := copyRelHistory(tx.g.store.GetRelHistory(r.ID()))
+		history, historyTrimFrom, useHistoryTrim, err := tx.deletedRelHistorySnapshot(r.ID(), r)
 		if err != nil {
 			return err
 		}
-		relCopies = append(relCopies, deletedRelSnapshot{rel: r.DeepCopy(), history: history})
+		relCopies = append(relCopies, deletedRelSnapshot{
+			rel:             r.DeepCopy(),
+			history:         history,
+			historyTrimFrom: historyTrimFrom,
+			useHistoryTrim:  useHistoryTrim,
+		})
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	if err := tx.g.deleteNodeInternal(context.Background(), id); err != nil {
+	cascadeRelIDs, err := tx.g.deleteNodeInternal(context.Background(), id)
+	if err != nil {
 		return err
 	}
 
-	tx.g.publishEvent(eventspkg.EventNodeDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
+	tx.g.publishCascadeDeleteEvents(id, cascadeRelIDs, tx.g.now())
 	tx.trackDeletedNodeLocked(id.SnowflakeID())
 	for _, r := range relCopies {
 		tx.trackDeletedRelLocked(r.rel.ID().SnowflakeID())
 	}
 	tx.deletedNodes = append(tx.deletedNodes, deletedNodeSnapshot{
-		node:        nodeCopy,
-		nodeHistory: nodeHistory,
-		rels:        relCopies,
+		node:            nodeCopy,
+		nodeHistory:     nodeHistory,
+		historyTrimFrom: nodeHistoryTrimFrom,
+		useHistoryTrim:  useNodeHistoryTrim,
+		rels:            relCopies,
 	})
 
 	return nil
@@ -348,22 +389,21 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 // Snapshots the relationship for rollback. Delegates to Graph.Rels.Delete.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return err
 	}
+	defer tx.mu.Unlock()
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
 
 	// Snapshot the relationship before deletion.
-	rel, err := tx.g.store.GetRelationship(id)
+	rel, err := tx.g.getCurrentRelationship(id)
 	if err != nil {
 		return err
 	}
 	relCopy := rel.DeepCopy()
-	history, err := copyRelHistory(tx.g.store.GetRelHistory(id))
+	history, historyTrimFrom, useHistoryTrim, err := tx.deletedRelHistorySnapshot(id, rel)
 	if err != nil {
 		return err
 	}
@@ -375,9 +415,134 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 
 	tx.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), tx.g.now(), eventspkg.PriorityCritical)
 	tx.trackDeletedRelLocked(id.SnowflakeID())
-	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{rel: relCopy, history: history})
+	tx.deletedRels = append(tx.deletedRels, deletedRelSnapshot{
+		rel:             relCopy,
+		history:         history,
+		historyTrimFrom: historyTrimFrom,
+		useHistoryTrim:  useHistoryTrim,
+	})
 
 	return nil
+}
+
+func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node) ([]*types.Node, uint32, bool, error) {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.copyNodeHistory(id)
+		return history, 0, false, err
+	}
+	if found, err := tx.nodeHistoryVersionExists(id, node.Version()); err != nil {
+		return nil, 0, false, err
+	} else if found {
+		history, err := tx.g.copyNodeHistory(id)
+		return history, 0, false, err
+	}
+	return nil, node.Version(), true, nil
+}
+
+func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relationship) ([]*types.Relationship, uint32, bool, error) {
+	if tx.g.historyTrim == nil {
+		history, err := tx.g.copyRelHistory(id)
+		return history, 0, false, err
+	}
+	if found, err := tx.relHistoryVersionExists(id, rel.Version()); err != nil {
+		return nil, 0, false, err
+	} else if found {
+		history, err := tx.g.copyRelHistory(id)
+		return history, 0, false, err
+	}
+	return nil, rel.Version(), true, nil
+}
+
+func (tx *GraphTx) nodeHistoryVersionExists(id types.NodeID, version uint32) (bool, error) {
+	if _, err := tx.g.getNodeVersion(id, version); err == nil {
+		return true, nil
+	} else if errors.Is(err, storepkg.ErrVersionNotFound) {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+func (tx *GraphTx) relHistoryVersionExists(id types.RelID, version uint32) (bool, error) {
+	if _, err := tx.g.getRelVersion(id, version); err == nil {
+		return true, nil
+	} else if errors.Is(err, storepkg.ErrVersionNotFound) {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+func (tx *GraphTx) materializeDeletedNodeHistoryLocked(id types.NodeID) error {
+	for i := range tx.deletedNodes {
+		snap := &tx.deletedNodes[i]
+		if snap.node == nil || snap.node.ID() != id || !snap.useHistoryTrim {
+			continue
+		}
+		history, err := tx.g.copyNodeHistory(id)
+		if err != nil {
+			return err
+		}
+		snap.nodeHistory = nodeHistoryBeforeVersion(history, snap.historyTrimFrom)
+		snap.useHistoryTrim = false
+		return nil
+	}
+	return nil
+}
+
+func (tx *GraphTx) materializeDeletedRelHistoryLocked(id types.RelID) error {
+	for i := range tx.deletedRels {
+		if err := tx.materializeDeletedRelSnapshotHistoryLocked(&tx.deletedRels[i], id); err != nil {
+			return err
+		}
+	}
+	for i := range tx.deletedNodes {
+		for j := range tx.deletedNodes[i].rels {
+			if err := tx.materializeDeletedRelSnapshotHistoryLocked(&tx.deletedNodes[i].rels[j], id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (tx *GraphTx) materializeDeletedRelSnapshotHistoryLocked(snap *deletedRelSnapshot, id types.RelID) error {
+	if snap.rel == nil || snap.rel.ID() != id || !snap.useHistoryTrim {
+		return nil
+	}
+	history, err := tx.g.copyRelHistory(id)
+	if err != nil {
+		return err
+	}
+	snap.history = relHistoryBeforeVersion(history, snap.historyTrimFrom)
+	snap.useHistoryTrim = false
+	return nil
+}
+
+func nodeHistoryBeforeVersion(history []*types.Node, minVersion uint32) []*types.Node {
+	out := history[:0]
+	for _, n := range history {
+		if n != nil && n.Version() < minVersion {
+			out = append(out, n)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func relHistoryBeforeVersion(history []*types.Relationship, minVersion uint32) []*types.Relationship {
+	out := history[:0]
+	for _, r := range history {
+		if r != nil && r.Version() < minVersion {
+			out = append(out, r)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // =============================================================================
@@ -390,11 +555,10 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 // label, returns nil with no snapshot recorded.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return err
 	}
+	defer tx.mu.Unlock()
 	if err := tx.g.validateName(label); err != nil {
 		return err
 	}
@@ -402,19 +566,14 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	// Look up the token (or pre-compute whether the label is already present)
-	// to decide whether this call will actually mutate. We need the token for
-	// the delta regardless, so resolve it up front under c.mu (already held by tx).
-	tok, ok := tx.g.labels.Lookup(label)
-	if ok {
-		cur, err := tx.g.store.GetNode(id)
-		if err == nil && cur.HasLabelTokenRaw(tok) {
-			// Idempotent no-op: nothing to snapshot, no delta to record.
-			return nil
-		}
+	current, alreadyPresent, err := tx.preflightAddNodeLabelLocked(id, label)
+	if err != nil {
+		return err
 	}
-
-	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+	if alreadyPresent {
+		return nil
+	}
+	if err := tx.snapshotCurrentNodeLocked(current); err != nil {
 		return err
 	}
 
@@ -436,11 +595,10 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 // only one on the node.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	if tx.done {
-		return storepkg.ErrTxDone
+	if err := tx.lockActive(); err != nil {
+		return err
 	}
+	defer tx.mu.Unlock()
 	if err := tx.g.validateName(label); err != nil {
 		return err
 	}
@@ -448,7 +606,11 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+	current, err := tx.preflightRemoveNodeLabelLocked(id, label)
+	if err != nil {
+		return err
+	}
+	if err := tx.snapshotCurrentNodeLocked(current); err != nil {
 		return err
 	}
 
@@ -458,4 +620,43 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 
 	tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	return nil
+}
+
+func (tx *GraphTx) preflightAddNodeLabelLocked(id types.NodeID, label string) (*types.Node, bool, error) {
+	current, err := tx.g.getCurrentNode(id)
+	if err != nil {
+		return nil, false, err
+	}
+	tok, known := tx.g.labels.Lookup(label)
+	if known && current.HasLabelTokenRaw(tok) {
+		return current, true, nil
+	}
+	if current.LabelTokenCount()+1 > tx.g.validation.MaxLabelsPerNode {
+		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, tx.g.validation.MaxLabelsPerNode)
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return nil, false, err
+	}
+	return current, false, nil
+}
+
+func (tx *GraphTx) preflightRemoveNodeLabelLocked(id types.NodeID, label string) (*types.Node, error) {
+	tok, ok := tx.g.labels.Lookup(label)
+	if !ok {
+		return nil, ErrLabelNotFound
+	}
+	current, err := tx.g.getCurrentNode(id)
+	if err != nil {
+		return nil, err
+	}
+	if !current.HasLabelTokenRaw(tok) {
+		return nil, ErrLabelNotFound
+	}
+	if current.LabelTokenCount() == 1 {
+		return nil, ErrLastLabel
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return nil, err
+	}
+	return current, nil
 }

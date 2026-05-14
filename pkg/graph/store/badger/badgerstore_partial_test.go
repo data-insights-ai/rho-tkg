@@ -225,6 +225,54 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 	}
 }
 
+func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	gen := newTestGen(t, 0)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := bs.PutNode(n1); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(n2); err != nil {
+		t.Fatal(err)
+	}
+
+	relGen := newTestGen(t, 1)
+	relID := relGen.Generate()
+	r := types.NewRelationship(types.RelID(relID), 1, n1.ID(), n2.ID())
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush setup: %v", err)
+	}
+
+	bs.idxMu.Lock()
+	delete(bs.relIDs, r.InternalID())
+	bs.relCache.ResetForTest()
+	bs.idxMu.Unlock()
+
+	_, err := bs.DeleteRelEntityAndOut(relID)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("DeleteRelEntityAndOut with stale row = %v, want ErrRelNotFound", err)
+	}
+
+	if got := bs.OutgoingRelIDs(n1.ID().SnowflakeID()); len(got) != 1 || got[0] != relID {
+		t.Fatalf("OutgoingRelIDs after rejected stale delete = %v, want [%d]", got, relID)
+	}
+	if got := bs.IncomingRelIDs(n2.ID().SnowflakeID(), 0); len(got) != 1 || got[0] != relID {
+		t.Fatalf("IncomingRelIDs after rejected stale delete = %v, want [%d]", got, relID)
+	}
+	count, err := bs.RelationshipCount()
+	if err != nil {
+		t.Fatalf("RelationshipCount: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("RelationshipCount after rejected stale delete = %d, want 1", count)
+	}
+}
+
 func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -290,6 +338,33 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 	outIDs := bs.OutgoingRelIDs(n1.ID().SnowflakeID())
 	if len(outIDs) != 1 || outIDs[0] != relID {
 		t.Errorf("OutgoingRelIDs should still contain rel, got %v", outIDs)
+	}
+}
+
+func TestDeleteRelIncomingRejectsMismatchedRelTypeWithoutDroppingMemory(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	endID := snowflake.ID(1001)
+	startID := snowflake.ID(2002)
+	relID := snowflake.ID(3003)
+	if err := bs.PutRelIncoming(endID, startID, 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming: %v", err)
+	}
+
+	err := bs.DeleteRelIncoming(RelDeleteInfo{
+		ID:      relID,
+		RelType: 8,
+		StartID: startID,
+		EndID:   endID,
+	})
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("DeleteRelIncoming with mismatched type = %v, want ErrRelNotFound", err)
+	}
+	if got := bs.IncomingRelIDs(endID, 0); len(got) != 1 || got[0] != relID {
+		t.Fatalf("IncomingRelIDs after rejected mismatched delete = %v, want [%d]", got, relID)
+	}
+	if got := bs.IncomingRelIDs(endID, 7); len(got) != 1 || got[0] != relID {
+		t.Fatalf("IncomingRelIDs(type=7) after rejected mismatched delete = %v, want [%d]", got, relID)
 	}
 }
 
@@ -406,6 +481,85 @@ func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatalf("endB key after delete = %v, want present", err)
+	}
+}
+
+func TestDeleteIncomingByRelIDDeletesDuplicateIncomingKeys(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	endID := snowflake.ID(1001)
+	relID := snowflake.ID(3003)
+	startA := snowflake.ID(4004)
+	startB := snowflake.ID(5005)
+	keyA := storepkg.InKey(endID, 7, startA, relID)
+	keyB := storepkg.InKey(endID, 8, startB, relID)
+
+	if err := bs.PutRelIncoming(endID, startA, 7, relID); err != nil {
+		t.Fatalf("PutRelIncoming A: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush A: %v", err)
+	}
+	if err := bs.PutRelIncoming(endID, startB, 8, relID); err != nil {
+		t.Fatalf("PutRelIncoming B: %v", err)
+	}
+
+	if err := bs.DeleteIncomingByRelID(endID, relID); err != nil {
+		t.Fatalf("DeleteIncomingByRelID: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush delete: %v", err)
+	}
+	if got := bs.IncomingRelIDs(endID, 0); len(got) != 0 {
+		t.Fatalf("IncomingRelIDs after duplicate delete = %v, want empty", got)
+	}
+	for name, key := range map[string][]byte{"persisted": keyA, "pending": keyB} {
+		err := bs.db.View(func(txn *badgerv4.Txn) error {
+			_, err := txn.Get(key)
+			return err
+		})
+		if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+			t.Fatalf("%s incoming key after duplicate delete = %v, want ErrKeyNotFound", name, err)
+		}
+	}
+}
+
+func TestDeleteIncomingByRelIDDeletesPersistedKeyWhenMemoryMissing(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	endID := snowflake.ID(1001)
+	startID := snowflake.ID(4004)
+	relID := snowflake.ID(3003)
+	relType := uint16(7)
+	key := storepkg.InKey(endID, relType, startID, relID)
+
+	if err := bs.PutRelIncoming(endID, startID, relType, relID); err != nil {
+		t.Fatalf("PutRelIncoming: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush setup: %v", err)
+	}
+
+	bs.idxMu.Lock()
+	delete(bs.inIdx[types.NodeID(endID)], types.RelID(relID))
+	if len(bs.inIdx[types.NodeID(endID)]) == 0 {
+		delete(bs.inIdx, types.NodeID(endID))
+	}
+	bs.idxMu.Unlock()
+
+	if err := bs.DeleteIncomingByRelID(endID, relID); err != nil {
+		t.Fatalf("DeleteIncomingByRelID: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush delete: %v", err)
+	}
+
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(key)
+		return err
+	})
+	if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+		t.Fatalf("persisted incoming key after memory-missing delete = %v, want ErrKeyNotFound", err)
 	}
 }
 

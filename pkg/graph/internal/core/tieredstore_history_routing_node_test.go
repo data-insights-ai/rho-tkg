@@ -5,6 +5,10 @@ import (
 	"testing"
 	"time"
 
+	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -217,6 +221,26 @@ func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 		}
 	})
 
+	t.Run("NodeHistoryVersionsFrom pages pre-archive versions", func(t *testing.T) {
+		page, err := ts.NodeHistoryVersionsFrom(id, 0, 1)
+		if err != nil {
+			t.Fatalf("NodeHistoryVersionsFrom: %v", err)
+		}
+		if len(page) != 1 || page[0].Version() != 0 {
+			t.Fatalf("NodeHistoryVersionsFrom(0,1) versions = %v, want [0]", nodeVersionsForTest(page))
+		}
+		next, err := ts.NodeHistoryVersionsFrom(id, page[0].Version()+1, 10)
+		if err != nil {
+			t.Fatalf("NodeHistoryVersionsFrom next: %v", err)
+		}
+		if len(next) == 0 || next[0].Version() <= page[0].Version() {
+			t.Fatalf("NodeHistoryVersionsFrom next versions = %v, want versions after %d", nodeVersionsForTest(next), page[0].Version())
+		}
+		if _, err := ts.NodeHistoryVersionsFrom(id, 0, -1); !errors.Is(err, storepkg.ErrInvalidQueryLimit) {
+			t.Fatalf("NodeHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+		}
+	})
+
 	t.Run("TruncateNodeHistory does not silently no-op when history lives on refShard", func(t *testing.T) {
 		// keepVersions=1 should leave at least one history entry but truncate the rest.
 		if err := ts.TruncateNodeHistory(id, 1); err != nil {
@@ -230,6 +254,101 @@ func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 			t.Fatalf("TruncateNodeHistory(1) left %d versions, want <= 1 (truncate skipped because shard mismatched)", len(history))
 		}
 	})
+}
+
+func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	eventNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatalf("Add event node: %v", err)
+	}
+	if _, err := g.Nodes.Update(eventNode.ID(), map[string]any{"v": 2}); err != nil {
+		t.Fatalf("Update event node: %v", err)
+	}
+	eventPage, err := ts.NodeHistoryVersionsFrom(eventNode.ID(), 0, 1)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom live event node: %v", err)
+	}
+	if len(eventPage) != 1 || eventPage[0].Version() != 0 {
+		t.Fatalf("live event node page versions = %v, want [0]", nodeVersionsForTest(eventPage))
+	}
+	if _, err := ts.NodeHistoryVersionsFrom(0, 0, 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("NodeHistoryVersionsFrom zero ID = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ts.NodeHistoryVersionsFrom(eventNode.ID(), 0, -1); !errors.Is(err, storepkg.ErrInvalidQueryLimit) {
+		t.Fatalf("NodeHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+	}
+	closed := newTestTieredStore(t)
+	if err := closed.Close(); err != nil {
+		t.Fatalf("Close tiered store: %v", err)
+	}
+	if _, err := closed.NodeHistoryVersionsFrom(eventNode.ID(), 0, 1); !errors.Is(err, storepkg.ErrStoreClosed) {
+		t.Fatalf("NodeHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
+	}
+
+	deletedNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatalf("Add deleted node: %v", err)
+	}
+	if _, err := g.Nodes.Update(deletedNode.ID(), map[string]any{"v": 2}); err != nil {
+		t.Fatalf("Update deleted node: %v", err)
+	}
+	if err := g.Nodes.Delete(deletedNode.ID()); err != nil {
+		t.Fatalf("Delete node: %v", err)
+	}
+	deletedPage, err := ts.NodeHistoryVersionsFrom(deletedNode.ID(), 0, 10)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom deleted node: %v", err)
+	}
+	if len(deletedPage) == 0 {
+		t.Fatal("NodeHistoryVersionsFrom deleted node returned no history")
+	}
+
+	refNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatalf("Add ref node: %v", err)
+	}
+	if _, err := g.Nodes.Update(refNode.ID(), map[string]any{"v": 2}); err != nil {
+		t.Fatalf("Update ref node before archive: %v", err)
+	}
+	if err := ts.ArchiveNode(refNode.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	if _, err := g.Nodes.Update(refNode.ID(), map[string]any{"v": 3}); err != nil {
+		t.Fatalf("Update archived node: %v", err)
+	}
+	if err := ts.RestoreNode(refNode.ID()); err != nil {
+		t.Fatalf("RestoreNode: %v", err)
+	}
+	refPage, err := ts.NodeHistoryVersionsFrom(refNode.ID(), 0, 10)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom restored ref node: %v", err)
+	}
+	if len(refPage) < 2 {
+		t.Fatalf("restored ref node page len = %d, want at least 2 versions from ref+archive", len(refPage))
+	}
+}
+
+func TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	if err != nil {
+		t.Fatalf("Add node: %v", err)
+	}
+	if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": 2}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	corruptTieredRefNodeHistoryWire(t, ts, n.ID(), 0)
+
+	_, err = ts.NodeHistoryVersionsFrom(n.ID(), 0, 1)
+	if err == nil {
+		t.Fatal("NodeHistoryVersionsFrom accepted corrupt shard history wire")
+	}
+	if errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Fatalf("NodeHistoryVersionsFrom returned ErrVersionNotFound for corrupt shard history wire: %v", err)
+	}
 }
 
 // AllNodeHistoryIDs / AllRelHistoryIDs must include refArchive. ArchiveNode
@@ -559,5 +678,34 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	}
 	if !containsRelID(out, touches.ID()) {
 		t.Fatal("restored node outgoing traversal missed archive-created relationship")
+	}
+}
+
+func nodeVersionsForTest(history []*types.Node) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, n := range history {
+		versions[i] = n.Version()
+	}
+	return versions
+}
+
+func corruptTieredRefNodeHistoryWire(t *testing.T, ts *tiered.Store, id types.NodeID, version uint32) {
+	t.Helper()
+	ref := ts.RefShardForTest()
+	if err := ref.Flush(); err != nil {
+		t.Fatalf("Flush ref shard: %v", err)
+	}
+	data, err := msgpack.Marshal(storeutil.NodeWire{
+		ID:           int64(id.SnowflakeID()),
+		PrimaryLabel: 0,
+	})
+	if err != nil {
+		t.Fatalf("marshal corrupt node history wire: %v", err)
+	}
+	key := storeutil.HistNodeKey(id.SnowflakeID(), uint64(version))
+	if err := ref.DBForTest().Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(key, data)
+	}); err != nil {
+		t.Fatalf("corrupt node history wire: %v", err)
 	}
 }

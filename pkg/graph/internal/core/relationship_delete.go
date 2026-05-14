@@ -30,7 +30,16 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 		err error
 	)
 	_, closeErr := c.runUnderRLock(func() {
-		rel, err = c.store.GetRelationship(id)
+		if err = checkCtx(ctx); err != nil {
+			return
+		}
+		rel, err = c.getCurrentRelationship(id)
+		if err == nil {
+			if ctxErr := checkCtx(ctx); ctxErr != nil {
+				rel = nil
+				err = ctxErr
+			}
+		}
 	})
 	if closeErr != nil {
 		return nil, closeErr
@@ -46,6 +55,9 @@ func (r *RelOps) GetWithContext(ctx context.Context, id types.RelID) (*types.Rel
 func (r *RelOps) DeleteWithContext(ctx context.Context, id types.RelID) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 	var err error
@@ -74,13 +86,26 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
-	// Read current state for tombstone.
-	current, err := c.store.GetRelationship(id)
-	if err != nil {
+	if err := checkCtx(ctx); err != nil {
 		return err
 	}
 
-	now := c.now()
+	// Read current state for tombstone.
+	current, err := c.getCurrentRelationship(id)
+	if err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("delete relationship"); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+
+	now := c.deleteInstantForRelationship(current)
 	tmR := current.Temporal()
 	if tmR == nil {
 		tmR = &types.TemporalMetadata{}
@@ -94,6 +119,9 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	tmR.TxTo = now
 
 	// Single atomic call: PutRelVersion + DeleteRelationship.
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
 	if err := c.store.DeleteRelWithHistory(id, current.Version(), current); err != nil {
 		return err
 	}

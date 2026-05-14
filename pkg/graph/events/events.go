@@ -131,15 +131,32 @@ func (eb *EventBus) Publish(e Event) {
 }
 
 // PublishBatch dispatches each event to every handler, in order. The
-// sync bus invokes handlers on the caller's goroutine, so "atomic
-// ordering" reduces to "events fire in the order supplied". Mirrors
-// the AsyncEventBus contract so the Publisher interface is uniform.
+// sync bus invokes handlers on the caller's goroutine and snapshots the
+// handler set once for the whole batch, so subscription changes made by
+// a handler do not affect later events in the same batch. Mirrors the
+// AsyncEventBus contract so the Publisher interface is uniform.
 func (eb *EventBus) PublishBatch(events ...Event) {
 	if eb == nil {
 		return
 	}
+	if len(events) == 0 {
+		return
+	}
+	eb.mu.RLock()
+	if len(eb.handlers) == 0 {
+		eb.mu.RUnlock()
+		return
+	}
+	local := make([]EventHandler, 0, len(eb.handlers))
+	for _, h := range eb.handlers {
+		local = append(local, h)
+	}
+	eb.mu.RUnlock()
+
 	for _, e := range events {
-		eb.Publish(e)
+		for _, h := range local {
+			safeInvoke(h, e)
+		}
 	}
 }
 
@@ -342,13 +359,14 @@ func (ab *AsyncEventBus) Publish(e Event) {
 	}
 }
 
-// PublishBatch enqueues a sequence of events atomically: the publish
-// mutex is held across every enqueue and the dispatcher is woken exactly
-// once at the end. The dispatcher therefore sees every event in the burst
-// when it scans, and dispatches them in strict priority order
-// (Critical > High > Normal > Low > Deferred). Use this for the Tx /
-// Batch event-flush path or any caller that needs deterministic
-// ordering across multiple events.
+// PublishBatch enqueues a sequence of events atomically: the publish mutex is
+// held across every enqueue and the dispatcher is woken exactly once at the end.
+// Events are enqueued by priority, preserving caller order within each priority
+// level. That way, even if the dispatcher is already in a non-blocking scan
+// while the batch is being enqueued, it cannot observe a lower-priority event
+// before all higher-priority events from the same batch have been made visible.
+// Use this for the Tx / Batch event-flush path or any caller that needs
+// deterministic ordering across multiple events.
 //
 // Backpressure applies per event: if BackpressureBlock would block on
 // a single event, the batch waits there before enqueueing later
@@ -370,9 +388,14 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 		return
 	}
 	wroteAny := false
-	for _, e := range events {
-		if ab.enqueueLocked(e) {
-			wroteAny = true
+	for _, p := range priorityOrder {
+		for _, e := range events {
+			if normalizePriority(e.Priority) != p {
+				continue
+			}
+			if ab.enqueueLocked(e) {
+				wroteAny = true
+			}
 		}
 	}
 	ab.publishMu.Unlock()
@@ -387,14 +410,20 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 // (DropLatest with full queue) or the bus is stopping. Caller must
 // hold ab.publishMu.
 func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
-	p := e.Priority
-	if int(p) >= numPriorityLevels {
-		p = PriorityNormal
-	}
+	p := normalizePriority(e.Priority)
 	q := ab.queues[p]
 
 	switch ab.backpressure {
 	case BackpressureBlock:
+		select {
+		case q <- e:
+			return true
+		default:
+		}
+		// A blocking batch send can fill a priority queue before
+		// PublishBatch reaches its final wake-up. Signal here so the
+		// dispatcher can drain space instead of sleeping behind a full queue.
+		ab.signalWakeup()
 		select {
 		case q <- e:
 			return true
@@ -428,6 +457,13 @@ func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
 		}
 	}
 	return false
+}
+
+func normalizePriority(p EventPriority) EventPriority {
+	if int(p) >= numPriorityLevels {
+		return PriorityNormal
+	}
+	return p
 }
 
 // signalWakeup pokes the dispatcher via the coalescing wakeupCh. Buffered
@@ -552,5 +588,6 @@ func (ab *AsyncEventBus) Close() {
 		// any publisher that entered before the closing flag became visible.
 		ab.publishMu.Unlock() //nolint:staticcheck
 		ab.wg.Wait()
+		ab.drainAll()
 	})
 }

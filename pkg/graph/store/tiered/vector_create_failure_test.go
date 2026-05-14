@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -45,6 +46,50 @@ func TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError(t *testing.T
 	_, searchErr := ts.SearchNearestNodes(caseTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
 	if !errors.Is(searchErr, ErrVectorIndexNotFound) {
 		t.Fatalf("SearchNearestNodes after failed create = %v, want ErrVectorIndexNotFound", searchErr)
+	}
+}
+
+func TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+	userTok, _ := reg.GetOrCreate("User")
+	key := "vec"
+
+	target := types.NewNode(types.NodeID(snowflake.ID(109)), caseTok, nil)
+	if err := target.SetProperty(key, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("SetProperty target: %v", err)
+	}
+	if err := ts.PutNode(target); err != nil {
+		t.Fatalf("PutNode target: %v", err)
+	}
+	unrelated := types.NewNode(types.NodeID(snowflake.ID(110)), userTok, nil)
+	if err := unrelated.SetProperty(key, []float32{0, 1}); err != nil {
+		t.Fatalf("SetProperty unrelated: %v", err)
+	}
+	if err := ts.PutNode(unrelated); err != nil {
+		t.Fatalf("PutNode unrelated: %v", err)
+	}
+	if err := ts.RefShardForTest().Flush(); err != nil {
+		t.Fatalf("Flush ref shard: %v", err)
+	}
+	ts.RefShardForTest().NodeCacheForTest().ResetForTest()
+	if err := ts.RefShardForTest().DBForTest().Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storeutil.NodeKey(unrelated.ID().SnowflakeID()), []byte("corrupt-unrelated-node-wire"))
+	}); err != nil {
+		t.Fatalf("corrupt unrelated node row: %v", err)
+	}
+
+	if err := ts.CreateVectorIndex(caseTok, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex with corrupt unrelated label row: %v", err)
+	}
+	got, err := ts.SearchNearestNodes(caseTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != target.ID() {
+		t.Fatalf("SearchNearestNodes = %#v, want target node %d", got, target.ID())
 	}
 }
 
@@ -123,6 +168,54 @@ func TestTieredStore_VectorIndex_CreateRejectsBackfillDimensionMismatch(t *testi
 	_, searchErr := ts.SearchNearestNodes(caseTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
 	if !errors.Is(searchErr, ErrVectorIndexNotFound) {
 		t.Fatalf("SearchNearestNodes after failed create = %v, want ErrVectorIndexNotFound", searchErr)
+	}
+}
+
+func TestTieredStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+	key := "vec"
+
+	existing := types.NewNode(types.NodeID(snowflake.ID(107)), caseTok, nil)
+	if err := existing.SetProperty(key, []float32{float32(math.NaN()), 0}); err != nil {
+		t.Fatalf("SetProperty existing: %v", err)
+	}
+	if err := ts.PutNode(existing); err != nil {
+		t.Fatalf("PutNode existing: %v", err)
+	}
+
+	err := ts.CreateVectorIndex(caseTok, key, 2, DistanceEuclidean)
+	if !errors.Is(err, ErrInvalidVectorValue) {
+		t.Fatalf("CreateVectorIndex error = %v, want ErrInvalidVectorValue", err)
+	}
+	_, searchErr := ts.SearchNearestNodes(caseTok, key, []float32{0, 0}, 1, QueryOpts{})
+	if !errors.Is(searchErr, ErrVectorIndexNotFound) {
+		t.Fatalf("SearchNearestNodes after failed create = %v, want ErrVectorIndexNotFound", searchErr)
+	}
+
+	ts = newTestTieredStore(t)
+	reg = registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ = reg.GetOrCreate("Case")
+	if err := ts.CreateVectorIndex(caseTok, key, 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex empty: %v", err)
+	}
+	got, err := ts.SearchNearestNodes(caseTok, key, []float32{float32(math.NaN()), 0}, 0, QueryOpts{})
+	if !errors.Is(err, ErrInvalidVectorValue) || got != nil {
+		t.Fatalf("SearchNearestNodes non-finite query with k=0 = (%v, %v), want nil, ErrInvalidVectorValue", got, err)
+	}
+	bad := types.NewNode(types.NodeID(snowflake.ID(108)), caseTok, nil)
+	if err := bad.SetProperty(key, []float32{float32(math.Inf(1)), 0}); err != nil {
+		t.Fatalf("SetProperty bad: %v", err)
+	}
+	err = ts.PutNode(bad)
+	if !errors.Is(err, ErrInvalidVectorValue) {
+		t.Fatalf("PutNode indexed non-finite vector = %v, want ErrInvalidVectorValue", err)
+	}
+	if _, err := ts.GetNode(bad.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode after failed PutNode = %v, want ErrNodeNotFound", err)
 	}
 }
 

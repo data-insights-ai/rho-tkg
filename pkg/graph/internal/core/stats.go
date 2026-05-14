@@ -101,7 +101,7 @@ func (s *StatOps) AllLabelCounts() (map[string]int, error) {
 		names := c.labels.ExportNames()
 		// Skip index 0 (reserved empty string).
 		for i := 1; i < len(names); i++ {
-			count, err := c.store.NodeCountByLabel(uint16(i))
+			count, err := c.nodeCountByLabel(uint16(i))
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ func (s *StatOps) AllRelTypeCounts() (map[string]int, error) {
 		names := c.relTypes.ExportNames()
 		// Skip index 0 (reserved empty string).
 		for i := 1; i < len(names); i++ {
-			count, err := c.store.RelCountByType(uint16(i))
+			count, err := c.relCountByType(uint16(i))
 			if err != nil {
 				return err
 			}

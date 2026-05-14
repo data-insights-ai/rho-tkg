@@ -11,7 +11,6 @@ import (
 	"errors"
 	"testing"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -153,20 +152,22 @@ func TestSearchNearest_TemporalOverfetchPath_PropagatesCandidateResolutionError(
 func TestVectorOverfetch_TemporalFilter_FindsEligibleBeyondInitialK(t *testing.T) {
 	t.Parallel()
 
-	// Strategy: place several nodes' embeddings on a line, with the
-	// CLOSEST nodes (smallest distance to query) being temporally
-	// INELIGIBLE — their primary-label is something other than the
-	// query label. Eligible nodes are FARTHER away. With a small k
-	// (e.g. k=2), an unfiltered search would return only ineligible
-	// nodes; the over-fetch loop must escalate k until it finds
-	// enough eligible results.
+	// Strategy: place several nodes' embeddings on a line, with the closest
+	// current rows being temporally ineligible at t0. With k=2, an unfiltered
+	// backend returns only those close-but-too-new candidates on the first
+	// probe; the graph-layer fallback must over-fetch until it finds the two
+	// farther rows that are valid at t0.
 
 	ms := memory.New()
+	var rawKs []int
 	wrapped := &noFilterPushDownStore{
 		MandatoryStore: ms,
 		createVec:      ms.CreateVectorIndex,
 		dropVec:        ms.DropVectorIndex,
-		searchVec:      ms.SearchNearestNodes,
+		searchVec: func(tok uint16, key string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+			rawKs = append(rawKs, k)
+			return ms.SearchNearestNodes(tok, key, query, k, opts)
+		},
 	}
 
 	g, err := New(Config{Store: wrapped})
@@ -175,45 +176,70 @@ func TestVectorOverfetch_TemporalFilter_FindsEligibleBeyondInitialK(t *testing.T
 	}
 	defer g.Close()
 
-	// Three nodes labeled "Decoy" closest to the query vector.
+	const (
+		tOld = types.Instant(1)
+		t0   = types.Instant(100)
+		tNew = types.Instant(200)
+	)
 	for i := 0; i < 3; i++ {
-		if _, err := g.Nodes.Add([]string{"Decoy"}, map[string]any{"v": []float32{float32(i) * 0.1, 0, 0}}); err != nil {
-			t.Fatalf("seed Decoy %d: %v", i, err)
+		if _, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+			"v":              []float32{float32(i) * 0.1, 0},
+			"tkg_valid_from": tNew,
+		}); err != nil {
+			t.Fatalf("seed too-new Target %d: %v", i, err)
 		}
 	}
-	// Two nodes labeled "Target" further from the query but eligible.
-	t1, err := g.Nodes.Add([]string{"Target"}, map[string]any{"v": []float32{1.0, 0, 0}})
+	t1, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+		"v":              []float32{10, 0},
+		"tkg_valid_from": tOld,
+	})
 	if err != nil {
 		t.Fatalf("seed Target 1: %v", err)
 	}
-	t2, err := g.Nodes.Add([]string{"Target"}, map[string]any{"v": []float32{2.0, 0, 0}})
+	t2, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+		"v":              []float32{11, 0},
+		"tkg_valid_from": tOld,
+	})
 	if err != nil {
 		t.Fatalf("seed Target 2: %v", err)
 	}
 
-	// Build a vector index on "Decoy" — the in-memory vector index keys
-	// off label, so we need an index on each label that should be
-	// queryable. The graph-layer iterative over-fetch is the moving
-	// piece we're testing; we want SearchNearestNodes to iterate over
-	// the entire vector universe regardless of label, so install the
-	// index on the primary-label of the cohort whose ranking we want
-	// the test to inspect.
-	if err := g.Index.CreateVector("Target", "v", 3, storepkg.DistanceCosine); err != nil {
+	if err := g.Index.CreateVector("Target", "v", 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVector(Target): %v", err)
 	}
 
-	// Sanity check: targets ranked closest-first via SearchNearest.
-	noFilterResults, err := g.Index.SearchNearest("Target", "v", []float32{0, 0, 0}, 5, storepkg.QueryOpts{})
+	noFilterResults, err := g.Index.SearchNearest("Target", "v", []float32{0, 0}, 2, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("baseline SearchNearest: %v", err)
 	}
 	if len(noFilterResults) != 2 {
-		t.Fatalf("baseline returned %d, want 2 Target nodes", len(noFilterResults))
+		t.Fatalf("baseline returned %d, want 2 raw nearest nodes", len(noFilterResults))
+	}
+	for _, n := range noFilterResults {
+		if n.ID() == t1.ID() || n.ID() == t2.ID() {
+			t.Fatalf("baseline raw top-2 included eligible far node %d; setup no longer exercises over-fetch", n.ID())
+		}
 	}
 
-	// Compile-time use of t1, t2, snowflake to keep the imports
-	// honest if the test setup changes.
-	_ = t1
-	_ = t2
-	_ = snowflake.ID(0)
+	rawKs = rawKs[:0]
+	results, err := g.Index.SearchNearest("Target", "v", []float32{0, 0}, 2, storepkg.QueryOpts{ValidAt: t0})
+	if err != nil {
+		t.Fatalf("temporal SearchNearest: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("temporal SearchNearest returned %d nodes, want 2 eligible nodes", len(results))
+	}
+	got := map[types.NodeID]struct{}{results[0].ID(): {}, results[1].ID(): {}}
+	if _, ok := got[t1.ID()]; !ok {
+		t.Fatalf("temporal SearchNearest missing eligible node %d; got %v", t1.ID(), vectorTestNodeIDs(results))
+	}
+	if _, ok := got[t2.ID()]; !ok {
+		t.Fatalf("temporal SearchNearest missing eligible node %d; got %v", t2.ID(), vectorTestNodeIDs(results))
+	}
+	if len(rawKs) < 2 {
+		t.Fatalf("temporal SearchNearest used raw k probes %v, want over-fetch beyond initial k", rawKs)
+	}
+	if rawKs[0] != 2 || rawKs[len(rawKs)-1] <= rawKs[0] {
+		t.Fatalf("temporal SearchNearest raw k probes = %v, want growth beyond initial k=2", rawKs)
+	}
 }

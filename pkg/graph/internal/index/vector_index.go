@@ -22,7 +22,7 @@ type knnEntry struct {
 type knnHeap []knnEntry
 
 func (h knnHeap) Len() int           { return len(h) }
-func (h knnHeap) Less(i, j int) bool { return h[i].dist > h[j].dist } // max-heap
+func (h knnHeap) Less(i, j int) bool { return worseKNN(h[i], h[j]) } // max-heap
 func (h knnHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h *knnHeap) Push(x any)        { *h = append(*h, x.(knnEntry)) }
 func (h *knnHeap) Pop() any {
@@ -31,6 +31,20 @@ func (h *knnHeap) Pop() any {
 	x := old[n-1]
 	*h = old[:n-1]
 	return x
+}
+
+func worseKNN(a, b knnEntry) bool {
+	if a.dist != b.dist {
+		return a.dist > b.dist
+	}
+	return a.id > b.id
+}
+
+func betterKNN(a, b knnEntry) bool {
+	if a.dist != b.dist {
+		return a.dist < b.dist
+	}
+	return a.id < b.id
 }
 
 // VectorIndexKey uniquely identifies a vector index by label token and property key.
@@ -48,11 +62,22 @@ type vectorEntry struct {
 // VectorIndex is an in-memory brute-force k-nearest-neighbor index.
 // O(n × dims) per query. CreateVectorIndex rebuilds entries from current node properties.
 type VectorIndex struct {
-	mu      sync.RWMutex
-	entries []vectorEntry
-	Dims    int
-	Metric  storepkg.DistanceMetric
-	Mutated map[snowflake.ID]struct{} // non-nil during index creation backfill
+	mu        sync.RWMutex
+	entries   []vectorEntry
+	positions map[snowflake.ID]int
+	Dims      int
+	Metric    storepkg.DistanceMetric
+	Mutated   map[snowflake.ID]struct{} // non-nil during index creation backfill
+}
+
+// NodeVectorIndexUpdate is a prevalidated vector-index write for one node.
+// It lets store mutation paths validate all vector indexes before mutating
+// store state, then apply the exact same prepared vectors without re-reading
+// node properties.
+type NodeVectorIndexUpdate struct {
+	key VectorIndexKey
+	idx *VectorIndex
+	vec []float32
 }
 
 // ValidateVectorIndexConfig checks vector-index creation parameters.
@@ -68,6 +93,17 @@ func ValidateVectorIndexConfig(dims int, metric storepkg.DistanceMetric) error {
 	}
 }
 
+// ValidateVectorValues verifies that vector coordinates are safe for distance math.
+func ValidateVectorValues(vec []float32) error {
+	for i, v := range vec {
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("%w: element %d is non-finite", ErrInvalidVectorValue, i)
+		}
+	}
+	return nil
+}
+
 // Add inserts or updates a vector entry for the given ID.
 // Returns ErrDimensionMismatch if the vector length differs from the index's expected dimensions.
 func (vi *VectorIndex) Add(id snowflake.ID, vec []float32) error {
@@ -76,6 +112,21 @@ func (vi *VectorIndex) Add(id snowflake.ID, vec []float32) error {
 	}
 	vi.mu.Lock()
 	defer vi.mu.Unlock()
+	return vi.addLocked(id, vec, false)
+}
+
+// AddOwned inserts or updates a vector entry and takes ownership of vec.
+// Callers must not mutate vec after calling AddOwned.
+func (vi *VectorIndex) AddOwned(id snowflake.ID, vec []float32) error {
+	if vi == nil {
+		return fmt.Errorf("%w: nil vector index", ErrInvalidVectorIndexConfig)
+	}
+	vi.mu.Lock()
+	defer vi.mu.Unlock()
+	return vi.addLocked(id, vec, true)
+}
+
+func (vi *VectorIndex) addLocked(id snowflake.ID, vec []float32, owned bool) error {
 	if vi.Mutated != nil {
 		vi.Mutated[id] = struct{}{}
 	}
@@ -85,21 +136,43 @@ func (vi *VectorIndex) Add(id snowflake.ID, vec []float32) error {
 	if len(vec) != vi.Dims {
 		return ErrDimensionMismatch
 	}
-
-	// Replace existing entry if present.
-	for i, e := range vi.entries {
-		if e.id == id {
-			cp := make([]float32, len(vec))
-			copy(cp, vec)
-			vi.entries[i].vec = cp
-			return nil
-		}
+	if err := ValidateVectorValues(vec); err != nil {
+		return err
+	}
+	if !owned {
+		cp := make([]float32, len(vec))
+		copy(cp, vec)
+		vec = cp
 	}
 
-	cp := make([]float32, len(vec))
-	copy(cp, vec)
-	vi.entries = append(vi.entries, vectorEntry{id: id, vec: cp})
+	vi.ensurePositionsLocked()
+	if i, ok := vi.positions[id]; ok {
+		vi.entries[i].vec = vec
+		return nil
+	}
+
+	vi.positions[id] = len(vi.entries)
+	vi.entries = append(vi.entries, vectorEntry{id: id, vec: vec})
 	return nil
+}
+
+func (vi *VectorIndex) ensurePositionsLocked() {
+	if vi.positions != nil {
+		return
+	}
+	vi.positions = make(map[snowflake.ID]int, len(vi.entries))
+	originalLen := len(vi.entries)
+	out := vi.entries[:0]
+	for _, entry := range vi.entries {
+		if i, exists := vi.positions[entry.id]; exists {
+			out[i] = entry
+			continue
+		}
+		vi.positions[entry.id] = len(out)
+		out = append(out, entry)
+	}
+	clear(vi.entries[len(out):originalLen])
+	vi.entries = out
 }
 
 // Remove deletes the entry for the given ID. No-op if not present.
@@ -110,15 +183,21 @@ func (vi *VectorIndex) Remove(id snowflake.ID) {
 	vi.mu.Lock()
 	defer vi.mu.Unlock()
 
-	for i, e := range vi.entries {
-		if e.id == id {
-			vi.entries[i] = vi.entries[len(vi.entries)-1]
-			vi.entries = vi.entries[:len(vi.entries)-1]
-			if vi.Mutated != nil {
-				vi.Mutated[id] = struct{}{}
-			}
-			return
+	vi.ensurePositionsLocked()
+	if i, ok := vi.positions[id]; ok {
+		lastIdx := len(vi.entries) - 1
+		last := vi.entries[lastIdx]
+		vi.entries[i] = last
+		vi.entries[lastIdx] = vectorEntry{}
+		vi.entries = vi.entries[:lastIdx]
+		delete(vi.positions, id)
+		if i != lastIdx {
+			vi.positions[last.id] = i
 		}
+		if vi.Mutated != nil {
+			vi.Mutated[id] = struct{}{}
+		}
+		return
 	}
 	if vi.Mutated != nil {
 		vi.Mutated[id] = struct{}{}
@@ -187,6 +266,11 @@ func (vi *VectorIndex) IDs() []snowflake.ID {
 // the query must NOT crowd out farther but eligible candidates from the
 // k-best set. By filtering BEFORE the heap insertion, the heap always
 // contains the top-k of the eligible-only set.
+//
+// Non-nil filters are invoked after snapshotting entries, without holding the
+// vector index lock. Store-backed filters may need store/index locks, and
+// holding the vector lock while calling them would invert the mutation order
+// used by backends (store lock -> vector lock).
 func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if vi == nil {
 		return nil, fmt.Errorf("%w: nil vector index", ErrInvalidVectorIndexConfig)
@@ -197,6 +281,9 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 	if len(query) != vi.Dims {
 		return nil, ErrDimensionMismatch
 	}
+	if err := ValidateVectorValues(query); err != nil {
+		return nil, err
+	}
 	// Defensive guard: non-positive k yields no results. The public API
 	// (Graph.SearchNearestNodes) also gates k <= 0, but a direct
 	// store-level caller (or Store-interface consumer) might pass it
@@ -206,22 +293,33 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 	}
 
 	vi.mu.RLock()
-	defer vi.mu.RUnlock()
-
 	if len(vi.entries) == 0 {
+		vi.mu.RUnlock()
 		return nil, nil
 	}
+	if filter == nil {
+		ids := vi.searchNearestEntries(query, k, nil, vi.entries)
+		vi.mu.RUnlock()
+		return ids, nil
+	}
+	entries := make([]vectorEntry, len(vi.entries))
+	copy(entries, vi.entries)
+	vi.mu.RUnlock()
 
+	return vi.searchNearestEntries(query, k, filter, entries), nil
+}
+
+func (vi *VectorIndex) searchNearestEntries(query []float32, k int, filter func(snowflake.ID) bool, entries []vectorEntry) []snowflake.ID {
 	// Use a max-heap of size min(k, entries) to find the k nearest entries in
 	// O(N log k) time without letting an oversized caller k force an oversized
 	// allocation when the index itself is small.
 	heapCap := k
-	if len(vi.entries) < heapCap {
-		heapCap = len(vi.entries)
+	if len(entries) < heapCap {
+		heapCap = len(entries)
 	}
 	h := make(knnHeap, 0, heapCap)
 	heap.Init(&h)
-	for _, e := range vi.entries {
+	for _, e := range entries {
 		if filter != nil && !filter(e.id) {
 			continue
 		}
@@ -231,11 +329,12 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 		} else {
 			d = euclideanDist(query, e.vec)
 		}
+		candidate := knnEntry{id: e.id, dist: d}
 		if h.Len() < k {
-			heap.Push(&h, knnEntry{id: e.id, dist: d})
-		} else if d < h[0].dist {
+			heap.Push(&h, candidate)
+		} else if betterKNN(candidate, h[0]) {
 			// Replace the current farthest candidate.
-			h[0] = knnEntry{id: e.id, dist: d}
+			h[0] = candidate
 			heap.Fix(&h, 0)
 		}
 	}
@@ -245,7 +344,7 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 	for i := len(ids) - 1; i >= 0; i-- {
 		ids[i] = heap.Pop(&h).(knnEntry).id
 	}
-	return ids, nil
+	return ids
 }
 
 // cosineDist computes 1 - cosine_similarity (range [0, 2]).
@@ -274,46 +373,51 @@ func euclideanDist(a, b []float32) float64 {
 	return math.Sqrt(sum)
 }
 
-// ValidateNodeVectorIndexes verifies that every active vector index matching n
-// can accept the node's vector property before the caller mutates store state.
-func ValidateNodeVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) error {
+// PrepareNodeVectorIndexUpdates verifies that every active vector index
+// matching n can accept the node's vector property, and returns the prepared
+// writes so the caller can apply them after the surrounding store mutation.
+func PrepareNodeVectorIndexUpdates(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) ([]NodeVectorIndexUpdate, error) {
+	if len(idxs) == 0 {
+		return nil, nil
+	}
+	var updates []NodeVectorIndexUpdate
 	for key, vi := range idxs {
 		vec, ok := nodeVectorForIndex(n, key)
 		if !ok {
 			continue
 		}
 		if vi == nil {
-			return fmt.Errorf("graph: vector index label %d property %q node %d: %w: nil vector index",
+			return nil, fmt.Errorf("graph: vector index label %d property %q node %d: %w: nil vector index",
 				key.LabelToken, key.PropertyKey, id, ErrInvalidVectorIndexConfig)
 		}
 		if err := ValidateVectorIndexConfig(vi.Dims, vi.Metric); err != nil {
-			return err
+			return nil, err
 		}
 		if len(vec) != vi.Dims {
-			return fmt.Errorf("graph: vector index label %d property %q node %d: %w",
+			return nil, fmt.Errorf("graph: vector index label %d property %q node %d: %w",
 				key.LabelToken, key.PropertyKey, id, ErrDimensionMismatch)
 		}
+		if err := ValidateVectorValues(vec); err != nil {
+			return nil, fmt.Errorf("graph: vector index label %d property %q node %d: %w",
+				key.LabelToken, key.PropertyKey, id, err)
+		}
+		updates = append(updates, NodeVectorIndexUpdate{key: key, idx: vi, vec: vec})
 	}
-	return nil
+	return updates, nil
 }
 
-// AddNodeToVectorIndexes updates all vector indexes with the node's vector properties.
-func AddNodeToVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) error {
-	if err := ValidateNodeVectorIndexes(idxs, n, id); err != nil {
-		return err
-	}
-	for key, vi := range idxs {
-		vec, ok := nodeVectorForIndex(n, key)
-		if !ok {
-			continue
-		}
-		if vi == nil {
+// AddPreparedNodeToVectorIndexes applies updates returned by
+// PrepareNodeVectorIndexUpdates. Callers must use updates prepared for the same
+// node ID and under the same index-map lock.
+func AddPreparedNodeToVectorIndexes(updates []NodeVectorIndexUpdate, id snowflake.ID) error {
+	for _, update := range updates {
+		if update.idx == nil {
 			return fmt.Errorf("graph: vector index label %d property %q node %d: %w: nil vector index",
-				key.LabelToken, key.PropertyKey, id, ErrInvalidVectorIndexConfig)
+				update.key.LabelToken, update.key.PropertyKey, id, ErrInvalidVectorIndexConfig)
 		}
-		if err := vi.Add(id, vec); err != nil {
+		if err := update.idx.AddOwned(id, update.vec); err != nil {
 			return fmt.Errorf("graph: vector index label %d property %q node %d: %w",
-				key.LabelToken, key.PropertyKey, id, err)
+				update.key.LabelToken, update.key.PropertyKey, id, err)
 		}
 	}
 	return nil
@@ -323,11 +427,17 @@ func nodeVectorForIndex(n *types.Node, key VectorIndexKey) ([]float32, bool) {
 	if !n.HasLabelTokenRaw(key.LabelToken) {
 		return nil, false
 	}
-	val, ok := n.GetProperty(key.PropertyKey)
-	if !ok {
-		return nil, false
+	return n.Float32SlicePropertyCopy(key.PropertyKey)
+}
+
+// NodeMatchesVectorIndex reports whether the current node row still satisfies
+// the label/property/vector-shape contract for a vector-index entry.
+func NodeMatchesVectorIndex(n *types.Node, key VectorIndexKey, dims int) bool {
+	vec, ok := nodeVectorForIndex(n, key)
+	if !ok || len(vec) != dims {
+		return false
 	}
-	return ToFloat32Slice(val)
+	return ValidateVectorValues(vec) == nil
 }
 
 // DeleteVectorIndexIfCurrent removes key only when it still points at expected.
@@ -350,17 +460,10 @@ func RequireVectorIndexCurrentForCreate(idxs map[VectorIndexKey]*VectorIndex, ke
 	return fmt.Errorf("graph: create vector index: index replaced during creation: %w", ErrVectorIndexExists)
 }
 
-// RemoveNodeFromVectorIndexes removes the node from all vector indexes.
-func RemoveNodeFromVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, n *types.Node, id snowflake.ID) {
-	for key, vi := range idxs {
-		if !n.HasLabelTokenRaw(key.LabelToken) {
-			continue
-		}
-		if vi == nil {
-			continue
-		}
-		vi.Remove(id)
-	}
+// RemoveNodeFromVectorIndexes removes the node ID from every vector index.
+// Callers re-add prepared entries for the current node shape after this purge.
+func RemoveNodeFromVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, _ *types.Node, id snowflake.ID) {
+	PurgeNodeFromAllVectorIndexes(idxs, id)
 }
 
 // PurgeNodeFromAllVectorIndexes removes the node ID from every vector index
@@ -374,34 +477,11 @@ func PurgeNodeFromAllVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, id snow
 	}
 }
 
-// ToFloat32Slice converts any to []float32, supporting []float32 and []any (of float32 or float64).
-// Slow path: the []any branch requires a type-switch per element.
-// Prefer []float32 property values for high-frequency vector nodes.
-func ToFloat32Slice(val any) ([]float32, bool) {
-	switch v := val.(type) {
-	case []float32:
-		return v, true
-	case []any:
-		out := make([]float32, len(v))
-		for i, elem := range v {
-			switch f := elem.(type) {
-			case float32:
-				out[i] = f
-			case float64:
-				out[i] = float32(f)
-			default:
-				return nil, false
-			}
-		}
-		return out, true
-	}
-	return nil, false
-}
-
 // Sentinel errors for vector index operations.
 var (
 	ErrVectorIndexExists        = storepkg.ErrVectorIndexExists
 	ErrVectorIndexNotFound      = storepkg.ErrVectorIndexNotFound
 	ErrDimensionMismatch        = storepkg.ErrDimensionMismatch
 	ErrInvalidVectorIndexConfig = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue       = storepkg.ErrInvalidVectorValue
 )

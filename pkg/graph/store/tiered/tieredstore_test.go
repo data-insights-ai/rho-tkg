@@ -230,8 +230,55 @@ func TestTieredStore_NodeIntegrityHashCapabilities(t *testing.T) {
 	if fromHash != "event-hash" || toHash != "event-hash" {
 		t.Fatalf("EndpointIntegrityHashes self = %q, %q; want event-hash twice", fromHash, toHash)
 	}
+	noIntegrity := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(noIntegrity); err != nil {
+		t.Fatalf("PutNode(no integrity): %v", err)
+	}
+	hash, err = ts.NodeIntegrityHash(noIntegrity.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash(no integrity): %v", err)
+	}
+	if hash != "" {
+		t.Fatalf("NodeIntegrityHash(no integrity) = %q, want empty hash", hash)
+	}
+	if _, err := ts.NodeIntegrityHash(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(0) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ts.NodeIntegrityHash(types.NodeID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
 	if _, err := ts.NodeIntegrityHash(types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("NodeIntegrityHash missing = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, err := ts.EndpointIntegrityHashes(0, ref.ID()); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero start = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := ts.EndpointIntegrityHashes(ref.ID(), 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero end = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := ts.EndpointIntegrityHashes(types.NodeID(snowflake.ID(999)), ref.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing start = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, err := ts.EndpointIntegrityHashes(ref.ID(), types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing end = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestTieredStore_NodeIntegrityHashClosedStore(t *testing.T) {
+	ts := newTestTieredStore(t)
+	gen := tieredNodeGen(t)
+	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := ts.NodeIntegrityHash(n.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("NodeIntegrityHash(closed) = %v, want ErrStoreClosed", err)
+	}
+	if _, _, err := ts.EndpointIntegrityHashes(n.ID(), n.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("EndpointIntegrityHashes(closed) = %v, want ErrStoreClosed", err)
 	}
 }
 
@@ -343,6 +390,118 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory_UpdatesIndexesAndHistory(t 
 		t.Fatalf("NodesByLabel(User) = %d, want 0", len(userNodes))
 	}
 	nearest, err := ts.SearchNearestNodes(caseTok, "embedding", []float32{3, 4}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(nearest) != 1 || nearest[0].ID() != n.ID() {
+		t.Fatalf("SearchNearestNodes = %#v, want updated node", nearest)
+	}
+}
+
+func TestTieredStore_AddNodeLabelToken_UpdatesIndexes(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	userTok, _ := reg.GetOrCreate("User")
+
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := n.SetProperty("embedding", []float32{5, 6}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.CreateVectorIndex(userTok, "embedding", 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	updated := n.DeepCopy()
+	updated.AddLabelTokenRaw(userTok)
+	if err := ts.AddNodeLabelToken(n.ID(), userTok, updated); err != nil {
+		t.Fatalf("AddNodeLabelToken: %v", err)
+	}
+
+	got, err := ts.GetNode(n.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if !got.HasLabelTokenRaw(userTok) {
+		t.Fatal("added label missing from node")
+	}
+	userNodes, err := ts.NodesByLabel(userTok, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabel(User): %v", err)
+	}
+	if len(userNodes) != 1 || userNodes[0].ID() != n.ID() {
+		t.Fatalf("NodesByLabel(User) = %#v, want only updated node", userNodes)
+	}
+	caseNodes, err := ts.NodesByLabel(caseTok, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabel(Case): %v", err)
+	}
+	if len(caseNodes) != 1 || caseNodes[0].ID() != n.ID() {
+		t.Fatalf("NodesByLabel(Case) = %#v, want only updated node", caseNodes)
+	}
+	nearest, err := ts.SearchNearestNodes(userTok, "embedding", []float32{5, 6}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(nearest) != 1 || nearest[0].ID() != n.ID() {
+		t.Fatalf("SearchNearestNodes = %#v, want updated node", nearest)
+	}
+}
+
+func TestTieredStore_AddNodeLabelTokenWithHistory_UpdatesIndexesAndHistory(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	userTok, _ := reg.GetOrCreate("User")
+
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := n.SetProperty("embedding", []float32{7, 8}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.CreateVectorIndex(userTok, "embedding", 2, DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	prev := n.DeepCopy()
+	updated := n.DeepCopy()
+	updated.SetVersion(1)
+	updated.AddLabelTokenRaw(userTok)
+	if err := ts.AddNodeLabelTokenWithHistory(n.ID(), userTok, updated, prev.Version(), prev); err != nil {
+		t.Fatalf("AddNodeLabelTokenWithHistory: %v", err)
+	}
+
+	got, err := ts.GetNode(n.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if !got.HasLabelTokenRaw(userTok) {
+		t.Fatal("added label missing from node")
+	}
+	hist, err := ts.GetNodeVersion(n.ID(), prev.Version())
+	if err != nil {
+		t.Fatalf("GetNodeVersion(%d): %v", prev.Version(), err)
+	}
+	if hist.HasLabelTokenRaw(userTok) {
+		t.Fatal("history snapshot unexpectedly has added label")
+	}
+	userNodes, err := ts.NodesByLabel(userTok, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabel(User): %v", err)
+	}
+	if len(userNodes) != 1 || userNodes[0].ID() != n.ID() {
+		t.Fatalf("NodesByLabel(User) = %#v, want only updated node", userNodes)
+	}
+	nearest, err := ts.SearchNearestNodes(userTok, "embedding", []float32{7, 8}, 1, QueryOpts{})
 	if err != nil {
 		t.Fatalf("SearchNearestNodes: %v", err)
 	}
@@ -1871,6 +2030,56 @@ func TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite(
 	}
 }
 
+func TestTieredStore_PutRelationshipsBatch_RollsBackCrossShardOnSameShardBucketFailure(t *testing.T) {
+	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	ts, caseTok, signalTok := setupBatchDelete(t)
+	nodeGen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	ref := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
+	eventStart := types.NewNode(types.NodeID(nodeGen.Generate()), signalTok, nil)
+	eventEnd := types.NewNode(types.NodeID(nodeGen.Generate()), signalTok, nil)
+	for _, n := range []*types.Node{ref, eventStart, eventEnd} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", n.ID(), err)
+		}
+	}
+
+	crossShard := types.NewRelationship(types.RelID(relGen.Generate()), 1, eventStart.ID(), ref.ID())
+	badSameShard := types.NewRelationship(types.RelID(relGen.Generate()), 1, eventStart.ID(), eventEnd.ID())
+	if err := badSameShard.SetProperties(types.PropertySlice{{Key: "bad", Value: unmarshalableProperty{Ch: make(chan int)}}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+
+	err := ts.PutRelationshipsBatch([]*types.Relationship{crossShard, badSameShard})
+	if err == nil {
+		t.Fatal("PutRelationshipsBatch returned nil for unmarshalable same-shard bucket")
+	}
+	for _, r := range []*types.Relationship{crossShard, badSameShard} {
+		if _, getErr := ts.GetRelationship(r.ID()); !errors.Is(getErr, ErrRelNotFound) {
+			t.Fatalf("GetRelationship(%d) after failed batch = %v, want ErrRelNotFound", r.ID(), getErr)
+		}
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(ref.ID().SnowflakeID(), 0); len(got) != 0 {
+		t.Fatalf("ref incoming index after failed batch = %v, want empty", got)
+	}
+	if got := ts.HotShardForTest().Store().IncomingRelIDs(eventEnd.ID().SnowflakeID(), 0); len(got) != 0 {
+		t.Fatalf("event incoming index after failed batch = %v, want empty", got)
+	}
+	if got, countErr := ts.RelationshipCount(); countErr != nil || got != 0 {
+		t.Fatalf("RelationshipCount after failed batch = %d err %v, want 0 nil", got, countErr)
+	}
+	res, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if res.OrphanedInEntries != 0 || res.MissingInEntries != 0 {
+		t.Fatalf("RunRepair after failed batch: orphaned in=%d missing in=%d, want 0/0", res.OrphanedInEntries, res.MissingInEntries)
+	}
+}
+
 func TestTieredStore_PropertyIndex_RoutedByLabel(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -3266,12 +3475,9 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 
 	// Rotate: hot → warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 
 	// Manually demote the warm shard to cold.
 	demoteToCold(ts, hotName)
@@ -3333,14 +3539,12 @@ func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
 
 	// Rotate: hot → warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	// Manually demote to cold.
 	demoteToCold(ts, hotName)
 
-	// Access to set lastAccess via getStore.
+	// Access to set lastAccess through the checked read path.
 	_, _ = ts.GetNode(nodeID)
 
 	// Wait for idle threshold to pass, then force idle close.
@@ -3445,15 +3649,11 @@ func TestTieredStore_ColdShard_DemotionWarmToCold(t *testing.T) {
 
 	// Rotate once: hot→warm.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	// After rotation, the old warm shard should become cold (ColdAfter=1ms).
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	var coldCount int
 	ts.MuForTest().RLock()
@@ -3490,9 +3690,7 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 	// Do 3 rotations.
 	for i := 0; i < 3; i++ {
 		time.Sleep(2 * time.Millisecond)
-		ts.MuForTest().Lock()
 		_ = ts.RotateHotShard()
-		ts.MuForTest().Unlock()
 	}
 
 	// Count tiers.
@@ -3550,9 +3748,7 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 
 	// Rotate: hot → warm, then manually demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
@@ -3600,32 +3796,6 @@ func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
 	}
 }
 
-func TestTieredStore_ColdShard_GetStoreFastPath(t *testing.T) {
-	// getStore for hot/warm shards should return immediately without lock.
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-
-	es := ts.HotShardForTest()
-	store, err := es.GetStoreForTest(ts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store != es.Store() {
-		t.Error("getStore on hot shard should return es.Store() directly")
-	}
-
-	// Make it warm.
-	es.SetTierForTest(TierWarm)
-	store, err = es.GetStoreForTest(ts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store != es.Store() {
-		t.Error("getStore on warm shard should return es.Store() directly")
-	}
-}
-
 func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -3644,9 +3814,7 @@ func TestTieredStore_ColdShard_ConcurrentAccess(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, hotName)
 
@@ -3688,9 +3856,7 @@ func TestTieredStore_ParallelAllNodes(t *testing.T) {
 	_ = ts.PutNode(evtNode1)
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	evtNode2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(evtNode2)
@@ -3731,9 +3897,7 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	n2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n2)
@@ -3743,9 +3907,7 @@ func TestTieredStore_ParallelWithColdLazyOpen(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	n3 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
 	_ = ts.PutNode(n3)
@@ -3779,9 +3941,7 @@ func TestTieredStore_ParallelErrorPropagation(t *testing.T) {
 	_ = ts.PutNode(n)
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 
 	// Close the warm shard's store to force errors.
 	ts.MuForTest().RLock()
@@ -4051,7 +4211,7 @@ func TestMigrateFromBadger_CrossShardRel(t *testing.T) {
 func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	// Verify that checkoutStore for cold shards holds shardMu while incrementing
 	// activeReqs — preventing the TOCTOU race where closeIdleShards closes the
-	// store between getStore return and activeReqs increment.
+	// store between lazy-open return and activeReqs increment.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -4069,9 +4229,7 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -4081,9 +4239,9 @@ func TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu(t *testing.T) {
 	ts.SetIdleTimeoutForTest(time.Millisecond)
 
 	// Rapid interleave: checkout+checkin vs closeIdleShards, 50 rounds.
-	// With the old code (getStore release shardMu then activeReqs.Add(1)),
-	// the race detector catches this. With the fix (atomic under shardMu),
-	// all checkouts succeed and the store is never used-after-close.
+	// With the old unpinned lazy-open path, the race detector catches this.
+	// With the fix (atomic under shardMu), all checkouts succeed and the store
+	// is never used-after-close.
 	var wg sync.WaitGroup
 	errs := make([]error, 50)
 	for i := 0; i < 50; i++ {
@@ -4677,9 +4835,7 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 
 	// Rotate hot→warm, then demote to cold.
 	time.Sleep(2 * time.Millisecond)
-	ts1.MuForTest().Lock()
 	_ = ts1.RotateHotShard()
-	ts1.MuForTest().Unlock()
 
 	demoteToCold(ts1, hotName)
 	_ = ts1.CatalogForTest().Save()
@@ -4891,9 +5047,7 @@ func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
 	ts1.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts1.MuForTest().Lock()
 	_ = ts1.RotateHotShard()
-	ts1.MuForTest().Unlock()
 
 	demoteToCold(ts1, hotName)
 	_ = ts1.CatalogForTest().Save()
@@ -4999,6 +5153,14 @@ func TestTieredStore_OutgoingRelationshipsForNodes(t *testing.T) {
 		t.Fatalf("signal2: got %d rels, want 1", len(got[s2ID]))
 	}
 
+	got, err = ts.OutgoingRelationshipsForNodes([]types.NodeID{s1ID, s1ID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[s1ID]) != 1 {
+		t.Fatalf("duplicate signal1: got %v, want one result entry with one rel", got)
+	}
+
 	// caseNode has no outgoing — absent from result.
 	got, err = ts.OutgoingRelationshipsForNodes([]types.NodeID{cID}, 0)
 	if err != nil {
@@ -5072,6 +5234,14 @@ func TestTieredStore_IncomingRelationshipsForNodes(t *testing.T) {
 		t.Fatal("signal1 should not be in result (no incoming)")
 	}
 
+	got, err = ts.IncomingRelationshipsForNodes([]types.NodeID{cID, cID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[cID]) != 2 {
+		t.Fatalf("duplicate caseNode: got %v, want one result entry with two rels", got)
+	}
+
 	// Empty input.
 	got, err = ts.IncomingRelationshipsForNodes(nil, 0)
 	if err != nil {
@@ -5079,6 +5249,229 @@ func TestTieredStore_IncomingRelationshipsForNodes(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("nil input: got %v, want nil", got)
+	}
+}
+
+func TestTieredStoreIncomingRelationshipsVerifyFetchedRows(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseA := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	caseB := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(signal); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNode(caseA); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNode(caseB); err != nil {
+		t.Fatal(err)
+	}
+
+	rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, signal.ID(), caseA.ID())
+	if err := ts.PutRelationship(rel); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a stale incoming-index entry under the wrong end node. The
+	// relationship row is live, but it belongs to caseA, not caseB.
+	if err := ts.RefShardForTest().PutRelIncoming(
+		caseB.ID().SnowflakeID(),
+		signal.ID().SnowflakeID(),
+		rel.TypeToken().Value(),
+		rel.ID().SnowflakeID(),
+	); err != nil {
+		t.Fatalf("PutRelIncoming stale wrong-end entry: %v", err)
+	}
+
+	got, err := ts.IncomingRelationships(caseB.ID(), rel.TypeToken().Value())
+	if err != nil {
+		t.Fatalf("IncomingRelationships wrong-end stale index: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("IncomingRelationships returned wrong-end stale row = %v, want nil", got)
+	}
+
+	gotBatch, err := ts.IncomingRelationshipsForNodes([]types.NodeID{caseB.ID()}, rel.TypeToken().Value())
+	if err != nil {
+		t.Fatalf("IncomingRelationshipsForNodes wrong-end stale index: %v", err)
+	}
+	if gotBatch != nil {
+		t.Fatalf("IncomingRelationshipsForNodes returned wrong-end stale row = %v, want nil", gotBatch)
+	}
+}
+
+func TestTieredStoreIncomingRelationshipsVerifyFetchedRowType(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	signal := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	caseNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(signal); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNode(caseNode); err != nil {
+		t.Fatal(err)
+	}
+
+	rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, signal.ID(), caseNode.ID())
+	if err := ts.PutRelationship(rel); err != nil {
+		t.Fatal(err)
+	}
+
+	const staleTypeToken uint16 = 2
+	if err := ts.RefShardForTest().PutRelIncoming(
+		caseNode.ID().SnowflakeID(),
+		signal.ID().SnowflakeID(),
+		staleTypeToken,
+		rel.ID().SnowflakeID(),
+	); err != nil {
+		t.Fatalf("PutRelIncoming stale type entry: %v", err)
+	}
+
+	got, err := ts.IncomingRelationships(caseNode.ID(), staleTypeToken)
+	if err != nil {
+		t.Fatalf("IncomingRelationships stale type index: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("IncomingRelationships returned stale-type row = %v, want nil", got)
+	}
+
+	gotBatch, err := ts.IncomingRelationshipsForNodes([]types.NodeID{caseNode.ID()}, staleTypeToken)
+	if err != nil {
+		t.Fatalf("IncomingRelationshipsForNodes stale type index: %v", err)
+	}
+	if gotBatch != nil {
+		t.Fatalf("IncomingRelationshipsForNodes returned stale-type row = %v, want nil", gotBatch)
+	}
+}
+
+func TestTieredStoreAdjacencyPropagatesCorruptNodeRows(t *testing.T) {
+	ts := newTestTieredStore(t)
+	caseTok, _, _ := installDefaultTestLabelRegistry(t, ts)
+
+	node := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := ts.PutNode(node); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	shard, checkin, err := ts.shardForNodeIDChecked(node.ID())
+	if err != nil {
+		t.Fatalf("shardForNodeIDChecked: %v", err)
+	}
+	corruptTieredNodeRowAfterFlush(t, shard, node.ID())
+	checkin()
+
+	checks := []struct {
+		name string
+		run  func(types.NodeID) error
+	}{
+		{
+			name: "OutgoingRelationships",
+			run: func(nid types.NodeID) error {
+				_, err := ts.OutgoingRelationships(nid, 0)
+				return err
+			},
+		},
+		{
+			name: "OutgoingRelationshipsForNodes",
+			run: func(nid types.NodeID) error {
+				_, err := ts.OutgoingRelationshipsForNodes([]types.NodeID{nid}, 0)
+				return err
+			},
+		},
+		{
+			name: "IncomingRelationships",
+			run: func(nid types.NodeID) error {
+				_, err := ts.IncomingRelationships(nid, 0)
+				return err
+			},
+		},
+		{
+			name: "IncomingRelationshipsForNodes",
+			run: func(nid types.NodeID) error {
+				_, err := ts.IncomingRelationshipsForNodes([]types.NodeID{nid}, 0)
+				return err
+			},
+		},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			err := check.run(node.ID())
+			if err == nil {
+				t.Fatalf("%s should return error for corrupted current node data", check.name)
+			}
+			if errors.Is(err, ErrNodeNotFound) {
+				t.Fatalf("%s returned ErrNodeNotFound for corrupted node data: %v", check.name, err)
+			}
+		})
+	}
+}
+
+func TestTieredStorePutRelationshipPropagatesCorruptEndpointRows(t *testing.T) {
+	checks := []struct {
+		name string
+		run  func(*Store, *types.Relationship) error
+	}{
+		{
+			name: "PutRelationship",
+			run: func(ts *Store, rel *types.Relationship) error {
+				return ts.PutRelationship(rel)
+			},
+		},
+		{
+			name: "PutRelationshipsBatch",
+			run: func(ts *Store, rel *types.Relationship) error {
+				return ts.PutRelationshipsBatch([]*types.Relationship{rel})
+			},
+		},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			ts := newTestTieredStore(t)
+			caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
+			gen := tieredNodeGen(t)
+			start := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+			end := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+			if err := ts.PutNode(start); err != nil {
+				t.Fatalf("PutNode start: %v", err)
+			}
+			if err := ts.PutNode(end); err != nil {
+				t.Fatalf("PutNode end: %v", err)
+			}
+
+			shard, checkin, err := ts.shardForNodeIDChecked(start.ID())
+			if err != nil {
+				t.Fatalf("shardForNodeIDChecked start: %v", err)
+			}
+			corruptTieredNodeRowAfterFlush(t, shard, start.ID())
+			checkin()
+
+			rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, start.ID(), end.ID())
+			err = check.run(ts, rel)
+			if err == nil {
+				t.Fatalf("%s should return error for corrupted endpoint row", check.name)
+			}
+			if errors.Is(err, ErrNodeNotFound) {
+				t.Fatalf("%s returned ErrNodeNotFound for corrupted endpoint row: %v", check.name, err)
+			}
+			if _, getErr := ts.GetRelationship(rel.ID()); !errors.Is(getErr, ErrRelNotFound) {
+				t.Fatalf("GetRelationship after failed %s = %v, want ErrRelNotFound", check.name, getErr)
+			}
+		})
 	}
 }
 

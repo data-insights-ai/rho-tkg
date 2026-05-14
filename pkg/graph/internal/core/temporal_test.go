@@ -2,10 +2,12 @@ package core
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -521,6 +523,34 @@ func TestGetNodeAt_NotFound(t *testing.T) {
 	_, err := g.Temporal.NodeAt(types.NodeID(999), nowMs())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
+	}
+}
+
+func TestTemporalPointQueriesInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
+	t.Parallel()
+
+	store := &versionInvalidIDProbeStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	for _, id := range []types.NodeID{0, types.NodeID(-1)} {
+		if got, err := g.Temporal.NodeAt(id, nowMs()); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("NodeAt(%d) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Temporal.NeighborsAt(id, nowMs()); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("NeighborsAt(%d) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+	}
+	for _, id := range []types.RelID{0, types.RelID(-1)} {
+		if got, err := g.Temporal.RelAt(id, nowMs()); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("RelAt(%d) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+	}
+	if got := store.reads.Load(); got != 0 {
+		t.Fatalf("invalid temporal point query touched store %d time(s)", got)
 	}
 }
 
@@ -1451,6 +1481,65 @@ func TestTemporalPropertyQueriesRejectInvalidTargets(t *testing.T) {
 	}
 }
 
+func TestTemporalPropertyQueriesRejectInvalidValuesBeforeEmptyShortcuts(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{})
+	defer func() { _ = g.Close() }()
+
+	tests := []struct {
+		name string
+		call func(value any) (int, error)
+	}{
+		{
+			name: "node at missing label",
+			call: func(value any) (int, error) {
+				nodes, err := g.Temporal.NodesByLabelPropertyAt("Missing", "color", value, 1)
+				return len(nodes), err
+			},
+		},
+		{
+			name: "node during missing label",
+			call: func(value any) (int, error) {
+				nodes, err := g.Temporal.NodesByLabelPropertyDuring("Missing", "color", value, 1, 2)
+				return len(nodes), err
+			},
+		},
+		{
+			name: "rel at missing type",
+			call: func(value any) (int, error) {
+				rels, err := g.Temporal.RelsByTypePropertyAt("MISSING", "color", value, 1)
+				return len(rels), err
+			},
+		},
+		{
+			name: "rel during missing type",
+			call: func(value any) (int, error) {
+				rels, err := g.Temporal.RelsByTypePropertyDuring("MISSING", "color", value, 1, 2)
+				return len(rels), err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+"/invalid", func(t *testing.T) {
+			_, err := tt.call(struct{ Bad int }{Bad: 1})
+			if !errors.Is(err, types.ErrUnsupportedValueType) {
+				t.Fatalf("invalid value error = %v, want ErrUnsupportedValueType", err)
+			}
+		})
+		t.Run(tt.name+"/valid-unindexable", func(t *testing.T) {
+			n, err := tt.call([]string{"valid", "unindexable"})
+			if err != nil {
+				t.Fatalf("valid unindexable value error = %v", err)
+			}
+			if n != 0 {
+				t.Fatalf("valid unindexable value returned %d rows, want 0", n)
+			}
+		})
+	}
+}
+
 func TestTemporalNodesByLabelAtRejectsInvalidLabel(t *testing.T) {
 	t.Parallel()
 
@@ -1500,6 +1589,70 @@ func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1, got %d", len(nodes))
 	}
+}
+
+func TestNodesByLabelPropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *testing.T) {
+	t.Parallel()
+
+	g := newTestGraph(t)
+	useTestClock(t, g)
+
+	nanA64 := math.Float64frombits(0x7ff8000000000001)
+	nanB64 := math.Float64frombits(0x7ff8000000000002)
+	nanA32 := math.Float32frombits(0x7fc00001)
+	nanB32 := math.Float32frombits(0x7fc00002)
+
+	a64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA64})
+	if err != nil {
+		t.Fatalf("Add a64: %v", err)
+	}
+	b64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB64})
+	if err != nil {
+		t.Fatalf("Add b64: %v", err)
+	}
+	a32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA32})
+	if err != nil {
+		t.Fatalf("Add a32: %v", err)
+	}
+	b32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB32})
+	if err != nil {
+		t.Fatalf("Add b32: %v", err)
+	}
+	start := g.nodeValidFrom(a64)
+	at := g.nodeValidFrom(b32)
+
+	assertQueries := func(name string) {
+		t.Helper()
+		gotAt64, err := g.Temporal.NodesByLabelPropertyAt("Reading", "score", nanA64, at)
+		if err != nil {
+			t.Fatalf("%s f64 at: %v", name, err)
+		}
+		assertNodeSet(t, name+" f64 at", gotAt64, []types.NodeID{a64.ID(), b64.ID()})
+
+		gotDuring64, err := g.Temporal.NodesByLabelPropertyDuring("Reading", "score", nanA64, start, at+1)
+		if err != nil {
+			t.Fatalf("%s f64 during: %v", name, err)
+		}
+		assertNodeSet(t, name+" f64 during", gotDuring64, []types.NodeID{a64.ID(), b64.ID()})
+
+		gotAt32, err := g.Temporal.NodesByLabelPropertyAt("Reading", "score", nanA32, at)
+		if err != nil {
+			t.Fatalf("%s f32 at: %v", name, err)
+		}
+		assertNodeSet(t, name+" f32 at", gotAt32, []types.NodeID{a32.ID(), b32.ID()})
+
+		gotDuring32, err := g.Temporal.NodesByLabelPropertyDuring("Reading", "score", nanA32, start, at+1)
+		if err != nil {
+			t.Fatalf("%s f32 during: %v", name, err)
+		}
+		assertNodeSet(t, name+" f32 during", gotDuring32, []types.NodeID{a32.ID(), b32.ID()})
+	}
+
+	assertQueries("fallback")
+	if err := g.Index.CreateProperty("Reading", "score"); err != nil {
+		t.Fatalf("CreateProperty: %v", err)
+	}
+	assertQueries("indexed")
 }
 
 func TestNodesByLabelPropertyDuring_Found(t *testing.T) {

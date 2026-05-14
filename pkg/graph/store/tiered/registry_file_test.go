@@ -3,6 +3,7 @@ package tiered
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,6 +131,66 @@ func TestRegistryFileLoadRejectsInvalidPersistedRegistries(t *testing.T) {
 	}
 }
 
+func TestRegistryFileSaveRejectsInvalidRegistries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		labels   []string
+		relTypes []string
+	}{
+		{
+			name:     "labels missing reserved token",
+			labels:   []string{"Case"},
+			relTypes: []string{"", "RELATES_TO"},
+		},
+		{
+			name:     "labels duplicate",
+			labels:   []string{"", "Case", "Case"},
+			relTypes: []string{"", "RELATES_TO"},
+		},
+		{
+			name:     "reltypes missing reserved token",
+			labels:   []string{"", "Case"},
+			relTypes: []string{"RELATES_TO"},
+		},
+		{
+			name:     "reltypes duplicate",
+			labels:   []string{"", "Case"},
+			relTypes: []string{"", "RELATES_TO", "RELATES_TO"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "registry.msgpack")
+			original, err := msgpack.Marshal(&RegistryFileData{
+				Labels:   []string{"", "OriginalLabel"},
+				RelTypes: []string{"", "ORIGINAL_REL"},
+			})
+			if err != nil {
+				t.Fatalf("marshal original registry: %v", err)
+			}
+			if err := atomicWriteFile(path, original, "test registry setup"); err != nil {
+				t.Fatalf("write original registry: %v", err)
+			}
+
+			if err := saveRegistryFile(path, tc.labels, tc.relTypes); err == nil {
+				t.Fatal("saveRegistryFile returned nil for invalid registry names")
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read registry file after rejected save: %v", err)
+			}
+			if !bytes.Equal(got, original) {
+				t.Fatal("rejected registry save changed registry file bytes")
+			}
+		})
+	}
+}
+
 func TestRegistryFile_EmptyRegistries(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
@@ -164,6 +225,25 @@ func TestRegistryFile_AtomicRename(t *testing.T) {
 	}
 }
 
+func TestWriteFullHandlesShortWrites(t *testing.T) {
+	w := &tieredShortChunkWriter{maxChunk: 2}
+	data := []byte("registry bytes")
+
+	if err := writeFull(w, data); err != nil {
+		t.Fatalf("writeFull short writes: %v", err)
+	}
+	if !bytes.Equal(w.buf.Bytes(), data) {
+		t.Fatalf("writeFull wrote %q, want %q", w.buf.Bytes(), data)
+	}
+	if w.writes <= 1 {
+		t.Fatalf("writeFull used %d writes, want multiple short writes", w.writes)
+	}
+
+	if err := writeFull(tieredZeroProgressWriter{}, []byte("x")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("writeFull zero progress error = %v, want io.ErrShortWrite", err)
+	}
+}
+
 func TestRegistryFileRollbackRestoresPreviousBytes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.msgpack")
 	original := []byte("previous registry bytes")
@@ -189,6 +269,24 @@ func TestRegistryFileRollbackRestoresPreviousBytes(t *testing.T) {
 		t.Fatalf("restored registry bytes = %q, want %q", got, original)
 	}
 }
+
+type tieredShortChunkWriter struct {
+	buf      bytes.Buffer
+	maxChunk int
+	writes   int
+}
+
+func (w *tieredShortChunkWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if len(p) > w.maxChunk {
+		p = p[:w.maxChunk]
+	}
+	return w.buf.Write(p)
+}
+
+type tieredZeroProgressWriter struct{}
+
+func (tieredZeroProgressWriter) Write([]byte) (int, error) { return 0, nil }
 
 func TestRegistryFileRollbackRemovesNewFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.msgpack")

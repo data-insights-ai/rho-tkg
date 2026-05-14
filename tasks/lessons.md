@@ -40,6 +40,8 @@ GOOD: hash := ComputeNodeHash(n, resolvedCanonicalLabels)
 
 Hash the canonical entity state after token normalization and registry
 resolution. When fixing one hash call site, grep all other call sites.
+When a relationship mutation recomputes integrity, refresh `FromNodeHash` and
+`ToNodeHash` from locked current endpoints before persisting the row.
 
 ## 3. Lock Before Store Mutation
 
@@ -95,6 +97,8 @@ Store put/get paths must deep-copy entities and validate payload invariants.
 Badger wire decode must treat MsgPack as untrusted: reject key/value ID
 mismatches, invalid tokens, invalid temporal ranges, malformed properties, and
 counter/index metadata corruption before constructing live entities.
+No-error defensive-copy fallbacks must not panic on legacy/bypassed shapes:
+use typed zero values for nil reflect elements and avoid unassignable writes.
 
 ## 7. Deleted Entities Still Matter
 
@@ -123,6 +127,16 @@ Large scans should use callback iterators or paged scans. Callbacks must run
 outside backend locks and Tiered shard checkouts so callers can safely use
 Store methods inside callbacks.
 
+Tiered scans that dereference shard stores must pin every handle that `Close`
+can close. Event shards use `checkoutStore`, the reference archive uses
+`checkoutArchive`, and the reference shard must use the same checked lifecycle
+discipline even though idle-close never touches it. Wide reads over many
+shards must also bound handle lifetime: group cheaply, then checkout/read/release
+one shard batch at a time instead of pinning every cold owner before work starts.
+Fanout helpers should use bounded worker pools, not one goroutine per shard
+guarded by a semaphore, so historical shard counts do not translate into
+scheduler or memory pressure.
+
 ## 9. sync.RWMutex Is Not Reentrant
 
 ```
@@ -142,7 +156,9 @@ GOOD: persist definition; loadIndexes rebuilds it on open
 
 Anything that affects query correctness and survives a process lifetime needs a
 durable definition and a startup rebuild path. Counters and registry metadata
-must fail closed when corrupt or impossible.
+must fail closed when corrupt or impossible. Persistent backends should mark
+close-in-progress before stopping flush workers or taking the final flush
+snapshot so public operations fail closed once shutdown begins.
 
 ## 11. Index Creation Is A Three-Phase Operation
 
@@ -235,3 +251,49 @@ Tests and consumers embed in-tree stores to inject failures or stale reads. A
 native optimization must not bypass those overrides. Keep the generic Store
 contract path as the default and opt into exact-store shortcuts only when the
 in-tree implementation itself provides the invariant.
+
+## 20. Mutation Transaction Time Must Be Monotonic
+
+```
+BAD:  txNow := time.Now().UnixMilli()
+GOOD: txNow := c.now() // per-Core monotonic millisecond instant
+```
+
+Temporal mutation paths that stamp `TxFrom`, `TxTo`, `UpdatedAt`, `DeletedAt`,
+or mutation events must use the Core clock helper. Wall-clock milliseconds can
+repeat or move backwards, and repeated instants collapse version intervals for
+transaction-time queries.
+
+## 21. Batch Visibility Must Match Consumer Scheduling
+
+```
+BAD:  enqueue normal; enqueue critical // worker can scan after normal only
+GOOD: enqueue critical first, or block consumers until the full batch is visible
+```
+
+A producer-side batch mutex does not make the batch atomic if consumers can
+observe the underlying queues directly. Publish batched work in the order that
+preserves the consumer contract under partial observation, or gate consumers on
+the same boundary.
+
+## 22. Peek-Then-Lock Must Revalidate Identity
+
+```
+BAD:  peek endpoints; lock peeked IDs; mutate whatever row is current
+GOOD: peek endpoints; lock peeked IDs; re-read; retry if the identity changed
+```
+
+Caller-specified imports can reuse deleted IDs with a different entity shape.
+Any mutation that performs an unlocked peek only to discover the lock set must
+revalidate the row identity under those locks before trusting the peeked shape.
+
+## 23. Property Index Keys Are Equality Semantics
+
+```
+BAD:  return "f64:" + strconv.FormatFloat(v, 'g', -1, 64) // NaN payloads collapse
+GOOD: use exact bit keys for values whose printable form loses equality detail
+```
+
+Property-index value keys are not display strings. They must preserve the
+library's property equality contract, including special float values, so
+fallback scans and indexed lookups return the same exact result set.

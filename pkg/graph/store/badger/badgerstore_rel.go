@@ -16,10 +16,10 @@ import (
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
 	rid := r.InternalID()
@@ -33,6 +33,9 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	data, err := storepkg.MarshalRelWire(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
+	}
+	if err := bs.ensureRelationshipEndpointRowsLive(startNID, endNID); err != nil {
+		return err
 	}
 
 	bs.idxMu.Lock()
@@ -157,10 +160,10 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
 	rid := r.InternalID()
@@ -183,6 +186,11 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read relationship before replace: %w", prefetchErr)
 	}
+	old, err = bs.currentRelForPrefetchLocked(rid, old)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: read relationship before replace: %w", err)
+	}
 	if err := storecontract.ValidateRelationshipReplacement(old, r); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -201,10 +209,10 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) DeleteRelationship(rid types.RelID) error {
-	if err := storecontract.ValidateRelID(rid); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
 	// Pre-fetch the relationship before acquiring idxMu.Lock so a cache-miss
@@ -251,6 +259,49 @@ func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
 		StartID: r.StartNodeID().SnowflakeID(),
 		EndID:   r.EndNodeID().SnowflakeID(),
 	}
+}
+
+func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched *types.Relationship) (*types.Relationship, error) {
+	if prefetched != nil {
+		info := relDeleteInfoFromRelationship(prefetched)
+		if types.RelID(info.ID) == rid && bs.relDeleteInfoStillIndexedLocked(info) {
+			return prefetched, nil
+		}
+	}
+	return bs.getRelLocked(rid)
+}
+
+func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
+	r, err := bs.prefetchRel(rid)
+	if err != nil {
+		return RelDeleteInfo{}, err
+	}
+	return relDeleteInfoFromRelationship(r), nil
+}
+
+func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
+	rid := types.RelID(info.ID)
+	startNID := types.NodeID(info.StartID)
+	endNID := types.NodeID(info.EndID)
+	if _, exists := bs.relIDs[rid]; !exists {
+		return false
+	}
+	if set, exists := bs.typeIdx[info.RelType]; !exists {
+		return false
+	} else if _, ok := set[rid]; !ok {
+		return false
+	}
+	if set, exists := bs.outIdx[startNID]; !exists {
+		return false
+	} else if _, ok := set[rid]; !ok {
+		return false
+	}
+	if set, exists := bs.inIdx[endNID]; !exists {
+		return false
+	} else if tok, ok := set[rid]; !ok || tok != info.RelType {
+		return false
+	}
+	return true
 }
 
 // deleteRelByInfo applies relationship deletion mutations using pre-read metadata.

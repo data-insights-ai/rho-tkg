@@ -5,10 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/vmihailenco/msgpack/v5"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -35,6 +37,42 @@ func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].ID() != types.NodeID(snowflake.ID(101)) {
 		t.Fatalf("SearchNearestNodes after reopen = %#v, want node 101", results)
+	}
+}
+
+func TestTieredStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *testing.T) {
+	dir := t.TempDir()
+	createDiskTieredVectorIndex(t, dir)
+	vectorFile := filepath.Join(dir, "meta", "vector_indexes.msgpack")
+	defs, err := loadVectorIndexFile(vectorFile)
+	if err != nil {
+		t.Fatalf("load vector index file: %v", err)
+	}
+	if len(defs) != 1 {
+		t.Fatalf("vector index definitions = %#v, want one definition", defs)
+	}
+	defs[0].Dims = 2
+	if err := saveVectorIndexFile(vectorFile, defs); err != nil {
+		t.Fatalf("write mismatched vector index file: %v", err)
+	}
+
+	ts, err := New(Config{
+		DataDir:       dir,
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if ts != nil {
+		_ = ts.Close()
+	}
+	if err == nil {
+		t.Fatal("open with mismatched indexed vector returned nil")
+	}
+	if !errors.Is(err, ErrDimensionMismatch) {
+		t.Fatalf("open with mismatched indexed vector = %v, want ErrDimensionMismatch", err)
+	}
+	if !strings.Contains(err.Error(), "vector index file: rebuild node ") {
+		t.Fatalf("open with mismatched indexed vector = %v, want vector-index rebuild context", err)
 	}
 }
 
@@ -200,11 +238,9 @@ func TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		t.Fatalf("mkdir meta: %v", err)
 	}
-	if err := saveVectorIndexFile(filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
+	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
 		{LabelToken: 1, PropertyKey: "vec", Dims: 0, Metric: DistanceCosine},
-	}); err != nil {
-		t.Fatalf("write invalid vector index file: %v", err)
-	}
+	})
 
 	_, err := New(Config{
 		DataDir:       dir,
@@ -223,11 +259,9 @@ func TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition(t *testing.T) {
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		t.Fatalf("mkdir meta: %v", err)
 	}
-	if err := saveVectorIndexFile(filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
+	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
 		{LabelToken: 0, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
-	}); err != nil {
-		t.Fatalf("write zero-label vector index file: %v", err)
-	}
+	})
 
 	_, err := New(Config{
 		DataDir:       dir,
@@ -246,11 +280,9 @@ func TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition(t *testin
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		t.Fatalf("mkdir meta: %v", err)
 	}
-	if err := saveVectorIndexFile(filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
+	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
 		{LabelToken: 1, PropertyKey: "tkg_hash", Dims: 2, Metric: DistanceCosine},
-	}); err != nil {
-		t.Fatalf("write reserved-key vector index file: %v", err)
-	}
+	})
 
 	_, err := New(Config{
 		DataDir:       dir,
@@ -269,12 +301,10 @@ func TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *te
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		t.Fatalf("mkdir meta: %v", err)
 	}
-	if err := saveVectorIndexFile(filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
+	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
 		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
 		{LabelToken: 1, PropertyKey: "vec", Dims: 3, Metric: DistanceCosine},
-	}); err != nil {
-		t.Fatalf("write duplicate vector index file: %v", err)
-	}
+	})
 
 	_, err := New(Config{
 		DataDir:       dir,
@@ -284,6 +314,101 @@ func TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *te
 	})
 	if !errors.Is(err, ErrVectorIndexExists) {
 		t.Fatalf("open with conflicting duplicate vector index definition = %v, want ErrVectorIndexExists", err)
+	}
+}
+
+func TestVectorIndexFileSaveRejectsInvalidDefinitions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		defs []vectorIdxDef
+	}{
+		{
+			name: "zero label",
+			defs: []vectorIdxDef{{LabelToken: 0, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine}},
+		},
+		{
+			name: "reserved property",
+			defs: []vectorIdxDef{{LabelToken: 1, PropertyKey: "tkg_hash", Dims: 2, Metric: DistanceCosine}},
+		},
+		{
+			name: "invalid dimensions",
+			defs: []vectorIdxDef{{LabelToken: 1, PropertyKey: "vec", Dims: 0, Metric: DistanceCosine}},
+		},
+		{
+			name: "duplicate definition",
+			defs: []vectorIdxDef{
+				{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+				{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+			},
+		},
+		{
+			name: "conflicting duplicate definition",
+			defs: []vectorIdxDef{
+				{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+				{LabelToken: 1, PropertyKey: "vec", Dims: 3, Metric: DistanceCosine},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
+			original := []byte("previous vector index bytes")
+			if err := atomicWriteFile(path, original, "test vector setup"); err != nil {
+				t.Fatalf("write original vector index file: %v", err)
+			}
+
+			if err := saveVectorIndexFile(path, tc.defs); err == nil {
+				t.Fatal("saveVectorIndexFile returned nil for invalid definitions")
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read vector index file after rejected save: %v", err)
+			}
+			if !bytes.Equal(got, original) {
+				t.Fatal("rejected vector index save changed file bytes")
+			}
+		})
+	}
+}
+
+func TestVectorIndexFileLoadRejectsDuplicateDefinition(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
+	writeRawVectorIndexFile(t, path, []vectorIdxDef{
+		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+	})
+
+	if _, err := loadVectorIndexFile(path); !errors.Is(err, ErrVectorIndexExists) {
+		t.Fatalf("loadVectorIndexFile duplicate definition = %v, want ErrVectorIndexExists", err)
+	}
+}
+
+func TestTieredStoreVectorIndexLoadRejectsDuplicateDefinition(t *testing.T) {
+	dir := t.TempDir()
+	metaDir := filepath.Join(dir, "meta")
+	if err := os.MkdirAll(metaDir, 0o755); err != nil {
+		t.Fatalf("mkdir meta: %v", err)
+	}
+	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
+		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+	})
+
+	_, err := New(Config{
+		DataDir:       dir,
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if !errors.Is(err, ErrVectorIndexExists) {
+		t.Fatalf("open with duplicate vector index definition = %v, want ErrVectorIndexExists", err)
 	}
 }
 
@@ -321,4 +446,15 @@ func createDiskTieredVectorIndex(t *testing.T, dir string) uint16 {
 		t.Fatalf("close 1: %v", err)
 	}
 	return caseTok
+}
+
+func writeRawVectorIndexFile(t *testing.T, path string, defs []vectorIdxDef) {
+	t.Helper()
+	data, err := msgpack.Marshal(defs)
+	if err != nil {
+		t.Fatalf("marshal raw vector index definitions: %v", err)
+	}
+	if err := atomicWriteFile(path, data, "test raw vector index file"); err != nil {
+		t.Fatalf("write raw vector index file: %v", err)
+	}
 }

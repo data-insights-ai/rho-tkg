@@ -22,6 +22,13 @@ var ErrTypeNotHashable = errors.New("types: registered property type does not im
 // corrupt cached graph state outside locks and index maintenance.
 var ErrTypeNotDeepCopyable = errors.New("types: registered property type does not implement DeepCopier")
 
+// ErrPropertyTypeNameCollision is returned by RegisterPropertyStructType when
+// two distinct Go types would share the same persisted custom-property wire
+// name. The wire/hash format stores reflect.Type.String() for backward
+// compatibility, so collisions must be rejected at registration time instead
+// of being allowed to make decode and hash identity ambiguous.
+var ErrPropertyTypeNameCollision = errors.New("types: registered property type name collision")
+
 // HashableValue is the contract a custom property-value type must satisfy to
 // participate in node/relationship integrity hashing. Registered via
 // RegisterPropertyStructType.
@@ -122,6 +129,9 @@ func RegisterPropertyStructType(v any) error {
 	if elemT.Kind() == reflect.Pointer {
 		elemT = elemT.Elem()
 	}
+	if elemT.Kind() != reflect.Struct {
+		return fmt.Errorf("%w: registered property type must be a struct, got %s", ErrUnsupportedValueType, elemT.String())
+	}
 	// Verify both contracts against the FORM ACTUALLY PASSED. Including
 	// reflect.PointerTo(elemT).Implements(...) here would silently accept
 	// a value form (T{}) when methods are defined on the pointer receiver
@@ -142,6 +152,13 @@ func RegisterPropertyStructType(v any) error {
 		return fmt.Errorf("%w: %s", ErrTypeNotDeepCopyable, elemT.String())
 	}
 	propertyStructRegistryMu.Lock()
+	for existing := range propertyStructRegistry {
+		if existing != elemT && existing.String() == elemT.String() {
+			propertyStructRegistryMu.Unlock()
+			return fmt.Errorf("%w: %s already registered from %q; cannot also register %q",
+				ErrPropertyTypeNameCollision, elemT.String(), existing.PkgPath(), elemT.PkgPath())
+		}
+	}
 	propertyStructRegistry[elemT] = struct{}{}
 	propertyStructRegistryMu.Unlock()
 	return nil

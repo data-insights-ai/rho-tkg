@@ -91,6 +91,115 @@ func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
 	if got, _ := v0.GetProperty("w"); got != int64(1) {
 		t.Errorf("v0.w = %v, want 1", got)
 	}
+
+	page, err := ts.RelHistoryVersionsFrom(relID, 0, 1)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom(0,1) after cross-shard delete: %v", err)
+	}
+	if len(page) != 1 || page[0].Version() != 0 {
+		t.Fatalf("RelHistoryVersionsFrom(0,1) versions = %v, want [0]", relVersionsForTest(page))
+	}
+	next, err := ts.RelHistoryVersionsFrom(relID, page[0].Version()+1, 10)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom next: %v", err)
+	}
+	if len(next) == 0 || next[0].Version() <= page[0].Version() {
+		t.Fatalf("RelHistoryVersionsFrom next versions = %v, want versions after %d", relVersionsForTest(next), page[0].Version())
+	}
+	if _, err := ts.RelHistoryVersionsFrom(relID, 0, -1); !errors.Is(err, storepkg.ErrInvalidQueryLimit) {
+		t.Fatalf("RelHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+	}
+}
+
+func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
+	g, ts := newTestTieredGraph(t)
+
+	refA, err := g.Nodes.Add([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("Add ref A: %v", err)
+	}
+	refB, err := g.Nodes.Add([]string{"Case"}, nil)
+	if err != nil {
+		t.Fatalf("Add ref B: %v", err)
+	}
+	refRel, err := g.Rels.Add("LINK", refA, refB, map[string]any{"v": int64(1)})
+	if err != nil {
+		t.Fatalf("Add ref rel: %v", err)
+	}
+	if _, err := g.Rels.Update(refRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+		t.Fatalf("Update ref rel: %v", err)
+	}
+	refPage, err := ts.RelHistoryVersionsFrom(refRel.ID(), 0, 1)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom live ref rel: %v", err)
+	}
+	if len(refPage) != 1 || refPage[0].Version() != 0 {
+		t.Fatalf("live ref rel page versions = %v, want [0]", relVersionsForTest(refPage))
+	}
+	if _, err := ts.RelHistoryVersionsFrom(0, 0, 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("RelHistoryVersionsFrom zero ID = %v, want ErrInvalidStoreMutation", err)
+	}
+	closed := newTestTieredStore(t)
+	if err := closed.Close(); err != nil {
+		t.Fatalf("Close tiered store: %v", err)
+	}
+	if _, err := closed.RelHistoryVersionsFrom(refRel.ID(), 0, 1); !errors.Is(err, storepkg.ErrStoreClosed) {
+		t.Fatalf("RelHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
+	}
+
+	eventA, err := g.Nodes.Add([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("Add event A: %v", err)
+	}
+	eventB, err := g.Nodes.Add([]string{"Signal"}, nil)
+	if err != nil {
+		t.Fatalf("Add event B: %v", err)
+	}
+	eventRel, err := g.Rels.Add("LINK", eventA, eventB, map[string]any{"v": int64(1)})
+	if err != nil {
+		t.Fatalf("Add event rel: %v", err)
+	}
+	if _, err := g.Rels.Update(eventRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+		t.Fatalf("Update event rel: %v", err)
+	}
+	eventPage, err := ts.RelHistoryVersionsFrom(eventRel.ID(), 0, 1)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom live event rel: %v", err)
+	}
+	if len(eventPage) != 1 || eventPage[0].Version() != 0 {
+		t.Fatalf("live event rel page versions = %v, want [0]", relVersionsForTest(eventPage))
+	}
+
+	archivedRel, err := g.Rels.Add("OWNS", refA, refB, map[string]any{"v": int64(1)})
+	if err != nil {
+		t.Fatalf("Add archive rel: %v", err)
+	}
+	if _, err := g.Rels.Update(archivedRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+		t.Fatalf("Update archive rel before archive: %v", err)
+	}
+	if err := ts.ArchiveNode(refA.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	archivePage, err := ts.RelHistoryVersionsFrom(archivedRel.ID(), 0, 10)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom archived rel: %v", err)
+	}
+	if len(archivePage) == 0 {
+		t.Fatal("RelHistoryVersionsFrom archived rel returned no history")
+	}
+	if _, err := g.Rels.Update(archivedRel.ID(), map[string]any{"v": int64(3)}); err != nil {
+		t.Fatalf("Update archived rel: %v", err)
+	}
+	if err := ts.RestoreNode(refA.ID()); err != nil {
+		t.Fatalf("RestoreNode: %v", err)
+	}
+	restoredPage, err := ts.RelHistoryVersionsFrom(archivedRel.ID(), 0, 10)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom restored rel: %v", err)
+	}
+	if len(restoredPage) < 2 {
+		t.Fatalf("restored rel page len = %d, want at least 2 versions from ref+archive", len(restoredPage))
+	}
 }
 
 // After deleting a cross-shard relationship, TruncateRelHistory must locate
@@ -185,12 +294,9 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 	// Step 2: rotate. Old hot → warm. New hot shard created with a different
 	// time window.
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 
 	// Step 3: create the rel AFTER rotation. Its snowflake timestamp lands in
 	// the new hot shard's window, but the rel entity routes to the start
@@ -253,12 +359,9 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 	time.Sleep(2 * time.Millisecond)
 
 	r, err := g.Rels.Add("OBSERVED", a, b, map[string]any{"w": int64(1)})
@@ -317,12 +420,9 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 	time.Sleep(2 * time.Millisecond)
 
 	r, err := g.Rels.Add("OBSERVED", a, b, nil)
@@ -556,12 +656,9 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 	originName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, originName)
 
 	if err := g.Rels.Delete(relID); err != nil {
@@ -585,12 +682,9 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 		originName := ts.HotShardForTest().Name()
 		ts.MuForTest().RUnlock()
 		time.Sleep(2 * time.Millisecond)
-		ts.MuForTest().Lock()
 		if err := ts.RotateHotShard(); err != nil {
-			ts.MuForTest().Unlock()
 			t.Fatal(err)
 		}
-		ts.MuForTest().Unlock()
 		demoteToCold(ts, originName)
 	}
 
@@ -779,9 +873,7 @@ func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
 	hotName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -820,9 +912,7 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 	hotName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -945,7 +1035,9 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 
 	// Simulate a version write through the public Store interface and
 	// verify it reaches the rel's resolved shard.
-	if err := ts.PutRelVersion(rid, 99, r); err != nil {
+	versioned := r.DeepCopy()
+	versioned.SetVersion(99)
+	if err := ts.PutRelVersion(rid, 99, versioned); err != nil {
 		t.Fatalf("PutRelVersion: %v", err)
 	}
 	got, err := relShard.GetRelVersion(rid, 99)
@@ -1009,4 +1101,12 @@ func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *te
 	if !containsRelIDSlice(endShard.IncomingRelIDs(endID, 0), rid) {
 		t.Fatal("PutRelIncoming did not restore in/ — rollback path is broken")
 	}
+}
+
+func relVersionsForTest(history []*types.Relationship) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, r := range history {
+		versions[i] = r.Version()
+	}
+	return versions
 }

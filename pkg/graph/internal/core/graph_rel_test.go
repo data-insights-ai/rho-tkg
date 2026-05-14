@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -14,6 +15,58 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type relCreateFailAfterInstallStore struct {
+	*memory.Store
+	err        error
+	failPut    bool
+	failDelete bool
+	panicPut   bool
+}
+
+func (s *relCreateFailAfterInstallStore) PutRelationship(r *types.Relationship) error {
+	if err := s.Store.PutRelationship(r); err != nil {
+		return err
+	}
+	if s.panicPut {
+		panic("injected post-write relationship panic")
+	}
+	if s.failPut {
+		return s.err
+	}
+	return nil
+}
+
+func (s *relCreateFailAfterInstallStore) DeleteRelationship(id types.RelID) error {
+	if s.failDelete {
+		return s.err
+	}
+	return s.Store.DeleteRelationship(id)
+}
+
+func newRelCreateRollbackGraph(t *testing.T) (*Core, *relCreateFailAfterInstallStore, *types.Node, *types.Node) {
+	t.Helper()
+
+	fs := &relCreateFailAfterInstallStore{
+		Store: memory.New(),
+		err:   errors.New("injected post-write relationship failure"),
+	}
+	g, err := New(Config{Store: fs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	return g, fs, a, b
+}
 
 func TestGraphRelationshipType(t *testing.T) {
 	t.Parallel()
@@ -79,6 +132,364 @@ func TestGraphAddRelationship(t *testing.T) {
 	since, ok := r.GetProperty("since")
 	if !ok || since != 2020 {
 		t.Errorf("GetProperty(\"since\") = (%v, %v), want (2020, true)", since, ok)
+	}
+}
+
+func TestGraphAddRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+
+	fs.failPut = true
+	_, err := g.Rels.Add("TRANSIENT_REL", a, b, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add transient relationship error = %v, want injected", err)
+	}
+	if tok, ok := g.Resolve.LookupRelType("TRANSIENT_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType(TRANSIENT_REL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+		t.Fatalf("Add real relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; stale failed row inherited reused token", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipExistingRelTypeFailureDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateRelType("EXISTING_REL"); err != nil {
+		t.Fatalf("GetOrCreateRelType: %v", err)
+	}
+
+	fs.failPut = true
+	_, err := g.Rels.Add("EXISTING_REL", a, b, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add existing-type relationship error = %v, want injected", err)
+	}
+
+	fs.failPut = false
+	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+		t.Fatalf("retry Add existing-type relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(EXISTING_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(EXISTING_REL) len = %d, want 1; failed row was not cleaned up", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipExistingRelTypePanicDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateRelType("EXISTING_REL"); err != nil {
+		t.Fatalf("GetOrCreateRelType: %v", err)
+	}
+
+	fs.panicPut = true
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("Add existing-type relationship did not panic")
+			}
+		}()
+		_, _ = g.Rels.Add("EXISTING_REL", a, b, nil)
+	}()
+
+	fs.panicPut = false
+	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+		t.Fatalf("retry Add existing-type relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(EXISTING_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(EXISTING_REL) len = %d, want 1; panic row was not cleaned up", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipExistingRelTypeCleanupFailureReturnsPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateRelType("EXISTING_REL"); err != nil {
+		t.Fatalf("GetOrCreateRelType: %v", err)
+	}
+
+	fs.failPut = true
+	fs.failDelete = true
+	rel, err := g.Rels.Add("EXISTING_REL", a, b, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add existing-type relationship error = %v, want injected", err)
+	}
+	if rel == nil {
+		t.Fatal("Add existing-type relationship returned nil after cleanup failure; live partial row must be caller-visible")
+	}
+	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(EXISTING_REL): %v", err)
+	}
+	if len(rels) != 1 || rels[0].ID() != rel.ID() {
+		t.Fatalf("ByType(EXISTING_REL) = %v rows, want retained live partial row %d", len(rels), rel.ID())
+	}
+}
+
+func TestGraphAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+
+	fs.failPut = true
+	fs.failDelete = true
+	rel, err := g.Rels.Add("QUARANTINED_REL", a, b, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add relationship error = %v, want injected", err)
+	}
+	if rel == nil {
+		t.Fatal("Add relationship returned nil relationship after cleanup failure; live partial row must be caller-visible")
+	}
+	if tok, ok := g.Resolve.LookupRelType("QUARANTINED_REL"); !ok || tok == 0 {
+		t.Fatalf("LookupRelType(QUARANTINED_REL) = %d, %v; want retained token", tok, ok)
+	}
+	quarantined, err := g.Rels.ByType("QUARANTINED_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(QUARANTINED_REL): %v", err)
+	}
+	if len(quarantined) != 1 || quarantined[0].ID() != rel.ID() {
+		t.Fatalf("ByType(QUARANTINED_REL) = %v rows, want retained live partial row %d", len(quarantined), rel.ID())
+	}
+
+	fs.failPut = false
+	fs.failDelete = false
+	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+		t.Fatalf("Add real relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; retained token should prevent stale-row inheritance", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipByIDFailureDeletesPartialRowBeforeRelTypeRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+
+	fs.failPut = true
+	_, err := g.Rels.AddByIDWithContext(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("AddByID transient relationship error = %v, want injected", err)
+	}
+	if tok, ok := g.Resolve.LookupRelType("TRANSIENT_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType(TRANSIENT_REL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Rels.AddByIDWithContext(context.Background(), "REAL_REL", a.ID(), b.ID(), nil); err != nil {
+		t.Fatalf("AddByID real relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; stale failed row inherited reused token", len(rels))
+	}
+}
+
+func TestGraphAddRelationshipByIDIfAbsentFailureDeletesPartialRowBeforeRelTypeRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+
+	fs.failPut = true
+	_, created, err := g.Rels.AddByIDIfAbsentWithContext(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
+	if !errors.Is(err, fs.err) || created {
+		t.Fatalf("AddByIDIfAbsent transient = created %v, err %v; want injected create failure", created, err)
+	}
+	if tok, ok := g.Resolve.LookupRelType("TRANSIENT_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType(TRANSIENT_REL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	_, created, err = g.Rels.AddByIDIfAbsentWithContext(context.Background(), "REAL_REL", a.ID(), b.ID(), nil)
+	if err != nil || !created {
+		t.Fatalf("AddByIDIfAbsent real = created %v, err %v; want create", created, err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; stale failed row inherited reused token", len(rels))
+	}
+}
+
+func TestGraphImportRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	relID := types.RelID(snowflake.ID(900001))
+
+	fs.failPut = true
+	_, err := g.Rels.Import(context.Background(), relID, "TRANSIENT_REL", a, b, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Import transient relationship error = %v, want injected", err)
+	}
+	if tok, ok := g.Resolve.LookupRelType("TRANSIENT_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType(TRANSIENT_REL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Rels.Import(context.Background(), relID, "REAL_REL", a, b, nil); err != nil {
+		t.Fatalf("Import real relationship with same ID: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; stale failed row inherited reused token", len(rels))
+	}
+}
+
+func TestBatchAddRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := bb.AddRelationship("TRANSIENT_REL", a, b, nil); err != nil {
+		t.Fatalf("Batch AddRelationship: %v", err)
+	}
+
+	fs.failPut = true
+	res, err := bb.Execute()
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
+	}
+	if res == nil || res.Created != 0 || res.Failed != 1 {
+		t.Fatalf("Execute result = %+v, want Created=0 Failed=1", res)
+	}
+	if tok, ok := g.Resolve.LookupRelType("TRANSIENT_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType(TRANSIENT_REL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+		t.Fatalf("Add real relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; stale failed row inherited reused token", len(rels))
+	}
+}
+
+func TestBatchAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	rel, err := bb.AddRelationship("QUARANTINED_REL", a, b, nil)
+	if err != nil {
+		t.Fatalf("Batch AddRelationship: %v", err)
+	}
+
+	fs.failPut = true
+	fs.failDelete = true
+	res, err := bb.Execute()
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
+	}
+	if res == nil || res.Created != 1 || res.Failed != 1 {
+		t.Fatalf("Execute result = %+v, want Created=1 Failed=1", res)
+	}
+	if stats := g.Stats.Get(); stats.RelsAdded != 1 {
+		t.Fatalf("RelsAdded after live failed batch relationship = %d, want 1", stats.RelsAdded)
+	}
+	if tok, ok := g.Resolve.LookupRelType("QUARANTINED_REL"); !ok || tok == 0 {
+		t.Fatalf("LookupRelType(QUARANTINED_REL) = %d, %v; want retained token", tok, ok)
+	}
+	quarantined, err := g.Rels.ByType("QUARANTINED_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(QUARANTINED_REL): %v", err)
+	}
+	if len(quarantined) != 1 || quarantined[0].ID() != rel.ID() {
+		t.Fatalf("ByType(QUARANTINED_REL) = %v rows, want retained live partial row %d", len(quarantined), rel.ID())
+	}
+
+	fs.failPut = false
+	fs.failDelete = false
+	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+		t.Fatalf("Add real relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(REAL_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(REAL_REL) len = %d, want 1; retained token should prevent stale-row inheritance", len(rels))
+	}
+}
+
+func TestBatchAddRelationshipExistingRelTypePanicDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs, a, b := newRelCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateRelType("EXISTING_REL"); err != nil {
+		t.Fatalf("GetOrCreateRelType: %v", err)
+	}
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := bb.AddRelationship("EXISTING_REL", a, b, nil); err != nil {
+		t.Fatalf("Batch AddRelationship: %v", err)
+	}
+
+	fs.panicPut = true
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("Execute did not panic")
+			}
+		}()
+		_, _ = bb.Execute()
+	}()
+
+	fs.panicPut = false
+	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+		t.Fatalf("Add existing-type relationship: %v", err)
+	}
+	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByType(EXISTING_REL): %v", err)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("ByType(EXISTING_REL) len = %d, want 1; panic row was not cleaned up", len(rels))
 	}
 }
 
@@ -242,6 +653,68 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 	if len(rels) != 1 {
 		t.Fatalf("OutgoingRelationships: got %d, want 1", len(rels))
+	}
+}
+
+type ifAbsentExistingRowStore struct {
+	storepkg.MandatoryStore
+	start        types.NodeID
+	existingRows []*types.Relationship
+}
+
+func (s *ifAbsentExistingRowStore) OutgoingRelationships(id types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if id == s.start && len(s.existingRows) != 0 {
+		return s.existingRows, nil
+	}
+	return s.MandatoryStore.OutgoingRelationships(id, typeToken)
+}
+
+func TestGraphAddRelationshipByIDIfAbsentCopiesExistingCustomStoreRow(t *testing.T) {
+	t.Parallel()
+
+	store := &ifAbsentExistingRowStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nA: %v", err)
+	}
+	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nB: %v", err)
+	}
+	rel, err := g.Rels.AddByID("KNOWS", nA.ID(), nB.ID(), nil)
+	if err != nil {
+		t.Fatalf("AddByID: %v", err)
+	}
+
+	storeRow := rel.DeepCopy()
+	store.start = nA.ID()
+	store.existingRows = []*types.Relationship{storeRow}
+
+	got, created, err := g.Rels.AddByIDIfAbsent("KNOWS", nA.ID(), nB.ID(), nil)
+	if err != nil {
+		t.Fatalf("AddByIDIfAbsent existing: %v", err)
+	}
+	if created {
+		t.Fatal("AddByIDIfAbsent existing created a new relationship")
+	}
+	if got.ID() != rel.ID() {
+		t.Fatalf("AddByIDIfAbsent existing ID = %d, want %d", got.ID(), rel.ID())
+	}
+	if got == storeRow {
+		t.Fatal("AddByIDIfAbsent returned custom store-owned relationship row")
+	}
+
+	if err := got.SetProperty("caller_mutation", "visible only to caller"); err != nil {
+		t.Fatalf("mutate returned relationship: %v", err)
+	}
+	if _, ok := storeRow.GetProperty("caller_mutation"); ok {
+		t.Fatal("mutating returned existing relationship changed the custom store row")
 	}
 }
 
@@ -851,6 +1324,54 @@ func TestGraphGetRelsByIDs(t *testing.T) {
 	}
 }
 
+func TestGraphGetRelsByIDsDuplicatesReturnIndependentRows(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nA: %v", err)
+	}
+	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nB: %v", err)
+	}
+	r1, err := g.Rels.Add("KNOWS", nA, nB, nil)
+	if err != nil {
+		t.Fatalf("Add r1: %v", err)
+	}
+	r2, err := g.Rels.Add("LIKES", nA, nB, nil)
+	if err != nil {
+		t.Fatalf("Add r2: %v", err)
+	}
+
+	before := g.Stats.Get().RelsRead
+	got, err := g.Rels.GetByIDs([]types.RelID{r2.ID(), r1.ID(), r2.ID()})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs duplicates: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetRelationshipsByIDs duplicates len = %d, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i].ID() < got[i-1].ID() {
+			t.Fatalf("GetRelationshipsByIDs not sorted: result[%d].ID=%d < result[%d].ID=%d", i, got[i].ID(), i-1, got[i-1].ID())
+		}
+	}
+	var copies []*types.Relationship
+	for _, r := range got {
+		if r.ID() == r2.ID() {
+			copies = append(copies, r)
+		}
+	}
+	if len(copies) != 2 || copies[0] == copies[1] {
+		t.Fatal("GetRelationshipsByIDs returned aliased rows for duplicate relationship IDs")
+	}
+	if after := g.Stats.Get().RelsRead; after != before+int64(len(got)) {
+		t.Fatalf("RelsRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
+	}
+}
+
 func TestGraphGetRelsByIDsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -1153,5 +1674,30 @@ func TestGraphAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
 	}
 	if got, err := g.Rels.IncomingForNodes([]types.NodeID{b.ID(), missing}, ""); !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
 		t.Fatalf("IncomingForNodes mixed = %#v, %v; want nil, ErrNodeNotFound", got, err)
+	}
+}
+
+func TestGraphAdjacencyMissingNodeWithUnregisteredTypeReturnsErrNodeNotFound(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	missing := types.NodeID(snowflake.ID(999))
+	if _, err := g.Rels.Outgoing(missing, "NONEXISTENT"); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("Outgoing missing with unregistered type err = %v, want ErrNodeNotFound", err)
+	}
+	if _, err := g.Rels.Incoming(missing, "NONEXISTENT"); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("Incoming missing with unregistered type err = %v, want ErrNodeNotFound", err)
+	}
+	if got, err := g.Rels.OutgoingForNodes([]types.NodeID{a.ID(), missing}, "NONEXISTENT"); !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
+		t.Fatalf("OutgoingForNodes mixed with unregistered type = %#v, %v; want nil, ErrNodeNotFound", got, err)
+	}
+	if got, err := g.Rels.IncomingForNodes([]types.NodeID{b.ID(), missing}, "NONEXISTENT"); !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
+		t.Fatalf("IncomingForNodes mixed with unregistered type = %#v, %v; want nil, ErrNodeNotFound", got, err)
 	}
 }

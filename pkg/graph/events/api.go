@@ -10,6 +10,7 @@ type Ops interface {
 	SetSync(bus *EventBus) error
 	SetAsync(bus *AsyncEventBus) error
 	GetSync() *EventBus
+	GetAsync() *AsyncEventBus
 }
 
 // API is the events sub-API accessor.
@@ -52,4 +53,12 @@ func (a *API) GetSync() *EventBus {
 		return nil
 	}
 	return a.ops.GetSync()
+}
+
+// GetAsync returns the currently installed asynchronous EventBus, if any.
+func (a *API) GetAsync() *AsyncEventBus {
+	if a == nil || !a.ok {
+		return nil
+	}
+	return a.ops.GetAsync()
 }

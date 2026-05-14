@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -13,6 +14,64 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type nodeCreateFailAfterInstallStore struct {
+	*memory.Store
+	err        error
+	failPut    bool
+	failBatch  bool
+	failDelete bool
+	panicPut   bool
+	panicBatch bool
+}
+
+func (s *nodeCreateFailAfterInstallStore) PutNode(n *types.Node) error {
+	if err := s.Store.PutNode(n); err != nil {
+		return err
+	}
+	if s.panicPut {
+		panic("injected post-write node panic")
+	}
+	if s.failPut {
+		return s.err
+	}
+	return nil
+}
+
+func (s *nodeCreateFailAfterInstallStore) PutNodesBatch(nodes []*types.Node) error {
+	if err := s.Store.PutNodesBatch(nodes); err != nil {
+		return err
+	}
+	if s.panicBatch {
+		panic("injected post-write node batch panic")
+	}
+	if s.failBatch {
+		return s.err
+	}
+	return nil
+}
+
+func (s *nodeCreateFailAfterInstallStore) DeleteNode(id types.NodeID) error {
+	if s.failDelete {
+		return s.err
+	}
+	return s.Store.DeleteNode(id)
+}
+
+func newNodeCreateRollbackGraph(t *testing.T) (*Core, *nodeCreateFailAfterInstallStore) {
+	t.Helper()
+
+	fs := &nodeCreateFailAfterInstallStore{
+		Store: memory.New(),
+		err:   errors.New("injected post-write node failure"),
+	}
+	g, err := New(Config{Store: fs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g, fs
+}
 
 func TestGraphNodePrimaryLabel(t *testing.T) {
 	t.Parallel()
@@ -117,6 +176,283 @@ func TestGraphAddNode(t *testing.T) {
 	gotName, _ := got.GetProperty("name")
 	if gotName != "Alice" {
 		t.Fatalf("GetNode() property name = %v, want Alice", gotName)
+	}
+}
+
+func TestGraphAddNodeFailureDeletesPartialRowBeforeLabelRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+
+	fs.failPut = true
+	_, err := g.Nodes.Add([]string{"TRANSIENT_LABEL"}, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add transient node error = %v, want injected", err)
+	}
+	if tok, ok := g.Resolve.LookupLabel("TRANSIENT_LABEL"); ok || tok != 0 {
+		t.Fatalf("LookupLabel(TRANSIENT_LABEL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+		t.Fatalf("Add real node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(REAL_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(REAL_LABEL) len = %d, want 1; stale failed row inherited reused token", len(nodes))
+	}
+}
+
+func TestGraphAddNodeExistingLabelFailureDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateLabel("EXISTING_LABEL"); err != nil {
+		t.Fatalf("GetOrCreateLabel: %v", err)
+	}
+
+	fs.failPut = true
+	_, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add existing-label node error = %v, want injected", err)
+	}
+
+	fs.failPut = false
+	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+		t.Fatalf("retry Add existing-label node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(EXISTING_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(EXISTING_LABEL) len = %d, want 1; failed row was not cleaned up", len(nodes))
+	}
+}
+
+func TestGraphAddNodeExistingLabelPanicDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateLabel("EXISTING_LABEL"); err != nil {
+		t.Fatalf("GetOrCreateLabel: %v", err)
+	}
+
+	fs.panicPut = true
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("Add existing-label node did not panic")
+			}
+		}()
+		_, _ = g.Nodes.Add([]string{"EXISTING_LABEL"}, nil)
+	}()
+
+	fs.panicPut = false
+	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+		t.Fatalf("retry Add existing-label node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(EXISTING_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(EXISTING_LABEL) len = %d, want 1; panic row was not cleaned up", len(nodes))
+	}
+}
+
+func TestGraphAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+
+	fs.failPut = true
+	fs.failDelete = true
+	node, err := g.Nodes.Add([]string{"QUARANTINED_LABEL"}, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Add node error = %v, want injected", err)
+	}
+	if node == nil {
+		t.Fatal("Add node returned nil node after cleanup failure; live partial row must be caller-visible")
+	}
+	if tok, ok := g.Resolve.LookupLabel("QUARANTINED_LABEL"); !ok || tok == 0 {
+		t.Fatalf("LookupLabel(QUARANTINED_LABEL) = %d, %v; want retained token", tok, ok)
+	}
+	quarantined, err := g.Nodes.ByLabel("QUARANTINED_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(QUARANTINED_LABEL): %v", err)
+	}
+	if len(quarantined) != 1 || quarantined[0].ID() != node.ID() {
+		t.Fatalf("ByLabel(QUARANTINED_LABEL) = %v rows, want retained live partial row %d", len(quarantined), node.ID())
+	}
+
+	fs.failPut = false
+	fs.failDelete = false
+	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+		t.Fatalf("Add real node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(REAL_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(REAL_LABEL) len = %d, want 1; retained token should prevent stale-row inheritance", len(nodes))
+	}
+}
+
+func TestGraphImportNodeFailureDeletesPartialRowBeforeLabelRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	nodeID := types.NodeID(snowflake.ID(900101))
+
+	fs.failPut = true
+	_, err := g.Nodes.Import(context.Background(), nodeID, []string{"TRANSIENT_LABEL"}, nil)
+	if !errors.Is(err, fs.err) {
+		t.Fatalf("Import transient node error = %v, want injected", err)
+	}
+	if tok, ok := g.Resolve.LookupLabel("TRANSIENT_LABEL"); ok || tok != 0 {
+		t.Fatalf("LookupLabel(TRANSIENT_LABEL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failPut = false
+	if _, err := g.Nodes.Import(context.Background(), nodeID, []string{"REAL_LABEL"}, nil); err != nil {
+		t.Fatalf("Import real node with same ID: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(REAL_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(REAL_LABEL) len = %d, want 1; stale failed row inherited reused token", len(nodes))
+	}
+}
+
+func TestBatchAddNodeFailureDeletesPartialRowsBeforeLabelRollback(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := bb.AddNode([]string{"TRANSIENT_LABEL"}, nil); err != nil {
+		t.Fatalf("Batch AddNode: %v", err)
+	}
+
+	fs.failBatch = true
+	res, err := bb.Execute()
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
+	}
+	if res == nil || res.Created != 0 || res.Failed != 1 {
+		t.Fatalf("Execute result = %+v, want Created=0 Failed=1", res)
+	}
+	if tok, ok := g.Resolve.LookupLabel("TRANSIENT_LABEL"); ok || tok != 0 {
+		t.Fatalf("LookupLabel(TRANSIENT_LABEL) = %d, %v; want rollback", tok, ok)
+	}
+
+	fs.failBatch = false
+	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+		t.Fatalf("Add real node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(REAL_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(REAL_LABEL) len = %d, want 1; stale failed batch row inherited reused token", len(nodes))
+	}
+}
+
+func TestBatchAddNodeExistingLabelPanicDeletesPartialRow(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	if _, err := g.Resolve.GetOrCreateLabel("EXISTING_LABEL"); err != nil {
+		t.Fatalf("GetOrCreateLabel: %v", err)
+	}
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := bb.AddNode([]string{"EXISTING_LABEL"}, nil); err != nil {
+		t.Fatalf("Batch AddNode: %v", err)
+	}
+
+	fs.panicBatch = true
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("Execute did not panic")
+			}
+		}()
+		_, _ = bb.Execute()
+	}()
+
+	fs.panicBatch = false
+	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+		t.Fatalf("Add existing-label node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(EXISTING_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(EXISTING_LABEL) len = %d, want 1; panic row was not cleaned up", len(nodes))
+	}
+}
+
+func TestBatchAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
+	t.Parallel()
+
+	g, fs := newNodeCreateRollbackGraph(t)
+	bb, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	node, err := bb.AddNode([]string{"QUARANTINED_LABEL"}, nil)
+	if err != nil {
+		t.Fatalf("Batch AddNode: %v", err)
+	}
+
+	fs.failBatch = true
+	fs.failDelete = true
+	res, err := bb.Execute()
+	if !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute error = %v, want ErrBatchFailed", err)
+	}
+	if res == nil || res.Created != 1 || res.Failed != 1 {
+		t.Fatalf("Execute result = %+v, want Created=1 Failed=1", res)
+	}
+	if stats := g.Stats.Get(); stats.NodesAdded != 1 {
+		t.Fatalf("NodesAdded after live failed batch node = %d, want 1", stats.NodesAdded)
+	}
+	if tok, ok := g.Resolve.LookupLabel("QUARANTINED_LABEL"); !ok || tok == 0 {
+		t.Fatalf("LookupLabel(QUARANTINED_LABEL) = %d, %v; want retained token", tok, ok)
+	}
+	quarantined, err := g.Nodes.ByLabel("QUARANTINED_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(QUARANTINED_LABEL): %v", err)
+	}
+	if len(quarantined) != 1 || quarantined[0].ID() != node.ID() {
+		t.Fatalf("ByLabel(QUARANTINED_LABEL) = %v rows, want retained live partial row %d", len(quarantined), node.ID())
+	}
+
+	fs.failBatch = false
+	fs.failDelete = false
+	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+		t.Fatalf("Add real node: %v", err)
+	}
+	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel(REAL_LABEL): %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("ByLabel(REAL_LABEL) len = %d, want 1; retained token should prevent stale-row inheritance", len(nodes))
 	}
 }
 
@@ -260,6 +596,66 @@ func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 	}
 	if _, err := g.Nodes.Get(nC.ID()); err != nil {
 		t.Errorf("Node C should still exist: %v", err)
+	}
+}
+
+type deleteNodeWithHistoryFailureStore struct {
+	storepkg.MandatoryStore
+	target       types.NodeID
+	outgoingRows []*types.Relationship
+	err          error
+}
+
+func (s *deleteNodeWithHistoryFailureStore) OutgoingRelationships(id types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
+	if id == s.target && typeToken == 0 {
+		return s.outgoingRows, nil
+	}
+	return s.MandatoryStore.OutgoingRelationships(id, typeToken)
+}
+
+func (s *deleteNodeWithHistoryFailureStore) DeleteNodeWithHistory(types.NodeID, uint32, *types.Node, []storepkg.RelTombstone) error {
+	return s.err
+}
+
+func TestGraphDeleteNodeDoesNotMutateAdjacencyRowsOnDeleteFailure(t *testing.T) {
+	t.Parallel()
+
+	injectedErr := errors.New("synthetic DeleteNodeWithHistory failure")
+	store := &deleteNodeWithHistoryFailureStore{
+		MandatoryStore: memory.New(),
+		err:            injectedErr,
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nA: %v", err)
+	}
+	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add nB: %v", err)
+	}
+	rel, err := g.Rels.Add("KNOWS", nA, nB, nil)
+	if err != nil {
+		t.Fatalf("Add rel: %v", err)
+	}
+
+	adjacencyRow := rel.DeepCopy()
+	store.target = nA.ID()
+	store.outgoingRows = []*types.Relationship{adjacencyRow}
+
+	if err := g.Nodes.Delete(nA.ID()); !errors.Is(err, injectedErr) {
+		t.Fatalf("Delete node = %v, want injected failure", err)
+	}
+
+	if tm := adjacencyRow.Temporal(); tm != nil {
+		if tm.DeletedAt != 0 || tm.ValidTo != 0 || tm.TxTo != 0 {
+			t.Fatalf("adjacency row temporal mutated after failed delete: %+v", tm)
+		}
 	}
 }
 
@@ -950,6 +1346,46 @@ func TestGraphGetNodesByIDs(t *testing.T) {
 	_, err := g.Nodes.GetByIDs(ids)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("GetNodesByIDs() err = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestGraphGetNodesByIDsDuplicatesReturnIndependentRows(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add n1: %v", err)
+	}
+	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add n2: %v", err)
+	}
+
+	before := g.Stats.Get().NodesRead
+	got, err := g.Nodes.GetByIDs([]types.NodeID{n2.ID(), n1.ID(), n2.ID()})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs duplicates: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetNodesByIDs duplicates len = %d, want 3", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i].ID() < got[i-1].ID() {
+			t.Fatalf("GetNodesByIDs not sorted: result[%d].ID=%d < result[%d].ID=%d", i, got[i].ID(), i-1, got[i-1].ID())
+		}
+	}
+	var copies []*types.Node
+	for _, n := range got {
+		if n.ID() == n2.ID() {
+			copies = append(copies, n)
+		}
+	}
+	if len(copies) != 2 || copies[0] == copies[1] {
+		t.Fatal("GetNodesByIDs returned aliased rows for duplicate node IDs")
+	}
+	if after := g.Stats.Get().NodesRead; after != before+int64(len(got)) {
+		t.Fatalf("NodesRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
 	}
 }
 

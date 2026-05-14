@@ -36,6 +36,7 @@ type TemporalIndex struct {
 	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
 	dirty    bool            // true when entries have been appended but not yet sorted
 	Building bool            // true while CreateTemporalIndex is still backfilling
+	Mutated  map[snowflake.ID]struct{}
 }
 
 // NewTemporalIndex allocates an empty temporal index.
@@ -56,7 +57,42 @@ func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 
 	// Append unsorted — sort is deferred to QueryAt/QueryOverlap.
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.markMutated(id)
 	ti.dirty = true
+}
+
+// AddKnownAbsent appends an entry without scanning for an existing ID.
+// Caller must prove id is not already present in this index.
+// Must be called under the store's write lock.
+func (ti *TemporalIndex) AddKnownAbsent(id snowflake.ID, from, to types.Instant) {
+	if ti == nil {
+		return
+	}
+	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.dirty = true
+}
+
+func (ti *TemporalIndex) markMutated(id snowflake.ID) {
+	if ti != nil && ti.Mutated != nil {
+		ti.Mutated[id] = struct{}{}
+	}
+}
+
+// WasMutated reports whether id was touched while this index was being built.
+func (ti *TemporalIndex) WasMutated(id snowflake.ID) bool {
+	if ti == nil || ti.Mutated == nil {
+		return false
+	}
+	_, ok := ti.Mutated[id]
+	return ok
+}
+
+// ClearMutationTracking stops tracking concurrent writes after index creation.
+func (ti *TemporalIndex) ClearMutationTracking() {
+	if ti == nil {
+		return
+	}
+	ti.Mutated = nil
 }
 
 // sortIfDirty sorts entries by (From ASC, ID ASC) if the index has been
@@ -86,12 +122,15 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 	if ti == nil {
 		return
 	}
-	for i, e := range ti.Entries {
+	ti.markMutated(id)
+	out := ti.Entries[:0]
+	for _, e := range ti.Entries {
 		if e.ID == id {
-			ti.Entries = append(ti.Entries[:i], ti.Entries[i+1:]...)
-			return
+			continue
 		}
+		out = append(out, e)
 	}
+	ti.Entries = out
 }
 
 // QueryAt returns IDs of all entries valid at instant t.
@@ -122,7 +161,7 @@ func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 			ids = append(ids, e.ID)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }
 
@@ -131,7 +170,7 @@ func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 //
 // Returns a sorted slice of IDs.
 func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
-	if ti == nil || len(ti.Entries) == 0 {
+	if ti == nil || len(ti.Entries) == 0 || start >= end {
 		return nil
 	}
 	ti.sortIfDirty()
@@ -152,7 +191,7 @@ func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
 			ids = append(ids, e.ID)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }
 
@@ -183,8 +222,8 @@ func AddNodeToTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id 
 		return
 	}
 	from, to := NodeTemporalBounds(id, n.Temporal())
-	for _, tok := range n.AllLabelTokens() {
-		if ti, ok := idxs[tok.Value()]; ok {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			ti.Add(id, from, to)
 		}
 	}
@@ -196,8 +235,8 @@ func RemoveNodeFromTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node
 	if len(idxs) == 0 {
 		return
 	}
-	for _, tok := range n.AllLabelTokens() {
-		if ti, ok := idxs[tok.Value()]; ok {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			ti.Remove(id)
 		}
 	}

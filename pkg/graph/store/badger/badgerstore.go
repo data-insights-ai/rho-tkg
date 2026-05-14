@@ -37,6 +37,7 @@ var (
 	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
 	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
 	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue         = storecontract.ErrInvalidVectorValue
 	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
 	ErrNilStore                   = storecontract.ErrNilStore
 	ErrStoreClosed                = storecontract.ErrStoreClosed
@@ -148,14 +149,16 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu      sync.RWMutex
-	nodeIDs    map[types.NodeID]struct{}                 // O(1) node existence check
-	nodeHashes map[types.NodeID]string                   // current node integrity hash for live endpoint validation
-	relIDs     map[types.RelID]struct{}                  // O(1) rel existence check
-	labelIdx   map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID)
-	typeIdx    map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
-	outIdx     map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
-	inIdx      map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
+	idxMu       sync.RWMutex
+	nodeIDs     map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes  map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs    map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev uint64
+	relIDs      map[types.RelID]struct{}                  // O(1) rel existence check
+	labelIdx    map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID)
+	typeIdx     map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
+	outIdx      map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
+	inIdx       map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
 
 	// Entity caches (internal sync via entityLRU mutex).
 	nodeCache *indexpkg.Cache[*types.Node]
@@ -221,6 +224,11 @@ type Store struct {
 	flushDone  chan struct{}
 	gcDone     chan struct{}
 	closeOnce  sync.Once
+	// closing is set at the start of Close(), before background goroutines are
+	// stopped and before the final flush snapshots pending writes. Public
+	// operations must fail closed after this point so no mutation can enqueue
+	// work that misses the final flush.
+	closing atomic.Bool
 	// dbClosed is set to true immediately before bs.db.Close() in Close().
 	// flush() checks this before calling WriteBatch.Flush() to avoid
 	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
@@ -300,6 +308,7 @@ func New(cfg Config) (*Store, error) {
 		db:              db,
 		nodeIDs:         make(map[types.NodeID]struct{}),
 		nodeHashes:      make(map[types.NodeID]string),
+		nodeRevs:        make(map[types.NodeID]uint64),
 		relIDs:          make(map[types.RelID]struct{}),
 		labelIdx:        make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
@@ -396,6 +405,7 @@ func (bs *Store) loadIndexes() error {
 			}
 			bs.nodeIDs[nid] = struct{}{}
 			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
+			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
 			decodedNodeLabels[nid] = labels
 		}
@@ -611,6 +621,7 @@ func (bs *Store) loadIndexes() error {
 			}); e != nil {
 				return fmt.Errorf("graph: load property index definitions: %w", e)
 			}
+			seenProperty := make(map[indexpkg.PropertyIndexKey]struct{}, len(defs))
 			for _, def := range defs {
 				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
 					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
@@ -621,6 +632,10 @@ func (bs *Store) loadIndexes() error {
 						def.LabelToken, def.PropertyKey, err)
 				}
 				key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+				if _, exists := seenProperty[key]; exists {
+					continue
+				}
+				seenProperty[key] = struct{}{}
 				idx := indexpkg.NewPropertyIndex()
 				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
@@ -638,8 +653,8 @@ func (bs *Store) loadIndexes() error {
 							}
 							continue
 						}
-						if val, found := n.GetProperty(def.PropertyKey); found {
-							idx.Add(rawID, val)
+						if valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey); found {
+							idx.AddKey(rawID, valueKey)
 						}
 					}
 				}
@@ -657,10 +672,15 @@ func (bs *Store) loadIndexes() error {
 			}); e != nil {
 				return fmt.Errorf("graph: load temporal index definitions: %w", e)
 			}
+			seenTemporal := make(map[uint16]struct{}, len(tokens))
 			for _, tok := range tokens {
 				if err := storecontract.ValidateLabelToken(tok); err != nil {
 					return fmt.Errorf("graph: load temporal index definition label %d: %w", tok, err)
 				}
+				if _, exists := seenTemporal[tok]; exists {
+					continue
+				}
+				seenTemporal[tok] = struct{}{}
 				ti := indexpkg.NewTemporalIndex()
 				if nodeIDs, ok := bs.labelIdx[tok]; ok {
 					for nodeID := range nodeIDs {
@@ -676,7 +696,7 @@ func (bs *Store) loadIndexes() error {
 							continue
 						}
 						from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-						ti.Add(rawID, from, to)
+						ti.AddKnownAbsent(rawID, from, to)
 					}
 				}
 				bs.temporalIndexes[tok] = ti
@@ -781,20 +801,13 @@ func (bs *Store) loadIndexes() error {
 							}
 							continue
 						}
-						val, found := n.GetProperty(def.PropertyKey)
-						if !found {
-							continue
-						}
-						vec, ok := indexpkg.ToFloat32Slice(val)
+						vec, ok := n.Float32SlicePropertyCopy(def.PropertyKey)
 						if !ok {
 							continue
 						}
-						if addErr := vi.Add(rawID, vec); addErr != nil {
-							bs.indexRebuildVectorSkips.Add(1)
-							if bs.logger != nil {
-								bs.logger.Warningf("graph: vector-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, addErr)
-							}
-							continue
+						if addErr := vi.AddOwned(rawID, vec); addErr != nil {
+							return fmt.Errorf("graph: load vector index definition label %d property %q rebuild node %d: %w",
+								def.LabelToken, def.PropertyKey, rawID, addErr)
 						}
 					}
 				}
@@ -880,7 +893,7 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // duration. Releasing flushMu would only save a sync.Mutex acquisition
 // that is already serialised behind idxMu anyway.
 func (bs *Store) Clear() error {
-	if err := bs.checkOpen(); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
 	bs.flushMu.Lock()
@@ -892,6 +905,8 @@ func (bs *Store) Clear() error {
 	// Clear in-memory indexes.
 	bs.nodeIDs = make(map[types.NodeID]struct{})
 	bs.nodeHashes = make(map[types.NodeID]string)
+	bs.nodeRevs = make(map[types.NodeID]uint64)
+	bs.nextNodeRev = 0
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
@@ -956,6 +971,7 @@ func (bs *Store) Close() error {
 	}
 	var err error
 	bs.closeOnce.Do(func() {
+		bs.closing.Store(true)
 		close(bs.stopCh)
 		<-bs.flushDone // wait for flushLoop exit (or immediate if never started)
 		<-bs.gcDone    // wait for GC exit
@@ -980,8 +996,21 @@ func (bs *Store) checkOpen() error {
 	if bs.db == nil {
 		return ErrStoreClosed
 	}
+	if bs.closing.Load() {
+		return ErrStoreClosed
+	}
 	if bs.dbClosed.Load() {
 		return ErrStoreClosed
+	}
+	return nil
+}
+
+func (bs *Store) checkWritable() error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if bs.readOnly {
+		return fmt.Errorf("%w: read-only store", ErrInvalidStoreMutation)
 	}
 	return nil
 }
@@ -1001,7 +1030,7 @@ type IndexRebuildStats struct {
 // IndexRebuildStats returns the diagnostic counters captured during the last
 // loadIndexes pass. Zero means a clean rebuild.
 func (bs *Store) IndexRebuildStats() IndexRebuildStats {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.closing.Load() || bs.dbClosed.Load() {
 		return IndexRebuildStats{}
 	}
 	return IndexRebuildStats{

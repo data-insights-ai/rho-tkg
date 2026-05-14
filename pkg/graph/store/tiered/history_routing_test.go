@@ -149,16 +149,24 @@ func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
 		{name: "nil"},
 		{name: "archive", store: archive},
 	}
-	if got := ts.findNodeInAnyShardStore(n.ID().SnowflakeID(), stores); got != archive {
+	got, err := ts.findNodeInAnyShardStore(n.ID().SnowflakeID(), stores)
+	if err != nil {
+		t.Fatalf("findNodeInAnyShardStore archive node: %v", err)
+	}
+	if got != archive {
 		t.Fatal("findNodeInAnyShardStore did not find archive node in pinned snapshot")
 	}
-	if got := ts.findNodeInAnyShardStore(types.NodeID(0).SnowflakeID(), stores); got != nil {
+	got, err = ts.findNodeInAnyShardStore(types.NodeID(0).SnowflakeID(), stores)
+	if err != nil {
+		t.Fatalf("findNodeInAnyShardStore missing node: %v", err)
+	}
+	if got != nil {
 		t.Fatal("findNodeInAnyShardStore found a missing node")
 	}
 }
 
-// allShardStoresWithLazyOpen previously called es.GetStoreForTest(ts) which opens a
-// cold shard but does not bump activeReqs. closeIdleShards could then race
+// allShardStoresWithLazyOpen previously used an unpinned lazy-open helper,
+// which opened a cold shard but did not bump activeReqs. closeIdleShards could then race
 // the caller and close the BadgerStore mid-iteration. Verify the new
 // checkout-based contract: while the caller is iterating the returned
 // stores, closeIdleShards must skip every cold shard (activeReqs > 0).
@@ -181,12 +189,9 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -234,10 +239,9 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 	}
 }
 
-// resolveShardStore must pin the cold event shard it returns to mirror the
+// resolveShardStore must pin every closeable handle it returns to mirror the
 // allShardStoresWithLazyOpen contract used by VerifyShard. Reference and
-// archive lookups stay no-op (those stores are never closed by idle-close)
-// but must still return a non-nil release for caller-side defer parity.
+// archive shards are not idle-closed, but Close still closes them.
 func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -255,9 +259,7 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	hotName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	_ = ts.RotateHotShard()
-	ts.MuForTest().Unlock()
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
@@ -293,9 +295,7 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 		t.Fatalf("activeReqs = %d after release, want 0", coldES.ActiveReqsForTest().Load())
 	}
 
-	// Reference shard never gets pinned (always live), but release must
-	// still be a non-nil callable so admin callers can defer it
-	// unconditionally.
+	// Reference shard must also be pinned because Close closes it.
 	_, refRelease, err := ts.ResolveShardStoreForTest("reference")
 	if err != nil {
 		t.Fatalf("resolveShardStore(reference): %v", err)
@@ -303,7 +303,13 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	if refRelease == nil {
 		t.Fatal("resolveShardStore(reference) returned nil release")
 	}
+	if got := ts.RefActiveReqsForTest().Load(); got != 1 {
+		t.Fatalf("refActiveReqs after reference resolve = %d, want 1", got)
+	}
 	refRelease()
+	if got := ts.RefActiveReqsForTest().Load(); got != 0 {
+		t.Fatalf("refActiveReqs after reference release = %d, want 0", got)
+	}
 }
 
 // Close() must wait for in-flight checkouts to drain before closing event
@@ -358,6 +364,112 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close did not return within 2s after checkin")
 	}
+}
+
+func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
+	ts := newTestTieredStore(t)
+	_, release, err := ts.ResolveShardStoreForTest("reference")
+	if err != nil {
+		t.Fatalf("resolve reference: %v", err)
+	}
+	if got := ts.RefActiveReqsForTest().Load(); got != 1 {
+		t.Fatalf("refActiveReqs after resolve = %d, want 1", got)
+	}
+
+	closed := make(chan error, 1)
+	go func() { closed <- ts.Close() }()
+
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before reference release (err=%v)", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close after reference release: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return within 2s after reference release")
+	}
+}
+
+func TestTieredStore_CheckoutArchiveLifecycle(t *testing.T) {
+	t.Run("nil store", func(t *testing.T) {
+		var ts *Store
+		archive, release, err := ts.checkoutArchive()
+		if !errors.Is(err, ErrNilStore) {
+			t.Fatalf("checkoutArchive nil error = %v, want ErrNilStore", err)
+		}
+		if archive != nil {
+			t.Fatal("checkoutArchive nil returned a store")
+		}
+		release()
+	})
+
+	t.Run("zero value store", func(t *testing.T) {
+		var ts Store
+		archive, release, err := ts.checkoutArchive()
+		if !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("checkoutArchive zero value error = %v, want ErrStoreClosed", err)
+		}
+		if archive != nil {
+			t.Fatal("checkoutArchive zero value returned a store")
+		}
+		release()
+	})
+
+	t.Run("absent archive", func(t *testing.T) {
+		ts := newTestTieredStore(t)
+		archive, release, err := ts.checkoutArchive()
+		if err != nil {
+			t.Fatalf("checkoutArchive absent archive: %v", err)
+		}
+		if archive != nil {
+			t.Fatal("checkoutArchive absent archive returned a store")
+		}
+		release()
+		if got := ts.ArchiveActiveReqsForTest().Load(); got != 0 {
+			t.Fatalf("archiveActiveReqs after absent release = %d, want 0", got)
+		}
+	})
+
+	t.Run("background error", func(t *testing.T) {
+		ts := newTestTieredStore(t)
+		injected := errors.New("injected archive checkout background error")
+		ts.recordBackgroundError(injected)
+		archive, release, err := ts.checkoutArchive()
+		if !errors.Is(err, injected) {
+			t.Fatalf("checkoutArchive background error = %v, want injected error", err)
+		}
+		if archive != nil {
+			t.Fatal("checkoutArchive background error returned a store")
+		}
+		release()
+		if got := ts.ArchiveActiveReqsForTest().Load(); got != 0 {
+			t.Fatalf("archiveActiveReqs after background error = %d, want 0", got)
+		}
+	})
+
+	t.Run("closed store", func(t *testing.T) {
+		ts := newTestTieredStore(t)
+		if err := ts.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		archive, release, err := ts.checkoutArchive()
+		if !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("checkoutArchive closed error = %v, want ErrStoreClosed", err)
+		}
+		if archive != nil {
+			t.Fatal("checkoutArchive closed returned a store")
+		}
+		release()
+		if got := ts.ArchiveActiveReqsForTest().Load(); got != 0 {
+			t.Fatalf("archiveActiveReqs after closed checkout = %d, want 0", got)
+		}
+	})
 }
 
 // After Close marks ts.ClosedForTest(), fresh checkoutStore calls must return

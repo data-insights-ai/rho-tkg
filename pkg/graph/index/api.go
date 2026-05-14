@@ -99,7 +99,8 @@ func (a *API) DropTemporal(label string) error {
 	return ops.DropTemporal(label)
 }
 
-// CreateVector creates a vector (kNN) index.
+// CreateVector creates a vector (kNN) index. Existing indexed vectors with
+// non-finite coordinates are rejected with ErrInvalidVectorValue.
 func (a *API) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -118,6 +119,7 @@ func (a *API) DropVector(label, propertyKey string) error {
 }
 
 // SearchNearest returns the k nearest nodes to query in the vector index.
+// Queries containing NaN or infinity are rejected with ErrInvalidVectorValue.
 func (a *API) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -158,5 +160,14 @@ func (a *API) Providers() []string {
 	if a == nil || !a.ok {
 		return nil
 	}
-	return a.ops.Providers()
+	return cloneStrings(a.ops.Providers())
+}
+
+func cloneStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
 }

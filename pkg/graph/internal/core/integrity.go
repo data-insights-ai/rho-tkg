@@ -2,12 +2,15 @@ package core
 
 import (
 	"errors"
+	"reflect"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/integrity"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+const hashVerifyHistoryVersionBatchSize = 4096
 
 // VerifyNodeChain verifies the full hash chain for a node.
 // Returns (true, nil) if the chain is valid. Returns (false, nil) if a hash
@@ -16,10 +19,13 @@ import (
 //
 // VerifyNodeChain deleted entities: if the current node is gone (storepkg.ErrNodeNotFound) but
 // history exists, verifies the history chain alone. Labels are extracted from
-// the last history entry's internal tokens.
+// each history entry's internal tokens.
 func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 	c := h.c
 	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
 		return false, err
 	}
 	valid := false
@@ -32,63 +38,121 @@ func (h *HashOps) VerifyNodeChain(id types.NodeID) (bool, error) {
 }
 
 func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
-	current, err := c.store.GetNode(id)
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return false, err
+	}
+	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return false, err
 	}
 	// current may be nil for deleted entities.
 
-	history, err := c.store.GetNodeHistory(id)
+	if pager := hashVerifyHistoryVersionPageCapability(c.store); pager != nil {
+		return c.verifyNodeChainPagedLocked(id, current, pager)
+	}
+
+	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return false, err
 	}
 
+	return c.verifyNodeChainRowsLocked(current, history)
+}
+
+func (c *Core) verifyNodeChainRowsLocked(current *types.Node, history []*types.Node) (bool, error) {
 	if current == nil && len(history) == 0 {
 		return false, storepkg.ErrNodeNotFound
 	}
 
-	// Build chain: history (ascending version order) + current (if exists).
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
+	var prev *types.Node
+	for _, entry := range history {
+		valid, err := c.verifyNodeChainEntryLocked(entry, prev)
+		if err != nil || !valid {
+			return valid, err
+		}
+		prev = entry
 	}
+	if current != nil {
+		return c.verifyNodeChainEntryLocked(current, prev)
+	}
+	return true, nil
+}
 
-	for i, entry := range chain {
-		ig := entry.Integrity()
-		if ig == nil {
-			return false, nil
-		}
-
-		if entry.Version() == 0 {
-			// Genesis: PrevHash must be empty.
-			if ig.PrevHash != "" {
-				return false, nil
-			}
-		} else if i > 0 {
-			// Non-genesis with predecessor in chain: verify PrevHash link.
-			prevIG := chain[i-1].Integrity()
-			if prevIG == nil {
-				return false, nil
-			}
-			if ig.PrevHash != prevIG.Hash {
-				return false, nil
-			}
-		}
-		// else: i == 0 && version != 0 → truncated history, skip link check.
-		// Hash recomputation below still verifies content integrity.
-
-		// Recompute hash and compare with stored.
-		labels := c.nodeLabelsUnlocked(entry)
-		computed, err := integrity.ComputeNodeHashChecked(entry, labels)
+func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, pager storepkg.HistoryVersionPageCapability) (bool, error) {
+	var (
+		prev        *types.Node
+		seenHistory bool
+		start       uint32
+	)
+	for {
+		history, err := c.nodeHistoryVersionsFrom(pager, id, start, hashVerifyHistoryVersionBatchSize)
 		if err != nil {
 			return false, err
 		}
-		if ig.Hash != computed {
+		if len(history) == 0 {
+			break
+		}
+		for _, entry := range history {
+			valid, err := c.verifyNodeChainEntryLocked(entry, prev)
+			if err != nil || !valid {
+				return valid, err
+			}
+			prev = entry
+			seenHistory = true
+		}
+		if len(history) < hashVerifyHistoryVersionBatchSize {
+			break
+		}
+		lastVersion := history[len(history)-1].Version()
+		if lastVersion == ^uint32(0) {
+			break
+		}
+		start = lastVersion + 1
+	}
+	if current == nil && !seenHistory {
+		return false, storepkg.ErrNodeNotFound
+	}
+	if current != nil {
+		return c.verifyNodeChainEntryLocked(current, prev)
+	}
+	return true, nil
+}
+
+func (c *Core) verifyNodeChainEntryLocked(entry, prev *types.Node) (bool, error) {
+	if entry == nil {
+		return false, ErrNilNode
+	}
+	ig := entry.Integrity()
+	if ig == nil {
+		return false, nil
+	}
+
+	if entry.Version() == 0 {
+		// Genesis: PrevHash must be empty.
+		if ig.PrevHash != "" {
+			return false, nil
+		}
+	} else if prev != nil {
+		// Non-genesis with predecessor in chain: verify PrevHash link.
+		prevIG := prev.Integrity()
+		if prevIG == nil {
+			return false, nil
+		}
+		if ig.PrevHash != prevIG.Hash {
 			return false, nil
 		}
 	}
+	// else: first visible entry has version != 0, so history was truncated;
+	// skip the missing predecessor link and still verify content integrity.
 
+	labels := c.nodeLabelsUnlocked(entry)
+	computed, err := integrity.ComputeNodeHashChecked(entry, labels)
+	if err != nil {
+		return false, err
+	}
+	if ig.Hash != computed {
+		return false, nil
+	}
 	return true, nil
 }
 
@@ -104,6 +168,9 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 	if err := c.checkOpen(); err != nil {
 		return false, err
 	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return false, err
+	}
 	valid := false
 	err := c.readUnderRLock(func() error {
 		var err error
@@ -114,67 +181,154 @@ func (h *HashOps) VerifyRelChain(id types.RelID) (bool, error) {
 }
 
 func (c *Core) verifyRelChainLocked(id types.RelID) (bool, error) {
-	current, err := c.store.GetRelationship(id)
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return false, err
+	}
+	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return false, err
 	}
 	// current may be nil for deleted entities.
 
-	history, err := c.store.GetRelHistory(id)
+	if pager := hashVerifyHistoryVersionPageCapability(c.store); pager != nil {
+		return c.verifyRelChainPagedLocked(id, current, pager)
+	}
+
+	history, err := c.getRelHistory(id)
 	if err != nil {
 		return false, err
 	}
 
+	return c.verifyRelChainRowsLocked(current, history)
+}
+
+func (c *Core) verifyRelChainRowsLocked(current *types.Relationship, history []*types.Relationship) (bool, error) {
 	if current == nil && len(history) == 0 {
 		return false, storepkg.ErrRelNotFound
-	}
-
-	// Build chain: history (ascending version order) + current (if exists).
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
 	}
 
 	// Extract type name from the best available source.
 	typeSource := current
 	if typeSource == nil {
-		typeSource = chain[len(chain)-1]
+		typeSource = history[len(history)-1]
+	}
+	if typeSource == nil {
+		return false, ErrNilRelationship
 	}
 	typeName := c.relTypeUnlocked(typeSource)
 
-	for i, entry := range chain {
-		ig := entry.Integrity()
-		if ig == nil {
-			return false, nil
+	var prev *types.Relationship
+	for _, entry := range history {
+		valid, err := verifyRelChainEntry(entry, prev, typeName)
+		if err != nil || !valid {
+			return valid, err
 		}
+		prev = entry
+	}
+	if current != nil {
+		return verifyRelChainEntry(current, prev, typeName)
+	}
+	return true, nil
+}
 
-		if entry.Version() == 0 {
-			// Genesis: PrevHash must be empty.
-			if ig.PrevHash != "" {
-				return false, nil
-			}
-		} else if i > 0 {
-			// Non-genesis with predecessor in chain: verify PrevHash link.
-			prevIG := chain[i-1].Integrity()
-			if prevIG == nil {
-				return false, nil
-			}
-			if ig.PrevHash != prevIG.Hash {
-				return false, nil
-			}
-		}
-		// else: i == 0 && version != 0 → truncated history, skip link check.
+func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relationship, pager storepkg.HistoryVersionPageCapability) (bool, error) {
+	var (
+		prev          *types.Relationship
+		seenHistory   bool
+		start         uint32
+		typeName      string
+		typeNameReady bool
+	)
+	if current != nil {
+		typeName = c.relTypeUnlocked(current)
+		typeNameReady = true
+	}
 
-		// Recompute hash and compare with stored.
-		computed, err := integrity.ComputeRelHashChecked(entry, typeName)
+	for {
+		history, err := c.relHistoryVersionsFrom(pager, id, start, hashVerifyHistoryVersionBatchSize)
 		if err != nil {
 			return false, err
 		}
-		if ig.Hash != computed {
+		if len(history) == 0 {
+			break
+		}
+		if !typeNameReady {
+			if history[0] == nil {
+				return false, ErrNilRelationship
+			}
+			typeName = c.relTypeUnlocked(history[0])
+			typeNameReady = true
+		}
+		for _, entry := range history {
+			valid, err := verifyRelChainEntry(entry, prev, typeName)
+			if err != nil || !valid {
+				return valid, err
+			}
+			prev = entry
+			seenHistory = true
+		}
+		if len(history) < hashVerifyHistoryVersionBatchSize {
+			break
+		}
+		lastVersion := history[len(history)-1].Version()
+		if lastVersion == ^uint32(0) {
+			break
+		}
+		start = lastVersion + 1
+	}
+	if current == nil && !seenHistory {
+		return false, storepkg.ErrRelNotFound
+	}
+	if current != nil {
+		return verifyRelChainEntry(current, prev, typeName)
+	}
+	return true, nil
+}
+
+func verifyRelChainEntry(entry, prev *types.Relationship, typeName string) (bool, error) {
+	if entry == nil {
+		return false, ErrNilRelationship
+	}
+	ig := entry.Integrity()
+	if ig == nil {
+		return false, nil
+	}
+
+	if entry.Version() == 0 {
+		// Genesis: PrevHash must be empty.
+		if ig.PrevHash != "" {
+			return false, nil
+		}
+	} else if prev != nil {
+		// Non-genesis with predecessor in chain: verify PrevHash link.
+		prevIG := prev.Integrity()
+		if prevIG == nil {
+			return false, nil
+		}
+		if ig.PrevHash != prevIG.Hash {
 			return false, nil
 		}
 	}
+	// else: first visible entry has version != 0, so history was truncated.
 
+	computed, err := integrity.ComputeRelHashChecked(entry, typeName)
+	if err != nil {
+		return false, err
+	}
+	if ig.Hash != computed {
+		return false, nil
+	}
 	return true, nil
+}
+
+func hashVerifyHistoryVersionPageCapability(store storepkg.MandatoryStore) storepkg.HistoryVersionPageCapability {
+	pager := historyVersionPageCapability(store)
+	if pager == nil || isExactNativeStore(store) {
+		return pager
+	}
+	typ := reflect.TypeOf(store)
+	if typeDeclaresMethod(typ, "GetNodeHistory") || typeDeclaresMethod(typ, "GetRelHistory") {
+		return nil
+	}
+	return pager
 }

@@ -71,6 +71,11 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 		}
 		if !hasTemporalFilter(opts) {
 			nodes, err := c.store.NodesByLabel(tok, opts)
+			if err == nil && !c.storeRowsTrust {
+				if err = c.validateNodesByLabelPage(tok, opts, nodes); err == nil {
+					nodes = copyNodeRows(nodes)
+				}
+			}
 			result = nodes
 			return err
 		}
@@ -82,9 +87,9 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.NodeID, 0, len(current))
-		for _, n := range current {
-			currentIDs = append(currentIDs, n.ID())
+		currentIDs, err := c.nodeIDsFromLabelRows(tok, current)
+		if err != nil {
+			return err
 		}
 
 		pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
@@ -138,6 +143,11 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 		}
 		if !hasTemporalFilter(opts) {
 			rels, err := c.store.RelationshipsByType(tok, opts)
+			if err == nil && !c.storeRowsTrust {
+				if err = c.validateRelationshipsByTypePage(tok, opts, rels); err == nil {
+					rels = copyRelationshipRows(rels)
+				}
+			}
 			result = rels
 			return err
 		}
@@ -148,9 +158,9 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.RelID, 0, len(current))
-		for _, r := range current {
-			currentIDs = append(currentIDs, r.ID())
+		currentIDs, err := c.relIDsFromTypeRows(tok, current)
+		if err != nil {
+			return err
 		}
 
 		pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
@@ -199,13 +209,27 @@ func (r *RelOps) Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relati
 		if typeName != "" {
 			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
-				return nil
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
 			}
 			tok = t
 		}
+		if !c.storeRowsTrust {
+			if err := c.validateRequestedNodesExist([]types.NodeID{nodeID}); err != nil {
+				return err
+			}
+		}
 		rels, err := c.store.OutgoingRelationships(nodeID, tok)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := c.validateOutgoingRelationshipRows(nodeID, tok, rels); err != nil {
+				return err
+			}
+			rels = copyRelationshipRows(rels)
+		}
 		result = rels
-		return err
+		return nil
 	})
 	return result, err
 }
@@ -239,13 +263,27 @@ func (r *RelOps) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 		if typeName != "" {
 			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
-				return nil
+				return c.validateRequestedNodesExist(nodeIDs)
 			}
 			tok = t
 		}
+		if !c.storeRowsTrust {
+			if err := c.validateRequestedNodesExist(nodeIDs); err != nil {
+				return err
+			}
+		}
 		rels, err := c.store.OutgoingRelationshipsForNodes(nodeIDs, tok)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := c.validateOutgoingRelationshipMap(nodeIDs, tok, rels); err != nil {
+				return err
+			}
+			rels = copyRelationshipRowMap(rels)
+		}
 		result = rels
-		return err
+		return nil
 	})
 	return result, err
 }
@@ -279,13 +317,27 @@ func (r *RelOps) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[
 		if typeName != "" {
 			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
-				return nil
+				return c.validateRequestedNodesExist(nodeIDs)
 			}
 			tok = t
 		}
+		if !c.storeRowsTrust {
+			if err := c.validateRequestedNodesExist(nodeIDs); err != nil {
+				return err
+			}
+		}
 		rels, err := c.store.IncomingRelationshipsForNodes(nodeIDs, tok)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := c.validateIncomingRelationshipMap(nodeIDs, tok, rels); err != nil {
+				return err
+			}
+			rels = copyRelationshipRowMap(rels)
+		}
 		result = rels
-		return err
+		return nil
 	})
 	return result, err
 }
@@ -312,13 +364,27 @@ func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relati
 		if typeName != "" {
 			t, ok := c.lookupRelTypeQueryToken(typeName)
 			if !ok {
-				return nil
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
 			}
 			tok = t
 		}
+		if !c.storeRowsTrust {
+			if err := c.validateRequestedNodesExist([]types.NodeID{nodeID}); err != nil {
+				return err
+			}
+		}
 		rels, err := c.store.IncomingRelationships(nodeID, tok)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := c.validateIncomingRelationshipRows(nodeID, tok, rels); err != nil {
+				return err
+			}
+			rels = copyRelationshipRows(rels)
+		}
 		result = rels
-		return err
+		return nil
 	})
 	return result, err
 }
@@ -331,7 +397,7 @@ func (n *NodeOps) Count() (int, error) {
 	if c.closed.Load() {
 		return 0, ErrGraphClosed
 	}
-	return c.store.NodeCount()
+	return c.nodeCount()
 }
 
 // Count returns the number of relationships in the store.
@@ -342,7 +408,7 @@ func (r *RelOps) Count() (int, error) {
 	if c.closed.Load() {
 		return 0, ErrGraphClosed
 	}
-	return c.store.RelationshipCount()
+	return c.relCount()
 }
 
 // All returns all nodes in the store, with optional pagination.
@@ -364,8 +430,17 @@ func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	err := c.readUnderRLock(func() error {
 		if !hasTemporalFilter(opts) {
 			nodes, err := c.store.AllNodes(opts)
+			if err != nil {
+				return err
+			}
+			if !c.storeRowsTrust {
+				if err := validateAllNodePage(opts, nodes); err != nil {
+					return err
+				}
+				nodes = copyNodeRows(nodes)
+			}
 			result = nodes
-			return err
+			return nil
 		}
 		err := c.forEachKnownNodeIDByDepth(opts.Depth, func(id types.NodeID) error {
 			n, err := c.findNodeVersionForOpts(id, opts, nil)
@@ -411,8 +486,17 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	err := c.readUnderRLock(func() error {
 		if !hasTemporalFilter(opts) {
 			rels, err := c.store.AllRelationships(opts)
+			if err != nil {
+				return err
+			}
+			if !c.storeRowsTrust {
+				if err := validateAllRelationshipPage(opts, rels); err != nil {
+					return err
+				}
+				rels = copyRelationshipRows(rels)
+			}
 			result = rels
-			return err
+			return nil
 		}
 		err := c.forEachKnownRelIDByDepth(opts.Depth, func(id types.RelID) error {
 			r, err := c.findRelVersionForOpts(id, opts, nil)
@@ -439,11 +523,15 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 }
 
 // GetByIDs returns nodes for every requested ID sorted by ascending ID.
+// Nil or empty ids returns nil, nil after the graph lifecycle check.
 // Missing IDs return store.ErrNodeNotFound.
 func (n *NodeOps) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
 	}
 	for _, id := range ids {
 		if err := storepkg.ValidateNodeID(id); err != nil {
@@ -453,18 +541,32 @@ func (n *NodeOps) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
 		nodes, err := c.store.GetNodesByIDs(ids)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := validateNodesByIDRows(ids, nodes); err != nil {
+				return err
+			}
+			nodes = copyNodeRows(nodes)
+		}
 		result = nodes
-		return err
+		c.opNodeReads.Add(int64(len(nodes)))
+		return nil
 	})
 	return result, err
 }
 
 // GetByIDs returns relationships for every requested ID sorted by ascending ID.
+// Nil or empty ids returns nil, nil after the graph lifecycle check.
 // Missing IDs return store.ErrRelNotFound.
 func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
 	}
 	for _, id := range ids {
 		if err := storepkg.ValidateRelID(id); err != nil {
@@ -474,8 +576,18 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
 		rels, err := c.store.GetRelationshipsByIDs(ids)
+		if err != nil {
+			return err
+		}
+		if !c.storeRowsTrust {
+			if err := validateRelationshipsByIDRows(ids, rels); err != nil {
+				return err
+			}
+			rels = copyRelationshipRows(rels)
+		}
 		result = rels
-		return err
+		c.opRelReads.Add(int64(len(rels)))
+		return nil
 	})
 	return result, err
 }
@@ -486,38 +598,46 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // Returns 0 if the label has never been registered.
 func (n *NodeOps) CountByLabel(label string) (int, error) {
 	c := n.c
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.closed.Load() {
-		return 0, ErrGraphClosed
+	if err := c.checkOpen(); err != nil {
+		return 0, err
 	}
 	if err := c.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return 0, nil
-	}
-	return c.store.NodeCountByLabel(tok)
+	count := 0
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		var err error
+		count, err = c.nodeCountByLabel(tok)
+		return err
+	})
+	return count, err
 }
 
 // CountByType returns the number of relationships with the given type. O(1).
 // Returns 0 if the type has never been registered.
 func (r *RelOps) CountByType(typeName string) (int, error) {
 	c := r.c
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.closed.Load() {
-		return 0, ErrGraphClosed
+	if err := c.checkOpen(); err != nil {
+		return 0, err
 	}
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
-	tok, ok := c.lookupRelTypeQueryToken(typeName)
-	if !ok {
-		return 0, nil
-	}
-	return c.store.RelCountByType(tok)
+	count := 0
+	err := c.readUnderRLock(func() error {
+		tok, ok := c.lookupRelTypeQueryToken(typeName)
+		if !ok {
+			return nil
+		}
+		var err error
+		count, err = c.relCountByType(tok)
+		return err
+	})
+	return count, err
 }
 
 // (AllLabelCounts and AllRelTypeCounts moved to StatOps in stats.go.)

@@ -33,6 +33,26 @@ func TestTieredStore_ForEachNilCallbackReturnsInvalidMutation(t *testing.T) {
 	}
 }
 
+func TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+
+	for _, depth := range []ShardDepth{DepthAll, DepthHot, DepthWarm} {
+		if err := ts.ForEachNodeHistoryIDByDepth(depth, func(types.NodeID) bool {
+			t.Fatalf("ForEachNodeHistoryIDByDepth(%v) callback ran on empty history", depth)
+			return false
+		}); err != nil {
+			t.Fatalf("ForEachNodeHistoryIDByDepth(%v): %v", depth, err)
+		}
+		if err := ts.ForEachRelHistoryIDByDepth(depth, func(types.RelID) bool {
+			t.Fatalf("ForEachRelHistoryIDByDepth(%v) callback ran on empty history", depth)
+			return false
+		}); err != nil {
+			t.Fatalf("ForEachRelHistoryIDByDepth(%v): %v", depth, err)
+		}
+	}
+}
+
 func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
@@ -116,12 +136,9 @@ func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
 	}
 
 	// Rotate to create warm shard.
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatalf("RotateHotShard: %v", err)
 	}
-	ts.MuForTest().Unlock()
 
 	// Add event node to new hot shard.
 	n2 := types.NewNode(types.NodeID(gen.Generate()), 3, nil)
@@ -180,6 +197,7 @@ func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
 
 func TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop(t *testing.T) {
 	ts := newTestTieredStore(t)
+	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
 
@@ -264,8 +282,185 @@ func TestTieredStore_ForEachNodeHistoryID(t *testing.T) {
 	}
 }
 
+func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	ts := newTestTieredStore(t)
+	nodeGen := tieredNodeGen(t)
+
+	initialNode := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(initialNode); err != nil {
+		t.Fatalf("PutNode initial: %v", err)
+	}
+	if err := ts.PutNodeVersion(initialNode.ID(), 0, initialNode); err != nil {
+		t.Fatalf("PutNodeVersion initial: %v", err)
+	}
+
+	nodeCallbacks := 0
+	if err := ts.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		nodeCallbacks++
+		if id != initialNode.ID() {
+			t.Errorf("ForEachNodeHistoryID visited callback-created node %d", id)
+			return false
+		}
+		created := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		if err := ts.PutNode(created); err != nil {
+			t.Errorf("PutNode in callback: %v", err)
+			return false
+		}
+		if err := ts.PutNodeVersion(created.ID(), 0, created); err != nil {
+			t.Errorf("PutNodeVersion in callback: %v", err)
+			return false
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachNodeHistoryID: %v", err)
+	}
+	if nodeCallbacks != 1 {
+		t.Fatalf("node callbacks = %d, want 1", nodeCallbacks)
+	}
+
+	start := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	end := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(start); err != nil {
+		t.Fatalf("PutNode start: %v", err)
+	}
+	if err := ts.RefShardForTest().PutNode(end); err != nil {
+		t.Fatalf("PutNode end: %v", err)
+	}
+	relGen := tieredRelGen(t)
+	initialRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, start.ID(), end.ID())
+	if err := ts.PutRelationship(initialRel); err != nil {
+		t.Fatalf("PutRelationship initial: %v", err)
+	}
+	if err := ts.PutRelVersion(initialRel.ID(), 0, initialRel); err != nil {
+		t.Fatalf("PutRelVersion initial: %v", err)
+	}
+
+	relCallbacks := 0
+	if err := ts.ForEachRelHistoryID(func(id types.RelID) bool {
+		relCallbacks++
+		if id != initialRel.ID() {
+			t.Errorf("ForEachRelHistoryID visited callback-created relationship %d", id)
+			return false
+		}
+		createdStart := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		createdEnd := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		if err := ts.PutNode(createdStart); err != nil {
+			t.Errorf("PutNode createdStart in callback: %v", err)
+			return false
+		}
+		if err := ts.PutNode(createdEnd); err != nil {
+			t.Errorf("PutNode createdEnd in callback: %v", err)
+			return false
+		}
+		created := types.NewRelationship(types.RelID(relGen.Generate()), 1, createdStart.ID(), createdEnd.ID())
+		if err := ts.PutRelationship(created); err != nil {
+			t.Errorf("PutRelationship in callback: %v", err)
+			return false
+		}
+		if err := ts.PutRelVersion(created.ID(), 0, created); err != nil {
+			t.Errorf("PutRelVersion in callback: %v", err)
+			return false
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachRelHistoryID: %v", err)
+	}
+	if relCallbacks != 1 {
+		t.Fatalf("rel callbacks = %d, want 1", relCallbacks)
+	}
+}
+
+func TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator(t *testing.T) {
+	ts := newTestTieredStore(t)
+	nodeGen := tieredNodeGen(t)
+
+	initialNode := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(initialNode); err != nil {
+		t.Fatalf("PutNode initial: %v", err)
+	}
+	if err := ts.PutNodeVersion(initialNode.ID(), 0, initialNode); err != nil {
+		t.Fatalf("PutNodeVersion initial: %v", err)
+	}
+
+	nodeCallbacks := 0
+	if err := ts.ForEachNodeHistoryIDByDepth(DepthHot, func(id types.NodeID) bool {
+		nodeCallbacks++
+		if id != initialNode.ID() {
+			t.Errorf("ForEachNodeHistoryIDByDepth visited callback-created node %d", id)
+			return false
+		}
+		created := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		if err := ts.PutNode(created); err != nil {
+			t.Errorf("PutNode in callback: %v", err)
+			return false
+		}
+		if err := ts.PutNodeVersion(created.ID(), 0, created); err != nil {
+			t.Errorf("PutNodeVersion in callback: %v", err)
+			return false
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachNodeHistoryIDByDepth: %v", err)
+	}
+	if nodeCallbacks != 1 {
+		t.Fatalf("node callbacks = %d, want 1", nodeCallbacks)
+	}
+
+	start := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	end := types.NewNode(types.NodeID(nodeGen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(start); err != nil {
+		t.Fatalf("PutNode start: %v", err)
+	}
+	if err := ts.RefShardForTest().PutNode(end); err != nil {
+		t.Fatalf("PutNode end: %v", err)
+	}
+	relGen := tieredRelGen(t)
+	initialRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, start.ID(), end.ID())
+	if err := ts.PutRelationship(initialRel); err != nil {
+		t.Fatalf("PutRelationship initial: %v", err)
+	}
+	if err := ts.PutRelVersion(initialRel.ID(), 0, initialRel); err != nil {
+		t.Fatalf("PutRelVersion initial: %v", err)
+	}
+
+	relCallbacks := 0
+	if err := ts.ForEachRelHistoryIDByDepth(DepthHot, func(id types.RelID) bool {
+		relCallbacks++
+		if id != initialRel.ID() {
+			t.Errorf("ForEachRelHistoryIDByDepth visited callback-created relationship %d", id)
+			return false
+		}
+		createdStart := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		createdEnd := types.NewNode(types.NodeID(nodeGen.Generate()), 3, nil)
+		if err := ts.PutNode(createdStart); err != nil {
+			t.Errorf("PutNode createdStart in callback: %v", err)
+			return false
+		}
+		if err := ts.PutNode(createdEnd); err != nil {
+			t.Errorf("PutNode createdEnd in callback: %v", err)
+			return false
+		}
+		created := types.NewRelationship(types.RelID(relGen.Generate()), 1, createdStart.ID(), createdEnd.ID())
+		if err := ts.PutRelationship(created); err != nil {
+			t.Errorf("PutRelationship in callback: %v", err)
+			return false
+		}
+		if err := ts.PutRelVersion(created.ID(), 0, created); err != nil {
+			t.Errorf("PutRelVersion in callback: %v", err)
+			return false
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachRelHistoryIDByDepth: %v", err)
+	}
+	if relCallbacks != 1 {
+		t.Fatalf("rel callbacks = %d, want 1", relCallbacks)
+	}
+}
+
 func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 	ts := newTestTieredStore(t)
+	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 
 	live := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
@@ -294,31 +489,43 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 	if err := ts.ArchiveNode(archived.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
+	for _, depth := range []ShardDepth{DepthHot, DepthWarm} {
+		seen := make(map[snowflake.ID]struct{})
+		if err := ts.ForEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachNodeHistoryIDByDepth(%v) before archive delete: %v", depth, err)
+		}
+		if _, ok := seen[archived.ID().SnowflakeID()]; ok {
+			t.Fatalf("%v included currently archived node history", depth)
+		}
+	}
 
 	updated := archived.DeepCopy()
 	updated.SetVersion(1)
-	if err := ts.ReplaceNodeWithHistory(updated, 1, archived); err != nil {
+	if err := ts.ReplaceNodeWithHistory(updated, archived.Version(), archived); err != nil {
 		t.Fatalf("ReplaceNodeWithHistory archived: %v", err)
 	}
 	if err := ts.DeleteNode(archived.ID()); err != nil {
 		t.Fatalf("DeleteNode archived: %v", err)
 	}
 
-	all := make(map[snowflake.ID]struct{})
+	all := make(map[snowflake.ID]int)
 	if err := ts.ForEachNodeHistoryIDByDepth(DepthAll, func(id types.NodeID) bool {
-		all[id.SnowflakeID()] = struct{}{}
+		all[id.SnowflakeID()]++
 		return true
 	}); err != nil {
 		t.Fatalf("ForEachNodeHistoryIDByDepth(DepthAll): %v", err)
 	}
-	if _, ok := all[live.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing live node history")
+	if got := all[live.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll live node callbacks = %d, want 1", got)
 	}
-	if _, ok := all[event.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing event node history")
+	if got := all[event.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll event node callbacks = %d, want 1", got)
 	}
-	if _, ok := all[archived.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing archived node history")
+	if got := all[archived.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll archived node callbacks = %d, want 1", got)
 	}
 
 	callbacks := 0
@@ -336,14 +543,14 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 	if err := ts.ForEachNodeHistoryIDByDepth(DepthAll, func(id types.NodeID) bool {
 		if id == archived.ID() {
 			archivedCallbacks++
-			return archivedCallbacks < 2
+			return false
 		}
 		return true
 	}); err != nil {
 		t.Fatalf("ForEachNodeHistoryIDByDepth archive stop: %v", err)
 	}
-	if archivedCallbacks != 2 {
-		t.Fatalf("archive stop saw archived node %d times, want 2", archivedCallbacks)
+	if archivedCallbacks != 1 {
+		t.Fatalf("archive stop saw archived node %d times, want 1", archivedCallbacks)
 	}
 
 	eventStopped := false
@@ -382,6 +589,7 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 
 func TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
+	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 
 	n := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
@@ -397,7 +605,7 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveH
 
 	updated := n.DeepCopy()
 	updated.SetVersion(1)
-	if err := ts.ReplaceNodeWithHistory(updated, 1, n); err != nil {
+	if err := ts.ReplaceNodeWithHistory(updated, n.Version(), n); err != nil {
 		t.Fatalf("ReplaceNodeWithHistory archived: %v", err)
 	}
 	if err := ts.RestoreNode(n.ID()); err != nil {
@@ -523,7 +731,9 @@ func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachNodeHistoryID", func() error {
 		var cbErr error
 		err := ts.ForEachNodeHistoryID(func(types.NodeID) bool {
-			cbErr = ts.PutNodeVersion(n1.ID(), 1, n1)
+			snap := n1.DeepCopy()
+			snap.SetVersion(1)
+			cbErr = ts.PutNodeVersion(n1.ID(), 1, snap)
 			return false
 		})
 		if err != nil {
@@ -534,7 +744,9 @@ func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachRelHistoryID", func() error {
 		var cbErr error
 		err := ts.ForEachRelHistoryID(func(types.RelID) bool {
-			cbErr = ts.PutRelVersion(rel.ID(), 1, rel)
+			snap := rel.DeepCopy()
+			snap.SetVersion(1)
+			cbErr = ts.PutRelVersion(rel.ID(), 1, snap)
 			return false
 		})
 		if err != nil {
@@ -546,6 +758,7 @@ func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 
 func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
 	ts := newTestTieredStore(t)
+	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
 
@@ -591,31 +804,43 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
 	if err := ts.ArchiveNode(archivedNode.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
+	for _, depth := range []ShardDepth{DepthHot, DepthWarm} {
+		seen := make(map[snowflake.ID]struct{})
+		if err := ts.ForEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
+			seen[id.SnowflakeID()] = struct{}{}
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachRelHistoryIDByDepth(%v) before archive delete: %v", depth, err)
+		}
+		if _, ok := seen[archivedRel.ID().SnowflakeID()]; ok {
+			t.Fatalf("%v included currently archived relationship history", depth)
+		}
+	}
 
 	updatedRel := archivedRel.DeepCopy()
 	updatedRel.SetVersion(1)
-	if err := ts.ReplaceRelWithHistory(updatedRel, 1, archivedRel); err != nil {
+	if err := ts.ReplaceRelWithHistory(updatedRel, archivedRel.Version(), archivedRel); err != nil {
 		t.Fatalf("ReplaceRelWithHistory archived: %v", err)
 	}
 	if err := ts.DeleteRelationship(archivedRel.ID()); err != nil {
 		t.Fatalf("DeleteRelationship archived: %v", err)
 	}
 
-	all := make(map[snowflake.ID]struct{})
+	all := make(map[snowflake.ID]int)
 	if err := ts.ForEachRelHistoryIDByDepth(DepthAll, func(id types.RelID) bool {
-		all[id.SnowflakeID()] = struct{}{}
+		all[id.SnowflakeID()]++
 		return true
 	}); err != nil {
 		t.Fatalf("ForEachRelHistoryIDByDepth(DepthAll): %v", err)
 	}
-	if _, ok := all[liveRel.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing live relationship history")
+	if got := all[liveRel.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll live relationship callbacks = %d, want 1", got)
 	}
-	if _, ok := all[eventRel.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing event relationship history")
+	if got := all[eventRel.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll event relationship callbacks = %d, want 1", got)
 	}
-	if _, ok := all[archivedRel.ID().SnowflakeID()]; !ok {
-		t.Fatal("DepthAll missing archived relationship history")
+	if got := all[archivedRel.ID().SnowflakeID()]; got != 1 {
+		t.Fatalf("DepthAll archived relationship callbacks = %d, want 1", got)
 	}
 
 	callbacks := 0
@@ -633,14 +858,14 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
 	if err := ts.ForEachRelHistoryIDByDepth(DepthAll, func(id types.RelID) bool {
 		if id == archivedRel.ID() {
 			archivedCallbacks++
-			return archivedCallbacks < 2
+			return false
 		}
 		return true
 	}); err != nil {
 		t.Fatalf("ForEachRelHistoryIDByDepth archive stop: %v", err)
 	}
-	if archivedCallbacks != 2 {
-		t.Fatalf("archive stop saw archived relationship %d times, want 2", archivedCallbacks)
+	if archivedCallbacks != 1 {
+		t.Fatalf("archive stop saw archived relationship %d times, want 1", archivedCallbacks)
 	}
 
 	eventStopped := false
@@ -679,6 +904,7 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
 
 func TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory(t *testing.T) {
 	ts := newTestTieredStore(t)
+	installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
 
@@ -699,7 +925,7 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHi
 
 	updated := rel.DeepCopy()
 	updated.SetVersion(1)
-	if err := ts.ReplaceRelWithHistory(updated, 1, rel); err != nil {
+	if err := ts.ReplaceRelWithHistory(updated, rel.Version(), rel); err != nil {
 		t.Fatalf("ReplaceRelWithHistory archived: %v", err)
 	}
 	if err := ts.RestoreNode(n.ID()); err != nil {

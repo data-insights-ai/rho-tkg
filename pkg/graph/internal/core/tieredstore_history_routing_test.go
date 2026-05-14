@@ -40,12 +40,9 @@ func newTieredGraphWithClosedColdShard(t *testing.T) (*Core, *tiered.Store, *tie
 	ts.MuForTest().RUnlock()
 
 	time.Sleep(2 * time.Millisecond)
-	ts.MuForTest().Lock()
 	if err := ts.RotateHotShard(); err != nil {
-		ts.MuForTest().Unlock()
 		t.Fatal(err)
 	}
-	ts.MuForTest().Unlock()
 
 	demoteToCold(ts, originName)
 	cold := eventShardByName(t, ts, originName)

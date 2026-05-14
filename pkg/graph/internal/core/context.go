@@ -18,18 +18,28 @@ func nowInstant() types.Instant {
 	return types.Instant(time.Now().UnixMilli())
 }
 
-// now returns the current time according to c.clock, as a
-// types.Instant (Unix milliseconds). Defaults to time.Now in
-// production. Tests swap c.clock for a deterministic counter so two
-// consecutive mutations yield strictly-increasing timestamps without
-// the wall-clock sleeps that flake on loaded CI hardware (R4-F20).
+// now returns the current time according to c.clock, as a types.Instant (Unix
+// milliseconds), with a per-Core monotonic floor. Defaults to time.Now in
+// production, but still advances by at least 1ms when the wall clock repeats
+// or moves backwards, so consecutive mutations cannot collapse transaction
+// intervals into the same TxFrom/TxTo instant.
 //
 // Callers in mutation paths (TxFrom / UpdatedAt / DeletedAt) and event
 // timestamp paths use this method; only a handful of test-bootstrap
 // call sites still use the package-level nowInstant, where the
 // per-Core clock is unavailable.
 func (c *Core) now() types.Instant {
-	return types.Instant(c.clock().UnixMilli())
+	observed := c.clock().UnixMilli()
+	for {
+		last := c.lastInstant.Load()
+		next := observed
+		if next <= last {
+			next = last + 1
+		}
+		if c.lastInstant.CompareAndSwap(last, next) {
+			return types.Instant(next)
+		}
+	}
 }
 
 // checkCtx performs a non-blocking context cancellation check.

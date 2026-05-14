@@ -47,6 +47,95 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 	}
 }
 
+func TestBadgerStorePutGetEntityPreservesTypedNilPropertiesAfterReopen(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	var nilVec []float32
+	var nilMeta map[string]any
+	props := mustPropertySlice(t, map[string]any{
+		"meta": nilMeta,
+		"vec":  nilVec,
+	})
+
+	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
+	if err := n.SetProperties(props); err != nil {
+		t.Fatalf("node SetProperties: %v", err)
+	}
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode typed nil: %v", err)
+	}
+
+	start := types.NewNode(types.NodeID(snowflake.ID(101)), 1, nil)
+	end := types.NewNode(types.NodeID(snowflake.ID(102)), 1, nil)
+	if err := bs.PutNode(start); err != nil {
+		t.Fatalf("PutNode start: %v", err)
+	}
+	if err := bs.PutNode(end); err != nil {
+		t.Fatalf("PutNode end: %v", err)
+	}
+	r := types.NewRelationship(types.RelID(snowflake.ID(200)), 1, start.ID(), end.ID())
+	if err := r.SetProperties(props); err != nil {
+		t.Fatalf("relationship SetProperties: %v", err)
+	}
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship typed nil: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close before reopen: %v", err)
+	}
+
+	reopened, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	gotNode, err := reopened.GetNode(n.ID())
+	if err != nil {
+		t.Fatalf("GetNode after reopen: %v", err)
+	}
+	assertBadgerTypedNilProperty(t, gotNode.GetProperty, "vec", nilVec, []float32{})
+	assertBadgerTypedNilProperty(t, gotNode.GetProperty, "meta", nilMeta, map[string]any{})
+
+	gotRel, err := reopened.GetRelationship(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship after reopen: %v", err)
+	}
+	assertBadgerTypedNilProperty(t, gotRel.GetProperty, "vec", nilVec, []float32{})
+	assertBadgerTypedNilProperty(t, gotRel.GetProperty, "meta", nilMeta, map[string]any{})
+}
+
+func assertBadgerTypedNilProperty(t *testing.T, get func(string) (any, bool), key string, wantNil, wantEmpty any) {
+	t.Helper()
+	got, ok := get(key)
+	if !ok {
+		t.Fatalf("property %q missing", key)
+	}
+	if got == nil {
+		t.Fatalf("property %q returned untyped nil for %T", key, wantNil)
+	}
+	gotValue := reflect.ValueOf(got)
+	wantType := reflect.TypeOf(wantNil)
+	if gotValue.Type() != wantType {
+		t.Fatalf("property %q type = %T, want %v", key, got, wantType)
+	}
+	if !gotValue.IsNil() {
+		t.Fatalf("property %q = %#v, want typed nil %v", key, got, wantType)
+	}
+	if !types.PropertyValueEqual(got, wantNil) {
+		t.Fatalf("property %q does not compare equal to typed nil %v", key, wantType)
+	}
+	if types.PropertyValueEqual(got, wantEmpty) {
+		t.Fatalf("property %q typed nil compares equal to empty %T", key, wantEmpty)
+	}
+}
+
 func TestBadgerStoreNodeIntegrityHashCapabilities(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -89,6 +178,37 @@ func TestBadgerStoreNodeIntegrityHashCapabilities(t *testing.T) {
 	if _, err := bs.NodeIntegrityHash(types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("NodeIntegrityHash missing = %v, want ErrNodeNotFound", err)
 	}
+	if _, _, err := bs.EndpointIntegrityHashes(0, end.ID()); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero start = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := bs.EndpointIntegrityHashes(end.ID(), 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero end = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := bs.EndpointIntegrityHashes(types.NodeID(snowflake.ID(999)), end.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing start = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, err := bs.EndpointIntegrityHashes(end.ID(), types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing end = %v, want ErrNodeNotFound", err)
+	}
+
+	noIntegrity := types.NewNode(types.NodeID(snowflake.ID(102)), 1, nil)
+	if err := bs.PutNode(noIntegrity); err != nil {
+		t.Fatalf("PutNode(no integrity): %v", err)
+	}
+	hash, err = bs.NodeIntegrityHash(noIntegrity.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash(no integrity): %v", err)
+	}
+	if hash != "" {
+		t.Fatalf("NodeIntegrityHash(no integrity) = %q, want empty hash", hash)
+	}
+
+	if _, err := bs.NodeIntegrityHash(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(0) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := bs.NodeIntegrityHash(types.NodeID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
 }
 
 func TestBadgerStoreNodeIntegrityHashTracksCurrentRowMutations(t *testing.T) {
@@ -119,6 +239,63 @@ func TestBadgerStoreNodeIntegrityHashTracksCurrentRowMutations(t *testing.T) {
 	}
 	if _, err := bs.NodeIntegrityHash(n.ID()); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("NodeIntegrityHash after delete = %v, want ErrNodeNotFound", err)
+	}
+}
+
+func TestBadgerStoreNodeIntegrityHashCacheAndDiskFallbacks(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(201)), 1, nil)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: "initial-hash"})
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	n.SetIntegrity(&types.NodeIntegrity{Hash: "caller-mutated-hash"})
+	bs.idxMu.Lock()
+	delete(bs.nodeHashes, n.ID())
+	bs.idxMu.Unlock()
+	hash, err := bs.NodeIntegrityHash(n.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash cache fallback: %v", err)
+	}
+	if hash != "initial-hash" {
+		t.Fatalf("NodeIntegrityHash cache fallback = %q, want stored initial hash", hash)
+	}
+
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	bs.NodeCacheForTest().ResetForTest()
+	bs.idxMu.Lock()
+	delete(bs.nodeHashes, n.ID())
+	bs.idxMu.Unlock()
+	hash, err = bs.NodeIntegrityHash(n.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash disk fallback: %v", err)
+	}
+	if hash != "initial-hash" {
+		t.Fatalf("NodeIntegrityHash disk fallback = %q, want stored initial hash", hash)
+	}
+}
+
+func TestBadgerStoreNodeIntegrityHashClosedStore(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(202)), 1, nil)
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := bs.NodeIntegrityHash(n.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("NodeIntegrityHash(closed) = %v, want ErrStoreClosed", err)
+	}
+	if _, _, err := bs.EndpointIntegrityHashes(n.ID(), n.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("EndpointIntegrityHashes(closed) = %v, want ErrStoreClosed", err)
 	}
 }
 
@@ -1246,6 +1423,36 @@ func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
 		if prev >= curr {
 			t.Errorf("GetNodesByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
+	}
+}
+
+func TestBadgerStoreGetNodesByIDsDuplicatesReturnIndependentCopies(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestNode(t, bs, 20, 1, nil)
+
+	got, err := bs.GetNodesByIDs([]types.NodeID{types.NodeID(20), types.NodeID(10), types.NodeID(20)})
+	if err != nil {
+		t.Fatalf("GetNodesByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetNodesByIDs() = %d nodes, want 3", len(got))
+	}
+	var copies []*types.Node
+	for i := 1; i < len(got); i++ {
+		if got[i].ID() < got[i-1].ID() {
+			t.Fatalf("GetNodesByIDs not sorted: result[%d].ID=%d < result[%d].ID=%d", i, got[i].ID(), i-1, got[i-1].ID())
+		}
+	}
+	for _, n := range got {
+		if n.ID() == types.NodeID(20) {
+			copies = append(copies, n)
+		}
+	}
+	if len(copies) != 2 || copies[0] == copies[1] {
+		t.Fatal("GetNodesByIDs returned aliased pointers for duplicate node IDs")
 	}
 }
 

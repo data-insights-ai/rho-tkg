@@ -15,13 +15,44 @@ func (c *Core) getOrCreateLabelWithSnapshot(label string) (uint16, []string, boo
 		c.registryMu.Unlock()
 		return 0, nil, false, err
 	}
+	if existed {
+		if err := c.persistRegistriesIfDirtyLockedPanicSafe(); err != nil {
+			c.registryMu.Unlock()
+			return 0, nil, false, err
+		}
+	}
 	return token, snapshot, !existed, nil
 }
 
-func (c *Core) getOrCreateLabelLocked(label string) (uint16, error) {
+func (c *Core) getOrCreateLabelPersisted(label string) (uint16, error) {
 	c.registryMu.Lock()
 	defer c.registryMu.Unlock()
-	return c.labels.GetOrCreate(label)
+
+	if tok, ok := c.labels.Lookup(label); ok {
+		if err := c.persistRegistriesIfDirtyLocked(); err != nil {
+			return 0, err
+		}
+		return tok, nil
+	}
+	snapshot := c.labels.ExportNames()
+	token, err := c.labels.GetOrCreate(label)
+	if err != nil {
+		return 0, err
+	}
+	if err := c.persistRegistries(); err != nil {
+		allocated := newlyAllocatedNames(snapshot, c.labels.ExportNames())
+		if len(allocated) > 0 {
+			if ok, rbErr := c.labels.RollbackNames(snapshot, allocated...); rbErr != nil {
+				err = fmt.Errorf("%w; additionally failed to restore label registry: %v", err, rbErr)
+			} else if !ok {
+				err = fmt.Errorf("%w; label registry changed before rollback", err)
+			} else if persistErr := c.persistRegistries(); persistErr != nil {
+				err = fmt.Errorf("%w; additionally failed to persist restored label registry: %v", err, persistErr)
+			}
+		}
+		return 0, err
+	}
+	return token, nil
 }
 
 func (c *Core) lookupLabelLocked(label string) (uint16, bool) {
@@ -110,6 +141,10 @@ func (c *Core) getOrCreateLabelsWithSnapshot(labels []string) (uint16, []uint16,
 			extraTokens = append(extraTokens, tok)
 		}
 		if allExisting {
+			if err := c.persistRegistriesIfDirtyLockedPanicSafe(); err != nil {
+				c.registryMu.Unlock()
+				return 0, nil, nil, nil, false, err
+			}
 			c.registryMu.Unlock()
 			return primaryToken, extraTokens, nil, nil, false, nil
 		}
@@ -191,16 +226,53 @@ func (c *Core) getOrCreateBatchNodeLabelsWithSnapshot(nodes []pendingNode) ([]no
 
 	allocated := newlyAllocatedNames(snapshot, c.labels.ExportNames())
 	if len(allocated) == 0 {
+		if err := c.persistRegistriesIfDirtyLockedPanicSafe(); err != nil {
+			c.registryMu.Unlock()
+			return nil, nil, nil, false, err
+		}
 		c.registryMu.Unlock()
 		return out, nil, nil, false, nil
 	}
 	return out, snapshot, allocated, true, nil
 }
 
-func (c *Core) getOrCreateRelTypeLocked(typeName string) (uint16, error) {
+func (c *Core) getOrCreateRelTypePersisted(typeName string) (uint16, error) {
+	if !c.registryDirty.Load() {
+		if tok, ok := c.cachedRelType(typeName); ok {
+			return tok, nil
+		}
+	}
 	c.registryMu.Lock()
 	defer c.registryMu.Unlock()
-	return c.relTypes.GetOrCreate(typeName)
+
+	if tok, ok := c.relTypes.Lookup(typeName); ok {
+		if err := c.persistRegistriesIfDirtyLocked(); err != nil {
+			return 0, err
+		}
+		c.rememberRelType(typeName, tok)
+		return tok, nil
+	}
+
+	snapshot := c.relTypes.ExportNames()
+	token, err := c.relTypes.GetOrCreate(typeName)
+	if err != nil {
+		return 0, err
+	}
+	if err := c.persistRegistries(); err != nil {
+		allocated := newlyAllocatedNames(snapshot, c.relTypes.ExportNames())
+		if len(allocated) > 0 {
+			if ok, rbErr := c.relTypes.RollbackNames(snapshot, allocated...); rbErr != nil {
+				err = fmt.Errorf("%w; additionally failed to restore reltype registry: %v", err, rbErr)
+			} else if !ok {
+				err = fmt.Errorf("%w; reltype registry changed before rollback", err)
+			} else if persistErr := c.persistRegistries(); persistErr != nil {
+				err = fmt.Errorf("%w; additionally failed to persist restored reltype registry: %v", err, persistErr)
+			}
+		}
+		return 0, err
+	}
+	c.rememberRelType(typeName, token)
+	return token, nil
 }
 
 func (c *Core) lookupRelTypeLocked(typeName string) (uint16, bool) {
@@ -224,11 +296,17 @@ func (c *Core) existingRelTypeOrNextProbeToken(typeName string) (uint16, error) 
 }
 
 func (c *Core) getOrCreateRelTypeWithSnapshot(typeName string) (uint16, []string, bool, error) {
-	if tok, ok := c.cachedRelType(typeName); ok {
-		return tok, nil, false, nil
+	if !c.registryDirty.Load() {
+		if tok, ok := c.cachedRelType(typeName); ok {
+			return tok, nil, false, nil
+		}
 	}
 	c.registryMu.Lock()
 	if typeToken, existed := c.relTypes.Lookup(typeName); existed {
+		if err := c.persistRegistriesIfDirtyLockedPanicSafe(); err != nil {
+			c.registryMu.Unlock()
+			return 0, nil, false, err
+		}
 		c.registryMu.Unlock()
 		c.rememberRelType(typeName, typeToken)
 		return typeToken, nil, false, nil

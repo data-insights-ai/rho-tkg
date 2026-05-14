@@ -286,6 +286,68 @@ func TestBatchBuilderUpdateAllowsProvenanceKeys(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderMetadataOnlyUpdatesAreVersioned(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	batch, _ := NewBatchBuilder(g)
+	if err := batch.UpdateNode(a.ID(), map[string]any{"tkg_author_id": "node-batch"}); err != nil {
+		t.Fatalf("UpdateNode queue: %v", err)
+	}
+	if err := batch.UpdateRelationship(r.ID(), map[string]any{"tkg_author_id": "rel-batch"}); err != nil {
+		t.Fatalf("UpdateRelationship queue: %v", err)
+	}
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Updated != 2 || result.Failed != 0 {
+		t.Fatalf("result = %+v, want Updated=2 Failed=0", result)
+	}
+
+	gotNode, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if gotNode.Version() != 1 {
+		t.Fatalf("node version = %d, want 1", gotNode.Version())
+	}
+	if ig := gotNode.Integrity(); ig == nil || ig.AuthorID != "node-batch" {
+		t.Fatalf("node integrity = %+v, want AuthorID node-batch", ig)
+	}
+	if _, ok := gotNode.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("node stored tkg_author_id as a normal property")
+	}
+
+	gotRel, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if gotRel.Version() != 1 {
+		t.Fatalf("relationship version = %d, want 1", gotRel.Version())
+	}
+	if ig := gotRel.Integrity(); ig == nil || ig.AuthorID != "rel-batch" {
+		t.Fatalf("relationship integrity = %+v, want AuthorID rel-batch", ig)
+	}
+	if _, ok := gotRel.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("relationship stored tkg_author_id as a normal property")
+	}
+}
+
 func TestBatchBuilderExecuteEmpty(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -486,6 +548,134 @@ func TestBatchBuilderUpdateQueuesSnapshotOfUpdateMaps(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	batch, _ := NewBatchBuilder(g)
+	a, err := batch.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	bNode, err := batch.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	rel, err := batch.AddRelationship("KNOWS", a, bNode, map[string]any{"since": int64(2026)})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	if err := a.SetProperty("name", "Mallory"); err != nil {
+		t.Fatalf("mutate returned node property: %v", err)
+	}
+	if err := a.SetProperty("late", "must-not-persist"); err != nil {
+		t.Fatalf("mutate returned node late property: %v", err)
+	}
+	a.SetVersion(99)
+	a.AddLabelTokenRaw(65535)
+	if ig := a.Integrity(); ig != nil {
+		ig.Hash = "tampered-node-hash"
+	}
+	if err := rel.SetProperty("since", int64(1999)); err != nil {
+		t.Fatalf("mutate returned rel property: %v", err)
+	}
+	if err := rel.SetProperty("late", "must-not-persist"); err != nil {
+		t.Fatalf("mutate returned rel late property: %v", err)
+	}
+	rel.SetVersion(88)
+	if ig := rel.Integrity(); ig != nil {
+		ig.Hash = "tampered-rel-hash"
+		ig.FromNodeHash = "tampered-from"
+	}
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 3 {
+		t.Fatalf("Created = %d, want 3", result.Created)
+	}
+
+	storedNode, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatalf("Get node: %v", err)
+	}
+	if got, _ := storedNode.GetProperty("name"); got != "Alice" {
+		t.Fatalf("stored node name = %v, want queued value Alice", got)
+	}
+	if _, ok := storedNode.GetProperty("late"); ok {
+		t.Fatal("stored node includes property added through returned skeleton mutation")
+	}
+	if storedNode.Version() != 0 {
+		t.Fatalf("stored node version = %d, want 0", storedNode.Version())
+	}
+	if got, _ := a.GetProperty("name"); got != "Alice" {
+		t.Fatalf("returned node name after Execute = %v, want committed value Alice", got)
+	}
+	if _, ok := a.GetProperty("late"); ok {
+		t.Fatal("returned node still includes pre-Execute skeleton mutation")
+	}
+	if a.Version() != 0 {
+		t.Fatalf("returned node version = %d, want committed version 0", a.Version())
+	}
+	if a.Temporal() == nil || a.Temporal().TxFrom == 0 {
+		t.Fatal("returned node was not finalised with committed temporal metadata")
+	}
+	if ok, err := g.Hash.VerifyNodeChain(a.ID()); err != nil || !ok {
+		t.Fatalf("VerifyNodeChain = (%v, %v), want (true, nil)", ok, err)
+	}
+	if err := a.SetProperty("name", "PostExecuteMutation"); err != nil {
+		t.Fatalf("post-execute returned node mutation: %v", err)
+	}
+	storedAfterReturnedMutation, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatalf("Get node after returned mutation: %v", err)
+	}
+	if got, _ := storedAfterReturnedMutation.GetProperty("name"); got != "Alice" {
+		t.Fatalf("post-execute returned node mutation affected store: got %v, want Alice", got)
+	}
+
+	storedRel, err := g.Rels.Get(rel.ID())
+	if err != nil {
+		t.Fatalf("Get relationship: %v", err)
+	}
+	if got, _ := storedRel.GetProperty("since"); got != int64(2026) {
+		t.Fatalf("stored rel since = %v, want queued value 2026", got)
+	}
+	if _, ok := storedRel.GetProperty("late"); ok {
+		t.Fatal("stored rel includes property added through returned skeleton mutation")
+	}
+	if storedRel.Version() != 0 {
+		t.Fatalf("stored rel version = %d, want 0", storedRel.Version())
+	}
+	if got, _ := rel.GetProperty("since"); got != int64(2026) {
+		t.Fatalf("returned rel since after Execute = %v, want committed value 2026", got)
+	}
+	if _, ok := rel.GetProperty("late"); ok {
+		t.Fatal("returned rel still includes pre-Execute skeleton mutation")
+	}
+	if rel.Version() != 0 {
+		t.Fatalf("returned rel version = %d, want committed version 0", rel.Version())
+	}
+	if rel.Temporal() == nil || rel.Temporal().TxFrom == 0 {
+		t.Fatal("returned rel was not finalised with committed temporal metadata")
+	}
+	if ok, err := g.Hash.VerifyRelChain(rel.ID()); err != nil || !ok {
+		t.Fatalf("VerifyRelChain = (%v, %v), want (true, nil)", ok, err)
+	}
+	if err := rel.SetProperty("since", int64(2030)); err != nil {
+		t.Fatalf("post-execute returned rel mutation: %v", err)
+	}
+	storedRelAfterReturnedMutation, err := g.Rels.Get(rel.ID())
+	if err != nil {
+		t.Fatalf("Get rel after returned mutation: %v", err)
+	}
+	if got, _ := storedRelAfterReturnedMutation.GetProperty("since"); got != int64(2026) {
+		t.Fatalf("post-execute returned rel mutation affected store: got %v, want 2026", got)
+	}
+}
+
 func stringSliceEqual(got any, want []string) bool {
 	s, ok := got.([]string)
 	if !ok || len(s) != len(want) {
@@ -612,6 +802,44 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 	relCount, _ := g.Rels.Count()
 	if relCount != 0 {
 		t.Fatalf("RelationshipCount = %d, want 0", relCount)
+	}
+}
+
+func TestBatchBuilderExecuteCascadeDeleteCountsRelationshipRows(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	bn, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	c, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode c: %v", err)
+	}
+	if _, err := g.Rels.Add("KNOWS", a, bn, nil); err != nil {
+		t.Fatalf("AddRelationship out: %v", err)
+	}
+	if _, err := g.Rels.Add("LIKES", c, a, nil); err != nil {
+		t.Fatalf("AddRelationship in: %v", err)
+	}
+
+	batch, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	batch.DeleteNode(a.ID())
+
+	result, err := batch.Execute()
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Deleted != 3 {
+		t.Fatalf("Deleted = %d, want 3", result.Deleted)
 	}
 }
 
@@ -750,6 +978,12 @@ func TestBatchErrorString(t *testing.T) {
 	s := be.Error()
 	if s == "" {
 		t.Fatal("BatchError.Error() returned empty string")
+	}
+	if !errors.Is(be, storepkg.ErrNodeExists) {
+		t.Fatalf("errors.Is(BatchError, ErrNodeExists) = false; err = %v", be)
+	}
+	if !errors.Is(&be, storepkg.ErrNodeExists) {
+		t.Fatalf("errors.Is(&BatchError, ErrNodeExists) = false; err = %v", &be)
 	}
 }
 

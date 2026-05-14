@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
@@ -13,10 +14,13 @@ import (
 // --- Atomic replace + history ---
 
 func (ts *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeWrite(current); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateNodeHistorySnapshot(current.ID(), prevState); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(current.ID(), prevVersion, prevState); err != nil {
 		return err
 	}
 	shard, checkin, err := ts.shardForNodeIDChecked(current.ID())
@@ -26,6 +30,9 @@ func (ts *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	defer checkin()
 	old, err := shard.GetNode(current.ID())
 	if err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeLiveVersion(old, prevVersion); err != nil {
 		return err
 	}
 	if err := ts.ensurePrimaryLabelClassUnchanged(old, current); err != nil {
@@ -40,7 +47,8 @@ func (ts *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	id := current.ID().SnowflakeID()
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, current, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, current, id)
+	if err != nil {
 		return err
 	}
 	if err := shard.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
@@ -49,14 +57,17 @@ func (ts *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	// Update Store-level vector indexes. The shard-level method updates
 	// per-shard bs.vectorIndexes; ts.vectorIndexes is separate and must be kept in sync.
 	indexpkg.RemoveNodeFromVectorIndexes(ts.vectorIndexes, old, id)
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, current, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateRelationshipWrite(current); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateRelationshipHistorySnapshot(current.ID(), prevState); err != nil {
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(current.ID(), prevVersion, prevState); err != nil {
 		return err
 	}
 	// Resolve by rel ID — the start node is not authoritative for the rel's
@@ -70,23 +81,35 @@ func (ts *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		return err
 	}
 	defer checkin()
+	old, err := shard.GetRelationship(current.ID())
+	if err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipLiveVersion(old, prevVersion); err != nil {
+		return err
+	}
 	return shard.ReplaceRelWithHistory(current, prevVersion, prevState)
 }
 
 // --- Version history writes ---
 
 func (ts *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, n); err != nil {
+	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	if err := ts.checkOpen(); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, version, n); err != nil {
 		return err
 	}
 	// Reference snapshots route to refShard regardless of timestamp; otherwise
 	// fall back to id-based resolution with checkout/checkin so a cold owner
 	// stays pinned for the write.
 	if n != nil && ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
-		return ts.refShard.PutNodeVersion(nid, version, n)
+		ref, refCheckin, err := ts.checkoutRefShard()
+		if err != nil {
+			return err
+		}
+		defer refCheckin()
+		return ref.PutNodeVersion(nid, version, n)
 	}
 	shard, checkin, err := ts.shardForNodeIDChecked(nid)
 	if err != nil {
@@ -106,7 +129,6 @@ func (ts *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
 		return err
 	}
-	id := nid.SnowflakeID()
 	shard, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
 		return err
@@ -116,41 +138,70 @@ func (ts *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	if err != nil {
 		return err
 	}
-	if len(history) > 0 {
-		return shard.TruncateNodeHistory(nid, keepVersions)
+	liveHere, err := nodeRowLive(shard, nid)
+	if err != nil {
+		return err
 	}
 
-	// If the live entity is on this shard, the empty history is authoritative —
-	// the truncate is a no-op and there is no need to fan out across shards.
-	// Exception: when the live entity is on refArchive, pre-archive history may
-	// still live on refShard, so fall through to the fan-out.
-	if shard.HasNodeID(id) && !isArchive {
+	if liveHere && !isArchive {
+		if shard == ts.refShard {
+			sources := nodeHistorySourcesFrom(shard, history)
+			archive, archiveCheckin, err := ts.checkoutArchive()
+			if err != nil {
+				return err
+			}
+			if archive != nil {
+				archiveHistory, err := archive.GetNodeHistory(nid)
+				archiveCheckin()
+				if err != nil {
+					return err
+				}
+				appendNodeHistorySource(&sources, archive, archiveHistory)
+			} else {
+				archiveCheckin()
+			}
+			return truncateNodeHistorySources(nid, sources, keepVersions)
+		}
 		return shard.TruncateNodeHistory(nid, keepVersions)
 	}
+	if isArchive {
+		sources := nodeHistorySourcesFrom(shard, history)
+		ref, refCheckin, err := ts.checkoutRefShard()
+		if err != nil {
+			return err
+		}
+		refHistory, err := ref.GetNodeHistory(nid)
+		refCheckin()
+		if err != nil {
+			return err
+		}
+		appendNodeHistorySource(&sources, ref, refHistory)
+		return truncateNodeHistorySources(nid, sources, keepVersions)
+	}
 
-	truncated := false
+	sources := nodeHistorySourcesFrom(shard, history)
 	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetNodeHistory(nid)
 		if err != nil {
 			return false, err
 		}
-		if len(history) == 0 {
-			return false, nil
-		}
-		truncated = true
-		return true, candidate.TruncateNodeHistory(nid, keepVersions)
+		appendNodeHistorySource(&sources, candidate, history)
+		return false, nil
 	})
 	if err != nil {
 		return err
 	}
-	if truncated {
-		return nil
+	if len(sources) > 0 {
+		return truncateNodeHistorySources(nid, sources, keepVersions)
 	}
 	return shard.TruncateNodeHistory(nid, keepVersions)
 }
 
 func (ts *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, r); err != nil {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, version, r); err != nil {
 		return err
 	}
 	// Route by rel ID — consistent with ReplaceRelWithHistory above. The
@@ -188,45 +239,201 @@ func (ts *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	if err != nil {
 		return err
 	}
-	if len(history) > 0 {
-		return shard.TruncateRelHistory(rid, keepVersions)
+	liveHere, err := relationshipRowLive(shard, rid)
+	if err != nil {
+		return err
 	}
 
-	// If the live rel entity is on this shard, the empty history is
-	// authoritative — the truncate is a no-op on this shard and there is no
-	// need to fan out across shards.
-	// Exception: when the live rel is on refArchive, pre-archive history may
-	// still live on refShard, so fall through to the fan-out.
-	if relationshipRowExists(shard, rid) && !isArchive {
+	if liveHere && !isArchive {
+		if shard == ts.refShard {
+			sources := relHistorySourcesFrom(shard, history)
+			archive, archiveCheckin, err := ts.checkoutArchive()
+			if err != nil {
+				return err
+			}
+			if archive != nil {
+				archiveHistory, err := archive.GetRelHistory(rid)
+				archiveCheckin()
+				if err != nil {
+					return err
+				}
+				appendRelHistorySource(&sources, archive, archiveHistory)
+			} else {
+				archiveCheckin()
+			}
+			return truncateRelHistorySources(rid, sources, keepVersions)
+		}
 		return shard.TruncateRelHistory(rid, keepVersions)
 	}
+	if isArchive {
+		sources := relHistorySourcesFrom(shard, history)
+		ref, refCheckin, err := ts.checkoutRefShard()
+		if err != nil {
+			return err
+		}
+		refHistory, err := ref.GetRelHistory(rid)
+		refCheckin()
+		if err != nil {
+			return err
+		}
+		appendRelHistorySource(&sources, ref, refHistory)
+		return truncateRelHistorySources(rid, sources, keepVersions)
+	}
 
-	truncated := false
+	sources := relHistorySourcesFrom(shard, history)
 	err = ts.forEachHistoryShard(shard, func(candidate *BadgerStore) (bool, error) {
 		history, err := candidate.GetRelHistory(rid)
 		if err != nil {
 			return false, err
 		}
-		if len(history) == 0 {
-			return false, nil
-		}
-		truncated = true
-		return true, candidate.TruncateRelHistory(rid, keepVersions)
+		appendRelHistorySource(&sources, candidate, history)
+		return false, nil
 	})
 	if err != nil {
 		return err
 	}
-	if truncated {
-		return nil
+	if len(sources) > 0 {
+		return truncateRelHistorySources(rid, sources, keepVersions)
 	}
 	// No shard owns history for this id — delegate to the originally resolved
 	// shard so its NotFound/no-op semantics are surfaced consistently.
 	return shard.TruncateRelHistory(rid, keepVersions)
 }
 
+func truncateNodeHistorySources(nid types.NodeID, sources []nodeHistorySource, keepVersions int) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	if len(sources) == 1 {
+		return sources[0].store.TruncateNodeHistory(nid, keepVersions)
+	}
+	if keepVersions == 0 {
+		for _, source := range sources {
+			if err := source.store.TruncateNodeHistory(nid, 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	keepBySource := nodeHistoryKeepCounts(sources, keepVersions)
+	if len(keepBySource) == 0 {
+		return nil
+	}
+	for i, source := range sources {
+		if err := source.store.TruncateNodeHistory(nid, keepBySource[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func nodeHistoryKeepCounts(sources []nodeHistorySource, keepVersions int) map[int]int {
+	type versionSource struct {
+		version uint32
+		source  int
+	}
+	versions := make([]versionSource, 0)
+	for sourceIdx, source := range sources {
+		for _, n := range source.history {
+			version := n.Version()
+			versions = append(versions, versionSource{version: version, source: sourceIdx})
+		}
+	}
+	if len(versions) <= keepVersions {
+		return nil
+	}
+	sort.SliceStable(versions, func(i, j int) bool { return versions[i].version < versions[j].version })
+	unique := versions[:0]
+	var last uint32
+	for i, entry := range versions {
+		if i > 0 && entry.version == last {
+			continue
+		}
+		unique = append(unique, entry)
+		last = entry.version
+	}
+	versions = unique
+	if len(versions) <= keepVersions {
+		return nil
+	}
+	keepBySource := make(map[int]int, len(sources))
+	for _, kept := range versions[len(versions)-keepVersions:] {
+		keepBySource[kept.source]++
+	}
+	return keepBySource
+}
+
+func truncateRelHistorySources(rid types.RelID, sources []relHistorySource, keepVersions int) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	if len(sources) == 1 {
+		return sources[0].store.TruncateRelHistory(rid, keepVersions)
+	}
+	if keepVersions == 0 {
+		for _, source := range sources {
+			if err := source.store.TruncateRelHistory(rid, 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	keepBySource := relHistoryKeepCounts(sources, keepVersions)
+	if len(keepBySource) == 0 {
+		return nil
+	}
+	for i, source := range sources {
+		if err := source.store.TruncateRelHistory(rid, keepBySource[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func relHistoryKeepCounts(sources []relHistorySource, keepVersions int) map[int]int {
+	type versionSource struct {
+		version uint32
+		source  int
+	}
+	versions := make([]versionSource, 0)
+	for sourceIdx, source := range sources {
+		for _, r := range source.history {
+			version := r.Version()
+			versions = append(versions, versionSource{version: version, source: sourceIdx})
+		}
+	}
+	if len(versions) <= keepVersions {
+		return nil
+	}
+	sort.SliceStable(versions, func(i, j int) bool { return versions[i].version < versions[j].version })
+	unique := versions[:0]
+	var last uint32
+	for i, entry := range versions {
+		if i > 0 && entry.version == last {
+			continue
+		}
+		unique = append(unique, entry)
+		last = entry.version
+	}
+	versions = unique
+	if len(versions) <= keepVersions {
+		return nil
+	}
+	keepBySource := make(map[int]int, len(sources))
+	for _, kept := range versions[len(versions)-keepVersions:] {
+		keepBySource[kept.source]++
+	}
+	return keepBySource
+}
+
 // --- Cascade operations ---
 
 func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
@@ -365,7 +572,10 @@ func (ts *Store) rollbackPlainDeletedRelationships(committed []*types.Relationsh
 // write fails, the in/ leg is restored via PutRelIncoming so callers never
 // observe a phantom delete-with-history that left a dangling in/ entry.
 func (ts *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
-	if err := storecontract.ValidateRelationshipHistorySnapshot(rid, tombstone); err != nil {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, prevVersion, tombstone); err != nil {
 		return err
 	}
 	id := rid.SnowflakeID()
@@ -378,6 +588,9 @@ func (ts *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 
 	r, err := entityShard.GetRelationship(types.RelID(id))
 	if err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipLiveVersion(r, prevVersion); err != nil {
 		return err
 	}
 	if err := storecontract.ValidateRelationshipReplacement(r, tombstone); err != nil {
@@ -441,11 +654,14 @@ func (ts *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 // tombstone write fails before the node is actually removed, previously deleted
 // relationships and their history are restored.
 func (ts *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, nodeTombstone); err != nil {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
 		return err
 	}
 	for _, rt := range relTombstones {
-		if err := storecontract.ValidateRelationshipHistorySnapshot(rt.ID, rt.Tombstone); err != nil {
+		if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rt.ID, rt.PrevVersion, rt.Tombstone); err != nil {
 			return err
 		}
 	}
@@ -459,6 +675,9 @@ func (ts *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 
 	old, oldErr := shard.GetNode(types.NodeID(id))
 	if oldErr == nil {
+		if err := storecontract.ValidateNodeLiveVersion(old, prevNodeVersion); err != nil {
+			return err
+		}
 		if err := storecontract.ValidateNodeReplacement(old, nodeTombstone); err != nil {
 			return err
 		}
@@ -547,6 +766,9 @@ func (ts *Store) validateDeleteNodeRelTombstones(nid types.NodeID, outRels, inRe
 		}
 		old, err := ts.GetRelationship(rt.ID)
 		if err != nil {
+			return nil, nil, err
+		}
+		if err := storecontract.ValidateRelationshipLiveVersion(old, rt.PrevVersion); err != nil {
 			return nil, nil, err
 		}
 		if err := storecontract.ValidateRelationshipReplacement(old, rt.Tombstone); err != nil {

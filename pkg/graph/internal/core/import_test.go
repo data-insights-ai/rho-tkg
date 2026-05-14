@@ -11,6 +11,7 @@ import (
 	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -54,6 +55,68 @@ func TestImportNodeWithID_Collision(t *testing.T) {
 	_, err = g.Nodes.Import(context.Background(), types.NodeID(id), []string{"B"}, nil)
 	if !errors.Is(err, storepkg.ErrNodeExists) {
 		t.Errorf("err = %v, want storepkg.ErrNodeExists", err)
+	}
+}
+
+type importNodeLockProbeStore struct {
+	storepkg.MandatoryStore
+	beforePut  chan struct{}
+	unblockPut chan struct{}
+	once       sync.Once
+}
+
+func (s *importNodeLockProbeStore) PutNode(n *types.Node) error {
+	s.once.Do(func() {
+		close(s.beforePut)
+		<-s.unblockPut
+	})
+	return s.MandatoryStore.PutNode(n)
+}
+
+func TestImportNodeWithID_LocksCallerNodeID(t *testing.T) {
+	t.Parallel()
+
+	probe := &importNodeLockProbeStore{
+		MandatoryStore: memory.New(),
+		beforePut:      make(chan struct{}),
+		unblockPut:     make(chan struct{}),
+	}
+	g, err := New(Config{Store: probe})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	nodeID := types.NodeID(12345)
+	importDone := make(chan error, 1)
+	go func() {
+		_, err := g.Nodes.Import(context.Background(), nodeID, []string{"Person"}, nil)
+		importDone <- err
+	}()
+
+	select {
+	case <-probe.beforePut:
+	case <-time.After(time.Second):
+		t.Fatal("import did not reach PutNode")
+	}
+
+	deleteDone := make(chan error, 1)
+	go func() {
+		deleteDone <- g.Nodes.DeleteWithContext(context.Background(), nodeID)
+	}()
+
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("DeleteNode returned while ImportNodeWithID was writing same node ID: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(probe.unblockPut)
+	if err := <-importDone; err != nil {
+		t.Fatalf("ImportNodeWithID: %v", err)
+	}
+	if err := <-deleteDone; err != nil {
+		t.Fatalf("DeleteNode after import release: %v", err)
 	}
 }
 
@@ -131,6 +194,77 @@ func TestImportRelationshipWithID_Collision(t *testing.T) {
 	_, err = g.Rels.Import(context.Background(), types.RelID(relID), "LIKES", n1, n2, nil)
 	if !errors.Is(err, storepkg.ErrRelExists) {
 		t.Errorf("err = %v, want storepkg.ErrRelExists", err)
+	}
+}
+
+type importRelLockProbeStore struct {
+	storepkg.MandatoryStore
+	beforePut  chan struct{}
+	unblockPut chan struct{}
+	once       sync.Once
+}
+
+func (s *importRelLockProbeStore) PutRelationship(r *types.Relationship) error {
+	s.once.Do(func() {
+		close(s.beforePut)
+		<-s.unblockPut
+	})
+	return s.MandatoryStore.PutRelationship(r)
+}
+
+func TestImportRelationshipWithID_LocksCallerRelID(t *testing.T) {
+	t.Parallel()
+
+	probe := &importRelLockProbeStore{
+		MandatoryStore: memory.New(),
+		beforePut:      make(chan struct{}),
+		unblockPut:     make(chan struct{}),
+	}
+	g, err := New(Config{Store: probe})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	n1, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Add node A: %v", err)
+	}
+	n2, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("Add node B: %v", err)
+	}
+
+	relID := types.RelID(99999)
+	importDone := make(chan error, 1)
+	go func() {
+		_, err := g.Rels.Import(context.Background(), relID, "KNOWS", n1, n2, nil)
+		importDone <- err
+	}()
+
+	select {
+	case <-probe.beforePut:
+	case <-time.After(time.Second):
+		t.Fatal("import did not reach PutRelationship")
+	}
+
+	deleteDone := make(chan error, 1)
+	go func() {
+		deleteDone <- g.Rels.DeleteWithContext(context.Background(), relID)
+	}()
+
+	select {
+	case err := <-deleteDone:
+		t.Fatalf("DeleteRelationship returned while ImportRelationshipWithID was writing same rel ID: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(probe.unblockPut)
+	if err := <-importDone; err != nil {
+		t.Fatalf("ImportRelationshipWithID: %v", err)
+	}
+	if err := <-deleteDone; err != nil {
+		t.Fatalf("DeleteRelationship after import release: %v", err)
 	}
 }
 
@@ -223,6 +357,152 @@ func TestGraphTx_ImportNodeWithID_Rollback(t *testing.T) {
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("after rollback: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
+}
+
+func TestGraphTx_ImportNodeWithID_NilContextDoesNotMaterializeDeletedHistory(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	original, err = g.Nodes.Update(original.ID(), map[string]any{"state": "committed"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := tx.DeleteNode(original.ID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if len(tx.deletedNodes) != 1 || !tx.deletedNodes[0].useHistoryTrim {
+		t.Fatalf("deleted node snapshot = %+v, want native trim snapshot", tx.deletedNodes)
+	}
+
+	var ctx context.Context
+	_, err = tx.ImportNodeWithID(ctx, original.ID(), []string{"Replacement"}, nil) //nolint:staticcheck // intentional nil context boundary test
+	if !errors.Is(err, ErrNilContext) {
+		t.Fatalf("ImportNodeWithID(nil ctx) = %v, want ErrNilContext", err)
+	}
+	if !tx.deletedNodes[0].useHistoryTrim {
+		t.Fatal("nil-context import materialized deleted node history before context rejection")
+	}
+	if tx.deletedNodes[0].nodeHistory != nil {
+		t.Fatalf("nil-context import captured node history length %d, want nil trim snapshot", len(tx.deletedNodes[0].nodeHistory))
+	}
+}
+
+func TestGraphTx_ImportRelationshipWithID_NilContextDoesNotMaterializeDeletedHistory(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	original, err = g.Rels.Update(original.ID(), map[string]any{"state": "committed"})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := tx.DeleteRelationship(original.ID()); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	if len(tx.deletedRels) != 1 || !tx.deletedRels[0].useHistoryTrim {
+		t.Fatalf("deleted rel snapshot = %+v, want native trim snapshot", tx.deletedRels)
+	}
+
+	var ctx context.Context
+	_, err = tx.ImportRelationshipWithID(ctx, original.ID(), "REPLACEMENT_REL", a, b, nil) //nolint:staticcheck // intentional nil context boundary test
+	if !errors.Is(err, ErrNilContext) {
+		t.Fatalf("ImportRelationshipWithID(nil ctx) = %v, want ErrNilContext", err)
+	}
+	if !tx.deletedRels[0].useHistoryTrim {
+		t.Fatal("nil-context import materialized deleted relationship history before context rejection")
+	}
+	if tx.deletedRels[0].history != nil {
+		t.Fatalf("nil-context import captured rel history length %d, want nil trim snapshot", len(tx.deletedRels[0].history))
+	}
+}
+
+func TestGraphTx_ImportWithID_CanceledContextDoesNotWaitBehindTxMutex(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	tx.mu.Lock()
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			tx.mu.Unlock()
+		}
+	}()
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{name: "ImportNodeWithID", call: func() error {
+			_, err := tx.ImportNodeWithID(ctx, types.NodeID(123456789), []string{"Blocked"}, nil)
+			return err
+		}},
+		{name: "ImportRelationshipWithID", call: func() error {
+			_, err := tx.ImportRelationshipWithID(ctx, types.RelID(987654321), "BLOCKED", a, b, nil)
+			return err
+		}},
+	}
+	for _, tc := range cases {
+		done := make(chan error, 1)
+		go func() {
+			done <- tc.call()
+		}()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("%s = %v, want context.Canceled", tc.name, err)
+			}
+		case <-time.After(50 * time.Millisecond):
+			tx.mu.Unlock()
+			unlocked = true
+			t.Fatalf("%s waited behind tx.mu despite pre-canceled context", tc.name)
+		}
+	}
+
+	tx.mu.Unlock()
+	unlocked = true
 }
 
 // --- Fix #5: ImportGraph does not block reads during streaming ---

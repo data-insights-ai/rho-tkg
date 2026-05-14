@@ -216,6 +216,26 @@ func TestResolveNodePropertyIntegrity(t *testing.T) {
 	}
 }
 
+func TestResolveNodePropertySignatureReturnsIndependentBytes(t *testing.T) {
+	t.Parallel()
+
+	g, n := makeNodeWithMeta(t)
+	n.SetIntegrity(&types.NodeIntegrity{Signature: []byte{1, 2, 3}})
+
+	val, ok := g.Resolve.NodeProperty(n, types.ShadowSignature)
+	if !ok {
+		t.Fatal("tkg_signature should return true")
+	}
+	sig, ok := val.([]byte)
+	if !ok {
+		t.Fatalf("tkg_signature should be []byte, got %T", val)
+	}
+	sig[0] = 99
+	if got := n.Integrity().Signature[0]; got != 1 {
+		t.Fatalf("mutating resolved signature changed node integrity signature to %d", got)
+	}
+}
+
 func TestResolveNodePropertyBaseEntity(t *testing.T) {
 	t.Parallel()
 
@@ -380,6 +400,26 @@ func TestResolveRelPropertyIntegrity(t *testing.T) {
 	val, ok = g.Resolve.RelProperty(r, types.ShadowPrevHash)
 	if !ok || val != "uvw012" {
 		t.Errorf("tkg_prev_hash = (%v, %v), want (\"uvw012\", true)", val, ok)
+	}
+}
+
+func TestResolveRelPropertySignatureReturnsIndependentBytes(t *testing.T) {
+	t.Parallel()
+
+	g, r := makeRelWithMeta(t)
+	r.SetIntegrity(&types.RelIntegrity{Signature: []byte{4, 5, 6}})
+
+	val, ok := g.Resolve.RelProperty(r, types.ShadowSignature)
+	if !ok {
+		t.Fatal("tkg_signature should return true")
+	}
+	sig, ok := val.([]byte)
+	if !ok {
+		t.Fatalf("tkg_signature should be []byte, got %T", val)
+	}
+	sig[0] = 99
+	if got := r.Integrity().Signature[0]; got != 4 {
+		t.Fatalf("mutating resolved signature changed relationship integrity signature to %d", got)
 	}
 }
 

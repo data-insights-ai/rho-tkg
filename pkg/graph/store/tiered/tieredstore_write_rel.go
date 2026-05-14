@@ -26,6 +26,9 @@ func (ts *Store) relIDExists(id types.RelID) (bool, error) {
 }
 
 func (ts *Store) PutRelationship(r *types.Relationship) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -41,6 +44,9 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generatedcreate.Proof) error {
 	if !proof.Valid() {
 		return ts.PutRelationship(r)
+	}
+	if err := ts.checkOpen(); err != nil {
+		return err
 	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
@@ -64,6 +70,9 @@ func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 			return ig.FromNodeHash, ig.ToNodeHash, nil
 		}
 		return "", "", nil
+	}
+	if err := ts.checkOpen(); err != nil {
+		return "", "", err
 	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return "", "", err
@@ -105,10 +114,18 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate boo
 	entityShard := startShard // entity + out/
 	inShard := endShard       // in/
 
-	if !entityShard.HasNodeID(startID) {
+	startLive, err := nodeRowLive(entityShard, r.StartNodeID())
+	if err != nil {
+		return err
+	}
+	if !startLive {
 		return ErrNodeNotFound
 	}
-	if !inShard.HasNodeID(endID) {
+	endLive, err := nodeRowLive(inShard, r.EndNodeID())
+	if err != nil {
+		return err
+	}
+	if !endLive {
 		return ErrNodeNotFound
 	}
 	if checkDuplicate {
@@ -248,6 +265,9 @@ func (ts *Store) putRelationshipWithEndpointHashesLocked(r *types.Relationship, 
 }
 
 func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -260,6 +280,9 @@ func (ts *Store) ReplaceRelationship(r *types.Relationship) error {
 }
 
 func (ts *Store) DeleteRelationship(rid types.RelID) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
@@ -315,6 +338,12 @@ func (ts *Store) DeleteRelationship(rid types.RelID) error {
 }
 
 func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if len(rels) == 0 {
+		return nil
+	}
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
@@ -336,8 +365,11 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if err != nil {
 			return err
 		}
-		startExists := startShard.HasNodeID(r.StartNodeID().SnowflakeID())
+		startExists, startErr := nodeRowLive(startShard, r.StartNodeID())
 		startCheckin()
+		if startErr != nil {
+			return startErr
+		}
 		if !startExists {
 			return ErrNodeNotFound
 		}
@@ -346,8 +378,11 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if err != nil {
 			return err
 		}
-		endExists := endShard.HasNodeID(r.EndNodeID().SnowflakeID())
+		endExists, endErr := nodeRowLive(endShard, r.EndNodeID())
 		endCheckin()
+		if endErr != nil {
+			return endErr
+		}
 		if !endExists {
 			return ErrNodeNotFound
 		}

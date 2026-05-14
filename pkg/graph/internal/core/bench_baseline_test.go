@@ -229,6 +229,18 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 			}
 		}
 	})
+
+	b.Run("SearchNearestNodesValidAt", func(b *testing.B) {
+		query := []float32{1, 2, 3}
+		opts := storepkg.QueryOpts{ValidAt: f.queryTime}
+		b.ReportAllocs()
+		for b.Loop() {
+			nodes, err := f.g.Index.SearchNearest("Person", "embedding", query, 8, opts)
+			if err != nil || len(nodes) != 8 {
+				b.Fatalf("SearchNearestNodesValidAt: len=%d err=%v", len(nodes), err)
+			}
+		}
+	})
 }
 
 func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
@@ -477,6 +489,91 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		}
 	})
 
+	b.Run("BadgerRelationshipsByTypeLimit64", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := f.g.Rels.ByType("KNOWS", storepkg.QueryOpts{Limit: 64})
+			if err != nil || len(rels) != 64 {
+				b.Fatalf("RelationshipsByType: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
+	b.Run("BadgerOutgoingRelationships", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		b.ReportAllocs()
+		i := 0
+		for b.Loop() {
+			rels, err := f.g.Rels.Outgoing(f.nodeIDs[i%len(f.nodeIDs)], "KNOWS")
+			if err != nil || len(rels) == 0 {
+				b.Fatalf("OutgoingRelationships: len=%d err=%v", len(rels), err)
+			}
+			i++
+		}
+	})
+
+	b.Run("BadgerIncomingRelationshipsForNodes16", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		nodeIDs := f.nodeIDs[:16]
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := f.g.Rels.IncomingForNodes(nodeIDs, "KNOWS")
+			if err != nil || len(rels) != len(nodeIDs) {
+				b.Fatalf("IncomingRelationshipsForNodes: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
+	b.Run("BadgerSearchNearestNodes", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		query := []float32{1, 2, 3}
+		b.ReportAllocs()
+		for b.Loop() {
+			nodes, err := f.g.Index.SearchNearest("Person", "embedding", query, 8, storepkg.QueryOpts{})
+			if err != nil || len(nodes) != 8 {
+				b.Fatalf("SearchNearestNodes: len=%d err=%v", len(nodes), err)
+			}
+		}
+	})
+
+	b.Run("BadgerSearchNearestNodesValidAt", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		query := []float32{1, 2, 3}
+		opts := storepkg.QueryOpts{ValidAt: f.queryTime}
+		b.ReportAllocs()
+		for b.Loop() {
+			nodes, err := f.g.Index.SearchNearest("Person", "embedding", query, 8, opts)
+			if err != nil || len(nodes) != 8 {
+				b.Fatalf("SearchNearestNodesValidAt: len=%d err=%v", len(nodes), err)
+			}
+		}
+	})
+
+	b.Run("BadgerGetNodesByIDs1000", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		ids := f.nodeIDs[:1000]
+		b.ReportAllocs()
+		for b.Loop() {
+			nodes, err := f.g.Nodes.GetByIDs(ids)
+			if err != nil || len(nodes) != len(ids) {
+				b.Fatalf("GetNodesByIDs: len=%d err=%v", len(nodes), err)
+			}
+		}
+	})
+
+	b.Run("BadgerGetRelationshipsByIDs1000", func(b *testing.B) {
+		f := newGraphBaselineFixture(b, newBaselineBadgerGraph(b, false), baselineFixtureSize)
+		ids := f.relIDs[:1000]
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := f.g.Rels.GetByIDs(ids)
+			if err != nil || len(rels) != len(ids) {
+				b.Fatalf("GetRelationshipsByIDs: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
 	b.Run("TieredRefAddNode", func(b *testing.B) {
 		g := newBaselineTieredGraph(b)
 		b.ReportAllocs()
@@ -505,7 +602,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 			start *types.Node
 			end   *types.Node
 		}
-		pairs := make([]pair, b.N)
+		pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 		for i := range pairs {
 			start, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i})
 			if err != nil {
@@ -520,7 +617,8 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Rels.Add("ABOUT", pairs[i].start, pairs[i].end, map[string]any{"weight": 1}); err != nil {
+			pair := pairs[i%len(pairs)]
+			if _, err := g.Rels.Add("ABOUT", pair.start, pair.end, map[string]any{"weight": 1}); err != nil {
 				b.Fatal(err)
 			}
 		}

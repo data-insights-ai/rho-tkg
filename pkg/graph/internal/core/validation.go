@@ -14,8 +14,8 @@ import (
 // Constraints are checked at relationship write time.
 // Typically called once at startup before any writes.
 func (co *ConstraintOps) Add(constraint temporalpkg.TemporalConstraint) error {
-	if err := constraint.Validate(); err != nil {
-		return err
+	if co == nil || co.c == nil {
+		return ErrNilGraph
 	}
 	c := co.c
 	if err := c.checkOpen(); err != nil {
@@ -25,6 +25,9 @@ func (co *ConstraintOps) Add(constraint temporalpkg.TemporalConstraint) error {
 	defer c.mu.Unlock()
 	if c.closed.Load() {
 		return ErrGraphClosed
+	}
+	if err := constraint.Validate(); err != nil {
+		return err
 	}
 	c.constraints = c.constraints.Add(constraint)
 	return nil
@@ -33,8 +36,8 @@ func (co *ConstraintOps) Add(constraint temporalpkg.TemporalConstraint) error {
 // Set replaces the entire constraint set.
 // Pass an empty ConstraintSet to remove all constraints.
 func (co *ConstraintOps) Set(cs ConstraintSet) error {
-	if err := cs.Validate(); err != nil {
-		return err
+	if co == nil || co.c == nil {
+		return ErrNilGraph
 	}
 	c := co.c
 	if err := c.checkOpen(); err != nil {
@@ -45,12 +48,18 @@ func (co *ConstraintOps) Set(cs ConstraintSet) error {
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
+	if err := cs.Validate(); err != nil {
+		return err
+	}
 	c.constraints = cs
 	return nil
 }
 
 // Get returns the current constraint set (defensive copy).
 func (co *ConstraintOps) Get() ConstraintSet {
+	if co == nil || co.c == nil {
+		return ConstraintSet{}
+	}
 	c := co.c
 	c.mu.RLock()
 	cs := c.constraints
@@ -65,6 +74,30 @@ func (c *Core) validateName(name string) error {
 	}
 	if len(name) > c.validation.MaxNameLength {
 		return fmt.Errorf("%w: %q (%d > %d)", ErrNameTooLong, name, len(name), c.validation.MaxNameLength)
+	}
+	return nil
+}
+
+func (c *Core) validateNodeCreateLabels(labels []string) error {
+	if len(labels) == 0 {
+		return ErrNoLabels
+	}
+
+	for _, label := range labels {
+		if err := c.validateName(label); err != nil {
+			return err
+		}
+	}
+	if len(labels) <= c.validation.MaxLabelsPerNode {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(labels))
+	for _, label := range labels {
+		seen[label] = struct{}{}
+	}
+	if len(seen) > c.validation.MaxLabelsPerNode {
+		return fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(seen), c.validation.MaxLabelsPerNode)
 	}
 	return nil
 }
@@ -102,13 +135,54 @@ func (c *Core) validateRegistryNames(kind string, names []string) error {
 
 const maxPropertyValueLimitDepth = 32
 
-// validatePropertyEntry checks a single key-value pair against validation limits.
-// MaxPropertyValueSize applies to every string nested inside the property value.
-func (c *Core) validatePropertyEntry(key string, val any) error {
+// validateOwnedPropertyEntryForCreate checks graph-level limits before a create
+// path immediately hands the same map to types.NewOwnedPropertySlice. Exact
+// primitive values do not need an early type-validation pass because the types
+// constructor will perform the authoritative validation and defensive copy.
+// Dynamic containers and custom/reflective shapes are still prevalidated so an
+// unsupported value does not get reported as a graph size-limit error.
+func (c *Core) validateOwnedPropertyEntryForCreate(key string, val any) error {
+	if err := c.validatePropertyKeyLength(key); err != nil {
+		return err
+	}
+	if propertyValueNeedsLimitPrevalidation(val) {
+		if err := types.ValidatePropertyValue(val); err != nil {
+			return fmt.Errorf("graph: property %q: %w", key, err)
+		}
+	}
+	return c.validatePropertyValueLimitTyped(key, val, 0)
+}
+
+// validatePropertyEntryLimits assumes the caller has already accepted val via
+// types.ValidatePropertyValue and only checks graph-level size limits.
+func (c *Core) validatePropertyEntryLimits(key string, val any) error {
+	if err := c.validatePropertyKeyLength(key); err != nil {
+		return err
+	}
+	return c.validatePropertyValueLimitTyped(key, val, 0)
+}
+
+func propertyValueNeedsLimitPrevalidation(val any) bool {
+	switch val.(type) {
+	case nil,
+		bool,
+		string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		[]int, []int64, []float32, []float64, []byte, []bool, []string,
+		map[string]string:
+		return false
+	default:
+		return true
+	}
+}
+
+func (c *Core) validatePropertyKeyLength(key string) error {
 	if len(key) > c.validation.MaxPropertyKeyLength {
 		return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
 	}
-	return c.validatePropertyValueLimitTyped(key, val, 0)
+	return nil
 }
 
 func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) error {
@@ -210,6 +284,13 @@ type updateProvenance struct {
 	signature    []byte
 	authorizedBy string
 	authLevel    uint8
+	present      bool
+}
+
+type preparedUpdateProperties struct {
+	provenance  updateProvenance
+	properties  map[string]any
+	originalLen int
 }
 
 func (c *Core) prepareUpdateProperties(updates map[string]any, operation string) (updateProvenance, map[string]any, error) {
@@ -225,44 +306,35 @@ func (c *Core) prepareUpdateProperties(updates map[string]any, operation string)
 		signature:    sig,
 		authorizedBy: authorizedBy,
 		authLevel:    authLevel,
+		present:      len(filtered) != len(updates),
 	}, filtered, nil
 }
 
-func (c *Core) cloneQueuedUpdateMap(updates map[string]any, operation string) (map[string]any, error) {
+func preparedUpdateCanBeReadOnlyNoOp(prov updateProvenance) bool {
+	return !prov.present
+}
+
+func (c *Core) prepareQueuedUpdateProperties(updates map[string]any, operation string) (preparedUpdateProperties, error) {
 	if updates == nil {
-		return nil, nil
+		return preparedUpdateProperties{}, nil
 	}
-	_, filtered, err := c.prepareUpdateProperties(updates, operation)
+	prov, filtered, err := c.prepareUpdateProperties(updates, operation)
 	if err != nil {
-		return nil, err
+		return preparedUpdateProperties{}, err
 	}
-	cloned := cloneProvenanceUpdateKeys(updates)
 	ps, err := types.NewPropertySlice(filtered)
 	if err != nil {
-		return nil, err
+		return preparedUpdateProperties{}, err
 	}
+	cloned := make(map[string]any, len(ps))
 	for _, p := range ps {
 		cloned[p.Key] = p.Value
 	}
-	return cloned, nil
-}
-
-func cloneProvenanceUpdateKeys(updates map[string]any) map[string]any {
-	out := make(map[string]any, len(updates))
-	for _, key := range []string{"tkg_author_id", "tkg_signature", "tkg_authorized_by", "tkg_auth_level"} {
-		v, ok := updates[key]
-		if !ok {
-			continue
-		}
-		if key == "tkg_signature" {
-			if b, ok := v.([]byte); ok {
-				out[key] = types.CloneBytes(b)
-				continue
-			}
-		}
-		out[key] = v
-	}
-	return out
+	return preparedUpdateProperties{
+		provenance:  prov,
+		properties:  cloned,
+		originalLen: len(updates),
+	}, nil
 }
 
 func (c *Core) validatePropertyUpdates(updates map[string]any, operation string) error {
@@ -274,11 +346,11 @@ func (c *Core) validatePropertyUpdates(updates map[string]any, operation string)
 			if err := types.ValidatePropertyValue(val); err != nil {
 				return fmt.Errorf("graph: %s property %q: %w", operation, key, err)
 			}
-			if err := c.validatePropertyEntry(key, val); err != nil {
+			if err := c.validatePropertyEntryLimits(key, val); err != nil {
 				return err
 			}
-		} else if len(key) > c.validation.MaxPropertyKeyLength {
-			return fmt.Errorf("%w: %q (%d > %d)", ErrKeyTooLong, key, len(key), c.validation.MaxPropertyKeyLength)
+		} else if err := c.validatePropertyKeyLength(key); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -301,6 +373,18 @@ func (c *Core) validatePropertyValueLimit(key string, rv reflect.Value, depth in
 	case reflect.String:
 		if rv.Len() > c.validation.MaxPropertyValueSize {
 			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, rv.Len(), c.validation.MaxPropertyValueSize)
+		}
+		return nil
+	case reflect.Pointer:
+		if rv.IsNil() {
+			return nil
+		}
+		return c.validatePropertyValueLimit(key, rv.Elem(), depth+1)
+	case reflect.Struct:
+		for i := range rv.NumField() {
+			if err := c.validatePropertyValueLimit(key, rv.Field(i), depth+1); err != nil {
+				return err
+			}
 		}
 		return nil
 	case reflect.Slice:
@@ -339,7 +423,7 @@ func (c *Core) validateProperties(props map[string]any) error {
 		return fmt.Errorf("%w: %d > %d", ErrTooManyProperties, len(props), c.validation.MaxPropertiesPerEntity)
 	}
 	for key, val := range props {
-		if err := c.validatePropertyEntry(key, val); err != nil {
+		if err := c.validateOwnedPropertyEntryForCreate(key, val); err != nil {
 			return err
 		}
 	}

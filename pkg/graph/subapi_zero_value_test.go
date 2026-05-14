@@ -275,6 +275,18 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		}},
 		{name: "Rels.SetProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.SetProperty(0, "", nil) }},
 		{name: "Rels.DeleteProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.DeleteProperty(0, "") }},
+		{name: "Rels.CompareAndSetProperty", fn: func(t *testing.T) error {
+			var a relspkg.API
+			got, err := a.CompareAndSetProperty(0, "", nil, nil)
+			requireFalse(t, got)
+			return err
+		}},
+		{name: "Rels.CompareAndSetPropertyWithContext", fn: func(t *testing.T) error {
+			var a relspkg.API
+			got, err := a.CompareAndSetPropertyWithContext(ctx, 0, "", nil, nil)
+			requireFalse(t, got)
+			return err
+		}},
 		{name: "Rels.CloseVersion", fn: func(t *testing.T) error { var a relspkg.API; return a.CloseVersion(0, now) }},
 		{name: "Rels.History", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.History(0); requireNil(t, got); return err }},
 		{name: "Rels.NextVersion", fn: func(t *testing.T) error {
@@ -595,6 +607,9 @@ func TestSubAPIZeroValuesReturnZeroForNoErrorMethods(t *testing.T) {
 	if got := eventsAPI.GetSync(); got != nil {
 		t.Fatalf("zero Events.GetSync = %v, want nil", got)
 	}
+	if got := eventsAPI.GetAsync(); got != nil {
+		t.Fatalf("zero Events.GetAsync = %v, want nil", got)
+	}
 
 	var indexAPI indexpkg.API
 	if got := indexAPI.Providers(); got != nil {
@@ -667,6 +682,9 @@ func TestSubAPINewWithTypedNilOpsReturnsErrNilGraph(t *testing.T) {
 	if got := eventsAPI.GetSync(); got != nil {
 		t.Fatalf("typed nil Events.GetSync = %v, want nil", got)
 	}
+	if got := eventsAPI.GetAsync(); got != nil {
+		t.Fatalf("typed nil Events.GetAsync = %v, want nil", got)
+	}
 }
 
 type typedNilHashOps struct{}
@@ -690,6 +708,10 @@ func (*typedNilEventOps) SetAsync(*eventspkg.AsyncEventBus) error {
 }
 
 func (*typedNilEventOps) GetSync() *eventspkg.EventBus {
+	panic("typed nil event ops should not be invoked")
+}
+
+func (*typedNilEventOps) GetAsync() *eventspkg.AsyncEventBus {
 	panic("typed nil event ops should not be invoked")
 }
 

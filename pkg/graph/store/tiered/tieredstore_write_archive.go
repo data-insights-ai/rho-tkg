@@ -11,7 +11,8 @@ import (
 
 // --- Reference archive ---
 
-// ErrNotReferenceEntity is returned when attempting to archive a non-reference entity.
+// ErrNotReferenceEntity is returned when reference archive operations encounter
+// a non-reference entity.
 var ErrNotReferenceEntity = errors.New("graph: entity is not a reference entity")
 
 // ErrCrossShardArchiveRel is kept for errors.Is compatibility with older
@@ -35,16 +36,24 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 		return err
 	}
 	id := nid.SnowflakeID()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	defer refCheckin()
 
 	// 1. Verify node is in refShard.
-	if !ts.refShard.HasNodeID(id) {
-		return fmt.Errorf("graph: archive: %w", ErrNodeNotFound)
+	if !ref.HasNodeID(id) {
+		return ts.archiveRefMissError(nid)
 	}
 
 	// 2. Read node from refShard.
-	node, err := ts.refShard.GetNode(types.NodeID(id))
+	node, err := ref.GetNode(types.NodeID(id))
 	if err != nil {
 		return fmt.Errorf("graph: archive read node: %w", err)
+	}
+	if err := ts.requireReferenceArchiveNode("archive", node); err != nil {
+		return err
 	}
 
 	// 3. Open and pin refArchive. Relationship placement planning below needs
@@ -62,10 +71,10 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	}
 
 	// 4. Collect all unique rel IDs touching the node.
-	outIDs := ts.refShard.OutgoingRelIDs(id)
-	inIDs := ts.refShard.IncomingRelIDs(id, 0)
+	outIDs := ref.OutgoingRelIDs(id)
+	inIDs := ref.IncomingRelIDs(id, 0)
 	relIDs := mergeUniqueRelIDs(outIDs, inIDs)
-	moves, releaseMoves, err := ts.planRelationshipPlacementMoves(types.NodeID(id), relIDs, ts.refShard, archive)
+	moves, releaseMoves, err := ts.planRelationshipPlacementMoves(types.NodeID(id), relIDs, ref, archive)
 	if err != nil {
 		return err
 	}
@@ -96,7 +105,7 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 	// 6. Delete the node row from refShard. Relationship indexes have already
 	// been moved; the cascade path is used here only to purge stale
 	// adjacency-only entries that had no live relationship row to move.
-	if err := ts.refShard.DeleteNodeCascade(types.NodeID(id)); err != nil {
+	if err := ref.DeleteNodeCascade(types.NodeID(id)); err != nil {
 		rbErr := rollbackArchiveNodeState(committed, archive, types.NodeID(id))
 		if rbErr != nil {
 			return fmt.Errorf("graph: archive delete from ref: %w (relationship rollback failed: %v)", err, rbErr)
@@ -121,6 +130,11 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 		return err
 	}
 	id := nid.SnowflakeID()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	defer refCheckin()
 
 	// 1. Ensure archive is open and pin against concurrent Close. Without
 	// the pin, Close racing between Load and the reads/writes below could
@@ -147,30 +161,33 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 	if err != nil {
 		return fmt.Errorf("graph: restore read node: %w", err)
 	}
+	if err := ts.requireReferenceArchiveNode("restore", node); err != nil {
+		return err
+	}
 
 	// 4. Read all relationship IDs touching the archived node.
 	outIDs := archive.OutgoingRelIDs(id)
 	inIDs := archive.IncomingRelIDs(id, 0)
 	relIDs := mergeUniqueRelIDs(outIDs, inIDs)
-	moves, releaseMoves, err := ts.planRelationshipPlacementMoves(types.NodeID(id), relIDs, archive, ts.refShard)
+	moves, releaseMoves, err := ts.planRelationshipPlacementMoves(types.NodeID(id), relIDs, archive, ref)
 	if err != nil {
 		return err
 	}
 	defer releaseMoves()
-	if err := ts.preflightArchiveNodeDestination(types.NodeID(id), ts.refShard, moves); err != nil {
+	if err := ts.preflightArchiveNodeDestination(types.NodeID(id), ref, moves); err != nil {
 		return fmt.Errorf("graph: restore destination preflight: %w", err)
 	}
 
 	// 5. Write node to refShard, then move every touching relationship back
 	// to the placement implied by the restored endpoint.
-	if err := ts.refShard.PutNode(node); err != nil {
+	if err := ref.PutNode(node); err != nil {
 		return fmt.Errorf("graph: restore write node: %w", err)
 	}
 
 	var committed []relationshipPlacementMove
 	for _, move := range moves {
 		if err := migrateRelationshipPlacement(move); err != nil {
-			rbErr := rollbackArchiveNodeState(committed, ts.refShard, types.NodeID(id))
+			rbErr := rollbackArchiveNodeState(committed, ref, types.NodeID(id))
 			if rbErr != nil {
 				return fmt.Errorf("graph: restore relationship placement: %w (rollback failed: %v)", err, rbErr)
 			}
@@ -183,13 +200,45 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 	// moved away from the archived endpoint; the cascade path is used here only
 	// to purge stale adjacency-only entries that had no live relationship row.
 	if err := archive.DeleteNodeCascade(types.NodeID(id)); err != nil {
-		rbErr := rollbackArchiveNodeState(committed, ts.refShard, types.NodeID(id))
+		rbErr := rollbackArchiveNodeState(committed, ref, types.NodeID(id))
 		if rbErr != nil {
 			return fmt.Errorf("graph: restore delete from archive: %w (relationship rollback failed: %v)", err, rbErr)
 		}
 		return fmt.Errorf("graph: restore delete from archive: %w", err)
 	}
 
+	return nil
+}
+
+func (ts *Store) archiveRefMissError(nid types.NodeID) error {
+	id := nid.SnowflakeID()
+	eventShard := ts.timestampToEventShardEntry(id)
+	eventStore, eventCheckin, err := eventShard.checkoutStoreForRead(ts)
+	if err != nil {
+		return err
+	}
+	defer eventCheckin()
+
+	node, err := eventStore.GetNode(nid)
+	if errors.Is(err, ErrNodeNotFound) {
+		return fmt.Errorf("graph: archive: %w", ErrNodeNotFound)
+	}
+	if err != nil {
+		return fmt.Errorf("graph: archive event probe: %w", err)
+	}
+	if err := ts.requireReferenceArchiveNode("archive", node); err != nil {
+		return err
+	}
+	return fmt.Errorf("graph: archive: %w", ErrNodeNotFound)
+}
+
+func (ts *Store) requireReferenceArchiveNode(op string, node *types.Node) error {
+	if node == nil {
+		return fmt.Errorf("graph: %s: %w", op, ErrNodeNotFound)
+	}
+	if ts.ontology.ClassifyByToken(node.PrimaryLabelToken().Value()) != ClassReference {
+		return fmt.Errorf("graph: %s: %w", op, ErrNotReferenceEntity)
+	}
 	return nil
 }
 
@@ -228,14 +277,19 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 			releases[i]()
 		}
 	}
+	endpointPins := make(map[types.NodeID]*BadgerStore, len(relIDs))
 	endpointShard := func(endpoint types.NodeID, movingShard *BadgerStore) (*BadgerStore, error) {
 		if endpoint == moving {
 			return movingShard, nil
+		}
+		if shard, ok := endpointPins[endpoint]; ok {
+			return shard, nil
 		}
 		shard, checkin, err := ts.shardForNodeIDChecked(endpoint)
 		if err != nil {
 			return nil, err
 		}
+		endpointPins[endpoint] = shard
 		releases = append(releases, checkin)
 		return shard, nil
 	}

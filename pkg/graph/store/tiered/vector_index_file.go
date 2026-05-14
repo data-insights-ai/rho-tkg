@@ -3,7 +3,6 @@ package tiered
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -22,6 +21,9 @@ type vectorIdxDef struct {
 }
 
 func saveVectorIndexFile(path string, defs []vectorIdxDef) error {
+	if err := validateVectorIndexFileDefs(defs); err != nil {
+		return err
+	}
 	if len(defs) == 0 {
 		if err := os.Remove(path); err != nil {
 			if os.IsNotExist(err) {
@@ -39,6 +41,35 @@ func saveVectorIndexFile(path string, defs []vectorIdxDef) error {
 		return fmt.Errorf("vector index file: marshal: %w", err)
 	}
 	return atomicWriteFile(path, data, "vector index file")
+}
+
+func validateVectorIndexFileDefs(defs []vectorIdxDef) error {
+	seenDefs := make(map[indexpkg.VectorIndexKey]vectorIdxDef, len(defs))
+	for _, def := range defs {
+		if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+			return fmt.Errorf("vector index file: invalid definition label %d property %q: %w",
+				def.LabelToken, def.PropertyKey, err)
+		}
+		if err := storecontract.ValidateIndexPropertyKey(def.PropertyKey); err != nil {
+			return fmt.Errorf("vector index file: invalid definition label %d property %q: %w",
+				def.LabelToken, def.PropertyKey, err)
+		}
+		if err := indexpkg.ValidateVectorIndexConfig(def.Dims, def.Metric); err != nil {
+			return fmt.Errorf("vector index file: invalid definition label %d property %q: %w",
+				def.LabelToken, def.PropertyKey, err)
+		}
+		key := indexpkg.VectorIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
+		if existing, exists := seenDefs[key]; exists {
+			if existing.Dims != def.Dims || existing.Metric != def.Metric {
+				return fmt.Errorf("vector index file: label %d property %q has conflicting definitions: %w",
+					def.LabelToken, def.PropertyKey, ErrVectorIndexExists)
+			}
+			return fmt.Errorf("vector index file: duplicate definition label %d property %q: %w",
+				def.LabelToken, def.PropertyKey, ErrVectorIndexExists)
+		}
+		seenDefs[key] = def
+	}
+	return nil
 }
 
 type vectorIndexFileSnapshot struct {
@@ -92,6 +123,9 @@ func loadVectorIndexFile(path string) ([]vectorIdxDef, error) {
 	if err := msgpack.Unmarshal(data, &defs); err != nil {
 		return nil, fmt.Errorf("vector index file: unmarshal: %w", err)
 	}
+	if err := validateVectorIndexFileDefs(defs); err != nil {
+		return nil, err
+	}
 	return defs, nil
 }
 
@@ -144,18 +178,19 @@ func (ts *Store) loadVectorIndexDefs() error {
 		for _, id := range ids {
 			n, getErr := ts.GetNode(id)
 			if getErr != nil {
-				if !errors.Is(getErr, ErrNodeNotFound) {
-					slog.Warn("graph: vector-index rebuild skipped node", "node", id.SnowflakeID(), "label", def.LabelToken, "property", def.PropertyKey, "error", getErr)
+				if errors.Is(getErr, ErrNodeNotFound) {
+					continue
 				}
-				continue
+				return fmt.Errorf("vector index file: rebuild node %d label %d property %q: %w",
+					id.SnowflakeID(), def.LabelToken, def.PropertyKey, getErr)
 			}
 			vec, ok := vectorForDefinition(n, def)
 			if !ok {
 				continue
 			}
-			if addErr := vi.Add(id.SnowflakeID(), vec); addErr != nil {
-				slog.Warn("graph: vector-index rebuild skipped node", "node", id.SnowflakeID(), "label", def.LabelToken, "property", def.PropertyKey, "error", addErr)
-				continue
+			if addErr := vi.AddOwned(id.SnowflakeID(), vec); addErr != nil {
+				return fmt.Errorf("vector index file: rebuild node %d label %d property %q: %w",
+					id.SnowflakeID(), def.LabelToken, def.PropertyKey, addErr)
 			}
 		}
 		ts.vectorIndexes[key] = vi
@@ -167,11 +202,7 @@ func vectorForDefinition(n *types.Node, def vectorIdxDef) ([]float32, bool) {
 	if !n.HasLabelTokenRaw(def.LabelToken) {
 		return nil, false
 	}
-	val, ok := n.GetProperty(def.PropertyKey)
-	if !ok {
-		return nil, false
-	}
-	return indexpkg.ToFloat32Slice(val)
+	return n.Float32SlicePropertyCopy(def.PropertyKey)
 }
 
 // persistVectorIndexDefsLocked writes the current store-level vector index

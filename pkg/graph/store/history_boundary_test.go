@@ -62,6 +62,170 @@ func TestDirectStoreHistoryWritesRejectInvalidSnapshots(t *testing.T) {
 	}
 }
 
+func TestDirectStoreHistoryWritesRejectPayloadVersionMismatch(t *testing.T) {
+	for name, backend := range directStoreBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			n := types.NewNode(types.NodeID(snowflake.ID(111)), 1, nil)
+			n.SetVersion(2)
+			if err := backend.PutNodeVersion(n.ID(), 1, n); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("PutNodeVersion mismatched payload version = %v, want ErrInvalidStoreMutation", err)
+			}
+
+			r := types.NewRelationship(types.RelID(snowflake.ID(211)), 1, types.NodeID(snowflake.ID(111)), types.NodeID(snowflake.ID(112)))
+			r.SetVersion(3)
+			if err := backend.PutRelVersion(r.ID(), 2, r); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("PutRelVersion mismatched payload version = %v, want ErrInvalidStoreMutation", err)
+			}
+		})
+	}
+}
+
+func TestDirectStoreAtomicHistoryMethodsRejectPayloadVersionMismatch(t *testing.T) {
+	for name, backend := range directStoreBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			n1 := types.NewNode(types.NodeID(snowflake.ID(121)), 1, nil)
+			n2 := types.NewNode(types.NodeID(snowflake.ID(122)), 1, nil)
+			if err := backend.PutNode(n1); err != nil {
+				t.Fatalf("PutNode(n1): %v", err)
+			}
+			if err := backend.PutNode(n2); err != nil {
+				t.Fatalf("PutNode(n2): %v", err)
+			}
+			rel := types.NewRelationship(types.RelID(snowflake.ID(221)), 1, n1.ID(), n2.ID())
+			if err := backend.PutRelationship(rel); err != nil {
+				t.Fatalf("PutRelationship: %v", err)
+			}
+
+			nodeCurrent := n1.DeepCopy()
+			nodeCurrent.SetVersion(1)
+			if err := backend.ReplaceNodeWithHistory(nodeCurrent, 1, n1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("ReplaceNodeWithHistory mismatched prevState version = %v, want ErrInvalidStoreMutation", err)
+			}
+			nodeAfter, err := backend.GetNode(n1.ID())
+			if err != nil {
+				t.Fatalf("GetNode after rejected ReplaceNodeWithHistory: %v", err)
+			}
+			if nodeAfter.Version() != 0 {
+				t.Fatalf("node version after rejected ReplaceNodeWithHistory = %d, want 0", nodeAfter.Version())
+			}
+
+			relCurrent := rel.DeepCopy()
+			relCurrent.SetVersion(1)
+			if err := backend.ReplaceRelWithHistory(relCurrent, 1, rel); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("ReplaceRelWithHistory mismatched prevState version = %v, want ErrInvalidStoreMutation", err)
+			}
+			relAfter, err := backend.GetRelationship(rel.ID())
+			if err != nil {
+				t.Fatalf("GetRelationship after rejected ReplaceRelWithHistory: %v", err)
+			}
+			if relAfter.Version() != 0 {
+				t.Fatalf("relationship version after rejected ReplaceRelWithHistory = %d, want 0", relAfter.Version())
+			}
+
+			if err := backend.DeleteRelWithHistory(rel.ID(), 1, rel); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("DeleteRelWithHistory mismatched tombstone version = %v, want ErrInvalidStoreMutation", err)
+			}
+			if _, err := backend.GetRelationship(rel.ID()); err != nil {
+				t.Fatalf("relationship missing after rejected DeleteRelWithHistory: %v", err)
+			}
+
+			if err := backend.DeleteRelationship(rel.ID()); err != nil {
+				t.Fatalf("DeleteRelationship before node tombstone check: %v", err)
+			}
+			if err := backend.DeleteNodeWithHistory(n1.ID(), 1, n1, nil); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("DeleteNodeWithHistory mismatched tombstone version = %v, want ErrInvalidStoreMutation", err)
+			}
+			if _, err := backend.GetNode(n1.ID()); err != nil {
+				t.Fatalf("node missing after rejected DeleteNodeWithHistory: %v", err)
+			}
+		})
+	}
+}
+
+func TestDirectStoreAtomicHistoryMethodsRejectStaleLiveVersion(t *testing.T) {
+	for name, backend := range directStoreBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			nReplace := types.NewNode(types.NodeID(snowflake.ID(131)), 1, nil)
+			nDelete := types.NewNode(types.NodeID(snowflake.ID(132)), 1, nil)
+			nA := types.NewNode(types.NodeID(snowflake.ID(133)), 1, nil)
+			nB := types.NewNode(types.NodeID(snowflake.ID(134)), 1, nil)
+			for _, n := range []*types.Node{nReplace, nDelete, nA, nB} {
+				if err := backend.PutNode(n); err != nil {
+					t.Fatalf("PutNode(%d): %v", n.ID(), err)
+				}
+			}
+
+			nReplaceV1 := nReplace.DeepCopy()
+			nReplaceV1.SetVersion(1)
+			if err := backend.ReplaceNodeWithHistory(nReplaceV1, 0, nReplace); err != nil {
+				t.Fatalf("initial ReplaceNodeWithHistory: %v", err)
+			}
+			staleNodeCurrent := nReplace.DeepCopy()
+			staleNodeCurrent.SetVersion(1)
+			if err := backend.ReplaceNodeWithHistory(staleNodeCurrent, 0, nReplace); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("stale ReplaceNodeWithHistory = %v, want ErrInvalidStoreMutation", err)
+			}
+			nodeAfter, err := backend.GetNode(nReplace.ID())
+			if err != nil {
+				t.Fatalf("GetNode after stale replace: %v", err)
+			}
+			if nodeAfter.Version() != 1 {
+				t.Fatalf("node version after stale replace = %d, want 1", nodeAfter.Version())
+			}
+
+			nDeleteV1 := nDelete.DeepCopy()
+			nDeleteV1.SetVersion(1)
+			if err := backend.ReplaceNodeWithHistory(nDeleteV1, 0, nDelete); err != nil {
+				t.Fatalf("initial delete-node ReplaceNodeWithHistory: %v", err)
+			}
+			if err := backend.DeleteNodeWithHistory(nDelete.ID(), 0, nDelete, nil); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("stale DeleteNodeWithHistory = %v, want ErrInvalidStoreMutation", err)
+			}
+			if _, err := backend.GetNode(nDelete.ID()); err != nil {
+				t.Fatalf("node missing after stale DeleteNodeWithHistory: %v", err)
+			}
+
+			relReplace := types.NewRelationship(types.RelID(snowflake.ID(231)), 1, nA.ID(), nB.ID())
+			relDelete := types.NewRelationship(types.RelID(snowflake.ID(232)), 1, nA.ID(), nB.ID())
+			for _, r := range []*types.Relationship{relReplace, relDelete} {
+				if err := backend.PutRelationship(r); err != nil {
+					t.Fatalf("PutRelationship(%d): %v", r.ID(), err)
+				}
+			}
+
+			relReplaceV1 := relReplace.DeepCopy()
+			relReplaceV1.SetVersion(1)
+			if err := backend.ReplaceRelWithHistory(relReplaceV1, 0, relReplace); err != nil {
+				t.Fatalf("initial ReplaceRelWithHistory: %v", err)
+			}
+			staleRelCurrent := relReplace.DeepCopy()
+			staleRelCurrent.SetVersion(1)
+			if err := backend.ReplaceRelWithHistory(staleRelCurrent, 0, relReplace); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("stale ReplaceRelWithHistory = %v, want ErrInvalidStoreMutation", err)
+			}
+			relAfter, err := backend.GetRelationship(relReplace.ID())
+			if err != nil {
+				t.Fatalf("GetRelationship after stale replace: %v", err)
+			}
+			if relAfter.Version() != 1 {
+				t.Fatalf("relationship version after stale replace = %d, want 1", relAfter.Version())
+			}
+
+			relDeleteV1 := relDelete.DeepCopy()
+			relDeleteV1.SetVersion(1)
+			if err := backend.ReplaceRelWithHistory(relDeleteV1, 0, relDelete); err != nil {
+				t.Fatalf("initial delete-rel ReplaceRelWithHistory: %v", err)
+			}
+			if err := backend.DeleteRelWithHistory(relDelete.ID(), 0, relDelete); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("stale DeleteRelWithHistory = %v, want ErrInvalidStoreMutation", err)
+			}
+			if _, err := backend.GetRelationship(relDelete.ID()); err != nil {
+				t.Fatalf("relationship missing after stale DeleteRelWithHistory: %v", err)
+			}
+		})
+	}
+}
+
 func TestDirectStoreDeleteNodeWithHistoryRejectsMalformedNodeTombstone(t *testing.T) {
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {

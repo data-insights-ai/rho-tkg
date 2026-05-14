@@ -1,6 +1,7 @@
 package graph_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -8,7 +9,23 @@ import (
 
 	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type cancelAfterFirstErrContext struct {
+	calls int
+}
+
+func (c *cancelAfterFirstErrContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *cancelAfterFirstErrContext) Done() <-chan struct{}       { return nil }
+func (c *cancelAfterFirstErrContext) Value(any) any               { return nil }
+func (c *cancelAfterFirstErrContext) Err() error {
+	c.calls++
+	if c.calls == 1 {
+		return nil
+	}
+	return context.Canceled
+}
 
 // TestTxRun_PanicReleasesLock verifies that a panicking callback in TxAPI.Run
 // triggers Rollback (releasing the graph write lock) and re-raises the panic.
@@ -80,6 +97,176 @@ func TestTxRunRejectsNilCallbackBeforeBegin(t *testing.T) {
 	}
 }
 
+func TestGraphTxNilAndZeroReceiversFailClosed(t *testing.T) {
+	t.Parallel()
+
+	var nilTx *graphpkg.GraphTx
+	var zeroTx graphpkg.GraphTx
+
+	for _, tc := range []struct {
+		name string
+		tx   *graphpkg.GraphTx
+	}{
+		{name: "nil", tx: nilTx},
+		{name: "zero", tx: &zeroTx},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			checks := []struct {
+				name string
+				run  func(*graphpkg.GraphTx) error
+			}{
+				{name: "Commit", run: func(tx *graphpkg.GraphTx) error { return tx.Commit() }},
+				{name: "Rollback", run: func(tx *graphpkg.GraphTx) error { return tx.Rollback() }},
+				{name: "GetNode", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.GetNode(types.NodeID(1))
+					return err
+				}},
+				{name: "GetRelationship", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.GetRelationship(types.RelID(1))
+					return err
+				}},
+				{name: "Export", run: func(tx *graphpkg.GraphTx) error {
+					var buf bytes.Buffer
+					return tx.Export(&buf)
+				}},
+				{name: "Snapshot", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.Snapshot(1)
+					return err
+				}},
+				{name: "VerifyShard", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.VerifyShard("hot")
+					return err
+				}},
+				{name: "AddNode", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.AddNode([]string{"Node"}, nil)
+					return err
+				}},
+				{name: "AddRelationship", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.AddRelationship("REL", nil, nil, nil)
+					return err
+				}},
+				{name: "AddRelationshipByID", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.AddRelationshipByID("REL", types.NodeID(1), types.NodeID(2), nil)
+					return err
+				}},
+				{name: "AddRelationshipByIDIfAbsent", run: func(tx *graphpkg.GraphTx) error {
+					_, _, err := tx.AddRelationshipByIDIfAbsent("REL", types.NodeID(1), types.NodeID(2), nil)
+					return err
+				}},
+				{name: "ImportNodeWithID", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.ImportNodeWithID(context.Background(), types.NodeID(1), []string{"Node"}, nil)
+					return err
+				}},
+				{name: "ImportRelationshipWithID", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.ImportRelationshipWithID(context.Background(), types.RelID(1), "REL", nil, nil, nil)
+					return err
+				}},
+				{name: "UpdateNode", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.UpdateNode(types.NodeID(1), map[string]any{"name": "x"})
+					return err
+				}},
+				{name: "UpdateRelationship", run: func(tx *graphpkg.GraphTx) error {
+					_, err := tx.UpdateRelationship(types.RelID(1), map[string]any{"name": "x"})
+					return err
+				}},
+				{name: "SetNodeProperty", run: func(tx *graphpkg.GraphTx) error {
+					return tx.SetNodeProperty(types.NodeID(1), "name", "x")
+				}},
+				{name: "DeleteNodeProperty", run: func(tx *graphpkg.GraphTx) error {
+					return tx.DeleteNodeProperty(types.NodeID(1), "name")
+				}},
+				{name: "SetRelationshipProperty", run: func(tx *graphpkg.GraphTx) error {
+					return tx.SetRelationshipProperty(types.RelID(1), "name", "x")
+				}},
+				{name: "DeleteRelationshipProperty", run: func(tx *graphpkg.GraphTx) error {
+					return tx.DeleteRelationshipProperty(types.RelID(1), "name")
+				}},
+				{name: "DeleteNode", run: func(tx *graphpkg.GraphTx) error {
+					return tx.DeleteNode(types.NodeID(1))
+				}},
+				{name: "DeleteRelationship", run: func(tx *graphpkg.GraphTx) error {
+					return tx.DeleteRelationship(types.RelID(1))
+				}},
+				{name: "AddNodeLabel", run: func(tx *graphpkg.GraphTx) error {
+					return tx.AddNodeLabel(types.NodeID(1), "Extra")
+				}},
+				{name: "RemoveNodeLabel", run: func(tx *graphpkg.GraphTx) error {
+					return tx.RemoveNodeLabel(types.NodeID(1), "Extra")
+				}},
+			}
+
+			for _, check := range checks {
+				if err := check.run(tc.tx); !errors.Is(err, graphpkg.ErrNilGraph) {
+					t.Fatalf("%s = %v, want ErrNilGraph", check.name, err)
+				}
+			}
+			if ids := tc.tx.CreatedNodeIDs(); len(ids) != 0 {
+				t.Fatalf("CreatedNodeIDs = %v, want empty", ids)
+			}
+			if ids := tc.tx.CreatedRelIDs(); len(ids) != 0 {
+				t.Fatalf("CreatedRelIDs = %v, want empty", ids)
+			}
+		})
+	}
+}
+
+func TestBatchBuilderNilAndZeroReceiversFailClosed(t *testing.T) {
+	t.Parallel()
+
+	var nilBatch *graphpkg.BatchBuilder
+	var zeroBatch graphpkg.BatchBuilder
+
+	for _, tc := range []struct {
+		name  string
+		batch *graphpkg.BatchBuilder
+	}{
+		{name: "nil", batch: nilBatch},
+		{name: "zero", batch: &zeroBatch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			checks := []struct {
+				name string
+				run  func(*graphpkg.BatchBuilder) error
+			}{
+				{name: "AddNode", run: func(b *graphpkg.BatchBuilder) error {
+					_, err := b.AddNode([]string{"Node"}, nil)
+					return err
+				}},
+				{name: "AddRelationship", run: func(b *graphpkg.BatchBuilder) error {
+					_, err := b.AddRelationship("REL", nil, nil, nil)
+					return err
+				}},
+				{name: "UpdateNode", run: func(b *graphpkg.BatchBuilder) error {
+					return b.UpdateNode(types.NodeID(1), map[string]any{"name": "x"})
+				}},
+				{name: "UpdateRelationship", run: func(b *graphpkg.BatchBuilder) error {
+					return b.UpdateRelationship(types.RelID(1), map[string]any{"name": "x"})
+				}},
+				{name: "DeleteNode", run: func(b *graphpkg.BatchBuilder) error {
+					return b.DeleteNode(types.NodeID(1))
+				}},
+				{name: "DeleteRelationship", run: func(b *graphpkg.BatchBuilder) error {
+					return b.DeleteRelationship(types.RelID(1))
+				}},
+				{name: "Execute", run: func(b *graphpkg.BatchBuilder) error {
+					_, err := b.Execute()
+					return err
+				}},
+			}
+
+			for _, check := range checks {
+				if err := check.run(tc.batch); !errors.Is(err, graphpkg.ErrNilGraph) {
+					t.Fatalf("%s = %v, want ErrNilGraph", check.name, err)
+				}
+			}
+		})
+	}
+}
+
 func TestTxRunContextRejectsNilContext(t *testing.T) {
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})
@@ -91,6 +278,79 @@ func TestTxRunContextRejectsNilContext(t *testing.T) {
 	var ctx context.Context
 	if err := g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
 		t.Fatalf("RunContext(nil, fn) = %v, want ErrNilContext", err)
+	}
+}
+
+func TestTxRunContextRejectsCanceledContextBeforeBegin(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	if err := g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error {
+		called = true
+		return nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunContext(canceled, fn) = %v, want context.Canceled", err)
+	}
+	if called {
+		t.Fatal("RunContext called callback despite pre-canceled context")
+	}
+	if _, err := g.Nodes.Add([]string{"AfterCanceled"}, nil); err != nil {
+		t.Fatalf("post-canceled-context Add: %v", err)
+	}
+}
+
+func TestTxRunContextRechecksContextAfterBeginBeforeCallback(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	ctx := &cancelAfterFirstErrContext{}
+	called := false
+	err = g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error {
+		called = true
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunContext(cancel after begin) = %v, want context.Canceled", err)
+	}
+	if called {
+		t.Fatal("RunContext called callback after context cancellation became visible post-BeginTx")
+	}
+	if _, err := g.Nodes.Add([]string{"AfterCanceledPostBegin"}, nil); err != nil {
+		t.Fatalf("post-canceled-post-begin Add: %v", err)
+	}
+}
+
+func TestTxRunContextCommits(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if err := g.Tx.RunContext(context.Background(), func(tx *graphpkg.GraphTx) error {
+		_, err := tx.AddNode([]string{"Committed"}, nil)
+		return err
+	}); err != nil {
+		t.Fatalf("RunContext commit: %v", err)
+	}
+	nodes, err := g.Nodes.All(storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("Nodes.All: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("Nodes.All count = %d, want 1", len(nodes))
 	}
 }
 

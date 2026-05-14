@@ -83,6 +83,97 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_MaxHistoryID(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	nodeMax, err := bs.MaxNodeHistoryID()
+	if err != nil {
+		t.Fatalf("MaxNodeHistoryID empty: %v", err)
+	}
+	if nodeMax != 0 {
+		t.Fatalf("MaxNodeHistoryID empty = %d, want 0", nodeMax)
+	}
+	relMax, err := bs.MaxRelHistoryID()
+	if err != nil {
+		t.Fatalf("MaxRelHistoryID empty: %v", err)
+	}
+	if relMax != 0 {
+		t.Fatalf("MaxRelHistoryID empty = %d, want 0", relMax)
+	}
+
+	_ = seedBadgerNodeHistory(t, bs, 3, false)
+	nodeMax, err = bs.MaxNodeHistoryID()
+	if err != nil {
+		t.Fatalf("MaxNodeHistoryID pending: %v", err)
+	}
+	if nodeMax != types.NodeID(3) {
+		t.Fatalf("MaxNodeHistoryID pending = %d, want 3", nodeMax)
+	}
+
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	node := types.NewNode(types.NodeID(5), 1, nil)
+	if err := bs.PutNodeVersion(node.ID(), 0, node); err != nil {
+		t.Fatalf("PutNodeVersion pending max: %v", err)
+	}
+	nodeMax, err = bs.MaxNodeHistoryID()
+	if err != nil {
+		t.Fatalf("MaxNodeHistoryID mixed: %v", err)
+	}
+	if nodeMax != node.ID() {
+		t.Fatalf("MaxNodeHistoryID mixed = %d, want %d", nodeMax, node.ID())
+	}
+	deletedNode := types.NewNode(types.NodeID(9), 1, nil)
+	if err := bs.PutNodeVersion(deletedNode.ID(), 0, deletedNode); err != nil {
+		t.Fatalf("PutNodeVersion deleted max: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush deleted node: %v", err)
+	}
+	if err := bs.TruncateNodeHistory(deletedNode.ID(), 0); err != nil {
+		t.Fatalf("TruncateNodeHistory deleted max: %v", err)
+	}
+	nodeMax, err = bs.MaxNodeHistoryID()
+	if err != nil {
+		t.Fatalf("MaxNodeHistoryID after pending delete: %v", err)
+	}
+	if nodeMax != node.ID() {
+		t.Fatalf("MaxNodeHistoryID after pending delete = %d, want %d", nodeMax, node.ID())
+	}
+
+	_ = seedBadgerRelHistory(t, bs, 4, true)
+	rel := types.NewRelationship(types.RelID(6), 1, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(rel.ID(), 0, rel); err != nil {
+		t.Fatalf("PutRelVersion pending max: %v", err)
+	}
+	relMax, err = bs.MaxRelHistoryID()
+	if err != nil {
+		t.Fatalf("MaxRelHistoryID mixed: %v", err)
+	}
+	if relMax != rel.ID() {
+		t.Fatalf("MaxRelHistoryID mixed = %d, want %d", relMax, rel.ID())
+	}
+	deletedRel := types.NewRelationship(types.RelID(10), 1, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(deletedRel.ID(), 0, deletedRel); err != nil {
+		t.Fatalf("PutRelVersion deleted max: %v", err)
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush deleted rel: %v", err)
+	}
+	if err := bs.TruncateRelHistory(deletedRel.ID(), 0); err != nil {
+		t.Fatalf("TruncateRelHistory deleted max: %v", err)
+	}
+	relMax, err = bs.MaxRelHistoryID()
+	if err != nil {
+		t.Fatalf("MaxRelHistoryID after pending delete: %v", err)
+	}
+	if relMax != rel.ID() {
+		t.Fatalf("MaxRelHistoryID after pending delete = %d, want %d", relMax, rel.ID())
+	}
+}
+
 func TestBadgerStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)

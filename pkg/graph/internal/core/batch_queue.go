@@ -30,31 +30,22 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	if b.g.closed.Load() {
 		return nil, ErrGraphClosed
 	}
-	if len(labels) == 0 {
-		return nil, ErrNoLabels
+	if err := b.g.validateNodeCreateLabels(labels); err != nil {
+		return nil, err
 	}
 
-	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	// Extract reserved provenance fields before property validation (tkg_ prefix is rejected).
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
+	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validation limits.
-	if len(labels) > b.g.validation.MaxLabelsPerNode {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), b.g.validation.MaxLabelsPerNode)
-	}
-	for _, label := range labels {
-		if err := b.g.validateName(label); err != nil {
-			return nil, err
-		}
-	}
 	if err := b.g.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -100,13 +91,14 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 
 	b.nodes = append(b.nodes, pendingNode{
 		node:               n,
+		result:             n.DeepCopy(),
 		labels:             canonicalLabels,
 		queuedPrimaryToken: labelTokens.primary,
 		queuedExtraTokens:  append([]uint16(nil), labelTokens.extras...),
 		nodeIntegrity:      nodeIntegrity,
 		temporal:           temporal,
 	})
-	return n, nil
+	return b.nodes[len(b.nodes)-1].result, nil
 }
 
 // AddRelationship queues a relationship for creation. The type name and
@@ -133,23 +125,22 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
 	}
+	if err := b.g.validateName(typeName); err != nil {
+		return nil, err
+	}
 
-	// Extract reserved provenance fields before validation (tkg_ prefix is rejected).
+	// Extract reserved provenance fields before property validation (tkg_ prefix is rejected).
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract reserved temporal fields before validation (tkg_ prefix is rejected).
+	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validation limits.
-	if err := b.g.validateName(typeName); err != nil {
-		return nil, err
-	}
 	if err := b.g.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -174,9 +165,9 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Reuse existing relationship type tokens, but defer allocation for a new
-	// type until Execute has passed endpoint and temporal-constraint checks. The
-	// queue-time relationship is a caller-visible skeleton; Execute replaces its
-	// value in place with the real token before persistence.
+	// type until Execute has passed endpoint and temporal-constraint checks.
+	// Execute retokenizes the private queued relationship before persistence and
+	// copies the final committed/rolled-back state into the returned skeleton.
 	typeToken, err := b.g.existingRelTypeOrNextProbeToken(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
@@ -218,6 +209,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	b.rels = append(b.rels, pendingRel{
 		rel:             r,
+		result:          r.DeepCopy(),
 		typeName:        typeName,
 		startID:         startID,
 		endID:           endID,
@@ -225,7 +217,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		relIntegrity:    ig,
 		temporal:        rtm,
 	})
-	return r, nil
+	return b.rels[len(b.rels)-1].result, nil
 }
 
 // UpdateNode queues a node update. Keys and values are validated eagerly.
@@ -246,14 +238,14 @@ func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
-	queuedUpdates, err := b.g.cloneQueuedUpdateMap(updates, "batch update node")
-	if err != nil {
-		return err
-	}
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, updates: queuedUpdates})
+	queuedUpdate, err := b.g.prepareQueuedUpdateProperties(updates, "batch update node")
+	if err != nil {
+		return err
+	}
+	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, update: queuedUpdate})
 	return nil
 }
 
@@ -275,14 +267,14 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
-	queuedUpdates, err := b.g.cloneQueuedUpdateMap(updates, "batch update relationship")
-	if err != nil {
-		return err
-	}
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	b.relUpdates = append(b.relUpdates, pendingRelUpdate{id: id, updates: queuedUpdates})
+	queuedUpdate, err := b.g.prepareQueuedUpdateProperties(updates, "batch update relationship")
+	if err != nil {
+		return err
+	}
+	b.relUpdates = append(b.relUpdates, pendingRelUpdate{id: id, update: queuedUpdate})
 	return nil
 }
 

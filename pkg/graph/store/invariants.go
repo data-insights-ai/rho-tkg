@@ -8,8 +8,7 @@ import (
 )
 
 // ValidateNodeSnapshotKey verifies that a node snapshot is stored under its
-// own ID. Version-history keys and tombstone keys must not disagree with the
-// entity payload they contain.
+// own ID.
 func ValidateNodeSnapshotKey(id types.NodeID, n *types.Node) error {
 	if n == nil {
 		return fmt.Errorf("%w: nil node snapshot", ErrInvalidStoreMutation)
@@ -50,6 +49,26 @@ func ValidateNodeHistorySnapshot(id types.NodeID, n *types.Node) error {
 	return validateNodeExplicitTemporalRange(n.ID(), n.Temporal())
 }
 
+// ValidateNodeHistoryVersionSnapshot verifies that a node payload can be
+// stored under the exact version-history key requested by the caller.
+func ValidateNodeHistoryVersionSnapshot(id types.NodeID, version uint32, n *types.Node) error {
+	return ValidateNodeHistoryKeySnapshot(id, uint64(version), n)
+}
+
+// ValidateNodeHistoryKeySnapshot verifies a decoded node history row against
+// its full key. Badger history keys encode the version as uint64 even though
+// public entity versions are uint32, so this helper rejects impossible key
+// versions before callers can truncate them.
+func ValidateNodeHistoryKeySnapshot(id types.NodeID, version uint64, n *types.Node) error {
+	if err := ValidateNodeHistorySnapshot(id, n); err != nil {
+		return err
+	}
+	if got := uint64(n.Version()); got != version {
+		return fmt.Errorf("%w: node history payload version %d does not match key version %d", ErrInvalidStoreMutation, got, version)
+	}
+	return nil
+}
+
 // ValidateRelationshipHistorySnapshot verifies that a relationship payload can
 // be stored as a version-history or tombstone snapshot under id.
 func ValidateRelationshipHistorySnapshot(id types.RelID, r *types.Relationship) error {
@@ -60,6 +79,49 @@ func ValidateRelationshipHistorySnapshot(id types.RelID, r *types.Relationship) 
 		return err
 	}
 	return validateRelExplicitTemporalRange(r.ID(), r.Temporal())
+}
+
+// ValidateRelationshipHistoryVersionSnapshot verifies that a relationship
+// payload can be stored under the exact version-history key requested by the
+// caller.
+func ValidateRelationshipHistoryVersionSnapshot(id types.RelID, version uint32, r *types.Relationship) error {
+	return ValidateRelationshipHistoryKeySnapshot(id, uint64(version), r)
+}
+
+// ValidateRelationshipHistoryKeySnapshot verifies a decoded relationship
+// history row against its full key.
+func ValidateRelationshipHistoryKeySnapshot(id types.RelID, version uint64, r *types.Relationship) error {
+	if err := ValidateRelationshipHistorySnapshot(id, r); err != nil {
+		return err
+	}
+	if got := uint64(r.Version()); got != version {
+		return fmt.Errorf("%w: relationship history payload version %d does not match key version %d", ErrInvalidStoreMutation, got, version)
+	}
+	return nil
+}
+
+// ValidateNodeLiveVersion verifies that a history-writing mutation was derived
+// from the currently stored node version.
+func ValidateNodeLiveVersion(n *types.Node, version uint32) error {
+	if n == nil {
+		return fmt.Errorf("%w: nil existing node", ErrInvalidStoreMutation)
+	}
+	if n.Version() != version {
+		return fmt.Errorf("%w: live node version %d does not match previous version %d", ErrInvalidStoreMutation, n.Version(), version)
+	}
+	return nil
+}
+
+// ValidateRelationshipLiveVersion verifies that a history-writing mutation was
+// derived from the currently stored relationship version.
+func ValidateRelationshipLiveVersion(r *types.Relationship, version uint32) error {
+	if r == nil {
+		return fmt.Errorf("%w: nil existing relationship", ErrInvalidStoreMutation)
+	}
+	if r.Version() != version {
+		return fmt.Errorf("%w: live relationship version %d does not match previous version %d", ErrInvalidStoreMutation, r.Version(), version)
+	}
+	return nil
 }
 
 // ValidateNodeID verifies that a Store mutation targets a real node ID.
@@ -324,6 +386,16 @@ func ValidatePagination(after types.EntityID, limit int) error {
 func ValidateHistoryRetention(keepVersions int) error {
 	if keepVersions < 0 {
 		return fmt.Errorf("%w: negative history retention %d", ErrInvalidStoreMutation, keepVersions)
+	}
+	return nil
+}
+
+// ValidateHistoryPageLimit verifies the page size for per-entity history
+// version scans. Zero means "all remaining" to match the other Store cursor
+// APIs; negative limits are invalid.
+func ValidateHistoryPageLimit(limit int) error {
+	if limit < 0 {
+		return fmt.Errorf("%w: %d", ErrInvalidQueryLimit, limit)
 	}
 	return nil
 }

@@ -741,6 +741,18 @@ func TestImportGraph_RejectsInvalidNodeWireScalars(t *testing.T) {
 			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, BaseEntityID: -1},
 		},
 		{
+			name: "temporal payload without flag",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, TxFrom: 10},
+		},
+		{
+			name: "empty temporal range",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, ValidFrom: 20, ValidTo: 20},
+		},
+		{
+			name: "reversed temporal range",
+			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, ValidFrom: 30, ValidTo: 20},
+		},
+		{
 			name: "extra duplicates primary",
 			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, ExtraLabels: []int{1}},
 		},
@@ -809,6 +821,18 @@ func TestImportGraph_RejectsInvalidRelWireScalars(t *testing.T) {
 		{
 			name: "negative base entity id",
 			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, BaseEntityID: -1},
+		},
+		{
+			name: "temporal payload without flag",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, TxFrom: 10},
+		},
+		{
+			name: "empty temporal range",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, ValidFrom: 20, ValidTo: 20},
+		},
+		{
+			name: "reversed temporal range",
+			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, ValidFrom: 30, ValidTo: 20},
 		},
 	}
 
@@ -1004,6 +1028,78 @@ func TestImportGraph_RejectsPropertiesOverDestinationValidationLimits(t *testing
 						Key:   "a",
 						Value: value,
 						Type:  storeutil.PropertyTypeTag(value),
+					}},
+				})
+				if err != nil {
+					t.Fatalf("marshal rel: %v", err)
+				}
+				return b
+			},
+			want: ErrValueTooLarge,
+		},
+		{
+			name: "node custom property decoded oversized string",
+			tag:  exportTagNode,
+			body: func(t *testing.T) []byte {
+				t.Helper()
+				value := sizeLimitCustomProperty{Name: "xxxx"}
+				if err := types.RegisterPropertyStructType(sizeLimitCustomProperty{}); err != nil {
+					t.Fatalf("RegisterPropertyStructType: %v", err)
+				}
+				typeName, pointer, ok := types.RegisteredPropertyStructWireType(value)
+				if !ok {
+					t.Fatal("RegisteredPropertyStructWireType returned ok=false")
+				}
+				data, err := msgpack.Marshal(value)
+				if err != nil {
+					t.Fatalf("marshal custom property: %v", err)
+				}
+				b, err := msgpack.Marshal(&storeutil.NodeWire{
+					ID:           snowflakeIDForTest(),
+					PrimaryLabel: 1,
+					Properties: []storeutil.PropertyWire{{
+						Key:           "a",
+						Value:         data,
+						Type:          storeutil.PropertyTypeTag(value),
+						CustomType:    typeName,
+						CustomPointer: pointer,
+					}},
+				})
+				if err != nil {
+					t.Fatalf("marshal node: %v", err)
+				}
+				return b
+			},
+			want: ErrValueTooLarge,
+		},
+		{
+			name: "rel custom property decoded oversized string",
+			tag:  exportTagRel,
+			body: func(t *testing.T) []byte {
+				t.Helper()
+				value := sizeLimitCustomProperty{Name: "xxxx"}
+				if err := types.RegisterPropertyStructType(sizeLimitCustomProperty{}); err != nil {
+					t.Fatalf("RegisterPropertyStructType: %v", err)
+				}
+				typeName, pointer, ok := types.RegisteredPropertyStructWireType(value)
+				if !ok {
+					t.Fatal("RegisteredPropertyStructWireType returned ok=false")
+				}
+				data, err := msgpack.Marshal(value)
+				if err != nil {
+					t.Fatalf("marshal custom property: %v", err)
+				}
+				b, err := msgpack.Marshal(&storeutil.RelWire{
+					ID:      snowflakeIDForTest(),
+					RelType: 1,
+					StartID: snowflakeIDForTest() + 1,
+					EndID:   snowflakeIDForTest() + 2,
+					Properties: []storeutil.PropertyWire{{
+						Key:           "a",
+						Value:         data,
+						Type:          storeutil.PropertyTypeTag(value),
+						CustomType:    typeName,
+						CustomPointer: pointer,
 					}},
 				})
 				if err != nil {

@@ -19,6 +19,7 @@ var (
 	ErrVectorIndexNotFound        = errors.New("graph: vector index not found")
 	ErrDimensionMismatch          = errors.New("graph: vector dimension mismatch")
 	ErrInvalidVectorIndexConfig   = errors.New("graph: invalid vector index configuration")
+	ErrInvalidVectorValue         = errors.New("graph: invalid vector value")
 	ErrInvalidShardDepth          = errors.New("graph: invalid shard depth")
 	ErrInvalidTimeRange           = errors.New("graph: invalid time range")
 	ErrInvalidQueryLimit          = errors.New("graph: invalid query limit")

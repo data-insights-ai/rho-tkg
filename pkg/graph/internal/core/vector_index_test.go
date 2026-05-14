@@ -313,6 +313,7 @@ func TestVectorIndex_SearchRejectsInvalidAndUnknownTargets(t *testing.T) {
 			MaxPropertyKeyLength: 4,
 		},
 	})
+	_, _ = g.Nodes.Add([]string{"Person"}, nil)
 
 	tests := []struct {
 		name string
@@ -351,6 +352,14 @@ func TestVectorIndex_SearchRejectsInvalidAndUnknownTargets(t *testing.T) {
 			},
 			want: ErrVectorIndexNotFound,
 		},
+		{
+			name: "missing vector index",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Person", "vec", []float32{1, 0}, 1, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrVectorIndexNotFound,
+		},
 	}
 
 	for _, tc := range tests {
@@ -368,6 +377,7 @@ func TestVectorIndex_SearchValidatesTargetsBeforeNonPositiveKShortcut(t *testing
 			MaxPropertyKeyLength: 4,
 		},
 	})
+	_, _ = g.Nodes.Add([]string{"Person"}, nil)
 
 	tests := []struct {
 		name string
@@ -394,6 +404,14 @@ func TestVectorIndex_SearchValidatesTargetsBeforeNonPositiveKShortcut(t *testing
 			name: "unknown label",
 			run: func() error {
 				_, err := g.Index.SearchNearest("Missing", "vec", []float32{1, 0}, 0, storepkg.QueryOpts{})
+				return err
+			},
+			want: ErrVectorIndexNotFound,
+		},
+		{
+			name: "missing vector index",
+			run: func() error {
+				_, err := g.Index.SearchNearest("Person", "vec", []float32{1, 0}, 0, storepkg.QueryOpts{})
 				return err
 			},
 			want: ErrVectorIndexNotFound,

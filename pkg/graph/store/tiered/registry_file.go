@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -18,6 +19,12 @@ type RegistryFileData struct {
 // saveRegistryFile writes label and reltype name slices to a flat msgpack file.
 // Uses write-tmp + fsync + atomic rename for crash safety.
 func saveRegistryFile(path string, labels, relTypes []string) error {
+	if err := validateRegistryFileNames("label", labels); err != nil {
+		return err
+	}
+	if err := validateRegistryFileNames("reltype", relTypes); err != nil {
+		return err
+	}
 	data, err := msgpack.Marshal(&RegistryFileData{
 		Labels:   labels,
 		RelTypes: relTypes,
@@ -89,7 +96,7 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 	}
 	tmpName := tmp.Name()
 
-	if _, err := tmp.Write(data); err != nil {
+	if err := writeFull(tmp, data); err != nil {
 		_ = tmp.Close()        // best-effort cleanup; returning primary error
 		_ = os.Remove(tmpName) // #nosec G703 — tmpName from os.CreateTemp, no traversal risk
 		return fmt.Errorf("%s: write temp: %w", prefix, err)
@@ -110,6 +117,20 @@ func atomicWriteFile(path string, data []byte, prefix string) error {
 	// Fsync the directory to ensure the rename is durable on crash.
 	if err := syncParentDir(path, prefix); err != nil {
 		return err
+	}
+	return nil
+}
+
+func writeFull(w io.Writer, data []byte) error {
+	for len(data) > 0 {
+		n, err := w.Write(data)
+		if err != nil {
+			return err
+		}
+		if n <= 0 || n > len(data) {
+			return io.ErrShortWrite
+		}
+		data = data[n:]
 	}
 	return nil
 }

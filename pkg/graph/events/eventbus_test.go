@@ -53,3 +53,53 @@ func TestEventBusNilReceiverMethodsAreNoop(t *testing.T) {
 	bus.Publish(Event{Type: EventNodeCreate})
 	bus.PublishBatch(Event{Type: EventRelDelete})
 }
+
+func TestEventBusPublishBatchUsesStableHandlerSnapshot(t *testing.T) {
+	var bus EventBus
+
+	var got []EventType
+	var newGot []EventType
+	var unsub func()
+	unsub = bus.Subscribe(func(e Event) {
+		got = append(got, e.Type)
+		if e.Type == EventNodeCreate {
+			unsub()
+			bus.Subscribe(func(e Event) {
+				newGot = append(newGot, e.Type)
+			})
+		}
+	})
+
+	bus.PublishBatch(
+		Event{Type: EventNodeCreate},
+		Event{Type: EventRelCreate},
+	)
+
+	want := []EventType{EventNodeCreate, EventRelCreate}
+	if !sameEventTypes(got, want) {
+		t.Fatalf("original handler saw %v, want %v", got, want)
+	}
+	if len(newGot) != 0 {
+		t.Fatalf("new handler saw same-batch events %v, want none", newGot)
+	}
+
+	bus.Publish(Event{Type: EventNodeDelete})
+	if !sameEventTypes(newGot, []EventType{EventNodeDelete}) {
+		t.Fatalf("new handler after batch saw %v, want [EventNodeDelete]", newGot)
+	}
+	if !sameEventTypes(got, want) {
+		t.Fatalf("unsubscribed handler after batch saw %v, want %v", got, want)
+	}
+}
+
+func sameEventTypes(got, want []EventType) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

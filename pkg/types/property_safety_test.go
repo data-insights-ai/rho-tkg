@@ -413,3 +413,142 @@ func TestPropertySliceRejectsPanickingDeepCopyResult(t *testing.T) {
 		t.Fatalf("Set stored value after DeepCopyValue panic: %v", ps)
 	}
 }
+
+type nilCopyValueStub struct{}
+
+func (n nilCopyValueStub) HashBytes() []byte  { return []byte("nil-copy") }
+func (n nilCopyValueStub) DeepCopyValue() any { return nil }
+
+func TestPropertySliceRejectsNilDeepCopyResult(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(nilCopyValueStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	var ps PropertySlice
+	err := ps.Set("nil-copy", nilCopyValueStub{})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Set error = %v, want ErrUnsupportedValueType", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("Set stored value after nil DeepCopyValue result: %v", ps)
+	}
+
+	_, err = NewPropertySlice(map[string]any{"nil-copy": nilCopyValueStub{}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("NewPropertySlice error = %v, want ErrUnsupportedValueType", err)
+	}
+
+	n := NewNode(1, 1, nil)
+	err = n.SetProperties(PropertySlice{{Key: "nil-copy", Value: nilCopyValueStub{}}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Node.SetProperties error = %v, want ErrUnsupportedValueType", err)
+	}
+	if n.Properties().Len() != 0 {
+		t.Fatalf("Node.SetProperties stored value after nil DeepCopyValue result: %v", n.Properties())
+	}
+
+	r := NewRelationship(1, 1, 2, 3)
+	err = r.SetProperties(PropertySlice{{Key: "nil-copy", Value: nilCopyValueStub{}}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Relationship.SetProperties error = %v, want ErrUnsupportedValueType", err)
+	}
+	if r.Properties().Len() != 0 {
+		t.Fatalf("Relationship.SetProperties stored value after nil DeepCopyValue result: %v", r.Properties())
+	}
+}
+
+func TestPropertySliceRejectsNestedNilDeepCopyResult(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(nilCopyValueStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+
+	var ps PropertySlice
+	err := ps.Set("nested", []any{nilCopyValueStub{}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Set nested error = %v, want ErrUnsupportedValueType", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("Set stored nested value after nil DeepCopyValue result: %v", ps)
+	}
+
+	_, err = NewPropertySlice(map[string]any{"nested": map[string]any{"custom": nilCopyValueStub{}}})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("NewPropertySlice nested error = %v, want ErrUnsupportedValueType", err)
+	}
+}
+
+type otherCopyValueStub struct{}
+
+func (o otherCopyValueStub) HashBytes() []byte { return []byte("other-copy") }
+func (o otherCopyValueStub) DeepCopyValue() any {
+	return nestedRingsStub{Rings: [][]int{{1, 2, 3}}}
+}
+
+func TestPropertySliceRejectsTypeChangingDeepCopyResult(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	if err := RegisterPropertyStructType(otherCopyValueStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType other: %v", err)
+	}
+	if err := RegisterPropertyStructType(nestedRingsStub{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType nested: %v", err)
+	}
+
+	var ps PropertySlice
+	err := ps.Set("custom", otherCopyValueStub{})
+	if !errors.Is(err, ErrUnsupportedValueType) {
+		t.Fatalf("Set error = %v, want ErrUnsupportedValueType", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("Set stored value after type-changing DeepCopyValue result: %v", ps)
+	}
+}
+
+type unregisteredPanicCopyValueStub struct{}
+
+func (p unregisteredPanicCopyValueStub) DeepCopyValue() any {
+	panic("unregistered copy should not run")
+}
+
+func TestPropertySliceAccessorsDoNotInvokeUnregisteredDeepCopier(t *testing.T) {
+	t.Cleanup(resetRegistry)
+	resetRegistry()
+
+	ps := PropertySlice{{Key: "bad", Value: unregisteredPanicCopyValueStub{}}}
+
+	assertNoPanic := func(name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("%s panicked by invoking unregistered DeepCopier: %v", name, r)
+			}
+		}()
+		fn()
+	}
+
+	assertNoPanic("Get", func() {
+		got, ok := ps.Get("bad")
+		if !ok {
+			t.Fatal("Get missing manually constructed property")
+		}
+		if _, ok := got.(unregisteredPanicCopyValueStub); !ok {
+			t.Fatalf("Get returned %T, want unregisteredPanicCopyValueStub", got)
+		}
+	})
+	assertNoPanic("DeepCopy", func() {
+		cp := ps.DeepCopy()
+		if len(cp) != 1 {
+			t.Fatalf("DeepCopy len = %d, want 1", len(cp))
+		}
+		if _, ok := cp[0].Value.(unregisteredPanicCopyValueStub); !ok {
+			t.Fatalf("DeepCopy value type = %T, want unregisteredPanicCopyValueStub", cp[0].Value)
+		}
+	})
+	assertNoPanic("ToMap", func() {
+		m := ps.ToMap()
+		if _, ok := m["bad"].(unregisteredPanicCopyValueStub); !ok {
+			t.Fatalf("ToMap value type = %T, want unregisteredPanicCopyValueStub", m["bad"])
+		}
+	})
+}

@@ -86,6 +86,16 @@ func (r *Relationship) HasTypeTokenRaw(tok uint16) bool {
 	return r != nil && tok != 0 && uint16(r.relType) == tok
 }
 
+// SetTypeTokenRaw replaces the relationship's type token using a raw uint16
+// token. Token 0 is accepted as an invalid/unset value so Store write
+// validation can reject malformed entities consistently with NewRelationship.
+func (r *Relationship) SetTypeTokenRaw(tok uint16) {
+	if r == nil {
+		return
+	}
+	r.relType = relTypeToken(tok)
+}
+
 // StartNodeID returns the source node's opaque internal ID.
 func (r *Relationship) StartNodeID() NodeID {
 	if r == nil {
@@ -121,12 +131,18 @@ func (r *Relationship) SetProperties(ps PropertySlice) error {
 // copying it. The caller transfers ownership of ps and must not mutate it
 // after this call. This is intended for graph-layer construction paths that
 // just received ps from NewPropertySlice; general callers should use
-// SetProperties.
+// SetProperties. Reusing a consumed OwnedPropertySlice installs nil properties
+// instead of sharing state.
 func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if r == nil {
 		return ErrNilRelationship
 	}
-	r.properties = ps.ps
+	if ps.ps == nil {
+		r.properties = nil
+		return nil
+	}
+	r.properties = *ps.ps
+	*ps.ps = nil
 	return nil
 }
 
@@ -147,6 +163,46 @@ func (r *Relationship) GetProperty(key string) (any, bool) {
 	return r.properties.Get(key)
 }
 
+// PropertyValueEqual reports whether key exists and whether its stored value
+// equals expected without returning or copying the stored value.
+func (r *Relationship) PropertyValueEqual(key string, expected any) (found bool, equal bool) {
+	if r == nil {
+		return false, false
+	}
+	return r.properties.propertyValueEqual(key, expected)
+}
+
+// IndexablePropertyValueKey returns the canonical index key for a scalar
+// property without exposing the property value itself. The second return value
+// reports whether the property exists; a present but non-indexable value
+// returns ("", true).
+func (r *Relationship) IndexablePropertyValueKey(key string) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	return r.properties.indexableValueKey(key)
+}
+
+// ForEachIndexablePropertyValueKey calls fn for each scalar property using
+// the canonical value key consumed by property indexes. It skips non-indexable
+// values and stops early when fn returns false.
+func (r *Relationship) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey string) bool) {
+	if r == nil {
+		return
+	}
+	r.properties.forEachIndexableValueKey(fn)
+}
+
+// Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
+// index input. It accepts []float32 and []any containing only float32/float64
+// values, matching vector-index input support.
+func (r *Relationship) Float32SlicePropertyCopy(key string) ([]float32, bool) {
+	if r == nil {
+		return nil, false
+	}
+	return r.properties.float32SliceCopy(key)
+}
+
 // DeleteProperty removes a property from the relationship.
 // Returns true if the key was found and removed, false if it was not present.
 // Returns an error if the key has the reserved "tkg_" prefix.
@@ -163,6 +219,25 @@ func (r *Relationship) PropertyCount() int {
 		return 0
 	}
 	return r.properties.Len()
+}
+
+// AppendPropertyHashBytes appends this relationship's properties using the
+// integrity hash byte layout without exposing or defensive-copying the slice.
+func (r *Relationship) AppendPropertyHashBytes(buf []byte) []byte {
+	if r == nil {
+		return buf
+	}
+	return r.properties.AppendHashBytes(buf)
+}
+
+// PropertyHashNeedsRecover reports whether hashing this relationship's
+// properties can invoke custom user code that the checked hash path should
+// recover from.
+func (r *Relationship) PropertyHashNeedsRecover() bool {
+	if r == nil {
+		return false
+	}
+	return propertySliceHashNeedsRecover(r.properties)
 }
 
 // Properties returns a copy of the relationship's property slice.

@@ -109,6 +109,32 @@ func TestSetTemporalConstraints_Replace(t *testing.T) {
 	}
 }
 
+func TestConstraintOpsNilReceiversReturnErrNilGraphOrZero(t *testing.T) {
+	t.Parallel()
+
+	valid := temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}
+	for _, tc := range []struct {
+		name string
+		ops  *ConstraintOps
+	}{
+		{name: "nil", ops: nil},
+		{name: "zero", ops: &ConstraintOps{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tc.ops.Add(valid); !errors.Is(err, ErrNilGraph) {
+				t.Fatalf("Add = %v, want ErrNilGraph", err)
+			}
+			if err := tc.ops.Set(temporalpkg.NewConstraintSet(valid)); !errors.Is(err, ErrNilGraph) {
+				t.Fatalf("Set = %v, want ErrNilGraph", err)
+			}
+			if got := tc.ops.Get().Len(); got != 0 {
+				t.Fatalf("Get().Len = %d, want 0", got)
+			}
+		})
+	}
+}
+
 func TestTemporalConstraintUnknownKindRejectedAtRegistration(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -449,6 +475,245 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 	if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
 		t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
 	}
+}
+
+func TestConstraintRelWithinEndpoints_OpenEndedRelExceedsFiniteEndpoint(t *testing.T) {
+	t.Run("start endpoint", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+		addRelWithinEndpointsConstraint(t, g)
+
+		finiteFuture := types.Instant(1 << 60)
+		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+			"tkg_valid_from": types.Instant(1),
+			"tkg_valid_to":   finiteFuture,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = g.Rels.Add("LINK", a, b, nil)
+		if err == nil {
+			t.Fatal("expected open-ended relationship to exceed finite start endpoint, got nil")
+		}
+		if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
+		}
+		if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
+		}
+	})
+
+	t.Run("end endpoint", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+		addRelWithinEndpointsConstraint(t, g)
+
+		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		finiteFuture := types.Instant(1 << 60)
+		b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+			"tkg_valid_from": types.Instant(1),
+			"tkg_valid_to":   finiteFuture,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = g.Rels.AddByID("LINK", a.ID(), b.ID(), nil)
+		if err == nil {
+			t.Fatal("expected open-ended relationship to exceed finite end endpoint, got nil")
+		}
+		if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
+		}
+		if !errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) = false; err = %v", err)
+		}
+	})
+}
+
+func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t *testing.T) {
+	t.Run("start endpoint rejects open relationship", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+		addRelWithinEndpointsConstraint(t, g)
+
+		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Rels.Add("LINK", a, b, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		closeAt := g.nodeValidFrom(a) + 10_000
+		err = g.Nodes.CloseVersion(a.ID(), closeAt)
+		if err == nil {
+			t.Fatal("expected node close to reject open relationship, got nil")
+		}
+		if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
+		}
+		if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
+		}
+		loaded, getErr := g.Nodes.Get(a.ID())
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if tm := loaded.Temporal(); tm != nil && tm.ValidTo != 0 {
+			t.Fatalf("node ValidTo changed after rejected constrained close: %d", tm.ValidTo)
+		}
+	})
+
+	t.Run("end endpoint rejects open relationship", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+		addRelWithinEndpointsConstraint(t, g)
+
+		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := g.Rels.Add("LINK", a, b, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		closeAt := g.nodeValidFrom(b) + 10_000
+		err = g.Nodes.CloseVersion(b.ID(), closeAt)
+		if err == nil {
+			t.Fatal("expected node close to reject open incoming relationship, got nil")
+		}
+		if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
+		}
+		if !errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsEndNodeValidity) = false; err = %v", err)
+		}
+	})
+
+	t.Run("accepts contained relationship", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+		addRelWithinEndpointsConstraint(t, g)
+
+		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		closeAt := types.Instant(1 << 60)
+		if _, err := g.Rels.Add("LINK", a, b, map[string]any{"tkg_valid_to": closeAt - 1}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := g.Nodes.CloseVersion(a.ID(), closeAt); err != nil {
+			t.Fatalf("CloseVersion with contained relationship: %v", err)
+		}
+		loaded, getErr := g.Nodes.Get(a.ID())
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeAt {
+			t.Fatalf("node ValidTo after accepted close = %v, want %d", tm, closeAt)
+		}
+	})
+}
+
+func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing.T) {
+	t.Run("rejects close after finite endpoint", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+
+		nodeTo := types.Instant(1 << 60)
+		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+			"tkg_valid_from": types.Instant(1),
+			"tkg_valid_to":   nodeTo,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.Rels.Add("LINK", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addRelWithinEndpointsConstraint(t, g)
+
+		err = g.Rels.CloseVersion(r.ID(), nodeTo+1)
+		if err == nil {
+			t.Fatal("expected relationship close to reject endpoint overrun, got nil")
+		}
+		if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrTemporalConstraint) = false; err = %v", err)
+		}
+		if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
+			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
+		}
+		loaded, getErr := g.Rels.Get(r.ID())
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if tm := loaded.Temporal(); tm != nil && tm.ValidTo != 0 {
+			t.Fatalf("relationship ValidTo changed after rejected constrained close: %d", tm.ValidTo)
+		}
+	})
+
+	t.Run("accepts close within finite endpoint", func(t *testing.T) {
+		t.Parallel()
+		g := newTestGraph(t)
+
+		nodeTo := types.Instant(1 << 60)
+		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+			"tkg_valid_from": types.Instant(1),
+			"tkg_valid_to":   nodeTo,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.Rels.Add("LINK", a, b, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addRelWithinEndpointsConstraint(t, g)
+
+		closeAt := nodeTo - 1
+		if err := g.Rels.CloseVersion(r.ID(), closeAt); err != nil {
+			t.Fatalf("CloseVersion within endpoint bounds: %v", err)
+		}
+		loaded, getErr := g.Rels.Get(r.ID())
+		if getErr != nil {
+			t.Fatal(getErr)
+		}
+		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeAt {
+			t.Fatalf("relationship ValidTo after accepted close = %v, want %d", tm, closeAt)
+		}
+	})
 }
 
 func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {

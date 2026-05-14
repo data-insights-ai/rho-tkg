@@ -100,7 +100,7 @@ func (r *ResolveOps) NodeProperty(n *types.Node, key string) (any, bool) {
 		return nil, false
 	case types.ShadowSignature:
 		if ig := n.Integrity(); ig != nil {
-			return ig.Signature, true
+			return types.CloneBytes(ig.Signature), true
 		}
 		return nil, false
 	case types.ShadowAuthorizedBy:
@@ -230,7 +230,7 @@ func (r *ResolveOps) RelProperty(rel *types.Relationship, key string) (any, bool
 		return nil, false
 	case types.ShadowSignature:
 		if ig := rel.Integrity(); ig != nil {
-			return ig.Signature, true
+			return types.CloneBytes(ig.Signature), true
 		}
 		return nil, false
 	case types.ShadowAuthorizedBy:

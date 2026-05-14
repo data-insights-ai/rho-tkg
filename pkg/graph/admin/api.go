@@ -80,7 +80,11 @@ func (a *API) ListShards() ([]tiered.ShardInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ops.ListShards()
+	shards, err := ops.ListShards()
+	if err != nil {
+		return nil, err
+	}
+	return cloneShardInfo(shards), nil
 }
 
 // RebuildCatalog reconstructs the shard catalog from live state.
@@ -125,4 +129,13 @@ func (a *API) DecomposeID(id snowflake.ID) IDComponents {
 		return IDComponents{}
 	}
 	return a.ops.DecomposeID(id)
+}
+
+func cloneShardInfo(shards []tiered.ShardInfo) []tiered.ShardInfo {
+	if shards == nil {
+		return nil
+	}
+	out := make([]tiered.ShardInfo, len(shards))
+	copy(out, shards)
+	return out
 }

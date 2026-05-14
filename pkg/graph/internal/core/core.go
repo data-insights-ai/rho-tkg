@@ -10,6 +10,8 @@ package core
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,38 +40,52 @@ import (
 // Core is the central graph implementation. Customers see *graph.Graph, which
 // is a thin facade holding *Core plus sub-API accessors.
 type Core struct {
-	labels            *registrypkg.LabelRegistry
-	relTypes          *registrypkg.RelTypeRegistry
-	nodeIDGen         *snowflake.Node
-	relIDGen          *snowflake.Node
-	store             storepkg.MandatoryStore
-	endpointHash      storepkg.EndpointIntegrityHashCapability
-	endpointHashWrite generatedcreate.RelationshipEndpointHashCapability
-	nodeHash          storepkg.NodeIntegrityHashCapability
-	txTimeQuery       storepkg.TransactionTimeQueryCapability
-	historyTrim       storepkg.HistoryRollbackTrimCapability
-	nativeAdjacency   bool
-	entityLocks       *locks.Manager
-	validation        ValidationLimits
-	constraints       ConstraintSet
-	events            eventspkg.Publisher
-	txEventBuffer     *[]eventspkg.Event
-	mu                sync.RWMutex
-	registryMu        sync.Mutex
-	relTypeCache      map[string]uint16
-	relTypeCacheMu    sync.RWMutex
-	closeOnce         sync.Once
-	closed            atomic.Bool
+	labels             *registrypkg.LabelRegistry
+	relTypes           *registrypkg.RelTypeRegistry
+	nodeIDGen          *snowflake.Node
+	relIDGen           *snowflake.Node
+	store              storepkg.MandatoryStore
+	generatedCreate    generatedcreate.Capability
+	endpointHash       storepkg.EndpointIntegrityHashCapability
+	endpointHashWrite  generatedcreate.RelationshipEndpointHashCapability
+	nodeHash           storepkg.NodeIntegrityHashCapability
+	txTimeQuery        storepkg.TransactionTimeQueryCapability
+	txTimeQueryCopy    bool
+	historyTrim        storepkg.HistoryRollbackTrimCapability
+	propertyQuery      storepkg.PropertyIndexCapability
+	propertyQueryTrust bool
+	filteredVector     storepkg.FilteredVectorSearchCapability
+	depthHistory       storepkg.DepthHistoryIterationCapability
+	vectorRowsTrust    bool
+	storeRowsTrust     bool
+	nativeAdjacency    bool
+	entityLocks        *locks.Manager
+	validation         ValidationLimits
+	constraints        ConstraintSet
+	events             eventspkg.Publisher
+	txEventBuffer      *[]eventspkg.Event
+	mu                 sync.RWMutex
+	registryMu         sync.Mutex
+	registryDirty      atomic.Bool
+	relTypeCache       map[string]uint16
+	relTypeCacheMu     sync.RWMutex
+	closeOnce          sync.Once
+	closed             atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
-	// time.Now in New(); test helpers swap it for a deterministic
-	// counter so two consecutive mutations yield strictly-increasing
-	// timestamps without the wall-clock sleeps that otherwise flake on
-	// loaded CI hardware (R4-F20). Only ever read from goroutines that
-	// hold the appropriate Core lock — the value is set once in New
-	// and (in tests) replaced under exclusive access.
+	// time.Now in New(); c.now() makes the observed instant monotonic
+	// per Core so fast same-millisecond mutations still get ordered
+	// transaction intervals. Test helpers swap it for a deterministic
+	// counter without relying on wall-clock sleeps (R4-F20). Only ever
+	// read from goroutines that hold the appropriate Core lock — the
+	// value is set once in New and (in tests) replaced under exclusive
+	// access.
 	clock func() time.Time
+	// lastInstant stores the last millisecond instant handed out by c.now().
+	// It is atomic because event publishing and read-side helpers can call
+	// c.now() from different goroutines even though mutation state is guarded.
+	lastInstant atomic.Int64
 
 	indexProviders map[string]*indexProviderEntry
 
@@ -140,6 +156,7 @@ var (
 	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch
 	ErrInvalidTemporalIndexConfig = storepkg.ErrInvalidTemporalIndexConfig
 	ErrInvalidVectorIndexConfig   = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue         = storepkg.ErrInvalidVectorValue
 	ErrInvalidTimeRange           = storepkg.ErrInvalidTimeRange
 	ErrInvalidQueryLimit          = storepkg.ErrInvalidQueryLimit
 	ErrInvalidQueryCursor         = storepkg.ErrInvalidQueryCursor
@@ -192,6 +209,187 @@ func (c *Core) ValidationDefaults() ValidationLimits {
 	return c.validation
 }
 
+func isExactNativeStore(store storepkg.MandatoryStore) bool {
+	switch store.(type) {
+	case *memory.Store, *badger.Store, *tiered.Store:
+		return true
+	default:
+		return false
+	}
+}
+
+var nativeStoreTypes = [...]reflect.Type{
+	reflect.TypeOf((*memory.Store)(nil)),
+	reflect.TypeOf((*badger.Store)(nil)),
+	reflect.TypeOf((*tiered.Store)(nil)),
+}
+
+func embedsNativeCapability(store storepkg.MandatoryStore, capability reflect.Type, directMethods ...string) bool {
+	if typeDeclaresMethods(reflect.TypeOf(store), directMethods...) {
+		return false
+	}
+	return valueEmbedsNativeCapability(reflect.ValueOf(store), capability, make(map[reflect.Type]bool))
+}
+
+func typeDeclaresMethods(t reflect.Type, names ...string) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, name := range names {
+		if !typeDeclaresMethod(t, name) {
+			return false
+		}
+	}
+	return true
+}
+
+func typeDeclaresMethod(t reflect.Type, name string) bool {
+	if t == nil {
+		return false
+	}
+	candidates := []reflect.Type{t}
+	if t.Kind() != reflect.Pointer {
+		candidates = append(candidates, reflect.PointerTo(t))
+	}
+	for _, candidate := range candidates {
+		method, ok := candidate.MethodByName(name)
+		if !ok {
+			continue
+		}
+		fn := runtime.FuncForPC(method.Func.Pointer())
+		if fn == nil {
+			continue
+		}
+		file, _ := fn.FileLine(method.Func.Pointer())
+		// Promoted embedded-field methods are compiler wrappers reported from
+		// <autogenerated>; source-backed methods are declared by the wrapper.
+		if !strings.Contains(file, "<autogenerated>") {
+			return true
+		}
+	}
+	return false
+}
+
+func typeCanPromoteCapability(t, capability reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	if t.Implements(capability) {
+		return true
+	}
+	if t.Kind() == reflect.Pointer {
+		return false
+	}
+	return reflect.PointerTo(t).Implements(capability)
+}
+
+func nativeTypeCanPromoteCapability(t, capability reflect.Type) bool {
+	for _, native := range nativeStoreTypes {
+		if t == native {
+			return native.Implements(capability)
+		}
+		if t.Kind() != reflect.Pointer && reflect.PointerTo(t) == native {
+			return native.Implements(capability)
+		}
+	}
+	return false
+}
+
+func typeEmbedsNativeCapability(t, capability reflect.Type, seen map[reflect.Type]bool) bool {
+	if t == nil {
+		return false
+	}
+	if nativeTypeCanPromoteCapability(t, capability) {
+		return true
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if !field.Anonymous {
+			continue
+		}
+		ft := field.Type
+		if !typeCanPromoteCapability(ft, capability) {
+			continue
+		}
+		if nativeTypeCanPromoteCapability(ft, capability) {
+			return true
+		}
+		if typeEmbedsNativeCapability(ft, capability, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func valueEmbedsNativeCapability(v reflect.Value, capability reflect.Type, seen map[reflect.Type]bool) bool {
+	if !v.IsValid() {
+		return false
+	}
+	t := v.Type()
+	for t.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return false
+		}
+		v = v.Elem()
+		t = v.Type()
+	}
+	if nativeTypeCanPromoteCapability(t, capability) {
+		return true
+	}
+	for t.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return typeEmbedsNativeCapability(t, capability, seen)
+		}
+		v = v.Elem()
+		t = v.Type()
+	}
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if !field.Anonymous {
+			continue
+		}
+		ft := field.Type
+		if !typeCanPromoteCapability(ft, capability) {
+			continue
+		}
+		if nativeTypeCanPromoteCapability(ft, capability) {
+			return true
+		}
+		fv := v.Field(i)
+		if ft.Kind() == reflect.Interface {
+			if !fv.IsNil() && fv.CanInterface() {
+				if valueEmbedsNativeCapability(reflect.ValueOf(fv.Interface()), capability, seen) {
+					return true
+				}
+			}
+			continue
+		}
+		if valueEmbedsNativeCapability(fv, capability, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 func nativeRelationshipEndpointHashWrite(store storepkg.MandatoryStore) generatedcreate.RelationshipEndpointHashCapability {
 	cap, ok := store.(generatedcreate.RelationshipEndpointHashCapability)
 	if !ok {
@@ -206,6 +404,167 @@ func nativeRelationshipEndpointHashWrite(store storepkg.MandatoryStore) generate
 	default:
 		return nil
 	}
+}
+
+func nativeEndpointIntegrityHash(store storepkg.MandatoryStore) storepkg.EndpointIntegrityHashCapability {
+	cap, ok := store.(storepkg.EndpointIntegrityHashCapability)
+	if !ok {
+		return nil
+	}
+	// Endpoint hash reads replace GetNode calls on relationship create/update.
+	// Keep that shortcut on exact in-tree stores so wrappers that override
+	// GetNode for fault injection, stale reads, or policy checks stay visible.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.EndpointIntegrityHashCapability)(nil)).Elem(), "EndpointIntegrityHashes") {
+		return nil
+	}
+	return cap
+}
+
+func filteredVectorSearchCapability(store storepkg.MandatoryStore) storepkg.FilteredVectorSearchCapability {
+	cap, ok := store.(storepkg.FilteredVectorSearchCapability)
+	if !ok {
+		return nil
+	}
+	// This is both a correctness and performance hook. External backends may
+	// implement it directly, but concrete wrappers that merely inherit an
+	// in-tree method should still exercise their SearchNearestNodes override
+	// through the graph-layer over-fetch fallback.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.FilteredVectorSearchCapability)(nil)).Elem(), "SearchNearestFiltered") {
+		return nil
+	}
+	return cap
+}
+
+func propertyQueryCapability(store storepkg.MandatoryStore) storepkg.PropertyIndexCapability {
+	cap, ok := store.(storepkg.PropertyIndexCapability)
+	if !ok {
+		return nil
+	}
+	// The graph can answer property equality by scanning NodesByLabel, so the
+	// store capability is an acceleration/extension path. Let exact in-tree and
+	// direct external implementations use it, but keep concrete wrappers on the
+	// graph fallback so their NodesByLabel overrides stay visible.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.PropertyIndexCapability)(nil)).Elem(), "NodesByLabelAndProperty") {
+		return nil
+	}
+	return cap
+}
+
+func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegrityHashCapability {
+	cap, ok := store.(storepkg.NodeIntegrityHashCapability)
+	if !ok {
+		return nil
+	}
+	// Node hash reads are the one-by-one fallback for endpoint hash reads and
+	// must obey the same wrapper boundary as nativeEndpointIntegrityHash.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.NodeIntegrityHashCapability)(nil)).Elem(), "NodeIntegrityHash") {
+		return nil
+	}
+	return cap
+}
+
+func nativeGeneratedCreate(store storepkg.MandatoryStore) generatedcreate.Capability {
+	cap, ok := store.(generatedcreate.Capability)
+	if !ok {
+		return nil
+	}
+	// Keep generated-ID duplicate-probe shortcuts on exact in-tree stores only.
+	// Embedded wrappers may override PutNode/PutRelationship/PutNodesBatch for
+	// instrumentation or fault injection, and the fast path must not bypass them.
+	switch store.(type) {
+	case *tiered.Store:
+		return cap
+	default:
+		return nil
+	}
+}
+
+func nativeTransactionTimeQuery(store storepkg.MandatoryStore) storepkg.TransactionTimeQueryCapability {
+	cap, ok := store.(storepkg.TransactionTimeQueryCapability)
+	if !ok {
+		return nil
+	}
+	// Transaction-time queries replace the mandatory Get*/history/iteration
+	// path. Keep them native-only so wrapper stores can still inject read and
+	// history faults through the mandatory Store methods.
+	switch store.(type) {
+	case *memory.Store:
+		return cap
+	default:
+		if embedsNativeCapability(store, reflect.TypeOf((*storepkg.TransactionTimeQueryCapability)(nil)).Elem(),
+			"NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf") {
+			return nil
+		}
+		return cap
+	}
+}
+
+func nativeHistoryRollbackTrim(store storepkg.MandatoryStore) storepkg.HistoryRollbackTrimCapability {
+	cap, ok := store.(storepkg.HistoryRollbackTrimCapability)
+	if !ok {
+		return nil
+	}
+	// Rollback trimming replaces the generic truncate+restore history path.
+	// Only exact native stores get that shortcut; wrappers must observe their
+	// Truncate*/Put*Version hooks during rollback.
+	switch store.(type) {
+	case *memory.Store, *badger.Store:
+		return cap
+	default:
+		if embedsNativeCapability(store, reflect.TypeOf((*storepkg.HistoryRollbackTrimCapability)(nil)).Elem(),
+			"TrimNodeHistoryFrom", "TrimRelHistoryFrom") {
+			return nil
+		}
+		return cap
+	}
+}
+
+func historyVersionPageCapability(store storepkg.MandatoryStore) storepkg.HistoryVersionPageCapability {
+	cap, ok := store.(storepkg.HistoryVersionPageCapability)
+	if !ok {
+		return nil
+	}
+	// Export can fall back to mandatory Get*History reads. Keep inherited
+	// in-tree pagers off concrete wrappers so tests, fault injectors, and
+	// policy wrappers that override Get*History stay observable.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.HistoryVersionPageCapability)(nil)).Elem(),
+		"NodeHistoryVersionsFrom", "RelHistoryVersionsFrom") {
+		return nil
+	}
+	return cap
+}
+
+func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.DepthHistoryIterationCapability {
+	cap, ok := store.(storepkg.DepthHistoryIterationCapability)
+	if !ok {
+		return nil
+	}
+	// Depth-scoped history iteration is a tiered-store optimization. Concrete
+	// wrappers that only inherit tiered's methods must fall back through their
+	// mandatory ForEach*HistoryID hooks so policy/fault wrappers remain visible.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthHistoryIterationCapability)(nil)).Elem(),
+		"ForEachNodeHistoryIDByDepth", "ForEachRelHistoryIDByDepth") {
+		return nil
+	}
+	return cap
 }
 
 func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
@@ -243,8 +602,43 @@ type registriesPersister interface {
 func (c *Core) persistRegistries() error {
 	if rp, ok := c.store.(registriesPersister); ok {
 		if err := rp.SaveRegistries(c.labels, c.relTypes); err != nil {
+			c.registryDirty.Store(true)
 			return fmt.Errorf("graph: save registries: %w", err)
 		}
+	}
+	c.registryDirty.Store(false)
+	return nil
+}
+
+func (c *Core) persistRegistriesIfDirtyLocked() error {
+	if !c.registryDirty.Load() {
+		return nil
+	}
+	return c.persistRegistries()
+}
+
+func (c *Core) persistRegistriesIfDirtyLockedPanicSafe() error {
+	if !c.registryDirty.Load() {
+		return nil
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			c.registryMu.Unlock()
+			panic(r)
+		}
+	}()
+	return c.persistRegistries()
+}
+
+func (c *Core) checkpointDirtyRegistriesBeforeMutation(op string) error {
+	if !c.registryDirty.Load() {
+		return nil
+	}
+	c.registryMu.Lock()
+	defer c.registryMu.Unlock()
+	err := c.persistRegistriesIfDirtyLocked()
+	if err != nil {
+		return fmt.Errorf("graph: %s: %w", op, err)
 	}
 	return nil
 }
@@ -371,11 +765,20 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.store = store
-	c.endpointHash, _ = store.(storepkg.EndpointIntegrityHashCapability)
+	c.generatedCreate = nativeGeneratedCreate(store)
+	c.endpointHash = nativeEndpointIntegrityHash(store)
 	c.endpointHashWrite = nativeRelationshipEndpointHashWrite(store)
-	c.nodeHash, _ = store.(storepkg.NodeIntegrityHashCapability)
-	c.txTimeQuery, _ = store.(storepkg.TransactionTimeQueryCapability)
-	c.historyTrim, _ = store.(storepkg.HistoryRollbackTrimCapability)
+	c.nodeHash = nativeNodeIntegrityHash(store)
+	c.txTimeQuery = nativeTransactionTimeQuery(store)
+	_, txTimeQueryIsNativeMemory := store.(*memory.Store)
+	c.txTimeQueryCopy = c.txTimeQuery != nil && !txTimeQueryIsNativeMemory
+	c.historyTrim = nativeHistoryRollbackTrim(store)
+	c.propertyQuery = propertyQueryCapability(store)
+	c.propertyQueryTrust = isExactNativeStore(store)
+	c.filteredVector = filteredVectorSearchCapability(store)
+	c.depthHistory = depthHistoryIterationCapability(store)
+	c.vectorRowsTrust = isExactNativeStore(store)
+	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
 
 	// Registry rehydration for caller-injected stores. The Core-
@@ -413,7 +816,7 @@ func New(config Config) (*Core, error) {
 				c.relTypes = loadedRelTypes
 			}
 		}
-		if ts, ok := store.(*tiered.Store); ok {
+		if ts, ok := store.(tieredRegistryLoader); ok {
 			loadedLabels := registrypkg.NewLabelRegistry()
 			if n, err := ts.LoadLabelRegistry(loadedLabels); err != nil {
 				return nil, fmt.Errorf("graph: load label registry from injected tiered store: %w", err)
@@ -432,7 +835,7 @@ func New(config Config) (*Core, error) {
 				}
 				c.relTypes = loadedRelTypes
 			}
-			ts.SetLabelRegistry(c.labels)
+			setTieredLabelRegistryIfSupported(store, c.labels)
 		}
 	}
 
@@ -443,7 +846,7 @@ func New(config Config) (*Core, error) {
 // Backends that persist registries with the same `(found bool, err
 // error)` signature as badger satisfy this interface and get
 // automatic rehydration on graph construction. Tiered stores have a
-// different signature and are dispatched by concrete type just above.
+// different signature and are dispatched by tieredRegistryLoader above.
 type badgerRegistryLoader interface {
 	LoadLabelRegistry(*registrypkg.LabelRegistry) (bool, error)
 	LoadRelTypeRegistry(*registrypkg.RelTypeRegistry) (bool, error)
@@ -483,13 +886,27 @@ func (c *Core) Close() error {
 		for _, e := range entries {
 			e.unsubscribe()
 			e.waitInit()
-			if err := e.provider.Close(); err != nil {
-				closeErr = errors.Join(closeErr, fmt.Errorf("index provider %q close: %w", e.provider.Name(), err))
-			}
+			closeErr = errors.Join(closeErr, closeIndexProvider(e))
 		}
 
 		closeErr = errors.Join(closeErr, c.persistRegistries())
 		closeErr = errors.Join(closeErr, c.store.Close())
 	})
 	return closeErr
+}
+
+func closeIndexProvider(e *indexProviderEntry) (err error) {
+	providerName := "<unknown>"
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.Join(err, fmt.Errorf("index provider %q close panic: %v", providerName, r))
+		}
+	}()
+
+	e.stopEvents()
+	providerName = e.provider.Name()
+	if closeErr := e.provider.Close(); closeErr != nil {
+		err = errors.Join(err, fmt.Errorf("index provider %q close: %w", providerName, closeErr))
+	}
+	return err
 }

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -34,6 +35,36 @@ func TestAddNodeMaxLabels(t *testing.T) {
 	}
 }
 
+func TestAddNodeDuplicateLabelsCountCanonicalForLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
+
+	n, err := g.Nodes.Add([]string{"A", "B", "A"}, nil)
+	if err != nil {
+		t.Fatalf("duplicate labels should count by canonical label set: %v", err)
+	}
+
+	labels := g.Nodes.Labels(n)
+	if len(labels) != 2 || labels[0] != "A" || labels[1] != "B" {
+		t.Fatalf("labels = %v, want [A B]", labels)
+	}
+}
+
+func TestImportNodeDuplicateLabelsCountCanonicalForLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
+
+	n, err := g.Nodes.Import(context.Background(), types.NodeID(12345), []string{"A", "B", "A"}, nil)
+	if err != nil {
+		t.Fatalf("duplicate import labels should count by canonical label set: %v", err)
+	}
+
+	labels := g.Nodes.Labels(n)
+	if len(labels) != 2 || labels[0] != "A" || labels[1] != "B" {
+		t.Fatalf("labels = %v, want [A B]", labels)
+	}
+}
+
 func TestAddNodeTooManyProperties(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
@@ -60,6 +91,16 @@ func TestAddNodeInvalidLabelPrecedesPropertyValidation(t *testing.T) {
 	_, err = g.Nodes.Add([]string{strings.Repeat("x", defaultMaxNameLength+1)}, map[string]any{"a": int64(1), "b": int64(2)})
 	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("Add overlong label with invalid props = %v, want ErrNameTooLong", err)
+	}
+
+	_, err = g.Nodes.Add([]string{" "}, map[string]any{"tkg_signature": "not bytes"})
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("Add invalid label with invalid reserved props = %v, want ErrEmptyName", err)
+	}
+
+	_, err = g.Nodes.Import(context.Background(), types.NodeID(12345), []string{" "}, map[string]any{"tkg_signature": "not bytes"})
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("Import invalid label with invalid reserved props = %v, want ErrEmptyName", err)
 	}
 }
 

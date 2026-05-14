@@ -125,6 +125,41 @@ func TestMemoryStore_AllNodeIDs_ValidAt(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_AllNodeReads_ValidAtPaginationSkipsExpiredRows(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	putTestNodeWithTemporal(t, ms, snowflake.ID(10), 1, 100, 200)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(20), 1, 100, 0)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(30), 1, 100, 300)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(40), 1, 100, 0)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(50), 1, 100, 0)
+
+	ids, err := ms.AllNodeIDs(QueryOpts{ValidAt: 500, Limit: 2})
+	if err != nil {
+		t.Fatalf("AllNodeIDs page 1: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != 20 || ids[1] != 40 {
+		t.Fatalf("AllNodeIDs page 1 = %v, want [20 40]", ids)
+	}
+
+	ids, err = ms.AllNodeIDs(QueryOpts{ValidAt: 500, Limit: 2, After: types.EntityID(ids[1])})
+	if err != nil {
+		t.Fatalf("AllNodeIDs page 2: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 50 {
+		t.Fatalf("AllNodeIDs page 2 = %v, want [50]", ids)
+	}
+
+	nodes, err := ms.AllNodes(QueryOpts{ValidAt: 500, Limit: 2})
+	if err != nil {
+		t.Fatalf("AllNodes: %v", err)
+	}
+	if len(nodes) != 2 || nodes[0].ID() != 20 || nodes[1].ID() != 40 {
+		t.Fatalf("AllNodes = %v, want IDs [20 40]", nodes)
+	}
+}
+
 func TestMemoryStore_RelationshipsByType_ValidAt(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -243,6 +278,43 @@ func TestMemoryStore_AllRelIDs_ValidAt(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != 200 {
 		t.Fatalf("AllRelIDs ValidAt=350 = %v, want [200]", ids)
+	}
+}
+
+func TestMemoryStore_AllRelationshipReads_ValidAtPaginationSkipsExpiredRows(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	putTestNodeWithTemporal(t, ms, snowflake.ID(1), 1, 100, 0)
+	putTestNodeWithTemporal(t, ms, snowflake.ID(2), 1, 100, 0)
+	putTestRelWithTemporal(t, ms, snowflake.ID(100), 1, 1, 2, 100, 200)
+	putTestRelWithTemporal(t, ms, snowflake.ID(200), 1, 1, 2, 100, 0)
+	putTestRelWithTemporal(t, ms, snowflake.ID(300), 1, 1, 2, 100, 300)
+	putTestRelWithTemporal(t, ms, snowflake.ID(400), 1, 1, 2, 100, 0)
+	putTestRelWithTemporal(t, ms, snowflake.ID(500), 1, 1, 2, 100, 0)
+
+	ids, err := ms.AllRelIDs(QueryOpts{ValidAt: 500, Limit: 2})
+	if err != nil {
+		t.Fatalf("AllRelIDs page 1: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != 200 || ids[1] != 400 {
+		t.Fatalf("AllRelIDs page 1 = %v, want [200 400]", ids)
+	}
+
+	ids, err = ms.AllRelIDs(QueryOpts{ValidAt: 500, Limit: 2, After: types.EntityID(ids[1])})
+	if err != nil {
+		t.Fatalf("AllRelIDs page 2: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 500 {
+		t.Fatalf("AllRelIDs page 2 = %v, want [500]", ids)
+	}
+
+	rels, err := ms.AllRelationships(QueryOpts{ValidAt: 500, Limit: 2})
+	if err != nil {
+		t.Fatalf("AllRelationships: %v", err)
+	}
+	if len(rels) != 2 || rels[0].ID() != 200 || rels[1].ID() != 400 {
+		t.Fatalf("AllRelationships = %v, want IDs [200 400]", rels)
 	}
 }
 

@@ -24,17 +24,21 @@ func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates 
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
-		rel *types.Relationship
-		err error
+		rel     *types.Relationship
+		mutated bool
+		err     error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		rel, err = c.updateRelationshipInternal(ctx, id, updates)
+		rel, mutated, err = c.updateRelationshipInternal(ctx, id, updates)
 	})
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && len(updates) > 0 {
+	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return rel, err
@@ -42,66 +46,70 @@ func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates 
 
 // updateRelationshipInternal is the lock-free implementation of RelOps.UpdateWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, false, err
 	}
 
 	if len(updates) == 0 {
-		if err := storepkg.ValidateRelID(id); err != nil {
-			return nil, err
-		}
-		current, err := c.store.GetRelationship(id)
+		current, err := c.getCurrentRelationship(id)
 		if err == nil {
 			c.opRelReads.Add(1)
 		}
-		return current, err
+		return current, false, err
 	}
 
 	prov, updates, err := c.prepareUpdateProperties(updates, "update relationship")
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	return c.updateRelationshipPreparedInternal(ctx, id, prov, updates)
+}
+
+// updateRelationshipPreparedInternal applies a non-empty caller update after
+// provenance extraction and property validation have already run. The prepared
+// properties may be empty for metadata-only updates.
+func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.RelID, prov updateProvenance, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	// Phase 2: Acquire rel + both endpoint locks together. We need a peek
-	// to discover the (immutable) endpoint IDs; we then re-acquire all three
-	// locks together so the endpoint hash refresh below cannot race a
-	// concurrent UpdateNode on either endpoint (R4-F7). Rel endpoints never
-	// change after creation, so the peek-without-lock is benign — even if
-	// the rel is replaced between peek and LockMany, the new version still
-	// has the same start/end IDs. We re-fetch `current` under the proper
-	// locks for a stable mutation snapshot.
-	peek, err := c.store.GetRelationship(id)
+	// Phase 2: acquire rel + endpoint locks together. The first read only
+	// discovers which endpoint locks to take. Caller-supplied relationship IDs
+	// can be deleted and re-imported with different endpoints, so re-check the
+	// endpoint identity after locking and retry if the peek was stale.
+	current, startID, endID, err := c.lockRelationshipCurrentEndpoints(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	startID := peek.StartNodeID()
-	endID := peek.EndNodeID()
-
-	c.entityLocks.LockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	current, err := c.store.GetRelationship(id)
-	if err != nil {
-		return nil, err
+	if !relPreparedUpdateMutates(current, prov, updates) {
+		c.opRelReads.Add(1)
+		return current, false, nil
+	}
+	if err := rejectClosedRelMutation(current); err != nil {
+		return nil, false, err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship"); err != nil {
+		return nil, false, err
 	}
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
 	nextVersion, err := nextEntityVersion(prevVersion)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	prevState := current.DeepCopy()
 
@@ -112,29 +120,29 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
 		} else {
 			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
 		}
 	}
 
 	// Check final property count after mutations (under entity lock, before persist).
 	if current.PropertyCount() > c.validation.MaxPropertiesPerEntity {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
+		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
 	current.SetVersion(nextVersion)
 
-	now := c.now()
+	now := c.relVersionUpdateInstant(current)
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -158,7 +166,7 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
 	if err != nil {
-		return nil, fmt.Errorf("graph: compute relationship hash: %w", err)
+		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
@@ -172,21 +180,58 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		AuthorizationLevel: prov.authLevel,
 	}
 	if err := c.refreshRelationshipEndpointHashes(current, relIG); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	current.SetIntegrity(relIG)
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Atomic replace + history — single store call prevents orphaned history entries.
 	if err := c.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	c.opRelUpdates.Add(1)
-	return current, nil
+	return current, true, nil
+}
+
+// lockRelationshipCurrentEndpoints locks the relationship ID plus the endpoint
+// IDs from a stable current row. Caller must unlock with the returned start/end
+// IDs via c.entityLocks.UnlockThree.
+func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.RelID) (*types.Relationship, types.NodeID, types.NodeID, error) {
+	for {
+		if err := checkCtx(ctx); err != nil {
+			return nil, 0, 0, err
+		}
+		peek, err := c.getCurrentRelationship(id)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		startID := peek.StartNodeID()
+		endID := peek.EndNodeID()
+
+		c.entityLocks.LockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+		if err := checkCtx(ctx); err != nil {
+			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+			return nil, 0, 0, err
+		}
+		lockedCurrent, err := c.getCurrentRelationship(id)
+		if err != nil {
+			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+			return nil, 0, 0, err
+		}
+		if err := checkCtx(ctx); err != nil {
+			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+			return nil, 0, 0, err
+		}
+		if lockedCurrent.StartNodeID() != startID || lockedCurrent.EndNodeID() != endID {
+			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+			continue
+		}
+		return lockedCurrent, startID, endID, nil
+	}
 }
 
 func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG *types.RelIntegrity) error {
@@ -195,6 +240,9 @@ func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG 
 	if c.endpointHash != nil {
 		fromHash, toHash, err := c.endpointHash.EndpointIntegrityHashes(startID, endID)
 		if err == nil {
+			if startID == endID {
+				toHash = fromHash
+			}
 			relIG.FromNodeHash = fromHash
 			relIG.ToNodeHash = toHash
 			return nil
@@ -204,46 +252,36 @@ func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG 
 		}
 	}
 
-	fromHash, found, err := c.refreshNodeHash(startID)
+	fromHash, err := c.refreshNodeHash(startID)
 	if err != nil {
 		return fmt.Errorf("graph: refresh start-node hash: %w", err)
 	}
-	if found {
-		relIG.FromNodeHash = fromHash
-	}
+	relIG.FromNodeHash = fromHash
 	if startID == endID {
 		relIG.ToNodeHash = relIG.FromNodeHash
 		return nil
 	}
-	toHash, found, err := c.refreshNodeHash(endID)
+	toHash, err := c.refreshNodeHash(endID)
 	if err != nil {
 		return fmt.Errorf("graph: refresh end-node hash: %w", err)
 	}
-	if found {
-		relIG.ToNodeHash = toHash
-	}
+	relIG.ToNodeHash = toHash
 	return nil
 }
 
-func (c *Core) refreshNodeHash(id types.NodeID) (string, bool, error) {
+func (c *Core) refreshNodeHash(id types.NodeID) (string, error) {
 	if c.nodeHash != nil {
 		hash, err := c.nodeHash.NodeIntegrityHash(id)
 		if err != nil {
-			if errors.Is(err, storepkg.ErrNodeNotFound) {
-				return "", false, nil
-			}
-			return "", false, err
+			return "", err
 		}
-		return hash, true, nil
+		return hash, nil
 	}
-	node, err := c.store.GetNode(id)
+	node, err := c.getCurrentNode(id)
 	if err != nil {
-		if errors.Is(err, storepkg.ErrNodeNotFound) {
-			return "", false, nil
-		}
-		return "", false, err
+		return "", err
 	}
-	return nodeIntegrityHash(node), true, nil
+	return nodeIntegrityHash(node), nil
 }
 
 // UpdateInPlace applies property updates to a relationship without creating a version history entry.
@@ -264,17 +302,21 @@ func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, u
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
-		rel *types.Relationship
-		err error
+		rel     *types.Relationship
+		mutated bool
+		err     error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		rel, err = c.updateRelInPlaceInternal(ctx, id, updates)
+		rel, mutated, err = c.updateRelInPlaceInternal(ctx, id, updates)
 	})
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && len(updates) > 0 {
+	if err == nil && mutated {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelUpdate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityNormal})
 	}
 	return rel, err
@@ -282,45 +324,53 @@ func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, u
 
 // updateRelInPlaceInternal is the lock-free implementation of RelOps.UpdateInPlaceWithContext.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, false, err
 	}
 
 	if len(updates) == 0 {
-		if err := storepkg.ValidateRelID(id); err != nil {
-			return nil, err
-		}
-		current, err := c.store.GetRelationship(id)
+		current, err := c.getCurrentRelationship(id)
 		if err == nil {
 			c.opRelReads.Add(1)
 		}
-		return current, err
+		return current, false, err
 	}
 
 	// Phase 1: Pre-validate before acquiring entity lock.
 	if err := c.validatePropertyUpdates(updates, "update relationship in place"); err != nil {
-		return nil, err
-	}
-	if err := storepkg.ValidateRelID(id); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	// Phase 2: Entity lock on rel ID only.
-	c.entityLocks.LockEntity(id.SnowflakeID())
-	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
-
-	if err := checkCtx(ctx); err != nil {
-		return nil, err
-	}
-
-	current, err := c.store.GetRelationship(id)
+	// Phase 2: lock the relationship plus its current endpoints. In-place
+	// updates still refresh endpoint hashes, so they need the same stable
+	// endpoint snapshot as versioned relationship updates.
+	current, startID, endID, err := c.lockRelationshipCurrentEndpoints(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	if !relPropertyUpdatesMutate(current, updates) {
+		c.opRelReads.Add(1)
+		return current, false, nil
+	}
+
+	if err := rejectClosedRelMutation(current); err != nil {
+		return nil, false, err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship in place"); err != nil {
+		return nil, false, err
 	}
 
 	// Preserve existing PrevHash — no new chain link for in-place updates.
@@ -330,24 +380,24 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
 		} else {
 			if err := current.SetProperty(key, val); err != nil {
-				return nil, fmt.Errorf("graph: update relationship property %q: %w", key, err)
+				return nil, false, fmt.Errorf("graph: update relationship property %q: %w", key, err)
 			}
 		}
 	}
 
 	// Check final property count.
 	if current.PropertyCount() > c.validation.MaxPropertiesPerEntity {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
+		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, current.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 
 	// NO version bump — in-place update preserves version.
@@ -363,19 +413,47 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
 	if err != nil {
-		return nil, fmt.Errorf("graph: compute relationship hash: %w", err)
+		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}
-	current.SetIntegrity(relIntegrityWithHash(current.Integrity(), hash, prevHash))
+	relIG := relIntegrityWithHash(current.Integrity(), hash, prevHash)
+	if err := c.refreshRelationshipEndpointHashes(current, relIG); err != nil {
+		return nil, false, err
+	}
+	current.SetIntegrity(relIG)
 
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// ReplaceRelationship instead of ReplaceRelWithHistory — no history entry written.
 	if err := c.store.ReplaceRelationship(current); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	c.opRelUpdates.Add(1)
-	return current, nil
+	return current, true, nil
+}
+
+func relPreparedUpdateMutates(current *types.Relationship, prov updateProvenance, updates map[string]any) bool {
+	if prov.present {
+		return true
+	}
+	return relPropertyUpdatesMutate(current, updates)
+}
+
+func relPropertyUpdatesMutate(current *types.Relationship, updates map[string]any) bool {
+	for key, val := range updates {
+		if val != nil {
+			found, equal := current.PropertyValueEqual(key, val)
+			if !found || !equal {
+				return true
+			}
+			continue
+		}
+		found, _ := current.PropertyValueEqual(key, nil)
+		if found {
+			return true
+		}
+	}
+	return false
 }

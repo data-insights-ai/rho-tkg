@@ -94,12 +94,17 @@ func (hfi *HighFrequencyIndex) Remove(id types.NodeID, validFrom types.Instant) 
 	defer hfi.mu.Unlock()
 	hfi.markMutatedLocked(id.SnowflakeID())
 	ids := hfi.buckets[b]
-	for i, v := range ids {
-		if v == id {
-			hfi.buckets[b] = append(ids[:i], ids[i+1:]...)
-			return
+	out := ids[:0]
+	for _, v := range ids {
+		if v != id {
+			out = append(out, v)
 		}
 	}
+	if len(out) == 0 {
+		delete(hfi.buckets, b)
+		return
+	}
+	hfi.buckets[b] = out
 }
 
 // WasMutated reports whether id was touched while this index was being built.
@@ -191,11 +196,11 @@ func (hfi *HighFrequencyIndex) CandidatesUpTo(t types.Instant) []types.NodeID {
 // Iterates the actual bucket map rather than a numeric range to avoid a CPU hang
 // when end is very large (e.g. math.MaxInt64): only non-empty buckets are visited.
 func (hfi *HighFrequencyIndex) RangeQuery(start, end types.Instant) []types.NodeID {
-	if hfi == nil {
+	if hfi == nil || start >= end {
 		return nil
 	}
 	startBucket := hfi.BucketFor(start)
-	endBucket := hfi.BucketFor(end)
+	endBucket := hfi.BucketFor(end - 1)
 
 	hfi.mu.RLock()
 	defer hfi.mu.RUnlock()
@@ -217,8 +222,8 @@ func AddNodeToHighFrequencyIndexes(idxs map[uint16]*HighFrequencyIndex, n *types
 	}
 	from, _ := NodeTemporalBounds(id, n.Temporal())
 	nid := types.NodeID(id)
-	for _, tok := range n.AllLabelTokens() {
-		if hfi, ok := idxs[tok.Value()]; ok {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		if hfi, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			hfi.Add(nid, from)
 		}
 	}
@@ -232,8 +237,8 @@ func RemoveNodeFromHighFrequencyIndexes(idxs map[uint16]*HighFrequencyIndex, n *
 	}
 	from, _ := NodeTemporalBounds(id, n.Temporal())
 	nid := types.NodeID(id)
-	for _, tok := range n.AllLabelTokens() {
-		if hfi, ok := idxs[tok.Value()]; ok {
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		if hfi, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			hfi.Remove(nid, from)
 		}
 	}

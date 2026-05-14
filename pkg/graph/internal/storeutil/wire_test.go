@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strconv"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -940,6 +941,90 @@ func TestPropertyWireTypeFidelityNilValue(t *testing.T) {
 	}
 }
 
+func TestPropertyWireTypeFidelityTypedNilContainers(t *testing.T) {
+	t.Parallel()
+
+	var nilStrings []string
+	var nilInts []int
+	var nilInt64s []int64
+	var nilFloat32s []float32
+	var nilFloat64s []float64
+	var nilBytes []byte
+	var nilBools []bool
+	var nilAny []any
+	var nilMapAny map[string]any
+	var nilMapString map[string]string
+
+	tests := []struct {
+		name  string
+		value any
+		empty any
+		tag   byte
+	}{
+		{name: "[]string", value: nilStrings, empty: []string{}, tag: ptSliceStr},
+		{name: "[]int", value: nilInts, empty: []int{}, tag: ptSliceInt},
+		{name: "[]int64", value: nilInt64s, empty: []int64{}, tag: ptSliceInt64},
+		{name: "[]float32", value: nilFloat32s, empty: []float32{}, tag: ptSliceF32},
+		{name: "[]float64", value: nilFloat64s, empty: []float64{}, tag: ptSliceF64},
+		{name: "[]byte", value: nilBytes, empty: []byte{}, tag: ptSliceByte},
+		{name: "[]bool", value: nilBools, empty: []bool{}, tag: ptSliceBool},
+		{name: "[]any", value: nilAny, empty: []any{}, tag: ptSliceAny},
+		{name: "map[string]any", value: nilMapAny, empty: map[string]any{}, tag: ptMapStrAny},
+		{name: "map[string]string", value: nilMapString, empty: map[string]string{}, tag: ptMapStrStr},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ps := mustPropertySlice(t, map[string]any{"k": tc.value})
+			pw := propertiesToWire(ps)
+			if len(pw) != 1 {
+				t.Fatalf("propertiesToWire count = %d, want 1", len(pw))
+			}
+			if pw[0].Type != tc.tag || !pw[0].Nil || pw[0].Value != nil {
+				t.Fatalf("typed nil wire = %#v, want tag %d, nil marker, nil value", pw[0], tc.tag)
+			}
+
+			data, err := msgpack.Marshal(pw)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var decoded []PropertyWire
+			if err := msgpack.Unmarshal(data, &decoded); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if err := ValidatePropertyWireSlice(decoded); err != nil {
+				t.Fatalf("ValidatePropertyWireSlice: %v", err)
+			}
+			got := wireToProperties(decoded)
+			v, ok := got.Get("k")
+			if !ok {
+				t.Fatal("missing typed nil property after wire round trip")
+			}
+			assertWireTypedNilContainer(t, v, tc.value, tc.empty)
+		})
+	}
+}
+
+func assertWireTypedNilContainer(t *testing.T, got, wantNil, wantEmpty any) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("round trip returned untyped nil for %T", wantNil)
+	}
+	gotValue := reflect.ValueOf(got)
+	wantType := reflect.TypeOf(wantNil)
+	if gotValue.Type() != wantType {
+		t.Fatalf("round trip type = %T, want %v", got, wantType)
+	}
+	if !gotValue.IsNil() {
+		t.Fatalf("round trip value = %#v, want typed nil %v", got, wantType)
+	}
+	if !types.PropertyValueEqual(got, wantNil) {
+		t.Fatalf("round trip value does not equal typed nil %v", wantType)
+	}
+	if types.PropertyValueEqual(got, wantEmpty) {
+		t.Fatalf("round trip typed nil compares equal to empty %T", wantEmpty)
+	}
+}
+
 func TestNodeWireBaseEntityID(t *testing.T) {
 	t.Parallel()
 
@@ -1141,6 +1226,85 @@ func TestToUint64AllBranches(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("toUint64(%T(%v)) = %d, want %d", tc.val, tc.val, got, tc.want)
 		}
+	}
+}
+
+func TestWireInt64AllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		val  any
+		want int64
+		ok   bool
+	}{
+		{name: "int8", val: int8(-5), want: -5, ok: true},
+		{name: "int16", val: int16(300), want: 300, ok: true},
+		{name: "int32", val: int32(70000), want: 70000, ok: true},
+		{name: "int64", val: int64(1 << 40), want: 1 << 40, ok: true},
+		{name: "int", val: int(42), want: 42, ok: true},
+		{name: "uint8", val: uint8(200), want: 200, ok: true},
+		{name: "uint16", val: uint16(50000), want: 50000, ok: true},
+		{name: "uint32", val: uint32(3000000000), want: 3000000000, ok: true},
+		{name: "uint64", val: uint64(999), want: 999, ok: true},
+		{name: "uint64 overflow", val: uint64(maxInt64) + 1, ok: false},
+		{name: "uint", val: uint(77), want: 77, ok: true},
+		{name: "unsupported", val: "unsupported", ok: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := wireInt64(tc.val)
+			if ok != tc.ok || got != tc.want {
+				t.Fatalf("wireInt64(%T(%v)) = %d, %v; want %d, %v", tc.val, tc.val, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+
+	if strconv.IntSize == 64 {
+		overflow64 := uint64(maxInt64)
+		if got, ok := wireInt64(uint(overflow64 + 1)); ok || got != 0 {
+			t.Fatalf("wireInt64(uint overflow) = %d, %v; want 0, false", got, ok)
+		}
+	}
+}
+
+func TestWireUint64AllBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		val  any
+		want uint64
+		ok   bool
+	}{
+		{name: "uint8", val: uint8(200), want: 200, ok: true},
+		{name: "uint16", val: uint16(50000), want: 50000, ok: true},
+		{name: "uint32", val: uint32(3000000000), want: 3000000000, ok: true},
+		{name: "uint64", val: uint64(1 << 50), want: 1 << 50, ok: true},
+		{name: "uint", val: uint(42), want: 42, ok: true},
+		{name: "int8 positive", val: int8(7), want: 7, ok: true},
+		{name: "int8 negative", val: int8(-1), ok: false},
+		{name: "int16 positive", val: int16(300), want: 300, ok: true},
+		{name: "int16 negative", val: int16(-1), ok: false},
+		{name: "int32 positive", val: int32(70000), want: 70000, ok: true},
+		{name: "int32 negative", val: int32(-1), ok: false},
+		{name: "int64 positive", val: int64(999), want: 999, ok: true},
+		{name: "int64 negative", val: int64(-1), ok: false},
+		{name: "int positive", val: int(123), want: 123, ok: true},
+		{name: "int negative", val: int(-1), ok: false},
+		{name: "unsupported", val: "unsupported", ok: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := wireUint64(tc.val)
+			if ok != tc.ok || got != tc.want {
+				t.Fatalf("wireUint64(%T(%v)) = %d, %v; want %d, %v", tc.val, tc.val, got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }
 
@@ -1469,6 +1633,8 @@ func TestWireToNodeCheckedRejectsSemanticCorruption(t *testing.T) {
 		{name: "zero primary label", wire: NodeWire{ID: 1, PrimaryLabel: 0}},
 		{name: "token truncation", wire: NodeWire{ID: 1, PrimaryLabel: 1 << 16}},
 		{name: "duplicate extra label", wire: NodeWire{ID: 1, PrimaryLabel: 1, ExtraLabels: []int{2, 2}}},
+		{name: "temporal payload without flag", wire: NodeWire{ID: 1, PrimaryLabel: 1, TxFrom: 10}},
+		{name: "temporal author without flag", wire: NodeWire{ID: 1, PrimaryLabel: 1, CreatedBy: "writer"}},
 		{name: "empty explicit temporal range", wire: NodeWire{ID: 1, PrimaryLabel: 1, ValidFrom: 20, ValidTo: 20}},
 		{name: "reversed explicit temporal range", wire: NodeWire{ID: 1, PrimaryLabel: 1, ValidFrom: 30, ValidTo: 20}},
 		{name: "reserved property", wire: NodeWire{ID: 1, PrimaryLabel: 1, Properties: []PropertyWire{{Key: "tkg_hash", Value: "x", Type: ptString}}}},
@@ -1492,6 +1658,8 @@ func TestWireToRelCheckedRejectsSemanticCorruption(t *testing.T) {
 		{name: "zero rel type", wire: RelWire{ID: 1, RelType: 0, StartID: 2, EndID: 3}},
 		{name: "missing start", wire: RelWire{ID: 1, RelType: 1, StartID: 0, EndID: 3}},
 		{name: "token truncation", wire: RelWire{ID: 1, RelType: 1 << 16, StartID: 2, EndID: 3}},
+		{name: "temporal payload without flag", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, TxFrom: 10}},
+		{name: "temporal author without flag", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, UpdatedBy: "writer"}},
 		{name: "empty explicit temporal range", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, ValidFrom: 20, ValidTo: 20}},
 		{name: "reversed explicit temporal range", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, ValidFrom: 30, ValidTo: 20}},
 		{name: "reserved property", wire: RelWire{ID: 1, RelType: 1, StartID: 2, EndID: 3, Properties: []PropertyWire{{Key: "tkg_hash", Value: "x", Type: ptString}}}},

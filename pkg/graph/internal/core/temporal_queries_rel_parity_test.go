@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -169,6 +170,62 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	if containsRelID(got, id) {
 		t.Errorf("rel had \"draft\" at t0 but result for value=\"published\" includes it")
 	}
+}
+
+func TestRelsByTypePropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	useTestClock(t, g)
+
+	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nanA64 := math.Float64frombits(0x7ff8000000000001)
+	nanB64 := math.Float64frombits(0x7ff8000000000002)
+	nanA32 := math.Float32frombits(0x7fc00001)
+	nanB32 := math.Float32frombits(0x7fc00002)
+
+	a64, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanA64})
+	if err != nil {
+		t.Fatalf("Add a64: %v", err)
+	}
+	b64, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanB64})
+	if err != nil {
+		t.Fatalf("Add b64: %v", err)
+	}
+	a32, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanA32})
+	if err != nil {
+		t.Fatalf("Add a32: %v", err)
+	}
+	b32, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanB32})
+	if err != nil {
+		t.Fatalf("Add b32: %v", err)
+	}
+	start := g.relValidFrom(a64)
+	at := maxRelValidFrom(g, a64, b64, a32, b32)
+
+	gotAt64, err := g.Temporal.RelsByTypePropertyAt("MEASURES", "score", nanA64, at)
+	if err != nil {
+		t.Fatalf("f64 at: %v", err)
+	}
+	assertRelSet(t, "f64 at", gotAt64, []types.RelID{a64.ID(), b64.ID()})
+
+	gotDuring64, err := g.Temporal.RelsByTypePropertyDuring("MEASURES", "score", nanA64, start, at+1)
+	if err != nil {
+		t.Fatalf("f64 during: %v", err)
+	}
+	assertRelSet(t, "f64 during", gotDuring64, []types.RelID{a64.ID(), b64.ID()})
+
+	gotAt32, err := g.Temporal.RelsByTypePropertyAt("MEASURES", "score", nanA32, at)
+	if err != nil {
+		t.Fatalf("f32 at: %v", err)
+	}
+	assertRelSet(t, "f32 at", gotAt32, []types.RelID{a32.ID(), b32.ID()})
+
+	gotDuring32, err := g.Temporal.RelsByTypePropertyDuring("MEASURES", "score", nanA32, start, at+1)
+	if err != nil {
+		t.Fatalf("f32 during: %v", err)
+	}
+	assertRelSet(t, "f32 during", gotDuring32, []types.RelID{a32.ID(), b32.ID()})
 }
 
 // Adversarial: multiple rels with diverging property timelines + exact-set

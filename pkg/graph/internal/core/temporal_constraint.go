@@ -69,14 +69,14 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 		return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelAfterEndNode)
 	}
 
-	// (5)/(6): if rel has an explicit ValidTo and node has a finite ValidTo,
-	// the rel must not outlive the node.
+	// (5)/(6): if the node has a finite ValidTo, the relationship must also
+	// have a finite ValidTo that does not outlive the node.
 	if nodeTo != 0 {
 		var relTo types.Instant
 		if tm := r.Temporal(); tm != nil {
 			relTo = tm.ValidTo
 		}
-		if relTo != 0 && relTo > nodeTo {
+		if relTo == 0 || relTo > nodeTo {
 			if isStart {
 				return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelExceedsStartNodeValidity)
 			}
@@ -85,4 +85,71 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 	}
 
 	return nil
+}
+
+func (c *Core) checkNodeCloseTemporalConstraints(id types.NodeID, current *types.Node, closeAt types.Instant) error {
+	if c.constraints.Len() == 0 {
+		return nil
+	}
+	return c.constraints.ForEach(func(constraint temporalpkg.TemporalConstraint) error {
+		switch constraint.Kind {
+		case temporalpkg.ConstraintRelWithinEndpoints:
+			return c.checkNodeCloseRelWithinEndpoints(id, current, closeAt)
+		default:
+			return fmt.Errorf("%w: %w: kind %d", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrInvalidTemporalConstraint, constraint.Kind)
+		}
+	})
+}
+
+func (c *Core) checkNodeCloseRelWithinEndpoints(id types.NodeID, current *types.Node, closeAt types.Instant) error {
+	constrained := nodeWithValidTo(current, closeAt)
+	outRels, err := c.store.OutgoingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+	inRels, err := c.store.IncomingRelationships(id, 0)
+	if err != nil {
+		return err
+	}
+	if !c.storeRowsTrust {
+		if err := c.validateOutgoingRelationshipRows(id, 0, outRels); err != nil {
+			return err
+		}
+		if err := c.validateIncomingRelationshipRows(id, 0, inRels); err != nil {
+			return err
+		}
+	}
+	for _, r := range outRels {
+		if err := c.checkRelAgainstEndpoint(r, c.relValidFrom(r), constrained, true); err != nil {
+			return err
+		}
+	}
+	for _, r := range inRels {
+		if err := c.checkRelAgainstEndpoint(r, c.relValidFrom(r), constrained, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func nodeWithValidTo(n *types.Node, validTo types.Instant) *types.Node {
+	copy := n.DeepCopy()
+	tm := copy.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		copy.SetTemporal(tm)
+	}
+	tm.ValidTo = validTo
+	return copy
+}
+
+func relWithValidTo(r *types.Relationship, validTo types.Instant) *types.Relationship {
+	copy := r.DeepCopy()
+	tm := copy.Temporal()
+	if tm == nil {
+		tm = &types.TemporalMetadata{}
+		copy.SetTemporal(tm)
+	}
+	tm.ValidTo = validTo
+	return copy
 }

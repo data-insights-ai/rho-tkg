@@ -724,10 +724,40 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 		}
 		signals[i] = n
 	}
+	aboutRelIDs := make([]types.RelID, len(signals))
 	for i, signal := range signals {
-		if _, err := g.Rels.Add("ABOUT", signal, cases[i%len(cases)], map[string]any{"seq": i}); err != nil {
+		rel, err := g.Rels.Add("ABOUT", signal, cases[i%len(cases)], map[string]any{"seq": i})
+		if err != nil {
 			b.Fatal(err)
 		}
+		aboutRelIDs[i] = rel.ID()
+	}
+
+	mixedNodeIDs := make([]types.NodeID, 0, 1000)
+	for i := 0; i < 500; i++ {
+		mixedNodeIDs = append(mixedNodeIDs, cases[i%len(cases)].ID())
+	}
+	for i := 0; i < 500; i++ {
+		mixedNodeIDs = append(mixedNodeIDs, signals[i%len(signals)].ID())
+	}
+	mixedRelIDs := make([]types.RelID, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		mixedRelIDs = append(mixedRelIDs, aboutRelIDs[i%len(aboutRelIDs)])
+	}
+	outgoingSignalIDs := make([]types.NodeID, 0, 1000)
+	outgoingSignalSeen := make(map[types.NodeID]struct{}, min(1000, len(signals)))
+	for i := 0; i < 1000; i++ {
+		id := signals[i%len(signals)].ID()
+		outgoingSignalIDs = append(outgoingSignalIDs, id)
+		outgoingSignalSeen[id] = struct{}{}
+	}
+	incomingCaseIDs := make([]types.NodeID, 0, 1000)
+	incomingCaseSeen := make(map[types.NodeID]struct{}, min(1000, len(cases)))
+	for i := 0; i < 1000; i++ {
+		signalIdx := i % len(aboutRelIDs)
+		id := cases[signalIdx%len(cases)].ID()
+		incomingCaseIDs = append(incomingCaseIDs, id)
+		incomingCaseSeen[id] = struct{}{}
 	}
 
 	b.Run("NodesByLabelDepthAll", func(b *testing.B) {
@@ -760,25 +790,66 @@ func BenchmarkGraphProduction_TieredStore_MultiShard(b *testing.B) {
 		}
 	})
 
+	b.Run("GetNodesByIDsMixedShards1000", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			nodes, err := g.Nodes.GetByIDs(mixedNodeIDs)
+			if err != nil || len(nodes) != len(mixedNodeIDs) {
+				b.Fatalf("GetNodesByIDs tiered: len=%d err=%v", len(nodes), err)
+			}
+		}
+	})
+
+	b.Run("GetRelationshipsByIDsMixedShards1000", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := g.Rels.GetByIDs(mixedRelIDs)
+			if err != nil || len(rels) != len(mixedRelIDs) {
+				b.Fatalf("GetRelationshipsByIDs tiered: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
+	b.Run("OutgoingRelationshipsForNodesSignals1000", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := g.Rels.OutgoingForNodes(outgoingSignalIDs, "ABOUT")
+			if err != nil || len(rels) != len(outgoingSignalSeen) {
+				b.Fatalf("OutgoingRelationshipsForNodes tiered: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
+	b.Run("IncomingRelationshipsForNodesCases1000", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			rels, err := g.Rels.IncomingForNodes(incomingCaseIDs, "ABOUT")
+			if err != nil || len(rels) != len(incomingCaseSeen) {
+				b.Fatalf("IncomingRelationshipsForNodes tiered: len=%d err=%v", len(rels), err)
+			}
+		}
+	})
+
 	b.Run("CrossShardAddRelationship", func(b *testing.B) {
+		poolSize := benchmarkEndpointPoolSize(b.N)
+		if poolSize > len(signals) {
+			poolSize = len(signals)
+		}
 		pairs := make([]struct {
 			signal *types.Node
 			cas    *types.Node
-		}, b.N)
+		}, poolSize)
 		for i := range pairs {
-			signal, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i, "phase": "bench"})
-			if err != nil {
-				b.Fatal(err)
-			}
 			pairs[i] = struct {
 				signal *types.Node
 				cas    *types.Node
-			}{signal: signal, cas: cases[i%len(cases)]}
+			}{signal: signals[i%len(signals)], cas: cases[i%len(cases)]}
 		}
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Rels.Add("ABOUT_BENCH", pairs[i].signal, pairs[i].cas, map[string]any{"seq": i}); err != nil {
+			pair := pairs[i%len(pairs)]
+			if _, err := g.Rels.Add("ABOUT_BENCH", pair.signal, pair.cas, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}

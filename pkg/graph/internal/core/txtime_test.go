@@ -2,9 +2,12 @@ package core
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -119,6 +122,221 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	}
 	if oldTm.TxTo > updTm.TxFrom {
 		t.Errorf("old TxTo %d should be <= new TxFrom %d", oldTm.TxTo, updTm.TxFrom)
+	}
+}
+
+func TestTxTimeMonotonicWhenClockRepeats(t *testing.T) {
+	g := newTxTimeGraph(t)
+	fixed := time.Now().Add(time.Second)
+	g.SetClockForTest(t, func() time.Time { return fixed })
+
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	updated, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	if updated.Temporal().TxFrom <= n.Temporal().TxFrom {
+		t.Fatalf("updated node TxFrom = %d, want > original %d", updated.Temporal().TxFrom, n.Temporal().TxFrom)
+	}
+
+	before, err := g.Temporal.NodeAsOf(n.ID(), n.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("NodeAsOf original TxFrom: %v", err)
+	}
+	if state, ok := before.GetProperty("state"); !ok || state != "initial" {
+		t.Fatalf("NodeAsOf original state = %v, %v; want initial", state, ok)
+	}
+	after, err := g.Temporal.NodeAsOf(n.ID(), updated.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("NodeAsOf updated TxFrom: %v", err)
+	}
+	if state, ok := after.GetProperty("state"); !ok || state != "updated" {
+		t.Fatalf("NodeAsOf updated state = %v, %v; want updated", state, ok)
+	}
+}
+
+func TestRelTxTimeMonotonicWhenClockRepeats(t *testing.T) {
+	g := newTxTimeGraph(t)
+	fixed := time.Now().Add(time.Second)
+	g.SetClockForTest(t, func() time.Time { return fixed })
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	r, err := g.Rels.Add("REL", a, b, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	updated, err := g.Rels.Update(r.ID(), map[string]any{"state": "updated"})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+	if updated.Temporal().TxFrom <= r.Temporal().TxFrom {
+		t.Fatalf("updated rel TxFrom = %d, want > original %d", updated.Temporal().TxFrom, r.Temporal().TxFrom)
+	}
+
+	before, err := g.Temporal.RelAsOf(r.ID(), r.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("RelAsOf original TxFrom: %v", err)
+	}
+	if state, ok := before.GetProperty("state"); !ok || state != "initial" {
+		t.Fatalf("RelAsOf original state = %v, %v; want initial", state, ok)
+	}
+	after, err := g.Temporal.RelAsOf(r.ID(), updated.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("RelAsOf updated TxFrom: %v", err)
+	}
+	if state, ok := after.GetProperty("state"); !ok || state != "updated" {
+		t.Fatalf("RelAsOf updated state = %v, %v; want updated", state, ok)
+	}
+}
+
+func TestTxTimeMandatoryFallback_NodeAndRelVersions(t *testing.T) {
+	g := newMandatoryOnlyGraph(t)
+	if g.txTimeQuery != nil {
+		t.Fatal("mandatory-only graph unexpectedly enabled transaction-time query capability")
+	}
+	clk := useTestClock(t, g)
+
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	origNodeTx := n.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+	updatedNode, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"})
+	if err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+
+	oldNode, err := g.Temporal.NodeAsOf(n.ID(), origNodeTx)
+	if err != nil {
+		t.Fatalf("NodeAsOf original through fallback: %v", err)
+	}
+	if state, ok := oldNode.GetProperty("state"); !ok || state != "initial" {
+		t.Fatalf("fallback original node state = %v, %v; want initial", state, ok)
+	}
+	currentNode, err := g.Temporal.NodeAsOf(n.ID(), updatedNode.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("NodeAsOf current through fallback: %v", err)
+	}
+	if state, ok := currentNode.GetProperty("state"); !ok || state != "updated" {
+		t.Fatalf("fallback current node state = %v, %v; want updated", state, ok)
+	}
+
+	other, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode other: %v", err)
+	}
+	r, err := g.Rels.Add("REL", updatedNode, other, map[string]any{"state": "initial"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	origRelTx := r.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+	updatedRel, err := g.Rels.Update(r.ID(), map[string]any{"state": "updated"})
+	if err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+
+	oldRel, err := g.Temporal.RelAsOf(r.ID(), origRelTx)
+	if err != nil {
+		t.Fatalf("RelAsOf original through fallback: %v", err)
+	}
+	if state, ok := oldRel.GetProperty("state"); !ok || state != "initial" {
+		t.Fatalf("fallback original rel state = %v, %v; want initial", state, ok)
+	}
+	currentRel, err := g.Temporal.RelAsOf(r.ID(), updatedRel.Temporal().TxFrom)
+	if err != nil {
+		t.Fatalf("RelAsOf current through fallback: %v", err)
+	}
+	if state, ok := currentRel.GetProperty("state"); !ok || state != "updated" {
+		t.Fatalf("fallback current rel state = %v, %v; want updated", state, ok)
+	}
+}
+
+func TestTxTimeMandatoryFallback_BulkUsesHistoryIDsAndSkipsDeleted(t *testing.T) {
+	g := newMandatoryOnlyGraph(t)
+	if g.txTimeQuery != nil {
+		t.Fatal("mandatory-only graph unexpectedly enabled transaction-time query capability")
+	}
+	clk := useTestClock(t, g)
+
+	a, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "deleted later"})
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	r, err := g.Rels.Add("REL", a, b, map[string]any{"state": "deleted later"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	asOf := r.Temporal().TxFrom
+	clk.Advance(2 * time.Millisecond)
+
+	if err := g.Nodes.Delete(a.ID()); err != nil {
+		t.Fatalf("DeleteNode cascade: %v", err)
+	}
+
+	nodes, err := g.Temporal.NodesAsOf(asOf)
+	if err != nil {
+		t.Fatalf("NodesAsOf fallback before delete: %v", err)
+	}
+	foundNode := false
+	for _, got := range nodes {
+		if got.ID() == a.ID() {
+			foundNode = true
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+		}
+	}
+	if !foundNode {
+		t.Fatalf("NodesAsOf fallback before delete did not include history-only node %d", a.ID())
+	}
+
+	rels, err := g.Temporal.RelsAsOf(asOf)
+	if err != nil {
+		t.Fatalf("RelsAsOf fallback before delete: %v", err)
+	}
+	foundRel := false
+	for _, got := range rels {
+		if got.ID() == r.ID() {
+			foundRel = true
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+		}
+	}
+	if !foundRel {
+		t.Fatalf("RelsAsOf fallback before delete did not include history-only relationship %d", r.ID())
+	}
+
+	afterDelete := clk.PeekInstant()
+	nodes, err = g.Temporal.NodesAsOf(afterDelete)
+	if err != nil {
+		t.Fatalf("NodesAsOf fallback after delete: %v", err)
+	}
+	for _, got := range nodes {
+		if got.ID() == a.ID() {
+			t.Fatalf("NodesAsOf fallback after delete included node %d", a.ID())
+		}
+	}
+	rels, err = g.Temporal.RelsAsOf(afterDelete)
+	if err != nil {
+		t.Fatalf("RelsAsOf fallback after delete: %v", err)
+	}
+	for _, got := range rels {
+		if got.ID() == r.ID() {
+			t.Fatalf("RelsAsOf fallback after delete included relationship %d", r.ID())
+		}
 	}
 }
 
@@ -353,6 +571,51 @@ func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	}
 }
 
+func TestNodeAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	beforeCloseTx := clk.PeekInstant() - 1
+	closeTx := clk.PeekInstant()
+	closeValidTo := g.nodeValidFrom(n) + 2000
+	if err := g.Nodes.CloseVersion(n.ID(), closeValidTo); err != nil {
+		t.Fatalf("CloseVersion: %v", err)
+	}
+
+	before, err := g.Temporal.NodeAsOf(n.ID(), beforeCloseTx)
+	if err != nil {
+		t.Fatalf("NodeAsOf before close: %v", err)
+	}
+	assertTxTimeVisibleBeforeDelete(t, before.Temporal())
+	if got, _ := before.GetProperty("name"); got != "live" {
+		t.Fatalf("NodeAsOf before close property = %v, want live", got)
+	}
+
+	after, err := g.Temporal.NodeAsOf(n.ID(), closeTx)
+	if err != nil {
+		t.Fatalf("NodeAsOf at close: %v", err)
+	}
+	if tm := after.Temporal(); tm == nil || tm.ValidTo != closeValidTo || tm.TxFrom != closeTx {
+		t.Fatalf("NodeAsOf at close temporal = %+v, want ValidTo=%d TxFrom=%d", tm, closeValidTo, closeTx)
+	}
+
+	nodes, err := g.Temporal.NodesAsOf(beforeCloseTx)
+	if err != nil {
+		t.Fatalf("NodesAsOf before close: %v", err)
+	}
+	for _, got := range nodes {
+		if got.ID() == n.ID() {
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+			return
+		}
+	}
+	t.Fatalf("NodesAsOf before close did not include node %d", n.ID())
+}
+
 func TestNodesAsOfReturnsSortedByID(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
@@ -461,6 +724,53 @@ func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
 	}
 }
 
+func TestRelAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
+	g := newTxTimeGraph(t)
+	clk := useTestClock(t, g)
+
+	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	beforeCloseTx := clk.PeekInstant() - 1
+	closeTx := clk.PeekInstant()
+	closeValidTo := g.relValidFrom(r) + 2000
+	if err := g.Rels.CloseVersion(r.ID(), closeValidTo); err != nil {
+		t.Fatalf("CloseVersion: %v", err)
+	}
+
+	before, err := g.Temporal.RelAsOf(r.ID(), beforeCloseTx)
+	if err != nil {
+		t.Fatalf("RelAsOf before close: %v", err)
+	}
+	assertTxTimeVisibleBeforeDelete(t, before.Temporal())
+	if got, _ := before.GetProperty("state"); got != "live" {
+		t.Fatalf("RelAsOf before close property = %v, want live", got)
+	}
+
+	after, err := g.Temporal.RelAsOf(r.ID(), closeTx)
+	if err != nil {
+		t.Fatalf("RelAsOf at close: %v", err)
+	}
+	if tm := after.Temporal(); tm == nil || tm.ValidTo != closeValidTo || tm.TxFrom != closeTx {
+		t.Fatalf("RelAsOf at close temporal = %+v, want ValidTo=%d TxFrom=%d", tm, closeValidTo, closeTx)
+	}
+
+	rels, err := g.Temporal.RelsAsOf(beforeCloseTx)
+	if err != nil {
+		t.Fatalf("RelsAsOf before close: %v", err)
+	}
+	for _, got := range rels {
+		if got.ID() == r.ID() {
+			assertTxTimeVisibleBeforeDelete(t, got.Temporal())
+			return
+		}
+	}
+	t.Fatalf("RelsAsOf before close did not include relationship %d", r.ID())
+}
+
 func TestRelsAsOfReturnsSortedByID(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
@@ -520,4 +830,387 @@ func TestGetRelAsOf(t *testing.T) {
 	if got.ID() != rid {
 		t.Error("wrong rel returned")
 	}
+}
+
+func TestTxTimeQueriesAfterCloseReturnGraphClosed(t *testing.T) {
+	g := newTxTimeGraph(t)
+	useTestClock(t, g)
+
+	a, err := g.Nodes.Add([]string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"B"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	r, err := g.Rels.Add("REL", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if _, err := g.Temporal.NodeAsOf(a.ID(), a.Temporal().TxFrom); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("NodeAsOf after close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.Temporal.RelAsOf(r.ID(), r.Temporal().TxFrom); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelAsOf after close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.Temporal.NodesAsOf(a.Temporal().TxFrom); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("NodesAsOf after close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.Temporal.RelsAsOf(r.Temporal().TxFrom); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelsAsOf after close = %v, want ErrGraphClosed", err)
+	}
+}
+
+type txTimeQueryFaultStore struct {
+	storepkg.MandatoryStore
+	err            error
+	node           *types.Node
+	rel            *types.Relationship
+	nodes          []*types.Node
+	rels           []*types.Relationship
+	nodeAsOfCalls  atomic.Int64
+	relAsOfCalls   atomic.Int64
+	nodesAsOfCalls atomic.Int64
+	relsAsOfCalls  atomic.Int64
+}
+
+func (s *txTimeQueryFaultStore) NodeAsOf(types.NodeID, types.Instant) (*types.Node, error) {
+	s.nodeAsOfCalls.Add(1)
+	return s.node, s.err
+}
+
+func (s *txTimeQueryFaultStore) RelAsOf(types.RelID, types.Instant) (*types.Relationship, error) {
+	s.relAsOfCalls.Add(1)
+	return s.rel, s.err
+}
+
+func (s *txTimeQueryFaultStore) NodesAsOf(types.Instant) ([]*types.Node, error) {
+	s.nodesAsOfCalls.Add(1)
+	return s.nodes, s.err
+}
+
+func (s *txTimeQueryFaultStore) RelsAsOf(types.Instant) ([]*types.Relationship, error) {
+	s.relsAsOfCalls.Add(1)
+	return s.rels, s.err
+}
+
+func TestTxTimeQueryCopyPolicy(t *testing.T) {
+	t.Parallel()
+	native, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New native memory: %v", err)
+	}
+	t.Cleanup(func() { _ = native.Close() })
+	if native.txTimeQuery == nil {
+		t.Fatal("native memory transaction-time query capability was not enabled")
+	}
+	if native.txTimeQueryCopy {
+		t.Fatal("native memory transaction-time query rows should not be defensively copied twice")
+	}
+
+	external, err := New(Config{Store: &txTimeQueryFaultStore{MandatoryStore: memory.New()}})
+	if err != nil {
+		t.Fatalf("New external capability: %v", err)
+	}
+	t.Cleanup(func() { _ = external.Close() })
+	if external.txTimeQuery == nil {
+		t.Fatal("direct external transaction-time query capability was not enabled")
+	}
+	if !external.txTimeQueryCopy {
+		t.Fatal("direct external transaction-time query rows must be copied before graph normalization")
+	}
+}
+
+func TestTemporalAsOfRejectsInvalidIDsBeforeTxTimeCapability(t *testing.T) {
+	t.Parallel()
+	injected := errors.New("synthetic transaction-time lookup fault")
+	store := &txTimeQueryFaultStore{
+		MandatoryStore: memory.New(),
+		err:            injected,
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.txTimeQuery == nil {
+		t.Fatal("direct transaction-time query capability was not enabled")
+	}
+
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "zero node",
+			run: func() error {
+				_, err := g.Temporal.NodeAsOf(0, 1)
+				return err
+			},
+		},
+		{
+			name: "negative node",
+			run: func() error {
+				_, err := g.Temporal.NodeAsOf(types.NodeID(-1), 1)
+				return err
+			},
+		},
+		{
+			name: "zero relationship",
+			run: func() error {
+				_, err := g.Temporal.RelAsOf(0, 1)
+				return err
+			},
+		},
+		{
+			name: "negative relationship",
+			run: func() error {
+				_, err := g.Temporal.RelAsOf(types.RelID(-1), 1)
+				return err
+			},
+		},
+	}
+	for _, tc := range tests {
+		err := tc.run()
+		if !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("%s error = %v, want ErrInvalidStoreMutation", tc.name, err)
+		}
+		if errors.Is(err, injected) {
+			t.Fatalf("%s reached transaction-time capability before validation", tc.name)
+		}
+	}
+	if got := store.nodeAsOfCalls.Load(); got != 0 {
+		t.Fatalf("NodeAsOf capability calls = %d, want 0", got)
+	}
+	if got := store.relAsOfCalls.Load(); got != 0 {
+		t.Fatalf("RelAsOf capability calls = %d, want 0", got)
+	}
+}
+
+func TestTemporalAsOfMapsNilCapabilityMissToNoVersion(t *testing.T) {
+	t.Parallel()
+	store := &txTimeQueryFaultStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.txTimeQuery == nil {
+		t.Fatal("direct transaction-time query capability was not enabled")
+	}
+
+	if n, err := g.Temporal.NodeAsOf(types.NodeID(1), 1); !errors.Is(err, ErrNoVersionAsOf) || n != nil {
+		t.Fatalf("NodeAsOf nil capability miss = (%v, %v), want nil, ErrNoVersionAsOf", n, err)
+	}
+	if r, err := g.Temporal.RelAsOf(types.RelID(1), 1); !errors.Is(err, ErrNoVersionAsOf) || r != nil {
+		t.Fatalf("RelAsOf nil capability miss = (%v, %v), want nil, ErrNoVersionAsOf", r, err)
+	}
+	if got := store.nodeAsOfCalls.Load(); got != 1 {
+		t.Fatalf("NodeAsOf capability calls = %d, want 1", got)
+	}
+	if got := store.relAsOfCalls.Load(); got != 1 {
+		t.Fatalf("RelAsOf capability calls = %d, want 1", got)
+	}
+}
+
+func TestTemporalAsOfRejectsMismatchedCapabilityRows(t *testing.T) {
+	t.Parallel()
+	store := &txTimeQueryFaultStore{
+		MandatoryStore: memory.New(),
+		node:           types.NewNode(types.NodeID(2), 1, nil),
+		rel:            types.NewRelationship(types.RelID(2), 1, types.NodeID(1), types.NodeID(2)),
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.txTimeQuery == nil {
+		t.Fatal("direct transaction-time query capability was not enabled")
+	}
+
+	if n, err := g.Temporal.NodeAsOf(types.NodeID(1), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || n != nil {
+		t.Fatalf("NodeAsOf mismatched capability row = (%v, %v), want nil, ErrInvalidStoreMutation", n, err)
+	}
+	if r, err := g.Temporal.RelAsOf(types.RelID(1), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || r != nil {
+		t.Fatalf("RelAsOf mismatched capability row = (%v, %v), want nil, ErrInvalidStoreMutation", r, err)
+	}
+}
+
+func TestTemporalBulkAsOfRejectsInvalidCapabilityRows(t *testing.T) {
+	t.Parallel()
+	store := &txTimeQueryFaultStore{
+		MandatoryStore: memory.New(),
+		nodes: []*types.Node{
+			types.NewNode(types.NodeID(1), 1, nil),
+			nil,
+		},
+		rels: []*types.Relationship{
+			types.NewRelationship(types.RelID(1), 1, types.NodeID(1), types.NodeID(2)),
+			nil,
+		},
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.txTimeQuery == nil {
+		t.Fatal("direct transaction-time query capability was not enabled")
+	}
+
+	if nodes, err := g.Temporal.NodesAsOf(1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
+		t.Fatalf("NodesAsOf invalid capability row = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
+	}
+	if rels, err := g.Temporal.RelsAsOf(1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || rels != nil {
+		t.Fatalf("RelsAsOf invalid capability row = (%v, %v), want nil, ErrInvalidStoreMutation", rels, err)
+	}
+}
+
+func TestTemporalAsOfCopiesCapabilityRowsBeforeVisibilityNormalization(t *testing.T) {
+	t.Parallel()
+	node := types.NewNode(types.NodeID(1), 1, nil)
+	node.SetTemporal(&types.TemporalMetadata{TxFrom: 1, TxTo: 20, ValidTo: 30, DeletedAt: 30})
+	rel := types.NewRelationship(types.RelID(1), 1, types.NodeID(1), types.NodeID(2))
+	rel.SetTemporal(&types.TemporalMetadata{TxFrom: 1, TxTo: 20, ValidTo: 30, DeletedAt: 30})
+	bulkNode := types.NewNode(types.NodeID(2), 1, nil)
+	bulkNode.SetTemporal(&types.TemporalMetadata{TxFrom: 1, TxTo: 20, ValidTo: 30, DeletedAt: 30})
+	bulkRel := types.NewRelationship(types.RelID(2), 1, types.NodeID(1), types.NodeID(2))
+	bulkRel.SetTemporal(&types.TemporalMetadata{TxFrom: 1, TxTo: 20, ValidTo: 30, DeletedAt: 30})
+
+	store := &txTimeQueryFaultStore{
+		MandatoryStore: memory.New(),
+		node:           node,
+		rel:            rel,
+		nodes:          []*types.Node{bulkNode},
+		rels:           []*types.Relationship{bulkRel},
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	gotNode, err := g.Temporal.NodeAsOf(node.ID(), 10)
+	if err != nil {
+		t.Fatalf("NodeAsOf: %v", err)
+	}
+	if gotNode.Temporal().TxTo != 0 || gotNode.Temporal().DeletedAt != 0 || gotNode.Temporal().ValidTo != 0 {
+		t.Fatalf("visible node temporal = %+v, want future close/delete hidden", gotNode.Temporal())
+	}
+	if tm := node.Temporal(); tm.TxTo != 20 || tm.DeletedAt != 30 || tm.ValidTo != 30 {
+		t.Fatalf("source node temporal mutated to %+v", tm)
+	}
+
+	gotRel, err := g.Temporal.RelAsOf(rel.ID(), 10)
+	if err != nil {
+		t.Fatalf("RelAsOf: %v", err)
+	}
+	if gotRel.Temporal().TxTo != 0 || gotRel.Temporal().DeletedAt != 0 || gotRel.Temporal().ValidTo != 0 {
+		t.Fatalf("visible rel temporal = %+v, want future close/delete hidden", gotRel.Temporal())
+	}
+	if tm := rel.Temporal(); tm.TxTo != 20 || tm.DeletedAt != 30 || tm.ValidTo != 30 {
+		t.Fatalf("source rel temporal mutated to %+v", tm)
+	}
+
+	gotNodes, err := g.Temporal.NodesAsOf(10)
+	if err != nil {
+		t.Fatalf("NodesAsOf: %v", err)
+	}
+	if len(gotNodes) != 1 || gotNodes[0].Temporal().TxTo != 0 || gotNodes[0].Temporal().DeletedAt != 0 || gotNodes[0].Temporal().ValidTo != 0 {
+		t.Fatalf("visible bulk nodes = %+v, want one normalized node", gotNodes)
+	}
+	if tm := bulkNode.Temporal(); tm.TxTo != 20 || tm.DeletedAt != 30 || tm.ValidTo != 30 {
+		t.Fatalf("source bulk node temporal mutated to %+v", tm)
+	}
+
+	gotRels, err := g.Temporal.RelsAsOf(10)
+	if err != nil {
+		t.Fatalf("RelsAsOf: %v", err)
+	}
+	if len(gotRels) != 1 || gotRels[0].Temporal().TxTo != 0 || gotRels[0].Temporal().DeletedAt != 0 || gotRels[0].Temporal().ValidTo != 0 {
+		t.Fatalf("visible bulk rels = %+v, want one normalized relationship", gotRels)
+	}
+	if tm := bulkRel.Temporal(); tm.TxTo != 20 || tm.DeletedAt != 30 || tm.ValidTo != 30 {
+		t.Fatalf("source bulk rel temporal mutated to %+v", tm)
+	}
+}
+
+func TestTxTimeQueryCapabilityBulkErrorsPropagate(t *testing.T) {
+	t.Parallel()
+	injected := errors.New("synthetic transaction-time bulk fault")
+	g, err := New(Config{Store: &txTimeQueryFaultStore{
+		MandatoryStore: memory.New(),
+		err:            injected,
+	}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if g.txTimeQuery == nil {
+		t.Fatal("direct transaction-time query capability was not enabled")
+	}
+
+	if _, err := g.Temporal.NodesAsOf(1); !errors.Is(err, injected) {
+		t.Fatalf("NodesAsOf error = %v, want injected fault", err)
+	}
+	if _, err := g.Temporal.RelsAsOf(1); !errors.Is(err, injected) {
+		t.Fatalf("RelsAsOf error = %v, want injected fault", err)
+	}
+}
+
+func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
+	normalizeTemporalVisibleAtTxTime(nil, 10)
+
+	if got := nodeVisibleAtTxTime(nil, 10); got != nil {
+		t.Fatalf("nodeVisibleAtTxTime(nil) = %v, want nil", got)
+	}
+	if got := relVisibleAtTxTime(nil, 10); got != nil {
+		t.Fatalf("relVisibleAtTxTime(nil) = %v, want nil", got)
+	}
+
+	t.Run("future TxTo hidden", func(t *testing.T) {
+		tm := &types.TemporalMetadata{TxTo: 20}
+		normalizeTemporalVisibleAtTxTime(tm, 10)
+		if tm.TxTo != 0 {
+			t.Fatalf("TxTo = %d, want 0", tm.TxTo)
+		}
+	})
+
+	t.Run("past TxTo kept", func(t *testing.T) {
+		tm := &types.TemporalMetadata{TxTo: 10}
+		normalizeTemporalVisibleAtTxTime(tm, 10)
+		if tm.TxTo != 10 {
+			t.Fatalf("TxTo = %d, want 10", tm.TxTo)
+		}
+	})
+
+	t.Run("future delete hidden with matching valid to", func(t *testing.T) {
+		tm := &types.TemporalMetadata{ValidTo: 20, DeletedAt: 20}
+		normalizeTemporalVisibleAtTxTime(tm, 10)
+		if tm.DeletedAt != 0 || tm.ValidTo != 0 {
+			t.Fatalf("DeletedAt=%d ValidTo=%d, want both hidden", tm.DeletedAt, tm.ValidTo)
+		}
+	})
+
+	t.Run("future delete hidden without changing independent valid to", func(t *testing.T) {
+		tm := &types.TemporalMetadata{ValidTo: 15, DeletedAt: 20}
+		normalizeTemporalVisibleAtTxTime(tm, 10)
+		if tm.DeletedAt != 0 || tm.ValidTo != 15 {
+			t.Fatalf("DeletedAt=%d ValidTo=%d, want DeletedAt hidden and ValidTo kept", tm.DeletedAt, tm.ValidTo)
+		}
+	})
+
+	t.Run("past delete kept", func(t *testing.T) {
+		tm := &types.TemporalMetadata{ValidTo: 10, DeletedAt: 10}
+		normalizeTemporalVisibleAtTxTime(tm, 10)
+		if tm.DeletedAt != 10 || tm.ValidTo != 10 {
+			t.Fatalf("DeletedAt=%d ValidTo=%d, want both kept", tm.DeletedAt, tm.ValidTo)
+		}
+	})
 }

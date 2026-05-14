@@ -53,8 +53,8 @@ type Config = core.Config
 // ValidationLimits aliases core.ValidationLimits for the public API.
 type ValidationLimits = core.ValidationLimits
 
-// GraphStats aliases core.GraphStats for the public API.
-type GraphStats = core.GraphStats
+// GraphStats aliases the public stats snapshot returned by g.Stats.Get().
+type GraphStats = stats.GraphStats
 
 // StoreStats aliases core.StoreStats for the public API.
 type StoreStats = core.StoreStats

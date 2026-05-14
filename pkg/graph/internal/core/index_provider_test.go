@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
@@ -21,12 +23,13 @@ import (
 // Captures events it receives and tracks Close calls. Tests assert on its
 // observable state.
 type mockIndexProvider struct {
-	name    string
-	mu      sync.Mutex
-	events  []eventspkg.Event
-	closed  atomic.Bool
-	closeFn func() error // optional; returns nil if unset
-	onErr   error        // optional; returned from OnEvent when set
+	name       string
+	mu         sync.Mutex
+	events     []eventspkg.Event
+	closed     atomic.Bool
+	closeFn    func() error // optional; returns nil if unset
+	closePanic any          // optional; panics from Close when set
+	onErr      error        // optional; returned from OnEvent when set
 }
 
 func (m *mockIndexProvider) Name() string { return m.name }
@@ -40,6 +43,9 @@ func (m *mockIndexProvider) OnEvent(ev eventspkg.Event) error {
 
 func (m *mockIndexProvider) Close() error {
 	m.closed.Store(true)
+	if m.closePanic != nil {
+		panic(m.closePanic)
+	}
 	if m.closeFn != nil {
 		return m.closeFn()
 	}
@@ -93,6 +99,7 @@ type initializableProvider struct {
 	mockIndexProvider
 	initCalled atomic.Int32
 	initErr    error
+	initPanic  any
 	seenNodes  []*types.Node
 	seenRels   []*types.Relationship
 	initMu     sync.Mutex
@@ -100,6 +107,9 @@ type initializableProvider struct {
 
 func (p *initializableProvider) Init(g indexpkg.GraphReader) error {
 	p.initCalled.Add(1)
+	if p.initPanic != nil {
+		panic(p.initPanic)
+	}
 	if p.initErr != nil {
 		return p.initErr
 	}
@@ -148,6 +158,37 @@ func (p *blockingInitializableProvider) Close() error {
 	return p.mockIndexProvider.Close()
 }
 
+type blockingEventProvider struct {
+	mockIndexProvider
+	eventStarted      chan struct{}
+	releaseEvent      chan struct{}
+	startOnce         sync.Once
+	eventReturned     atomic.Bool
+	closedDuringEvent atomic.Bool
+}
+
+func newBlockingEventProvider(name string) *blockingEventProvider {
+	return &blockingEventProvider{
+		mockIndexProvider: mockIndexProvider{name: name},
+		eventStarted:      make(chan struct{}),
+		releaseEvent:      make(chan struct{}),
+	}
+}
+
+func (p *blockingEventProvider) OnEvent(ev eventspkg.Event) error {
+	p.startOnce.Do(func() { close(p.eventStarted) })
+	<-p.releaseEvent
+	p.eventReturned.Store(true)
+	return p.mockIndexProvider.OnEvent(ev)
+}
+
+func (p *blockingEventProvider) Close() error {
+	if !p.eventReturned.Load() {
+		p.closedDuringEvent.Store(true)
+	}
+	return p.mockIndexProvider.Close()
+}
+
 func newProviderTestGraph(t *testing.T) *Core {
 	t.Helper()
 	g, err := New(Config{})
@@ -156,6 +197,16 @@ func newProviderTestGraph(t *testing.T) *Core {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 	return g
+}
+
+type closeTrackingStore struct {
+	storepkg.MandatoryStore
+	closed atomic.Bool
+}
+
+func (s *closeTrackingStore) Close() error {
+	s.closed.Store(true)
+	return s.MandatoryStore.Close()
 }
 
 func TestIndexProvider_RegisterAndListIsOrdered(t *testing.T) {
@@ -337,6 +388,38 @@ func TestIndexProvider_UnregisterStopsEvents(t *testing.T) {
 	}
 }
 
+func TestIndexProvider_UnregisterClosePanicIsReturnedAndStopsEvents(t *testing.T) {
+	g := newProviderTestGraph(t)
+	p := &mockIndexProvider{name: "spatial", closePanic: "unregister-panicked"}
+	if err := g.Index.RegisterProvider(p); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	err := g.Index.UnregisterProvider("spatial")
+	if err == nil {
+		t.Fatal("expected UnregisterProvider to return provider close panic")
+	}
+	if !strings.Contains(err.Error(), "index provider \"spatial\" close panic") {
+		t.Fatalf("UnregisterProvider error missing close panic context: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unregister-panicked") {
+		t.Fatalf("UnregisterProvider error missing panic value: %v", err)
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close should have been called")
+	}
+	if names := g.Index.Providers(); len(names) != 0 {
+		t.Fatalf("provider should be removed after close panic; got registry %v", names)
+	}
+
+	if _, err := g.Nodes.Add([]string{"B"}, map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(p.capturedEvents()); got != 0 {
+		t.Fatalf("expected 0 events after unregister close panic, got %d", got)
+	}
+}
+
 func TestIndexProvider_UnregisterUnknown(t *testing.T) {
 	g := newProviderTestGraph(t)
 	err := g.Index.UnregisterProvider("nope")
@@ -375,6 +458,36 @@ func TestIndexProvider_CloseErrorsAreJoined(t *testing.T) {
 	err = g.Close()
 	if err == nil || !errors.Is(err, boom) {
 		t.Errorf("expected Close error to wrap provider error; got %v", err)
+	}
+}
+
+func TestIndexProvider_ClosePanicIsReturnedAndStoreStillCloses(t *testing.T) {
+	store := &closeTrackingStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	p := &mockIndexProvider{name: "spatial", closePanic: "spatial-close-panicked"}
+	if err := g.Index.RegisterProvider(p); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	err = g.Close()
+	if err == nil {
+		t.Fatal("expected Close to return provider panic error")
+	}
+	if !strings.Contains(err.Error(), "index provider \"spatial\" close panic") {
+		t.Fatalf("Close error missing provider panic context: %v", err)
+	}
+	if !strings.Contains(err.Error(), "spatial-close-panicked") {
+		t.Fatalf("Close error missing panic value: %v", err)
+	}
+	if !p.closed.Load() {
+		t.Error("provider Close should have been called")
+	}
+	if !store.closed.Load() {
+		t.Error("store Close should still run after provider Close panic")
 	}
 }
 
@@ -598,6 +711,9 @@ func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
 	if names := g.Index.Providers(); len(names) != 0 {
 		t.Errorf("provider should be removed after Init failure; got registry %v", names)
 	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close should be called after Init failure rollback")
+	}
 
 	// Subscription must have been torn down — subsequent events must not
 	// reach the provider, otherwise we leaked a subscription closure.
@@ -606,6 +722,91 @@ func TestIndexProvider_InitializableErrorRollsBackRegistration(t *testing.T) {
 	}
 	if got := len(p.capturedEvents()); got != 0 {
 		t.Errorf("expected 0 events after Init failure rollback, got %d (subscription leak)", got)
+	}
+}
+
+func TestIndexProvider_InitializableErrorReturnsCloseFailure(t *testing.T) {
+	g := newProviderTestGraph(t)
+	initErr := errors.New("init-failed")
+	closeErr := errors.New("close-failed")
+	p := &initializableProvider{
+		mockIndexProvider: mockIndexProvider{
+			name:    "spatial",
+			closeFn: func() error { return closeErr },
+		},
+		initErr: initErr,
+	}
+
+	err := g.Index.RegisterProvider(p)
+	if !errors.Is(err, initErr) {
+		t.Fatalf("RegisterProvider error = %v, want Init error", err)
+	}
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("RegisterProvider error = %v, want Close error joined", err)
+	}
+	if names := g.Index.Providers(); len(names) != 0 {
+		t.Fatalf("provider should be removed after Init+Close failure; got registry %v", names)
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close should be called after Init failure")
+	}
+}
+
+func TestIndexProvider_InitializableErrorReturnsClosePanic(t *testing.T) {
+	g := newProviderTestGraph(t)
+	initErr := errors.New("init-failed")
+	p := &initializableProvider{
+		mockIndexProvider: mockIndexProvider{
+			name:       "spatial",
+			closePanic: "close-panicked",
+		},
+		initErr: initErr,
+	}
+
+	err := g.Index.RegisterProvider(p)
+	if !errors.Is(err, initErr) {
+		t.Fatalf("RegisterProvider error = %v, want Init error", err)
+	}
+	if !strings.Contains(err.Error(), "close after Init failure") {
+		t.Fatalf("RegisterProvider error missing rollback close context: %v", err)
+	}
+	if !strings.Contains(err.Error(), "close-panicked") {
+		t.Fatalf("RegisterProvider error missing Close panic value: %v", err)
+	}
+	if names := g.Index.Providers(); len(names) != 0 {
+		t.Fatalf("provider should be removed after Init+Close panic; got registry %v", names)
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close should be called after Init failure")
+	}
+}
+
+func TestIndexProvider_InitializablePanicRollsBackRegistration(t *testing.T) {
+	g := newProviderTestGraph(t)
+	p := &initializableProvider{
+		mockIndexProvider: mockIndexProvider{name: "spatial"},
+		initPanic:         "init-panicked",
+	}
+
+	err := g.Index.RegisterProvider(p)
+	if err == nil {
+		t.Fatal("expected register to fail when Init panics")
+	}
+	if !strings.Contains(err.Error(), "Init panic") || !strings.Contains(err.Error(), "init-panicked") {
+		t.Fatalf("RegisterProvider panic error = %v, want Init panic detail", err)
+	}
+	if names := g.Index.Providers(); len(names) != 0 {
+		t.Fatalf("provider should be removed after Init panic; got registry %v", names)
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close should be called after Init panic rollback")
+	}
+
+	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(p.capturedEvents()); got != 0 {
+		t.Fatalf("expected 0 events after Init panic rollback, got %d (subscription leak)", got)
 	}
 }
 
@@ -706,6 +907,127 @@ func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T)
 	}
 	if p.closedDuringInit.Load() {
 		t.Fatal("provider Close observed Init still running")
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close was not called by UnregisterProvider")
+	}
+}
+
+func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := newBlockingEventProvider("spatial")
+	if err := g.Index.RegisterProvider(p); err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+
+	addDone := make(chan error, 1)
+	go func() {
+		_, err := g.Nodes.Add([]string{"A"}, nil)
+		addDone <- err
+	}()
+
+	select {
+	case <-p.eventStarted:
+	case <-time.After(time.Second):
+		t.Fatal("provider OnEvent did not start")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- g.Close()
+	}()
+
+	select {
+	case err := <-closeDone:
+		t.Fatalf("Close returned before in-flight OnEvent finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if p.closed.Load() {
+		t.Fatal("provider Close ran while OnEvent was still blocked")
+	}
+
+	close(p.releaseEvent)
+
+	select {
+	case err := <-addDone:
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("AddNode did not return after provider event was released")
+	}
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after provider event was released")
+	}
+	if p.closedDuringEvent.Load() {
+		t.Fatal("provider Close observed OnEvent still running")
+	}
+	if !p.closed.Load() {
+		t.Fatal("provider Close was not called by graph Close")
+	}
+}
+
+func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
+	g := newProviderTestGraph(t)
+	p := newBlockingEventProvider("spatial")
+	if err := g.Index.RegisterProvider(p); err != nil {
+		t.Fatalf("RegisterProvider: %v", err)
+	}
+
+	addDone := make(chan error, 1)
+	go func() {
+		_, err := g.Nodes.Add([]string{"A"}, nil)
+		addDone <- err
+	}()
+
+	select {
+	case <-p.eventStarted:
+	case <-time.After(time.Second):
+		t.Fatal("provider OnEvent did not start")
+	}
+
+	unregisterDone := make(chan error, 1)
+	go func() {
+		unregisterDone <- g.Index.UnregisterProvider("spatial")
+	}()
+
+	select {
+	case err := <-unregisterDone:
+		t.Fatalf("UnregisterProvider returned before in-flight OnEvent finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if p.closed.Load() {
+		t.Fatal("provider Close ran while OnEvent was still blocked")
+	}
+
+	close(p.releaseEvent)
+
+	select {
+	case err := <-addDone:
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("AddNode did not return after provider event was released")
+	}
+	select {
+	case err := <-unregisterDone:
+		if err != nil {
+			t.Fatalf("UnregisterProvider: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("UnregisterProvider did not return after provider event was released")
+	}
+	if p.closedDuringEvent.Load() {
+		t.Fatal("provider Close observed OnEvent still running")
 	}
 	if !p.closed.Load() {
 		t.Fatal("provider Close was not called by UnregisterProvider")

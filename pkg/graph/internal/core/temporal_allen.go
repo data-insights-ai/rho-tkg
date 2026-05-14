@@ -1,6 +1,9 @@
 package core
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+import (
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+)
 
 // NodeInterval returns the effective [start, end) for a node.
 // start is derived from the snowflake ID timestamp if not explicitly set
@@ -9,17 +12,26 @@ import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 // NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
 // because Allen's algebra requires finite intervals.
 func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
-	if n == nil {
-		return 0, 0, ErrNilNode
-	}
 	c := t.c
-	start = c.nodeValidFrom(n)
-	tm := n.Temporal()
-	if tm == nil || tm.ValidTo == 0 {
-		return 0, 0, types.ErrOpenInterval
-	}
-	end = tm.ValidTo
-	return start, end, nil
+	err = c.readUnderRLock(func() error {
+		if n == nil {
+			return ErrNilNode
+		}
+		if err := storepkg.ValidateNodeID(n.ID()); err != nil {
+			return err
+		}
+		start = c.nodeValidFrom(n)
+		tm := n.Temporal()
+		if tm == nil || tm.ValidTo == 0 {
+			return types.ErrOpenInterval
+		}
+		end = tm.ValidTo
+		if start >= end {
+			return types.ErrInvalidInterval
+		}
+		return nil
+	})
+	return start, end, err
 }
 
 // RelInterval returns the effective [start, end) for a relationship.
@@ -28,17 +40,26 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 //
 // RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
 func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
-	if r == nil {
-		return 0, 0, ErrNilRelationship
-	}
 	c := t.c
-	start = c.relValidFrom(r)
-	tm := r.Temporal()
-	if tm == nil || tm.ValidTo == 0 {
-		return 0, 0, types.ErrOpenInterval
-	}
-	end = tm.ValidTo
-	return start, end, nil
+	err = c.readUnderRLock(func() error {
+		if r == nil {
+			return ErrNilRelationship
+		}
+		if err := storepkg.ValidateRelID(r.ID()); err != nil {
+			return err
+		}
+		start = c.relValidFrom(r)
+		tm := r.Temporal()
+		if tm == nil || tm.ValidTo == 0 {
+			return types.ErrOpenInterval
+		}
+		end = tm.ValidTo
+		if start >= end {
+			return types.ErrInvalidInterval
+		}
+		return nil
+	})
+	return start, end, err
 }
 
 // RelateNodes classifies the Allen relation of node A's interval to node B's.

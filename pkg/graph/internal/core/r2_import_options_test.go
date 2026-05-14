@@ -6,6 +6,7 @@ package core
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"math"
 	"os"
@@ -92,6 +93,25 @@ func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
 
 	if cnt, _ := dst.Nodes.Count(); cnt != 0 {
 		t.Errorf("dst node count = %d after rejected import, want 0 (size-limit error must leave graph unchanged)", cnt)
+	}
+}
+
+func TestImportWithOptions_MaxStagedBytesRejectsFrameBeforeBodyRead(t *testing.T) {
+	t.Parallel()
+
+	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New(dst): %v", err)
+	}
+	defer dst.Close()
+
+	reader := newFrameBodyTrapReader(exportTagHeader, 1024)
+	err = dst.IO.ImportWithOptions(reader, tkgio.ImportOptions{MaxStagedBytes: 16})
+	if !errors.Is(err, ErrImportSizeLimit) {
+		t.Fatalf("ImportWithOptions oversized frame: got %v, want ErrImportSizeLimit", err)
+	}
+	if reader.bodyRead {
+		t.Fatal("ImportWithOptions read the oversized record body before rejecting the staging cap")
 	}
 }
 
@@ -216,6 +236,28 @@ type blockingImportReader struct {
 	release     chan struct{}
 	once        sync.Once
 	releaseOnce sync.Once
+}
+
+type frameBodyTrapReader struct {
+	header     [5]byte
+	headerRead bool
+	bodyRead   bool
+}
+
+func newFrameBodyTrapReader(tag byte, bodyLen uint32) *frameBodyTrapReader {
+	r := &frameBodyTrapReader{}
+	r.header[0] = tag
+	binary.BigEndian.PutUint32(r.header[1:5], bodyLen)
+	return r
+}
+
+func (r *frameBodyTrapReader) Read(p []byte) (int, error) {
+	if !r.headerRead {
+		r.headerRead = true
+		return copy(p, r.header[:]), nil
+	}
+	r.bodyRead = true
+	return 0, errors.New("record body should not be read")
 }
 
 func (r *blockingImportReader) Read(p []byte) (int, error) {

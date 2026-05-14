@@ -68,7 +68,23 @@ func TestHFIndex_RangeQuery(t *testing.T) {
 	if !hasID2 {
 		t.Error("rangeQuery should include id2 (within range)")
 	}
-	_ = hasID3 // id3 at boundary — behavior defined by implementation
+	if hasID3 {
+		t.Error("rangeQuery should exclude id3 at the half-open end boundary")
+	}
+}
+
+func TestHFIndex_RangeQuery_EmptyOrReversedRange(t *testing.T) {
+	t.Parallel()
+	hfi := NewHighFrequencyIndex(time.Hour, 0)
+	hfi.Add(types.NodeID(1), 0)
+	hfi.Add(types.NodeID(2), types.Instant(time.Hour.Milliseconds()))
+
+	if got := hfi.RangeQuery(0, 0); got != nil {
+		t.Fatalf("RangeQuery empty range = %v, want nil", got)
+	}
+	if got := hfi.RangeQuery(types.Instant(time.Hour.Milliseconds()), 0); got != nil {
+		t.Fatalf("RangeQuery reversed range = %v, want nil", got)
+	}
 }
 
 func TestHFIndex_Remove(t *testing.T) {
@@ -91,6 +107,21 @@ func TestHFIndex_Remove(t *testing.T) {
 		if r == id {
 			t.Error("ID should not be present after remove")
 		}
+	}
+}
+
+func TestHFIndexRemovePurgesDuplicateBucketEntries(t *testing.T) {
+	t.Parallel()
+
+	hfi := NewHighFrequencyIndex(time.Hour, 0)
+	id := types.NodeID(42)
+	hfi.Add(id, 1000)
+	hfi.Add(id, 1000)
+
+	hfi.Remove(id, 1000)
+
+	if got := hfi.PointQuery(1000); got != nil {
+		t.Fatalf("PointQuery after removing duplicate entries = %v, want nil", got)
 	}
 }
 
@@ -253,6 +284,38 @@ func TestHFIndex_PurgeNodeFromAllHighFrequencyIndexes(t *testing.T) {
 	}
 	if got := idxs[1].PointQuery(0); !hfIDsContain(got, kept) {
 		t.Fatalf("purge removed unrelated node: %v", got)
+	}
+}
+
+func TestHighFrequencyNodeHelpersUseAllLabels(t *testing.T) {
+	t.Parallel()
+
+	id := types.NodeID(101)
+	node := types.NewNode(id, 1, []uint16{2, 3})
+	node.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000})
+	idxs := map[uint16]*HighFrequencyIndex{
+		1: NewHighFrequencyIndex(time.Hour, 0),
+		2: NewHighFrequencyIndex(time.Hour, 0),
+		3: NewHighFrequencyIndex(time.Hour, 0),
+		4: NewHighFrequencyIndex(time.Hour, 0),
+	}
+
+	AddNodeToHighFrequencyIndexes(idxs, node, id.SnowflakeID())
+	for _, tok := range []uint16{1, 2, 3} {
+		got := idxs[tok].PointQuery(1000)
+		if !hfIDsContain(got, id) {
+			t.Fatalf("token %d PointQuery = %v, want id %d", tok, got, id)
+		}
+	}
+	if got := idxs[4].PointQuery(1000); hfIDsContain(got, id) {
+		t.Fatalf("unmatched token PointQuery = %v, want no id %d", got, id)
+	}
+
+	RemoveNodeFromHighFrequencyIndexes(idxs, node, id.SnowflakeID())
+	for _, tok := range []uint16{1, 2, 3} {
+		if got := idxs[tok].PointQuery(1000); hfIDsContain(got, id) {
+			t.Fatalf("token %d still contains node after remove: %v", tok, got)
+		}
 	}
 }
 

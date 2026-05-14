@@ -94,6 +94,8 @@ func TestUpdateMutatorsRejectInvalidIDs(t *testing.T) {
 		{name: "Rels.UpdateInPlace zero", err: errFromRel(g.Rels.UpdateInPlace(0, update))},
 		{name: "Rels.UpdateInPlace empty zero", err: errFromRel(g.Rels.UpdateInPlace(0, nil))},
 		{name: "Rels.UpdateInPlace negative", err: errFromRel(g.Rels.UpdateInPlace(types.RelID(-1), update))},
+		{name: "Rels.CompareAndSetProperty zero", err: errFromCAS(g.Rels.CompareAndSetProperty(0, "name", nil, "Ada"))},
+		{name: "Rels.CompareAndSetProperty negative", err: errFromCAS(g.Rels.CompareAndSetProperty(types.RelID(-1), "name", nil, "Ada"))},
 		{name: "Rels.CloseVersion zero", err: g.Rels.CloseVersion(0, 100)},
 		{name: "Rels.CloseVersion negative", err: g.Rels.CloseVersion(types.RelID(-1), 100)},
 	}
@@ -129,6 +131,56 @@ func TestUpdateMutatorsRejectInvalidIDs(t *testing.T) {
 		checkCase{name: "Batch.UpdateRelationship zero", err: batch.UpdateRelationship(0, update)},
 		checkCase{name: "Batch.UpdateRelationship empty zero", err: batch.UpdateRelationship(0, nil)},
 		checkCase{name: "Batch.UpdateRelationship negative", err: batch.UpdateRelationship(types.RelID(-1), update)},
+	)
+
+	for _, check := range checks {
+		if !errors.Is(check.err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("%s = %v, want ErrInvalidStoreMutation", check.name, check.err)
+		}
+	}
+}
+
+func TestExistingEntityMutatorsValidateInvalidIDBeforePayload(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	type checkCase struct {
+		name string
+		err  error
+	}
+	invalidUpdate := map[string]any{"tkg_version": int64(1)}
+	checks := []checkCase{
+		{name: "Nodes.Update zero reserved key", err: errFromNode(g.Nodes.Update(0, invalidUpdate))},
+		{name: "Nodes.UpdateInPlace zero reserved key", err: errFromNode(g.Nodes.UpdateInPlace(0, invalidUpdate))},
+		{name: "Nodes.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Nodes.CompareAndSetProperty(0, "tkg_version", nil, "Ada"))},
+		{name: "Rels.Update zero reserved key", err: errFromRel(g.Rels.Update(0, invalidUpdate))},
+		{name: "Rels.UpdateInPlace zero reserved key", err: errFromRel(g.Rels.UpdateInPlace(0, invalidUpdate))},
+		{name: "Rels.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Rels.CompareAndSetProperty(0, "tkg_type", nil, "KNOWS"))},
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	checks = append(checks,
+		checkCase{name: "Tx.UpdateNode zero reserved key", err: errFromNode(tx.UpdateNode(0, invalidUpdate))},
+		checkCase{name: "Tx.UpdateRelationship zero reserved key", err: errFromRel(tx.UpdateRelationship(0, invalidUpdate))},
+	)
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	batch, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	checks = append(checks,
+		checkCase{name: "Batch.UpdateNode zero reserved key", err: batch.UpdateNode(0, invalidUpdate)},
+		checkCase{name: "Batch.UpdateRelationship zero reserved key", err: batch.UpdateRelationship(0, invalidUpdate)},
 	)
 
 	for _, check := range checks {

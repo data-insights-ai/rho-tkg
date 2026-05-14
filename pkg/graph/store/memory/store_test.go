@@ -8,6 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -61,6 +62,110 @@ func TestMemoryStoreGetNonexistentNode(t *testing.T) {
 	}
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("errors.Is(err, ErrNodeNotFound) = false; err = %v", err)
+	}
+}
+
+func TestMemoryStoreNodeIntegrityHashCapabilities(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	n.SetIntegrity(&types.NodeIntegrity{Hash: "initial-hash"})
+	if err := ms.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+
+	n.SetIntegrity(&types.NodeIntegrity{Hash: "caller-mutated-hash"})
+	hash, err := ms.NodeIntegrityHash(n.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash: %v", err)
+	}
+	if hash != "initial-hash" {
+		t.Fatalf("NodeIntegrityHash = %q, want stored initial hash", hash)
+	}
+
+	updated := types.NewNode(n.ID(), 10, nil)
+	updated.SetIntegrity(&types.NodeIntegrity{Hash: "updated-hash"})
+	if err := ms.ReplaceNode(updated); err != nil {
+		t.Fatalf("ReplaceNode: %v", err)
+	}
+	hash, err = ms.NodeIntegrityHash(n.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash after replace: %v", err)
+	}
+	if hash != "updated-hash" {
+		t.Fatalf("NodeIntegrityHash after replace = %q, want updated hash", hash)
+	}
+
+	end := types.NewNode(types.NodeID(snowflake.ID(3)), 10, nil)
+	end.SetIntegrity(&types.NodeIntegrity{Hash: "end-hash"})
+	if err := ms.PutNode(end); err != nil {
+		t.Fatalf("PutNode(end): %v", err)
+	}
+	fromHash, toHash, err := ms.EndpointIntegrityHashes(n.ID(), end.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes: %v", err)
+	}
+	if fromHash != "updated-hash" || toHash != "end-hash" {
+		t.Fatalf("EndpointIntegrityHashes = %q, %q; want updated-hash, end-hash", fromHash, toHash)
+	}
+	fromHash, toHash, err = ms.EndpointIntegrityHashes(end.ID(), end.ID())
+	if err != nil {
+		t.Fatalf("EndpointIntegrityHashes self: %v", err)
+	}
+	if fromHash != "end-hash" || toHash != "end-hash" {
+		t.Fatalf("EndpointIntegrityHashes self = %q, %q; want end-hash twice", fromHash, toHash)
+	}
+
+	noIntegrity := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
+	if err := ms.PutNode(noIntegrity); err != nil {
+		t.Fatalf("PutNode(no integrity): %v", err)
+	}
+	hash, err = ms.NodeIntegrityHash(noIntegrity.ID())
+	if err != nil {
+		t.Fatalf("NodeIntegrityHash(no integrity): %v", err)
+	}
+	if hash != "" {
+		t.Fatalf("NodeIntegrityHash(no integrity) = %q, want empty hash", hash)
+	}
+
+	if _, err := ms.NodeIntegrityHash(0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(0) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ms.NodeIntegrityHash(types.NodeID(-1)); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeIntegrityHash(-1) = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ms.NodeIntegrityHash(types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("NodeIntegrityHash(missing) = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, err := ms.EndpointIntegrityHashes(0, end.ID()); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero start = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := ms.EndpointIntegrityHashes(end.ID(), 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("EndpointIntegrityHashes zero end = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, _, err := ms.EndpointIntegrityHashes(types.NodeID(snowflake.ID(999)), end.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing start = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, err := ms.EndpointIntegrityHashes(end.ID(), types.NodeID(snowflake.ID(999))); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("EndpointIntegrityHashes missing end = %v, want ErrNodeNotFound", err)
+	}
+
+	if err := ms.DeleteNode(n.ID()); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if _, err := ms.NodeIntegrityHash(n.ID()); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("NodeIntegrityHash(after delete) = %v, want ErrNodeNotFound", err)
+	}
+
+	if err := ms.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := ms.NodeIntegrityHash(noIntegrity.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("NodeIntegrityHash(closed) = %v, want ErrStoreClosed", err)
+	}
+	if _, _, err := ms.EndpointIntegrityHashes(noIntegrity.ID(), noIntegrity.ID()); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("EndpointIntegrityHashes(closed) = %v, want ErrStoreClosed", err)
 	}
 }
 
@@ -341,6 +446,68 @@ func TestMemoryStoreNodesByLabel(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreNodesByLabelVerifiesFetchedRowLabelBeforeLimit(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	wrongLabel := types.NewNode(types.NodeID(snowflake.ID(10)), 5, nil)
+	want := types.NewNode(types.NodeID(snowflake.ID(20)), 7, nil)
+	if err := ms.PutNode(wrongLabel); err != nil {
+		t.Fatalf("PutNode wrongLabel: %v", err)
+	}
+	if err := ms.PutNode(want); err != nil {
+		t.Fatalf("PutNode want: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.labelIdx[7][wrongLabel.ID()] = struct{}{}
+	ms.mu.Unlock()
+
+	got, err := ms.NodesByLabel(7, QueryOpts{Limit: 1})
+	if err != nil {
+		t.Fatalf("NodesByLabel: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != want.ID() {
+		t.Fatalf("NodesByLabel stale label index = %v, want [%d]", got, want.ID())
+	}
+}
+
+func TestMemoryStoreNodesByLabelAndPropertyVerifiesFetchedRowBeforeLimit(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	wrongLabel := types.NewNode(types.NodeID(snowflake.ID(10)), 5, nil)
+	if err := wrongLabel.SetProperty("name", "Alice"); err != nil {
+		t.Fatalf("SetProperty wrongLabel: %v", err)
+	}
+	want := types.NewNode(types.NodeID(snowflake.ID(20)), 7, nil)
+	if err := want.SetProperty("name", "Alice"); err != nil {
+		t.Fatalf("SetProperty want: %v", err)
+	}
+	if err := ms.PutNode(wrongLabel); err != nil {
+		t.Fatalf("PutNode wrongLabel: %v", err)
+	}
+	if err := ms.PutNode(want); err != nil {
+		t.Fatalf("PutNode want: %v", err)
+	}
+	if err := ms.CreatePropertyIndex(7, "name"); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+
+	key := indexpkg.PropertyIndexKey{LabelToken: 7, PropertyKey: "name"}
+	ms.mu.Lock()
+	ms.propertyIndexes[key].AddKey(wrongLabel.ID().SnowflakeID(), indexpkg.PropertyValueKey("Alice"))
+	ms.mu.Unlock()
+
+	got, err := ms.NodesByLabelAndProperty(7, "name", "Alice", QueryOpts{Limit: 1})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != want.ID() {
+		t.Fatalf("NodesByLabelAndProperty stale property index = %v, want [%d]", got, want.ID())
+	}
+}
+
 func TestMemoryStoreRelsByType(t *testing.T) {
 	t.Parallel()
 
@@ -382,6 +549,41 @@ func TestMemoryStoreRelsByType(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("RelationshipsByType(99) = %d rels, want 0", len(got))
+	}
+}
+
+func TestMemoryStoreRelsByTypeVerifiesFetchedRowTypeBeforeLimit(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	if err := ms.PutNode(nA); err != nil {
+		t.Fatalf("PutNode A: %v", err)
+	}
+	if err := ms.PutNode(nB); err != nil {
+		t.Fatalf("PutNode B: %v", err)
+	}
+
+	wrongType := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
+	want := types.NewRelationship(types.RelID(snowflake.ID(101)), 7, nA.ID(), nB.ID())
+	if err := ms.PutRelationship(wrongType); err != nil {
+		t.Fatalf("PutRelationship wrongType: %v", err)
+	}
+	if err := ms.PutRelationship(want); err != nil {
+		t.Fatalf("PutRelationship want: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.typeIdx[7][wrongType.ID()] = struct{}{}
+	ms.mu.Unlock()
+
+	got, err := ms.RelationshipsByType(7, QueryOpts{Limit: 1})
+	if err != nil {
+		t.Fatalf("RelationshipsByType: %v", err)
+	}
+	if len(got) != 1 || got[0].ID() != want.ID() {
+		t.Fatalf("RelationshipsByType stale type index = %v, want [%d]", got, want.ID())
 	}
 }
 
@@ -431,6 +633,66 @@ func TestMemoryStoreOutgoingRelationships(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreOutgoingRelationshipsVerifiesFetchedRowStartNode(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	nC := types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil)
+	for _, n := range []*types.Node{nA, nB, nC} {
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+	}
+	rel := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nC.ID(), nB.ID())
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.mu.Unlock()
+
+	got, err := ms.OutgoingRelationships(nA.ID(), 5)
+	if err != nil {
+		t.Fatalf("OutgoingRelationships: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("OutgoingRelationships returned wrong-start rel IDs = %v, want none", got)
+	}
+}
+
+func TestMemoryStoreOutgoingRelationshipsForNodesVerifiesFetchedRowStartNode(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	nC := types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil)
+	for _, n := range []*types.Node{nA, nB, nC} {
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+	}
+	rel := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nC.ID(), nB.ID())
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.mu.Unlock()
+
+	got, err := ms.OutgoingRelationshipsForNodes([]types.NodeID{nA.ID()}, 5)
+	if err != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("OutgoingRelationshipsForNodes returned wrong-start rels = %v, want nil", got)
+	}
+}
+
 func TestMemoryStoreIncomingRelationships(t *testing.T) {
 	t.Parallel()
 
@@ -465,6 +727,14 @@ func TestMemoryStoreIncomingRelationships(t *testing.T) {
 		t.Fatalf("IncomingRelationships(20, 5) = %d rels, want 1", len(got))
 	}
 
+	got, err = ms.IncomingRelationships(types.NodeID(20), 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("IncomingRelationships(20, 99) = %v, want nil", got)
+	}
+
 	// Node with no incoming.
 	got, err = ms.IncomingRelationships(types.NodeID(10), 0)
 	if err != nil {
@@ -472,6 +742,66 @@ func TestMemoryStoreIncomingRelationships(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("IncomingRelationships(10, 0) = %d rels, want 0", len(got))
+	}
+}
+
+func TestMemoryStoreIncomingRelationshipsVerifiesFetchedRowEndNode(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	nC := types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil)
+	for _, n := range []*types.Node{nA, nB, nC} {
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+	}
+	rel := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nC.ID())
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.mu.Unlock()
+
+	got, err := ms.IncomingRelationships(nB.ID(), 5)
+	if err != nil {
+		t.Fatalf("IncomingRelationships: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("IncomingRelationships returned wrong-end rel IDs = %v, want none", got)
+	}
+}
+
+func TestMemoryStoreIncomingRelationshipsForNodesVerifiesFetchedRowEndNode(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	nA := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
+	nB := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
+	nC := types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil)
+	for _, n := range []*types.Node{nA, nB, nC} {
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+	}
+	rel := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nC.ID())
+	if err := ms.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	ms.mu.Lock()
+	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.mu.Unlock()
+
+	got, err := ms.IncomingRelationshipsForNodes([]types.NodeID{nB.ID()}, 5)
+	if err != nil {
+		t.Fatalf("IncomingRelationshipsForNodes: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("IncomingRelationshipsForNodes returned wrong-end rels = %v, want nil", got)
 	}
 }
 
@@ -1349,6 +1679,52 @@ func TestMemoryStoreGetNodeHistoryAscending(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreNodeHistoryVersionsFrom(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	id := types.NodeID(snowflake.ID(1))
+	for _, ver := range []uint32{4, 0, 2, 1, 3} {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := n.SetProperty("version", int64(ver)); err != nil {
+			t.Fatalf("SetProperty(%d): %v", ver, err)
+		}
+		if err := ms.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+
+	page, err := ms.NodeHistoryVersionsFrom(id, 2, 2)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom: %v", err)
+	}
+	if len(page) != 2 || page[0].Version() != 2 || page[1].Version() != 3 {
+		t.Fatalf("NodeHistoryVersionsFrom(2,2) versions = %v, want [2 3]", nodeHistoryVersions(page))
+	}
+	if err := page[0].SetProperty("version", int64(99)); err != nil {
+		t.Fatalf("mutate returned page: %v", err)
+	}
+	again, err := ms.NodeHistoryVersionsFrom(id, 2, 1)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom again: %v", err)
+	}
+	v, _ := again[0].GetProperty("version")
+	if v != int64(2) {
+		t.Fatalf("NodeHistoryVersionsFrom returned shared node, version property = %v", v)
+	}
+	all, err := ms.NodeHistoryVersionsFrom(id, 3, 0)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom limit 0: %v", err)
+	}
+	if len(all) != 2 || all[0].Version() != 3 || all[1].Version() != 4 {
+		t.Fatalf("NodeHistoryVersionsFrom(3,0) versions = %v, want [3 4]", nodeHistoryVersions(all))
+	}
+	if _, err := ms.NodeHistoryVersionsFrom(id, 0, -1); !errors.Is(err, storecontract.ErrInvalidQueryLimit) {
+		t.Fatalf("NodeHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+	}
+}
+
 func TestMemoryStoreTruncateNodeHistory(t *testing.T) {
 	t.Parallel()
 
@@ -1549,6 +1925,52 @@ func TestMemoryStoreGetRelHistoryAscending(t *testing.T) {
 			t.Fatalf("history not ascending: version[%d]=%d >= version[%d]=%d",
 				i, history[i].Version(), i+1, history[i+1].Version())
 		}
+	}
+}
+
+func TestMemoryStoreRelHistoryVersionsFrom(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	id := types.RelID(snowflake.ID(100))
+	for _, ver := range []uint32{4, 0, 2, 1, 3} {
+		r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+		r.SetVersion(ver)
+		if err := r.SetProperty("version", int64(ver)); err != nil {
+			t.Fatalf("SetProperty(%d): %v", ver, err)
+		}
+		if err := ms.PutRelVersion(id, ver, r); err != nil {
+			t.Fatalf("PutRelVersion(%d): %v", ver, err)
+		}
+	}
+
+	page, err := ms.RelHistoryVersionsFrom(id, 2, 2)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom: %v", err)
+	}
+	if len(page) != 2 || page[0].Version() != 2 || page[1].Version() != 3 {
+		t.Fatalf("RelHistoryVersionsFrom(2,2) versions = %v, want [2 3]", relHistoryVersions(page))
+	}
+	if err := page[0].SetProperty("version", int64(99)); err != nil {
+		t.Fatalf("mutate returned page: %v", err)
+	}
+	again, err := ms.RelHistoryVersionsFrom(id, 2, 1)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom again: %v", err)
+	}
+	v, _ := again[0].GetProperty("version")
+	if v != int64(2) {
+		t.Fatalf("RelHistoryVersionsFrom returned shared relationship, version property = %v", v)
+	}
+	all, err := ms.RelHistoryVersionsFrom(id, 3, 0)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom limit 0: %v", err)
+	}
+	if len(all) != 2 || all[0].Version() != 3 || all[1].Version() != 4 {
+		t.Fatalf("RelHistoryVersionsFrom(3,0) versions = %v, want [3 4]", relHistoryVersions(all))
+	}
+	if _, err := ms.RelHistoryVersionsFrom(id, 0, -1); !errors.Is(err, storecontract.ErrInvalidQueryLimit) {
+		t.Fatalf("RelHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
 	}
 }
 
@@ -3043,6 +3465,15 @@ func TestMemoryStoreIncomingRelationshipsForNodes(t *testing.T) {
 		t.Fatalf("node 30 type=5: got %d rels, want 1", len(got[types.NodeID(30)]))
 	}
 
+	got, err = ms.IncomingRelationshipsForNodes(
+		[]types.NodeID{types.NodeID(20), types.NodeID(30)}, 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("type=99: got %v, want nil", got)
+	}
+
 	// Empty input.
 	got, err = ms.IncomingRelationshipsForNodes(nil, 0)
 	if err != nil {
@@ -3119,4 +3550,20 @@ func TestMemoryStoreIncomingForNodesSorted(t *testing.T) {
 				i, rels[i].ID())
 		}
 	}
+}
+
+func nodeHistoryVersions(history []*types.Node) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, n := range history {
+		versions[i] = n.Version()
+	}
+	return versions
+}
+
+func relHistoryVersions(history []*types.Relationship) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, r := range history {
+		versions[i] = r.Version()
+	}
+	return versions
 }

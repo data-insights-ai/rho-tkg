@@ -14,24 +14,27 @@ import (
 // PutNode stores a node and indexes all its label tokens.
 // Returns ErrNodeExists if a node with the same ID already exists.
 func (ms *Store) PutNode(n *types.Node) error {
-	if err := storecontract.ValidateNodeWrite(n); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	nid := n.ID()
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeWrite(n); err != nil {
+		return err
+	}
+	nid := n.ID()
 
 	if _, exists := ms.nodes[nid]; exists {
 		return ErrNodeExists
 	}
 
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, n, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, n, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -42,7 +45,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -51,6 +54,9 @@ func (ms *Store) PutNode(n *types.Node) error {
 // GetNode retrieves a node by its snowflake ID.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) GetNode(nid types.NodeID) (*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -71,6 +77,9 @@ func (ms *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 // NodeIntegrityHash returns the live node's integrity hash without exposing the
 // stored node pointer or copying the whole entity.
 func (ms *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
+	if ms == nil {
+		return "", ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -94,6 +103,9 @@ func (ms *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 // EndpointIntegrityHashes returns both live endpoint integrity hashes under one
 // store read lock.
 func (ms *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error) {
+	if ms == nil {
+		return "", "", ErrNilStore
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -133,13 +145,16 @@ func nodeIntegrityHash(n *types.Node) string {
 // Returns ErrInvalidStoreMutation if the node still has connected relationships.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) DeleteNode(nid types.NodeID) error {
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
 
@@ -166,13 +181,16 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 // updatedNode must already have the label removed (via RemoveLabelTokenRaw).
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
 
@@ -185,7 +203,8 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, updatedNode, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -206,7 +225,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -216,13 +235,16 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 // No version bump; no history entry. Used by transaction rollback.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
 
@@ -235,7 +257,8 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, updatedNode, rawID)
+	if err != nil {
 		return err
 	}
 
@@ -254,7 +277,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, updatedNode, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -265,17 +288,19 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 // No label index changes — labels are immutable after creation.
 // Property indexes are updated to reflect property changes.
 func (ms *Store) ReplaceNode(n *types.Node) error {
-	if err := storecontract.ValidateNodeWrite(n); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
-	nid := n.ID()
-
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
 	}
+	if err := storecontract.ValidateNodeWrite(n); err != nil {
+		return err
+	}
+	nid := n.ID()
 
 	old, exists := ms.nodes[nid]
 	if !exists {
@@ -285,7 +310,8 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 		return err
 	}
 	rawID := nid.SnowflakeID()
-	if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, n, rawID); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, n, rawID)
+	if err != nil {
 		return err
 	}
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
@@ -296,7 +322,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
-	if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID); err != nil {
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
 	return nil
@@ -306,13 +332,16 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 // Holds the write lock for the entire operation — no TOCTOU window.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return err
+	if ms == nil {
+		return ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
 
@@ -356,6 +385,9 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 // Phase 2: deep-copy each, store, and update label indexes.
 // Any duplicate → error, zero mutations. Nil/empty input → nil error.
 func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -381,14 +413,17 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 		seen[id] = struct{}{}
 	}
-	for _, n := range nodes {
-		if err := indexpkg.ValidateNodeVectorIndexes(ms.vectorIndexes, n, n.ID().SnowflakeID()); err != nil {
+	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
+	for i, n := range nodes {
+		updates, err := indexpkg.PrepareNodeVectorIndexUpdates(ms.vectorIndexes, n, n.ID().SnowflakeID())
+		if err != nil {
 			return err
 		}
+		vectorUpdates[i] = updates
 	}
 
 	// Phase 2: apply — all validated, safe to mutate.
-	for _, n := range nodes {
+	for i, n := range nodes {
 		id := n.ID()
 		ms.nodes[id] = n.DeepCopy()
 
@@ -397,7 +432,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 		indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
 		indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
-		if err := indexpkg.AddNodeToVectorIndexes(ms.vectorIndexes, n, rawID); err != nil {
+		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
 			return err
 		}
 	}
@@ -411,6 +446,9 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 // Missing ID → ErrNodeNotFound, zero mutations. Duplicate IDs are coalesced.
 // Nil/empty input → nil error.
 func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
+	if ms == nil {
+		return ErrNilStore
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 

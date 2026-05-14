@@ -360,6 +360,9 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 // in wire.go while avoiding per-property reflective omitempty checks.
 func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	fields := 3 // k, v, t
+	if p.Nil {
+		fields++
+	}
 	if p.CustomType != "" {
 		fields++
 	}
@@ -380,6 +383,11 @@ func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	}
 	if err := encodeStringUint8Field(enc, "t", p.Type); err != nil {
 		return err
+	}
+	if p.Nil {
+		if err := encodeStringBoolField(enc, "n", p.Nil); err != nil {
+			return err
+		}
 	}
 	if p.CustomType != "" {
 		if err := encodeStringStringField(enc, "ct", p.CustomType); err != nil {

@@ -151,6 +151,24 @@ func TestBadgerStoreIndexAPIsRejectReservedPropertyKey(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreNodesByLabelAndPropertyRejectsInvalidQueryValue(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	_, err := bs.NodesByLabelAndProperty(1, "name", struct{ Bad int }{Bad: 1}, QueryOpts{})
+	if !errors.Is(err, types.ErrUnsupportedValueType) {
+		t.Fatalf("NodesByLabelAndProperty invalid value = %v, want ErrUnsupportedValueType", err)
+	}
+
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", []string{"valid", "unindexable"}, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty valid unindexable value: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("NodesByLabelAndProperty valid unindexable value returned %d nodes, want 0", len(nodes))
+	}
+}
+
 // ─── Issue 1: Store — DropHighFrequencyIndex ────────────────────────────
 
 func TestBadgerStore_DropHighFrequencyIndex(t *testing.T) {

@@ -95,6 +95,9 @@ func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr
 			retErr = errors.Join(retErr, rbErr)
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := fn(tx); err != nil {
 		return err
 	}

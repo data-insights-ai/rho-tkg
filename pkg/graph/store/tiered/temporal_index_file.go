@@ -39,6 +39,9 @@ func tieredHFBucketDuration(bucketMillis int64) (time.Duration, error) {
 }
 
 func saveTemporalIndexFile(path string, data temporalIndexFileData) error {
+	if err := validateTemporalIndexFileData(data); err != nil {
+		return err
+	}
 	if len(data.TemporalLabels) == 0 && len(data.HighFrequency) == 0 {
 		if err := os.Remove(path); err != nil {
 			if os.IsNotExist(err) {
@@ -56,6 +59,43 @@ func saveTemporalIndexFile(path string, data temporalIndexFileData) error {
 		return fmt.Errorf("temporal index file: marshal: %w", err)
 	}
 	return atomicWriteFile(path, encoded, "temporal index file")
+}
+
+func validateTemporalIndexFileData(data temporalIndexFileData) error {
+	seenTemporal := make(map[uint16]struct{}, len(data.TemporalLabels))
+	for _, tok := range data.TemporalLabels {
+		if err := storecontract.ValidateLabelToken(tok); err != nil {
+			return fmt.Errorf("temporal index file: invalid temporal label %d: %w", tok, err)
+		}
+		if _, exists := seenTemporal[tok]; exists {
+			return fmt.Errorf("temporal index file: duplicate temporal label %d: %w", tok, ErrTemporalIndexExists)
+		}
+		seenTemporal[tok] = struct{}{}
+	}
+	seenHF := make(map[uint16]time.Duration, len(data.HighFrequency))
+	for _, def := range data.HighFrequency {
+		if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+			return fmt.Errorf("temporal index file: invalid high-frequency label %d: %w", def.LabelToken, err)
+		}
+		if _, conflict := seenTemporal[def.LabelToken]; conflict {
+			return fmt.Errorf("temporal index file: label %d has both temporal and high-frequency definitions: %w",
+				def.LabelToken, ErrTemporalIndexExists)
+		}
+		bucketSize, err := tieredHFBucketDuration(def.BucketSizeMillis)
+		if err != nil {
+			return fmt.Errorf("temporal index file: invalid high-frequency label %d: %w", def.LabelToken, err)
+		}
+		if existing, exists := seenHF[def.LabelToken]; exists {
+			if existing != bucketSize {
+				return fmt.Errorf("temporal index file: label %d has conflicting high-frequency buckets: %w",
+					def.LabelToken, ErrTemporalIndexExists)
+			}
+			return fmt.Errorf("temporal index file: duplicate high-frequency label %d: %w",
+				def.LabelToken, ErrTemporalIndexExists)
+		}
+		seenHF[def.LabelToken] = bucketSize
+	}
+	return nil
 }
 
 type temporalIndexFileSnapshot struct {
@@ -108,6 +148,9 @@ func loadTemporalIndexFile(path string) (temporalIndexFileData, error) {
 	var out temporalIndexFileData
 	if err := msgpack.Unmarshal(data, &out); err != nil {
 		return temporalIndexFileData{}, fmt.Errorf("temporal index file: unmarshal: %w", err)
+	}
+	if err := validateTemporalIndexFileData(out); err != nil {
+		return temporalIndexFileData{}, err
 	}
 	return out, nil
 }

@@ -2,6 +2,8 @@ package tiered
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,6 +12,18 @@ import (
 )
 
 // --- F3: Store.Clear must wipe store-level indexes ---
+
+func blockedMetadataPath(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "metadata-dir")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatalf("Mkdir metadata dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "child"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile metadata child: %v", err)
+	}
+	return dir
+}
 
 // TestTieredStoreClear_ClearsVectorIndexes verifies that the Store-level
 // vector index map is reset on Clear so CreateVectorIndex does not return
@@ -29,6 +43,103 @@ func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 	}
 	if err := ts.CreateVectorIndex(caseTok, "v", 3, DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex after Clear: %v", err)
+	}
+}
+
+func TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := n.SetProperty("vec", []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.CreateVectorIndex(caseTok, "vec", 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	ts.vectorIdxFile = blockedMetadataPath(t)
+	if err := ts.Clear(); err == nil {
+		t.Fatal("Clear returned nil for blocked vector metadata deletion")
+	}
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode after failed Clear = %v, want original node", err)
+	}
+	if _, err := ts.SearchNearestNodes(caseTok, "vec", []float32{1, 0}, 1, QueryOpts{}); err != nil {
+		t.Fatalf("SearchNearestNodes after failed Clear = %v, want original index", err)
+	}
+}
+
+func TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.CreateTemporalIndex(caseTok); err != nil {
+		t.Fatalf("CreateTemporalIndex: %v", err)
+	}
+
+	ts.temporalIdxFile = blockedMetadataPath(t)
+	if err := ts.Clear(); err == nil {
+		t.Fatal("Clear returned nil for blocked temporal metadata deletion")
+	}
+	if _, err := ts.GetNode(n.ID()); err != nil {
+		t.Fatalf("GetNode after failed Clear = %v, want original node", err)
+	}
+	if got := ts.TempIdxLabelsForTest(); len(got) != 1 || got[0] != caseTok {
+		t.Fatalf("TempIdxLabels after failed Clear = %#v, want [%d]", got, caseTok)
+	}
+}
+
+func TestTieredStoreClear_CheckoutFailureRestoresIndexMetadata(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
+	if err := n.SetProperty("vec", []float32{1, 0}); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if err := ts.CreateVectorIndex(caseTok, "vec", 2, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	if err := ts.CreateTemporalIndex(caseTok); err != nil {
+		t.Fatalf("CreateTemporalIndex: %v", err)
+	}
+
+	injected := errors.New("synthetic checkout failure")
+	ts.recordBackgroundError(injected)
+	if err := ts.Clear(); !errors.Is(err, injected) {
+		t.Fatalf("Clear error = %v, want injected checkout failure", err)
+	}
+
+	vectorDefs, err := loadVectorIndexFile(ts.vectorIdxFile)
+	if err != nil {
+		t.Fatalf("loadVectorIndexFile after failed Clear: %v", err)
+	}
+	if len(vectorDefs) != 1 || vectorDefs[0].LabelToken != caseTok || vectorDefs[0].PropertyKey != "vec" {
+		t.Fatalf("vector index defs after failed Clear = %#v, want original vec definition", vectorDefs)
+	}
+	temporalDefs, err := loadTemporalIndexFile(ts.temporalIdxFile)
+	if err != nil {
+		t.Fatalf("loadTemporalIndexFile after failed Clear: %v", err)
+	}
+	if len(temporalDefs.TemporalLabels) != 1 || temporalDefs.TemporalLabels[0] != caseTok {
+		t.Fatalf("temporal index defs after failed Clear = %#v, want original label %d", temporalDefs, caseTok)
 	}
 }
 
@@ -168,6 +279,29 @@ func TestTieredStoreClear_DoesNotOpenClosedInMemoryColdShard(t *testing.T) {
 	}
 }
 
+func TestTieredStoreClearEventShard_PropagatesCheckoutError(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	injected := errors.New("synthetic lifecycle failure")
+	ts.recordBackgroundError(injected)
+
+	err := ts.clearEventShard(ts.HotShardForTest())
+	if !errors.Is(err, injected) {
+		t.Fatalf("clearEventShard error = %v, want injected lifecycle failure", err)
+	}
+}
+
+func TestTieredStoreClearEventShard_ClosedFailsClosed(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	ts.ClosedForTest().Store(true)
+
+	err := ts.clearEventShard(ts.HotShardForTest())
+	if !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("clearEventShard on closed store = %v, want ErrStoreClosed", err)
+	}
+}
+
 func TestTieredStoreClear_ClearsRestartedWarmShard(t *testing.T) {
 	dir := t.TempDir()
 	reg := registrypkg.NewLabelRegistry()
@@ -249,5 +383,32 @@ func TestTieredStoreClear_ResetsCatalogVerificationCache(t *testing.T) {
 	}
 	if entry.ApproxNodes != 0 || entry.ApproxRels != 0 {
 		t.Fatalf("catalog stats after Clear = nodes %d rels %d, want 0/0", entry.ApproxNodes, entry.ApproxRels)
+	}
+}
+
+func TestTieredStoreClear_CatalogSaveFailureKeepsLiveCatalogCleared(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	name := ts.HotShardForTest().Name()
+	if !ts.CatalogForTest().UpdateShardStats(name, 7, 3) {
+		t.Fatalf("UpdateShardStats returned false")
+	}
+	if !ts.CatalogForTest().UpdateShardVerified(name, true) {
+		t.Fatalf("UpdateShardVerified returned false")
+	}
+
+	ts.catalog.path = blockedMetadataPath(t)
+	if err := ts.Clear(); err == nil {
+		t.Fatal("Clear returned nil for blocked catalog save")
+	}
+
+	entry, ok := ts.CatalogForTest().GetShard(name)
+	if !ok {
+		t.Fatalf("GetShard(%q) returned false", name)
+	}
+	if entry.Verified {
+		t.Fatalf("Verified after failed catalog save = true, want false")
+	}
+	if entry.ApproxNodes != 0 || entry.ApproxRels != 0 {
+		t.Fatalf("catalog stats after failed catalog save = nodes %d rels %d, want 0/0", entry.ApproxNodes, entry.ApproxRels)
 	}
 }

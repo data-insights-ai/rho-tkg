@@ -24,6 +24,9 @@ func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, st
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
 		rel *types.Relationship
 		err error
@@ -34,8 +37,8 @@ func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, st
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
+	if rel != nil {
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err
 }
@@ -44,15 +47,6 @@ func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, st
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
-	}
-
-	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
-	if err != nil {
-		return nil, err
-	}
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
-	if err != nil {
 		return nil, err
 	}
 
@@ -68,6 +62,14 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	}
 
 	if err := c.validateName(typeName); err != nil {
+		return nil, err
+	}
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
+	}
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
 		return nil, err
 	}
 	if err := c.validateProperties(props); err != nil {
@@ -100,39 +102,52 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, err
 	}
 
-	// Lock both endpoints to prevent write-skew with concurrent DeleteNode.
-	c.entityLocks.LockTwo(startID.SnowflakeID(), endID.SnowflakeID())
-	defer c.entityLocks.UnlockTwo(startID.SnowflakeID(), endID.SnowflakeID())
+	// Lock the caller-supplied relationship ID together with both endpoints.
+	// Unlike generated creates, this path can reuse a previously deleted rel ID;
+	// the rel lock serializes same-ID import/delete/update interleavings while
+	// endpoint locks still prevent write-skew with concurrent DeleteNode.
+	c.entityLocks.LockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 
 	// Check for collision (R4-F14, R4-F15). Probe BEFORE allocating
 	// the rel-type token so a duplicate import never pollutes the
 	// registry. Probe must surface non-not-found errors instead of
 	// silently treating them as absence — operational store failures
 	// must not be hidden by the import path.
-	if _, err := c.store.GetRelationship(id); err == nil {
+	if _, err := c.getCurrentRelationship(id); err == nil {
 		return nil, storepkg.ErrRelExists
 	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, fmt.Errorf("graph: rel-id collision probe: %w", err)
 	}
 
-	// Fetch live endpoints under the endpoint locks (R4-F5). The
-	// caller-supplied `startNode`/`endNode` pointers are advisory —
-	// only their IDs are load-bearing for routing. Hashes and
-	// constraint checks must use the current persisted state.
-	liveStart, err := c.store.GetNode(startID)
-	if err != nil {
-		return nil, fmt.Errorf("graph: live start-node fetch under endpoint lock: %w", err)
-	}
-	liveEnd, err := c.store.GetNode(endID)
-	if err != nil {
-		return nil, fmt.Errorf("graph: live end-node fetch under endpoint lock: %w", err)
-	}
-
+	var fromHash, toHash string
 	if c.constraints.Len() > 0 {
+		// Fetch live endpoints under the endpoint locks (R4-F5). The
+		// caller-supplied `startNode`/`endNode` pointers are advisory —
+		// only their IDs are load-bearing for routing. Constraint checks
+		// must use the current persisted state.
+		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
+		if err != nil {
+			return nil, err
+		}
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return nil, err
 		}
+		fromHash = nodeIntegrityHash(liveStart)
+		toHash = nodeIntegrityHash(liveEnd)
+	} else {
+		fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
 	}
 
 	// R5-F6: only allocate the rel-type token now that every cheap,
@@ -146,13 +161,24 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		relTypeFinished = true
 		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
 	}
+	var r *types.Relationship
+	finishRelCreateError := func(err error) (error, bool) {
+		relTypeFinished = true
+		partialLive := false
+		err = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, err, func() error {
+			return c.deletePartialRelationshipForRollback(r)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
 		if !relTypeFinished {
-			_ = c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship import"))
+			_ = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship import"), func() error {
+				return c.deletePartialRelationshipForRollback(r)
+			}, nil)
 		}
 	}()
 
-	r := types.NewRelationship(id, typeToken, startID, endID)
+	r = types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, finishRelType(fmt.Errorf("graph: relationship import properties: %w", err))
 	}
@@ -169,12 +195,8 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		AuthorizedBy:       authorizedBy,
 		AuthorizationLevel: authLevel,
 	}
-	if startIg := liveStart.Integrity(); startIg != nil {
-		ig.FromNodeHash = startIg.Hash
-	}
-	if endIg := liveEnd.Integrity(); endIg != nil {
-		ig.ToNodeHash = endIg.Hash
-	}
+	ig.FromNodeHash = fromHash
+	ig.ToNodeHash = toHash
 	r.SetIntegrity(ig)
 
 	txNow := c.now()
@@ -199,9 +221,15 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	}
 
 	if err := c.store.PutRelationship(r); err != nil {
-		return nil, finishRelType(err)
+		err, partialLive := finishRelCreateError(err)
+		if partialLive {
+			c.opRelAdds.Add(1)
+			return r, err
+		}
+		return nil, err
 	}
 	if err := finishRelType(nil); err != nil {
+		c.opRelAdds.Add(1)
 		return r, err
 	}
 	c.rememberRelType(typeName, typeToken)

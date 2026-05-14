@@ -115,58 +115,118 @@ func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 		return nil, err
 	}
 
-	// Walk days from the floor of 'from' to the floor of 'to', inclusive.
+	switch p.Frequency {
+	case RecurrenceMonthly:
+		return p.expandMonthly(from, to), nil
+	case RecurrenceYearly:
+		return p.expandYearly(from, to), nil
+	default:
+		return p.expandByDay(from, to), nil
+	}
+}
+
+func (p RecurrencePattern) expandByDay(from, to Instant) []Interval {
 	startDay := truncateDay(from)
 	endDay := truncateDay(to)
 
 	var result []Interval
-	for day := startDay; day <= endDay; day = nextDay(day) {
-		if !p.matchesDay(day) {
-			continue
-		}
-
-		// Compute interval for this day.
-		intervalStart := day + Instant(p.DayStart.Milliseconds())
-		intervalEnd := day + Instant(p.DayEnd.Milliseconds())
-
-		// Clip to [from, to).
-		if intervalStart < from {
-			intervalStart = from
-		}
-		if intervalEnd > to {
-			intervalEnd = to
-		}
-		if intervalStart >= intervalEnd {
-			continue // zero-length or fully outside
-		}
-
-		result = append(result, Interval{Start: intervalStart, End: intervalEnd})
+	day, ok := firstMatchingDayOnOrAfter(startDay, endDay, p.Days)
+	if !ok {
+		return result
 	}
-	return result, nil
+	for day <= endDay {
+		result = p.appendOccurrence(result, day, from, to)
+		day = nextMatchingDay(day, p.Days)
+	}
+	return result
 }
 
-// matchesDay returns true if the given day (UTC midnight, as Instant) satisfies
-// the recurrence pattern's day-selection criteria.
-func (p RecurrencePattern) matchesDay(day Instant) bool {
+func (p RecurrencePattern) expandMonthly(from, to Instant) []Interval {
+	fromTime := time.UnixMilli(int64(from)).UTC()
+	toTime := time.UnixMilli(int64(to)).UTC()
+	y, m, _ := fromTime.Date()
+	endY, endM, _ := toTime.Date()
+	month := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+	endMonth := time.Date(endY, endM, 1, 0, 0, 0, 0, time.UTC)
+
+	var result []Interval
+	for !month.After(endMonth) {
+		day := p.dayInMonth(month.Year(), month.Month())
+		result = p.appendOccurrence(result, day, from, to)
+		month = month.AddDate(0, 1, 0)
+	}
+	return result
+}
+
+func (p RecurrencePattern) expandYearly(from, to Instant) []Interval {
+	fromTime := time.UnixMilli(int64(from)).UTC()
+	toTime := time.UnixMilli(int64(to)).UTC()
+	month := p.Month
+	if month == 0 {
+		month = time.January
+	}
+
+	var result []Interval
+	for year := fromTime.Year(); year <= toTime.Year(); year++ {
+		day := p.dayInMonth(year, month)
+		result = p.appendOccurrence(result, day, from, to)
+	}
+	return result
+}
+
+func (p RecurrencePattern) dayInMonth(year int, month time.Month) Instant {
+	day := p.DayOfMonth
+	if day == 0 {
+		day = time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	}
+	return Instant(time.Date(year, month, day, 0, 0, 0, 0, time.UTC).UnixMilli())
+}
+
+func (p RecurrencePattern) appendOccurrence(result []Interval, day, from, to Instant) []Interval {
+	intervalStart := day + Instant(p.DayStart.Milliseconds())
+	intervalEnd := day + Instant(p.DayEnd.Milliseconds())
+
+	if intervalStart < from {
+		intervalStart = from
+	}
+	if intervalEnd > to {
+		intervalEnd = to
+	}
+	if intervalStart >= intervalEnd {
+		return result
+	}
+	return append(result, Interval{Start: intervalStart, End: intervalEnd})
+}
+
+func firstMatchingDayOnOrAfter(start, end Instant, days WeekdayMask) (Instant, bool) {
+	for offset := 0; offset < 7; offset++ {
+		day := addDays(start, offset)
+		if day > end {
+			return 0, false
+		}
+		if dayMatchesWeekdayMask(day, days) {
+			return day, true
+		}
+	}
+	return 0, false
+}
+
+func nextMatchingDay(day Instant, days WeekdayMask) Instant {
+	for offset := 1; offset <= 7; offset++ {
+		candidate := addDays(day, offset)
+		if dayMatchesWeekdayMask(candidate, days) {
+			return candidate
+		}
+	}
+	return addDays(day, 7)
+}
+
+func dayMatchesWeekdayMask(day Instant, days WeekdayMask) bool {
 	tm := time.UnixMilli(int64(day)).UTC()
-	switch p.Frequency {
-	case RecurrenceDaily:
-		return p.matchesWeekday(tm)
-	case RecurrenceWeekly:
-		return p.matchesWeekday(tm)
-	case RecurrenceMonthly:
-		return p.matchesDayOfMonth(tm)
-	case RecurrenceYearly:
-		return p.matchesMonth(tm) && p.matchesDayOfMonth(tm)
-	}
-	return false
+	return days&weekdayMask(tm.Weekday()) != 0
 }
 
-// matchesWeekday checks if the given day's weekday is set in the Days bitmask.
-// Go's time.Weekday: Sunday=0, Monday=1, ..., Saturday=6.
-// Our bitmask: bit 0=Monday, bit 6=Sunday.
-func (p RecurrencePattern) matchesWeekday(tm time.Time) bool {
-	wd := tm.Weekday()
+func weekdayMask(wd time.Weekday) WeekdayMask {
 	var bit WeekdayMask
 	switch wd {
 	case time.Monday:
@@ -184,27 +244,7 @@ func (p RecurrencePattern) matchesWeekday(tm time.Time) bool {
 	case time.Sunday:
 		bit = MaskSunday
 	}
-	return p.Days&bit != 0
-}
-
-// matchesDayOfMonth checks if the given day matches DayOfMonth.
-// DayOfMonth 0 means the last day of the month.
-func (p RecurrencePattern) matchesDayOfMonth(tm time.Time) bool {
-	if p.DayOfMonth == 0 {
-		// Last day of the month: next day's month differs.
-		return tm.Day() == lastDayOfMonth(tm)
-	}
-	return tm.Day() == p.DayOfMonth
-}
-
-// matchesMonth checks if the given day's month matches p.Month.
-// p.Month == 0 defaults to January.
-func (p RecurrencePattern) matchesMonth(tm time.Time) bool {
-	month := p.Month
-	if month == 0 {
-		month = time.January
-	}
-	return tm.Month() == month
+	return bit
 }
 
 // truncateDay returns the UTC midnight of the day containing t (in ms).
@@ -214,15 +254,8 @@ func truncateDay(t Instant) Instant {
 	return Instant(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).UnixMilli())
 }
 
-// nextDay returns the UTC midnight of the day following t (which must be UTC midnight).
-func nextDay(t Instant) Instant {
+// addDays shifts a UTC-midnight instant by a calendar-day offset.
+func addDays(t Instant, days int) Instant {
 	tm := time.UnixMilli(int64(t)).UTC()
-	return Instant(tm.AddDate(0, 0, 1).UnixMilli())
-}
-
-// lastDayOfMonth returns the last day number in the month containing tm.
-func lastDayOfMonth(tm time.Time) int {
-	// First day of next month minus one day.
-	y, m, _ := tm.Date()
-	return time.Date(y, m+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	return Instant(tm.AddDate(0, 0, days).UnixMilli())
 }

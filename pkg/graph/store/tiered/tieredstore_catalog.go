@@ -14,7 +14,6 @@ import (
 // --- Rotation and depth helpers ---
 
 // RotateHotShard demotes the current hot shard to warm and creates a new hot shard.
-// Caller must hold ts.mu.Lock.
 //
 // Persistence order is transactional: the new badger shard is opened, the
 // catalog is mutated in-memory, and the catalog is persisted to disk
@@ -26,6 +25,18 @@ import (
 // process running with a switched-over hotShard but a durable catalog
 // describing the old topology — split-brain on restart.
 func (ts *Store) RotateHotShard() error {
+	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
+	if err != nil {
+		return err
+	}
+	defer releaseLifecycle()
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.rotateHotShardLocked()
+}
+
+func (ts *Store) rotateHotShardLocked() error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -91,7 +102,7 @@ func (ts *Store) RotateHotShard() error {
 	if ts.coldAfter > 0 {
 		coldThreshold := now.Add(-ts.coldAfter)
 		for _, es := range ts.eventShards {
-			if es.tier == TierWarm && es.timeEnd.Before(coldThreshold) {
+			if es.currentTier() == TierWarm && es.timeEnd.Before(coldThreshold) {
 				coldDemotions = append(coldDemotions, es)
 			}
 		}
@@ -132,7 +143,7 @@ func (ts *Store) RotateHotShard() error {
 	}
 
 	// Catalog persisted. From here we commit the live in-memory topology.
-	oldHot.tier = TierWarm
+	oldHot.setTier(TierWarm)
 	oldHot.readOnly = true
 	oldHot.timeEnd = boundary
 
@@ -145,11 +156,12 @@ func (ts *Store) RotateHotShard() error {
 		readOnly:  false,
 		path:      newDir,
 	}
+	newES.initTier(TierHot)
 	ts.eventShards[newName] = newES
 	ts.hotShard = newES
 
 	for _, es := range coldDemotions {
-		es.tier = TierCold
+		es.setTier(TierCold)
 		// Do NOT close the store here — let idle-close handle it safely
 		// (avoids closing while in-flight reads hold pointers from
 		// snapshots).
@@ -172,6 +184,12 @@ func (ts *Store) checkRotation() error {
 		return nil // fast path: within window
 	}
 
+	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
+	if err != nil {
+		return err
+	}
+	defer releaseLifecycle()
+
 	// Slow path: acquire write lock and rotate.
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -184,7 +202,7 @@ func (ts *Store) checkRotation() error {
 		return nil // another goroutine already rotated
 	}
 
-	return ts.RotateHotShard()
+	return ts.rotateHotShardLocked()
 }
 
 // --- Registry file integration ---

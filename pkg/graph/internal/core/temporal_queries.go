@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
@@ -113,9 +114,9 @@ func (t *TempOps) NodesByLabelAt(label string, at types.Instant) ([]*types.Node,
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.NodeID, 0, len(currentByLabel))
-		for _, n := range currentByLabel {
-			currentIDs = append(currentIDs, n.InternalID())
+		currentIDs, err := c.nodeIDsFromLabelRows(tok, currentByLabel)
+		if err != nil {
+			return err
 		}
 		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 			n, err := c.nodeAtLocked(id, at)
@@ -246,6 +247,9 @@ func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error)
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
 	var result *types.Node
 	err := c.readUnderRLock(func() error {
 		n, err := c.nodeAtLocked(id, at)
@@ -256,13 +260,16 @@ func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error)
 }
 
 func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, error) {
-	current, err := c.store.GetNode(id)
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
 	// current may be nil for deleted entities.
 
-	history, err := c.store.GetNodeHistory(id)
+	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +299,9 @@ func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, 
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
 	var result *types.Relationship
 	err := c.readUnderRLock(func() error {
 		r, err := c.relAtLocked(id, at)
@@ -302,13 +312,16 @@ func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, 
 }
 
 func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationship, error) {
-	current, err := c.store.GetRelationship(id)
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
 	// current may be nil for deleted entities.
 
-	history, err := c.store.GetRelHistory(id)
+	history, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +348,9 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
 		if _, err := c.nodeAtLocked(nodeID, at); err != nil {
@@ -358,13 +374,17 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 			}
 			in = nil
 		}
-		currentRelIDs := make([]types.RelID, 0, len(out)+len(in))
-		for _, r := range out {
-			currentRelIDs = append(currentRelIDs, r.InternalID())
+		outIDs, err := c.outgoingRelIDsFromRows(nodeID, 0, out)
+		if err != nil {
+			return err
 		}
-		for _, r := range in {
-			currentRelIDs = append(currentRelIDs, r.InternalID())
+		inIDs, err := c.incomingRelIDsFromRows(nodeID, 0, in)
+		if err != nil {
+			return err
 		}
+		currentRelIDs := make([]types.RelID, 0, len(outIDs)+len(inIDs))
+		currentRelIDs = append(currentRelIDs, outIDs...)
+		currentRelIDs = append(currentRelIDs, inIDs...)
 
 		neighborIDs := make(map[types.NodeID]struct{})
 		if err := c.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
@@ -418,19 +438,22 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: nodes by label property at value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
-		if err := c.validateIndexLabel(label); err != nil {
-			return err
-		}
-		if err := c.validateIndexPropertyKey(key); err != nil {
-			return err
-		}
 		tok, ok := c.labels.Lookup(label)
 		if !ok {
 			return nil
 		}
-		targetKey := indexpkg.PropertyValueKey(value)
 		if targetKey == "" {
 			return nil
 		}
@@ -441,9 +464,9 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.NodeID, 0, len(currentMatching))
-		for _, n := range currentMatching {
-			currentIDs = append(currentIDs, n.InternalID())
+		currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
+		if err != nil {
+			return err
 		}
 		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 			n, err := c.nodeAtLocked(id, at)
@@ -456,7 +479,7 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 			if !n.HasLabelTokenRaw(tok) {
 				return nil
 			}
-			if v, found := n.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
+			if valueKey, found := n.IndexablePropertyValueKey(key); found && valueKey == targetKey {
 				result = append(result, n)
 			}
 			return nil
@@ -487,19 +510,22 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 		return nil, err
 	}
 	end = resolvedEnd
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: nodes by label property during value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
 	var result []*types.Node
 	err = c.readUnderRLock(func() error {
-		if err := c.validateIndexLabel(label); err != nil {
-			return err
-		}
-		if err := c.validateIndexPropertyKey(key); err != nil {
-			return err
-		}
 		tok, ok := c.labels.Lookup(label)
 		if !ok {
 			return nil
 		}
-		targetKey := indexpkg.PropertyValueKey(value)
 		if targetKey == "" {
 			return nil
 		}
@@ -509,16 +535,16 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.NodeID, 0, len(currentMatching))
-		for _, n := range currentMatching {
-			currentIDs = append(currentIDs, n.InternalID())
+		currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
+		if err != nil {
+			return err
 		}
 		pred := func(n *types.Node) bool {
 			if !n.HasLabelTokenRaw(tok) {
 				return false
 			}
-			v, found := n.GetProperty(key)
-			return found && indexpkg.PropertyValueKey(v) == targetKey
+			gotKey, found := n.IndexablePropertyValueKey(key)
+			return found && gotKey == targetKey
 		}
 		if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
 			n, err := c.findNodeVersionMatchingDuring(id, start, end, pred)
@@ -573,19 +599,22 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := c.validateRelTypeQueryName(relType); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: relationships by type property at value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
-		if err := c.validateRelTypeQueryName(relType); err != nil {
-			return err
-		}
-		if err := c.validateIndexPropertyKey(key); err != nil {
-			return err
-		}
 		tok, ok := c.lookupRelTypeQueryToken(relType)
 		if !ok {
 			return nil
 		}
-		targetKey := indexpkg.PropertyValueKey(value)
 		if targetKey == "" {
 			return nil
 		}
@@ -596,9 +625,9 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.RelID, 0, len(current))
-		for _, r := range current {
-			currentIDs = append(currentIDs, r.InternalID())
+		currentIDs, err := c.relIDsFromTypeRows(tok, current)
+		if err != nil {
+			return err
 		}
 		if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 			r, err := c.relAtLocked(id, at)
@@ -611,7 +640,7 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 			if !r.HasTypeTokenRaw(tok) {
 				return nil
 			}
-			if v, found := r.GetProperty(key); found && indexpkg.PropertyValueKey(v) == targetKey {
+			if valueKey, found := r.IndexablePropertyValueKey(key); found && valueKey == targetKey {
 				result = append(result, r)
 			}
 			return nil
@@ -648,19 +677,22 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 		return nil, err
 	}
 	end = resolvedEnd
+	if err := c.validateRelTypeQueryName(relType); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: relationships by type property during value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
 	var result []*types.Relationship
 	err = c.readUnderRLock(func() error {
-		if err := c.validateRelTypeQueryName(relType); err != nil {
-			return err
-		}
-		if err := c.validateIndexPropertyKey(key); err != nil {
-			return err
-		}
 		tok, ok := c.lookupRelTypeQueryToken(relType)
 		if !ok {
 			return nil
 		}
-		targetKey := indexpkg.PropertyValueKey(value)
 		if targetKey == "" {
 			return nil
 		}
@@ -670,16 +702,16 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 		if err != nil {
 			return err
 		}
-		currentIDs := make([]types.RelID, 0, len(current))
-		for _, r := range current {
-			currentIDs = append(currentIDs, r.InternalID())
+		currentIDs, err := c.relIDsFromTypeRows(tok, current)
+		if err != nil {
+			return err
 		}
 		pred := func(r *types.Relationship) bool {
 			if !r.HasTypeTokenRaw(tok) {
 				return false
 			}
-			v, found := r.GetProperty(key)
-			return found && indexpkg.PropertyValueKey(v) == targetKey
+			gotKey, found := r.IndexablePropertyValueKey(key)
+			return found && gotKey == targetKey
 		}
 		if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
 			r, err := c.findRelVersionMatchingDuring(id, start, end, pred)

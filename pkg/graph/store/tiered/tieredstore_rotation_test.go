@@ -196,3 +196,45 @@ func TestTieredStore_ForceRotate(t *testing.T) {
 		t.Error("old hot shard should be warm")
 	}
 }
+
+func TestTieredStore_RotateHotShardPublicCallSerializesConcurrentRotations(t *testing.T) {
+	ts := newTestTieredStore(t)
+
+	const rotations = 4
+	errs := make(chan error, rotations)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range rotations {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- ts.RotateHotShard()
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("RotateHotShard: %v", err)
+		}
+	}
+
+	ts.MuForTest().RLock()
+	defer ts.MuForTest().RUnlock()
+	var hotCount int
+	for _, es := range ts.EventShardsForTest() {
+		if es.Tier() == TierHot {
+			hotCount++
+		}
+	}
+	if hotCount != 1 {
+		t.Fatalf("hot shard count = %d, want 1", hotCount)
+	}
+	if got := len(ts.EventShardsForTest()); got != rotations+1 {
+		t.Fatalf("event shard count = %d, want %d", got, rotations+1)
+	}
+}

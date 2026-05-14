@@ -198,6 +198,172 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	}
 }
 
+func TestTieredStoreRepairPurgesStaleIncomingTypeAndRecreatesCorrectEntry(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	sigTok, _ := reg.GetOrCreate("Signal")
+	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
+	staleTypeTok := relTypeTok + 1
+
+	gen := tieredNodeGen(t)
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode ref: %v", err)
+	}
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
+	if err := ts.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode evt: %v", err)
+	}
+
+	relID := tieredRelGen(t).Generate()
+	r := types.NewRelationship(types.RelID(relID), relTypeTok, evtNode.ID(), refNode.ID())
+	if err := ts.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+	if err := ts.RefShardForTest().PutRelIncoming(refNode.ID().SnowflakeID(), evtNode.ID().SnowflakeID(), staleTypeTok, relID); err != nil {
+		t.Fatalf("PutRelIncoming stale type: %v", err)
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), staleTypeTok); len(got) != 1 || got[0] != relID {
+		t.Fatalf("stale incoming setup = %v, want [%d]", got, relID)
+	}
+
+	result, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if result.StaleInEntries != 1 {
+		t.Fatalf("StaleInEntries = %d, want 1", result.StaleInEntries)
+	}
+	if result.MissingInEntries != 1 {
+		t.Fatalf("MissingInEntries = %d, want 1", result.MissingInEntries)
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), staleTypeTok); len(got) != 0 {
+		t.Fatalf("stale incoming after repair = %v, want empty", got)
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), relTypeTok); len(got) != 1 || got[0] != relID {
+		t.Fatalf("correct incoming after repair = %v, want [%d]", got, relID)
+	}
+	if err := ts.RefShardForTest().Flush(); err != nil {
+		t.Fatalf("Flush after repair: %v", err)
+	}
+	staleKey := storeutil.InKey(refNode.ID().SnowflakeID(), staleTypeTok, evtNode.ID().SnowflakeID(), relID)
+	err = ts.RefShardForTest().DBForTest().View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(staleKey)
+		return err
+	})
+	if !errors.Is(err, badgerv4.ErrKeyNotFound) {
+		t.Fatalf("stale incoming key after repair = %v, want ErrKeyNotFound", err)
+	}
+}
+
+func TestTieredStoreRepairPurgesStaleIncomingWrongEnd(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+
+	caseTok, _ := reg.GetOrCreate("Case")
+	sigTok, _ := reg.GetOrCreate("Signal")
+	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
+
+	gen := tieredNodeGen(t)
+	caseA := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	caseB := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	signal := types.NewNode(types.NodeID(gen.Generate()), sigTok, nil)
+	for _, n := range []*types.Node{caseA, caseB, signal} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", n.ID(), err)
+		}
+	}
+
+	relID := tieredRelGen(t).Generate()
+	r := types.NewRelationship(types.RelID(relID), relTypeTok, signal.ID(), caseA.ID())
+	if err := ts.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+	if err := ts.RefShardForTest().PutRelIncoming(caseB.ID().SnowflakeID(), signal.ID().SnowflakeID(), relTypeTok, relID); err != nil {
+		t.Fatalf("PutRelIncoming stale wrong end: %v", err)
+	}
+
+	result, err := ts.RunRepair()
+	if err != nil {
+		t.Fatalf("RunRepair: %v", err)
+	}
+	if result.StaleInEntries != 1 {
+		t.Fatalf("StaleInEntries = %d, want 1", result.StaleInEntries)
+	}
+	if result.MissingInEntries != 0 {
+		t.Fatalf("MissingInEntries = %d, want 0", result.MissingInEntries)
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(caseB.ID().SnowflakeID(), relTypeTok); len(got) != 0 {
+		t.Fatalf("wrong-end incoming after repair = %v, want empty", got)
+	}
+	if got := ts.RefShardForTest().IncomingRelIDs(caseA.ID().SnowflakeID(), relTypeTok); len(got) != 1 || got[0] != relID {
+		t.Fatalf("correct incoming after repair = %v, want [%d]", got, relID)
+	}
+}
+
+func TestTieredStoreRepairPropagatesCorruptEndpointRows(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		corruptNode func(start, end *types.Node) types.NodeID
+	}{
+		{
+			name: "start",
+			corruptNode: func(start, end *types.Node) types.NodeID {
+				return start.ID()
+			},
+		},
+		{
+			name: "end",
+			corruptNode: func(start, end *types.Node) types.NodeID {
+				return end.ID()
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestTieredStore(t)
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+
+			caseTok, _ := reg.GetOrCreate("Case")
+			signalTok, _ := reg.GetOrCreate("Signal")
+			relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
+			gen := tieredNodeGen(t)
+			start := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+			end := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+			if err := ts.PutNode(start); err != nil {
+				t.Fatalf("PutNode start: %v", err)
+			}
+			if err := ts.PutNode(end); err != nil {
+				t.Fatalf("PutNode end: %v", err)
+			}
+			rel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), relTypeTok, start.ID(), end.ID())
+			if err := ts.PutRelationship(rel); err != nil {
+				t.Fatalf("PutRelationship: %v", err)
+			}
+
+			corruptID := tc.corruptNode(start, end)
+			shard, checkin, err := ts.shardForNodeIDChecked(corruptID)
+			if err != nil {
+				t.Fatalf("shardForNodeIDChecked corrupt endpoint: %v", err)
+			}
+			defer checkin()
+			corruptTieredNodeRowAfterFlush(t, shard, corruptID)
+
+			_, err = ts.RunRepair()
+			if err == nil {
+				t.Fatal("RunRepair returned nil for corrupt endpoint row")
+			}
+			if errors.Is(err, ErrNodeNotFound) {
+				t.Fatalf("RunRepair returned not-found for corrupt endpoint row: %v", err)
+			}
+		})
+	}
+}
+
 func TestTieredStore_Repair_MissingIncomingUsesPinnedArchiveSnapshot(t *testing.T) {
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")

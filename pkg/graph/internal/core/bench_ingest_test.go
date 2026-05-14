@@ -32,6 +32,18 @@ func benchProps() map[string]any {
 	return map[string]any{"seq": 42, "group": "g7"}
 }
 
+const maxBenchmarkEndpointPool = 8192
+
+func benchmarkEndpointPoolSize(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	if n < maxBenchmarkEndpointPool {
+		return n
+	}
+	return maxBenchmarkEndpointPool
+}
+
 // --- Component benchmarks: isolate each step of AddNode ---
 
 func BenchmarkSnowflakeIDGen(b *testing.B) {
@@ -175,9 +187,11 @@ func BenchmarkAddNodeMemStore(b *testing.B) {
 
 func BenchmarkAddRelationship(b *testing.B) {
 	g := benchGraph(b)
-	// Pre-create node pairs — realistic: 1 node with up to 3 rels
+	// Pre-create a bounded endpoint pool. Each measured iteration still
+	// creates a fresh relationship; bounding setup avoids b.N-scale node
+	// fixtures during long benchmark sweeps.
 	type pair struct{ start, end *types.Node }
-	pairs := make([]pair, b.N)
+	pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 	for i := range pairs {
 		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
 		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
@@ -185,7 +199,8 @@ func BenchmarkAddRelationship(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := range b.N {
-		if _, err := g.Rels.Add("KNOWS", pairs[i].start, pairs[i].end,
+		pair := pairs[i%len(pairs)]
+		if _, err := g.Rels.Add("KNOWS", pair.start, pair.end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}
@@ -199,7 +214,7 @@ func BenchmarkAddRelationshipMemStore(b *testing.B) {
 	}
 	b.Cleanup(func() { g.Close() })
 	type pair struct{ start, end *types.Node }
-	pairs := make([]pair, b.N)
+	pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 	for i := range pairs {
 		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
 		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
@@ -207,7 +222,8 @@ func BenchmarkAddRelationshipMemStore(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := range b.N {
-		if _, err := g.Rels.Add("KNOWS", pairs[i].start, pairs[i].end,
+		pair := pairs[i%len(pairs)]
+		if _, err := g.Rels.Add("KNOWS", pair.start, pair.end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}

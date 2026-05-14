@@ -1,6 +1,7 @@
 package graph
 
 import (
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/index"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/core"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -28,9 +29,13 @@ var (
 	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch
 	ErrInvalidTemporalIndexConfig = storepkg.ErrInvalidTemporalIndexConfig
 	ErrInvalidVectorIndexConfig   = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue         = storepkg.ErrInvalidVectorValue
 	ErrInvalidShardDepth          = storepkg.ErrInvalidShardDepth
 	ErrInvalidQueryLimit          = storepkg.ErrInvalidQueryLimit
 	ErrInvalidQueryCursor         = storepkg.ErrInvalidQueryCursor
+	ErrIndexProviderExists        = indexpkg.ErrIndexProviderExists
+	ErrIndexProviderNotFound      = indexpkg.ErrIndexProviderNotFound
+	ErrIndexProviderEmptyName     = indexpkg.ErrIndexProviderEmptyName
 )
 
 // Registry sentinel errors. Surface through node/rel mutations.

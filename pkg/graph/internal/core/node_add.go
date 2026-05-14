@@ -13,6 +13,35 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
+func (c *Core) restoreNewLabelsCreateOnError(snapshot, allocated []string, err error, cleanup func() error, partialLive *bool) error {
+	if err != nil && cleanup != nil {
+		if cleanupErr := runRollbackCleanup(cleanup); cleanupErr != nil && !errors.Is(cleanupErr, storepkg.ErrNodeNotFound) {
+			if partialLive != nil {
+				*partialLive = true
+			}
+			err = fmt.Errorf("%w; additionally failed to remove partial node after create failure: %v", err, cleanupErr)
+			if len(allocated) > 0 {
+				if persistErr := c.persistRegistries(); persistErr != nil {
+					err = fmt.Errorf("%w; additionally failed to persist retained label registry after partial node cleanup failure: %v", err, persistErr)
+				}
+				c.registryMu.Unlock()
+				return err
+			}
+		}
+	}
+	if len(allocated) == 0 {
+		return err
+	}
+	return c.restoreNewLabelsOnError(snapshot, allocated, err)
+}
+
+func (c *Core) deletePartialNodeForRollback(n *types.Node) error {
+	if n == nil {
+		return storepkg.ErrNodeNotFound
+	}
+	return c.store.DeleteNode(n.ID())
+}
+
 // =============================================================================
 // Node — Add (Create / Import)
 // =============================================================================
@@ -25,6 +54,9 @@ func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error
@@ -35,7 +67,7 @@ func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && ep != nil {
+	if node != nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return node, err
@@ -48,31 +80,18 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	// Extract reserved provenance fields before validation so they are never
-	// seen by PropertySlice.Set (which rejects the tkg_ prefix).
+	if err := c.validateNodeCreateLabels(labels); err != nil {
+		return nil, err
+	}
+
 	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract reserved temporal fields (tkg_valid_from, tkg_valid_to, tkg_created_at).
 	validFrom, validTo, createdAt, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(labels) == 0 {
-		return nil, ErrNoLabels
-	}
-
-	// Validation limits.
-	if len(labels) > c.validation.MaxLabelsPerNode {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), c.validation.MaxLabelsPerNode)
-	}
-	for _, label := range labels {
-		if err := c.validateName(label); err != nil {
-			return nil, err
-		}
 	}
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
@@ -89,22 +108,43 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	if err != nil {
 		return nil, err
 	}
-	labelsFinished := !labelsLocked
+	createFinished := false
 	finishLabels := func(err error) error {
+		createFinished = true
 		if !labelsLocked {
 			return err
 		}
-		labelsFinished = true
 		return c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, err)
 	}
+	var n *types.Node
+	finishNodeCreateError := func(err error) (error, bool) {
+		createFinished = true
+		if !labelsLocked {
+			partialLive := false
+			if cleanupErr := runRollbackCleanup(func() error {
+				return c.deletePartialNodeForRollback(n)
+			}); cleanupErr != nil && !errors.Is(cleanupErr, storepkg.ErrNodeNotFound) {
+				partialLive = true
+				err = fmt.Errorf("%w; additionally failed to remove partial node after create failure: %v", err, cleanupErr)
+			}
+			return err, partialLive
+		}
+		partialLive := false
+		err = c.restoreNewLabelsCreateOnError(labelSnapshot, allocatedLabels, err, func() error {
+			return c.deletePartialNodeForRollback(n)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
-		if !labelsFinished {
-			_ = c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node create"))
+		if !createFinished {
+			_ = c.restoreNewLabelsCreateOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node create"), func() error {
+				return c.deletePartialNodeForRollback(n)
+			}, nil)
 		}
 	}()
 
 	id := c.nextNodeID()
-	n := types.NewNode(id, primaryToken, extraTokens)
+	n = types.NewNode(id, primaryToken, extraTokens)
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
 	}
@@ -153,10 +193,16 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, finishLabels(err)
 	}
 
-	if err := putGeneratedNode(c.store, n); err != nil {
-		return nil, finishLabels(err)
+	if err := c.putGeneratedNode(n); err != nil {
+		err, partialLive := finishNodeCreateError(err)
+		if partialLive {
+			c.opNodeAdds.Add(1)
+			return n, err
+		}
+		return nil, err
 	}
 	if err := finishLabels(nil); err != nil {
+		c.opNodeAdds.Add(1)
 		return n, err
 	}
 
@@ -172,6 +218,9 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	var (
 		node *types.Node
 		err  error
@@ -182,8 +231,8 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if err == nil && ep != nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
+	if node != nil && ep != nil {
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return node, err
 }
@@ -195,15 +244,6 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, err
 	}
 
-	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
-	if err != nil {
-		return nil, err
-	}
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
-	if err != nil {
-		return nil, err
-	}
-
 	if id == 0 {
 		return nil, ErrZeroID
 	}
@@ -211,17 +251,16 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, ErrInvalidID
 	}
 
-	if len(labels) == 0 {
-		return nil, ErrNoLabels
+	if err := c.validateNodeCreateLabels(labels); err != nil {
+		return nil, err
 	}
-
-	if len(labels) > c.validation.MaxLabelsPerNode {
-		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, len(labels), c.validation.MaxLabelsPerNode)
+	authorID, sig, authorizedBy, authLevel, props, err := extractProvenance(props)
+	if err != nil {
+		return nil, err
 	}
-	for _, label := range labels {
-		if err := c.validateName(label); err != nil {
-			return nil, err
-		}
+	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
 	}
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
@@ -232,12 +271,22 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, fmt.Errorf("graph: node properties: %w", err)
 	}
 
+	// Caller-supplied node IDs can be reused after deletion, unlike generated
+	// creates. Hold the node entity lock across the collision probe and final
+	// store write so same-ID import/delete/update interleavings serialize.
+	c.entityLocks.LockEntity(id.SnowflakeID())
+	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
+
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
 	// Check for collision BEFORE allocating registry tokens (R4-F14).
 	// Allocating tokens up-front pollutes the registry on duplicate-ID
 	// rejection. Probe must surface non-not-found errors instead of
 	// silently treating them as absence (R4-F15) — operational store
 	// failures must not be hidden by the import path.
-	if _, err := c.store.GetNode(id); err == nil {
+	if _, err := c.getCurrentNode(id); err == nil {
 		return nil, storepkg.ErrNodeExists
 	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, fmt.Errorf("graph: node-id collision probe: %w", err)
@@ -247,21 +296,42 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	labelsFinished := !labelsLocked
+	createFinished := false
 	finishLabels := func(err error) error {
+		createFinished = true
 		if !labelsLocked {
 			return err
 		}
-		labelsFinished = true
 		return c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, err)
 	}
+	var n *types.Node
+	finishNodeCreateError := func(err error) (error, bool) {
+		createFinished = true
+		if !labelsLocked {
+			partialLive := false
+			if cleanupErr := runRollbackCleanup(func() error {
+				return c.deletePartialNodeForRollback(n)
+			}); cleanupErr != nil && !errors.Is(cleanupErr, storepkg.ErrNodeNotFound) {
+				partialLive = true
+				err = fmt.Errorf("%w; additionally failed to remove partial node after create failure: %v", err, cleanupErr)
+			}
+			return err, partialLive
+		}
+		partialLive := false
+		err = c.restoreNewLabelsCreateOnError(labelSnapshot, allocatedLabels, err, func() error {
+			return c.deletePartialNodeForRollback(n)
+		}, &partialLive)
+		return err, partialLive
+	}
 	defer func() {
-		if !labelsFinished {
-			_ = c.restoreNewLabelsOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node import"))
+		if !createFinished {
+			_ = c.restoreNewLabelsCreateOnError(labelSnapshot, allocatedLabels, fmt.Errorf("panic during node import"), func() error {
+				return c.deletePartialNodeForRollback(n)
+			}, nil)
 		}
 	}()
 
-	n := types.NewNode(id, primaryToken, extraTokens)
+	n = types.NewNode(id, primaryToken, extraTokens)
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
 	}
@@ -305,9 +375,15 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	}
 
 	if err := c.store.PutNode(n); err != nil {
-		return nil, finishLabels(err)
+		err, partialLive := finishNodeCreateError(err)
+		if partialLive {
+			c.opNodeAdds.Add(1)
+			return n, err
+		}
+		return nil, err
 	}
 	if err := finishLabels(nil); err != nil {
+		c.opNodeAdds.Add(1)
 		return n, err
 	}
 

@@ -15,13 +15,17 @@ import (
 // Node batch writes + cascade-delete (R5-F9 split out from badgerstore_node.go).
 
 func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	prefetched, err := bs.prefetchCascadeDeleteRows(nid)
+	if err != nil {
 		return err
 	}
-	_, corruptErr, err := bs.cascadeDeleteLocked(nid)
+	_, corruptErr, err := bs.cascadeDeleteLocked(nid, prefetched)
 	if err != nil {
 		return err
 	}
@@ -31,6 +35,49 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	return corruptErr
 }
 
+type cascadeDeletePrefetch struct {
+	node nodeDeleteInfo
+	rels map[types.RelID]RelDeleteInfo
+}
+
+func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefetch, error) {
+	bs.idxMu.RLock()
+	if _, exists := bs.nodeIDs[nid]; !exists {
+		bs.idxMu.RUnlock()
+		return cascadeDeletePrefetch{}, ErrNodeNotFound
+	}
+	relIDs := make([]types.RelID, 0, len(bs.outIdx[nid])+len(bs.inIdx[nid]))
+	seen := make(map[types.RelID]struct{}, len(bs.outIdx[nid])+len(bs.inIdx[nid]))
+	for relID := range bs.outIdx[nid] {
+		seen[relID] = struct{}{}
+		relIDs = append(relIDs, relID)
+	}
+	for relID := range bs.inIdx[nid] {
+		if _, ok := seen[relID]; ok {
+			continue
+		}
+		seen[relID] = struct{}{}
+		relIDs = append(relIDs, relID)
+	}
+	bs.idxMu.RUnlock()
+
+	// A corrupt or missing node row still uses cascadeDeleteInner's cleanup
+	// path, which scrubs indexes and returns the corruption error.
+	nodeInfo, _ := bs.prefetchNodeDeleteInfo(nid)
+	infos := make(map[types.RelID]RelDeleteInfo, len(relIDs))
+	for _, relID := range relIDs {
+		info, err := bs.prefetchRelDeleteInfo(relID)
+		if errors.Is(err, ErrRelNotFound) {
+			continue
+		}
+		if err != nil {
+			return cascadeDeletePrefetch{}, fmt.Errorf("graph: cascade read relationship: %w", err)
+		}
+		infos[relID] = info
+	}
+	return cascadeDeletePrefetch{node: nodeInfo, rels: infos}, nil
+}
+
 // cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade.
 // Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock
 // so that the caller can append additional ops (e.g. tombstone history) before releasing.
@@ -38,7 +85,7 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 //   - fatalErr != nil: aborted with no mutations applied.
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
 //   - Otherwise: clean success.
-func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, error) {
+func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
 	id := nid.SnowflakeID()
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return nil, nil, ErrNodeNotFound
@@ -58,6 +105,10 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	toDelete := make([]RelDeleteInfo, 0, len(relIDs))
 	orphanRelIDs := make([]types.RelID, 0)
 	for relID := range relIDs {
+		if info, ok := prefetched.rels[relID]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+			toDelete = append(toDelete, info)
+			continue
+		}
 		r, err := bs.getRelLocked(relID)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
@@ -85,7 +136,13 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	}
 
 	// Get node data for label cleanup.
-	n, err := bs.getNodeLocked(nid)
+	var n *types.Node
+	var err error
+	if bs.nodeDeleteInfoStillCurrentLocked(nid, prefetched.node) {
+		n = prefetched.node.node
+	} else {
+		n, err = bs.getNodeLocked(nid)
+	}
 	if err != nil {
 		// Node was in nodeIDs but can't be loaded (data corruption or cache miss
 		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
@@ -111,6 +168,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
 		delete(bs.nodeHashes, nid)
+		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
 		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
@@ -141,6 +199,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
 	delete(bs.nodeHashes, nid)
+	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
 
@@ -149,19 +208,19 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID) ([]RelDeleteInfo, error, e
 
 // cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
 // Used by DeleteNodeCascade — same contract as before the refactor.
-func (bs *Store) cascadeDeleteLocked(nid types.NodeID) ([]RelDeleteInfo, error, error) {
+func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	return bs.cascadeDeleteInner(nid)
+	return bs.cascadeDeleteInner(nid, prefetched)
 }
 
 // PurgeOrphanRelationshipIndexes removes type and adjacency index entries for
 // rid only when the relationship row is already absent.
 func (bs *Store) PurgeOrphanRelationshipIndexes(rid types.RelID) error {
-	if err := storecontract.ValidateRelID(rid); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if err := bs.checkOpen(); err != nil {
+	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
 
@@ -313,6 +372,9 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	if len(nodes) == 0 {
 		return nil
 	}
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 
 	// Pre-serialize all nodes outside the lock.
 	type nodeData struct {
@@ -348,11 +410,14 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 		seen[nd.nid] = struct{}{}
 	}
+	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
 	for i, n := range nodes {
-		if err := indexpkg.ValidateNodeVectorIndexes(bs.vectorIndexes, n, serialized[i].id); err != nil {
+		updates, err := indexpkg.PrepareNodeVectorIndexUpdates(bs.vectorIndexes, n, serialized[i].id)
+		if err != nil {
 			bs.idxMu.Unlock()
 			return err
 		}
+		vectorUpdates[i] = updates
 	}
 
 	// Phase 2: apply — all validated, safe to mutate.
@@ -363,6 +428,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		bs.nodeCache.Put(nd.id, n.DeepCopy())
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
+		bs.bumpNodeRevLocked(nd.nid)
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		labelCount := n.LabelTokenCount()
@@ -378,7 +444,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
-		if err := indexpkg.AddNodeToVectorIndexes(bs.vectorIndexes, n, nd.id); err != nil {
+		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
 			bs.idxMu.Unlock()
 			return err
 		}
@@ -406,6 +472,9 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	if len(typedIDs) == 0 {
 		return nil
 	}
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
 	for _, id := range typedIDs {
 		if err := storecontract.ValidateNodeID(id); err != nil {
 			return err
@@ -413,9 +482,35 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	}
 	typedIDs = uniqueNodeIDs(typedIDs)
 
+	// Phase 1a: validate cheap in-memory state under a read lock. Node row
+	// prefetch below may hit Badger, so keep that I/O outside idxMu.Lock().
+	bs.idxMu.RLock()
+	for _, nid := range typedIDs {
+		if _, exists := bs.nodeIDs[nid]; !exists {
+			bs.idxMu.RUnlock()
+			return ErrNodeNotFound
+		}
+		if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+			bs.idxMu.RUnlock()
+			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
+		}
+	}
+	bs.idxMu.RUnlock()
+
+	// Phase 1b: load entity rows before acquiring the write lock. The locked
+	// phase re-reads from the cache-loaded current row after TOCTOU checks.
+	prefetchedNodes := make(map[types.NodeID]nodeDeleteInfo, len(typedIDs))
+	for _, nid := range typedIDs {
+		info, err := bs.prefetchNodeDeleteInfo(nid)
+		if err != nil {
+			return fmt.Errorf("graph: batch read node %d: %w", nid.SnowflakeID(), err)
+		}
+		prefetchedNodes[nid] = info
+	}
+
 	bs.idxMu.Lock()
 
-	// Phase 1: validate — all must exist, be unconnected, and pre-read for label cleanup.
+	// Phase 1c: revalidate after the prefetch window and capture current rows.
 	nodeData := make([]*types.Node, len(typedIDs))
 	for i, nid := range typedIDs {
 		if _, exists := bs.nodeIDs[nid]; !exists {
@@ -425,6 +520,10 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
 			bs.idxMu.Unlock()
 			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
+		}
+		if info, ok := prefetchedNodes[nid]; ok && bs.nodeDeleteInfoStillCurrentLocked(nid, info) {
+			nodeData[i] = info.node
+			continue
 		}
 		n, err := bs.getNodeLocked(nid)
 		if err != nil {
@@ -460,6 +559,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
 		delete(bs.nodeHashes, nid)
+		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 	}
 

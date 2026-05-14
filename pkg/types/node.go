@@ -190,12 +190,18 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 // SetOwnedProperties replaces the node's property slice without copying it.
 // The caller transfers ownership of ps and must not mutate it after this call.
 // This is intended for graph-layer construction paths that just received ps
-// from NewPropertySlice; general callers should use SetProperties.
+// from NewPropertySlice; general callers should use SetProperties. Reusing a
+// consumed OwnedPropertySlice installs nil properties instead of sharing state.
 func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if n == nil {
 		return ErrNilNode
 	}
-	n.properties = ps.ps
+	if ps.ps == nil {
+		n.properties = nil
+		return nil
+	}
+	n.properties = *ps.ps
+	*ps.ps = nil
 	return nil
 }
 
@@ -216,6 +222,46 @@ func (n *Node) GetProperty(key string) (any, bool) {
 	return n.properties.Get(key)
 }
 
+// PropertyValueEqual reports whether key exists and whether its stored value
+// equals expected without returning or copying the stored value.
+func (n *Node) PropertyValueEqual(key string, expected any) (found bool, equal bool) {
+	if n == nil {
+		return false, false
+	}
+	return n.properties.propertyValueEqual(key, expected)
+}
+
+// IndexablePropertyValueKey returns the canonical index key for a scalar
+// property without exposing the property value itself. The second return value
+// reports whether the property exists; a present but non-indexable value
+// returns ("", true).
+func (n *Node) IndexablePropertyValueKey(key string) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+	return n.properties.indexableValueKey(key)
+}
+
+// ForEachIndexablePropertyValueKey calls fn for each scalar property using
+// the canonical value key consumed by property indexes. It skips non-indexable
+// values and stops early when fn returns false.
+func (n *Node) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey string) bool) {
+	if n == nil {
+		return
+	}
+	n.properties.forEachIndexableValueKey(fn)
+}
+
+// Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
+// index input. It accepts []float32 and []any containing only float32/float64
+// values, matching vector-index input support.
+func (n *Node) Float32SlicePropertyCopy(key string) ([]float32, bool) {
+	if n == nil {
+		return nil, false
+	}
+	return n.properties.float32SliceCopy(key)
+}
+
 // DeleteProperty removes a property from the node.
 // Returns true if the key was found and removed, false if it was not present.
 // Returns an error if the key has the reserved "tkg_" prefix.
@@ -232,6 +278,24 @@ func (n *Node) PropertyCount() int {
 		return 0
 	}
 	return n.properties.Len()
+}
+
+// AppendPropertyHashBytes appends this node's properties using the integrity
+// hash byte layout without exposing or defensive-copying the property slice.
+func (n *Node) AppendPropertyHashBytes(buf []byte) []byte {
+	if n == nil {
+		return buf
+	}
+	return n.properties.AppendHashBytes(buf)
+}
+
+// PropertyHashNeedsRecover reports whether hashing this node's properties can
+// invoke custom user code that the checked hash path should recover from.
+func (n *Node) PropertyHashNeedsRecover() bool {
+	if n == nil {
+		return false
+	}
+	return propertySliceHashNeedsRecover(n.properties)
 }
 
 // Properties returns a copy of the node's property slice.
@@ -355,6 +419,31 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 		n.extraLabels = n.extraLabels[1:]
 	}
 	return true
+}
+
+// SetLabelTokensRaw replaces the node's label token set using raw uint16
+// tokens. Extra tokens are de-duplicated and any duplicate of the primary
+// token is ignored, matching NewNode construction semantics.
+func (n *Node) SetLabelTokensRaw(primary uint16, extras []uint16) {
+	if n == nil {
+		return
+	}
+	n.primaryLabel = labelToken(primary)
+	n.extraLabels = nil
+	if len(extras) == 0 {
+		return
+	}
+	seen := make(map[uint16]struct{}, len(extras))
+	for _, tok := range extras {
+		if tok == primary {
+			continue
+		}
+		if _, dup := seen[tok]; dup {
+			continue
+		}
+		seen[tok] = struct{}{}
+		n.extraLabels = append(n.extraLabels, labelToken(tok))
+	}
 }
 
 // DeepCopy returns a fully independent clone of the node.

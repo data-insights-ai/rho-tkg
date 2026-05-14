@@ -55,16 +55,68 @@ type Config struct {
 
 // EventShard wraps a BadgerStore with metadata for an event shard.
 type EventShard struct {
-	name       string
-	store      *BadgerStore // nil when cold + closed (lazy-open)
-	tier       ShardTier
-	timeStart  time.Time    // shard window start (inclusive)
-	timeEnd    time.Time    // shard window end (exclusive)
-	readOnly   bool         // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
-	path       string       // relative path for lazy-open (e.g., "events/2026-W10")
-	shardMu    sync.Mutex   // protects lazy open/close
-	activeReqs atomic.Int64 // outstanding read requests; blocks idle-close
-	lastAccess atomic.Int64 // unix ms, idle-close tracking
+	name              string
+	store             *BadgerStore // nil when cold + closed (lazy-open)
+	tier              ShardTier
+	tierCode          atomic.Uint32
+	timeStart         time.Time    // shard window start (inclusive)
+	timeEnd           time.Time    // shard window end (exclusive)
+	readOnly          bool         // warm/cold tier marker; Badger handles remain writable for owner-shard mutations
+	path              string       // relative path for lazy-open (e.g., "events/2026-W10")
+	shardMu           sync.Mutex   // protects lazy open/close
+	activeReqs        atomic.Int64 // outstanding read requests; blocks idle-close
+	lastAccess        atomic.Int64 // unix ms, idle-close tracking
+	readTransientOpen bool         // shardMu-protected: cold store was opened only for transient read fanout
+}
+
+const (
+	eventShardTierUnset uint32 = iota
+	eventShardTierHot
+	eventShardTierWarm
+	eventShardTierCold
+)
+
+func eventShardTierCode(t ShardTier) uint32 {
+	switch t {
+	case TierHot:
+		return eventShardTierHot
+	case TierWarm:
+		return eventShardTierWarm
+	case TierCold:
+		return eventShardTierCold
+	default:
+		return eventShardTierUnset
+	}
+}
+
+func eventShardTierFromCode(code uint32) ShardTier {
+	switch code {
+	case eventShardTierHot:
+		return TierHot
+	case eventShardTierWarm:
+		return TierWarm
+	case eventShardTierCold:
+		return TierCold
+	default:
+		return ""
+	}
+}
+
+func (es *EventShard) initTier(t ShardTier) {
+	es.tier = t
+	es.tierCode.Store(eventShardTierCode(t))
+}
+
+func (es *EventShard) setTier(t ShardTier) {
+	es.tier = t
+	es.tierCode.Store(eventShardTierCode(t))
+}
+
+func (es *EventShard) currentTier() ShardTier {
+	if es == nil {
+		return ""
+	}
+	return eventShardTierFromCode(es.tierCode.Load())
 }
 
 // Store implements the Store interface by routing entities across
@@ -76,6 +128,7 @@ type EventShard struct {
 type Store struct {
 	mu                sync.RWMutex                // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                // reference shard (always hot)
+	refActiveReqs     atomic.Int64                // refcount for refShard — Close spin-waits on this before refShard.Close()
 	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
 	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
@@ -97,7 +150,8 @@ type Store struct {
 	zstdLevel         int
 	closeCh           chan struct{} // signals idle-close goroutine to stop
 	closeOnce         sync.Once
-	closed            atomic.Bool // set under archiveMu inside Close before tearing the archive down;
+	lifecycleMu       sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
+	closed            atomic.Bool  // set under archiveMu inside Close before tearing the archive down;
 	// readers consult this from ensureRefArchive to refuse re-opening the archive after Close
 	// has already closed it (prevents an orphan re-open + leaked DB handle)
 	bgErrMu sync.Mutex
@@ -259,6 +313,7 @@ func New(cfg Config) (*Store, error) {
 		readOnly:  false,
 		path:      hotDir,
 	}
+	es.initTier(TierHot)
 	ts.eventShards[hotName] = es
 	ts.hotShard = es
 
@@ -307,6 +362,7 @@ func New(cfg Config) (*Store, error) {
 				readOnly:  true,
 				path:      entry.Path,
 			}
+			warmES.initTier(TierWarm)
 			ts.eventShards[entry.Name] = warmES
 		case TierCold:
 			// Cold shards are NOT opened on startup — lazy-open on first access.
@@ -319,6 +375,7 @@ func New(cfg Config) (*Store, error) {
 				readOnly:  true,
 				path:      entry.Path,
 			}
+			coldES.initTier(TierCold)
 			ts.eventShards[entry.Name] = coldES
 		}
 	}
@@ -374,6 +431,9 @@ func (ts *Store) Close() error {
 	}
 	var closeErr error
 	ts.closeOnce.Do(func() {
+		ts.lifecycleMu.Lock()
+		defer ts.lifecycleMu.Unlock()
+
 		// Mark the store as closed BEFORE tearing the archive down. The flag
 		// is consulted by ensureRefArchive (under archiveMu) so a concurrent
 		// reader that observed refArchive==nil cannot lazy-open a fresh
@@ -420,6 +480,7 @@ func (ts *Store) Close() error {
 					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
 				es.store = nil
+				es.readTransientOpen = false
 			}
 			es.shardMu.Unlock()
 		}
@@ -438,7 +499,12 @@ func (ts *Store) Close() error {
 			}
 		}
 
-		// Close reference shard.
+		// Close reference shard. Drain refActiveReqs first so public
+		// store methods that already passed checkOpen cannot have the
+		// Badger handle closed underneath a read/write call.
+		for ts.refActiveReqs.Load() > 0 {
+			time.Sleep(time.Millisecond)
+		}
 		if ts.refShard != nil {
 			if err := ts.refShard.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w", err))
@@ -477,6 +543,18 @@ func (ts *Store) checkOpen() error {
 	return nil
 }
 
+func (ts *Store) beginSequentialStoreWideOperation() (func(), error) {
+	if ts == nil {
+		return func() {}, ErrNilStore
+	}
+	ts.lifecycleMu.RLock()
+	if err := ts.checkOpen(); err != nil {
+		ts.lifecycleMu.RUnlock()
+		return func() {}, err
+	}
+	return ts.lifecycleMu.RUnlock, nil
+}
+
 // Clear clears all shards, including closed cold event shards.
 // It also resets store-level state that lives on the Store itself rather
 // than on individual shards: the vector-index map and the tracked temporal
@@ -490,23 +568,49 @@ func (ts *Store) checkOpen() error {
 // free the underlying DB while Clear was still touching it — Badger v4 Flush on
 // a closed DB blocks forever.
 func (ts *Store) Clear() error {
+	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
+	if err != nil {
+		return err
+	}
+	defer releaseLifecycle()
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+
+	restoreIndexMetadata, err := ts.prepareIndexMetadataForClear()
+	if err != nil {
+		return err
+	}
+	rollbackIndexMetadata := func(clearErr error) error {
+		if restoreIndexMetadata == nil {
+			return clearErr
+		}
+		if restoreErr := restoreIndexMetadata(); restoreErr != nil {
+			return fmt.Errorf("%w (index metadata rollback failed: %v)", clearErr, restoreErr)
+		}
+		return clearErr
+	}
 
 	shards := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
 		shards = append(shards, es)
 	}
 
-	if err := ts.refShard.Clear(); err != nil {
-		return fmt.Errorf("graph: clear ref shard: %w", err)
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return rollbackIndexMetadata(err)
 	}
+	if err := ref.Clear(); err != nil {
+		refCheckin()
+		return rollbackIndexMetadata(fmt.Errorf("graph: clear ref shard: %w", err))
+	}
+	refCheckin()
 	for _, es := range shards {
 		if err := ts.clearEventShard(es); err != nil {
-			return fmt.Errorf("graph: clear event shard %s: %w", es.name, err)
+			return rollbackIndexMetadata(fmt.Errorf("graph: clear event shard %s: %w", es.name, err))
 		}
 	}
 
@@ -543,12 +647,12 @@ func (ts *Store) Clear() error {
 		// touching the DB → Badger v4 Flush-on-closed-DB hang.
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
-			return archiveErr
+			return rollbackIndexMetadata(archiveErr)
 		}
 		if archive != nil {
 			if err := archive.Clear(); err != nil {
 				archiveCheckin()
-				return fmt.Errorf("graph: clear ref archive: %w", err)
+				return rollbackIndexMetadata(fmt.Errorf("graph: clear ref archive: %w", err))
 			}
 			archiveCheckin()
 		}
@@ -559,9 +663,55 @@ func (ts *Store) Clear() error {
 	return nil
 }
 
+func (ts *Store) prepareIndexMetadataForClear() (func() error, error) {
+	if ts.inMemory {
+		return nil, nil
+	}
+
+	ts.vectorIdxMu.Lock()
+	vectorSnapshot, err := snapshotVectorIndexFile(ts.vectorIdxFile)
+	if err == nil {
+		err = saveVectorIndexFile(ts.vectorIdxFile, nil)
+	}
+	if err != nil {
+		restoreErr := restoreVectorIndexFile(vectorSnapshot)
+		ts.vectorIdxMu.Unlock()
+		if restoreErr != nil {
+			return nil, fmt.Errorf("graph: clear vector index definitions: %w (rollback failed: %v)", err, restoreErr)
+		}
+		return nil, fmt.Errorf("graph: clear vector index definitions: %w", err)
+	}
+	ts.vectorIdxMu.Unlock()
+
+	ts.tempIdxMu.Lock()
+	temporalSnapshot, err := snapshotTemporalIndexFile(ts.temporalIdxFile)
+	if err == nil {
+		err = saveTemporalIndexFile(ts.temporalIdxFile, temporalIndexFileData{})
+	}
+	if err != nil {
+		restoreErr := errors.Join(
+			restoreVectorIndexFile(vectorSnapshot),
+			restoreTemporalIndexFile(temporalSnapshot),
+		)
+		ts.tempIdxMu.Unlock()
+		if restoreErr != nil {
+			return nil, fmt.Errorf("graph: clear temporal index definitions: %w (rollback failed: %v)", err, restoreErr)
+		}
+		return nil, fmt.Errorf("graph: clear temporal index definitions: %w", err)
+	}
+	ts.tempIdxMu.Unlock()
+
+	return func() error {
+		return errors.Join(
+			restoreVectorIndexFile(vectorSnapshot),
+			restoreTemporalIndexFile(temporalSnapshot),
+		)
+	}, nil
+}
+
 func (ts *Store) clearEventShard(es *EventShard) error {
 	if ts.closed.Load() {
-		return nil
+		return ErrStoreClosed
 	}
 	if ts.inMemory && es.store == nil {
 		return nil
@@ -569,12 +719,10 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 	if !es.readOnly || ts.inMemory {
 		store, coErr := es.checkoutStore(ts)
 		if coErr != nil {
-			// Close started after our snapshot — skip rather than crash.
-			return nil
+			return coErr
 		}
-		err := store.Clear()
-		es.checkinStore()
-		return err
+		defer es.checkinStore()
+		return store.Clear()
 	}
 
 	es.shardMu.Lock()
@@ -591,6 +739,7 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 			return err
 		}
 		es.store = nil
+		es.readTransientOpen = false
 	}
 
 	store, err := ts.openBadgerStore(es.path, false)
@@ -600,8 +749,9 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 	clearErr := store.Clear()
 	closeErr := store.Close()
 	var reopenErr error
-	if es.tier == TierWarm && !ts.closed.Load() {
+	if es.currentTier() == TierWarm && !ts.closed.Load() {
 		es.store, reopenErr = ts.openBadgerStoreWithRecovery(es.path)
+		es.readTransientOpen = false
 	}
 	return errors.Join(clearErr, closeErr, reopenErr)
 }
@@ -616,7 +766,9 @@ func (ts *Store) resetCatalogAfterClear() error {
 		return nil
 	}
 	if err := ts.catalog.Save(); err != nil {
-		ts.catalog.restoreShards(snapshot)
+		// Shard data has already been cleared by this point and cannot be
+		// reconstructed from catalog metadata. Keep the live catalog aligned
+		// with the cleared stores even when durable catalog persistence fails.
 		return fmt.Errorf("graph: save catalog after clear: %w", err)
 	}
 	return nil

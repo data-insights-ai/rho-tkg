@@ -9,6 +9,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -114,6 +115,73 @@ func TestBadgerStoreGetNodeHistoryRejectsSemanticWireCorruption(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreNodeHistoryVersionsFromRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+	corruptNodeHistoryWireAfterFlush(t, bs, 0, storepkg.NodeWire{ID: 1, PrimaryLabel: 0})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("NodeHistoryVersionsFrom panicked on semantically corrupt node history wire: %v", rec)
+		}
+	}()
+	_, err := bs.NodeHistoryVersionsFrom(types.NodeID(1), 0, 1)
+	if err == nil {
+		t.Fatal("NodeHistoryVersionsFrom should return error for semantically corrupt node history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("NodeHistoryVersionsFrom returned ErrVersionNotFound for corrupt node history wire: %v", err)
+	}
+}
+
+func TestBadgerStoreNodeHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
+	if err := bs.PutNodeVersion(types.NodeID(1), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+	corruptNodeHistoryWireAfterFlush(t, bs, 0, storepkg.NodeWire{ID: 1, PrimaryLabel: 10, Version: 7})
+
+	readers := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "GetNodeVersion",
+			run: func() error {
+				_, err := bs.GetNodeVersion(types.NodeID(1), 0)
+				return err
+			},
+		},
+		{
+			name: "GetNodeHistory",
+			run: func() error {
+				_, err := bs.GetNodeHistory(types.NodeID(1))
+				return err
+			},
+		},
+		{
+			name: "NodeHistoryVersionsFrom",
+			run: func() error {
+				_, err := bs.NodeHistoryVersionsFrom(types.NodeID(1), 0, 1)
+				return err
+			},
+		},
+	}
+	for _, reader := range readers {
+		if err := reader.run(); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("%s mismatched history payload version = %v, want ErrInvalidStoreMutation", reader.name, err)
+		}
+	}
+}
+
 func TestBadgerStoreGetNodeHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -171,6 +239,76 @@ func TestBadgerStoreGetNodeHistoryAscending(t *testing.T) {
 			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
 				i, history[i].Version(), i+1, history[i+1].Version())
 		}
+	}
+}
+
+func TestBadgerStoreNodeHistoryVersionsFrom(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	id := types.NodeID(snowflake.ID(1))
+	for _, ver := range []uint32{4, 0, 2, 1, 3} {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := n.SetProperty("version", int64(ver)); err != nil {
+			t.Fatalf("SetProperty(%d): %v", ver, err)
+		}
+		if err := bs.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+
+	page, err := bs.NodeHistoryVersionsFrom(id, 2, 2)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom pending: %v", err)
+	}
+	if len(page) != 2 || page[0].Version() != 2 || page[1].Version() != 3 {
+		t.Fatalf("NodeHistoryVersionsFrom(2,2) pending versions = %v, want [2 3]", badgerNodeHistoryVersions(page))
+	}
+	if err := page[0].SetProperty("version", int64(99)); err != nil {
+		t.Fatalf("mutate returned page: %v", err)
+	}
+	again, err := bs.NodeHistoryVersionsFrom(id, 2, 1)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom again: %v", err)
+	}
+	v, _ := again[0].GetProperty("version")
+	if v != int64(2) {
+		t.Fatalf("NodeHistoryVersionsFrom returned shared node, version property = %v", v)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	all, err := bs.NodeHistoryVersionsFrom(id, 3, 0)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom flushed limit 0: %v", err)
+	}
+	if len(all) != 2 || all[0].Version() != 3 || all[1].Version() != 4 {
+		t.Fatalf("NodeHistoryVersionsFrom(3,0) flushed versions = %v, want [3 4]", badgerNodeHistoryVersions(all))
+	}
+	if err := bs.TruncateNodeHistory(id, 1); err != nil {
+		t.Fatalf("TruncateNodeHistory: %v", err)
+	}
+	kept, err := bs.NodeHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom after pending truncate: %v", err)
+	}
+	if len(kept) != 1 || kept[0].Version() != 4 {
+		t.Fatalf("NodeHistoryVersionsFrom after pending truncate versions = %v, want [4]", badgerNodeHistoryVersions(kept))
+	}
+	if _, err := bs.NodeHistoryVersionsFrom(id, 0, -1); !errors.Is(err, storecontract.ErrInvalidQueryLimit) {
+		t.Fatalf("NodeHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+	}
+	if _, err := bs.NodeHistoryVersionsFrom(0, 0, 1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("NodeHistoryVersionsFrom zero ID = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	closed := newTestBadgerStore(t)
+	if err := closed.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := closed.NodeHistoryVersionsFrom(id, 0, 1); !errors.Is(err, storecontract.ErrStoreClosed) {
+		t.Fatalf("NodeHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
 	}
 }
 
@@ -238,6 +376,54 @@ func TestBadgerStoreTruncateNodeHistoryRejectsNegativeKeep(t *testing.T) {
 	history, _ := bs.GetNodeHistory(id)
 	if len(history) != 1 {
 		t.Fatalf("negative truncate mutated history: len = %d, want 1", len(history))
+	}
+}
+
+func TestBadgerStoreTrimNodeHistoryFrom(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	id := types.NodeID(snowflake.ID(1))
+	for ver := uint32(0); ver < 2; ver++ {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := bs.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	for ver := uint32(2); ver < 5; ver++ {
+		n := types.NewNode(id, 10, nil)
+		n.SetVersion(ver)
+		if err := bs.PutNodeVersion(id, ver, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", ver, err)
+		}
+	}
+
+	if err := bs.TrimNodeHistoryFrom(id, 2); err != nil {
+		t.Fatalf("TrimNodeHistoryFrom: %v", err)
+	}
+	history, err := bs.NodeHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom after trim: %v", err)
+	}
+	if got := badgerNodeHistoryVersions(history); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("versions after trim = %v, want [0 1]", got)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush trimmed deletes: %v", err)
+	}
+	history, err = bs.NodeHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("NodeHistoryVersionsFrom after flush: %v", err)
+	}
+	if got := badgerNodeHistoryVersions(history); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("versions after flushed trim = %v, want [0 1]", got)
+	}
+	if err := bs.TrimNodeHistoryFrom(0, 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TrimNodeHistoryFrom zero ID = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -393,6 +579,73 @@ func TestBadgerStoreGetRelHistoryRejectsSemanticWireCorruption(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreRelHistoryVersionsFromRejectsSemanticWireCorruption(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 20, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	corruptRelHistoryWireAfterFlush(t, bs, 0, storepkg.RelWire{ID: 100, RelType: 0, StartID: 1, EndID: 2})
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("RelHistoryVersionsFrom panicked on semantically corrupt rel history wire: %v", rec)
+		}
+	}()
+	_, err := bs.RelHistoryVersionsFrom(types.RelID(100), 0, 1)
+	if err == nil {
+		t.Fatal("RelHistoryVersionsFrom should return error for semantically corrupt rel history wire")
+	}
+	if errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("RelHistoryVersionsFrom returned ErrVersionNotFound for corrupt rel history wire: %v", err)
+	}
+}
+
+func TestBadgerStoreRelHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 20, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(types.RelID(100), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	corruptRelHistoryWireAfterFlush(t, bs, 0, storepkg.RelWire{ID: 100, RelType: 20, StartID: 1, EndID: 2, Version: 8})
+
+	readers := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "GetRelVersion",
+			run: func() error {
+				_, err := bs.GetRelVersion(types.RelID(100), 0)
+				return err
+			},
+		},
+		{
+			name: "GetRelHistory",
+			run: func() error {
+				_, err := bs.GetRelHistory(types.RelID(100))
+				return err
+			},
+		},
+		{
+			name: "RelHistoryVersionsFrom",
+			run: func() error {
+				_, err := bs.RelHistoryVersionsFrom(types.RelID(100), 0, 1)
+				return err
+			},
+		},
+	}
+	for _, reader := range readers {
+		if err := reader.run(); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("%s mismatched history payload version = %v, want ErrInvalidStoreMutation", reader.name, err)
+		}
+	}
+}
+
 func TestBadgerStoreGetRelHistory(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -448,6 +701,76 @@ func TestBadgerStoreGetRelHistoryAscending(t *testing.T) {
 			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
 				i, history[i].Version(), i+1, history[i+1].Version())
 		}
+	}
+}
+
+func TestBadgerStoreRelHistoryVersionsFrom(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	id := types.RelID(snowflake.ID(100))
+	for _, ver := range []uint32{4, 0, 2, 1, 3} {
+		r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+		r.SetVersion(ver)
+		if err := r.SetProperty("version", int64(ver)); err != nil {
+			t.Fatalf("SetProperty(%d): %v", ver, err)
+		}
+		if err := bs.PutRelVersion(id, ver, r); err != nil {
+			t.Fatalf("PutRelVersion(%d): %v", ver, err)
+		}
+	}
+
+	page, err := bs.RelHistoryVersionsFrom(id, 2, 2)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom pending: %v", err)
+	}
+	if len(page) != 2 || page[0].Version() != 2 || page[1].Version() != 3 {
+		t.Fatalf("RelHistoryVersionsFrom(2,2) pending versions = %v, want [2 3]", badgerRelHistoryVersions(page))
+	}
+	if err := page[0].SetProperty("version", int64(99)); err != nil {
+		t.Fatalf("mutate returned page: %v", err)
+	}
+	again, err := bs.RelHistoryVersionsFrom(id, 2, 1)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom again: %v", err)
+	}
+	v, _ := again[0].GetProperty("version")
+	if v != int64(2) {
+		t.Fatalf("RelHistoryVersionsFrom returned shared relationship, version property = %v", v)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	all, err := bs.RelHistoryVersionsFrom(id, 3, 0)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom flushed limit 0: %v", err)
+	}
+	if len(all) != 2 || all[0].Version() != 3 || all[1].Version() != 4 {
+		t.Fatalf("RelHistoryVersionsFrom(3,0) flushed versions = %v, want [3 4]", badgerRelHistoryVersions(all))
+	}
+	if err := bs.TruncateRelHistory(id, 1); err != nil {
+		t.Fatalf("TruncateRelHistory: %v", err)
+	}
+	kept, err := bs.RelHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom after pending truncate: %v", err)
+	}
+	if len(kept) != 1 || kept[0].Version() != 4 {
+		t.Fatalf("RelHistoryVersionsFrom after pending truncate versions = %v, want [4]", badgerRelHistoryVersions(kept))
+	}
+	if _, err := bs.RelHistoryVersionsFrom(id, 0, -1); !errors.Is(err, storecontract.ErrInvalidQueryLimit) {
+		t.Fatalf("RelHistoryVersionsFrom negative limit = %v, want ErrInvalidQueryLimit", err)
+	}
+	if _, err := bs.RelHistoryVersionsFrom(0, 0, 1); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("RelHistoryVersionsFrom zero ID = %v, want ErrInvalidStoreMutation", err)
+	}
+
+	closed := newTestBadgerStore(t)
+	if err := closed.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := closed.RelHistoryVersionsFrom(id, 0, 1); !errors.Is(err, storecontract.ErrStoreClosed) {
+		t.Fatalf("RelHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
 	}
 }
 
@@ -515,6 +838,54 @@ func TestBadgerStoreTruncateRelHistoryRejectsNegativeKeep(t *testing.T) {
 	history, _ := bs.GetRelHistory(id)
 	if len(history) != 1 {
 		t.Fatalf("negative truncate mutated rel history: len = %d, want 1", len(history))
+	}
+}
+
+func TestBadgerStoreTrimRelHistoryFrom(t *testing.T) {
+	t.Parallel()
+	bs := newSlowFlushBadgerStore(t)
+
+	id := types.RelID(snowflake.ID(100))
+	for ver := uint32(0); ver < 2; ver++ {
+		r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+		r.SetVersion(ver)
+		if err := bs.PutRelVersion(id, ver, r); err != nil {
+			t.Fatalf("PutRelVersion(%d): %v", ver, err)
+		}
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	for ver := uint32(2); ver < 5; ver++ {
+		r := types.NewRelationship(id, 5, types.NodeID(snowflake.ID(10)), types.NodeID(snowflake.ID(20)))
+		r.SetVersion(ver)
+		if err := bs.PutRelVersion(id, ver, r); err != nil {
+			t.Fatalf("PutRelVersion(%d): %v", ver, err)
+		}
+	}
+
+	if err := bs.TrimRelHistoryFrom(id, 2); err != nil {
+		t.Fatalf("TrimRelHistoryFrom: %v", err)
+	}
+	history, err := bs.RelHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom after trim: %v", err)
+	}
+	if got := badgerRelHistoryVersions(history); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("versions after trim = %v, want [0 1]", got)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush trimmed deletes: %v", err)
+	}
+	history, err = bs.RelHistoryVersionsFrom(id, 0, 0)
+	if err != nil {
+		t.Fatalf("RelHistoryVersionsFrom after flush: %v", err)
+	}
+	if got := badgerRelHistoryVersions(history); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("versions after flushed trim = %v, want [0 1]", got)
+	}
+	if err := bs.TrimRelHistoryFrom(0, 0); !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("TrimRelHistoryFrom zero ID = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -929,6 +1300,138 @@ func TestBadgerStoreReplaceRelWithHistoryRejectsIndexedFieldMutation(t *testing.
 	}
 }
 
+// ─── DeleteRelWithHistory ───────────────────────────────────────────────────
+
+func TestBadgerStoreDeleteRelWithHistory(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	rel := putTestRel(t, bs, 100, 5, 1, 2)
+	if err := rel.SetProperty("deleted", true); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	if err := bs.ReplaceRelationship(rel); err != nil {
+		t.Fatalf("ReplaceRelationship: %v", err)
+	}
+
+	tombstone := rel.DeepCopy()
+	if err := bs.DeleteRelWithHistory(rel.ID(), rel.Version(), tombstone); err != nil {
+		t.Fatalf("DeleteRelWithHistory: %v", err)
+	}
+
+	if _, err := bs.GetRelationship(rel.ID()); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship after DeleteRelWithHistory = %v, want ErrRelNotFound", err)
+	}
+	if got := bs.OutgoingRelIDs(rel.StartNodeID().SnowflakeID()); len(got) != 0 {
+		t.Fatalf("OutgoingRelIDs after DeleteRelWithHistory = %v, want empty", got)
+	}
+	if got := bs.IncomingRelIDs(rel.EndNodeID().SnowflakeID(), 0); len(got) != 0 {
+		t.Fatalf("IncomingRelIDs after DeleteRelWithHistory = %v, want empty", got)
+	}
+	if got, err := bs.RelationshipCount(); err != nil || got != 0 {
+		t.Fatalf("RelationshipCount after DeleteRelWithHistory = %d err %v, want 0 nil", got, err)
+	}
+	hist, err := bs.GetRelVersion(rel.ID(), rel.Version())
+	if err != nil {
+		t.Fatalf("GetRelVersion: %v", err)
+	}
+	if hist.ID() != rel.ID() || hist.PropertiesMap()["deleted"] != true {
+		t.Fatalf("history tombstone = %#v, want deleted relationship snapshot", hist)
+	}
+}
+
+func TestBadgerStoreDeleteRelWithHistoryNotFound(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	tombstone := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	err := bs.DeleteRelWithHistory(tombstone.ID(), tombstone.Version(), tombstone)
+	if !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("DeleteRelWithHistory missing rel = %v, want ErrRelNotFound", err)
+	}
+	history, histErr := bs.GetRelHistory(tombstone.ID())
+	if histErr != nil {
+		t.Fatalf("GetRelHistory after missing delete: %v", histErr)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history after missing DeleteRelWithHistory = %d entries, want 0", len(history))
+	}
+}
+
+func TestBadgerStoreDeleteRelWithHistoryRejectsIndexedFieldMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestNode(t, bs, 3, 10, nil)
+	rel := putTestRel(t, bs, 100, 5, 1, 2)
+	badTombstone := types.NewRelationship(rel.ID(), rel.TypeToken().Value(), rel.StartNodeID(), types.NodeID(snowflake.ID(3)))
+
+	err := bs.DeleteRelWithHistory(rel.ID(), rel.Version(), badTombstone)
+	if !errors.Is(err, ErrInvalidStoreMutation) {
+		t.Fatalf("DeleteRelWithHistory indexed-field mutation = %v, want ErrInvalidStoreMutation", err)
+	}
+	got, err := bs.GetRelationship(rel.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship after rejected DeleteRelWithHistory: %v", err)
+	}
+	if got.EndNodeID() != types.NodeID(snowflake.ID(2)) {
+		t.Fatalf("relationship endpoint changed after rejected DeleteRelWithHistory: got %d, want 2", got.EndNodeID())
+	}
+	history, histErr := bs.GetRelHistory(rel.ID())
+	if histErr != nil {
+		t.Fatalf("GetRelHistory after rejected DeleteRelWithHistory: %v", histErr)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history after rejected DeleteRelWithHistory = %d entries, want 0", len(history))
+	}
+}
+
+type badgerUnmarshalableCustomProperty struct {
+	Ch chan int
+}
+
+func (b badgerUnmarshalableCustomProperty) HashBytes() []byte { return []byte("badger-unmarshalable") }
+func (b badgerUnmarshalableCustomProperty) DeepCopyValue() any {
+	return badgerUnmarshalableCustomProperty{Ch: b.Ch}
+}
+
+func TestBadgerStoreDeleteRelWithHistoryRejectsUnmarshalableTombstone(t *testing.T) {
+	if err := types.RegisterPropertyStructType(badgerUnmarshalableCustomProperty{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	rel := putTestRel(t, bs, 100, 5, 1, 2)
+	tombstone := rel.DeepCopy()
+	if err := tombstone.SetProperties(types.PropertySlice{{
+		Key:   "bad",
+		Value: badgerUnmarshalableCustomProperty{Ch: make(chan int)},
+	}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+
+	err := bs.DeleteRelWithHistory(rel.ID(), rel.Version(), tombstone)
+	if err == nil {
+		t.Fatal("DeleteRelWithHistory returned nil for unmarshalable tombstone")
+	}
+	if _, getErr := bs.GetRelationship(rel.ID()); getErr != nil {
+		t.Fatalf("relationship changed after unmarshalable tombstone rejection: %v", getErr)
+	}
+	history, histErr := bs.GetRelHistory(rel.ID())
+	if histErr != nil {
+		t.Fatalf("GetRelHistory after unmarshalable tombstone rejection: %v", histErr)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history after unmarshalable tombstone rejection = %d entries, want 0", len(history))
+	}
+}
+
 func TestBadgerStoreDeleteNodeWithHistoryRejectsRelTombstoneIndexedFieldMutation(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -1166,6 +1669,10 @@ func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	if err := bs.PutNodeVersion(types.NodeID(300), 1, n300v1); err != nil {
 		t.Fatalf("PutNodeVersion(300,1): %v", err)
 	}
+	n500 := types.NewNode(types.NodeID(snowflake.ID(500)), 1, nil)
+	if err := bs.PutNodeVersion(types.NodeID(500), 0, n500); err != nil {
+		t.Fatalf("PutNodeVersion(500): %v", err)
+	}
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
@@ -1175,6 +1682,9 @@ func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	}
 	if err := bs.TruncateNodeHistory(types.NodeID(300), 1); err != nil {
 		t.Fatalf("TruncateNodeHistory(300,1): %v", err)
+	}
+	if err := bs.TruncateNodeHistory(types.NodeID(500), 0); err != nil {
+		t.Fatalf("TruncateNodeHistory(500,0): %v", err)
 	}
 
 	ids, err := bs.AllNodeHistoryIDs()
@@ -1194,6 +1704,24 @@ func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	}
 	if len(iterated) != 1 || iterated[0] != types.NodeID(300) {
 		t.Fatalf("ForEachNodeHistoryID after pending truncate = %v, want [300]", iterated)
+	}
+
+	iterated = nil
+	if err := bs.ForEachNodeHistoryID(func(id types.NodeID) bool {
+		iterated = append(iterated, id)
+		if id == types.NodeID(300) {
+			created := types.NewNode(types.NodeID(snowflake.ID(400)), 1, nil)
+			if err := bs.PutNodeVersion(created.ID(), 0, created); err != nil {
+				t.Errorf("PutNodeVersion callback-created history: %v", err)
+				return false
+			}
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachNodeHistoryID with callback-created history: %v", err)
+	}
+	if len(iterated) != 1 || iterated[0] != types.NodeID(300) {
+		t.Fatalf("ForEachNodeHistoryID visited callback-created history after stale pending delete max = %v, want [300]", iterated)
 	}
 }
 
@@ -1280,6 +1808,10 @@ func TestBadgerStoreAllRelHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	if err := bs.PutRelVersion(types.RelID(300), 1, r300v1); err != nil {
 		t.Fatalf("PutRelVersion(300,1): %v", err)
 	}
+	r500 := types.NewRelationship(types.RelID(snowflake.ID(500)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+	if err := bs.PutRelVersion(types.RelID(500), 0, r500); err != nil {
+		t.Fatalf("PutRelVersion(500): %v", err)
+	}
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
@@ -1289,6 +1821,9 @@ func TestBadgerStoreAllRelHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	}
 	if err := bs.TruncateRelHistory(types.RelID(300), 1); err != nil {
 		t.Fatalf("TruncateRelHistory(300,1): %v", err)
+	}
+	if err := bs.TruncateRelHistory(types.RelID(500), 0); err != nil {
+		t.Fatalf("TruncateRelHistory(500,0): %v", err)
 	}
 
 	ids, err := bs.AllRelHistoryIDs()
@@ -1308,6 +1843,24 @@ func TestBadgerStoreAllRelHistoryIDsHonorsPendingDeletes(t *testing.T) {
 	}
 	if len(iterated) != 1 || iterated[0] != types.RelID(300) {
 		t.Fatalf("ForEachRelHistoryID after pending truncate = %v, want [300]", iterated)
+	}
+
+	iterated = nil
+	if err := bs.ForEachRelHistoryID(func(id types.RelID) bool {
+		iterated = append(iterated, id)
+		if id == types.RelID(300) {
+			created := types.NewRelationship(types.RelID(snowflake.ID(400)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+			if err := bs.PutRelVersion(created.ID(), 0, created); err != nil {
+				t.Errorf("PutRelVersion callback-created history: %v", err)
+				return false
+			}
+		}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachRelHistoryID with callback-created history: %v", err)
+	}
+	if len(iterated) != 1 || iterated[0] != types.RelID(300) {
+		t.Fatalf("ForEachRelHistoryID visited callback-created history after stale pending delete max = %v, want [300]", iterated)
 	}
 }
 
@@ -1343,4 +1896,20 @@ func corruptRelHistoryWireAfterFlush(t *testing.T, bs *Store, version uint32, w 
 	}); err != nil {
 		t.Fatalf("corrupt rel history wire: %v", err)
 	}
+}
+
+func badgerNodeHistoryVersions(history []*types.Node) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, n := range history {
+		versions[i] = n.Version()
+	}
+	return versions
+}
+
+func badgerRelHistoryVersions(history []*types.Relationship) []uint32 {
+	versions := make([]uint32, len(history))
+	for i, r := range history {
+		versions[i] = r.Version()
+	}
+	return versions
 }

@@ -118,7 +118,7 @@ func (n *NodeOps) History(id types.NodeID) ([]*types.Node, error) {
 	var history []*types.Node
 	err := c.readUnderRLock(func() error {
 		var err error
-		history, err = c.store.GetNodeHistory(id)
+		history, err = c.getNodeHistory(id)
 		return err
 	})
 	return history, err
@@ -136,7 +136,7 @@ func (r *RelOps) History(id types.RelID) ([]*types.Relationship, error) {
 	var history []*types.Relationship
 	err := c.readUnderRLock(func() error {
 		var err error
-		history, err = c.store.GetRelHistory(id)
+		history, err = c.getRelHistory(id)
 		return err
 	})
 	return history, err

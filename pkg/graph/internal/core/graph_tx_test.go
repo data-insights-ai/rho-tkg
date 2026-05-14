@@ -19,6 +19,36 @@ func TestBatchAddNodeTooManyLabels(t *testing.T) {
 	}
 }
 
+func TestBatchAddNodeDuplicateLabelsCountCanonicalForLimit(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
+
+	batch, _ := NewBatchBuilder(g)
+	n, err := batch.AddNode([]string{"A", "B", "A"}, nil)
+	if err != nil {
+		t.Fatalf("duplicate labels should count by canonical label set: %v", err)
+	}
+	if _, err := batch.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	labels := g.Nodes.Labels(n)
+	if len(labels) != 2 || labels[0] != "A" || labels[1] != "B" {
+		t.Fatalf("labels = %v, want [A B]", labels)
+	}
+}
+
+func TestBatchAddNodeInvalidLabelPrecedesReservedPropertyValidation(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+
+	batch, _ := NewBatchBuilder(g)
+	_, err := batch.AddNode([]string{" "}, map[string]any{"tkg_signature": "not bytes"})
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("AddNode invalid label with invalid reserved props = %v, want ErrEmptyName", err)
+	}
+}
+
 func TestBatchAddRelationshipTypeNameTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 3}})
@@ -32,6 +62,19 @@ func TestBatchAddRelationshipTypeNameTooLong(t *testing.T) {
 	}
 	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("expected ErrNameTooLong, got: %v", err)
+	}
+}
+
+func TestBatchAddRelationshipInvalidTypePrecedesReservedPropertyValidation(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+
+	a, _ := g.Nodes.Add([]string{"X"}, nil)
+	bn, _ := g.Nodes.Add([]string{"X"}, nil)
+	batch, _ := NewBatchBuilder(g)
+	_, err := batch.AddRelationship(" ", a, bn, map[string]any{"tkg_signature": "not bytes"})
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("AddRelationship invalid type with invalid reserved props = %v, want ErrEmptyName", err)
 	}
 }
 

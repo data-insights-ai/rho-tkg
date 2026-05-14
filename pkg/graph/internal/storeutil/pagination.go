@@ -116,9 +116,6 @@ func PaginateNodesInOrder(nodes []*types.Node, after types.EntityID, limit int) 
 	if limit > 0 && limit < len(out) {
 		out = out[:limit]
 	}
-	if len(out) == 0 {
-		return nil
-	}
 	return out
 }
 
@@ -191,6 +188,36 @@ func SortRelsByID(rels []*types.Relationship) {
 	}
 	sort.Slice(rels, func(i, j int) bool {
 		return rels[i].ID() < rels[j].ID()
+	})
+}
+
+// SortNodeIDs sorts node IDs by the underlying snowflake value.
+func SortNodeIDs(ids []types.NodeID) {
+	if len(ids) < 2 {
+		return
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i].SnowflakeID() < ids[j].SnowflakeID()
+	})
+}
+
+// SortRelIDs sorts relationship IDs by the underlying snowflake value.
+func SortRelIDs(ids []types.RelID) {
+	if len(ids) < 2 {
+		return
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i].SnowflakeID() < ids[j].SnowflakeID()
+	})
+}
+
+// SortSnowflakeIDs sorts raw snowflake IDs.
+func SortSnowflakeIDs(ids []snowflake.ID) {
+	if len(ids) < 2 {
+		return
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i] < ids[j]
 	})
 }
 

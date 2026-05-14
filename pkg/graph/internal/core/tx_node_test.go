@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -37,6 +38,66 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	val, ok := got.GetProperty("name")
 	if !ok || val != "Alicia" {
 		t.Errorf("name = %v, want Alicia", val)
+	}
+}
+
+func TestGraphTx_UpdateMetadataOnlyCommitsVersionAndIntegrity(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("AddNode A: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode B: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	if _, err := tx.UpdateNode(a.ID(), map[string]any{"tkg_author_id": "node-tx"}); err != nil {
+		t.Fatalf("UpdateNode metadata-only: %v", err)
+	}
+	if _, err := tx.UpdateRelationship(r.ID(), map[string]any{"tkg_author_id": "rel-tx"}); err != nil {
+		t.Fatalf("UpdateRelationship metadata-only: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	gotNode, err := g.Nodes.Get(a.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if gotNode.Version() != 1 {
+		t.Fatalf("node version = %d, want 1", gotNode.Version())
+	}
+	if ig := gotNode.Integrity(); ig == nil || ig.AuthorID != "node-tx" {
+		t.Fatalf("node integrity = %+v, want AuthorID node-tx", ig)
+	}
+	if _, ok := gotNode.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("node stored tkg_author_id as a normal property")
+	}
+
+	gotRel, err := g.Rels.Get(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if gotRel.Version() != 1 {
+		t.Fatalf("relationship version = %d, want 1", gotRel.Version())
+	}
+	if ig := gotRel.Integrity(); ig == nil || ig.AuthorID != "rel-tx" {
+		t.Fatalf("relationship integrity = %+v, want AuthorID rel-tx", ig)
+	}
+	if _, ok := gotRel.GetProperty(types.ShadowAuthorID); ok {
+		t.Fatal("relationship stored tkg_author_id as a normal property")
 	}
 }
 
@@ -291,5 +352,51 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 	_, err = tx.GetNode(n.ID())
 	if !errors.Is(err, storepkg.ErrTxDone) {
 		t.Errorf("GetNode after commit: got %v, want storepkg.ErrTxDone", err)
+	}
+}
+
+type txGetValidationStore struct {
+	*memory.Store
+	nodeGetCalls int
+	relGetCalls  int
+}
+
+func (s *txGetValidationStore) GetNode(id types.NodeID) (*types.Node, error) {
+	s.nodeGetCalls++
+	return s.Store.GetNode(id)
+}
+
+func (s *txGetValidationStore) GetRelationship(id types.RelID) (*types.Relationship, error) {
+	s.relGetCalls++
+	return s.Store.GetRelationship(id)
+}
+
+func TestGraphTx_GetValidatesIDsBeforeStoreLookup(t *testing.T) {
+	t.Parallel()
+
+	store := &txGetValidationStore{Store: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.GetNode(0); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("GetNode zero = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := tx.GetRelationship(0); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("GetRelationship zero = %v, want ErrInvalidStoreMutation", err)
+	}
+	if store.nodeGetCalls != 0 {
+		t.Fatalf("GetNode reached store %d times for invalid ID, want 0", store.nodeGetCalls)
+	}
+	if store.relGetCalls != 0 {
+		t.Fatalf("GetRelationship reached store %d times for invalid ID, want 0", store.relGetCalls)
 	}
 }

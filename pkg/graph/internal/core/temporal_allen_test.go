@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -111,6 +112,46 @@ func TestNodeInterval_NilTemporal(t *testing.T) {
 	}
 }
 
+func TestNodeInterval_InvalidFiniteInterval(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 200, ValidTo: 100})
+
+	_, _, err = g.Temporal.NodeInterval(n)
+	if !errors.Is(err, types.ErrInvalidInterval) {
+		t.Fatalf("NodeInterval invalid finite interval: got err=%v, want ErrInvalidInterval", err)
+	}
+}
+
+func TestRelInterval_InvalidFiniteInterval(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 200, ValidTo: 100})
+
+	_, _, err = g.Temporal.RelInterval(r)
+	if !errors.Is(err, types.ErrInvalidInterval) {
+		t.Fatalf("RelInterval invalid finite interval: got err=%v, want ErrInvalidInterval", err)
+	}
+}
+
 func TestNodeInterval_NilNode(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -128,6 +169,67 @@ func TestRelInterval_NilRelationship(t *testing.T) {
 	_, _, err := g.Temporal.RelInterval(nil)
 	if !errors.Is(err, ErrNilRelationship) {
 		t.Fatalf("RelInterval(nil): got err=%v, want ErrNilRelationship", err)
+	}
+}
+
+func TestTemporalAllenInvalidEntityIDs(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	for _, id := range []types.NodeID{0, -1} {
+		n := types.NewNode(id, 1, nil)
+		n.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
+		if _, _, err := g.Temporal.NodeInterval(n); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("NodeInterval(%d): got err=%v, want ErrInvalidStoreMutation", id, err)
+		}
+
+		other := makeFiniteNode(t, g, 300, 400)
+		if _, err := g.Temporal.RelateNodes(n, other); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("RelateNodes invalid node %d: got err=%v, want ErrInvalidStoreMutation", id, err)
+		}
+	}
+
+	for _, id := range []types.RelID{0, -1} {
+		r := types.NewRelationship(id, 1, types.NodeID(1), types.NodeID(2))
+		r.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
+		if _, _, err := g.Temporal.RelInterval(r); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("RelInterval(%d): got err=%v, want ErrInvalidStoreMutation", id, err)
+		}
+
+		other := makeFiniteRel(t, g, 300, 400)
+		if _, err := g.Temporal.RelateRels(r, other); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("RelateRels invalid rel %d: got err=%v, want ErrInvalidStoreMutation", id, err)
+		}
+	}
+}
+
+func TestTemporalAllenPostCloseReturnsErrGraphClosed(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n := makeFiniteNode(t, g, 100, 200)
+	r := makeFiniteRel(t, g, 100, 200)
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if _, _, err := g.Temporal.NodeInterval(n); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("NodeInterval after close = %v, want ErrGraphClosed", err)
+	}
+	if _, _, err := g.Temporal.NodeInterval(nil); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("NodeInterval nil after close = %v, want ErrGraphClosed", err)
+	}
+	if _, _, err := g.Temporal.RelInterval(r); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelInterval after close = %v, want ErrGraphClosed", err)
+	}
+	if _, _, err := g.Temporal.RelInterval(nil); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelInterval nil after close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.Temporal.RelateNodes(n, n); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelateNodes after close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.Temporal.RelateRels(r, r); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("RelateRels after close = %v, want ErrGraphClosed", err)
 	}
 }
 

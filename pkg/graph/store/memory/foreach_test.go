@@ -273,7 +273,9 @@ func TestMemoryStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachNodeHistoryID", func() error {
 		var cbErr error
 		err := ms.ForEachNodeHistoryID(func(types.NodeID) bool {
-			cbErr = ms.PutNodeVersion(types.NodeID(1), 1, types.NewNode(types.NodeID(1), 1, nil))
+			n := types.NewNode(types.NodeID(1), 1, nil)
+			n.SetVersion(1)
+			cbErr = ms.PutNodeVersion(types.NodeID(1), 1, n)
 			return false
 		})
 		if err != nil {
@@ -284,7 +286,9 @@ func TestMemoryStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	runWithTimeout("ForEachRelHistoryID", func() error {
 		var cbErr error
 		err := ms.ForEachRelHistoryID(func(types.RelID) bool {
-			cbErr = ms.PutRelVersion(types.RelID(100), 1, rel)
+			snap := rel.DeepCopy()
+			snap.SetVersion(1)
+			cbErr = ms.PutRelVersion(types.RelID(100), 1, snap)
 			return false
 		})
 		if err != nil {

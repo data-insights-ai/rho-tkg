@@ -3,10 +3,12 @@ package core
 import (
 	"errors"
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -20,6 +22,47 @@ func newTestGraphForChain(t *testing.T) *Core {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 	return g
+}
+
+func setFixedClockInstant(t testing.TB, g *Core, at types.Instant) {
+	t.Helper()
+	g.SetClockForTest(t, func() time.Time { return time.UnixMilli(int64(at)) })
+}
+
+var errVersionInvalidIDProbeStoreTouched = errors.New("version invalid-id probe touched store")
+
+type versionInvalidIDProbeStore struct {
+	storepkg.MandatoryStore
+	reads atomic.Int64
+}
+
+func (s *versionInvalidIDProbeStore) touched() error {
+	s.reads.Add(1)
+	return errVersionInvalidIDProbeStoreTouched
+}
+
+func (s *versionInvalidIDProbeStore) GetNode(types.NodeID) (*types.Node, error) {
+	return nil, s.touched()
+}
+
+func (s *versionInvalidIDProbeStore) GetRelationship(types.RelID) (*types.Relationship, error) {
+	return nil, s.touched()
+}
+
+func (s *versionInvalidIDProbeStore) GetNodeHistory(types.NodeID) ([]*types.Node, error) {
+	return nil, s.touched()
+}
+
+func (s *versionInvalidIDProbeStore) GetRelHistory(types.RelID) ([]*types.Relationship, error) {
+	return nil, s.touched()
+}
+
+func (s *versionInvalidIDProbeStore) GetNodeVersion(types.NodeID, uint32) (*types.Node, error) {
+	return nil, s.touched()
+}
+
+func (s *versionInvalidIDProbeStore) GetRelVersion(types.RelID, uint32) (*types.Relationship, error) {
+	return nil, s.touched()
 }
 
 // TestGetPreviousNodeVersion_AtGenesis verifies that querying the version before
@@ -90,6 +133,51 @@ func TestNodeVersionChainMissingIDReturnsErrNodeNotFound(t *testing.T) {
 			t.Fatalf("NextVersion(missing, MaxUint32) = %v, %v; want nil, ErrNodeNotFound", got, err)
 		}
 	})
+}
+
+func TestVersionNavigationInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
+	t.Parallel()
+
+	store := &versionInvalidIDProbeStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	for _, id := range []types.NodeID{0, types.NodeID(-1)} {
+		if got, err := g.Nodes.PreviousVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.PreviousVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Nodes.PreviousVersion(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.PreviousVersion(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Nodes.NextVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.NextVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Nodes.NextVersion(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.NextVersion(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+	}
+
+	for _, id := range []types.RelID{0, types.RelID(-1)} {
+		if got, err := g.Rels.PreviousVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.PreviousVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Rels.PreviousVersion(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.PreviousVersion(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Rels.NextVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.NextVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+		if got, err := g.Rels.NextVersion(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.NextVersion(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		}
+	}
+
+	if got := store.reads.Load(); got != 0 {
+		t.Fatalf("invalid version navigation touched store %d time(s)", got)
+	}
 }
 
 // TestGetPreviousNodeVersion_Normal verifies that for version N, version N-1 is returned.
@@ -242,9 +330,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	}
 	id := n.ID()
 
-	// Use a close time far enough in the future that the node's creation time
-	// (derived from its snowflake ID) is definitely before it.
-	closeTime := types.Instant(time.Now().UnixMilli()) + 2000 // 2 seconds in the future
+	closeTime := g.nodeValidFrom(n) + 2000
 	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
@@ -283,7 +369,7 @@ func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
+	closeTime := g.nodeValidFrom(n) + 2000
 	if err := g.Nodes.CloseVersion(n.ID(), closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
@@ -319,13 +405,139 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 	}
 	id := n.ID()
 
-	closeTime := types.Instant(time.Now().UnixMilli())
+	closeTime := g.nodeValidFrom(n) + 1000
 	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
 		t.Fatalf("first CloseNodeVersion: %v", err)
 	}
 	if err := g.Nodes.CloseVersion(id, closeTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second CloseNodeVersion: expected ErrAlreadyClosed, got %v", err)
 	}
+}
+
+func TestClosedEntitiesRejectMutations(t *testing.T) {
+	t.Run("node", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Person", "Active"}, map[string]any{"state": "open"})
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		closeTime := g.nodeValidFrom(n) + 1000
+		if err := g.Nodes.CloseVersion(n.ID(), closeTime); err != nil {
+			t.Fatalf("CloseVersion: %v", err)
+		}
+
+		if _, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("Update closed node = %v, want ErrAlreadyClosed", err)
+		}
+		if _, err := g.Nodes.UpdateInPlace(n.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("UpdateInPlace closed node = %v, want ErrAlreadyClosed", err)
+		}
+		ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "state", "open", "closed")
+		if ok || !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("CompareAndSetProperty closed node = (%v, %v), want false, ErrAlreadyClosed", ok, err)
+		}
+		if err := g.Nodes.AddLabel(n.ID(), "ClosedMutation"); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("AddLabel closed node = %v, want ErrAlreadyClosed", err)
+		}
+		if err := g.Nodes.RemoveLabel(n.ID(), "Active"); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("RemoveLabel closed node = %v, want ErrAlreadyClosed", err)
+		}
+
+		tx, err := g.BeginTx()
+		if err != nil {
+			t.Fatalf("BeginTx: %v", err)
+		}
+		if _, err := tx.UpdateNode(n.ID(), map[string]any{"state": "tx"}); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("tx UpdateNode closed node = %v, want ErrAlreadyClosed", err)
+		}
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback: %v", err)
+		}
+
+		loaded, err := g.Nodes.Get(n.ID())
+		if err != nil {
+			t.Fatalf("GetNode after rejected mutations: %v", err)
+		}
+		if loaded.Version() != 0 {
+			t.Fatalf("closed node version changed after rejected mutations: %d", loaded.Version())
+		}
+		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
+			t.Fatalf("closed node ValidTo = %v, want %d", tm, closeTime)
+		}
+		if got, _ := loaded.GetProperty("state"); got != "open" {
+			t.Fatalf("closed node state = %v, want open", got)
+		}
+		if _, found := loaded.GetProperty("counter"); found {
+			t.Fatal("closed node counter property was persisted")
+		}
+		labels := g.Nodes.Labels(loaded)
+		if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Active" {
+			t.Fatalf("closed node labels = %v, want [Person Active]", labels)
+		}
+	})
+
+	t.Run("relationship", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		start, err := g.Nodes.Add([]string{"Person"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode start: %v", err)
+		}
+		end, err := g.Nodes.Add([]string{"Person"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode end: %v", err)
+		}
+		rel, err := g.Rels.Add("KNOWS", start, end, map[string]any{"state": "open"})
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		closeTime := g.relValidFrom(rel) + 1000
+		if err := g.Rels.CloseVersion(rel.ID(), closeTime); err != nil {
+			t.Fatalf("CloseVersion: %v", err)
+		}
+
+		if _, err := g.Rels.Update(rel.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("Update closed relationship = %v, want ErrAlreadyClosed", err)
+		}
+		if _, err := g.Rels.UpdateInPlace(rel.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("UpdateInPlace closed relationship = %v, want ErrAlreadyClosed", err)
+		}
+		ok, err := g.Rels.CompareAndSetProperty(rel.ID(), "state", "open", "closed")
+		if ok || !errors.Is(err, ErrAlreadyClosed) {
+			t.Fatalf("CompareAndSetProperty closed relationship = (%v, %v), want false, ErrAlreadyClosed", ok, err)
+		}
+
+		batch, err := NewBatchBuilder(g)
+		if err != nil {
+			t.Fatalf("NewBatchBuilder: %v", err)
+		}
+		if err := batch.UpdateRelationship(rel.ID(), map[string]any{"state": "batch"}); err != nil {
+			t.Fatalf("batch UpdateRelationship queue: %v", err)
+		}
+		result, err := batch.Execute()
+		if !errors.Is(err, ErrBatchFailed) {
+			t.Fatalf("batch Execute closed relationship = %v, want ErrBatchFailed", err)
+		}
+		if result == nil || result.Failed != 1 || len(result.Errors) != 1 || !errors.Is(result.Errors[0].Err, ErrAlreadyClosed) {
+			t.Fatalf("batch closed relationship result = %#v, want one ErrAlreadyClosed failure", result)
+		}
+
+		loaded, err := g.Rels.Get(rel.ID())
+		if err != nil {
+			t.Fatalf("GetRelationship after rejected mutations: %v", err)
+		}
+		if loaded.Version() != 0 {
+			t.Fatalf("closed relationship version changed after rejected mutations: %d", loaded.Version())
+		}
+		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
+			t.Fatalf("closed relationship ValidTo = %v, want %d", tm, closeTime)
+		}
+		if got, _ := loaded.GetProperty("state"); got != "open" {
+			t.Fatalf("closed relationship state = %v, want open", got)
+		}
+		if _, found := loaded.GetProperty("counter"); found {
+			t.Fatal("closed relationship counter property was persisted")
+		}
+	})
 }
 
 func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
@@ -364,6 +576,393 @@ func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 	if tm := loadedRel.Temporal(); tm != nil && tm.ValidTo != 0 {
 		t.Fatalf("relationship ValidTo changed after rejected zero close: %d", tm.ValidTo)
 	}
+}
+
+func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
+	g := newTestGraphForChain(t)
+	start, err := g.Nodes.Add([]string{"Event"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Event"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode end: %v", err)
+	}
+	rel, err := g.Rels.Add("LINKS", start, end, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+
+	if err := g.Nodes.CloseVersion(start.ID(), g.nodeValidFrom(start)); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("CloseNodeVersion at valid-from = %v, want ErrInvalidTimeRange", err)
+	}
+	if err := g.Rels.CloseVersion(rel.ID(), g.relValidFrom(rel)-1); !errors.Is(err, ErrInvalidTimeRange) {
+		t.Fatalf("CloseRelVersion before valid-from = %v, want ErrInvalidTimeRange", err)
+	}
+
+	loadedNode, err := g.Nodes.Get(start.ID())
+	if err != nil {
+		t.Fatalf("GetNode after rejected close: %v", err)
+	}
+	if tm := loadedNode.Temporal(); tm != nil && tm.ValidTo != 0 {
+		t.Fatalf("node ValidTo changed after rejected non-positive lifetime: %d", tm.ValidTo)
+	}
+	loadedRel, err := g.Rels.Get(rel.ID())
+	if err != nil {
+		t.Fatalf("GetRelationship after rejected close: %v", err)
+	}
+	if tm := loadedRel.Temporal(); tm != nil && tm.ValidTo != 0 {
+		t.Fatalf("relationship ValidTo changed after rejected non-positive lifetime: %d", tm.ValidTo)
+	}
+}
+
+func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
+	t.Run("node", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		start := g.nodeValidFrom(n)
+		setFixedClockInstant(t, g, start)
+
+		if err := g.Nodes.Delete(n.ID()); err != nil {
+			t.Fatalf("DeleteNode: %v", err)
+		}
+
+		history, err := g.store.GetNodeHistory(n.ID())
+		if err != nil {
+			t.Fatalf("GetNodeHistory: %v", err)
+		}
+		if len(history) != 1 {
+			t.Fatalf("node history len = %d, want 1", len(history))
+		}
+		if tm := history[0].Temporal(); tm == nil || tm.ValidTo <= start {
+			t.Fatalf("node tombstone ValidTo = %v, want after valid-from %d", tm, start)
+		}
+		if _, err := g.Temporal.NodeAt(n.ID(), start); err != nil {
+			t.Fatalf("NodeAt(valid-from) after same-ms delete: %v", err)
+		}
+	})
+
+	t.Run("relationship", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode a: %v", err)
+		}
+		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode b: %v", err)
+		}
+		r, err := g.Rels.Add("LINKS", a, b, nil)
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		start := g.relValidFrom(r)
+		setFixedClockInstant(t, g, start)
+
+		if err := g.Rels.Delete(r.ID()); err != nil {
+			t.Fatalf("DeleteRelationship: %v", err)
+		}
+
+		history, err := g.store.GetRelHistory(r.ID())
+		if err != nil {
+			t.Fatalf("GetRelHistory: %v", err)
+		}
+		if len(history) != 1 {
+			t.Fatalf("relationship history len = %d, want 1", len(history))
+		}
+		if tm := history[0].Temporal(); tm == nil || tm.ValidTo <= start {
+			t.Fatalf("relationship tombstone ValidTo = %v, want after valid-from %d", tm, start)
+		}
+		if _, err := g.Temporal.RelAt(r.ID(), start); err != nil {
+			t.Fatalf("RelAt(valid-from) after same-ms delete: %v", err)
+		}
+	})
+
+	t.Run("node cascade relationship", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode a: %v", err)
+		}
+		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode b: %v", err)
+		}
+		r, err := g.Rels.Add("LINKS", a, b, nil)
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		nodeStart := g.nodeValidFrom(a)
+		relStart := g.relValidFrom(r)
+		setFixedClockInstant(t, g, nodeStart)
+
+		if err := g.Nodes.Delete(a.ID()); err != nil {
+			t.Fatalf("DeleteNode cascade: %v", err)
+		}
+
+		nodeHistory, err := g.store.GetNodeHistory(a.ID())
+		if err != nil {
+			t.Fatalf("GetNodeHistory: %v", err)
+		}
+		if len(nodeHistory) != 1 {
+			t.Fatalf("node history len = %d, want 1", len(nodeHistory))
+		}
+		relHistory, err := g.store.GetRelHistory(r.ID())
+		if err != nil {
+			t.Fatalf("GetRelHistory: %v", err)
+		}
+		if len(relHistory) != 1 {
+			t.Fatalf("relationship history len = %d, want 1", len(relHistory))
+		}
+		nodeTM := nodeHistory[0].Temporal()
+		relTM := relHistory[0].Temporal()
+		if nodeTM == nil || nodeTM.ValidTo <= nodeStart {
+			t.Fatalf("node cascade tombstone ValidTo = %v, want after valid-from %d", nodeTM, nodeStart)
+		}
+		if relTM == nil || relTM.ValidTo <= relStart {
+			t.Fatalf("relationship cascade tombstone ValidTo = %v, want after valid-from %d", relTM, relStart)
+		}
+		if nodeTM.ValidTo != relTM.ValidTo {
+			t.Fatalf("cascade tombstone times differ: node=%d rel=%d", nodeTM.ValidTo, relTM.ValidTo)
+		}
+	})
+}
+
+func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
+	t.Run("node update", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{"v": "old"})
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		start := g.nodeValidFrom(n)
+		setFixedClockInstant(t, g, start)
+
+		if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": "new"}); err != nil {
+			t.Fatalf("UpdateNode: %v", err)
+		}
+		atStart, err := g.Temporal.NodeAt(n.ID(), start)
+		if err != nil {
+			t.Fatalf("NodeAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("NodeAt(valid-from) property = %v, want old", got)
+		}
+		current, err := g.Nodes.Get(n.ID())
+		if err != nil {
+			t.Fatalf("GetNode: %v", err)
+		}
+		if tm := current.Temporal(); tm == nil || tm.UpdatedAt <= start {
+			t.Fatalf("node update UpdatedAt = %v, want after valid-from %d", tm, start)
+		}
+	})
+
+	t.Run("relationship update", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode a: %v", err)
+		}
+		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode b: %v", err)
+		}
+		r, err := g.Rels.Add("LINKS", a, b, map[string]any{"v": "old"})
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		start := g.relValidFrom(r)
+		setFixedClockInstant(t, g, start)
+
+		if _, err := g.Rels.Update(r.ID(), map[string]any{"v": "new"}); err != nil {
+			t.Fatalf("UpdateRelationship: %v", err)
+		}
+		atStart, err := g.Temporal.RelAt(r.ID(), start)
+		if err != nil {
+			t.Fatalf("RelAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("RelAt(valid-from) property = %v, want old", got)
+		}
+		current, err := g.Rels.Get(r.ID())
+		if err != nil {
+			t.Fatalf("GetRelationship: %v", err)
+		}
+		if tm := current.Temporal(); tm == nil || tm.UpdatedAt <= start {
+			t.Fatalf("relationship update UpdatedAt = %v, want after valid-from %d", tm, start)
+		}
+	})
+
+	t.Run("node cas", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{"v": "old"})
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		start := g.nodeValidFrom(n)
+		setFixedClockInstant(t, g, start)
+
+		ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "v", "old", "new")
+		if err != nil || !ok {
+			t.Fatalf("CompareAndSetProperty = (%v, %v), want (true, nil)", ok, err)
+		}
+		atStart, err := g.Temporal.NodeAt(n.ID(), start)
+		if err != nil {
+			t.Fatalf("NodeAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("NodeAt(valid-from) property after CAS = %v, want old", got)
+		}
+	})
+
+	t.Run("relationship cas", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode a: %v", err)
+		}
+		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode b: %v", err)
+		}
+		r, err := g.Rels.Add("LINKS", a, b, map[string]any{"v": "old"})
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		start := g.relValidFrom(r)
+		setFixedClockInstant(t, g, start)
+
+		ok, err := g.Rels.CompareAndSetProperty(r.ID(), "v", "old", "new")
+		if err != nil || !ok {
+			t.Fatalf("CompareAndSetProperty = (%v, %v), want (true, nil)", ok, err)
+		}
+		atStart, err := g.Temporal.RelAt(r.ID(), start)
+		if err != nil {
+			t.Fatalf("RelAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("RelAt(valid-from) property after CAS = %v, want old", got)
+		}
+	})
+
+	t.Run("add label", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		start := g.nodeValidFrom(n)
+		setFixedClockInstant(t, g, start)
+
+		if err := g.Nodes.AddLabel(n.ID(), "Extra"); err != nil {
+			t.Fatalf("AddLabel: %v", err)
+		}
+		atStart, err := g.Temporal.NodeAt(n.ID(), start)
+		if err != nil {
+			t.Fatalf("NodeAt(valid-from): %v", err)
+		}
+		if got := atStart.LabelTokenCount(); got != 1 {
+			t.Fatalf("NodeAt(valid-from) label count after AddLabel = %d, want 1", got)
+		}
+	})
+
+	t.Run("remove label", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		n, err := g.Nodes.Add([]string{"Event", "Extra"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		start := g.nodeValidFrom(n)
+		setFixedClockInstant(t, g, start)
+
+		if err := g.Nodes.RemoveLabel(n.ID(), "Extra"); err != nil {
+			t.Fatalf("RemoveLabel: %v", err)
+		}
+		atStart, err := g.Temporal.NodeAt(n.ID(), start)
+		if err != nil {
+			t.Fatalf("NodeAt(valid-from): %v", err)
+		}
+		if got := atStart.LabelTokenCount(); got != 2 {
+			t.Fatalf("NodeAt(valid-from) label count after RemoveLabel = %d, want 2", got)
+		}
+	})
+}
+
+func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
+	t.Run("node", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		clk := useTestClock(t, g)
+		validFrom := types.Instant(1000)
+		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{
+			"v":              "old",
+			"tkg_valid_from": validFrom,
+		})
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		updateAt := clk.PeekInstant()
+		if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": "new"}); err != nil {
+			t.Fatalf("UpdateNode: %v", err)
+		}
+
+		atStart, err := g.Temporal.NodeAt(n.ID(), validFrom)
+		if err != nil {
+			t.Fatalf("NodeAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("NodeAt(valid-from) property = %v, want old", got)
+		}
+		atUpdate, err := g.Temporal.NodeAt(n.ID(), updateAt)
+		if err != nil {
+			t.Fatalf("NodeAt(update-time): %v", err)
+		}
+		if got, _ := atUpdate.GetProperty("v"); got != "new" {
+			t.Fatalf("NodeAt(update-time) property = %v, want new", got)
+		}
+	})
+
+	t.Run("relationship", func(t *testing.T) {
+		g := newTestGraphForChain(t)
+		clk := useTestClock(t, g)
+		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode a: %v", err)
+		}
+		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		if err != nil {
+			t.Fatalf("AddNode b: %v", err)
+		}
+		validFrom := types.Instant(1000)
+		r, err := g.Rels.Add("LINKS", a, b, map[string]any{
+			"v":              "old",
+			"tkg_valid_from": validFrom,
+		})
+		if err != nil {
+			t.Fatalf("AddRelationship: %v", err)
+		}
+		updateAt := clk.PeekInstant()
+		if _, err := g.Rels.Update(r.ID(), map[string]any{"v": "new"}); err != nil {
+			t.Fatalf("UpdateRelationship: %v", err)
+		}
+
+		atStart, err := g.Temporal.RelAt(r.ID(), validFrom)
+		if err != nil {
+			t.Fatalf("RelAt(valid-from): %v", err)
+		}
+		if got, _ := atStart.GetProperty("v"); got != "old" {
+			t.Fatalf("RelAt(valid-from) property = %v, want old", got)
+		}
+		atUpdate, err := g.Temporal.RelAt(r.ID(), updateAt)
+		if err != nil {
+			t.Fatalf("RelAt(update-time): %v", err)
+		}
+		if got, _ := atUpdate.GetProperty("v"); got != "new" {
+			t.Fatalf("RelAt(update-time) property = %v, want new", got)
+		}
+	})
 }
 
 // TestCloseNodeVersion_NotFound verifies that CloseNodeVersion on a missing node
@@ -408,7 +1007,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	}
 
 	// CloseRelVersion.
-	closeTime := types.Instant(time.Now().UnixMilli())
+	closeTime := g.relValidFrom(r) + 1000
 	if err := g.Rels.CloseVersion(rid, closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
@@ -459,7 +1058,7 @@ func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.
 		t.Fatalf("created endpoint hashes = (%q, %q), want non-empty", before.FromNodeHash, before.ToNodeHash)
 	}
 
-	closeTime := types.Instant(time.Now().UnixMilli()) + 2000
+	closeTime := g.relValidFrom(r) + 2000
 	if err := g.Rels.CloseVersion(r.ID(), closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}

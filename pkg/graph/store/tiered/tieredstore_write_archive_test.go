@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -13,19 +12,7 @@ import (
 func newArchiveWriteTestStore(t *testing.T) (*Store, uint16, uint16) {
 	t.Helper()
 	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	caseTok, err := reg.GetOrCreate("Case")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reg.GetOrCreate("User"); err != nil {
-		t.Fatal(err)
-	}
-	signalTok, err := reg.GetOrCreate("Signal")
-	if err != nil {
-		t.Fatal(err)
-	}
+	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	return ts, caseTok, signalTok
 }
 
@@ -328,6 +315,56 @@ func TestPlanRelationshipPlacementMoves_MissingEndpointBranches(t *testing.T) {
 	})
 }
 
+func TestPlanRelationshipPlacementMoves_CachesPeerEndpointShardPins(t *testing.T) {
+	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
+	archive := mustArchiveStore(t, ts)
+	gen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	moving := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	peer := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	for _, node := range []*types.Node{moving, peer} {
+		if err := ts.PutNode(node); err != nil {
+			t.Fatalf("PutNode(%d): %v", node.ID(), err)
+		}
+	}
+
+	const relCount = 5
+	relIDs := make([]snowflake.ID, 0, relCount)
+	for range relCount {
+		rel := types.NewRelationship(types.RelID(relGen.Generate()), 1, moving.ID(), peer.ID())
+		if err := ts.PutRelationship(rel); err != nil {
+			t.Fatalf("PutRelationship(%d): %v", rel.ID(), err)
+		}
+		relIDs = append(relIDs, rel.ID().SnowflakeID())
+	}
+
+	hot := ts.HotShardForTest()
+	moves, release, err := ts.planRelationshipPlacementMoves(moving.ID(), relIDs, ts.refShard, archive)
+	released := false
+	if release != nil {
+		defer func() {
+			if !released {
+				release()
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("planRelationshipPlacementMoves: %v", err)
+	}
+	if len(moves) != relCount {
+		t.Fatalf("planned moves = %d, want %d", len(moves), relCount)
+	}
+	if got := hot.ActiveReqsForTest().Load(); got != 1 {
+		t.Fatalf("hot shard active checkouts while moves are pinned = %d, want 1 cached peer endpoint checkout", got)
+	}
+	release()
+	released = true
+	if got := hot.ActiveReqsForTest().Load(); got != 0 {
+		t.Fatalf("hot shard active checkouts after release = %d, want 0", got)
+	}
+}
+
 func TestMergeUniqueRelIDs_DeduplicatesBothInputs(t *testing.T) {
 	a := snowflake.ID(1)
 	b := snowflake.ID(2)
@@ -362,6 +399,25 @@ func TestArchiveNode_ErrorBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("event node", func(t *testing.T) {
+		ts, _, signalTok := newArchiveWriteTestStore(t)
+		signal := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
+		if err := ts.PutNode(signal); err != nil {
+			t.Fatalf("PutNode signal: %v", err)
+		}
+
+		err := ts.ArchiveNode(signal.ID())
+		if !errors.Is(err, ErrNotReferenceEntity) {
+			t.Fatalf("ArchiveNode error = %v, want ErrNotReferenceEntity", err)
+		}
+		if ts.refArchive.Load() != nil {
+			t.Fatal("ArchiveNode opened archive for rejected event node")
+		}
+		if _, err := ts.GetNode(signal.ID()); err != nil {
+			t.Fatalf("event node moved or lost after rejected archive: %v", err)
+		}
+	})
+
 	t.Run("read node error", func(t *testing.T) {
 		ts, caseTok, _ := newArchiveWriteTestStore(t)
 		n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
@@ -375,6 +431,25 @@ func TestArchiveNode_ErrorBranches(t *testing.T) {
 		err := ts.ArchiveNode(n.ID())
 		if !errors.Is(err, ErrNodeNotFound) {
 			t.Fatalf("ArchiveNode error = %v, want ErrNodeNotFound", err)
+		}
+	})
+
+	t.Run("misplaced event node in ref shard", func(t *testing.T) {
+		ts, _, signalTok := newArchiveWriteTestStore(t)
+		signal := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
+		if err := ts.refShard.PutNode(signal); err != nil {
+			t.Fatalf("PutNode misplaced signal: %v", err)
+		}
+
+		err := ts.ArchiveNode(signal.ID())
+		if !errors.Is(err, ErrNotReferenceEntity) {
+			t.Fatalf("ArchiveNode error = %v, want ErrNotReferenceEntity", err)
+		}
+		if ts.refArchive.Load() != nil {
+			t.Fatal("ArchiveNode opened archive for misplaced event node")
+		}
+		if !ts.refShard.HasNodeID(signal.ID().SnowflakeID()) {
+			t.Fatal("ArchiveNode removed misplaced event node from ref shard")
 		}
 	})
 
@@ -440,6 +515,40 @@ func TestArchiveNode_ErrorBranches(t *testing.T) {
 		}
 		if got := archive.IncomingRelIDs(n.ID().SnowflakeID(), 0); len(got) != 0 {
 			t.Fatalf("ArchiveNode left stale incoming adjacency in archive: %v", got)
+		}
+	})
+
+	t.Run("live incoming adjacency in destination", func(t *testing.T) {
+		ts, caseTok, _ := newArchiveWriteTestStore(t)
+		gen := tieredNodeGen(t)
+		n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+		peer := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+		for _, node := range []*types.Node{n, peer} {
+			if err := ts.PutNode(node); err != nil {
+				t.Fatalf("PutNode(%d): %v", node.ID(), err)
+			}
+		}
+		rel := newArchiveWriteRel(t, peer.ID(), n.ID())
+		if err := ts.PutRelationship(rel); err != nil {
+			t.Fatalf("PutRelationship: %v", err)
+		}
+		archive := mustArchiveStore(t, ts)
+		if err := archive.PutRelIncoming(n.ID().SnowflakeID(), peer.ID().SnowflakeID(), rel.TypeToken().Value(), rel.ID().SnowflakeID()); err != nil {
+			t.Fatalf("PutRelIncoming live destination: %v", err)
+		}
+
+		err := ts.ArchiveNode(n.ID())
+		if !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("ArchiveNode error = %v, want ErrInvalidStoreMutation", err)
+		}
+		if !ts.refShard.HasNodeID(n.ID().SnowflakeID()) {
+			t.Fatal("ArchiveNode removed ref node after live destination adjacency rejection")
+		}
+		if archive.HasNodeID(n.ID().SnowflakeID()) {
+			t.Fatal("ArchiveNode wrote node to archive after live destination adjacency rejection")
+		}
+		if got := archive.IncomingRelIDs(n.ID().SnowflakeID(), 0); len(got) != 1 || got[0] != rel.ID().SnowflakeID() {
+			t.Fatalf("ArchiveNode purged live destination adjacency = %v, want [%d]", got, rel.ID().SnowflakeID())
 		}
 	})
 
@@ -545,6 +654,26 @@ func TestRestoreNode_ErrorBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("event node in archive", func(t *testing.T) {
+		ts, _, signalTok := newArchiveWriteTestStore(t)
+		archive := mustArchiveStore(t, ts)
+		signal := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
+		if err := archive.PutNode(signal); err != nil {
+			t.Fatalf("PutNode archive signal: %v", err)
+		}
+
+		err := ts.RestoreNode(signal.ID())
+		if !errors.Is(err, ErrNotReferenceEntity) {
+			t.Fatalf("RestoreNode error = %v, want ErrNotReferenceEntity", err)
+		}
+		if !archive.HasNodeID(signal.ID().SnowflakeID()) {
+			t.Fatal("RestoreNode removed rejected event node from archive")
+		}
+		if ts.refShard.HasNodeID(signal.ID().SnowflakeID()) {
+			t.Fatal("RestoreNode wrote rejected event node to ref shard")
+		}
+	})
+
 	t.Run("stale incoming adjacency", func(t *testing.T) {
 		ts, caseTok, _ := newArchiveWriteTestStore(t)
 		archive := mustArchiveStore(t, ts)
@@ -591,6 +720,44 @@ func TestRestoreNode_ErrorBranches(t *testing.T) {
 		}
 		if got := ts.refShard.IncomingRelIDs(n.ID().SnowflakeID(), 0); len(got) != 0 {
 			t.Fatalf("RestoreNode left stale incoming adjacency in ref shard: %v", got)
+		}
+	})
+
+	t.Run("live incoming adjacency in destination", func(t *testing.T) {
+		ts, caseTok, _ := newArchiveWriteTestStore(t)
+		archive := mustArchiveStore(t, ts)
+		gen := tieredNodeGen(t)
+		n := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+		peer := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+		if err := archive.PutNode(n); err != nil {
+			t.Fatalf("PutNode archive: %v", err)
+		}
+		if err := ts.PutNode(peer); err != nil {
+			t.Fatalf("PutNode peer: %v", err)
+		}
+		rel := newArchiveWriteRel(t, n.ID(), peer.ID())
+		if err := archive.PutRelEntityAndOut(rel); err != nil {
+			t.Fatalf("PutRelEntityAndOut archive: %v", err)
+		}
+		if err := ts.refShard.PutRelIncoming(peer.ID().SnowflakeID(), n.ID().SnowflakeID(), rel.TypeToken().Value(), rel.ID().SnowflakeID()); err != nil {
+			t.Fatalf("PutRelIncoming ref endpoint: %v", err)
+		}
+		if err := ts.refShard.PutRelIncoming(n.ID().SnowflakeID(), peer.ID().SnowflakeID(), rel.TypeToken().Value(), rel.ID().SnowflakeID()); err != nil {
+			t.Fatalf("PutRelIncoming live destination: %v", err)
+		}
+
+		err := ts.RestoreNode(n.ID())
+		if !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("RestoreNode error = %v, want ErrInvalidStoreMutation", err)
+		}
+		if !archive.HasNodeID(n.ID().SnowflakeID()) {
+			t.Fatal("RestoreNode removed archive node after live destination adjacency rejection")
+		}
+		if ts.refShard.HasNodeID(n.ID().SnowflakeID()) {
+			t.Fatal("RestoreNode wrote node to ref after live destination adjacency rejection")
+		}
+		if got := ts.refShard.IncomingRelIDs(n.ID().SnowflakeID(), 0); len(got) != 1 || got[0] != rel.ID().SnowflakeID() {
+			t.Fatalf("RestoreNode purged live destination adjacency = %v, want [%d]", got, rel.ID().SnowflakeID())
 		}
 	})
 

@@ -102,7 +102,7 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if _, err := g.Nodes.PreviousVersion(a.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
 		t.Errorf("PreviousVersion: %v", err)
 	}
-	if err := g.Nodes.CloseVersion(a.ID(), types.Instant(time.Now().UnixMilli())); err != nil {
+	if err := g.Nodes.CloseVersion(a.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
 	}
 	_ = g.Nodes.NextID() // pure ID generator — coverage only
@@ -179,6 +179,12 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if err := g.Rels.SetProperty(r1.ID(), "since", int64(2026)); err != nil {
 		t.Errorf("SetProperty: %v", err)
 	}
+	if _, err := g.Rels.CompareAndSetProperty(r1.ID(), "since", int64(2026), int64(2027)); err != nil {
+		t.Errorf("CompareAndSetProperty: %v", err)
+	}
+	if _, err := g.Rels.CompareAndSetPropertyWithContext(ctx, r1.ID(), "since", int64(2027), int64(2028)); err != nil {
+		t.Errorf("CompareAndSetPropertyWithContext: %v", err)
+	}
 	if err := g.Rels.DeleteProperty(r1.ID(), "since"); err != nil {
 		t.Errorf("DeleteProperty: %v", err)
 	}
@@ -211,7 +217,7 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if _, err := g.Rels.PreviousVersion(r1.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
 		t.Errorf("PreviousVersion: %v", err)
 	}
-	if err := g.Rels.CloseVersion(r1.ID(), types.Instant(time.Now().UnixMilli())); err != nil {
+	if err := g.Rels.CloseVersion(r1.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
 	}
 	_ = g.Rels.NextID()
@@ -246,6 +252,7 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	now := types.Instant(time.Now().UnixMilli())
 	earlier := now - 1
 	later := now + 1
+	txNow := r.Temporal().TxFrom
 
 	if _, err := g.Temporal.NodeAt(a.ID(), now); err != nil {
 		t.Errorf("NodeAt: %v", err)
@@ -288,16 +295,16 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 		t.Errorf("RelsByTypePropertyDuring: %v", err)
 	}
 
-	if _, err := g.Temporal.NodeAsOf(a.ID(), now); err != nil {
+	if _, err := g.Temporal.NodeAsOf(a.ID(), txNow); err != nil {
 		t.Errorf("NodeAsOf: %v", err)
 	}
-	if _, err := g.Temporal.RelAsOf(r.ID(), now); err != nil {
+	if _, err := g.Temporal.RelAsOf(r.ID(), txNow); err != nil {
 		t.Errorf("RelAsOf: %v", err)
 	}
-	if _, err := g.Temporal.NodesAsOf(now); err != nil {
+	if _, err := g.Temporal.NodesAsOf(txNow); err != nil {
 		t.Errorf("NodesAsOf: %v", err)
 	}
-	if _, err := g.Temporal.RelsAsOf(now); err != nil {
+	if _, err := g.Temporal.RelsAsOf(txNow); err != nil {
 		t.Errorf("RelsAsOf: %v", err)
 	}
 
@@ -372,6 +379,11 @@ func TestSubAPISmoke_StatsResolveConstraintsEvents(t *testing.T) {
 	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
 	r, _ := g.Rels.Add("KNOWS", a, b, nil)
 	_ = r
+
+	var snapshot graphpkg.GraphStats = g.Stats.Get()
+	if snapshot.NodesAdded != 2 || snapshot.RelsAdded != 1 {
+		t.Fatalf("Stats.Get snapshot = %+v, want NodesAdded=2 RelsAdded=1", snapshot)
+	}
 
 	if _, err := g.Stats.NodeCountByLabel("Person"); err != nil {
 		t.Errorf("Stats.NodeCountByLabel: %v", err)
@@ -448,11 +460,20 @@ func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {
 	if err := g.Index.RegisterProvider(p); err != nil {
 		t.Errorf("RegisterProvider: %v", err)
 	}
+	if err := g.Index.RegisterProvider(&fakeIndexProvider{name: "fake"}); !errors.Is(err, graphpkg.ErrIndexProviderExists) {
+		t.Errorf("RegisterProvider duplicate: %v, want ErrIndexProviderExists", err)
+	}
+	if err := g.Index.RegisterProvider(&fakeIndexProvider{name: " \t\n "}); !errors.Is(err, graphpkg.ErrIndexProviderEmptyName) {
+		t.Errorf("RegisterProvider blank name: %v, want ErrIndexProviderEmptyName", err)
+	}
 	if list := g.Index.Providers(); len(list) == 0 {
 		t.Errorf("Providers: empty after RegisterProvider")
 	}
 	if err := g.Index.UnregisterProvider("fake"); err != nil {
 		t.Errorf("UnregisterProvider: %v", err)
+	}
+	if err := g.Index.UnregisterProvider("missing"); !errors.Is(err, graphpkg.ErrIndexProviderNotFound) {
+		t.Errorf("UnregisterProvider missing: %v, want ErrIndexProviderNotFound", err)
 	}
 
 	lp := &fakeLegacyIndexProvider{name: "legacy"}

@@ -29,8 +29,13 @@ func TestTemporalIndexNilReceiverAndNilMapEntriesNoop(t *testing.T) {
 
 	var nilIndex *TemporalIndex
 	nilIndex.Add(snowflake.ID(1), 100, 200)
+	nilIndex.AddKnownAbsent(snowflake.ID(1), 100, 200)
 	nilIndex.Remove(snowflake.ID(1))
 	nilIndex.sortIfDirty()
+	nilIndex.ClearMutationTracking()
+	if nilIndex.WasMutated(snowflake.ID(1)) {
+		t.Fatal("nil WasMutated = true, want false")
+	}
 	if got := nilIndex.Len(); got != 0 {
 		t.Fatalf("nil Len = %d, want 0", got)
 	}
@@ -48,6 +53,71 @@ func TestTemporalIndexNilReceiverAndNilMapEntriesNoop(t *testing.T) {
 	PurgeNodeFromAllTemporalIndexes(idxs, snowflake.ID(1))
 	AddNodeToTemporalIndexes(idxs, nil, snowflake.ID(1))
 	RemoveNodeFromTemporalIndexes(idxs, nil, snowflake.ID(1))
+}
+
+func TestTemporalIndex_PurgeNodeFromAllTemporalIndexes(t *testing.T) {
+	t.Parallel()
+
+	idxs := map[uint16]*TemporalIndex{
+		1: NewTemporalIndex(),
+		2: NewTemporalIndex(),
+		3: nil,
+	}
+	purged := snowflake.ID(10)
+	kept := snowflake.ID(20)
+
+	idxs[1].Add(purged, 0, 100)
+	idxs[1].Add(kept, 0, 100)
+	idxs[2].Add(purged, 50, 0)
+
+	PurgeNodeFromAllTemporalIndexes(idxs, purged)
+
+	for token, ti := range idxs {
+		if ti == nil {
+			continue
+		}
+		got := ti.QueryOverlap(0, 200)
+		for _, id := range got {
+			if id == purged {
+				t.Fatalf("index %d still contains purged node %d: %v", token, purged, got)
+			}
+		}
+	}
+	if got := idxs[1].QueryAt(50); len(got) != 1 || got[0] != kept {
+		t.Fatalf("purge removed unrelated node: %v", got)
+	}
+}
+
+func TestTemporalIndexNodeHelpersUseAllLabels(t *testing.T) {
+	t.Parallel()
+
+	id := snowflake.ID(101)
+	node := types.NewNode(types.NodeID(id), 1, []uint16{2, 3})
+	node.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000})
+	idxs := map[uint16]*TemporalIndex{
+		1: NewTemporalIndex(),
+		2: NewTemporalIndex(),
+		3: NewTemporalIndex(),
+		4: NewTemporalIndex(),
+	}
+
+	AddNodeToTemporalIndexes(idxs, node, id)
+	for _, tok := range []uint16{1, 2, 3} {
+		got := idxs[tok].QueryAt(1000)
+		if len(got) != 1 || got[0] != id {
+			t.Fatalf("token %d QueryAt = %v, want [%d]", tok, got, id)
+		}
+	}
+	if got := idxs[4].QueryAt(1000); got != nil {
+		t.Fatalf("unmatched token QueryAt = %v, want nil", got)
+	}
+
+	RemoveNodeFromTemporalIndexes(idxs, node, id)
+	for _, tok := range []uint16{1, 2, 3} {
+		if got := idxs[tok].QueryAt(1000); got != nil {
+			t.Fatalf("token %d still contains node after remove: %v", tok, got)
+		}
+	}
 }
 
 func TestTemporalIndex_AddQueryAt_OpenEnded(t *testing.T) {
@@ -160,6 +230,20 @@ func TestTemporalIndex_QueryOverlap_Adjacent(t *testing.T) {
 	}
 }
 
+func TestTemporalIndex_QueryOverlap_EmptyOrReversedRange(t *testing.T) {
+	t.Parallel()
+	ti := NewTemporalIndex()
+	ti.Add(snowflake.ID(10), 100, 300)
+	ti.Add(snowflake.ID(20), 200, 0)
+
+	if got := ti.QueryOverlap(200, 200); got != nil {
+		t.Fatalf("QueryOverlap empty range = %v, want nil", got)
+	}
+	if got := ti.QueryOverlap(300, 200); got != nil {
+		t.Fatalf("QueryOverlap reversed range = %v, want nil", got)
+	}
+}
+
 func TestTemporalIndex_Remove(t *testing.T) {
 	t.Parallel()
 	ti := NewTemporalIndex()
@@ -212,6 +296,77 @@ func TestTemporalIndex_AddReplace(t *testing.T) {
 	ids = ti.QueryAt(400)
 	if len(ids) != 1 || ids[0] != id {
 		t.Errorf("queryAt(400) after replace = %v, want [8]", ids)
+	}
+}
+
+func TestTemporalIndex_AddKnownAbsentQueryAndReplace(t *testing.T) {
+	t.Parallel()
+	ti := NewTemporalIndex()
+
+	id := snowflake.ID(9)
+	ti.AddKnownAbsent(id, 100, 200)
+	if got := ti.QueryAt(150); len(got) != 1 || got[0] != id {
+		t.Fatalf("QueryAt after AddKnownAbsent = %v, want [%d]", got, id)
+	}
+
+	ti.Add(id, 300, 500)
+	if ti.Len() != 1 {
+		t.Fatalf("Len after Add replacement = %d, want 1", ti.Len())
+	}
+	if got := ti.QueryAt(150); len(got) != 0 {
+		t.Fatalf("old interval still visible after Add replacement: %v", got)
+	}
+	if got := ti.QueryAt(350); len(got) != 1 || got[0] != id {
+		t.Fatalf("replacement interval QueryAt = %v, want [%d]", got, id)
+	}
+}
+
+func TestTemporalIndexReplacePurgesDuplicateLegacyEntries(t *testing.T) {
+	t.Parallel()
+	ti := NewTemporalIndex()
+
+	id := snowflake.ID(11)
+	ti.AddKnownAbsent(id, 100, 0)
+	ti.AddKnownAbsent(id, 200, 0)
+
+	ti.Add(id, 300, 0)
+	if got := ti.Len(); got != 1 {
+		t.Fatalf("Len after replacing duplicate entries = %d, want 1", got)
+	}
+	if got := ti.QueryAt(250); got != nil {
+		t.Fatalf("old duplicate entries still queryable: %v", got)
+	}
+	if got := ti.QueryAt(350); len(got) != 1 || got[0] != id {
+		t.Fatalf("replacement QueryAt = %v, want [%d]", got, id)
+	}
+}
+
+func TestTemporalIndexMutationTracking(t *testing.T) {
+	t.Parallel()
+	ti := NewTemporalIndex()
+	ti.Mutated = make(map[snowflake.ID]struct{})
+
+	added := snowflake.ID(10)
+	ti.Add(added, 100, 200)
+	if !ti.WasMutated(added) {
+		t.Fatal("Add did not mark ID as mutated")
+	}
+
+	missing := snowflake.ID(20)
+	ti.Remove(missing)
+	if !ti.WasMutated(missing) {
+		t.Fatal("Remove of missing ID did not mark ID as mutated")
+	}
+
+	knownAbsent := snowflake.ID(30)
+	ti.AddKnownAbsent(knownAbsent, 300, 400)
+	if ti.WasMutated(knownAbsent) {
+		t.Fatal("AddKnownAbsent marked mutation-tracking map")
+	}
+
+	ti.ClearMutationTracking()
+	if ti.WasMutated(added) || ti.WasMutated(missing) {
+		t.Fatal("ClearMutationTracking left mutation state behind")
 	}
 }
 

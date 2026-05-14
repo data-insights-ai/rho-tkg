@@ -107,7 +107,7 @@ func (bs *Store) getOrCreateTypeCounter(token uint16) *atomic.Int64 {
 // Implements StoreStats. Both indexpkg.CacheHit and indexpkg.CacheDeleted (tombstone) results count
 // as hits, because both avoid a Badger read.
 func (bs *Store) NodeCacheHits() int64 {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.nodeCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
 		return 0
 	}
 	return bs.nodeCache.Hits()
@@ -116,7 +116,7 @@ func (bs *Store) NodeCacheHits() int64 {
 // NodeCacheMisses returns the total number of node cache misses since store creation.
 // Implements StoreStats.
 func (bs *Store) NodeCacheMisses() int64 {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.nodeCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
 		return 0
 	}
 	return bs.nodeCache.Misses()
@@ -125,7 +125,7 @@ func (bs *Store) NodeCacheMisses() int64 {
 // RelCacheHits returns the total number of relationship cache hits since store creation.
 // Implements StoreStats.
 func (bs *Store) RelCacheHits() int64 {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.relCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
 		return 0
 	}
 	return bs.relCache.Hits()
@@ -134,7 +134,7 @@ func (bs *Store) RelCacheHits() int64 {
 // RelCacheMisses returns the total number of relationship cache misses since store creation.
 // Implements StoreStats.
 func (bs *Store) RelCacheMisses() int64 {
-	if bs.dbClosed.Load() {
+	if bs == nil || bs.relCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
 		return 0
 	}
 	return bs.relCache.Misses()
@@ -147,7 +147,7 @@ func (bs *Store) RelCacheMisses() int64 {
 // so that lifecycle code can persist registries through a single uniform
 // interface regardless of the underlying Store implementation.
 func (bs *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
-	if err := bs.checkOpen(); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
 	if labelReg == nil {
@@ -176,7 +176,7 @@ func (bs *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 
 // SaveLabelRegistry persists the label registry to the Badger store.
 func (bs *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
-	if err := bs.checkOpen(); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
 	if reg == nil {
@@ -225,7 +225,7 @@ func (bs *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error)
 
 // SaveRelTypeRegistry persists the relationship type registry to the Badger store.
 func (bs *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
-	if err := bs.checkOpen(); err != nil {
+	if err := bs.checkWritable(); err != nil {
 		return err
 	}
 	if reg == nil {

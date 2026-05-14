@@ -50,7 +50,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil {
 		return false, err
 	}
@@ -66,6 +66,14 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	// Enforce MaxLabelsPerNode against the post-addition count.
 	if current.LabelTokenCount()+1 > c.validation.MaxLabelsPerNode {
 		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, c.validation.MaxLabelsPerNode)
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return false, err
+	}
+	if known {
+		if err := c.checkpointDirtyRegistriesBeforeMutation("add label"); err != nil {
+			return false, err
+		}
 	}
 
 	prevVersion := current.Version()
@@ -103,8 +111,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 
 	copy := current.DeepCopy()
 	if !copy.AddLabelTokenRaw(tok) {
-		// Defensive: should never hit — idempotence check above already handled presence.
-		return false, nil
+		return false, finishLabel(fmt.Errorf("%w: node %d already has allocated label token %d", storepkg.ErrInvalidStoreMutation, id, tok))
 	}
 	copy.SetVersion(nextVersion)
 
@@ -122,7 +129,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := c.now()
+	now := c.nodeVersionUpdateInstant(current)
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)
@@ -187,7 +194,7 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 
-	current, err := c.store.GetNode(id)
+	current, err := c.getCurrentNode(id)
 	if err != nil {
 		return err
 	}
@@ -197,6 +204,12 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	}
 	if current.LabelTokenCount() == 1 {
 		return ErrLastLabel
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("remove label"); err != nil {
+		return err
 	}
 
 	// Capture pre-mutation state for version history (before any modification).
@@ -224,7 +237,7 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := c.now()
+	now := c.nodeVersionUpdateInstant(current)
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)

@@ -2,8 +2,10 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
 	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -13,6 +15,7 @@ import (
 // under the index defined for label+propertyKey.
 // Returns ErrVectorIndexNotFound if no index exists.
 // Returns ErrDimensionMismatch if query length differs from the index's dims.
+// Returns ErrInvalidVectorValue if query contains NaN or infinity.
 // Returns nil, nil if the index exists but has no entries.
 // Returns nil, nil for non-positive k (k <= 0) after target validation.
 //
@@ -53,6 +56,18 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+		return nil, err
+	}
+	if err := indexpkg.ValidateVectorValues(query); err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
 		nodes, err := c.searchNearestLocked(label, propertyKey, query, k, opts)
@@ -63,32 +78,35 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 }
 
 func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
-		return nil, err
-	}
-	if err := c.validateIndexLabel(label); err != nil {
-		return nil, err
-	}
-	if err := c.validateIndexPropertyKey(propertyKey); err != nil {
-		return nil, err
-	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, storepkg.ErrVectorIndexNotFound
 	}
-	if k <= 0 {
-		return nil, nil
-	}
 	viCap, err := c.vectorIndexCap()
 	if err != nil {
 		return nil, err
+	}
+	if k <= 0 {
+		if _, err := viCap.SearchNearestNodes(tok, propertyKey, query, 0, storepkg.QueryOpts{Depth: opts.Depth}); err != nil {
+			return nil, err
+		}
+		return nil, nil
 	}
 	if !hasTemporalFilter(opts) {
 		nodes, err := viCap.SearchNearestNodes(tok, propertyKey, query, k, storepkg.QueryOpts{Depth: opts.Depth})
 		if err != nil {
 			return nil, err
 		}
-		return storeutil.PaginateNodesInOrder(nodes, opts.After, opts.Limit), nil
+		if !c.vectorRowsTrust {
+			if err := validateVectorSearchNodes(tok, propertyKey, len(query), k, nodes); err != nil {
+				return nil, err
+			}
+		}
+		nodes = storeutil.PaginateNodesInOrder(nodes, opts.After, opts.Limit)
+		if !c.vectorRowsTrust {
+			nodes = copyNodeRows(nodes)
+		}
+		return nodes, nil
 	}
 	// Temporal path: build an eligibility predicate that resolves each
 	// candidate to its label-bearing version at the requested time. The
@@ -108,16 +126,21 @@ func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k
 	}
 
 	if opts.Depth == storepkg.DepthAll {
-		if store, ok := c.store.(storepkg.FilteredVectorSearchCapability); ok {
+		if c.filteredVector != nil {
 			// Pre-filtered fast path: the backend pushes the eligibility
 			// predicate into the search BEFORE the k-cut, so the returned
 			// top-k is taken from the eligible-only set.
-			ids, err := store.SearchNearestFiltered(tok, propertyKey, query, k, filter)
+			ids, err := c.filteredVector.SearchNearestFiltered(tok, propertyKey, query, k, filter)
 			if err != nil {
 				return nil, err
 			}
 			if filterErr != nil {
 				return nil, filterErr
+			}
+			if !c.vectorRowsTrust {
+				if err := c.validateVectorSearchIDs(tok, propertyKey, len(query), k, ids); err != nil {
+					return nil, err
+				}
 			}
 			resolved := make([]*types.Node, 0, len(ids))
 			for _, id := range ids {
@@ -178,6 +201,11 @@ func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k
 		if err != nil {
 			return nil, err
 		}
+		if !c.vectorRowsTrust {
+			if err := validateVectorSearchNodes(tok, propertyKey, len(query), rawK, nodes); err != nil {
+				return nil, err
+			}
+		}
 		resolved = resolved[:0]
 		for _, n := range nodes {
 			n2, ferr := c.findNodeVersionForOpts(n.ID(), opts, pred)
@@ -218,4 +246,79 @@ func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k
 
 func isNodeTemporalCandidateMiss(err error) bool {
 	return errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound)
+}
+
+func validateVectorSearchNodes(labelToken uint16, propertyKey string, dims int, maxRows int, nodes []*types.Node) error {
+	if maxRows > 0 && len(nodes) > maxRows {
+		return fmt.Errorf("%w: vector search returned %d nodes for k=%d", storepkg.ErrInvalidStoreMutation, len(nodes), maxRows)
+	}
+	var seen map[types.NodeID]struct{}
+	if len(nodes) > 1 {
+		seen = make(map[types.NodeID]struct{}, len(nodes))
+	}
+	for _, n := range nodes {
+		if err := validateVectorSearchNode(labelToken, propertyKey, dims, n); err != nil {
+			return err
+		}
+		if seen != nil {
+			id := n.ID()
+			if _, ok := seen[id]; ok {
+				return fmt.Errorf("%w: vector search returned duplicate node %d", storepkg.ErrInvalidStoreMutation, id)
+			}
+			seen[id] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func (c *Core) validateVectorSearchIDs(labelToken uint16, propertyKey string, dims int, maxRows int, ids []snowflake.ID) error {
+	if maxRows > 0 && len(ids) > maxRows {
+		return fmt.Errorf("%w: filtered vector search returned %d IDs for k=%d", storepkg.ErrInvalidStoreMutation, len(ids), maxRows)
+	}
+	var seen map[snowflake.ID]struct{}
+	if len(ids) > 1 {
+		seen = make(map[snowflake.ID]struct{}, len(ids))
+	}
+	for _, id := range ids {
+		if err := storepkg.ValidateNodeID(types.NodeID(id)); err != nil {
+			return err
+		}
+		n, err := c.getCurrentNode(types.NodeID(id))
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNodeNotFound) {
+				return fmt.Errorf("%w: filtered vector search returned missing node %d", storepkg.ErrInvalidStoreMutation, id)
+			}
+			return err
+		}
+		if err := validateVectorSearchNode(labelToken, propertyKey, dims, n); err != nil {
+			return err
+		}
+		if seen != nil {
+			if _, ok := seen[id]; ok {
+				return fmt.Errorf("%w: filtered vector search returned duplicate node ID %d", storepkg.ErrInvalidStoreMutation, id)
+			}
+			seen[id] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateVectorSearchNode(labelToken uint16, propertyKey string, dims int, n *types.Node) error {
+	if err := storepkg.ValidateNodeWrite(n); err != nil {
+		return err
+	}
+	if !n.HasLabelTokenRaw(labelToken) {
+		return fmt.Errorf("%w: vector search node %d missing label token %d", storepkg.ErrInvalidStoreMutation, n.ID(), labelToken)
+	}
+	vec, ok := n.Float32SlicePropertyCopy(propertyKey)
+	if !ok {
+		return fmt.Errorf("%w: vector search node %d missing vector property %q", storepkg.ErrInvalidStoreMutation, n.ID(), propertyKey)
+	}
+	if len(vec) != dims {
+		return fmt.Errorf("%w: vector search node %d property %q has dimension %d, want %d", storepkg.ErrInvalidStoreMutation, n.ID(), propertyKey, len(vec), dims)
+	}
+	if err := indexpkg.ValidateVectorValues(vec); err != nil {
+		return fmt.Errorf("%w: vector search node %d property %q contains invalid vector value: %v", storepkg.ErrInvalidStoreMutation, n.ID(), propertyKey, err)
+	}
+	return nil
 }

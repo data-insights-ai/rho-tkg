@@ -49,6 +49,76 @@ func TestBadgerStoreCreatePropertyIndex_Duplicate(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreCreatePropertyIndexSkipsNodesWithoutProperty(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	missing := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
+	if err := missing.SetProperty("other", "value"); err != nil {
+		t.Fatalf("SetProperty missing: %v", err)
+	}
+	if err := bs.PutNode(missing); err != nil {
+		t.Fatalf("PutNode missing: %v", err)
+	}
+	otherLabel := types.NewNode(types.NodeID(snowflake.ID(2)), 2, nil)
+	if err := otherLabel.SetProperty("name", "Alice"); err != nil {
+		t.Fatalf("SetProperty other label: %v", err)
+	}
+	if err := bs.PutNode(otherLabel); err != nil {
+		t.Fatalf("PutNode other label: %v", err)
+	}
+
+	if err := bs.CreatePropertyIndex(1, "name"); err != nil {
+		t.Fatalf("CreatePropertyIndex: %v", err)
+	}
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty initial: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("NodesByLabelAndProperty initial returned %d nodes, want 0", len(nodes))
+	}
+
+	inserted := types.NewNode(types.NodeID(snowflake.ID(3)), 1, nil)
+	if err := inserted.SetProperty("name", "Alice"); err != nil {
+		t.Fatalf("SetProperty inserted: %v", err)
+	}
+	if err := bs.PutNode(inserted); err != nil {
+		t.Fatalf("PutNode inserted: %v", err)
+	}
+	nodes, err = bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty after insert: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("NodesByLabelAndProperty after insert returned %d nodes, want 1", len(nodes))
+	}
+	if nodes[0].ID() != inserted.ID() {
+		t.Fatalf("NodesByLabelAndProperty after insert returned %d, want %d", nodes[0].ID(), inserted.ID())
+	}
+}
+
+func TestBadgerStoreCreatePropertyIndexSkipsStaleLabelIndexEntry(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	staleID := types.NodeID(snowflake.ID(404))
+	bs.idxMu.Lock()
+	bs.labelIdx[1] = map[types.NodeID]struct{}{staleID: {}}
+	bs.idxMu.Unlock()
+
+	if err := bs.CreatePropertyIndex(1, "name"); err != nil {
+		t.Fatalf("CreatePropertyIndex with stale label entry: %v", err)
+	}
+	nodes, err := bs.NodesByLabelAndProperty(1, "name", "Alice", QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("NodesByLabelAndProperty returned %d nodes, want 0", len(nodes))
+	}
+}
+
 func TestBadgerStorePropertyIndexCreatePlaceholderGuards(t *testing.T) {
 	t.Parallel()
 

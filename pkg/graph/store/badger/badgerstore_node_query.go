@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/index"
@@ -47,7 +46,9 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 			if len(ids) == 0 {
 				return nil, nil
 			}
-			return bs.fetchNodesWithTemporalFilterPage(storepkg.ToNodeIDs(ids), opts)
+			nids := storepkg.ToNodeIDs(ids)
+			storepkg.SortNodeIDs(nids)
+			return bs.fetchNodesByLabelIDs(token, nids, opts)
 		}
 	}
 
@@ -67,8 +68,8 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 				return nil, nil
 			}
 			nids = uniqueNodeIDs(nids)
-			sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
-			return bs.fetchNodesWithTemporalFilterPage(nids, opts)
+			storepkg.SortNodeIDs(nids)
+			return bs.fetchNodesByLabelIDs(token, nids, opts)
 		}
 	}
 
@@ -83,20 +84,45 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		return nil, nil
 	}
 
-	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
+	storepkg.SortNodeIDs(nids)
 
 	// Temporal pre-filter via Peek (zero allocation for cache hits).
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-	if storepkg.HasTemporalFilter(opts) {
-		return bs.fetchNodesWithTemporalFilterPage(nids, opts)
-	}
-	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
-	if len(nids) == 0 {
+	return bs.fetchNodesByLabelIDs(token, nids, opts)
+}
+
+func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
+	if len(ids) == 0 {
 		return nil, nil
 	}
-
-	return bs.fetchNodesWithTemporalFilter(nids, opts)
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
+	for _, nid := range ids {
+		id := nid.SnowflakeID()
+		n, err := bs.prefetchNode(nid)
+		if err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				continue // orphaned index entry
+			}
+			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
+		}
+		if !n.HasLabelTokenRaw(token) {
+			continue
+		}
+		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
+			continue
+		}
+		nodes = append(nodes, n.DeepCopy())
+		if opts.Limit > 0 && len(nodes) >= opts.Limit {
+			break
+		}
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes, nil
 }
 
 // AllNodes returns all stored nodes, with optional pagination and temporal filtering.
@@ -120,7 +146,7 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, nil
 	}
 
-	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
+	storepkg.SortNodeIDs(nids)
 
 	// Temporal pre-filter via Peek.
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
@@ -151,13 +177,17 @@ func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		}
 	}
 
+	if unique, ok := uniqueNodeIDsPreserveOrderIfDuplicate(ids); ok {
+		return bs.getNodesByIDsWithDuplicates(ids, unique)
+	}
+
 	nodes := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
-		n, err := bs.GetNode(id)
+		n, err := bs.prefetchNode(id)
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
 		}
-		nodes = append(nodes, n)
+		nodes = append(nodes, n.DeepCopy())
 	}
 
 	if len(nodes) == 0 {
@@ -167,20 +197,90 @@ func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return nodes, nil
 }
 
+func (bs *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*types.Node, error) {
+	found := make(map[types.NodeID]*types.Node, len(unique))
+	for _, id := range unique {
+		n, err := bs.prefetchNode(id)
+		if err != nil {
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
+		}
+		found[id] = n
+	}
+
+	nodes := make([]*types.Node, 0, len(ids))
+	for _, id := range ids {
+		n := found[id]
+		if n == nil {
+			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
+		}
+		nodes = append(nodes, n.DeepCopy())
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	storepkg.SortNodesByID(nodes)
+	return nodes, nil
+}
+
+func uniqueNodeIDsPreserveOrderIfDuplicate(ids []types.NodeID) ([]types.NodeID, bool) {
+	if len(ids) < 2 {
+		return nil, false
+	}
+	if len(ids) <= 32 {
+		for i, id := range ids {
+			for _, prev := range ids[:i] {
+				if id == prev {
+					return uniqueNodeIDsPreserveOrder(ids), true
+				}
+			}
+		}
+		return nil, false
+	}
+
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			return uniqueNodeIDsPreserveOrder(ids), true
+		}
+		seen[id] = struct{}{}
+	}
+	return nil, false
+}
+
+func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
+	unique := make([]types.NodeID, 0, len(ids))
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}
+
 // NodesByLabelAndProperty returns nodes with the given label token and property
 // value, applying temporal/depth query options before cursor pagination.
 func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propKey); err != nil {
 		return nil, err
 	}
-	if err := bs.checkOpen(); err != nil {
-		return nil, err
-	}
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
 	}
 
 	// Snapshot matching IDs under RLock, then release before entity I/O.
@@ -189,33 +289,19 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path: snapshot matching IDs.
-		// propertyIndex.entries returns map[snowflake.ID]struct{} (off-limits file);
-		// wrap as types.NodeID at the boundary.
-		matchSet := idx.Lookup(value)
-		if len(matchSet) == 0 {
+		nids := idx.NodeIDs(value)
+		if len(nids) == 0 {
 			bs.idxMu.RUnlock()
 			return nil, nil
 		}
-		nids := make([]types.NodeID, 0, len(matchSet))
-		for id := range matchSet {
-			nids = append(nids, types.NodeID(id))
-		}
 		bs.idxMu.RUnlock()
 
-		sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
+		storepkg.SortNodeIDs(nids)
 
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		if storepkg.HasTemporalFilter(opts) {
-			return bs.fetchNodesWithTemporalFilterPage(nids, opts)
-		}
-		nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
-		if len(nids) == 0 {
-			return nil, nil
-		}
-
-		return bs.fetchNodesWithTemporalFilter(nids, opts)
+		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.
@@ -233,37 +319,37 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	}
 	bs.idxMu.RUnlock()
 
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
-	}
-
 	// Sort label IDs, apply cursor skip, scan in order for property matches.
-	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
-	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0) // apply cursor, not limit yet
+	storepkg.SortNodeIDs(nids)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, nids, opts)
+}
+
+func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 	if len(nids) == 0 {
 		return nil, nil
 	}
 
-	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+	hasTemporal := storepkg.HasTemporalFilter(opts)
 	var result []*types.Node
 	for _, nid := range nids {
-		n, err := bs.GetNode(nid)
+		n, err := bs.prefetchNode(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // orphaned index entry
 			}
 			return nil, err
 		}
-		if v, found := n.GetProperty(propKey); found {
-			if indexpkg.PropertyValueKey(v) == targetKey {
-				if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
-					continue
-				}
-				result = append(result, n)
-				if opts.Limit > 0 && len(result) >= opts.Limit {
-					break
-				}
+		if !n.HasLabelTokenRaw(labelToken) {
+			continue
+		}
+		if valueKey, found := n.IndexablePropertyValueKey(propKey); found && valueKey == targetKey {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
+				continue
+			}
+			result = append(result, n.DeepCopy())
+			if opts.Limit > 0 && len(result) >= opts.Limit {
+				break
 			}
 		}
 	}
@@ -295,16 +381,12 @@ func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if len(nids) == 0 {
 		return nil, nil
 	}
-	sort.Slice(nids, func(i, j int) bool { return nids[i].SnowflakeID() < nids[j].SnowflakeID() })
+	storepkg.SortNodeIDs(nids)
 	if storepkg.HasTemporalFilter(opts) {
-		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
-		nodes, err := bs.fetchNodesWithTemporalFilter(nids, opts)
+		var err error
+		nids, err = bs.filterNodeIDsByTemporalFetch(nids, opts)
 		if err != nil {
 			return nil, err
-		}
-		nids = nids[:0]
-		for _, n := range nodes {
-			nids = append(nids, n.ID())
 		}
 	}
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)

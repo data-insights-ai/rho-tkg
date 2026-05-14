@@ -7,8 +7,6 @@ import (
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
-
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -34,7 +32,16 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 		err  error
 	)
 	_, closeErr := c.runUnderRLock(func() {
-		node, err = c.store.GetNode(id)
+		if err = checkCtx(ctx); err != nil {
+			return
+		}
+		node, err = c.getCurrentNode(id)
+		if err == nil {
+			if ctxErr := checkCtx(ctx); ctxErr != nil {
+				node = nil
+				err = ctxErr
+			}
+		}
 	})
 	if closeErr != nil {
 		return nil, closeErr
@@ -53,15 +60,21 @@ func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error 
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
-	var err error
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	var (
+		cascadeRelIDs []types.RelID
+		err           error
+	)
 	ep, closeErr := c.runUnderRLock(func() {
-		err = c.deleteNodeInternal(ctx, id)
+		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id)
 	})
 	if closeErr != nil {
 		return closeErr
 	}
-	if err == nil {
-		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeDelete, EntityID: types.EntityID(id), Timestamp: c.now(), Priority: eventspkg.PriorityCritical})
+	if err == nil && ep != nil {
+		dispatchEvent(ep, cascadeDeleteEvents(id, cascadeRelIDs, c.now())...)
 	}
 	return err
 }
@@ -74,12 +87,12 @@ func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error 
 //	Phase A (node lock only): confirm node exists, read adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read node + adjacency, verify adjacency unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
+func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types.RelID, error) {
 	if err := checkCtx(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	if err := storepkg.ValidateNodeID(id); err != nil {
-		return err
+		return nil, err
 	}
 
 	const maxRetries = 10
@@ -100,7 +113,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				return
 			}
 			if !c.nativeAdjacency {
-				if _, err := c.store.GetNode(id); err != nil {
+				if _, err := c.getCurrentNode(id); err != nil {
 					phaseAErr = err
 					return
 				}
@@ -115,10 +128,20 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				phaseAErr = err
 				return
 			}
+			if !c.storeRowsTrust {
+				if err := c.validateOutgoingRelationshipRows(id, 0, outRels); err != nil {
+					phaseAErr = err
+					return
+				}
+				if err := c.validateIncomingRelationshipRows(id, 0, inRels); err != nil {
+					phaseAErr = err
+					return
+				}
+			}
 			allIDs = collectDeleteIDs(id.SnowflakeID(), outRels, inRels)
 		}()
 		if phaseAErr != nil {
-			return phaseAErr
+			return nil, phaseAErr
 		}
 
 		// Phase B: lock ALL entities (node + rels), re-read node, and re-verify adjacency.
@@ -128,6 +151,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 			phaseBErr error
 			retry     bool
 			done      bool
+			relIDs    []types.RelID
 		)
 		func() {
 			if len(allIDs) == 1 {
@@ -138,7 +162,11 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				defer c.entityLocks.UnlockMany(allIDs)
 			}
 
-			current, err := c.store.GetNode(id)
+			if err := checkCtx(ctx); err != nil {
+				phaseBErr = err
+				return
+			}
+			current, err := c.getCurrentNode(id)
 			if err != nil {
 				phaseBErr = err
 				return
@@ -153,6 +181,20 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				phaseBErr = err
 				return
 			}
+			if !c.storeRowsTrust {
+				if err := c.validateOutgoingRelationshipRows(id, 0, outRels2); err != nil {
+					phaseBErr = err
+					return
+				}
+				if err := c.validateIncomingRelationshipRows(id, 0, inRels2); err != nil {
+					phaseBErr = err
+					return
+				}
+			}
+			if err := checkCtx(ctx); err != nil {
+				phaseBErr = err
+				return
+			}
 
 			allIDs2 := collectDeleteIDs(id.SnowflakeID(), outRels2, inRels2)
 			if !sameIDSet(allIDs, allIDs2) {
@@ -161,7 +203,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 				return
 			}
 
-			phaseBErr = c.deleteNodeLocked(id, current, outRels2, inRels2)
+			relIDs, phaseBErr = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2)
 			done = true
 		}()
 		if retry {
@@ -169,16 +211,16 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) error {
 			continue
 		}
 		if done {
-			return phaseBErr
+			return relIDs, phaseBErr
 		}
 		// phaseB returned without committing or retrying — propagate the
 		// error.
 		if phaseBErr != nil {
-			return phaseBErr
+			return nil, phaseBErr
 		}
 	}
 
-	return fmt.Errorf("graph: delete node %d: adjacency changed after %d retries", id, maxRetries)
+	return nil, fmt.Errorf("graph: delete node %d: adjacency changed after %d retries", id, maxRetries)
 }
 
 // collectDeleteIDs builds a deduplicated slice of all entity IDs involved in a
@@ -235,27 +277,40 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // Builds tombstones for all connected rels and the node, then issues a single
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
-func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) error {
-	now := c.now()
+func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) ([]types.RelID, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+	if err := c.checkpointDirtyRegistriesBeforeMutation("delete node"); err != nil {
+		return nil, err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
+
+	now := c.deleteInstantForNodeCascade(current, outRels, inRels)
 
 	// Build relationship tombstones (dedup self-loops).
 	var relTombstones []storepkg.RelTombstone
+	var cascadeRelIDs []types.RelID
 	if len(outRels) != 0 || len(inRels) != 0 {
 		seen := make(map[snowflake.ID]struct{}, len(outRels)+len(inRels))
 		allRels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
 		allRels = append(allRels, outRels...)
 		allRels = append(allRels, inRels...)
 		relTombstones = make([]storepkg.RelTombstone, 0, len(allRels))
+		cascadeRelIDs = make([]types.RelID, 0, len(allRels))
 		for _, r := range allRels {
 			rid := r.ID().SnowflakeID()
 			if _, ok := seen[rid]; ok {
 				continue // dedup self-loops
 			}
 			seen[rid] = struct{}{}
-			tmR := r.Temporal()
+			tombstone := r.DeepCopy()
+			tmR := tombstone.Temporal()
 			if tmR == nil {
 				tmR = &types.TemporalMetadata{}
-				r.SetTemporal(tmR)
+				tombstone.SetTemporal(tmR)
 			}
 			tmR.DeletedAt = now
 			tmR.ValidTo = now
@@ -266,8 +321,9 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 			relTombstones = append(relTombstones, storepkg.RelTombstone{
 				ID:          types.RelID(rid),
 				PrevVersion: r.Version(),
-				Tombstone:   r,
+				Tombstone:   tombstone,
 			})
+			cascadeRelIDs = append(cascadeRelIDs, types.RelID(rid))
 		}
 	}
 
@@ -285,9 +341,15 @@ func (c *Core) deleteNodeLocked(id types.NodeID, current *types.Node, outRels, i
 	tmN.TxTo = now
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	if err := c.store.DeleteNodeWithHistory(id, current.Version(), current, relTombstones); err != nil {
-		return err
+		return nil, err
 	}
 	c.opNodeDeletes.Add(1)
-	return nil
+	if len(cascadeRelIDs) != 0 {
+		c.opRelDeletes.Add(int64(len(cascadeRelIDs)))
+	}
+	return cascadeRelIDs, nil
 }

@@ -3,9 +3,11 @@ package types
 import (
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 )
 
 // ErrReservedPrefix is returned when a property key uses the reserved "tkg_" prefix.
@@ -73,9 +75,10 @@ type PropertySlice []Property
 // OwnedPropertySlice is an already validated, canonical property slice whose
 // ownership can be transferred into an entity without another defensive copy.
 // The unexported field prevents callers from fabricating one around unchecked
-// data; use NewOwnedPropertySlice to construct it.
+// data; use NewOwnedPropertySlice to construct it. It is consumed by
+// SetOwnedProperties so accidental reuse cannot alias two entities.
 type OwnedPropertySlice struct {
-	ps PropertySlice
+	ps *PropertySlice
 }
 
 // Set inserts or overwrites the property at key.
@@ -131,7 +134,54 @@ func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
 	if err := ValidatePropertyValue(copied); err != nil {
 		return nil, fmt.Errorf("%w: %q after deep copy (got %T)", err, key, copied)
 	}
+	if hasRegisteredPropertyStructTypes() && PropertyValueHashNeedsRecover(value) {
+		if err := validateCustomCopyShape(key, value, copied, 0); err != nil {
+			return nil, err
+		}
+	}
 	return copied, nil
+}
+
+func validateCustomCopyShape(key string, original, copied any, depth int) error {
+	if depth > maxPropertyDepth {
+		return nil
+	}
+	origType, origPointer, origOK := RegisteredPropertyStructWireType(original)
+	if origOK {
+		copiedType, copiedPointer, copiedOK := RegisteredPropertyStructWireType(copied)
+		if !copiedOK || copiedType != origType || copiedPointer != origPointer {
+			return fmt.Errorf("%w: %q deep copy changed custom property %s pointer=%t to %T", ErrUnsupportedValueType, key, origType, origPointer, copied)
+		}
+		return nil
+	}
+
+	switch orig := original.(type) {
+	case []any:
+		cp, ok := copied.([]any)
+		if !ok || len(cp) != len(orig) {
+			return fmt.Errorf("%w: %q deep copy changed []any shape from len %d to %T", ErrUnsupportedValueType, key, len(orig), copied)
+		}
+		for i := range orig {
+			if err := validateCustomCopyShape(key, orig[i], cp[i], depth+1); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		cp, ok := copied.(map[string]any)
+		if !ok || len(cp) != len(orig) {
+			return fmt.Errorf("%w: %q deep copy changed map[string]any shape from len %d to %T", ErrUnsupportedValueType, key, len(orig), copied)
+		}
+		for k, origValue := range orig {
+			copiedValue, ok := cp[k]
+			if !ok {
+				return fmt.Errorf("%w: %q deep copy dropped map key %q", ErrUnsupportedValueType, key, k)
+			}
+			if err := validateCustomCopyShape(key, origValue, copiedValue, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func isScalarPropertyValue(v any) bool {
@@ -148,15 +198,351 @@ func isScalarPropertyValue(v any) bool {
 }
 
 // Get returns the value for key and whether it was found.
+// Reference-type values are deep-copied so callers cannot mutate the
+// PropertySlice through the returned value.
 // Uses binary search on the sorted slice.
 func (ps PropertySlice) Get(key string) (any, bool) {
 	i := sort.Search(len(ps), func(i int) bool {
 		return ps[i].Key >= key
 	})
 	if i < len(ps) && ps[i].Key == key {
-		return ps[i].Value, true
+		return deepCopyValue(ps[i].Value, 0), true
 	}
 	return nil, false
+}
+
+func (ps PropertySlice) propertyValueEqual(key string, expected any) (bool, bool) {
+	i := sort.Search(len(ps), func(i int) bool {
+		return ps[i].Key >= key
+	})
+	if i >= len(ps) || ps[i].Key != key {
+		return false, false
+	}
+	return true, PropertyValueEqual(ps[i].Value, expected)
+}
+
+func (ps PropertySlice) indexableValueKey(key string) (string, bool) {
+	i := sort.Search(len(ps), func(i int) bool {
+		return ps[i].Key >= key
+	})
+	if i < len(ps) && ps[i].Key == key {
+		return IndexablePropertyValueKey(ps[i].Value), true
+	}
+	return "", false
+}
+
+func (ps PropertySlice) forEachIndexableValueKey(fn func(propertyKey, valueKey string) bool) {
+	if fn == nil {
+		return
+	}
+	for _, p := range ps {
+		valueKey := IndexablePropertyValueKey(p.Value)
+		if valueKey == "" {
+			continue
+		}
+		if !fn(p.Key, valueKey) {
+			return
+		}
+	}
+}
+
+func (ps PropertySlice) float32SliceCopy(key string) ([]float32, bool) {
+	i := sort.Search(len(ps), func(i int) bool {
+		return ps[i].Key >= key
+	})
+	if i >= len(ps) || ps[i].Key != key {
+		return nil, false
+	}
+	switch v := ps[i].Value.(type) {
+	case []float32:
+		if v == nil {
+			return nil, true
+		}
+		out := make([]float32, len(v))
+		copy(out, v)
+		return out, true
+	case []any:
+		if v == nil {
+			return nil, true
+		}
+		out := make([]float32, len(v))
+		for i, elem := range v {
+			switch f := elem.(type) {
+			case float32:
+				out[i] = f
+			case float64:
+				out[i] = float32(f)
+			default:
+				return nil, false
+			}
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+// IndexablePropertyValueKey computes a canonical key for property values that
+// can participate in property indexes and indexed equality queries. Scalar
+// float keys follow PropertyValueEqual semantics for signed zero and NaN while
+// preserving concrete float32/float64 type separation. It returns an empty
+// string for slices, maps, structs, and other non-scalar values.
+func IndexablePropertyValueKey(v any) string {
+	switch val := v.(type) {
+	case string:
+		return "s:" + val
+	case int:
+		return "i:" + strconv.FormatInt(int64(val), 10)
+	case int8:
+		return "i8:" + strconv.FormatInt(int64(val), 10)
+	case int16:
+		return "i16:" + strconv.FormatInt(int64(val), 10)
+	case int32:
+		return "i32:" + strconv.FormatInt(int64(val), 10)
+	case int64:
+		return "i64:" + strconv.FormatInt(val, 10)
+	case uint:
+		return "u:" + strconv.FormatUint(uint64(val), 10)
+	case uint8:
+		return "u8:" + strconv.FormatUint(uint64(val), 10)
+	case uint16:
+		return "u16:" + strconv.FormatUint(uint64(val), 10)
+	case uint32:
+		return "u32:" + strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return "u64:" + strconv.FormatUint(val, 10)
+	case float32:
+		if val == 0 {
+			return "f32:0"
+		}
+		if math.IsNaN(float64(val)) {
+			return "f32:nan"
+		}
+		return "f32:" + strconv.FormatFloat(float64(val), 'g', -1, 32)
+	case float64:
+		if val == 0 {
+			return "f64:0"
+		}
+		if math.IsNaN(val) {
+			return "f64:nan"
+		}
+		return "f64:" + strconv.FormatFloat(val, 'g', -1, 64)
+	case bool:
+		if val {
+			return "b:true"
+		}
+		return "b:false"
+	default:
+		return ""
+	}
+}
+
+// PropertyValueEqual compares two property values with the exact equality
+// semantics used by graph compare-and-set operations. Concrete types must
+// match; NaN float32/float64 values compare equal, including when nested in
+// supported slices, maps, arrays, structs, pointers, or interfaces.
+func PropertyValueEqual(cur, expected any) bool {
+	return propertyValueEqual(cur, expected, nil)
+}
+
+func propertyValueEqual(cur, expected any, seen map[propertyValueVisit]struct{}) bool {
+	if cur == nil || expected == nil {
+		return cur == nil && expected == nil
+	}
+	if reflect.TypeOf(cur) != reflect.TypeOf(expected) {
+		return false
+	}
+
+	switch curVal := cur.(type) {
+	case float32:
+		return float32PropertyValueEqual(curVal, expected.(float32))
+	case float64:
+		return float64PropertyValueEqual(curVal, expected.(float64))
+	case []float32:
+		expectedVal := expected.([]float32)
+		if (curVal == nil) != (expectedVal == nil) || len(curVal) != len(expectedVal) {
+			return false
+		}
+		for i := range curVal {
+			if !float32PropertyValueEqual(curVal[i], expectedVal[i]) {
+				return false
+			}
+		}
+		return true
+	case []float64:
+		expectedVal := expected.([]float64)
+		if (curVal == nil) != (expectedVal == nil) || len(curVal) != len(expectedVal) {
+			return false
+		}
+		for i := range curVal {
+			if !float64PropertyValueEqual(curVal[i], expectedVal[i]) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		expectedVal := expected.([]any)
+		if (curVal == nil) != (expectedVal == nil) || len(curVal) != len(expectedVal) {
+			return false
+		}
+		var alreadySeen bool
+		seen, alreadySeen = markPropertyValueVisit(reflect.ValueOf(curVal), reflect.ValueOf(expectedVal), seen)
+		if alreadySeen {
+			return true
+		}
+		for i := range curVal {
+			if !propertyValueEqual(curVal[i], expectedVal[i], seen) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		expectedVal := expected.(map[string]any)
+		if (curVal == nil) != (expectedVal == nil) || len(curVal) != len(expectedVal) {
+			return false
+		}
+		var alreadySeen bool
+		seen, alreadySeen = markPropertyValueVisit(reflect.ValueOf(curVal), reflect.ValueOf(expectedVal), seen)
+		if alreadySeen {
+			return true
+		}
+		for k, curElem := range curVal {
+			expectedElem, ok := expectedVal[k]
+			if !ok || !propertyValueEqual(curElem, expectedElem, seen) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflectPropertyValueEqualSeen(reflect.ValueOf(cur), reflect.ValueOf(expected), seen)
+	}
+}
+
+type propertyValueVisit struct {
+	typ      reflect.Type
+	cur      uintptr
+	expected uintptr
+}
+
+func reflectPropertyValueEqualSeen(cur, expected reflect.Value, seen map[propertyValueVisit]struct{}) bool {
+	if !cur.IsValid() || !expected.IsValid() {
+		return !cur.IsValid() && !expected.IsValid()
+	}
+	if cur.Type() != expected.Type() {
+		return false
+	}
+
+	switch cur.Kind() {
+	case reflect.Bool:
+		return cur.Bool() == expected.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return cur.Int() == expected.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return cur.Uint() == expected.Uint()
+	case reflect.Float32:
+		return float32PropertyValueEqual(float32(cur.Float()), float32(expected.Float()))
+	case reflect.Float64:
+		return float64PropertyValueEqual(cur.Float(), expected.Float())
+	case reflect.String:
+		return cur.String() == expected.String()
+	case reflect.Pointer, reflect.Interface:
+		if cur.IsNil() || expected.IsNil() {
+			return cur.IsNil() && expected.IsNil()
+		}
+		if cur.Kind() == reflect.Pointer {
+			var alreadySeen bool
+			seen, alreadySeen = markPropertyValueVisit(cur, expected, seen)
+			if alreadySeen {
+				return true
+			}
+		}
+		return reflectPropertyValueEqualSeen(cur.Elem(), expected.Elem(), seen)
+	case reflect.Struct:
+		for i := range cur.NumField() {
+			if !reflectPropertyValueEqualSeen(cur.Field(i), expected.Field(i), seen) {
+				return false
+			}
+		}
+		return true
+	case reflect.Slice, reflect.Array:
+		if cur.Kind() == reflect.Slice && (cur.IsNil() || expected.IsNil()) {
+			return cur.IsNil() && expected.IsNil()
+		}
+		if cur.Len() != expected.Len() {
+			return false
+		}
+		if cur.Kind() == reflect.Slice {
+			var alreadySeen bool
+			seen, alreadySeen = markPropertyValueVisit(cur, expected, seen)
+			if alreadySeen {
+				return true
+			}
+		}
+		for i := range cur.Len() {
+			if !reflectPropertyValueEqualSeen(cur.Index(i), expected.Index(i), seen) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if cur.IsNil() || expected.IsNil() {
+			return cur.IsNil() && expected.IsNil()
+		}
+		if cur.Len() != expected.Len() {
+			return false
+		}
+		var alreadySeen bool
+		seen, alreadySeen = markPropertyValueVisit(cur, expected, seen)
+		if alreadySeen {
+			return true
+		}
+		iter := cur.MapRange()
+		for iter.Next() {
+			expectedValue := expected.MapIndex(iter.Key())
+			if !expectedValue.IsValid() || !reflectPropertyValueEqualSeen(iter.Value(), expectedValue, seen) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func markPropertyValueVisit(cur, expected reflect.Value, seen map[propertyValueVisit]struct{}) (map[propertyValueVisit]struct{}, bool) {
+	if cur.Type() != expected.Type() {
+		return seen, false
+	}
+	switch cur.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice:
+		if cur.IsNil() || expected.IsNil() {
+			return seen, false
+		}
+	default:
+		return seen, false
+	}
+
+	visit := propertyValueVisit{
+		typ:      cur.Type(),
+		cur:      cur.Pointer(),
+		expected: expected.Pointer(),
+	}
+	if _, ok := seen[visit]; ok {
+		return seen, true
+	}
+	if seen == nil {
+		seen = make(map[propertyValueVisit]struct{}, 4)
+	}
+	seen[visit] = struct{}{}
+	return seen, false
+}
+
+func float32PropertyValueEqual(a, b float32) bool {
+	return a == b || (math.IsNaN(float64(a)) && math.IsNaN(float64(b)))
+}
+
+func float64PropertyValueEqual(a, b float64) bool {
+	return a == b || (math.IsNaN(a) && math.IsNaN(b))
 }
 
 // DeepCopy returns a copy of the slice (independent from the original).
@@ -317,15 +703,6 @@ func deepCopyValue(v any, depth int) any {
 		return v // safety fallback: return as-is
 	}
 
-	// Custom registered types own their own deep-copy semantics — the
-	// registry enforces DeepCopier at registration time, so any registered
-	// struct/pointer reaching this path delegates to its DeepCopyValue.
-	// Probed before the type switch so the slice/map fast paths don't get
-	// invoked with an arbitrary user struct.
-	if dc, ok := v.(DeepCopier); ok {
-		return preserveDeepCopyPointerShape(v, dc.DeepCopyValue())
-	}
-
 	switch val := v.(type) {
 	// Scalar types — immutable, return as-is without reflect overhead.
 	case bool, string,
@@ -336,34 +713,58 @@ func deepCopyValue(v any, depth int) any {
 
 	// Common slice types.
 	case []string:
+		if val == nil {
+			return val
+		}
 		cp := make([]string, len(val))
 		copy(cp, val)
 		return cp
 	case []int:
+		if val == nil {
+			return val
+		}
 		cp := make([]int, len(val))
 		copy(cp, val)
 		return cp
 	case []int64:
+		if val == nil {
+			return val
+		}
 		cp := make([]int64, len(val))
 		copy(cp, val)
 		return cp
 	case []float32:
+		if val == nil {
+			return val
+		}
 		cp := make([]float32, len(val))
 		copy(cp, val)
 		return cp
 	case []float64:
+		if val == nil {
+			return val
+		}
 		cp := make([]float64, len(val))
 		copy(cp, val)
 		return cp
 	case []byte:
+		if val == nil {
+			return val
+		}
 		cp := make([]byte, len(val))
 		copy(cp, val)
 		return cp
 	case []bool:
+		if val == nil {
+			return val
+		}
 		cp := make([]bool, len(val))
 		copy(cp, val)
 		return cp
 	case []any:
+		if val == nil {
+			return val
+		}
 		cp := make([]any, len(val))
 		for i, elem := range val {
 			cp[i] = deepCopyValue(elem, depth+1)
@@ -372,12 +773,18 @@ func deepCopyValue(v any, depth int) any {
 
 	// Common map types.
 	case map[string]any:
+		if val == nil {
+			return val
+		}
 		cp := make(map[string]any, len(val))
 		for k, elem := range val {
 			cp[k] = deepCopyValue(elem, depth+1)
 		}
 		return cp
 	case map[string]string:
+		if val == nil {
+			return val
+		}
 		cp := make(map[string]string, len(val))
 		for k, elem := range val {
 			cp[k] = elem
@@ -385,9 +792,30 @@ func deepCopyValue(v any, depth int) any {
 		return cp
 
 	default:
+		// Custom registered types own their own deep-copy semantics. Keep
+		// this behind the built-in fast paths and the registration check so
+		// manually fabricated invalid PropertySlice values cannot invoke
+		// arbitrary unregistered user code through no-error accessors.
+		if dc, ok := v.(DeepCopier); ok && isRegisteredPropertyValue(v) {
+			return preserveDeepCopyPointerShape(v, dc.DeepCopyValue())
+		}
 		// Reflect fallback for any other slice or map type.
 		return reflectCopyValue(v, depth)
 	}
+}
+
+func isRegisteredPropertyValue(v any) bool {
+	if v == nil {
+		return false
+	}
+	return isRegisteredPropertyStructType(reflect.ValueOf(v))
+}
+
+func hasRegisteredPropertyStructTypes() bool {
+	propertyStructRegistryMu.RLock()
+	hasTypes := len(propertyStructRegistry) != 0
+	propertyStructRegistryMu.RUnlock()
+	return hasTypes
 }
 
 func preserveDeepCopyPointerShape(original, copied any) any {
@@ -437,7 +865,12 @@ func reflectCopyValue(v any, depth int) any {
 		}
 		cp := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
 		for i := range rv.Len() {
-			cp.Index(i).Set(reflect.ValueOf(deepCopyValue(rv.Index(i).Interface(), depth+1)))
+			elem := deepCopyValue(rv.Index(i).Interface(), depth+1)
+			if elemValue, ok := reflectValueForType(elem, cp.Index(i).Type()); ok {
+				cp.Index(i).Set(elemValue)
+			} else {
+				cp.Index(i).Set(rv.Index(i))
+			}
 		}
 		return cp.Interface()
 	case reflect.Map:
@@ -448,18 +881,30 @@ func reflectCopyValue(v any, depth int) any {
 		iter := rv.MapRange()
 		for iter.Next() {
 			elem := deepCopyValue(iter.Value().Interface(), depth+1)
-			if elem == nil {
-				// reflect.ValueOf(nil) is a zero Value — SetMapIndex with zero
-				// Value deletes the key. Use the typed zero instead.
-				cp.SetMapIndex(iter.Key(), reflect.Zero(rv.Type().Elem()))
+			if elemValue, ok := reflectValueForType(elem, rv.Type().Elem()); ok {
+				cp.SetMapIndex(iter.Key(), elemValue)
 			} else {
-				cp.SetMapIndex(iter.Key(), reflect.ValueOf(elem))
+				cp.SetMapIndex(iter.Key(), iter.Value())
 			}
 		}
 		return cp.Interface()
 	default:
 		return v
 	}
+}
+
+func reflectValueForType(value any, target reflect.Type) (reflect.Value, bool) {
+	if value == nil {
+		return reflect.Zero(target), true
+	}
+	rv := reflect.ValueOf(value)
+	if rv.Type().AssignableTo(target) {
+		return rv, true
+	}
+	if rv.Type().ConvertibleTo(target) {
+		return rv.Convert(target), true
+	}
+	return reflect.Value{}, false
 }
 
 // Delete removes the property at key.
@@ -478,7 +923,9 @@ func (ps *PropertySlice) Delete(key string) (bool, error) {
 	if i >= len(*ps) || (*ps)[i].Key != key {
 		return false, nil
 	}
-	*ps = append((*ps)[:i], (*ps)[i+1:]...)
+	copy((*ps)[i:], (*ps)[i+1:])
+	(*ps)[len(*ps)-1] = Property{}
+	*ps = (*ps)[:len(*ps)-1]
 	return true, nil
 }
 
@@ -504,30 +951,29 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 		return nil, nil
 	}
 
-	out := make(PropertySlice, len(ps))
 	sortedUnique := true
 	for i, p := range ps {
 		if IsShadowKey(p.Key) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
 		}
-		if err := ValidatePropertyValue(p.Value); err != nil {
-			return nil, fmt.Errorf("%w: %q (got %T)", err, p.Key, p.Value)
-		}
-		copied, err := copyValidatedPropertyValue(p.Key, p.Value)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = Property{Key: p.Key, Value: copied}
 		if i > 0 && p.Key <= ps[i-1].Key {
 			sortedUnique = false
 		}
 	}
 	if sortedUnique {
+		out := make(PropertySlice, len(ps))
+		for i, p := range ps {
+			copied, err := canonicalPropertyValue(p.Key, p.Value)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = Property{Key: p.Key, Value: copied}
+		}
 		return out, nil
 	}
 
-	latest := make(map[string]any, len(out))
-	for _, p := range out {
+	latest := make(map[string]any, len(ps))
+	for _, p := range ps {
 		latest[p.Key] = p.Value
 	}
 	keys := make([]string, 0, len(latest))
@@ -536,26 +982,22 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 	}
 	slices.Sort(keys)
 
-	out = make(PropertySlice, len(keys))
+	out := make(PropertySlice, len(keys))
 	for i, key := range keys {
-		out[i] = Property{Key: key, Value: latest[key]}
+		copied, err := canonicalPropertyValue(key, latest[key])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = Property{Key: key, Value: copied}
 	}
 	return out, nil
 }
 
-func validateCanonicalPropertySlice(ps PropertySlice) error {
-	for i, p := range ps {
-		if IsShadowKey(p.Key) {
-			return fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
-		}
-		if err := ValidatePropertyValue(p.Value); err != nil {
-			return fmt.Errorf("%w: %q (got %T)", err, p.Key, p.Value)
-		}
-		if i > 0 && p.Key <= ps[i-1].Key {
-			return fmt.Errorf("%w: non-canonical property order at %q", ErrUnsupportedValueType, p.Key)
-		}
+func canonicalPropertyValue(key string, value any) (any, error) {
+	if err := ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("%w: %q (got %T)", err, key, value)
 	}
-	return nil
+	return copyValidatedPropertyValue(key, value)
 }
 
 // NewPropertySlice creates a PropertySlice from a map in O(N log N) time.
@@ -601,5 +1043,5 @@ func NewOwnedPropertySlice(m map[string]any) (OwnedPropertySlice, error) {
 	if err != nil {
 		return OwnedPropertySlice{}, err
 	}
-	return OwnedPropertySlice{ps: ps}, nil
+	return OwnedPropertySlice{ps: &ps}, nil
 }

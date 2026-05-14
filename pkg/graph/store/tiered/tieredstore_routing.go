@@ -77,7 +77,6 @@ func (ts *Store) idOutsideHotShardWindow(id snowflake.ID) bool {
 // later age to cold — the rel never moves, so the lookup must follow it.
 //
 // The caller MUST invoke the returned checkin function exactly once.
-// refShard checkin is a no-op; event shard checkin decrements activeReqs.
 func (ts *Store) shardForRelIDChecked(id types.RelID) (store *BadgerStore, checkin func(), err error) {
 	store, checkin, _, err = ts.shardForRelIDCheckedWithArchive(id)
 	return store, checkin, err
@@ -88,9 +87,14 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 		return nil, nil, false, err
 	}
 	raw := id.SnowflakeID()
-	if relationshipRowExists(ts.refShard, id) {
-		return ts.refShard, func() {}, false, nil
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, nil, false, err
 	}
+	if relationshipRowExists(ref, id) {
+		return ref, refCheckin, false, nil
+	}
+	refCheckin()
 
 	// Probe refArchive: ArchiveNode migrates a reference node AND its
 	// rels to refArchive, so archived rels live there after archive.
@@ -108,12 +112,12 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	}
 
 	candidateEntry := ts.timestampToEventShardEntry(raw)
-	candidate, err := candidateEntry.checkoutStore(ts)
+	candidate, candidateRelease, err := candidateEntry.checkoutStoreForRead(ts)
 	if err != nil {
 		return nil, nil, false, err
 	}
 	if relationshipRowExists(candidate, id) {
-		return candidate, func() { candidateEntry.checkinStore() }, false, nil
+		return candidate, candidateRelease, false, nil
 	}
 
 	// Probe every other event shard (excluding the candidate we already
@@ -130,32 +134,68 @@ func (ts *Store) shardForRelIDCheckedWithArchive(id types.RelID) (store *BadgerS
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		s, err := es.checkoutStore(ts)
+		s, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
-			candidateEntry.checkinStore()
+			candidateRelease()
 			return nil, nil, false, err
 		}
 		if relationshipRowExists(s, id) {
-			candidateEntry.checkinStore()
-			return s, func() { es.checkinStore() }, false, nil
+			candidateRelease()
+			return s, release, false, nil
 		}
-		es.checkinStore()
+		release()
 	}
 
 	// Not found anywhere — return the timestamp candidate so downstream reads
 	// surface a typed ErrRelNotFound. The caller still owns its checkin.
-	return candidate, func() { candidateEntry.checkinStore() }, false, nil
+	return candidate, candidateRelease, false, nil
 }
 
+// relationshipRowExists is conservative for placement/collision checks: a
+// corrupt but indexed row still occupies the relationship ID until the caller
+// reads the row and surfaces the decode error.
 func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
+	_, found, err := relationshipRow(store, id)
+	return found || err != nil
+}
+
+// relationshipRowLive is for caller-visible read paths where corruption must
+// be returned instead of being treated as ordinary liveness.
+func relationshipRowLive(store *BadgerStore, id types.RelID) (bool, error) {
+	_, found, err := relationshipRow(store, id)
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+func relationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
 	if store == nil || !store.HasRelID(id.SnowflakeID()) {
-		return false
+		return nil, false, nil
 	}
 	// HasRelID is an index-derived fast path; verify the entity row.
-	if _, err := store.GetRelationship(id); err != nil {
-		return !errors.Is(err, ErrRelNotFound)
+	rel, err := store.GetRelationship(id)
+	if err != nil {
+		if errors.Is(err, ErrRelNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
 	}
-	return true
+	return rel, true, nil
+}
+
+func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
+	if store == nil || !store.HasNodeID(id.SnowflakeID()) {
+		return false, nil
+	}
+	_, err := store.GetNode(id)
+	if err != nil {
+		if errors.Is(err, ErrNodeNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // shardForNodeIDChecked resolves the storage shard for a node ID and increments
@@ -166,9 +206,8 @@ func relationshipRowExists(store *BadgerStore, id types.RelID) bool {
 // (typically via defer checkin()). Failing to call checkin() leaks activeReqs,
 // which prevents idle cold shards from ever being closed.
 //
-// refShard and refArchive are never subject to idle-close, so their checkin is
-// a no-op. Only event shards (especially cold tier) need the checkout/checkin
-// protocol.
+// refShard and refArchive are not subject to idle-close, but Close does close
+// them, so returned reference stores are pinned just like event shards.
 func (ts *Store) shardForNodeIDChecked(id types.NodeID) (store *BadgerStore, checkin func(), err error) {
 	store, checkin, _, err = ts.shardForNodeIDCheckedWithArchive(id)
 	return store, checkin, err
@@ -179,9 +218,14 @@ func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *Badge
 		return nil, nil, false, err
 	}
 	raw := id.SnowflakeID()
-	if ts.refShard.HasNodeID(raw) {
-		return ts.refShard, func() {}, false, nil // refShard: never closed, no-op checkin
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, nil, false, err
 	}
+	if ref.HasNodeID(raw) {
+		return ref, refCheckin, false, nil
+	}
+	refCheckin()
 
 	// Archive probe — pin via checkoutArchive so a concurrent Close
 	// cannot tear down the underlying DB while the caller is using
@@ -201,28 +245,30 @@ func (ts *Store) shardForNodeIDCheckedWithArchive(id types.NodeID) (store *Badge
 		archiveCheckin()
 	}
 
-	// Event shard: resolve via timestamp, then checkout to prevent idle-close race.
+	// Event shard: resolve via timestamp, then checkout to prevent idle-close
+	// races. Cold shards opened only for this operation close again on checkin.
 	es := ts.timestampToEventShardEntry(raw)
-	store, err = es.checkoutStore(ts)
+	store, checkin, err = es.checkoutStoreForRead(ts)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return store, func() { es.checkinStore() }, false, nil
+	return store, checkin, false, nil
 }
 
 // eventShardSnapshot returns a snapshot of event shards filtered by depth.
-// Caller must hold at least ts.mu.RLock. Returns []*EventShard so callers
-// can use es.getStore(ts) for lazy-open of cold shards.
+// Caller must hold at least ts.mu.RLock. Callers that dereference returned
+// shards must pin each store with checkoutStore/checkinStore.
 func (ts *Store) eventShardSnapshot(depth ShardDepth) []*EventShard {
 	var shards []*EventShard
 	for _, es := range ts.eventShards {
 		switch depth {
 		case DepthHot:
-			if es.tier == TierHot {
+			if es.currentTier() == TierHot {
 				shards = append(shards, es)
 			}
 		case DepthWarm:
-			if es.tier == TierHot || es.tier == TierWarm {
+			tier := es.currentTier()
+			if tier == TierHot || tier == TierWarm {
 				shards = append(shards, es)
 			}
 		default: // DepthAll

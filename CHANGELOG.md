@@ -6,6 +6,632 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed - Index create rollback cleanup (2026-05-14)
+
+- **Graph-level index creates now remove partial indexes after backend failure.**
+  `Index.CreateProperty`, `CreateTemporal`, `CreateHighFrequency`, and
+  `CreateVector` no longer leave a stale index behind after a failed create,
+  including the new-label path where the label token is rolled back and later
+  reused. If cleanup itself fails after a new-label allocation, the label token
+  is retained and the combined error is returned so the stale index cannot be
+  inherited by a different label. Duplicate/conflict create errors preserve the
+  existing index instead of treating it as cleanup state.
+
+### Fixed - Relationship create rollback cleanup (2026-05-14)
+
+- **Relationship create paths now remove partial rows after backend failure.**
+  `Rels.Add`, `AddByIDWithContext`, `AddByIDIfAbsentWithContext`,
+  `Import`, and batch relationship creates delete a row that may have been
+  installed before a backend returned an error, then roll back newly allocated
+  relationship-type tokens. If row cleanup itself fails after a new reltype was
+  allocated, the token is retained and the combined error is returned so the
+  stale row cannot be inherited by a later relationship type; transaction
+  callers also receive the live partial relationship so rollback can delete it.
+
+### Fixed - Node create rollback cleanup (2026-05-14)
+
+- **Node create and import paths now remove partial rows after backend
+  failure.** `Nodes.Add`, `Import`, and batch node creates delete node rows
+  that may have been installed before a backend returned an error, then roll
+  back newly allocated label tokens. If row cleanup itself fails after a new
+  label allocation, the label token is retained and the combined error is
+  returned so the stale row cannot be inherited by a later label; transaction
+  callers also receive the live partial node so rollback can delete it.
+- **Create operation counters now count committed rows even when a trailing
+  registry checkpoint fails.** Standalone and transaction create paths now
+  update `NodesAdded`/`RelsAdded` at the point a row is known to be live, instead
+  of relying on transaction-only compensating increments.
+- **Batch create result counters now distinguish live rows from errored
+  operations.** `BatchResult.Created` and graph create stats now include rows
+  that were actually installed even when the operation also reports a trailing
+  checkpoint or cleanup error through `Failed`/`Errors`.
+- **Standalone create events now follow committed row state.** `Nodes.Add`,
+  `Nodes.Import`, `Rels.Add`, `AddByID`, `AddByIDIfAbsent`, and `Import` now
+  publish create events when a row is committed but a trailing registry
+  checkpoint error is returned, matching transaction and batch event semantics.
+
+### Fixed - Property query value validation (2026-05-14)
+
+- **Property query APIs now reject malformed query values before empty result
+  shortcuts.** `NodesByLabelAndProperty`, `NodesByLabelPropertyAt`,
+  `NodesByLabelPropertyDuring`, `RelsByTypePropertyAt`, and
+  `RelsByTypePropertyDuring` validate unsupported property values such as
+  structs or pointers instead of silently treating them as non-indexable misses;
+  valid non-indexable values still return an empty result. Store-level
+  `NodesByLabelAndProperty` implementations in MemoryStore, BadgerStore, and
+  TieredStore enforce the same boundary.
+
+### Fixed - Typed nil property container preservation (2026-05-14)
+
+- **Property deep-copy and vector-copy boundaries now preserve typed nil
+  built-in slices and maps.** `PropertySlice.Set`, `NewPropertySlice`,
+  `DeepCopy`, `ToMap`, and the node/relationship `Float32SlicePropertyCopy`
+  helpers no longer turn values such as `[]float32(nil)` or
+  `map[string]any(nil)` into non-nil empty containers, keeping exact property
+  equality and CAS semantics stable. Property wire encoding now carries an
+  explicit typed-nil marker for slice/map tags, and integrity hashing now
+  distinguishes typed nil containers from empty containers.
+
+### Fixed - Transaction label failed preflight snapshots (2026-05-14)
+
+- **`GraphTx.AddNodeLabel` and `GraphTx.RemoveNodeLabel` now check no-op and
+  rejection cases before capturing rollback history.** Idempotent add-label,
+  too-many-labels, closed-node, missing-label, and last-label failures no longer
+  copy node history or record update snapshots, and unknown remove-label inputs
+  now match the standalone error precedence.
+
+### Fixed - Absent-property delete update no-ops (2026-05-14)
+
+- **Deleting a property that is already absent is now a true read-only no-op.**
+  Standalone, in-place, transaction, and batch node/relationship update paths no
+  longer write rows, append version history, increment update counters, publish
+  update events, or count batch updates for absent-property delete requests.
+  Metadata-only provenance updates and deletes of existing nil-valued
+  properties remain real mutations.
+
+### Fixed - Update/CAS invalid-ID error precedence (2026-05-14)
+
+- **Existing-entity update and property-CAS paths now reject zero/negative IDs
+  before validating update payloads.** Standalone, in-place, transaction, and
+  batch node/relationship updates now consistently surface the store invalid-ID
+  sentinel even when the supplied update map or CAS key/value is also malformed.
+
+### Changed - Property equality helper for CAS (2026-05-13)
+
+- **Property CAS now compares through the type layer without copying stored
+  reference values.** `types.PropertyValueEqual`,
+  `(*types.Node).PropertyValueEqual`, and
+  `(*types.Relationship).PropertyValueEqual` expose the exact-type, NaN-aware
+  property equality used by node and relationship CAS for callers that need
+  compare-only semantics without receiving a defensive copy.
+
+### Fixed - Tiered cold-shard read fanout descriptor pressure (2026-05-13)
+
+- **Bulk tiered read fanout now processes cold event shards sequentially while
+  keeping hot/warm shards parallel.** Depth-all scans still close transient
+  cold shard handles after each read, and they no longer open up to 16 cold
+  Badger stores at once while walking historical shards.
+- **Tiered temporal-index create/drop operations now walk shards one at a time
+  instead of pinning every cold shard for the full operation.** Store-wide
+  temporal and high-frequency index changes still block `Close` until rollback
+  or metadata persistence is complete, but historical cold shard handles are no
+  longer accumulated across the whole shard set.
+
+### Fixed - Tiered archive reference-entity contract (2026-05-13)
+
+- **`tiered.Store.ArchiveNode` and `RestoreNode` now explicitly reject
+  non-reference nodes with `ErrNotReferenceEntity`.** Event nodes no longer
+  surface as missing simply because they are physically stored outside the
+  reference shard, and malformed archive/ref-shard rows with event labels are
+  rejected without moving data.
+
+### Fixed - Tiered catalog rebuild cold-shard handle pressure (2026-05-13)
+
+- **`tiered.Store.RebuildCatalog` and the shared all-shard admin enumerator now
+  close cold event shards that they open only for the active operation.**
+  Rebuilding stats, repairing shards, or applying tier-wide index changes
+  across historical shards no longer leaves transient Badger handles open after
+  release.
+- **Tiered point routing now also releases transient cold event shards after the
+  routed operation checks in.** Single-node lookups and relationship owner
+  resolution no longer keep a lazy-opened cold shard resident until idle close.
+
+### Fixed - Tiered clear catalog consistency (2026-05-13)
+
+- **`tiered.Store.Clear` now keeps the live shard catalog aligned with cleared
+  shard data when the final catalog save fails.** The error is still returned,
+  but the in-process catalog no longer restores stale pre-clear counts and
+  verification flags after the shards have already been wiped.
+
+### Fixed - Hash verification nil history rows (2026-05-13)
+
+- **`g.Hash.VerifyNodeChain` and `g.Hash.VerifyRelChain` now reject nil
+  history rows without panicking.** Malformed backend history slices and paged
+  history results now return the corresponding nil-entity sentinel instead of
+  dereferencing a nil node or relationship while verifying the hash chain.
+
+### Fixed - Export history nil-row fail-closed behavior (2026-05-13)
+
+- **`g.IO.Export` now rejects nil node and relationship history rows without
+  panicking.** Corrupt or custom backend history slices with nil entries now
+  return the corresponding nil-entity sentinel instead of dereferencing the
+  row while formatting the encode error.
+
+### Fixed - Closed graph event getter lifecycle (2026-05-13)
+
+- **`g.Events.GetSync()` and `g.Events.GetAsync()` now fail closed after
+  `Graph.Close`.** No-error event-bus getters no longer expose stale
+  graph-owned event pointers after the graph lifecycle has ended.
+
+### Fixed - Index provider Close panic isolation (2026-05-13)
+
+- **Graph provider lifecycle paths now isolate index provider `Close` panics.**
+  A panicking provider close during `Graph.Close`, `g.Index.UnregisterProvider`,
+  or failed-`Init` rollback no longer aborts surrounding cleanup; the panic is
+  returned as part of the lifecycle error.
+
+### Fixed - Index provider Init panic rollback (2026-05-13)
+
+- **`g.Index.RegisterProvider` now rolls back providers whose `Init` panics.**
+  A panicking initializable index provider no longer remains registered or
+  subscribed to future graph events after `RegisterProvider` returns an error.
+
+### Fixed - If-absent relationship row ownership (2026-05-13)
+
+- **`g.Rels.AddByIDIfAbsent` now returns a defensive copy when the existing
+  relationship comes from a custom store.** The duplicate-check path no longer
+  exposes adjacency rows owned by external store implementations.
+
+### Fixed - Delete-node tombstone row ownership (2026-05-13)
+
+- **Cascade node deletes now build relationship tombstones from deep copies.**
+  Failed `DeleteNodeWithHistory` calls no longer mutate adjacency relationship
+  rows returned by custom stores while preparing tombstone history.
+
+### Fixed - Registry persistence panic cleanup (2026-05-13)
+
+- **Registry token allocation paths now release the registry mutex if backend
+  registry persistence panics.** Callers that recover from a custom store's
+  `SaveRegistries` panic no longer leave later label or relationship-type
+  operations deadlocked.
+
+### Fixed - Tiered index metadata load validation (2026-05-13)
+
+- **Tiered temporal and vector index metadata loads now reject definitions that
+  the save path would reject.** Duplicate temporal labels, duplicate
+  high-frequency labels, temporal/HFI conflicts, and duplicate vector
+  definitions no longer get silently accepted or de-duplicated on restart.
+
+### Changed - Badger temporal vector search validation order (2026-05-13)
+
+- **Badger vector search with temporal filters now validates query vectors
+  before reading candidate node rows.** Invalid query dimensions or non-finite
+  query values are no longer masked by unrelated candidate-row corruption, and
+  invalid requests avoid the eager temporal-filter candidate scan. Valid
+  temporal searches still propagate corrupt candidate rows instead of silently
+  dropping them.
+
+### Fixed - Async event batch backpressure wake-up (2026-05-13)
+
+- **`AsyncEventBus.PublishBatch` now wakes the dispatcher before blocking on a
+  full priority queue.** Batched async event publishing with
+  `BackpressureBlock` no longer deadlocks when one priority group is larger
+  than the configured queue size while the dispatcher is asleep.
+
+### Fixed - Import registry corruption sentinels (2026-05-13)
+
+- **Malformed IO import registry records now wrap `ErrCorruptExport`.**
+  Invalid reserved registry slots, duplicate label names, duplicate relationship
+  type names, and other registry wire-shape failures now match the corrupt
+  export sentinel contract instead of surfacing as raw registry validation
+  errors. Incompatible but well-formed non-empty destination registries still
+  return `ErrIncompatibleRegistry`.
+
+### Changed - Hash verification history paging (2026-05-13)
+
+- **`g.Hash.VerifyNodeChain` and `g.Hash.VerifyRelChain` now stream history
+  through wrapper-aware version pages when safe.** Deep hash-chain verification
+  no longer has to materialize full per-entity history on native or direct
+  pager stores, while wrapper stores that override full-history reads still
+  keep those hooks observable.
+
+### Fixed - Badger read-only mutation guard (2026-05-13)
+
+- **Read-only `badger.Store` handles now reject mutating APIs before touching
+  in-memory state.** Direct writes, non-empty batch writes, history mutations,
+  index definition changes, registry saves, `Clear`, and split relationship
+  repair helpers now fail with `ErrInvalidStoreMutation` instead of appearing to
+  succeed in memory while being impossible to flush to the read-only Badger DB.
+- **Empty tiered put batches no longer rotate shards.** `PutNodesBatch(nil)`,
+  `PutNodesBatch([])`, `PutRelationshipsBatch(nil)`, and
+  `PutRelationshipsBatch([])` now return as read-only no-ops on an open store,
+  even when the hot shard window has expired.
+- **Tiered shard catalog accessors now deep-copy slice fields at catalog
+  ingress and egress.** `AddShard`, `GetShard`, `HotEventShard`, `EventShards`,
+  and `ColdEventShards` no longer let caller-owned or returned `Labels` /
+  `RelTypes` slices mutate catalog-owned metadata outside the catalog lock.
+- **Tiered shard catalog saves now validate the current topology before
+  writing.** `ShardCatalog.Save` no longer persists invalid in-memory shard
+  metadata that `Load` would reject on restart, and rejected saves leave the
+  existing catalog file unchanged.
+- **Tiered shard catalog loads now validate before mutating live catalog state.**
+  A corrupt or invalid catalog file no longer leaves rejected shard metadata in
+  the in-memory catalog after `Load` returns an error.
+- **In-memory tiered shard catalogs now treat `Load` as a no-op, matching
+  `Save`.** Direct `NewShardCatalog("")` callers no longer get an OS read error
+  for the explicit non-persistent catalog mode.
+- **Tiered registry file saves now validate registry names before writing.**
+  The flat registry writer no longer persists invalid label or relationship
+  type slices that the loader would reject on the next open, and rejected saves
+  leave the previous registry file bytes intact.
+- **Tiered temporal and vector index metadata saves now validate definitions
+  before writing.** Invalid label tokens, conflicting tracked temporal/HFI
+  definitions, invalid HFI bucket sizes, invalid vector dimensions/metrics, and
+  invalid vector property keys now fail before the metadata files are changed.
+
+### Fixed - Custom property integrity hash type separation (2026-05-13)
+
+- **Custom property integrity hashing now includes the registered custom type
+  name and pointer/value shape before the custom `HashBytes()` payload.** Two
+  different registered custom property types that intentionally or accidentally
+  return identical `HashBytes()` output no longer collapse to the same property
+  hash bytes.
+- **`RegisterPropertyStructType` now rejects non-struct element types.** Named
+  scalar or other non-struct types that implement the custom property
+  interfaces can no longer enter the struct registry and then behave
+  inconsistently across validation and wire reconstruction.
+
+### Fixed - Badger split relationship delete liveness (2026-05-13)
+
+- **`badger.Store.DeleteRelEntityAndOut` now verifies the relationship is still
+  live in the in-memory relationship set before reading or deleting the
+  persisted row.** Split cross-shard cleanup no longer lets a stale Badger row
+  drive type/outgoing index cleanup or relationship-counter changes after the
+  live relationship set has already rejected the ID.
+- **`badger.Store.DeleteRelIncoming` now verifies the stored incoming-entry
+  relationship type before dropping the in-memory index entry.** A stale or
+  mismatched split-delete descriptor now fails with `ErrRelNotFound` instead of
+  deleting memory while leaving the persisted incoming key behind.
+- **Badger incoming-index repair deletes every pending and persisted key for an
+  end-node/relationship pair.** Repair cleanup no longer leaves duplicate
+  incoming keys behind when memory can represent only one entry for that pair.
+- **Tiered `RunRepair` now validates incoming-index entries against the actual
+  relationship row.** Stale incoming entries with the wrong end shard or
+  relationship type are removed before missing correct entries are recreated.
+
+### Fixed - Interface-embedded store wrapper capability dispatch (2026-05-13)
+
+- **Graph optional-capability fast paths now distinguish declared wrapper
+  methods from methods merely promoted through an embedded native `store.Store`
+  interface.** Custom stores that directly implement a capability keep the fast
+  path, while wrappers that only inherit native optional methods fall back
+  through the graph-layer path so wrapper overrides remain observable.
+- **Import rollback history-suffix snapshots now use the same wrapper-aware
+  history pager selection as export.** Trim-capable custom wrappers that only
+  inherit an in-tree history pager no longer bypass their mandatory
+  `Get*History` hooks while preparing rollback state.
+- **Depth-scoped temporal history iteration now uses cached, wrapper-aware
+  capability selection.** Tiered-store wrappers that only inherit the in-tree
+  `DepthHistoryIterationCapability` no longer bypass their mandatory
+  `ForEach*HistoryID` hooks during graph-layer depth-filtered temporal scans,
+  and Core avoids repeated reflection on this temporal-query path.
+
+### Fixed - IO short-write handling (2026-05-13)
+
+- **Export record writes, import stage spills, and tiered atomic file writes
+  now handle short `io.Writer` writes explicitly.** Partial writes with nil
+  errors are retried until complete, and zero-progress writers fail closed with
+  `io.ErrShortWrite` instead of reporting success after producing truncated
+  export or persistence bytes.
+
+### Fixed - Tiered write lifecycle sentinels (2026-05-13)
+
+- **Tiered node, relationship, label-mutation, and history write APIs now check
+  store lifecycle before validating malformed mutation payloads.** Nil tiered
+  stores return `ErrNilStore` and closed tiered stores return `ErrStoreClosed`
+  consistently across these write surfaces instead of leaking payload
+  validation errors first.
+
+### Fixed - Relationship rollback endpoint restore (2026-05-13)
+
+- **Transaction rollback now restores relationship type/start/end index tuples
+  atomically after delete/import-same-ID sequences.** If a transaction deletes a
+  relationship, imports the same relationship ID with the same type but
+  different endpoints, and then rolls back, the original current row and
+  outgoing/incoming adjacency indexes are restored instead of leaking the
+  store-layer indexed-field mutation error.
+
+### Fixed - Tiered clear metadata failure ordering (2026-05-13)
+
+- **Tiered `Store.Clear()` now proves persistent vector and temporal index
+  metadata can be cleared before deleting shard data.** If metadata deletion
+  fails, `Clear` returns the metadata error without erasing existing entities or
+  dropping the in-memory index tracking, avoiding a partially cleared store when
+  the failure is known before destructive shard work begins.
+
+### Fixed - Tiered migration destination emptiness (2026-05-13)
+
+- **`MigrateFromBadger` now rejects tiered destinations with node or
+  relationship history even when they have no current rows.** Migration no
+  longer treats live counts alone as proof of an empty destination, preventing
+  stale history from being mixed with newly migrated current rows.
+
+### Added - Async event bus getter parity (2026-05-13)
+
+- **`g.Events.GetAsync()` now mirrors `GetSync()` for asynchronous event buses.**
+  The events sub-API can now retrieve either installed bus kind without exposing
+  the internal publisher interface.
+
+### Fixed - GraphTx relationship read parity (2026-05-13)
+
+- **`GraphTx.GetRelationship` now mirrors `GraphTx.GetNode` for transaction-scoped
+  reads.** Relationship reads inside transaction callbacks no longer need to use
+  standalone APIs that wait behind the transaction's write lock.
+- **Committed transaction-scoped reads now update read counters.** `GraphTx.GetNode`
+  increments `NodesRead` on success, `GraphTx.GetRelationship` increments
+  `RelsRead` on success, and rollback restores the pre-transaction counter
+  snapshot.
+- **Transaction-scoped reads now validate IDs before store lookup.**
+  `GraphTx.GetNode` and `GraphTx.GetRelationship` reject zero or negative IDs
+  at the graph layer, matching the standalone direct-read APIs.
+- **Bulk direct-ID reads now update read counters.** Successful
+  `g.Nodes.GetByIDs` and `g.Rels.GetByIDs` calls increment `NodesRead` and
+  `RelsRead` by the number of rows returned, matching the scalar direct-read
+  APIs.
+
+### Fixed - Admin reset consistency (2026-05-13)
+
+- **`g.Admin.Reset()` now clears graph operation counters and checkpoints the
+  preserved registry snapshot after clearing the backing store.** This aligns
+  Reset with its API contract on both in-memory and persistent stores.
+
+### Fixed - Checked property wire serialization (2026-05-13)
+
+- **Checked property wire conversion now rejects unsupported non-nil values
+  instead of writing them with the legacy unknown type tag.** Normal public
+  entity setters already prevent those values, but invariant-broken property
+  slices now fail closed at the serialization boundary instead of producing
+  ambiguous `ptUnknown` wire data.
+
+### Fixed - Property equality index canonicalization (2026-05-13)
+
+- **Float property equality indexes now canonicalize signed zero and NaN for
+  `float32` and `float64` values.** `Nodes.ByLabelAndProperty` now treats
+  stored `-0.0` and queried `+0.0` as the same exact-type scalar value, and
+  treats NaN payload variants as equal within the same concrete float type, on
+  both fallback scans and property-index lookups. `float32` and `float64`
+  values remain distinct, matching the compare-and-set equality contract.
+
+### Fixed — Checked integrity hash recovery (2026-05-13)
+
+- **Checked node and relationship integrity hashing now recovers unsupported
+  property-value invariant breaks, not only panics from custom `HashableValue`
+  implementations.** This keeps graph mutation and verification paths on the
+  error-returning checked hash surface when an external or corrupt row carries
+  a property shape that normal public setters would have rejected.
+
+### Changed — Tiered read fanout cold-shard handles (2026-05-13)
+
+- **Tiered read fanout now closes cold shards that were opened only for a
+  single read scan.** Depth-wide node, relationship, label/property, and history
+  reads still include cold event shards, but a scan no longer leaves every
+  lazily opened historical Badger handle resident until the idle-close timer.
+  Cold shards that were already open keep the normal idle-close behavior.
+
+### Changed — Badger transaction rollback history trim (2026-05-13)
+
+- **Badger-backed transactions now use version-range history trimming during
+  rollback instead of snapshotting full per-entity history chains on first
+  mutation.** `badger.Store` implements the internal
+  `HistoryRollbackTrimCapability`, and Core enables that fast path only for the
+  exact native Badger store so wrapper stores still observe their
+  `Truncate*History` / `Put*Version` hooks.
+- **Badger history maintenance now honors `SyncWrites`.** `TruncateNodeHistory`,
+  `TruncateRelHistory`, and the rollback trim helpers flush their queued history
+  deletes immediately when sync writes are enabled, matching the rest of the
+  Badger write surface.
+- **Transaction update rollback preserves pre-existing current-version history.**
+  Update snapshots now materialize history instead of using the trim fast path
+  when the store already has a history row for the entity's current version,
+  matching the delete rollback guard and preserving Node/Relationship parity.
+- **Import replay rollback now snapshots only touched history suffixes on
+  trim-capable stores.** Non-empty imports that touch a high version no longer
+  need to deep-copy an entity's entire pre-existing history chain; rollback
+  trims from the first imported version and restores the captured suffix. Stores
+  without the trim capability keep the full-history fallback.
+- **Export history paging now respects store-wrapper boundaries.** `IO.Export`
+  still uses `HistoryVersionPageCapability` for exact native stores and direct
+  external implementations, but concrete wrappers that only inherit an in-tree
+  pager now fall back through their mandatory `Get*History` methods so wrapper
+  faults, validation, and policy hooks remain observable.
+
+### Fixed — Tiered history iterator snapshot bounds (2026-05-13)
+
+- **Tiered node and relationship history iterators no longer let callback-created
+  higher IDs extend the active scan.** `ForEachNodeHistoryID*` and
+  `ForEachRelHistoryID*` now snapshot the highest eligible history ID before
+  invoking user callbacks, matching the Badger iterator contract while keeping
+  callbacks outside shard locks and checkouts. The default `DepthAll` path uses
+  per-shard max-history probes rather than a full pre-iteration, preserving the
+  bounded scan shape for large histories. Badger max-history probes now also
+  honor pending history deletes, so async-buffered truncation cannot leave a
+  stale deleted upper bound that admits callback-created history IDs.
+- **Tiered `DepthAll` history `ForEach` now emits each logical history ID once
+  even when the same ID has history split between the reference shard and
+  archive.** The iterator now follows the bounded paginated ID merge used by
+  `All*HistoryIDsFrom`, keeping callback delivery consistent with the other
+  history-ID APIs.
+- **Tiered restored reference entities now resolve archive-only history
+  versions through `GetNodeVersion` and `GetRelVersion`.** Point version reads
+  now match `Get*History` and paged history reads when archive/restore leaves
+  older history in `refArchive` while the live row is back on the reference
+  shard.
+
+### Fixed — Persistent vector-index rebuild failures (2026-05-13)
+
+- **Badger and Tiered vector-index definitions now fail closed when restart
+  rebuild finds stored vectors that violate the persisted index shape.**
+  Reopening a store with inconsistent vector-index metadata now returns the
+  rebuild error instead of silently dropping mismatched nodes from the in-memory
+  k-NN index.
+- **Tiered vector-index creation now backfills only nodes carrying the indexed
+  label.** This avoids full-row reads for unrelated labels and keeps corrupt
+  unrelated rows from blocking creation of an otherwise valid vector index.
+
+### Fixed — Tiered clear lifecycle errors (2026-05-13)
+
+- **Tiered event-shard clear now propagates checkout and close-race errors
+  instead of treating skipped shards as successfully cleared.** This prevents
+  `Store.Clear` from reporting success after an event shard was not actually
+  cleared because the store was closing or had a recorded lifecycle failure.
+
+### Fixed — Relationship update endpoint liveness (2026-05-13)
+
+- **Relationship update and relationship property-CAS now fail closed when an
+  endpoint row is missing during endpoint-hash refresh.** These mutation paths
+  now propagate `ErrNodeNotFound` instead of committing the property change with
+  empty endpoint hashes.
+
+### Fixed — Materialized temporal diff ordering (2026-05-13)
+
+- **`g.Temporal.Diff` now returns each change slice sorted by entity ID.**
+  `DiffCallback` remains a streaming API with implementation-defined callback
+  order, while the materialized `SnapshotDiff` now matches the deterministic
+  ordering used by snapshot and temporal query result slices.
+
+### Fixed — Public stats snapshot alias (2026-05-12)
+
+- **`graph.GraphStats` now aliases the type returned by `g.Stats.Get()`.**
+  The top-level public alias previously pointed at the internal core stats
+  struct while the sub-API returned `pkg/graph/stats.GraphStats`, so callers
+  could not assign `g.Stats.Get()` to a `graph.GraphStats` variable without an
+  explicit conversion despite the identical fields.
+
+### Fixed — Public index provider sentinels (2026-05-12)
+
+- **`pkg/graph` now re-exports the index-provider sentinel errors returned by
+  `g.Index`.** `ErrIndexProviderExists`, `ErrIndexProviderNotFound`, and
+  `ErrIndexProviderEmptyName` were already available from `pkg/graph/index`,
+  but unlike the other `g.Index` errors they were missing from the top-level
+  graph package.
+
+### Fixed — Constraint lifecycle sentinel ordering (2026-05-12)
+
+- **`g.Constraints.Add` and `Set` now fail closed before validating caller
+  input after graph close.** Closed graphs return `ErrGraphClosed` and leave
+  the installed constraint set unchanged even when the supplied constraint set
+  is malformed.
+
+### Fixed — Temporal Allen lifecycle sentinel ordering (2026-05-12)
+
+- **`g.Temporal.NodeInterval`, `RelInterval`, `RelateNodes`, and `RelateRels`
+  now participate in the graph read lifecycle gate.** After graph close these
+  error-returning temporal helpers return `ErrGraphClosed` before inspecting
+  caller-supplied node or relationship values.
+
+### Fixed — External store query row ownership (2026-05-12)
+
+- **Graph query APIs now defensively copy valid rows returned by untrusted
+  external stores before exposing them to callers.** Native memory, badger, and
+  tiered stores keep their existing hot-path allocation profile, while custom
+  store implementations can no longer leak caller-mutable backing rows through
+  validated node, relationship, adjacency, property-query, vector, or history
+  read paths.
+
+### Fixed — Strict property wire metadata validation (2026-05-12)
+
+- **Checked store/import wire reads now reject contradictory custom-property
+  metadata.** Non-custom property type tags can no longer carry ignored
+  `CustomType` or `CustomPointer` fields, so malformed wire records fail closed
+  instead of being silently normalized into a different property shape.
+- **Tiered shard catalog loads now require canonical relative shard paths.**
+  Persisted catalog entries such as `events/../reference` are rejected instead
+  of being accepted as aliases for a different physical shard directory.
+- **Badger index-definition reloads now de-duplicate property and temporal
+  definitions before rebuilding.** Duplicate persisted definitions no longer
+  trigger repeated full-row rebuild scans for the same logical index.
+- **Badger temporal ID enumeration avoids full entity materialization.**
+  `AllNodeIDs` and `AllRelIDs` with temporal filters now inspect temporal
+  metadata and return IDs directly instead of allocating full deep-copy result
+  slices that are immediately discarded, while still surfacing corrupt rows.
+- **Badger index and vector query APIs now check lifecycle before argument
+  validation.** Closed or nil stores consistently return the lifecycle
+  sentinels on these surfaces even when callers also pass malformed index,
+  vector, or query arguments.
+- **Badger mutation and history APIs now use the same lifecycle-first
+  sentinel ordering.** Entity writes, deletes, split relationship index
+  helpers, and history write helpers no longer validate malformed payloads
+  before detecting nil or closed stores.
+- **Memory store mutation, history, index, and vector APIs now match the same
+  lifecycle-first contract.** Typed-nil memory stores fail with `ErrNilStore`
+  instead of panicking on these surfaces, and closed stores return
+  `ErrStoreClosed` before malformed argument errors.
+- **Memory store read and query APIs now also fail closed on nil receivers.**
+  Direct reads, bulk reads, adjacency reads, history reads, iteration helpers,
+  and transaction-time reads now return `ErrNilStore` instead of panicking
+  before the store lifecycle gate.
+- **Tiered index, vector, and property-query APIs now also check lifecycle
+  first.** Nil or closed tiered stores no longer leak argument-validation
+  errors on these public surfaces when the receiver itself is unusable.
+
+### Fixed — Property CAS NaN matching (2026-05-12)
+
+- **Node and relationship property CAS now matches accepted NaN property values.**
+  `CompareAndSetProperty` keeps exact-type comparison and nil-as-absent
+  semantics, but no longer treats stored `NaN` values as permanently
+  unmatchable when they appear as scalar float properties or inside supported
+  property containers.
+
+### Fixed — Relationship property API parity (2026-05-11)
+
+- **Relationship properties now support atomic compare-and-set.**
+  `g.Rels.CompareAndSetProperty` and `CompareAndSetPropertyWithContext` mirror
+  the node CAS contract: exact-type comparison, nil-as-absent semantics,
+  reserved shadow-key rejection, final property-count validation, version
+  history, endpoint-hash refresh, update stats, and relationship update events.
+
+### Fixed — Monotonic mutation transaction timestamps (2026-05-11)
+
+- **Core mutation timestamps are monotonic per graph instance.**
+  `TxFrom`, `TxTo`, `UpdatedAt`, `DeletedAt`, and graph mutation event
+  timestamps now advance when the underlying millisecond clock repeats or moves
+  backwards, preserving transaction-time version intervals for fast consecutive
+  node and relationship mutations without wall-clock sleeps.
+
+### Fixed — Store wrapper native fast paths (2026-05-11)
+
+- **Generated-ID create shortcuts no longer bypass wrapper Store overrides.**
+  Node create, relationship create, and batch node create still use the native
+  tiered fast path for exact in-tree stores, but embedded wrapper stores now
+  route through `PutNode`, `PutRelationship`, and `PutNodesBatch` so
+  instrumentation, fault injection, and custom policy hooks are honored.
+- **Endpoint-hash shortcuts no longer bypass wrapper Store reads.**
+  Relationship create and update paths still use native endpoint-hash reads for
+  exact in-tree stores, but wrapper stores now fall back to `GetNode` so
+  injected endpoint read failures and custom read policies are preserved.
+- **Transaction-time and rollback-trim shortcuts now respect wrapper stores.**
+  Concrete wrappers around `memory.Store` now use the mandatory
+  `Get*`/history/iteration and truncate+restore rollback paths instead of
+  inheriting native shortcuts that could bypass injected read or history faults.
+- **Temporal vector search respects concrete Store wrappers.**
+  Filtered vector search is still used for exact in-tree stores and direct
+  external implementations, but wrappers that merely inherit an in-tree
+  `SearchNearestFiltered` now use the graph over-fetch fallback so their
+  `SearchNearestNodes` override remains visible.
+- **Property equality queries respect concrete Store wrappers.**
+  `Nodes.ByLabelAndProperty` still uses exact in-tree and direct external
+  property-query capabilities, but wrappers that merely inherit an in-tree
+  `NodesByLabelAndProperty` now use the graph fallback so their `NodesByLabel`
+  override remains visible.
+- **Nested Store wrappers no longer re-enable inherited native shortcuts.**
+  Anonymous wrapper layers are inspected recursively before enabling native
+  optional capabilities, so promoted in-tree methods do not leak through
+  multi-layer instrumentation, fault-injection, or policy wrappers.
+- **Tiered Store wrappers now participate in tiered graph integration.**
+  Admin operations, injected-store registry rehydration, and transaction/import
+  rollback label-registry rewiring now dispatch through narrow tiered capability
+  interfaces instead of exact `*tiered.Store` assertions.
+
 ### Changed — Count and delete hot paths (2026-05-11)
 
 - **Count reads avoid generic helper overhead on the graph and MemoryStore hot
@@ -202,8 +828,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   staged byte count cannot wrap the `staged + recordSize` calculation and bypass
   the configured cap.
 - **Versioned mutations reject `uint32` version overflow.**
-  Node/relationship updates, node label add/remove, node property CAS,
-  transactions, and batch updates now return `ErrVersionOverflow` when the
+  Node/relationship updates, node label add/remove, node/relationship property
+  CAS, transactions, and batch updates now return `ErrVersionOverflow` when the
   current entity version is already `math.MaxUint32`. The mutation fails before
   writing history, wrapping the current version to `0`, or registering a new
   label token for a rejected label add.
@@ -537,11 +1163,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RelCountByType` now reject token `0` with `ErrInvalidStoreMutation` instead
   of returning a successful empty result for the registry sentinel.
 - **Metadata-blind rehash paths preserve existing integrity metadata.**
-  Node label add/remove, node property CAS, and node/relationship in-place
-  updates now preserve non-hash integrity fields while recomputing hash-chain
-  values. These APIs have no provenance shadow-key channel, so they no longer
-  silently erase existing provenance, signature, authorization, or relationship
-  endpoint-hash metadata.
+  Node label add/remove, node/relationship property CAS, and node/relationship
+  in-place updates now preserve non-hash integrity fields while recomputing
+  hash-chain values. These APIs have no provenance shadow-key channel, so they
+  no longer silently erase existing provenance, signature, authorization, or
+  relationship endpoint-hash metadata.
 - **Temporal label queries validate malformed labels.**
   `g.Temporal.NodesByLabelAt` now rejects empty, whitespace-only, and overlong
   label names before registry lookup, matching `g.Nodes.ByLabel` and the
@@ -2645,7 +3271,7 @@ This release pushes typed entity wrappers (`types.NodeID`, `types.RelID`, `types
 
 ### Added
 
-- **CompareAndSetProperty / CompareAndSetPropertyWithContext** (`pkg/graph/graph.go`): Atomic compare-and-swap on a single node property for optimistic locking patterns. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "property must not exist"; `newVal == nil` means "delete the property". Value comparison uses `reflect.DeepEqual` — type must match exactly (`int(42) != int64(42)`). Follows the `UpdateNode` pattern: entity lock serialization, pre-mutation snapshot, version bump, temporal metadata, hash chain, `ReplaceNodeWithHistory`.
+- **CompareAndSetProperty / CompareAndSetPropertyWithContext** (`pkg/graph/graph.go`): Atomic compare-and-swap on a single node property for optimistic locking patterns. Returns `(true, nil)` on match+update, `(false, nil)` on mismatch, `(false, error)` on real error. `expected == nil` means "property must not exist"; `newVal == nil` means "delete the property". Value comparison uses exact-type property equality — type must match exactly (`int(42) != int64(42)`). Current releases also match accepted `NaN` property values. Follows the `UpdateNode` pattern: entity lock serialization, pre-mutation snapshot, version bump, temporal metadata, hash chain, `ReplaceNodeWithHistory`.
 
 ### Tests Added
 

@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync/atomic"
 	"testing"
 
+	"github.com/vmihailenco/msgpack/v5"
 	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 
@@ -14,6 +16,159 @@ import (
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type exportPagingTrackingStore struct {
+	storepkg.MandatoryStore
+	historyPager          storepkg.HistoryVersionPageCapability
+	allNodesCalls         atomic.Int64
+	allRelationshipsCalls atomic.Int64
+	allNodeIDsCalls       atomic.Int64
+	allRelIDsCalls        atomic.Int64
+	getNodeCalls          atomic.Int64
+	getRelCalls           atomic.Int64
+	getNodeHistoryCalls   atomic.Int64
+	getRelHistoryCalls    atomic.Int64
+	nodeHistoryPageCalls  atomic.Int64
+	relHistoryPageCalls   atomic.Int64
+}
+
+func (s *exportPagingTrackingStore) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
+	s.allNodesCalls.Add(1)
+	return s.MandatoryStore.AllNodes(opts)
+}
+
+func (s *exportPagingTrackingStore) AllRelationships(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
+	s.allRelationshipsCalls.Add(1)
+	return s.MandatoryStore.AllRelationships(opts)
+}
+
+func (s *exportPagingTrackingStore) AllNodeIDs(opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	s.allNodeIDsCalls.Add(1)
+	return s.MandatoryStore.AllNodeIDs(opts)
+}
+
+func (s *exportPagingTrackingStore) AllRelIDs(opts storepkg.QueryOpts) ([]types.RelID, error) {
+	s.allRelIDsCalls.Add(1)
+	return s.MandatoryStore.AllRelIDs(opts)
+}
+
+func (s *exportPagingTrackingStore) GetNode(id types.NodeID) (*types.Node, error) {
+	s.getNodeCalls.Add(1)
+	return s.MandatoryStore.GetNode(id)
+}
+
+func (s *exportPagingTrackingStore) GetRelationship(id types.RelID) (*types.Relationship, error) {
+	s.getRelCalls.Add(1)
+	return s.MandatoryStore.GetRelationship(id)
+}
+
+func (s *exportPagingTrackingStore) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	s.getNodeHistoryCalls.Add(1)
+	return s.MandatoryStore.GetNodeHistory(id)
+}
+
+func (s *exportPagingTrackingStore) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
+	s.getRelHistoryCalls.Add(1)
+	return s.MandatoryStore.GetRelHistory(id)
+}
+
+func (s *exportPagingTrackingStore) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	s.nodeHistoryPageCalls.Add(1)
+	return s.historyPager.NodeHistoryVersionsFrom(id, startVersion, limit)
+}
+
+func (s *exportPagingTrackingStore) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	s.relHistoryPageCalls.Add(1)
+	return s.historyPager.RelHistoryVersionsFrom(id, startVersion, limit)
+}
+
+func (s *exportPagingTrackingStore) resetExportCounters() {
+	s.allNodesCalls.Store(0)
+	s.allRelationshipsCalls.Store(0)
+	s.allNodeIDsCalls.Store(0)
+	s.allRelIDsCalls.Store(0)
+	s.getNodeCalls.Store(0)
+	s.getRelCalls.Store(0)
+	s.getNodeHistoryCalls.Store(0)
+	s.getRelHistoryCalls.Store(0)
+	s.nodeHistoryPageCalls.Store(0)
+	s.relHistoryPageCalls.Store(0)
+}
+
+type exportHistoryFallbackStore struct {
+	storepkg.MandatoryStore
+	getNodeHistoryCalls atomic.Int64
+	getRelHistoryCalls  atomic.Int64
+}
+
+func (s *exportHistoryFallbackStore) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	s.getNodeHistoryCalls.Add(1)
+	return s.MandatoryStore.GetNodeHistory(id)
+}
+
+func (s *exportHistoryFallbackStore) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
+	s.getRelHistoryCalls.Add(1)
+	return s.MandatoryStore.GetRelHistory(id)
+}
+
+type exportEmbeddedNativeHistoryWrapper struct {
+	*memory.Store
+	getNodeHistoryCalls atomic.Int64
+	getRelHistoryCalls  atomic.Int64
+}
+
+func (s *exportEmbeddedNativeHistoryWrapper) GetNodeHistory(id types.NodeID) ([]*types.Node, error) {
+	s.getNodeHistoryCalls.Add(1)
+	return s.Store.GetNodeHistory(id)
+}
+
+func (s *exportEmbeddedNativeHistoryWrapper) GetRelHistory(id types.RelID) ([]*types.Relationship, error) {
+	s.getRelHistoryCalls.Add(1)
+	return s.Store.GetRelHistory(id)
+}
+
+type failingHistoryPager struct {
+	err error
+}
+
+func (p failingHistoryPager) NodeHistoryVersionsFrom(types.NodeID, uint32, int) ([]*types.Node, error) {
+	return nil, p.err
+}
+
+func (p failingHistoryPager) RelHistoryVersionsFrom(types.RelID, uint32, int) ([]*types.Relationship, error) {
+	return nil, p.err
+}
+
+type nonAdvancingHistoryPager struct {
+	nodeCalls atomic.Int64
+	relCalls  atomic.Int64
+}
+
+func (p *nonAdvancingHistoryPager) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	p.nodeCalls.Add(1)
+	history := make([]*types.Node, limit)
+	for i := range history {
+		n := types.NewNode(id, 1, nil)
+		if startVersion == 0 {
+			n.SetVersion(uint32(i))
+		}
+		history[i] = n
+	}
+	return history, nil
+}
+
+func (p *nonAdvancingHistoryPager) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	p.relCalls.Add(1)
+	history := make([]*types.Relationship, limit)
+	for i := range history {
+		r := types.NewRelationship(id, 1, types.NodeID(1), types.NodeID(2))
+		if startVersion == 0 {
+			r.SetVersion(uint32(i))
+		}
+		history[i] = r
+	}
+	return history, nil
+}
 
 // buildExportGraph creates a graph with nodes, rels, and history.
 // Returns the graph, a node ID and rel ID for later assertions.
@@ -585,6 +740,186 @@ func TestReadExportRecord_OversizeRecord(t *testing.T) {
 	}
 }
 
+func TestReadExportRecordDirectReaderBranches(t *testing.T) {
+	t.Parallel()
+
+	if _, _, err := readExportRecord(bytes.NewReader(nil)); !errors.Is(err, io.EOF) {
+		t.Fatalf("empty reader read = %v, want EOF", err)
+	}
+	if _, _, err := readExportRecord(bytes.NewReader([]byte{exportTagHeader, 0, 0, 0})); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("short header read = %v, want ErrUnexpectedEOF", err)
+	}
+
+	var truncated bytes.Buffer
+	if err := writeExportRecord(&truncated, exportTagNode, []byte{1, 2, 3}); err != nil {
+		t.Fatalf("write truncated source: %v", err)
+	}
+	truncatedBytes := truncated.Bytes()
+	if _, _, err := readExportRecord(bytes.NewReader(truncatedBytes[:len(truncatedBytes)-1])); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("truncated body read = %v, want ErrUnexpectedEOF", err)
+	}
+}
+
+func TestReadExportRecordBytesDirectBranches(t *testing.T) {
+	t.Parallel()
+
+	offset := 0
+	if _, _, err := readExportRecordBytes(nil, &offset); !errors.Is(err, io.EOF) {
+		t.Fatalf("empty bytes read = %v, want EOF", err)
+	}
+
+	offset = 0
+	if _, _, err := readExportRecordBytes([]byte{exportTagHeader, 0, 0, 0}, &offset); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("short header read = %v, want ErrUnexpectedEOF", err)
+	}
+	if offset != 0 {
+		t.Fatalf("short header advanced offset to %d, want 0", offset)
+	}
+
+	var oversize [5]byte
+	oversize[0] = exportTagNode
+	binary.BigEndian.PutUint32(oversize[1:5], maxExportRecordSize+1)
+	offset = 0
+	if _, _, err := readExportRecordBytes(oversize[:], &offset); err == nil || errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("oversize read = %v, want non-EOF size error", err)
+	}
+	if offset != 0 {
+		t.Fatalf("oversize header advanced offset to %d, want 0", offset)
+	}
+
+	var truncated bytes.Buffer
+	if err := writeExportRecord(&truncated, exportTagRel, []byte{1, 2, 3}); err != nil {
+		t.Fatalf("write truncated source: %v", err)
+	}
+	truncatedBytes := truncated.Bytes()
+	truncatedBytes = truncatedBytes[:len(truncatedBytes)-1]
+	offset = 0
+	if _, _, err := readExportRecordBytes(truncatedBytes, &offset); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("truncated body read = %v, want ErrUnexpectedEOF", err)
+	}
+	if offset != 5 {
+		t.Fatalf("truncated body offset = %d, want header length 5", offset)
+	}
+
+	var zeroBody bytes.Buffer
+	if err := writeExportRecord(&zeroBody, exportTagRegistry, nil); err != nil {
+		t.Fatalf("write zero-body source: %v", err)
+	}
+	offset = 0
+	tag, data, err := readExportRecordBytes(zeroBody.Bytes(), &offset)
+	if err != nil {
+		t.Fatalf("zero-body read: %v", err)
+	}
+	if tag != exportTagRegistry || len(data) != 0 || offset != 5 {
+		t.Fatalf("zero-body read = tag 0x%02x len %d offset %d, want tag 0x%02x len 0 offset 5", tag, len(data), offset, exportTagRegistry)
+	}
+	if _, _, err := readExportRecordBytes(zeroBody.Bytes(), &offset); !errors.Is(err, io.EOF) {
+		t.Fatalf("zero-body trailing read = %v, want EOF", err)
+	}
+
+	var twoRecords bytes.Buffer
+	if err := writeExportRecord(&twoRecords, exportTagHeader, []byte("one")); err != nil {
+		t.Fatalf("write first record: %v", err)
+	}
+	if err := writeExportRecord(&twoRecords, exportTagRelHist, []byte("two")); err != nil {
+		t.Fatalf("write second record: %v", err)
+	}
+	offset = 0
+	tag, data, err = readExportRecordBytes(twoRecords.Bytes(), &offset)
+	if err != nil || tag != exportTagHeader || string(data) != "one" {
+		t.Fatalf("first record = tag 0x%02x data %q err %v, want header/one/nil", tag, data, err)
+	}
+	tag, data, err = readExportRecordBytes(twoRecords.Bytes(), &offset)
+	if err != nil || tag != exportTagRelHist || string(data) != "two" {
+		t.Fatalf("second record = tag 0x%02x data %q err %v, want relHist/two/nil", tag, data, err)
+	}
+	if offset != twoRecords.Len() {
+		t.Fatalf("two-record offset = %d, want %d", offset, twoRecords.Len())
+	}
+}
+
+func TestMarshalAndWriteDirectBranches(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	hdr := exportHeader{Version: exportFormatVersion, NodeCount: 1}
+	if err := marshalAndWrite(&out, exportTagHeader, &hdr); err != nil {
+		t.Fatalf("marshalAndWrite success: %v", err)
+	}
+	tag, data, err := readExportRecord(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatalf("read marshaled record: %v", err)
+	}
+	if tag != exportTagHeader {
+		t.Fatalf("marshaled tag = 0x%02x, want 0x%02x", tag, exportTagHeader)
+	}
+	var got exportHeader
+	if err := msgpack.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal marshaled header: %v", err)
+	}
+	if got.Version != hdr.Version || got.NodeCount != hdr.NodeCount {
+		t.Fatalf("marshaled header = %+v, want %+v", got, hdr)
+	}
+
+	if err := marshalAndWrite(&out, exportTagHeader, func() {}); err == nil {
+		t.Fatal("marshalAndWrite accepted an unsupported function value")
+	}
+
+	if err := marshalAndWrite(&errWriter{failAfter: 0}, exportTagHeader, &hdr); err == nil {
+		t.Fatal("marshalAndWrite with failing writer returned nil")
+	}
+}
+
+func TestWriteExportRecordHandlesShortWrites(t *testing.T) {
+	t.Parallel()
+
+	sw := &shortChunkWriter{maxChunk: 2}
+	if err := writeExportRecord(sw, exportTagRelHist, []byte("payload")); err != nil {
+		t.Fatalf("writeExportRecord short chunks: %v", err)
+	}
+	tag, data, err := readExportRecord(bytes.NewReader(sw.buf.Bytes()))
+	if err != nil {
+		t.Fatalf("read short-chunk record: %v", err)
+	}
+	if tag != exportTagRelHist || string(data) != "payload" {
+		t.Fatalf("short-chunk record = tag 0x%02x data %q, want relHist/payload", tag, data)
+	}
+
+	if err := writeExportRecord(zeroProgressWriter{}, exportTagHeader, []byte("x")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("writeExportRecord zero-progress writer = %v, want io.ErrShortWrite", err)
+	}
+}
+
+func TestExportRecordSizeGuardRejectsOversize(t *testing.T) {
+	t.Parallel()
+
+	if err := validateExportRecordSize("export", exportTagNode, uint64(maxExportRecordSize)); err != nil {
+		t.Fatalf("record at max size rejected: %v", err)
+	}
+	if err := validateExportRecordSize("export", exportTagNode, uint64(maxExportRecordSize)+1); err == nil {
+		t.Fatal("oversize export record accepted")
+	}
+}
+
+func TestWriteHistoryEntriesRejectNilRows(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	if err := writeNodeHistoryEntries(&out, types.NodeID(1), []*types.Node{nil}); !errors.Is(err, ErrNilNode) {
+		t.Fatalf("writeNodeHistoryEntries nil row = %v, want ErrNilNode", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("writeNodeHistoryEntries wrote %d bytes for nil row", out.Len())
+	}
+
+	if err := writeRelHistoryEntries(&out, types.RelID(2), []*types.Relationship{nil}); !errors.Is(err, ErrNilRelationship) {
+		t.Fatalf("writeRelHistoryEntries nil row = %v, want ErrNilRelationship", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("writeRelHistoryEntries wrote %d bytes for nil row", out.Len())
+	}
+}
+
 // --- helpers ---
 
 // errWriter is a writer that fails after a given number of bytes.
@@ -604,6 +939,22 @@ func (ew *errWriter) Write(p []byte) (int, error) {
 	ew.written += n
 	return n, nil
 }
+
+type shortChunkWriter struct {
+	maxChunk int
+	buf      bytes.Buffer
+}
+
+func (w *shortChunkWriter) Write(p []byte) (int, error) {
+	if len(p) > w.maxChunk {
+		p = p[:w.maxChunk]
+	}
+	return w.buf.Write(p)
+}
+
+type zeroProgressWriter struct{}
+
+func (zeroProgressWriter) Write([]byte) (int, error) { return 0, nil }
 
 // makeBadVersionStream creates an export stream with an invalid version byte.
 // The version field is the uint8 value 0xFF, which is not a supported format version.
@@ -626,6 +977,273 @@ func makeBadVersionStream(t *testing.T) io.Reader {
 	buf.Write(header[:]) //nolint:errcheck
 	buf.Write(body)      //nolint:errcheck
 	return &buf
+}
+
+func TestExportGraph_CurrentEntitiesPageIDsBeforeFetching(t *testing.T) {
+	base := memory.New()
+	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "b"})
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	if _, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), nil); err != nil {
+		t.Fatalf("AddByID: %v", err)
+	}
+
+	store.resetExportCounters()
+	if err := g.IO.Export(io.Discard); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	if got := store.allNodesCalls.Load(); got != 0 {
+		t.Fatalf("Export called AllNodes %d times; want ID-page current-node export", got)
+	}
+	if got := store.allRelationshipsCalls.Load(); got != 0 {
+		t.Fatalf("Export called AllRelationships %d times; want ID-page current-relationship export", got)
+	}
+	if got := store.allNodeIDsCalls.Load(); got == 0 {
+		t.Fatal("Export did not call AllNodeIDs")
+	}
+	if got := store.allRelIDsCalls.Load(); got == 0 {
+		t.Fatal("Export did not call AllRelIDs")
+	}
+	if got := store.getNodeCalls.Load(); got != 2 {
+		t.Fatalf("Export GetNode calls = %d, want 2", got)
+	}
+	if got := store.getRelCalls.Load(); got != 1 {
+		t.Fatalf("Export GetRelationship calls = %d, want 1", got)
+	}
+}
+
+func TestExportGraph_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
+	base := memory.New()
+	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "b"})
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("AddByID: %v", err)
+	}
+	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "c"}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		t.Fatalf("Update rel: %v", err)
+	}
+
+	store.resetExportCounters()
+	if err := g.IO.Export(io.Discard); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	if got := store.nodeHistoryPageCalls.Load(); got == 0 {
+		t.Fatal("Export did not call NodeHistoryVersionsFrom")
+	}
+	if got := store.relHistoryPageCalls.Load(); got == 0 {
+		t.Fatal("Export did not call RelHistoryVersionsFrom")
+	}
+	if got := store.getNodeHistoryCalls.Load(); got != 0 {
+		t.Fatalf("Export called GetNodeHistory %d times despite paged history capability", got)
+	}
+	if got := store.getRelHistoryCalls.Load(); got != 0 {
+		t.Fatalf("Export called GetRelHistory %d times despite paged history capability", got)
+	}
+}
+
+func TestExportGraph_HistoryVersionPagingSplitsDeepEntity(t *testing.T) {
+	base := memory.New()
+	store := &exportPagingTrackingStore{MandatoryStore: base, historyPager: base}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	id := types.NodeID(1)
+	if err := store.PutNode(types.NewNode(id, 1, nil)); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	for v := uint32(0); v < exportHistoryVersionBatchSize+1; v++ {
+		n := types.NewNode(id, 1, nil)
+		n.SetVersion(v)
+		if err := store.PutNodeVersion(id, v, n); err != nil {
+			t.Fatalf("PutNodeVersion(%d): %v", v, err)
+		}
+	}
+
+	store.resetExportCounters()
+	if err := g.IO.Export(io.Discard); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if got := store.nodeHistoryPageCalls.Load(); got != 2 {
+		t.Fatalf("Export NodeHistoryVersionsFrom calls = %d, want 2 for a %d-version history", got, exportHistoryVersionBatchSize+1)
+	}
+	if got := store.getNodeHistoryCalls.Load(); got != 0 {
+		t.Fatalf("Export called GetNodeHistory %d times despite paged history capability", got)
+	}
+}
+
+func TestExportGraph_HistoryFallsBackWithoutVersionPager(t *testing.T) {
+	base := memory.New()
+	store := &exportHistoryFallbackStore{MandatoryStore: base}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("AddByID: %v", err)
+	}
+	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		t.Fatalf("Update rel: %v", err)
+	}
+
+	if err := g.IO.Export(io.Discard); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if got := store.getNodeHistoryCalls.Load(); got == 0 {
+		t.Fatal("Export did not fall back to GetNodeHistory")
+	}
+	if got := store.getRelHistoryCalls.Load(); got == 0 {
+		t.Fatal("Export did not fall back to GetRelHistory")
+	}
+}
+
+func TestExportGraph_IgnoresInheritedNativeHistoryPagerOnWrapper(t *testing.T) {
+	store := &exportEmbeddedNativeHistoryWrapper{Store: memory.New()}
+	if _, ok := any(store).(storepkg.HistoryVersionPageCapability); !ok {
+		t.Fatal("test wrapper no longer inherits HistoryVersionPageCapability")
+	}
+	g, err := New(Config{Store: store})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	if err != nil {
+		t.Fatalf("Add start: %v", err)
+	}
+	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	if err != nil {
+		t.Fatalf("AddByID: %v", err)
+	}
+	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+		t.Fatalf("Update node: %v", err)
+	}
+	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		t.Fatalf("Update rel: %v", err)
+	}
+
+	if err := g.IO.Export(io.Discard); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if got := store.getNodeHistoryCalls.Load(); got == 0 {
+		t.Fatal("Export used inherited native NodeHistoryVersionsFrom instead of wrapper GetNodeHistory")
+	}
+	if got := store.getRelHistoryCalls.Load(); got == 0 {
+		t.Fatal("Export used inherited native RelHistoryVersionsFrom instead of wrapper GetRelHistory")
+	}
+}
+
+func TestExportHistoryHelpersDirectBranches(t *testing.T) {
+	t.Parallel()
+
+	node := types.NewNode(types.NodeID(1), 1, nil)
+	node.SetVersion(1)
+	if err := writeNodeHistoryEntries(io.Discard, node.ID(), []*types.Node{node}); err != nil {
+		t.Fatalf("writeNodeHistoryEntries success: %v", err)
+	}
+	if err := writeNodeHistoryEntries(io.Discard, node.ID(), []*types.Node{nil}); err == nil {
+		t.Fatal("writeNodeHistoryEntries accepted invalid node history entry")
+	}
+	if err := writeNodeHistoryEntries(&errWriter{failAfter: 0}, node.ID(), []*types.Node{node}); err == nil {
+		t.Fatal("writeNodeHistoryEntries did not return writer error")
+	}
+
+	rel := types.NewRelationship(types.RelID(1), 1, types.NodeID(1), types.NodeID(2))
+	rel.SetVersion(1)
+	if err := writeRelHistoryEntries(io.Discard, rel.ID(), []*types.Relationship{rel}); err != nil {
+		t.Fatalf("writeRelHistoryEntries success: %v", err)
+	}
+	if err := writeRelHistoryEntries(io.Discard, rel.ID(), []*types.Relationship{nil}); err == nil {
+		t.Fatal("writeRelHistoryEntries accepted invalid relationship history entry")
+	}
+	if err := writeRelHistoryEntries(&errWriter{failAfter: 0}, rel.ID(), []*types.Relationship{rel}); err == nil {
+		t.Fatal("writeRelHistoryEntries did not return writer error")
+	}
+}
+
+func TestExportHistoryPagerErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+
+	errBoom := errors.New("history pager failed")
+	if err := c.exportNodeHistory(io.Discard, failingHistoryPager{err: errBoom}, types.NodeID(1)); !errors.Is(err, errBoom) {
+		t.Fatalf("exportNodeHistory pager error = %v, want %v", err, errBoom)
+	}
+	if err := c.exportRelHistory(io.Discard, failingHistoryPager{err: errBoom}, types.RelID(1)); !errors.Is(err, errBoom) {
+		t.Fatalf("exportRelHistory pager error = %v, want %v", err, errBoom)
+	}
+
+	nonAdvancing := &nonAdvancingHistoryPager{}
+	if err := c.exportNodeHistory(io.Discard, nonAdvancing, types.NodeID(1)); err == nil {
+		t.Fatal("exportNodeHistory accepted a non-advancing history page")
+	}
+	if got := nonAdvancing.nodeCalls.Load(); got != 2 {
+		t.Fatalf("non-advancing node pager calls = %d, want 2", got)
+	}
+	nonAdvancing = &nonAdvancingHistoryPager{}
+	if err := c.exportRelHistory(io.Discard, nonAdvancing, types.RelID(1)); err == nil {
+		t.Fatal("exportRelHistory accepted a non-advancing history page")
+	}
+	if got := nonAdvancing.relCalls.Load(); got != 2 {
+		t.Fatalf("non-advancing rel pager calls = %d, want 2", got)
+	}
 }
 
 // TestExportGraph_PaginatedNodesRoundTrip verifies that ExportGraph correctly

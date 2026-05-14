@@ -1,7 +1,7 @@
 package tiered
 
 import (
-	"sync"
+	"fmt"
 
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -19,39 +19,35 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if ts.ontology.ClassifyByToken(token) == ClassReference {
-		// Reference labels live on refShard + refArchive. Without merging
-		// archive results, archived reference entities silently disappear
-		// from NodesByLabel even though GetNode still finds them.
-		//
-		// Depth gating: archive is the coldest tier of reference data and
-		// must NOT surface in DepthHot/DepthWarm — those callers explicitly
-		// asked to exclude colder tiers. Only DepthAll (zero value, default)
-		// includes archive content. Mirrors the AllNodes / AllRelationships
-		// gating policy.
-		refNodes, err := ts.refShard.NodesByLabel(token, stripDepth(opts))
-		if err != nil {
-			return nil, err
-		}
-		if opts.Depth != DepthAll {
-			return applyNodePagination(refNodes, opts), nil
-		}
+	// Nodes route by primary-label class, but label queries ask for membership:
+	// a reference-primary node may carry an event extra label, and an
+	// event-primary node may carry a reference extra label. Query every relevant
+	// tier instead of treating the requested label class as an ownership shard.
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refNodes, err := ref.NodesByLabel(token, stripDepth(opts))
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+
+	var archiveNodes []*types.Node
+	if opts.Depth == DepthAll {
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
 		}
-		if archive == nil {
-			return refNodes, nil
+		if archive != nil {
+			archiveNodes, err = archive.NodesByLabel(token, stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
 		}
-		archiveNodes, err := archive.NodesByLabel(token, stripDepth(opts))
-		archiveCheckin()
-		if err != nil {
-			return nil, err
-		}
-		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
-		return applyNodePagination(merged, opts), nil
 	}
-	// Event label: fan out across all event shards matching depth.
+
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -61,23 +57,23 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		err   error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			results[i].nodes, results[i].err = store.NodesByLabel(token, stripDepth(opts))
-		}(i, es)
-	}
-	wg.Wait()
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].nodes, results[i].err = store.NodesByLabel(token, stripDepth(opts))
+	})
 
 	var slices [][]*types.Node
+	if len(refNodes) > 0 {
+		slices = append(slices, refNodes)
+	}
+	if len(archiveNodes) > 0 {
+		slices = append(slices, archiveNodes)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err
@@ -105,7 +101,12 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
-	refRels, err := ts.refShard.RelationshipsByType(token, stripDepth(opts))
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refRels, err := ref.RelationshipsByType(token, stripDepth(opts))
+	refCheckin()
 	if err != nil {
 		return nil, err
 	}
@@ -135,21 +136,15 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		err  error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			results[i].rels, results[i].err = store.RelationshipsByType(token, stripDepth(opts))
-		}(i, es)
-	}
-	wg.Wait()
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].rels, results[i].err = store.RelationshipsByType(token, stripDepth(opts))
+	})
 
 	var slices [][]*types.Relationship
 	if len(refRels) > 0 {
@@ -174,45 +169,47 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 // --- Property indexes ---
 
 func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := ts.checkOpen(); err != nil {
-		return nil, err
-	}
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	}
 
-	if ts.ontology.ClassifyByToken(labelToken) == ClassReference {
-		// Reference labels live on refShard + refArchive — see NodesByLabel.
-		// Depth-gated: archive is excluded from DepthHot/DepthWarm.
-		refNodes, err := ts.refShard.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
-		if err != nil {
-			return nil, err
-		}
-		if opts.Depth != DepthAll {
-			return applyNodePagination(refNodes, opts), nil
-		}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, err
+	}
+	refNodes, err := ref.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+
+	var archiveNodes []*types.Node
+	if opts.Depth == DepthAll {
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
 		}
-		if archive == nil {
-			return refNodes, nil
+		if archive != nil {
+			archiveNodes, err = archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
 		}
-		archiveNodes, err := archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
-		archiveCheckin()
-		if err != nil {
-			return nil, err
-		}
-		merged := mergeNodeSlices([][]*types.Node{refNodes, archiveNodes})
-		return applyNodePagination(merged, opts), nil
 	}
-	// Event label: fan out across all event shards matching depth.
+
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
@@ -222,23 +219,23 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 		err   error
 	}
 	results := make([]result, len(eventShards))
-	var wg sync.WaitGroup
-	for i, es := range eventShards {
-		wg.Add(1)
-		go func(i int, es *EventShard) {
-			defer wg.Done()
-			store, err := es.checkoutStore(ts)
-			if err != nil {
-				results[i].err = err
-				return
-			}
-			defer es.checkinStore()
-			results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
-		}(i, es)
-	}
-	wg.Wait()
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	})
 
 	var slices [][]*types.Node
+	if len(refNodes) > 0 {
+		slices = append(slices, refNodes)
+	}
+	if len(archiveNodes) > 0 {
+		slices = append(slices, archiveNodes)
+	}
 	for _, r := range results {
 		if r.err != nil {
 			return nil, r.err

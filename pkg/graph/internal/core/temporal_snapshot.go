@@ -2,7 +2,9 @@ package core
 
 import (
 	"errors"
+	"sort"
 
+	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -127,7 +129,24 @@ func (t *TempOps) Diff(t1, t2 types.Instant) (*temporalpkg.SnapshotDiff, error) 
 	if err := c.Temporal.DiffCallback(t1, t2, handlers); err != nil {
 		return nil, err
 	}
+	sortSnapshotDiff(diff)
 	return diff, nil
+}
+
+func sortSnapshotDiff(diff *temporalpkg.SnapshotDiff) {
+	if diff == nil {
+		return
+	}
+	storeutil.SortNodesByID(diff.NodesCreated)
+	storeutil.SortNodesByID(diff.NodesDeleted)
+	storeutil.SortRelsByID(diff.RelsCreated)
+	storeutil.SortRelsByID(diff.RelsDeleted)
+	sort.Slice(diff.NodesUpdated, func(i, j int) bool {
+		return diff.NodesUpdated[i].After.ID() < diff.NodesUpdated[j].After.ID()
+	})
+	sort.Slice(diff.RelsUpdated, func(i, j int) bool {
+		return diff.RelsUpdated[i].After.ID() < diff.RelsUpdated[j].After.ID()
+	})
 }
 
 // DiffCallback streams entity changes between t1 (older) and t2
@@ -160,6 +179,9 @@ func (t *TempOps) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers)
 	if t1 == 0 || t2 == 0 || t1 >= t2 {
 		return ErrInvalidTimeRange
 	}
+	if !diffWantsNodes(h) && !diffWantsRels(h) {
+		return nil
+	}
 	return c.diffCallback(t1, t2, h)
 }
 
@@ -167,13 +189,19 @@ func (c *Core) diffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) er
 	var nodeIDs []types.NodeID
 	var relIDs []types.RelID
 	if err := c.readUnderRLock(func() error {
-		var err error
-		nodeIDs, err = c.collectKnownNodeIDsByDepth(storepkg.DepthAll)
-		if err != nil {
+		if diffWantsNodes(h) {
+			var err error
+			nodeIDs, err = c.collectKnownNodeIDsByDepth(storepkg.DepthAll)
+			if err != nil {
+				return err
+			}
+		}
+		if diffWantsRels(h) {
+			var err error
+			relIDs, err = c.collectKnownRelIDsByDepth(storepkg.DepthAll)
 			return err
 		}
-		relIDs, err = c.collectKnownRelIDsByDepth(storepkg.DepthAll)
-		return err
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -262,6 +290,14 @@ func (c *Core) diffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers) er
 		}
 	}
 	return nil
+}
+
+func diffWantsNodes(h temporalpkg.DiffHandlers) bool {
+	return h.OnNodeCreated != nil || h.OnNodeUpdated != nil || h.OnNodeDeleted != nil
+}
+
+func diffWantsRels(h temporalpkg.DiffHandlers) bool {
+	return h.OnRelCreated != nil || h.OnRelUpdated != nil || h.OnRelDeleted != nil
 }
 
 // lookupNodeAtForDiff resolves the version of node id valid at t, returning

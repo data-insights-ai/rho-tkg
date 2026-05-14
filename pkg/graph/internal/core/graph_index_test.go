@@ -2,6 +2,8 @@ package core
 
 import (
 	"errors"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +12,63 @@ import (
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
+
+type indexCreateFailAfterInstallStore struct {
+	*memory.Store
+	err               error
+	failProperty      bool
+	failTemporal      bool
+	failHighFrequency bool
+	failVector        bool
+	panicDropProperty bool
+}
+
+func (s *indexCreateFailAfterInstallStore) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
+	if err := s.Store.CreatePropertyIndex(labelToken, propertyKey); err != nil {
+		return err
+	}
+	if s.failProperty {
+		return s.err
+	}
+	return nil
+}
+
+func (s *indexCreateFailAfterInstallStore) CreateTemporalIndex(labelToken uint16) error {
+	if err := s.Store.CreateTemporalIndex(labelToken); err != nil {
+		return err
+	}
+	if s.failTemporal {
+		return s.err
+	}
+	return nil
+}
+
+func (s *indexCreateFailAfterInstallStore) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
+	if err := s.Store.CreateHighFrequencyIndex(labelToken, bucketSize); err != nil {
+		return err
+	}
+	if s.failHighFrequency {
+		return s.err
+	}
+	return nil
+}
+
+func (s *indexCreateFailAfterInstallStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
+	if err := s.Store.CreateVectorIndex(labelToken, propertyKey, dims, metric); err != nil {
+		return err
+	}
+	if s.failVector {
+		return s.err
+	}
+	return nil
+}
+
+func (s *indexCreateFailAfterInstallStore) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	if s.panicDropProperty {
+		panic("drop property cleanup panic")
+	}
+	return s.Store.DropPropertyIndex(labelToken, propertyKey)
+}
 
 func TestMemStoreCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
@@ -33,6 +92,205 @@ func TestMemStoreCreatePropertyIndex_Duplicate(t *testing.T) {
 	err := g.Index.CreateProperty("Person", "name")
 	if !errors.Is(err, storepkg.ErrIndexExists) {
 		t.Fatalf("expected storepkg.ErrIndexExists, got %v", err)
+	}
+}
+
+func TestGraphIndexCreateFailureDropsPartialIndexForRolledBackNewLabel(t *testing.T) {
+	t.Parallel()
+
+	injected := errors.New("injected index create failure")
+	st := &indexCreateFailAfterInstallStore{Store: memory.New(), err: injected}
+	g, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	cases := []struct {
+		name      string
+		transient string
+		real      string
+		fail      func(bool)
+		create    func(string) error
+	}{
+		{
+			name:      "property",
+			transient: "TransientProperty",
+			real:      "RealProperty",
+			fail:      func(enabled bool) { st.failProperty = enabled },
+			create:    func(label string) error { return g.Index.CreateProperty(label, "status") },
+		},
+		{
+			name:      "temporal",
+			transient: "TransientTemporal",
+			real:      "RealTemporal",
+			fail:      func(enabled bool) { st.failTemporal = enabled },
+			create:    func(label string) error { return g.Index.CreateTemporal(label) },
+		},
+		{
+			name:      "high-frequency",
+			transient: "TransientHighFrequency",
+			real:      "RealHighFrequency",
+			fail:      func(enabled bool) { st.failHighFrequency = enabled },
+			create:    func(label string) error { return g.Index.CreateHighFrequency(label, time.Hour) },
+		},
+		{
+			name:      "vector",
+			transient: "TransientVector",
+			real:      "RealVector",
+			fail:      func(enabled bool) { st.failVector = enabled },
+			create:    func(label string) error { return g.Index.CreateVector(label, "embedding", 2, storepkg.DistanceCosine) },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.fail(true)
+			if err := tc.create(tc.transient); !errors.Is(err, injected) {
+				t.Fatalf("failing create = %v, want injected error", err)
+			}
+			if tok, ok := g.Resolve.LookupLabel(tc.transient); ok || tok != 0 {
+				t.Fatalf("rolled-back label lookup = %d, %v; want zero, false", tok, ok)
+			}
+
+			tc.fail(false)
+			if err := tc.create(tc.real); err != nil {
+				t.Fatalf("replacement create after rollback = %v", err)
+			}
+			if tok, ok := g.Resolve.LookupLabel(tc.real); !ok || tok == 0 {
+				t.Fatalf("replacement label lookup = %d, %v; want non-zero, true", tok, ok)
+			}
+		})
+	}
+}
+
+func TestGraphIndexCreateFailureDropsPartialIndexForExistingLabel(t *testing.T) {
+	t.Parallel()
+
+	injected := errors.New("injected index create failure")
+	st := &indexCreateFailAfterInstallStore{Store: memory.New(), err: injected, failProperty: true}
+	g, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if _, err := g.Resolve.GetOrCreateLabel("ExistingPartialCleanup"); err != nil {
+		t.Fatalf("GetOrCreateLabel: %v", err)
+	}
+	if err := g.Index.CreateProperty("ExistingPartialCleanup", "status"); !errors.Is(err, injected) {
+		t.Fatalf("failing create = %v, want injected error", err)
+	}
+
+	st.failProperty = false
+	if err := g.Index.CreateProperty("ExistingPartialCleanup", "status"); err != nil {
+		t.Fatalf("retry after failed create = %v", err)
+	}
+}
+
+func TestGraphIndexCreateRegistryPersistFailureRollsBackNewLabelAndIndex(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		label  string
+		create func(*Core, string) error
+	}{
+		{
+			name:   "property",
+			label:  "TransientPersistProperty",
+			create: func(g *Core, label string) error { return g.Index.CreateProperty(label, "status") },
+		},
+		{
+			name:   "temporal",
+			label:  "TransientPersistTemporal",
+			create: func(g *Core, label string) error { return g.Index.CreateTemporal(label) },
+		},
+		{
+			name:   "high-frequency",
+			label:  "TransientPersistHighFrequency",
+			create: func(g *Core, label string) error { return g.Index.CreateHighFrequency(label, time.Hour) },
+		},
+		{
+			name:  "vector",
+			label: "TransientPersistVector",
+			create: func(g *Core, label string) error {
+				return g.Index.CreateVector(label, "embedding", 2, storepkg.DistanceCosine)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			st := &registryPersistFailFirstStore{Store: memory.New(), err: errInjectedRegistryPersist}
+			g, err := New(Config{Store: st})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+
+			if err := tc.create(g, tc.label); !errors.Is(err, errInjectedRegistryPersist) {
+				t.Fatalf("failing create = %v, want injected registry persist error", err)
+			}
+			if st.saveCalls != 2 {
+				t.Fatalf("registry save calls after rollback = %d, want 2", st.saveCalls)
+			}
+			if tok, ok := g.Resolve.LookupLabel(tc.label); ok || tok != 0 {
+				t.Fatalf("rolled-back label lookup = %d, %v; want zero, false", tok, ok)
+			}
+
+			if err := tc.create(g, tc.label); err != nil {
+				t.Fatalf("retry after registry persist rollback = %v", err)
+			}
+			if tok, ok := g.Resolve.LookupLabel(tc.label); !ok || tok == 0 {
+				t.Fatalf("label lookup after retry = %d, %v; want non-zero, true", tok, ok)
+			}
+		})
+	}
+}
+
+func TestGraphIndexCreateCleanupPanicQuarantinesTokenAndReleasesRegistry(t *testing.T) {
+	t.Parallel()
+
+	injected := errors.New("injected index create failure")
+	st := &indexCreateFailAfterInstallStore{
+		Store:             memory.New(),
+		err:               injected,
+		failProperty:      true,
+		panicDropProperty: true,
+	}
+	g, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	err = g.Index.CreateProperty("TransientCleanupPanic", "status")
+	if !errors.Is(err, injected) {
+		t.Fatalf("failing create = %v, want injected error", err)
+	}
+	if !strings.Contains(err.Error(), "drop property cleanup panic") {
+		t.Fatalf("failing create error = %v, want cleanup panic context", err)
+	}
+	if tok, ok := g.Resolve.LookupLabel("TransientCleanupPanic"); !ok || tok == 0 {
+		t.Fatalf("retained label lookup = %d, %v; want non-zero, true", tok, ok)
+	}
+
+	st.failProperty = false
+	st.panicDropProperty = false
+	done := make(chan error, 1)
+	go func() {
+		done <- g.Index.CreateProperty("RecoveredAfterCleanupPanic", "status")
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("create after cleanup panic = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("create after cleanup panic timed out; registry lock was not released")
 	}
 }
 
@@ -97,6 +355,107 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	if len(nodes) != 0 {
 		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
+}
+
+func TestGraphNodesByLabelAndPropertyFloatSignedZeroMatches(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	negZero := math.Copysign(0, -1)
+	f64Node, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": negZero})
+	if err != nil {
+		t.Fatalf("Add f64 node: %v", err)
+	}
+	f32Node, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": float32(negZero)})
+	if err != nil {
+		t.Fatalf("Add f32 node: %v", err)
+	}
+	ids := func(nodes []*types.Node) []types.NodeID {
+		out := make([]types.NodeID, len(nodes))
+		for i, n := range nodes {
+			out[i] = n.ID()
+		}
+		return out
+	}
+
+	assertQuery := func(name string) {
+		t.Helper()
+		got64, err := g.Nodes.ByLabelAndProperty("Reading", "score", float64(0), storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("%s f64 query: %v", name, err)
+		}
+		if len(got64) != 1 || got64[0].ID() != f64Node.ID() {
+			t.Fatalf("%s f64 query ids = %v, want [%v]", name, ids(got64), f64Node.ID())
+		}
+
+		got32, err := g.Nodes.ByLabelAndProperty("Reading", "score", float32(0), storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("%s f32 query: %v", name, err)
+		}
+		if len(got32) != 1 || got32[0].ID() != f32Node.ID() {
+			t.Fatalf("%s f32 query ids = %v, want [%v]", name, ids(got32), f32Node.ID())
+		}
+	}
+
+	assertQuery("fallback")
+	if err := g.Index.CreateProperty("Reading", "score"); err != nil {
+		t.Fatalf("CreateProperty: %v", err)
+	}
+	assertQuery("indexed")
+}
+
+func TestGraphNodesByLabelAndPropertyNaNPayloadsMatchWithinExactType(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	nanA64 := math.Float64frombits(0x7ff8000000000001)
+	nanB64 := math.Float64frombits(0x7ff8000000000002)
+	nanA32 := math.Float32frombits(0x7fc00001)
+	nanB32 := math.Float32frombits(0x7fc00002)
+
+	a64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA64})
+	if err != nil {
+		t.Fatalf("Add a64: %v", err)
+	}
+	b64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB64})
+	if err != nil {
+		t.Fatalf("Add b64: %v", err)
+	}
+	a32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA32})
+	if err != nil {
+		t.Fatalf("Add a32: %v", err)
+	}
+	b32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB32})
+	if err != nil {
+		t.Fatalf("Add b32: %v", err)
+	}
+
+	assertQuery := func(name string) {
+		t.Helper()
+		got64, err := g.Nodes.ByLabelAndProperty("Reading", "score", nanA64, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("%s f64 query: %v", name, err)
+		}
+		assertNodeIDs(t, name+" f64 query", got64, []types.NodeID{a64.ID(), b64.ID()})
+
+		got32, err := g.Nodes.ByLabelAndProperty("Reading", "score", nanA32, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("%s f32 query: %v", name, err)
+		}
+		assertNodeIDs(t, name+" f32 query", got32, []types.NodeID{a32.ID(), b32.ID()})
+	}
+
+	assertQuery("fallback")
+	if err := g.Index.CreateProperty("Reading", "score"); err != nil {
+		t.Fatalf("CreateProperty score: %v", err)
+	}
+	assertQuery("indexed")
 }
 
 // --- Graph-layer Property Index tests ---

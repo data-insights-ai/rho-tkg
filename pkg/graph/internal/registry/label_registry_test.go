@@ -235,6 +235,18 @@ func TestLabelRegistryRollbackNamesRefusesChangedRegistry(t *testing.T) {
 	}
 }
 
+func TestLabelRegistryRollbackNamesRejectsInvalidSnapshots(t *testing.T) {
+	t.Parallel()
+
+	reg := NewLabelRegistry()
+	if ok, err := reg.RollbackNames(nil); err == nil || ok {
+		t.Fatalf("RollbackNames(nil) = (%v, %v), want false/error", ok, err)
+	}
+	if ok, err := reg.RollbackNames([]string{"not-reserved"}); err == nil || ok {
+		t.Fatalf("RollbackNames(non-reserved snapshot) = (%v, %v), want false/error", ok, err)
+	}
+}
+
 func TestLabelRegistryToken65535IsAssignable(t *testing.T) {
 	t.Parallel()
 
@@ -335,6 +347,29 @@ func TestLabelRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 		if !errors.Is(err, ErrEmptyName) {
 			t.Errorf("GetOrCreate(%q) [%s]: errors.Is(err, ErrEmptyName) = false; err = %v", tc.input, tc.name, err)
 		}
+	}
+}
+
+func TestIsBlankNameUnicodeAndInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{name: "non breaking space", in: "\u00a0", want: true},
+		{name: "em space", in: "\u2003", want: true},
+		{name: "unicode letter", in: "λ", want: false},
+		{name: "unicode letter after whitespace", in: "\u2003λ", want: false},
+		{name: "invalid utf8", in: string([]byte{0xff}), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBlankName(tt.in); got != tt.want {
+				t.Fatalf("isBlankName(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

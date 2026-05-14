@@ -131,6 +131,58 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	}
 }
 
+// TestEndpointHashRefreshedOnUpdateInPlace verifies that in-place relationship
+// updates refresh endpoint hashes without creating a history entry or version bump.
+func TestEndpointHashRefreshedOnUpdateInPlace(t *testing.T) {
+	g, _ := New(Config{})
+	defer g.Close() //nolint:errcheck
+
+	start, _ := g.Nodes.Add([]string{"S"}, nil)
+	end, _ := g.Nodes.Add([]string{"E"}, nil)
+	r, err := g.Rels.Add("EDGE", start, end, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	originalFromHash := r.Integrity().FromNodeHash
+	originalVersion := r.Version()
+
+	updatedStart, err := g.Nodes.UpdateInPlace(start.ID(), map[string]any{"x": int64(1)})
+	if err != nil {
+		t.Fatalf("UpdateNodeInPlace: %v", err)
+	}
+	newStartHash := updatedStart.Integrity().Hash
+	if newStartHash == originalFromHash {
+		t.Fatal("UpdateNodeInPlace did not change start node hash")
+	}
+
+	updated, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"label": "updated"})
+	if err != nil {
+		t.Fatalf("UpdateRelInPlace: %v", err)
+	}
+
+	if updated.Version() != originalVersion {
+		t.Fatalf("UpdateRelInPlace version = %d, want unchanged %d", updated.Version(), originalVersion)
+	}
+	hist, err := g.Rels.History(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelHistory: %v", err)
+	}
+	if len(hist) != 0 {
+		t.Fatalf("UpdateRelInPlace history entries = %d, want 0", len(hist))
+	}
+
+	ig := updated.Integrity()
+	if ig == nil {
+		t.Fatal("updated rel Integrity is nil")
+	}
+	if ig.FromNodeHash != newStartHash {
+		t.Errorf("FromNodeHash after in-place update = %q; want new start hash %q", ig.FromNodeHash, newStartHash)
+	}
+	if ig.ToNodeHash != end.Integrity().Hash {
+		t.Errorf("ToNodeHash after in-place update = %q; want end hash %q", ig.ToNodeHash, end.Integrity().Hash)
+	}
+}
+
 // TestEndpointHashSelfLoop verifies endpoint hashes for a self-loop relationship.
 func TestEndpointHashSelfLoop(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})

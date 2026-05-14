@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -32,11 +33,8 @@ type VerifyResult struct {
 }
 
 // ForceRotate triggers a hot-shard rotation with internal locking.
-// Unlike RotateHotShard() which expects the caller to hold ts.mu.Lock,
-// ForceRotate acquires the lock internally.
+// It is kept as an admin-facing alias for RotateHotShard.
 func (ts *Store) ForceRotate() error {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
 	return ts.RotateHotShard()
 }
 
@@ -67,24 +65,32 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 	ts.mu.RLock()
 	snaps := make([]esSnapshot, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
+		es.shardMu.Lock()
+		wasOpen := es.store != nil
+		es.shardMu.Unlock()
 		snaps = append(snaps, esSnapshot{
 			es:        es,
 			name:      es.name,
-			tier:      es.tier,
+			tier:      es.currentTier(),
 			timeStart: es.timeStart,
 			timeEnd:   es.timeEnd,
-			wasOpen:   es.store != nil,
+			wasOpen:   wasOpen,
 		})
 	}
 	ts.mu.RUnlock()
 
 	var infos []ShardInfo
 
-	// Reference shard. NodeCount/RelationshipCount are informational; a failure
-	// (e.g. closed DB in a test) reports 0 rather than aborting the list.
+	// Reference shard. Pin it so a racing Close cannot free the handle while
+	// the informational count calls are running.
 	refEntry, _ := ts.catalog.GetShard("reference") // (ShardEntry, bool) — bool discarded
-	refNodes, _ := ts.refShard.NodeCount()
-	refRels, _ := ts.refShard.RelationshipCount()
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, fmt.Errorf("graph: list shards: open reference: %w", err)
+	}
+	refNodes, _ := ref.NodeCount()
+	refRels, _ := ref.RelationshipCount()
+	refCheckin()
 	refInfo := ShardInfo{
 		Name:     "reference",
 		Kind:     ShardReference,
@@ -152,12 +158,12 @@ func (ts *Store) ListShards() ([]ShardInfo, error) {
 			Rels:      approxRels(entry),
 		}
 		if sn.wasOpen {
-			store, err := sn.es.checkoutStore(ts)
-			if err == nil {
+			store, release, open, err := sn.es.checkoutOpenStoreForRead(ts)
+			if err == nil && open {
 				si.Open = true
 				si.Nodes, _ = store.NodeCount() // informational; 0 on failure is acceptable
 				si.Rels, _ = store.RelationshipCount()
-				sn.es.checkinStore()
+				release()
 			}
 		}
 		infos = append(infos, si)
@@ -189,6 +195,12 @@ func approxRels(entry *ShardEntry) int {
 // infrequent admin operation; callers that need to serve reads at the
 // same time should schedule RebuildCatalog during a quiet window.
 func (ts *Store) RebuildCatalog() error {
+	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
+	if err != nil {
+		return err
+	}
+	defer releaseLifecycle()
+
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	if err := ts.checkOpen(); err != nil {
@@ -202,11 +214,17 @@ func (ts *Store) RebuildCatalog() error {
 	}
 
 	// Update reference shard.
-	refNodes, err := ts.refShard.NodeCount()
+	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
+		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: open reference: %w", err))
+	}
+	refNodes, err := ref.NodeCount()
+	if err != nil {
+		refCheckin()
 		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: ref node count: %w", err))
 	}
-	refRels, err := ts.refShard.RelationshipCount()
+	refRels, err := ref.RelationshipCount()
+	refCheckin()
 	if err != nil {
 		return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: ref rel count: %w", err))
 	}
@@ -234,32 +252,27 @@ func (ts *Store) RebuildCatalog() error {
 		ts.catalog.UpdateShardStats("archive", archNodes, archRels)
 	}
 
-	// Update event shards. Pin each shard via checkoutStore so a racing Close
-	// (which doesn't take ts.mu and only spin-waits on activeReqs) cannot free
-	// the underlying DB while we count it. Closed cold shards are opened
-	// read-only and counted; otherwise this method would keep stale catalog
-	// counts instead of rebuilding them. checkoutStore returns ErrStoreClosed
-	// if Close started after our snapshot; in that case we leave the catalog
-	// stat untouched rather than crash.
+	// Update event shards. Pin each shard while counting so a racing Close
+	// cannot free the underlying DB. Use the read checkout path so closed
+	// cold shards opened only for this rebuild are closed again immediately
+	// instead of accumulating Badger handles across many historical shards.
 	for _, es := range ts.eventShards {
-		ts.catalog.UpdateShardTier(es.name, es.tier)
-		store, coErr := es.checkoutStore(ts)
+		ts.catalog.UpdateShardTier(es.name, es.currentTier())
+		store, release, coErr := es.checkoutStoreForRead(ts)
 		if coErr != nil {
-			// Close started after our snapshot; skip the count update
-			// rather than crash on a closed DB.
-			continue
+			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: open event shard %s: %w", es.name, coErr))
 		}
 		nc, err := store.NodeCount()
 		if err != nil {
-			es.checkinStore()
+			release()
 			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: shard %s node count: %w", es.name, err))
 		}
 		rc, err := store.RelationshipCount()
 		if err != nil {
-			es.checkinStore()
+			release()
 			return rollbackCatalog(fmt.Errorf("graph: rebuild catalog: shard %s rel count: %w", es.name, err))
 		}
-		es.checkinStore()
+		release()
 		ts.catalog.UpdateShardStats(es.name, nc, rc)
 	}
 
@@ -290,6 +303,9 @@ type HashChainVerifier interface {
 func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResult, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
+	}
+	if isNilHashChainVerifier(g) {
+		return nil, fmt.Errorf("%w: hash chain verifier must not be nil", ErrInvalidStoreMutation)
 	}
 	// Look up shard in catalog.
 	entry, ok := ts.catalog.GetShard(shardName)
@@ -370,21 +386,31 @@ func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResu
 	return result, nil
 }
 
+func isNilHashChainVerifier(g HashChainVerifier) bool {
+	if g == nil {
+		return true
+	}
+	v := reflect.ValueOf(g)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 // resolveShardStore returns the BadgerStore for a named shard along with a
 // release function that the caller MUST invoke (typically via defer) to
-// balance the activeReqs/archiveActiveReqs increment. refShard is never
-// closed by closeIdleShards or Close so its release is a no-op. refArchive
-// IS closed by Close (after draining archiveActiveReqs), so it must be
-// pinned via checkoutArchive — otherwise a long-running admin op like
-// VerifyShard("archive") races Close and hits Badger v4's Flush-on-closed-DB
-// hang. Cold event shards are pinned via checkoutStore for the same reason.
+// balance the active request increment. refShard and refArchive are not
+// idle-closed, but Close does close them, so admin scans pin both. Cold event
+// shards are pinned via checkoutStore for the same reason.
 func (ts *Store) resolveShardStore(name string) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if err := ts.checkOpen(); err != nil {
 		return nil, noop, err
 	}
 	if name == "reference" {
-		return ts.refShard, noop, nil
+		return ts.checkoutRefShard()
 	}
 	if name == "archive" {
 		archive, archiveCheckin, err := ts.checkoutArchive()
@@ -417,9 +443,9 @@ type namedStore struct {
 
 // allShardStoresWithLazyOpen returns all BadgerStore instances along with a
 // release function that the caller MUST invoke (typically via defer) to
-// balance the activeReqs increments taken on event shards. Cold event
-// shards are pinned via checkoutStore so closeIdleShards cannot race-close
-// them while the caller is still iterating.
+// balance the activeReqs increments taken on reference, archive, and event
+// shards. Cold event shards are pinned while the caller is still iterating,
+// and cold shards opened only for this enumeration are closed again by release.
 //
 // On error, any checkouts already taken are released before returning, so
 // the caller never has to handle partial cleanup.
@@ -439,7 +465,11 @@ func (ts *Store) allShardStoresWithLazyOpenLocked() ([]namedStore, func(), error
 		return nil, func() {}, err
 	}
 	var stores []namedStore
-	stores = append(stores, namedStore{name: "reference", store: ts.refShard})
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return nil, func() {}, err
+	}
+	stores = append(stores, namedStore{name: "reference", store: ref})
 
 	// Pin refArchive (if open / lazy-openable) so a concurrent Close cannot
 	// free the handle mid-iteration. Missing the archive here makes
@@ -447,6 +477,7 @@ func (ts *Store) allShardStoresWithLazyOpenLocked() ([]namedStore, func(), error
 	// then deletes their cross-shard in/ entries as "orphans".
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
+		refCheckin()
 		return nil, func() {}, archiveErr
 	}
 	if archive != nil {
@@ -465,21 +496,22 @@ func (ts *Store) allShardStoresWithLazyOpenLocked() ([]namedStore, func(), error
 		eventShards = append(eventShards, es)
 	}
 
-	checkedOut := make([]*EventShard, 0, len(eventShards))
+	eventReleases := make([]func(), 0, len(eventShards))
 	releaseAll := func() {
 		archiveCheckin()
-		for _, es := range checkedOut {
-			es.checkinStore()
+		refCheckin()
+		for _, release := range eventReleases {
+			release()
 		}
 	}
 
 	for _, es := range eventShards {
-		store, err := es.checkoutStore(ts)
+		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			releaseAll()
 			return nil, func() {}, err
 		}
-		checkedOut = append(checkedOut, es)
+		eventReleases = append(eventReleases, release)
 		stores = append(stores, namedStore{name: es.name, store: store})
 	}
 	return stores, releaseAll, nil
@@ -513,11 +545,15 @@ func (ts *Store) findRelInAnyShardStore(relID snowflake.ID, stores []namedStore)
 // scanning the caller-supplied pinned-store snapshot. It mirrors
 // findRelInAnyShardStore for repair code that must resolve relationship
 // endpoints against the same stable shard set it is already scanning.
-func (ts *Store) findNodeInAnyShardStore(nodeID snowflake.ID, stores []namedStore) *BadgerStore {
+func (ts *Store) findNodeInAnyShardStore(nodeID snowflake.ID, stores []namedStore) (*BadgerStore, error) {
 	for _, ns := range stores {
-		if ns.store != nil && ns.store.HasNodeID(nodeID) {
-			return ns.store
+		live, err := nodeRowLive(ns.store, types.NodeID(nodeID))
+		if err != nil {
+			return nil, err
+		}
+		if live {
+			return ns.store, nil
 		}
 	}
-	return nil
+	return nil, nil
 }

@@ -86,6 +86,36 @@ func TestHistKeyLength(t *testing.T) {
 	}
 }
 
+func TestHistPrefixContainment(t *testing.T) {
+	t.Parallel()
+
+	nodeID := snowflake.ID(100)
+	nodePrefix := HistNodePrefix(nodeID)
+	nodeKey := HistNodeKey(nodeID, 7)
+	if len(nodePrefix) != SizeNodeKey {
+		t.Fatalf("HistNodePrefix length = %d, want %d", len(nodePrefix), SizeNodeKey)
+	}
+	if !bytes.HasPrefix(nodeKey, nodePrefix) {
+		t.Fatal("HistNodeKey should have HistNodePrefix as prefix")
+	}
+	if bytes.HasPrefix(nodeKey, HistNodePrefix(nodeID+1)) {
+		t.Fatal("HistNodeKey should not match prefix for a different node ID")
+	}
+
+	relID := snowflake.ID(200)
+	relPrefix := HistRelPrefix(relID)
+	relKey := HistRelKey(relID, 9)
+	if len(relPrefix) != SizeRelKey {
+		t.Fatalf("HistRelPrefix length = %d, want %d", len(relPrefix), SizeRelKey)
+	}
+	if !bytes.HasPrefix(relKey, relPrefix) {
+		t.Fatal("HistRelKey should have HistRelPrefix as prefix")
+	}
+	if bytes.HasPrefix(relKey, HistRelPrefix(relID+1)) {
+		t.Fatal("HistRelKey should not match prefix for a different relationship ID")
+	}
+}
+
 func TestTempIdxKeyLength(t *testing.T) {
 	t.Parallel()
 	nk := tempNodeKey(1000, 100)

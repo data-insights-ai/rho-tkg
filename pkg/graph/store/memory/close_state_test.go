@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/generatedcreate"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
@@ -89,7 +90,7 @@ func TestMemoryStoreZeroValueConcurrentFirstUse(t *testing.T) {
 
 	const goroutines = 32
 	start := make(chan struct{})
-	errs := make(chan error, goroutines*5)
+	errs := make(chan error, goroutines*6)
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
@@ -113,6 +114,9 @@ func TestMemoryStoreZeroValueConcurrentFirstUse(t *testing.T) {
 			if count, err := ms.NodeCountByLabel(1); err != nil || count != 0 {
 				errs <- fmt.Errorf("NodeCountByLabel = (%d, %v), want (0, nil)", count, err)
 			}
+			if count, err := ms.RelCountByType(1); err != nil || count != 0 {
+				errs <- fmt.Errorf("RelCountByType = (%d, %v), want (0, nil)", count, err)
+			}
 		}(i)
 	}
 
@@ -121,6 +125,200 @@ func TestMemoryStoreZeroValueConcurrentFirstUse(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+}
+
+func TestMemoryStoreIndexAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	checks := func(ms *Store) []struct {
+		name string
+		run  func() error
+	} {
+		return []struct {
+			name string
+			run  func() error
+		}{
+			{name: "CreatePropertyIndex", run: func() error { return ms.CreatePropertyIndex(0, "") }},
+			{name: "DropPropertyIndex", run: func() error { return ms.DropPropertyIndex(0, "") }},
+			{name: "CreateTemporalIndex", run: func() error { return ms.CreateTemporalIndex(0) }},
+			{name: "DropTemporalIndex", run: func() error { return ms.DropTemporalIndex(0) }},
+			{name: "CreateHighFrequencyIndex", run: func() error { return ms.CreateHighFrequencyIndex(0, 0) }},
+			{name: "DropHighFrequencyIndex", run: func() error { return ms.DropHighFrequencyIndex(0) }},
+			{name: "CreateVectorIndex", run: func() error { return ms.CreateVectorIndex(0, "", 0, storepkg.DistanceMetric(99)) }},
+			{name: "DropVectorIndex", run: func() error { return ms.DropVectorIndex(0, "") }},
+			{name: "SearchNearestNodes", run: func() error {
+				_, err := ms.SearchNearestNodes(0, "", nil, -1, QueryOpts{Limit: -1})
+				return err
+			}},
+			{name: "SearchNearestFiltered", run: func() error {
+				_, err := ms.SearchNearestFiltered(0, "", nil, -1, nil)
+				return err
+			}},
+			{name: "NodesByLabelAndProperty", run: func() error {
+				_, err := ms.NodesByLabelAndProperty(0, "", nil, QueryOpts{Limit: -1})
+				return err
+			}},
+		}
+	}
+
+	var nilStore *Store
+	for _, check := range checks(nilStore) {
+		if err := check.run(); !errors.Is(err, ErrNilStore) {
+			t.Fatalf("nil %s error = %v, want ErrNilStore", check.name, err)
+		}
+	}
+
+	ms := New()
+	if err := ms.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, check := range checks(ms) {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("closed %s error = %v, want ErrStoreClosed", check.name, err)
+		}
+	}
+}
+
+func TestMemoryStoreMutationAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	checks := func(ms *Store) []struct {
+		name string
+		run  func() error
+	} {
+		return []struct {
+			name string
+			run  func() error
+		}{
+			{name: "PutNode", run: func() error { return ms.PutNode(nil) }},
+			{name: "ReplaceNode", run: func() error { return ms.ReplaceNode(nil) }},
+			{name: "DeleteNode", run: func() error { return ms.DeleteNode(0) }},
+			{name: "DeleteNodeCascade", run: func() error { return ms.DeleteNodeCascade(0) }},
+			{name: "RemoveNodeLabelToken", run: func() error { return ms.RemoveNodeLabelToken(0, 0, nil) }},
+			{name: "AddNodeLabelToken", run: func() error { return ms.AddNodeLabelToken(0, 0, nil) }},
+			{name: "PutNodesBatch", run: func() error { return ms.PutNodesBatch([]*types.Node{nil}) }},
+			{name: "DeleteNodesBatch", run: func() error { return ms.DeleteNodesBatch([]types.NodeID{0}) }},
+			{name: "PutRelationship", run: func() error { return ms.PutRelationship(nil) }},
+			{name: "PutRelationshipGeneratedIDWithEndpointHashes", run: func() error {
+				_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID)
+				return err
+			}},
+			{name: "ReplaceRelationship", run: func() error { return ms.ReplaceRelationship(nil) }},
+			{name: "DeleteRelationship", run: func() error { return ms.DeleteRelationship(0) }},
+			{name: "PutRelationshipsBatch", run: func() error { return ms.PutRelationshipsBatch([]*types.Relationship{nil}) }},
+			{name: "DeleteRelationshipsBatch", run: func() error { return ms.DeleteRelationshipsBatch([]types.RelID{0}) }},
+			{name: "RemoveNodeLabelTokenWithHistory", run: func() error {
+				return ms.RemoveNodeLabelTokenWithHistory(0, 0, nil, 0, nil)
+			}},
+			{name: "AddNodeLabelTokenWithHistory", run: func() error {
+				return ms.AddNodeLabelTokenWithHistory(0, 0, nil, 0, nil)
+			}},
+			{name: "ReplaceNodeWithHistory", run: func() error { return ms.ReplaceNodeWithHistory(nil, 0, nil) }},
+			{name: "DeleteNodeWithHistory", run: func() error { return ms.DeleteNodeWithHistory(0, 0, nil, nil) }},
+			{name: "PutNodeVersion", run: func() error { return ms.PutNodeVersion(0, 0, nil) }},
+			{name: "TruncateNodeHistory", run: func() error { return ms.TruncateNodeHistory(0, -1) }},
+			{name: "TrimNodeHistoryFrom", run: func() error { return ms.TrimNodeHistoryFrom(0, 0) }},
+			{name: "ReplaceRelWithHistory", run: func() error { return ms.ReplaceRelWithHistory(nil, 0, nil) }},
+			{name: "DeleteRelWithHistory", run: func() error { return ms.DeleteRelWithHistory(0, 0, nil) }},
+			{name: "PutRelVersion", run: func() error { return ms.PutRelVersion(0, 0, nil) }},
+			{name: "TruncateRelHistory", run: func() error { return ms.TruncateRelHistory(0, -1) }},
+			{name: "TrimRelHistoryFrom", run: func() error { return ms.TrimRelHistoryFrom(0, 0) }},
+		}
+	}
+
+	var nilStore *Store
+	for _, check := range checks(nilStore) {
+		if err := check.run(); !errors.Is(err, ErrNilStore) {
+			t.Fatalf("nil %s error = %v, want ErrNilStore", check.name, err)
+		}
+	}
+
+	ms := New()
+	if err := ms.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, check := range checks(ms) {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("closed %s error = %v, want ErrStoreClosed", check.name, err)
+		}
+	}
+}
+
+func TestMemoryStoreReadAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	checks := func(ms *Store) []struct {
+		name string
+		run  func() error
+	} {
+		return []struct {
+			name string
+			run  func() error
+		}{
+			{name: "GetNode", run: func() error { _, err := ms.GetNode(0); return err }},
+			{name: "NodeIntegrityHash", run: func() error { _, err := ms.NodeIntegrityHash(0); return err }},
+			{name: "EndpointIntegrityHashes", run: func() error {
+				_, _, err := ms.EndpointIntegrityHashes(0, 0)
+				return err
+			}},
+			{name: "GetRelationship", run: func() error { _, err := ms.GetRelationship(0); return err }},
+			{name: "OutgoingRelationships", run: func() error { _, err := ms.OutgoingRelationships(0, 0); return err }},
+			{name: "OutgoingRelationshipsForNodes", run: func() error {
+				_, err := ms.OutgoingRelationshipsForNodes([]types.NodeID{0}, 0)
+				return err
+			}},
+			{name: "IncomingRelationships", run: func() error { _, err := ms.IncomingRelationships(0, 0); return err }},
+			{name: "IncomingRelationshipsForNodes", run: func() error {
+				_, err := ms.IncomingRelationshipsForNodes([]types.NodeID{0}, 0)
+				return err
+			}},
+			{name: "NodesByLabel", run: func() error { _, err := ms.NodesByLabel(0, QueryOpts{Limit: -1}); return err }},
+			{name: "RelationshipsByType", run: func() error { _, err := ms.RelationshipsByType(0, QueryOpts{Limit: -1}); return err }},
+			{name: "NodeCount", run: func() error { _, err := ms.NodeCount(); return err }},
+			{name: "RelationshipCount", run: func() error { _, err := ms.RelationshipCount(); return err }},
+			{name: "NodeCountByLabel", run: func() error { _, err := ms.NodeCountByLabel(0); return err }},
+			{name: "RelCountByType", run: func() error { _, err := ms.RelCountByType(0); return err }},
+			{name: "AllNodeIDs", run: func() error { _, err := ms.AllNodeIDs(QueryOpts{Limit: -1}); return err }},
+			{name: "AllRelIDs", run: func() error { _, err := ms.AllRelIDs(QueryOpts{Limit: -1}); return err }},
+			{name: "ForEachNodeID", run: func() error { return ms.ForEachNodeID(nil) }},
+			{name: "ForEachRelID", run: func() error { return ms.ForEachRelID(nil) }},
+			{name: "ForEachNodeHistoryID", run: func() error { return ms.ForEachNodeHistoryID(nil) }},
+			{name: "ForEachRelHistoryID", run: func() error { return ms.ForEachRelHistoryID(nil) }},
+			{name: "AllNodeHistoryIDs", run: func() error { _, err := ms.AllNodeHistoryIDs(); return err }},
+			{name: "AllRelHistoryIDs", run: func() error { _, err := ms.AllRelHistoryIDs(); return err }},
+			{name: "AllNodeHistoryIDsFrom", run: func() error { _, err := ms.AllNodeHistoryIDsFrom(0, -1); return err }},
+			{name: "AllRelHistoryIDsFrom", run: func() error { _, err := ms.AllRelHistoryIDsFrom(0, -1); return err }},
+			{name: "AllNodes", run: func() error { _, err := ms.AllNodes(QueryOpts{Limit: -1}); return err }},
+			{name: "AllRelationships", run: func() error { _, err := ms.AllRelationships(QueryOpts{Limit: -1}); return err }},
+			{name: "GetNodesByIDs", run: func() error { _, err := ms.GetNodesByIDs([]types.NodeID{0}); return err }},
+			{name: "GetRelationshipsByIDs", run: func() error { _, err := ms.GetRelationshipsByIDs([]types.RelID{0}); return err }},
+			{name: "GetNodeVersion", run: func() error { _, err := ms.GetNodeVersion(0, 0); return err }},
+			{name: "GetNodeHistory", run: func() error { _, err := ms.GetNodeHistory(0); return err }},
+			{name: "GetRelVersion", run: func() error { _, err := ms.GetRelVersion(0, 0); return err }},
+			{name: "GetRelHistory", run: func() error { _, err := ms.GetRelHistory(0); return err }},
+			{name: "NodeAsOf", run: func() error { _, err := ms.NodeAsOf(0, 0); return err }},
+			{name: "RelAsOf", run: func() error { _, err := ms.RelAsOf(0, 0); return err }},
+			{name: "NodesAsOf", run: func() error { _, err := ms.NodesAsOf(0); return err }},
+			{name: "RelsAsOf", run: func() error { _, err := ms.RelsAsOf(0); return err }},
+		}
+	}
+
+	var nilStore *Store
+	for _, check := range checks(nilStore) {
+		if err := check.run(); !errors.Is(err, ErrNilStore) {
+			t.Fatalf("nil %s error = %v, want ErrNilStore", check.name, err)
+		}
+	}
+
+	ms := New()
+	if err := ms.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	for _, check := range checks(ms) {
+		if err := check.run(); !errors.Is(err, ErrStoreClosed) {
+			t.Fatalf("closed %s error = %v, want ErrStoreClosed", check.name, err)
+		}
 	}
 }
 

@@ -17,12 +17,12 @@ func (r *ResolveOps) GetOrCreateLabel(name string) (uint16, error) {
 	}
 	var tok uint16
 	err := c.readUnderRLock(func() error {
-		if existing, ok := c.labels.Lookup(name); ok {
+		if existing, ok := c.labels.Lookup(name); ok && !c.registryDirty.Load() {
 			tok = existing
 			return nil
 		}
 		var err error
-		tok, err = c.getOrCreateLabelLocked(name)
+		tok, err = c.getOrCreateLabelPersisted(name)
 		return err
 	})
 	return tok, err
@@ -39,12 +39,12 @@ func (r *ResolveOps) GetOrCreateRelType(name string) (uint16, error) {
 	}
 	var tok uint16
 	err := c.readUnderRLock(func() error {
-		if existing, ok := c.relTypes.Lookup(name); ok {
+		if existing, ok := c.relTypes.Lookup(name); ok && !c.registryDirty.Load() {
 			tok = existing
 			return nil
 		}
 		var err error
-		tok, err = c.getOrCreateRelTypeLocked(name)
+		tok, err = c.getOrCreateRelTypePersisted(name)
 		return err
 	})
 	return tok, err

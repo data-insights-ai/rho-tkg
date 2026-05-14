@@ -560,6 +560,92 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 	}
 }
 
+func TestBadgerStoreAdjacencyPropagatesCorruptTargetNode(t *testing.T) {
+	t.Parallel()
+
+	checks := []struct {
+		name string
+		run  func(*Store, types.NodeID) error
+	}{
+		{
+			name: "OutgoingRelationships",
+			run: func(bs *Store, nid types.NodeID) error {
+				_, err := bs.OutgoingRelationships(nid, 0)
+				return err
+			},
+		},
+		{
+			name: "OutgoingRelationshipsForNodes",
+			run: func(bs *Store, nid types.NodeID) error {
+				_, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{nid}, 0)
+				return err
+			},
+		},
+		{
+			name: "IncomingRelationships",
+			run: func(bs *Store, nid types.NodeID) error {
+				_, err := bs.IncomingRelationships(nid, 0)
+				return err
+			},
+		},
+		{
+			name: "IncomingRelationshipsForNodes",
+			run: func(bs *Store, nid types.NodeID) error {
+				_, err := bs.IncomingRelationshipsForNodes([]types.NodeID{nid}, 0)
+				return err
+			},
+		},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			bs := newTestBadgerStore(t)
+			n := putTestNode(t, bs, 10, 1, nil)
+			corruptNodeRowAfterFlush(t, bs, n.ID().SnowflakeID())
+
+			requireCorruptNodeReadError(t, check.name, check.run(bs, n.ID()))
+		})
+	}
+}
+
+func TestBadgerStorePutRelationshipPropagatesCorruptEndpointRows(t *testing.T) {
+	t.Parallel()
+
+	checks := []struct {
+		name string
+		run  func(*Store, *types.Relationship) error
+	}{
+		{
+			name: "PutRelationship",
+			run: func(bs *Store, rel *types.Relationship) error {
+				return bs.PutRelationship(rel)
+			},
+		},
+		{
+			name: "PutRelationshipsBatch",
+			run: func(bs *Store, rel *types.Relationship) error {
+				return bs.PutRelationshipsBatch([]*types.Relationship{rel})
+			},
+		},
+	}
+
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			bs := newTestBadgerStore(t)
+			start := putTestNode(t, bs, 10, 1, nil)
+			end := putTestNode(t, bs, 20, 1, nil)
+			corruptNodeRowAfterFlush(t, bs, start.ID().SnowflakeID())
+
+			rel := types.NewRelationship(types.RelID(snowflake.ID(500)), 3, start.ID(), end.ID())
+			err := check.run(bs, rel)
+			requireCorruptNodeReadError(t, check.name, err)
+			if _, getErr := bs.GetRelationship(rel.ID()); !errors.Is(getErr, ErrRelNotFound) {
+				t.Fatalf("GetRelationship after failed %s = %v, want ErrRelNotFound", check.name, getErr)
+			}
+		})
+	}
+}
+
 func TestBadgerStorePutRelCacheIsolation(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -858,6 +944,39 @@ func TestBadgerStoreGetRelsByIDsSorted(t *testing.T) {
 		if prev >= curr {
 			t.Errorf("GetRelationshipsByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
 		}
+	}
+}
+
+func TestBadgerStoreGetRelsByIDsDuplicatesReturnIndependentCopies(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+
+	putTestRel(t, bs, 100, 5, 1, 2)
+	putTestRel(t, bs, 200, 5, 1, 2)
+
+	got, err := bs.GetRelationshipsByIDs([]types.RelID{types.RelID(200), types.RelID(100), types.RelID(200)})
+	if err != nil {
+		t.Fatalf("GetRelationshipsByIDs() returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("GetRelationshipsByIDs() = %d rels, want 3", len(got))
+	}
+	var copies []*types.Relationship
+	for i := 1; i < len(got); i++ {
+		if got[i].ID() < got[i-1].ID() {
+			t.Fatalf("GetRelationshipsByIDs not sorted: result[%d].ID=%d < result[%d].ID=%d", i, got[i].ID(), i-1, got[i-1].ID())
+		}
+	}
+	for _, r := range got {
+		if r.ID() == types.RelID(200) {
+			copies = append(copies, r)
+		}
+	}
+	if len(copies) != 2 || copies[0] == copies[1] {
+		t.Fatal("GetRelationshipsByIDs returned aliased pointers for duplicate relationship IDs")
 	}
 }
 

@@ -22,9 +22,15 @@ func (ts *Store) nodeIDExistsForCreate(n *types.Node) (bool, error) {
 	}
 	id := n.ID()
 	raw := id.SnowflakeID()
-	if ts.refShard.HasNodeID(raw) {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return false, err
+	}
+	if ref.HasNodeID(raw) {
+		refCheckin()
 		return true, nil
 	}
+	refCheckin()
 
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
@@ -66,7 +72,7 @@ func (ts *Store) shardForNodeCreate(n *types.Node) (*BadgerStore, func(), error)
 		return nil, nil, err
 	}
 	if ts.ontology.ClassifyByToken(n.PrimaryLabelToken().Value()) == ClassReference {
-		return ts.refShard, func() {}, nil
+		return ts.checkoutRefShard()
 	}
 	es := ts.timestampToEventShardEntry(n.ID().SnowflakeID())
 	store, err := es.checkoutStore(ts)
@@ -88,6 +94,9 @@ func (ts *Store) PutNodeGeneratedID(n *types.Node, proof generatedcreate.Proof) 
 }
 
 func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeWrite(n); err != nil {
 		return err
 	}
@@ -116,16 +125,20 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 	id := n.ID().SnowflakeID()
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, n, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, id)
+	if err != nil {
 		return err
 	}
 	if err := shard.PutNode(n); err != nil {
 		return err
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) ReplaceNode(n *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeWrite(n); err != nil {
 		return err
 	}
@@ -147,7 +160,8 @@ func (ts *Store) ReplaceNode(n *types.Node) error {
 	}
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, n, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, id)
+	if err != nil {
 		return err
 	}
 	if err := store.ReplaceNode(n); err != nil {
@@ -158,10 +172,13 @@ func (ts *Store) ReplaceNode(n *types.Node) error {
 	} else {
 		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) DeleteNode(nid types.NodeID) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
@@ -201,6 +218,9 @@ func (ts *Store) DeleteNode(nid types.NodeID) error {
 }
 
 func (ts *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
@@ -223,7 +243,8 @@ func (ts *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, updatedNode, id)
+	if err != nil {
 		return err
 	}
 	if err := store.RemoveNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
@@ -234,15 +255,18 @@ func (ts *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	} else {
 		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -267,7 +291,8 @@ func (ts *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	}
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, updatedNode, id)
+	if err != nil {
 		return err
 	}
 	if err := store.RemoveNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
@@ -278,10 +303,13 @@ func (ts *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	} else {
 		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
@@ -304,7 +332,8 @@ func (ts *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, updatedNode, id)
+	if err != nil {
 		return err
 	}
 	if err := store.AddNodeLabelToken(types.NodeID(id), tok, updatedNode); err != nil {
@@ -315,15 +344,18 @@ func (ts *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	} else {
 		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
 	if err := storecontract.ValidateNodeHistorySnapshot(nid, updatedNode); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateNodeHistorySnapshot(nid, prevState); err != nil {
+	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevVersion, prevState); err != nil {
 		return err
 	}
 	id := nid.SnowflakeID()
@@ -348,7 +380,8 @@ func (ts *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	}
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, updatedNode, id); err != nil {
+	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, updatedNode, id)
+	if err != nil {
 		return err
 	}
 	if err := store.AddNodeLabelTokenWithHistory(types.NodeID(id), tok, updatedNode, prevVersion, prevState); err != nil {
@@ -359,7 +392,7 @@ func (ts *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	} else {
 		indexpkg.PurgeNodeFromAllVectorIndexes(ts.vectorIndexes, id)
 	}
-	return indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, updatedNode, id)
+	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
 }
 
 func (ts *Store) PutNodesBatch(nodes []*types.Node) error {
@@ -374,6 +407,12 @@ func (ts *Store) PutNodesBatchGeneratedID(nodes []*types.Node, proof generatedcr
 }
 
 func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
@@ -433,10 +472,13 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 
 	ts.vectorIdxMu.Lock()
 	defer ts.vectorIdxMu.Unlock()
-	for _, n := range nodes {
-		if err := indexpkg.ValidateNodeVectorIndexes(ts.vectorIndexes, n, n.ID().SnowflakeID()); err != nil {
+	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
+	for i, n := range nodes {
+		updates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, n.ID().SnowflakeID())
+		if err != nil {
 			return err
 		}
+		vectorUpdates[i] = updates
 	}
 
 	var written []nodeBucket
@@ -460,8 +502,8 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 		}
 		written = append(written, bucket)
 	}
-	for _, n := range nodes {
-		if err := indexpkg.AddNodeToVectorIndexes(ts.vectorIndexes, n, n.ID().SnowflakeID()); err != nil {
+	for i, n := range nodes {
+		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], n.ID().SnowflakeID()); err != nil {
 			return err
 		}
 	}

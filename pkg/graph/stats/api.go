@@ -134,7 +134,11 @@ func (a *API) AllLabelCounts() (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ops.AllLabelCounts()
+	counts, err := ops.AllLabelCounts()
+	if err != nil {
+		return nil, err
+	}
+	return cloneCounts(counts), nil
 }
 
 // AllRelTypeCounts returns counts per relationship type.
@@ -143,5 +147,20 @@ func (a *API) AllRelTypeCounts() (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ops.AllRelTypeCounts()
+	counts, err := ops.AllRelTypeCounts()
+	if err != nil {
+		return nil, err
+	}
+	return cloneCounts(counts), nil
+}
+
+func cloneCounts(counts map[string]int) map[string]int {
+	if counts == nil {
+		return nil
+	}
+	out := make(map[string]int, len(counts))
+	for key, count := range counts {
+		out[key] = count
+	}
+	return out
 }
