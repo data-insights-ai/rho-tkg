@@ -46,7 +46,7 @@ func (c *Core) deletePartialNodeForRollback(n *types.Node) error {
 // Node — Add (Create / Import)
 // =============================================================================
 
-// AddWithContext creates a new node with the given labels and properties.
+// Add creates a new node with the given labels and properties.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
@@ -73,7 +73,7 @@ func (n *NodeOps) Add(ctx context.Context, labels []string, props map[string]any
 	return node, err
 }
 
-// addNodeInternal is the lock-free implementation of NodeOps.AddWithContext.
+// addNodeInternal is the lock-free implementation of NodeOps.Add.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {

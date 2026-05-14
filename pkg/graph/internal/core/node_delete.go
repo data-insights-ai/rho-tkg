@@ -15,44 +15,38 @@ import (
 // Node — Read / Delete
 // =============================================================================
 
-// GetWithContext retrieves a node by snowflake ID with context support.
+// Get retrieves a node by snowflake ID with context support.
+//
+// Hot-path inlined: no closure-under-RLock indirection (B4). The RLock is
+// still acquired for transaction isolation, but the closed check, ctx
+// check, and getCurrentNode call are inline so escape analysis can keep
+// the call frame on the stack.
 func (n *NodeOps) Get(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
-	var (
-		node *types.Node
-		err  error
-	)
-	_, closeErr := c.runUnderRLock(func() {
-		if err = checkCtx(ctx); err != nil {
-			return
-		}
-		node, err = c.getCurrentNode(id)
-		if err == nil {
-			if ctxErr := checkCtx(ctx); ctxErr != nil {
-				node = nil
-				err = ctxErr
-			}
-		}
-	})
-	if closeErr != nil {
-		return nil, closeErr
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil, ErrGraphClosed
 	}
-	if err == nil {
-		c.opNodeReads.Add(1)
+	node, err := c.getCurrentNode(id)
+	c.mu.RUnlock()
+	if err != nil {
+		return nil, err
 	}
-	return node, err
+	if ctxErr := checkCtx(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
+	c.opNodeReads.Add(1)
+	return node, nil
 }
 
-// DeleteWithContext atomically removes a node and all connected relationships.
+// Delete atomically removes a node and all connected relationships.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
@@ -79,7 +73,7 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 	return err
 }
 
-// deleteNodeInternal is the lock-free implementation of NodeOps.DeleteWithContext.
+// deleteNodeInternal is the lock-free implementation of NodeOps.Delete.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //
 // Two-phase locking with TOCTOU retry:

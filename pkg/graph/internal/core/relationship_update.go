@@ -17,7 +17,7 @@ import (
 // Relationship — Update
 // =============================================================================
 
-// UpdateWithContext applies property updates to an existing relationship with context support.
+// Update applies property updates to an existing relationship with context support.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
@@ -44,7 +44,7 @@ func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]
 	return rel, err
 }
 
-// updateRelationshipInternal is the lock-free implementation of RelOps.UpdateWithContext.
+// updateRelationshipInternal is the lock-free implementation of RelOps.Update.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -321,7 +321,7 @@ func (r *RelOps) UpdateInPlace(ctx context.Context, id types.RelID, updates map[
 	return rel, err
 }
 
-// updateRelInPlaceInternal is the lock-free implementation of RelOps.UpdateInPlaceWithContext.
+// updateRelInPlaceInternal is the lock-free implementation of RelOps.UpdateInPlace.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := checkCtx(ctx); err != nil {

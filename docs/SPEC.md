@@ -568,34 +568,28 @@ meta/reltype_tokens  -> msgpack([]string)
 
 This library does not ship a query language. Downstream engines (notably `rho/tkgd-v3`'s Cypher engine) integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes.ByLabel` / `g.Rels.ByType` for token-driven queries.
 
-### 11.1 Label Matching (resolve once per query)
+### 11.1 Label Matching
 
 ```go
-tok, ok := g.Resolve.LookupLabel("Person")
-if !ok {
-    return nil, nil // label never registered → empty result
-}
-// Per candidate: node.HasLabelToken(tok) — integer comparison
+// Per candidate: g.Nodes.HasLabel(node, "Person")
+// Internally resolves the label token once and compares as uint16.
+// Returns false for unregistered or malformed names (fail-closed).
 ```
 
 ### 11.2 Label Disjunction (`:Person|Company`)
 
 ```go
-var tokens []uint16
-for _, label := range []string{"Person", "Company"} {
-    if tok, ok := g.Resolve.LookupLabel(label); ok {
-        tokens = append(tokens, tok)
-    }
-}
-// Per candidate: any(node.HasLabelToken(tok) for tok in tokens).
+// Per candidate:
+//   g.Nodes.HasLabel(node, "Person") || g.Nodes.HasLabel(node, "Company")
+// The token-leak helpers (LookupLabel/LabelToken) were removed in v4;
+// callers that need bulk resolution should batch via the public By-label
+// scan helpers (g.Nodes.ByLabel(label, opts)).
 ```
 
 ### 11.3 Type Matching
 
 ```go
-tok, ok := g.Resolve.LookupRelType("KNOWS")
-if !ok { return nil, nil }
-// Per candidate: rel.HasTypeToken(tok)
+// Per candidate: g.Rels.HasType(rel, "KNOWS")
 ```
 
 ### 11.4 Property Access (incl. shadow keys)
@@ -897,7 +891,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43o | Batch update queues snapshot mutable inputs | Mutating caller-owned update maps, nested property slices/maps, or provenance signatures after queueing must not change what `Execute` applies |
 | 43p | Metadata-blind rehashes preserve non-hash integrity metadata | `CloseVersion`, node label add/remove, node/relationship property CAS, and in-place updates recompute `Hash`/`PrevHash` without clearing provenance, signature, authorization, or relationship endpoint hashes |
 | 43q | Temporal label queries validate malformed targets | `g.Temporal.NodesByLabelAt` rejects empty, whitespace-only, and overlong labels before registry lookup instead of treating malformed labels as unregistered empty namespaces |
-| 43r | Registry token helpers enforce name limits | `g.Resolve.LabelToken` and `RelTypeToken` reject empty, whitespace-only, and overlong names before registry allocation; boolean name helpers fail closed for malformed inputs |
+| 43r | Registry name limits enforced on first use | Internal registry allocation triggered by `Nodes.Add`/`Rels.Add`/`IO.Import` rejects empty, whitespace-only, and overlong names before token allocation; boolean name helpers (`Nodes.HasLabel`, `Rels.HasType`) fail closed for malformed inputs. (Token-leak helpers `LabelToken`/`RelTypeToken`/`LookupLabel`/`LookupRelType` removed in v4.) |
 | 43s | Registry import and rehydration enforce name limits | `IO.Import` and graph construction from persisted registries validate label/type names against active `MaxNameLength` before accepting serialized or stored mappings |
 | 43t | Index provider names fail before registry access | Provider registration and unregistration reject empty or whitespace-only names with `ErrIndexProviderEmptyName` before mutating or probing the provider registry |
 | 43u | Float32 wire tags reject lossy finite payloads | Checked property wire accepts `float32` NaN and infinities, but finite `float64` payloads tagged as `float32` or `[]float32` must round-trip exactly through `float32` before reconstruction |

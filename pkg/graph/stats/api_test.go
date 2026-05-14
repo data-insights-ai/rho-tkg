@@ -47,6 +47,28 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	}
 }
 
+// TestAPIGetPropagatesSnapshotError pins the close-error contract: when the
+// backing ops report a snapshot error (e.g. ErrGraphClosed from a closed
+// graph), API.Get must surface it. Pre-fix, SnapshotCounters silently
+// dropped the error and Get reported nil — breaking the documented
+// fail-closed shape that every other Stats method honours.
+func TestAPIGetPropagatesSnapshotError(t *testing.T) {
+	t.Parallel()
+	want := errors.New("graph: graph is closed (test sentinel)")
+	api := New(&statsOpsSpy{
+		snapshot:    [12]int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+		snapshotErr: want,
+	})
+	got, err := api.Get()
+	if !errors.Is(err, want) {
+		t.Fatalf("Get error = %v, want propagated snapshotErr", err)
+	}
+	// Counter snapshot must still be populated so callers can observe final state.
+	if got.NodesAdded != 1 || got.RelCacheMisses != 12 {
+		t.Fatalf("Get counters partially zero on snapshot error: %+v", got)
+	}
+}
+
 func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	t.Parallel()
 
@@ -196,6 +218,7 @@ type statsOpsSpy struct {
 	relCountByTypeErr   error
 	allLabelCountsErr   error
 	allRelTypeCountsErr error
+	snapshotErr         error
 
 	nodeLabelArg string
 	relTypeArg   string
@@ -245,9 +268,11 @@ func (s *statsOpsSpy) SnapshotCounters() (
 	nodesAdded, nodesRead, nodesUpdated, nodesDeleted int64,
 	relsAdded, relsRead, relsUpdated, relsDeleted int64,
 	nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses int64,
+	err error,
 ) {
 	s.snapshotCountersCalls++
 	return s.snapshot[0], s.snapshot[1], s.snapshot[2], s.snapshot[3],
 		s.snapshot[4], s.snapshot[5], s.snapshot[6], s.snapshot[7],
-		s.snapshot[8], s.snapshot[9], s.snapshot[10], s.snapshot[11]
+		s.snapshot[8], s.snapshot[9], s.snapshot[10], s.snapshot[11],
+		s.snapshotErr
 }

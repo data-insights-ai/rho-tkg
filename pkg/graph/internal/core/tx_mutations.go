@@ -177,7 +177,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 	if len(updates) == 0 {
 		// Empty-update no-op. Read directly from the store rather than via
 		// the exported wrapper: the tx already holds c.mu.Lock(), and any
-		// future addition of c.mu.RLock() to GetNodeWithContext would
+		// future addition of c.mu.RLock() to NodeOps.Get would
 		// deadlock the tx. The tx convention is: never call exported
 		// methods, always reach the store via *Internal helpers or
 		// tx.g.store directly.

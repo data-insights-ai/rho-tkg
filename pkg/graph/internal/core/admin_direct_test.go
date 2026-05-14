@@ -42,6 +42,14 @@ func TestAdminOpsClosedGraphReturnsErrGraphClosed(t *testing.T) {
 	if _, err := g.Admin.ListShards(); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("ListShards after Close = %v, want ErrGraphClosed", err)
 	}
+	// Stats.Get must also fail closed — pre-fix it silently dropped the
+	// error because SnapshotCounters discarded it (B1).
+	if _, err := g.Stats.Get(); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("Stats.Get after Close = %v, want ErrGraphClosed", err)
+	}
+	if _, _, _, _, _, _, _, _, _, _, _, _, err := g.Stats.SnapshotCounters(); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("Stats.SnapshotCounters after Close err = %v, want ErrGraphClosed", err)
+	}
 	if _, err := g.Admin.Repair(); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("Repair after Close = %v, want ErrGraphClosed", err)
 	}

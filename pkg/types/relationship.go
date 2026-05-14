@@ -9,9 +9,11 @@ type relTypeToken uint16
 // Value returns the underlying uint16 value of the token.
 func (t relTypeToken) Value() uint16 { return uint16(t) }
 
-// RelID is the opaque, unexported ID type for relationships.
-// Wraps snowflake.ID — external packages cannot construct or compare these
-// directly. The graph layer creates relationships with snowflake.ID values.
+// RelID is the opaque ID type for relationships. Exported so callers can
+// pass IDs to graph methods and reference them in results, but the
+// underlying snowflake.ID layout is intentionally hidden — use the typed
+// accessor SnowflakeID() to bridge to persistence keys, and the graph
+// generators (g.Nodes.NextID, g.Rels.NextID) to allocate fresh IDs.
 type RelID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a relID.

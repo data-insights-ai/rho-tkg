@@ -68,21 +68,22 @@ func (s *StatOps) Get() (GraphStats, error) {
 }
 
 // SnapshotCounters returns the same operation counters and cache metrics as
-// Get but as discrete int64 return values, so consumers (e.g. the
-// pkg/graph/stats sub-API) can satisfy a local Ops interface without
-// importing core's GraphStats struct.
+// Get but as discrete int64 return values plus the lifecycle error, so
+// consumers (e.g. the pkg/graph/stats sub-API) can satisfy a local Ops
+// interface without importing core's GraphStats struct. The error is the
+// same one Get would return — propagating it lets the public wrapper honour
+// the fail-closed contract (ErrGraphClosed surfaces to callers).
 func (s *StatOps) SnapshotCounters() (
 	nodesAdded, nodesRead, nodesUpdated, nodesDeleted int64,
 	relsAdded, relsRead, relsUpdated, relsDeleted int64,
 	nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses int64,
+	err error,
 ) {
-	// SnapshotCounters reports counters even when the graph is closed —
-	// callers (e.g. the public stats.API.Get wrapper) decide whether the
-	// closed-graph signal matters. The error is intentionally ignored here.
-	g, _ := s.Get()
+	g, getErr := s.Get()
 	return g.NodesAdded, g.NodesRead, g.NodesUpdated, g.NodesDeleted,
 		g.RelsAdded, g.RelsRead, g.RelsUpdated, g.RelsDeleted,
-		g.NodeCacheHits, g.NodeCacheMisses, g.RelCacheHits, g.RelCacheMisses
+		g.NodeCacheHits, g.NodeCacheMisses, g.RelCacheHits, g.RelCacheMisses,
+		getErr
 }
 
 // NodeCount forwards to Core.Nodes.Count until NodeOps migration moves it.

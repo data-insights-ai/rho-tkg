@@ -59,7 +59,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Transaction rollback restores multi-label node changes.** Multiple label adds, multiple label removes, and mixed label remove/add operations on the same node roll back to the pre-transaction label sequence and label indexes.
 
-**Resolver reads respect active transactions.** `LookupLabel`, `LookupRelType`, node label/type resolution, and shadow-property resolution now wait behind the graph read lock, so they cannot expose labels or relationship types created inside an uncommitted transaction. After `Close`, these no-error helpers return zero values rather than registry state.
+**Resolver reads respect active transactions.** `Nodes.HasLabel`, `Rels.HasType`, and shadow-property resolution (`g.Resolve.NodeProperty` / `RelProperty`) now wait behind the graph read lock, so they cannot expose labels or relationship types created inside an uncommitted transaction. After `Close`, these no-error helpers return zero values rather than registry state.
 
 **Versioned mutations fail before `uint32` wraparound.** Updates, node label add/remove, node/relationship property CAS, transaction updates, and batch updates return `ErrVersionOverflow` when the current entity version is already `math.MaxUint32`; they do not write history, wrap to version `0`, or allocate labels for rejected add-label calls.
 
@@ -73,7 +73,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Transaction helpers reject nil inputs.** `g.Tx.Run(nil)` and `RunContext(ctx, nil)` return `ErrNilTxCallback` before opening a transaction; `RunContext(nil, fn)` and graph mutation context helpers return `ErrNilContext` instead of panicking on nil contexts.
 
-**IO helpers reject nil stream endpoints.** `g.IO.Export(nil)` and `tx.Export(nil)` return `ErrNilWriter`; `g.IO.Import(nil)` and `ImportWithOptions(nil, opts)` return `ErrNilReader`, including typed nil reader/writer values.
+**IO helpers reject nil stream endpoints.** `g.IO.Export(nil)` and `tx.Export(nil)` return `ErrNilWriter`; `g.IO.Import(nil, opts)` returns `ErrNilReader`, including typed nil reader/writer values.
 
 **Configured Store rejects typed nils.** `graph.New(graph.Config{Store: typedNil})` returns `ErrNilStore`; omit `Store` to request the default backend.
 
@@ -81,7 +81,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Sub-API zero values fail closed.** Nil, zero-value, or typed-nil public sub-API wrappers return `ErrNilGraph` from error-returning methods; no-error helpers return zero values instead of dereferencing an unwired `Ops`.
 
-**Import replay errors roll back partial writes.** `g.IO.ImportWithOptions` now snapshots touched current rows, history rows, and registries during replay. If a corrupt or inconsistent stream fails after earlier records were applied, import restores the pre-import graph state instead of leaving partial entities or token mappings behind.
+**Import replay errors roll back partial writes.** `g.IO.Import` now snapshots touched current rows, history rows, and registries during replay. If a corrupt or inconsistent stream fails after earlier records were applied, import restores the pre-import graph state instead of leaving partial entities or token mappings behind.
 
 **Import rejects malformed entity wire invariants.** Snapshot import now rejects zero/negative entity IDs, negative versions, non-canonical label token lists, reserved `tkg_` property keys, unsorted/duplicate property keys, unknown property type tags, negative base-entity IDs, and property records that exceed the destination graph's validation limits before constructing entities.
 
@@ -115,7 +115,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Scalar property queries match property equality.** `g.Nodes.ByLabelAndProperty` canonicalizes `float32`/`float64` signed zero and NaN payloads on both fallback scans and property-index lookups, preserving concrete type separation while matching the compare-and-set equality contract.
 
-**Registry resolution enforces graph name limits.** `g.Resolve.LabelToken` and `RelTypeToken` reject empty, whitespace-only, and overlong names before token allocation; `LookupLabel`, `LookupRelType`, `Nodes.HasLabel`, and `Rels.HasType` fail closed for malformed names. `IO.Import` and graph construction from persisted registries apply the same configured name limit before accepting registry mappings.
+**Registry resolution enforces graph name limits.** `Nodes.HasLabel` and `Rels.HasType` fail closed for empty, whitespace-only, and overlong names. `IO.Import` and graph construction from persisted registries apply the same configured name limit before accepting registry mappings. (The `g.Resolve.LabelToken`/`RelTypeToken`/`LookupLabel`/`LookupRelType` helpers were removed in v4 — they leaked the internal `uint16` token representation.)
 
 **Registry metadata persists with committed tokens.** Successful graph writes, batch execution, index creation, and snapshot import that create label or relationship-type tokens save the current registries to persistent Badger/Tiered stores before returning. Rollback paths persist the restored snapshots, so reopened durable rows keep their token mappings even if the process did not reach `Graph.Close()`. In batch execution, a post-write registry checkpoint failure is reported as a batch error without rolling the returned entity pointers back to their pre-commit skeleton state. Transaction create/import methods record any committed row for rollback even when that trailing checkpoint returns an error, and `Commit` retries the registry checkpoint before making the transaction irreversible.
 

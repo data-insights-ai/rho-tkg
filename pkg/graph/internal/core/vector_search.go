@@ -53,9 +53,6 @@ import (
 // should implement FilteredVectorSearchCapability.
 func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
@@ -68,13 +65,15 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	if err := indexpkg.ValidateVectorValues(query); err != nil {
 		return nil, err
 	}
-	var result []*types.Node
-	err := c.readUnderRLock(func() error {
-		nodes, err := c.searchNearestLocked(label, propertyKey, query, k, opts)
-		result = nodes
-		return err
-	})
-	return result, err
+	// Hot-path inlined: no closure-under-RLock indirection (B4).
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil, ErrGraphClosed
+	}
+	nodes, err := c.searchNearestLocked(label, propertyKey, query, k, opts)
+	c.mu.RUnlock()
+	return nodes, err
 }
 
 func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {

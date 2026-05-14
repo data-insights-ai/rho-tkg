@@ -15,7 +15,7 @@ import (
 // Node — Update
 // =============================================================================
 
-// UpdateWithContext applies property updates to an existing node with context support.
+// Update applies property updates to an existing node with context support.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
@@ -43,7 +43,7 @@ func (n *NodeOps) Update(ctx context.Context, id types.NodeID, updates map[strin
 	return node, err
 }
 
-// updateNodeInternal is the lock-free implementation of NodeOps.UpdateWithContext.
+// updateNodeInternal is the lock-free implementation of NodeOps.Update.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, bool, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -221,7 +221,7 @@ func (n *NodeOps) UpdateInPlace(ctx context.Context, id types.NodeID, updates ma
 	return node, err
 }
 
-// updateNodeInPlaceInternal is the lock-free implementation of NodeOps.UpdateInPlaceWithContext.
+// updateNodeInPlaceInternal is the lock-free implementation of NodeOps.UpdateInPlace.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, bool, error) {
 	if err := checkCtx(ctx); err != nil {

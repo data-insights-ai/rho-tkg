@@ -524,7 +524,10 @@ func TestGraphStats_SnapshotCountersMatchesGet(t *testing.T) {
 	want, _ := g.Stats.Get()
 	nodesAdded, nodesRead, nodesUpdated, nodesDeleted,
 		relsAdded, relsRead, relsUpdated, relsDeleted,
-		nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses := g.Stats.SnapshotCounters()
+		nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses, snapErr := g.Stats.SnapshotCounters()
+	if snapErr != nil {
+		t.Fatalf("SnapshotCounters on open graph: %v", snapErr)
+	}
 
 	if nodesAdded != want.NodesAdded || nodesRead != want.NodesRead ||
 		nodesUpdated != want.NodesUpdated || nodesDeleted != want.NodesDeleted ||

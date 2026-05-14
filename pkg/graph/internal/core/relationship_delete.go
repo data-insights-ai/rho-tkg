@@ -13,44 +13,35 @@ import (
 // Relationship — Read / Delete
 // =============================================================================
 
-// GetWithContext retrieves a relationship by snowflake ID with context support.
+// Get retrieves a relationship by snowflake ID with context support.
+//
+// Hot-path inlined: see NodeOps.Get for the rationale (B4).
 func (r *RelOps) Get(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
-	var (
-		rel *types.Relationship
-		err error
-	)
-	_, closeErr := c.runUnderRLock(func() {
-		if err = checkCtx(ctx); err != nil {
-			return
-		}
-		rel, err = c.getCurrentRelationship(id)
-		if err == nil {
-			if ctxErr := checkCtx(ctx); ctxErr != nil {
-				rel = nil
-				err = ctxErr
-			}
-		}
-	})
-	if closeErr != nil {
-		return nil, closeErr
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return nil, ErrGraphClosed
 	}
-	if err == nil {
-		c.opRelReads.Add(1)
+	rel, err := c.getCurrentRelationship(id)
+	c.mu.RUnlock()
+	if err != nil {
+		return nil, err
 	}
-	return rel, err
+	if ctxErr := checkCtx(ctx); ctxErr != nil {
+		return nil, ctxErr
+	}
+	c.opRelReads.Add(1)
+	return rel, nil
 }
 
-// DeleteWithContext removes a relationship from the store.
+// Delete removes a relationship from the store.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	c := r.c
@@ -73,7 +64,7 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	return err
 }
 
-// deleteRelationshipInternal is the lock-free implementation of RelOps.DeleteWithContext.
+// deleteRelationshipInternal is the lock-free implementation of RelOps.Delete.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) error {
 	if err := checkCtx(ctx); err != nil {

@@ -48,6 +48,7 @@ type Ops interface {
 		nodesAdded, nodesRead, nodesUpdated, nodesDeleted int64,
 		relsAdded, relsRead, relsUpdated, relsDeleted int64,
 		nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses int64,
+		err error,
 	)
 }
 
@@ -72,15 +73,16 @@ func (a *API) ready() (Ops, error) {
 // store-stats interface (currently BadgerStore only); all cache fields are zero
 // for MemoryStore and tiered.Store.
 //
-// Returns ErrNilGraph if called on a zero-value or nil-backed API. The error
-// shape matches every other Stats method for caller-side uniformity; in
-// practice Get cannot fail at runtime once the graph is constructed.
+// Returns ErrNilGraph if called on a zero-value or nil-backed API, or
+// ErrGraphClosed if the graph has been closed (the counter snapshot is still
+// populated in the closed case so callers can observe the final state). The
+// error shape matches every other Stats method for caller-side uniformity.
 func (a *API) Get() (GraphStats, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return GraphStats{}, err
 	}
-	na, nr, nu, nd, ra, rr, ru, rd, nch, ncm, rch, rcm := ops.SnapshotCounters()
+	na, nr, nu, nd, ra, rr, ru, rd, nch, ncm, rch, rcm, snapErr := ops.SnapshotCounters()
 	return GraphStats{
 		NodesAdded:      na,
 		NodesRead:       nr,
@@ -94,7 +96,7 @@ func (a *API) Get() (GraphStats, error) {
 		NodeCacheMisses: ncm,
 		RelCacheHits:    rch,
 		RelCacheMisses:  rcm,
-	}, nil
+	}, snapErr
 }
 
 // NodeCount returns the total node count.

@@ -26,7 +26,7 @@ func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
 // --- Store passthrough queries ---
 //
 // Get is defined alongside Delete in node_delete.go / relationship_delete.go;
-// the API 4.0 collapse merged the historical Get/GetWithContext pair into a
+// the API 4.0 collapse merged the historical Get/Get pair into a
 // single context-aware Get.
 
 // ByLabel returns nodes with the given label (resolved from string),
@@ -581,47 +581,49 @@ func (r *RelOps) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 
 // CountByLabel returns the number of nodes with the given label. O(1).
 // Returns 0 if the label has never been registered.
+//
+// Hot-path inlined: see NodeOps.Get for rationale (B4).
 func (n *NodeOps) CountByLabel(label string) (int, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
-	}
 	if err := c.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
-	count := 0
-	err := c.readUnderRLock(func() error {
-		tok, ok := c.labels.Lookup(label)
-		if !ok {
-			return nil
-		}
-		var err error
-		count, err = c.nodeCountByLabel(tok)
-		return err
-	})
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return 0, ErrGraphClosed
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		c.mu.RUnlock()
+		return 0, nil
+	}
+	count, err := c.nodeCountByLabel(tok)
+	c.mu.RUnlock()
 	return count, err
 }
 
 // CountByType returns the number of relationships with the given type. O(1).
 // Returns 0 if the type has never been registered.
+//
+// Hot-path inlined: see NodeOps.Get for rationale (B4).
 func (r *RelOps) CountByType(typeName string) (int, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return 0, err
-	}
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
-	count := 0
-	err := c.readUnderRLock(func() error {
-		tok, ok := c.lookupRelTypeQueryToken(typeName)
-		if !ok {
-			return nil
-		}
-		var err error
-		count, err = c.relCountByType(tok)
-		return err
-	})
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return 0, ErrGraphClosed
+	}
+	tok, ok := c.lookupRelTypeQueryToken(typeName)
+	if !ok {
+		c.mu.RUnlock()
+		return 0, nil
+	}
+	count, err := c.relCountByType(tok)
+	c.mu.RUnlock()
 	return count, err
 }
 

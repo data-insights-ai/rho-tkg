@@ -55,7 +55,7 @@ func (c *Core) deletePartialRelationshipForRollback(r *types.Relationship) error
 // Relationship — Add (Create / IfAbsent / ByID)
 // =============================================================================
 
-// AddWithContext creates a new directed relationship between two nodes.
+// Add creates a new directed relationship between two nodes.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
@@ -81,7 +81,7 @@ func (r *RelOps) Add(ctx context.Context, typeName string, startNode, endNode *t
 	return rel, err
 }
 
-// addRelationshipInternal is the lock-free implementation of RelOps.AddWithContext.
+// addRelationshipInternal is the lock-free implementation of RelOps.Add.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
@@ -346,9 +346,9 @@ func nodeIntegrityHash(n *types.Node) string {
 	return ""
 }
 
-// AddByIDWithContext creates a relationship using endpoint snowflake IDs.
+// AddByID creates a relationship using endpoint snowflake IDs.
 // It has the same live-endpoint verification, endpoint-hash capture, and
-// constraint enforcement semantics as RelOps.AddWithContext; it only changes
+// constraint enforcement semantics as RelOps.Add; it only changes
 // the input form so callers do not need to carry endpoint node objects.
 func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	c := r.c
@@ -374,7 +374,7 @@ func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID ty
 	return rel, err
 }
 
-// addRelationshipByIDInternal is the lock-free implementation of RelOps.AddByIDWithContext.
+// addRelationshipByIDInternal is the lock-free implementation of RelOps.AddByID.
 // Unlike addRelationshipInternal, it does NOT require pre-fetched endpoint nodes.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
@@ -546,7 +546,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 	return r, nil
 }
 
-// AddByIDIfAbsentWithContext atomically creates a relationship using
+// AddByIDIfAbsent atomically creates a relationship using
 // endpoint snowflake IDs only if no relationship of the same type between the same
 // endpoints already exists. Returns (rel, created, err) where created is true if a
 // new relationship was created, false if an existing one was returned.
@@ -554,7 +554,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 // The existence check and creation are serialized under entity locks, preventing
 // the TOCTOU race inherent in separate check-then-create calls.
 //
-// Endpoint and constraint behaviour matches AddByIDWithContext.
+// Endpoint and constraint behaviour matches AddByID.
 func (r *RelOps) AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -581,7 +581,7 @@ func (r *RelOps) AddByIDIfAbsent(ctx context.Context, typeName string, startID, 
 }
 
 // addRelationshipByIDIfAbsentInternal is the lock-free implementation of
-// AddRelationshipByIDIfAbsentWithContext. Under entity locks it checks for an
+// AddRelationshipByIDIfAbsent. Under entity locks it checks for an
 // existing relationship before creating, making the operation atomic.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
