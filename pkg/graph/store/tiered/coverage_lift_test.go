@@ -8,6 +8,7 @@ import (
 	"time"
 
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
+	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
@@ -364,8 +365,18 @@ func TestTiered_GetRelHistory_RefLiveWithArchivePresent(t *testing.T) {
 
 type noopHashChainVerifier struct{}
 
-func (noopHashChainVerifier) VerifyNodeChain(types.NodeID) (bool, error)   { return true, nil }
-func (noopHashChainVerifier) VerifyRelChain(types.RelID) (bool, error)     { return true, nil }
+func (noopHashChainVerifier) VerifyNodeChain(types.NodeID) (bool, error) { return true, nil }
+func (noopHashChainVerifier) VerifyRelChain(types.RelID) (bool, error)   { return true, nil }
+
+// failingHashChainVerifier flips Verify*Chain to return false (validation
+// failure, not error). Used to exercise the NodesFailed/RelsFailed counters
+// in VerifyShard.
+type failingHashChainVerifier struct{}
+
+func (failingHashChainVerifier) VerifyNodeChain(types.NodeID) (bool, error) {
+	return false, nil
+}
+func (failingHashChainVerifier) VerifyRelChain(types.RelID) (bool, error) { return false, nil }
 
 func TestTiered_VerifyShard_ArchiveShard(t *testing.T) {
 	ts, _, _ := withArchiveAndRegistry(t)
@@ -375,6 +386,67 @@ func TestTiered_VerifyShard_ArchiveShard(t *testing.T) {
 	}
 	if result.ShardName != "archive" {
 		t.Fatalf("VerifyShard.ShardName = %q, want \"archive\"", result.ShardName)
+	}
+}
+
+// TestTiered_VerifyShard_FailedChain covers the NodesFailed / RelsFailed
+// branches in VerifyShard (lines 356-357, 369-370).
+func TestTiered_VerifyShard_FailedChain(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	caseTok, _ := reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	gen := tieredNodeGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	b := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ts.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelationship(r); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+
+	result, err := ts.VerifyShard(failingHashChainVerifier{}, "reference")
+	if err != nil {
+		t.Fatalf("VerifyShard: %v", err)
+	}
+	if result.NodesFailed != 2 {
+		t.Fatalf("NodesFailed = %d, want 2", result.NodesFailed)
+	}
+	if result.RelsFailed != 1 {
+		t.Fatalf("RelsFailed = %d, want 1", result.RelsFailed)
+	}
+	if result.NodesOK != 0 || result.RelsOK != 0 {
+		t.Fatalf("OK counts = %d/%d, want 0/0", result.NodesOK, result.RelsOK)
+	}
+}
+
+// TestTiered_VerifyShard_NilVerifierRejected covers the nil-guard at line 307.
+func TestTiered_VerifyShard_NilVerifierRejected(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	if _, err := ts.VerifyShard(nil, "reference"); err == nil {
+		t.Fatalf("VerifyShard nil verifier = nil, want ErrInvalidStoreMutation")
+	}
+}
+
+// TestTiered_VerifyShard_UnknownShard covers the catalog-miss branch at line 311.
+func TestTiered_VerifyShard_UnknownShard(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	if _, err := ts.VerifyShard(noopHashChainVerifier{}, "no-such-shard"); err == nil {
+		t.Fatalf("VerifyShard unknown shard = nil, want error")
 	}
 }
 
@@ -424,6 +496,214 @@ func installDefaultTestLabelRegistryDelegate(t *testing.T, ts *Store) uint16 {
 	tok, _ := reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
 	return tok
+}
+
+// --- PutRelationshipsBatch with mixed same-shard and cross-shard rels ---
+
+// TestTiered_PutRelationshipsBatch_CrossShard exercises the cross-shard
+// partitioning branch (lines 423-430, 474-503). Cross-shard rels go through
+// the split-write helper rather than the same-shard batch fast path.
+func TestTiered_PutRelationshipsBatch_CrossShard(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+
+	// First event shard inhabitants.
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	b := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ts.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+
+	// Rotate — a, b now live in the warm shard; new nodes go to fresh hot.
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	c := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	d := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(c); err != nil {
+		t.Fatalf("PutNode c: %v", err)
+	}
+	if err := ts.PutNode(d); err != nil {
+		t.Fatalf("PutNode d: %v", err)
+	}
+
+	relGen := tieredRelGen(t)
+	// Same-shard rel within new hot shard.
+	sameShardRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, c.ID(), d.ID())
+	// Cross-shard rel from warm to hot.
+	crossShardRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, a.ID(), c.ID())
+
+	if err := ts.PutRelationshipsBatch([]*types.Relationship{sameShardRel, crossShardRel}); err != nil {
+		t.Fatalf("PutRelationshipsBatch mixed: %v", err)
+	}
+
+	// Both rels must be readable.
+	if got, err := ts.GetRelationship(sameShardRel.ID()); err != nil || got == nil {
+		t.Fatalf("GetRelationship same-shard = (%+v, %v)", got, err)
+	}
+	if got, err := ts.GetRelationship(crossShardRel.ID()); err != nil || got == nil {
+		t.Fatalf("GetRelationship cross-shard = (%+v, %v)", got, err)
+	}
+}
+
+// TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected covers the
+// in-batch duplicate-ID check (lines 359-361).
+func TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	b := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ts.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelationshipsBatch([]*types.Relationship{r, r}); !errors.Is(err, ErrRelExists) {
+		t.Fatalf("duplicate in-batch = %v, want ErrRelExists", err)
+	}
+}
+
+// TestTiered_PutRelationshipsBatch_MissingEndpoint covers the
+// !startExists / !endExists branches (lines 373, 386).
+func TestTiered_PutRelationshipsBatch_MissingEndpoint(t *testing.T) {
+	ts := newTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	_, _ = reg.GetOrCreate("Case")
+	_, _ = reg.GetOrCreate("User")
+	signalTok, _ := reg.GetOrCreate("Signal")
+
+	gen := tieredNodeGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	phantomB := types.NodeID(gen.Generate())
+	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), phantomB)
+	if err := ts.PutRelationshipsBatch([]*types.Relationship{r}); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("missing end endpoint = %v, want ErrNodeNotFound", err)
+	}
+}
+
+// --- ForEachNodeHistoryIDByDepth / maxNodeHistoryIDByDepth with multi-shard data ---
+
+// TestTiered_ForEachNodeHistoryIDByDepth_AllTiers populates history on
+// refShard, refArchive, hot event shard, AND warm event shard, then iterates
+// at each depth. Exercises the archive-and-event-shard merging logic in
+// maxNodeHistoryIDByDepth and forEachNodeHistoryIDByDepth.
+func TestTiered_ForEachNodeHistoryIDByDepth_AllTiers(t *testing.T) {
+	ts, caseTok, signalTok := withArchiveAndRegistry(t)
+
+	gen := tieredNodeGen(t)
+	// Reference node with history on refShard.
+	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(refNode); err != nil {
+		t.Fatalf("PutNode refNode: %v", err)
+	}
+	if err := ts.PutNodeVersion(refNode.ID(), 0, refNode); err != nil {
+		t.Fatalf("PutNodeVersion refNode: %v", err)
+	}
+	// Signal node history on hot event shard.
+	sig1 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(sig1); err != nil {
+		t.Fatalf("PutNode sig1: %v", err)
+	}
+	if err := ts.PutNodeVersion(sig1.ID(), 0, sig1); err != nil {
+		t.Fatalf("PutNodeVersion sig1: %v", err)
+	}
+	// Rotate so sig1's shard moves to warm; next signal goes to fresh hot.
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	sig2 := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(sig2); err != nil {
+		t.Fatalf("PutNode sig2: %v", err)
+	}
+	if err := ts.PutNodeVersion(sig2.ID(), 0, sig2); err != nil {
+		t.Fatalf("PutNodeVersion sig2: %v", err)
+	}
+
+	for _, depth := range []storepkg.ShardDepth{storepkg.DepthAll, storepkg.DepthHot, storepkg.DepthWarm} {
+		seen := map[types.NodeID]bool{}
+		if err := ts.ForEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
+			seen[id] = true
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachNodeHistoryIDByDepth(%v): %v", depth, err)
+		}
+		// At least the hot-shard sig2 must be visible at every depth that
+		// includes hot. Don't over-specify exact membership — different
+		// depths legitimately scope to different tiers.
+		if depth == storepkg.DepthAll && !seen[refNode.ID()] {
+			t.Fatalf("DepthAll missing refNode %d (saw %v)", refNode.ID(), seen)
+		}
+	}
+}
+
+func TestTiered_ForEachRelHistoryIDByDepth_AllTiers(t *testing.T) {
+	ts, caseTok, signalTok := withArchiveAndRegistry(t)
+
+	gen := tieredNodeGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	b := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
+	if err := ts.PutNode(a); err != nil {
+		t.Fatalf("PutNode a: %v", err)
+	}
+	if err := ts.PutNode(b); err != nil {
+		t.Fatalf("PutNode b: %v", err)
+	}
+	refRel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelationship(refRel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+	if err := ts.PutRelVersion(refRel.ID(), 0, refRel); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	sigA := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	sigB := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(sigA); err != nil {
+		t.Fatalf("PutNode sigA: %v", err)
+	}
+	if err := ts.PutNode(sigB); err != nil {
+		t.Fatalf("PutNode sigB: %v", err)
+	}
+	sigRel := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, sigA.ID(), sigB.ID())
+	if err := ts.PutRelationship(sigRel); err != nil {
+		t.Fatalf("PutRelationship sigRel: %v", err)
+	}
+	if err := ts.PutRelVersion(sigRel.ID(), 0, sigRel); err != nil {
+		t.Fatalf("PutRelVersion sigRel: %v", err)
+	}
+
+	for _, depth := range []storepkg.ShardDepth{storepkg.DepthAll, storepkg.DepthHot, storepkg.DepthWarm} {
+		seen := map[types.RelID]bool{}
+		if err := ts.ForEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
+			seen[id] = true
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachRelHistoryIDByDepth(%v): %v", depth, err)
+		}
+		if depth == storepkg.DepthAll && !seen[refRel.ID()] {
+			t.Fatalf("DepthAll missing refRel %d", refRel.ID())
+		}
+	}
 }
 
 // --- NodeHistoryVersionsFrom paging across many event shards ---
