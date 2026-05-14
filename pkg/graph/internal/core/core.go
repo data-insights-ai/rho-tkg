@@ -67,6 +67,16 @@ type Core struct {
 	events             eventspkg.Publisher
 	txEventBuffer      *[]eventspkg.Event
 	mu                 sync.RWMutex
+	// txMu serializes transaction/batch lifecycles (BeginTx → Commit/Rollback
+	// and BatchExecute). Held for the entire tx/batch lifetime instead of
+	// c.mu.Lock (which was held in v3.4 / v4.0.x). Standalone mutations and
+	// reads acquire c.mu.RLock and proceed concurrently with an open tx —
+	// only entity-level conflicts now block, not the whole graph. This
+	// closes the "read accessor inside a tx deadlocks against c.mu" bug
+	// class introduced in v3.4 (see lesson 31). The tx code path takes a
+	// brief c.mu.RLock around each mutation/read so the *Internal/*Locked
+	// helpers run with a non-zero lock context they expect.
+	txMu               sync.Mutex
 	registryMu         sync.Mutex
 	registryDirty      atomic.Bool
 	relTypeCache       map[string]uint16

@@ -100,14 +100,36 @@ type GraphTx struct {
 // BeginTx starts a new mutation transaction. Returns ErrGraphClosed if
 // the graph has already been closed.
 //
-// On success, BeginTx acquires the graph write lock, blocking concurrent
-// standalone mutations, Batch, and Snapshot operations. The lock is
-// released on Commit() or Rollback(). Events are buffered and published
-// after Commit (or discarded on Rollback).
+// On success, BeginTx acquires the tx-serialization mutex (c.txMu), NOT
+// c.mu.Lock. Other transactions and batches are serialized against this
+// one, but standalone mutations and reads from other goroutines proceed
+// concurrently — they only block on the per-entity lock manager when
+// they happen to touch an entity this tx has already locked.
+//
+// Inside the tx, each mutation/read method takes a brief c.mu.RLock
+// around its body so the *Internal/*Locked helpers see the same lock
+// context the standalone path provides. This closes the v3.4/v4.0.x
+// deadlock class: g.Nodes.ByLabel, g.Temporal.NodesAt, etc., called
+// inside an open tx no longer hang waiting for c.mu.RLock against a
+// writer that doesn't exist anymore.
+//
+// Events are buffered into c.txEventBuffer (still a global field —
+// c.txMu serialization keeps it single-writer) and published on Commit
+// (or discarded on Rollback). Standalone mutations use dispatchEvent
+// with a per-call publisher and never touch c.txEventBuffer.
+//
+// Isolation semantics: serializable per touched entity. Entities the tx
+// has mutated stay consistent for the tx's view (entity locks taken by
+// the *Internal mutation paths). Reads inside the tx may observe
+// changes to entities NOT yet touched by this tx that were committed
+// by a concurrent standalone op — this is a relaxation of the v3.4
+// "tx blocks all concurrent mutations" guarantee, and is the
+// minor-bump price documented in CHANGELOG [4.1.0]. Code that relied
+// on the old guarantee must take its own external lock.
 func (c *Core) BeginTx() (*GraphTx, error) {
-	c.mu.Lock()
+	c.txMu.Lock()
 	if c.closed.Load() {
-		c.mu.Unlock()
+		c.txMu.Unlock()
 		return nil, ErrGraphClosed
 	}
 	tx := &GraphTx{
@@ -315,6 +337,52 @@ func (tx *GraphTx) lockActive() error {
 	return nil
 }
 
+// lockActiveCore takes tx.mu and c.mu.RLock, checks tx is active and graph is
+// open, and returns. The caller must defer unlockActiveCore. Returns:
+//   - ErrNilGraph if tx is nil or detached
+//   - ErrTxDone if Commit/Rollback already ran
+//   - ErrGraphClosed if the graph has been closed since BeginTx
+//
+// This is the v4.1.0 path-B pattern for every tx mutation and read mirror:
+// hold c.mu.RLock briefly so the *Internal/*Locked helpers run with the
+// same lock context the standalone callers provide via runUnderRLock /
+// readUnderRLock, but DON'T hold c.mu.Lock for the tx lifetime (that's
+// what deadlocked g.Nodes.ByLabel inside a tx in v4.0.x).
+func (tx *GraphTx) lockActiveCore() error {
+	if err := tx.lockActive(); err != nil {
+		return err
+	}
+	tx.g.mu.RLock()
+	if tx.g.closed.Load() {
+		tx.g.mu.RUnlock()
+		tx.mu.Unlock()
+		return ErrGraphClosed
+	}
+	return nil
+}
+
+// unlockActiveCore releases c.mu.RLock and tx.mu in the reverse order of
+// lockActiveCore. Always call via defer.
+func (tx *GraphTx) unlockActiveCore() {
+	tx.g.mu.RUnlock()
+	tx.mu.Unlock()
+}
+
+// lockActiveCoreContext is the ctx-honouring variant of lockActiveCore.
+// Same release semantics — defer unlockActiveCore.
+func (tx *GraphTx) lockActiveCoreContext(ctx context.Context) error {
+	if err := tx.lockActiveContext(ctx); err != nil {
+		return err
+	}
+	tx.g.mu.RLock()
+	if tx.g.closed.Load() {
+		tx.g.mu.RUnlock()
+		tx.mu.Unlock()
+		return ErrGraphClosed
+	}
+	return nil
+}
+
 // lockActiveContext is lockActive with a pre-canceled context fast path.
 // If the transaction mutex is immediately available, ErrTxDone still wins so
 // the GraphTx lifecycle contract remains stable after Commit/Rollback. If
@@ -342,8 +410,8 @@ func (tx *GraphTx) lockActiveContext(ctx context.Context) error {
 // =============================================================================
 
 // Commit finalizes the transaction, making all mutations permanent.
-// Releases the graph write lock, then publishes buffered events outside the lock
-// so that event handlers can safely call Graph read methods.
+// Persists registries (briefly under c.mu.Lock for safe pointer mutation),
+// then releases c.txMu and publishes buffered events outside all locks.
 // After Commit, all tx methods return storepkg.ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	if err := tx.lockActive(); err != nil {
@@ -354,9 +422,12 @@ func (tx *GraphTx) Commit() error {
 	// A transaction can contain create/import calls that wrote rows but
 	// returned a trailing registry checkpoint error. Commit is the final
 	// durability boundary, so retry the registry checkpoint before making
-	// the transaction irreversible. On failure the tx stays open; callers can
-	// retry Commit or Rollback.
+	// the transaction irreversible. Take c.mu.Lock briefly because
+	// persistRegistries may serialize via the store and we want to fence
+	// against concurrent registry mutations from standalone ops.
+	tx.g.mu.Lock()
 	if err := tx.g.persistRegistries(); err != nil {
+		tx.g.mu.Unlock()
 		return err
 	}
 	tx.done = true
@@ -367,8 +438,8 @@ func (tx *GraphTx) Commit() error {
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
 
-	// Release the write lock before publishing — handlers can call Graph methods.
 	tx.g.mu.Unlock()
+	tx.g.txMu.Unlock()
 
 	// Publish buffered events outside all locks. PublishBatch is
 	// atomic on AsyncEventBus, so all tx events land in priority
@@ -399,7 +470,14 @@ func (tx *GraphTx) Rollback() error {
 	}
 	defer tx.mu.Unlock()
 	tx.done = true
-	defer tx.g.mu.Unlock() // deferred so a store panic cannot permanently hold the write lock
+	// Rollback applies store mutations and replaces the registry pointers
+	// (via restoreRegistries). Take c.mu.Lock for the duration so concurrent
+	// standalone readers don't observe torn registry pointers and so
+	// concurrent writers can't race the restore. Deferred so a store panic
+	// during a restore step releases both c.mu and c.txMu cleanly.
+	tx.g.mu.Lock()
+	defer tx.g.txMu.Unlock()
+	defer tx.g.mu.Unlock()
 
 	// Discard buffered events — rolled-back mutations should never reach subscribers.
 	tx.g.txEventBuffer = nil

@@ -182,12 +182,15 @@ func TestTxReadAccessors_AfterDoneReturnZero(t *testing.T) {
 	}
 }
 
-// TestTxReadAccessors_DeadlockRegression asserts the upstream-bug shape — calling
-// the non-tx accessors from inside an open tx — still hangs the goroutine. The
-// fix is to call the tx-side mirror; this test exists so a future "make c.mu
-// reentrant" or "drop registry locking" refactor that silently makes the bad
-// shape work doesn't sneak in without re-evaluating the contract.
-func TestTxReadAccessors_DeadlockRegression(t *testing.T) {
+// TestTxReadAccessors_NonTxAccessorsWorkInsideTx (v4.1.0, Path B): the
+// upstream-bug shape — calling the non-tx accessor `g.Nodes.Labels(n)` from
+// inside an open tx — no longer deadlocks. The tx holds c.txMu (not
+// c.mu.Lock), so the public read accessor's c.mu.RLock acquires immediately.
+// This test pins the new behavior: a concurrent goroutine's call must
+// complete promptly while the tx remains open. The tx-side mirrors
+// (tx.Labels et al.) are still preferred for clarity and remain functional;
+// they're no longer required for correctness.
+func TestTxReadAccessors_NonTxAccessorsWorkInsideTx(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
@@ -197,24 +200,19 @@ func TestTxReadAccessors_DeadlockRegression(t *testing.T) {
 	}
 
 	tx, _ := g.BeginTx()
+	defer func() { _ = tx.Rollback() }()
 
-	done := make(chan struct{})
+	done := make(chan []string)
 	go func() {
-		// This SHOULD deadlock against c.mu held by tx. Don't read the result.
-		_ = g.Nodes.Labels(n)
-		close(done)
+		done <- g.Nodes.Labels(n)
 	}()
 
 	select {
-	case <-done:
-		t.Fatal("g.Nodes.Labels returned inside an open tx — non-tx accessors must NOT be reentrant against tx; the bug or its remediation has changed")
-	case <-time.After(250 * time.Millisecond):
-		// Expected: hung waiting on c.mu.RLock.
+	case got := <-done:
+		if len(got) != 1 || got[0] != "Person" {
+			t.Errorf("g.Nodes.Labels = %v, want [Person]", got)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("g.Nodes.Labels deadlocked inside an open tx — Path B regressed")
 	}
-
-	// Roll back so the deadlocked goroutine unblocks before test cleanup.
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("rollback: %v", err)
-	}
-	<-done
 }

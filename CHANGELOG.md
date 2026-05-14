@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-05-14
+
+### Changed - Tx isolation: drop c.mu.Lock from tx lifetime (Path B) (2026-05-14)
+
+**Eliminates the entire `tx-vs-c.mu.RLock` deadlock class.** v4.0.1 and
+v4.0.2 added tx-side mirrors for every read accessor that took
+`c.mu.RLock` — that worked but only by patching one accessor at a time
+and was missable. v4.1.0 attacks the root: `BeginTx` no longer holds
+`c.mu.Lock` for the transaction lifetime.
+
+#### What changed
+
+- **New `c.txMu sync.Mutex`** (`core.go`) replaces `c.mu.Lock` as the
+  serialization mechanism between concurrent transactions and batches.
+  `BeginTx` and `BatchBuilder.Execute` both acquire `c.txMu`.
+- **Each tx method takes `c.mu.RLock` briefly** around its body
+  (via new `tx.lockActiveCore` / `tx.unlockActiveCore` helpers) so
+  the `*Internal` / `*Locked` helpers see the same lock context the
+  standalone call paths provide via `runUnderRLock` / `readUnderRLock`.
+  `tx.lockActiveCore` checks `tx.done` and `c.closed` together.
+- **Commit / Rollback** take `c.mu.Lock` briefly (for registry pointer
+  mutation safety), then release `c.txMu`. They no longer hold
+  `c.mu.Lock` for the tx duration.
+- **Batch execution** also takes `c.txMu` first then `c.mu.Lock` (held
+  for the whole batch — batches are short-lived and atomic).
+
+#### What this fixes
+
+- `g.Nodes.ByLabel`, `g.Rels.Outgoing`, `g.Temporal.NodesAt`, every
+  `*By*(opts QueryOpts)` / `*At(...)` / `*AsOf(...)` method, `Stats.*`,
+  `Index.SearchNearest`, and every other public read accessor now
+  **work correctly inside an open `*GraphTx`**. The non-tx accessors
+  acquire `c.mu.RLock` — under v4.1.0 nothing holds `c.mu.Lock` during
+  the tx, so RLock succeeds immediately.
+- The bug class is gone going forward. Future read accessors that take
+  `c.mu.RLock` automatically work inside a tx with no tx-side mirror
+  required. Lesson 31's "mirror every accessor" audit recipe is
+  superseded.
+
+#### Isolation semantics (minor-version-bump price)
+
+- **Before (v3.4 / v4.0.x):** tx holds `c.mu.Lock` for its lifetime →
+  ALL concurrent standalone mutations and ALL reads from other
+  goroutines block until the tx ends. "Serializable graph-wide."
+- **After (v4.1.0):** tx holds `c.txMu` for its lifetime and `c.mu.RLock`
+  briefly per call. Concurrent standalone mutations on DIFFERENT
+  entities run in parallel; entity-level conflicts still serialize via
+  the existing entity-lock manager. Concurrent reads from other
+  goroutines proceed in parallel. **"Serializable per touched entity,
+  snapshot-isolated elsewhere."**
+- **Visible side effect:** a concurrent reader can see an in-progress
+  tx's allocated labels / types before the tx commits or rolls back. On
+  rollback, those allocations are revoked. If a reader captured a token
+  during the tx that the tx later rolled back, the token's name lookup
+  will return `(0, false)` after rollback; the token itself is no
+  longer mapped. Code that depended on "tx blocks all concurrent
+  observation" must take an external lock to preserve that guarantee.
+
+#### Tests that pinned the old semantics
+
+- `TestMutationBlockedDuringTx` → renamed `TestMutationProceedsAlongsideTx`,
+  now asserts the standalone mutation completes promptly.
+- `TestGraphTx_PublicResolverReadsWaitForRollback` →
+  `TestGraphTx_PublicResolverReadsDoNotBlock`, asserts concurrent reads
+  complete and post-rollback the in-progress allocations are revoked.
+- The three "deadlock regression" tests added in v4.0.1 / v4.0.2 were
+  inverted: the non-tx accessors now WORK inside a tx and the tests
+  assert that.
+
+#### What was NOT changed
+
+- The tx-side read mirrors added in v4.0.1 and v4.0.2 are kept. They
+  no longer prevent deadlock (there's nothing to deadlock against) but
+  remain functional and provide a clearer call-site signal that "this
+  read is inside the tx I'm holding." They take `c.mu.RLock` via the
+  same helper used by tx mutations.
+- `Temporal.DiffCallback` still releases `c.mu.RLock` between callbacks
+  by design (handlers may re-enter the graph). Under v4.1.0 this no
+  longer deadlocks inside a tx, so its v4.0.2-deferred mirror is no
+  longer needed.
+
 ## [4.0.2] - 2026-05-14
 
 ### Fixed - Tx-read deadlock against c.mu (bulk read methods) (2026-05-14)

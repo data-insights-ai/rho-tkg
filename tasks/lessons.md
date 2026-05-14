@@ -431,15 +431,21 @@ The signal isn't line count alone. It's the gap between the file's
 self-described purpose (per its top comment) and what's actually inside.
 A 900-line file is fine if it does one thing; a 200-line grab-bag is not.
 
-## 31. Tx Holds The Write Lock — Mirror Every Read Accessor
+## 31. Tx Holds The Write Lock — Mirror Every Read Accessor (SUPERSEDED in v4.1.0)
+
+**Resolved in v4.1.0 by Path B (`BeginTx` no longer holds `c.mu.Lock`).**
+Both call shapes below now work; the tx-side mirrors remain for clarity
+but are no longer required for deadlock avoidance. The historical rule
+is preserved for context — if anyone ever reintroduces
+`c.mu.Lock`-for-tx-lifetime, every read accessor that takes
+`c.mu.RLock` deadlocks again.
 
 ```
-BAD:  tx := g.Tx.Begin(); defer tx.Rollback()
-      n, _ := tx.GetNode(id)
-      labels := g.Nodes.Labels(n)   // deadlocks: RLock waits on tx's Lock
-      rows, _ := g.Nodes.ByLabel(label, opts)  // also deadlocks via readUnderRLock
-GOOD: labels := tx.Labels(n)        // calls *Unlocked helper, no c.mu re-entry
-      rows, _ := tx.NodesByLabel(label, opts)  // routes through *Locked helper
+v4.0.x (deadlock):   tx := g.Tx.Begin(); defer tx.Rollback()
+                     labels := g.Nodes.Labels(n)            // hangs
+                     rows, _ := g.Nodes.ByLabel(l, opts)    // hangs
+v4.1.0 (both work):  labels := g.Nodes.Labels(n)            // ok
+                     labels := tx.Labels(n)                  // ok
 ```
 
 `BeginTx` holds `c.mu.Lock` for the entire transaction. Two doors lead

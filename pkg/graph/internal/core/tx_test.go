@@ -250,7 +250,13 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 // TestMutationBlockedDuringTx verifies that standalone mutations (AddNode)
 // are blocked while a transaction holds g.mu.Lock. The AddNode call in goroutine B
 // must wait until the tx commits before proceeding.
-func TestMutationBlockedDuringTx(t *testing.T) {
+// TestMutationProceedsAlongsideTx (v4.1.0, Path B): standalone mutations on
+// DISJOINT entities run concurrently with an open *GraphTx. v3.4 / v4.0.x
+// held c.mu.Lock for the tx lifetime and would block this AddNode; v4.1
+// only serializes against the per-entity lock manager (and against
+// other txes via c.txMu), so a node creation that touches no entity the
+// tx owns proceeds immediately.
+func TestMutationProceedsAlongsideTx(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -263,39 +269,30 @@ func TestMutationBlockedDuringTx(t *testing.T) {
 	// Create a node inside the tx to prove it works.
 	_, err = tx.AddNode([]string{"A"}, nil)
 	if err != nil {
+		_ = tx.Rollback()
 		t.Fatalf("tx.AddNode: %v", err)
 	}
 
-	var blocked atomic.Bool
-	blocked.Store(true)
-
 	done := make(chan struct{})
 	go func() {
-		// This AddNode must block until tx commits because it acquires g.mu.RLock
-		// which is blocked by the tx's g.mu.Lock.
+		// Under v4.1.0 this must proceed concurrently — no c.mu.Lock blocks it.
 		_, err2 := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 		if err2 != nil {
 			t.Errorf("standalone AddNode: %v", err2)
 		}
-		blocked.Store(false)
 		close(done)
 	}()
 
-	// Give goroutine B time to attempt and block.
-	time.Sleep(50 * time.Millisecond)
-	if !blocked.Load() {
-		t.Fatal("standalone AddNode was NOT blocked during tx — isolation failure")
+	// Standalone AddNode should complete promptly even while the tx is open.
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		_ = tx.Rollback()
+		t.Fatal("standalone AddNode did not proceed concurrently with an open tx — Path B isolation regressed")
 	}
 
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
-	}
-
-	// Wait for goroutine B to complete.
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("standalone AddNode did not unblock after tx commit")
 	}
 
 	nc, _ := g.Nodes.Count()

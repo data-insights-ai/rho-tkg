@@ -321,63 +321,108 @@ func TestTxBulkReads_AfterDone(t *testing.T) {
 	_ = tx.Constraints()
 }
 
-// --- Deadlock regression: the headline case from the bug report ---
-//
-// TestTxBulkReads_ByLabelDeadlockRegression pins the exact failure mode reported:
-//   "exec_match.go:646 calling g.Nodes.ByLabel(label, opts)" hangs inside a tx.
-// Spawns the bad shape in a goroutine, asserts it hangs (proving the bug-class
-// still exists for the non-tx path), then rolls back to unblock.
+// --- Path B (v4.1.0) verification: the non-tx accessors WORK inside a tx ---
 
-func TestTxBulkReads_ByLabelDeadlockRegression(t *testing.T) {
+// TestTxBulkReads_ByLabelInsideTx (v4.1.0): the headline case from the bug
+// report — g.Nodes.ByLabel inside an open tx — no longer deadlocks. The tx
+// uses c.txMu (not c.mu.Lock) for serialization, so the non-tx accessor's
+// c.mu.RLock acquires immediately. The tx-side mirror tx.NodesByLabel
+// remains as a clarity-preserving alternative.
+func TestTxBulkReads_ByLabelInsideTx(t *testing.T) {
 	t.Parallel()
 	g, _, _, _, _ := setupTxReadFixture(t)
 
 	tx, _ := g.BeginTx()
+	defer func() { _ = tx.Rollback() }()
 
-	done := make(chan struct{})
+	done := make(chan []*types.Node)
 	go func() {
-		_, _ = g.Nodes.ByLabel("Person", storepkg.QueryOpts{}) // MUST deadlock
-		close(done)
+		nodes, _ := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
+		done <- nodes
 	}()
 
 	select {
-	case <-done:
-		t.Fatal("g.Nodes.ByLabel returned inside an open tx — the non-tx accessor is unexpectedly reentrant against c.mu")
-	case <-time.After(250 * time.Millisecond):
-		// expected hang
+	case got := <-done:
+		if len(got) != 2 {
+			t.Errorf("g.Nodes.ByLabel inside tx returned %d nodes, want 2", len(got))
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("g.Nodes.ByLabel deadlocked inside an open tx — Path B regressed")
 	}
-
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("rollback: %v", err)
-	}
-	<-done
 }
 
-// TestTxBulkReads_NodesAtDeadlockRegression mirrors the above for a temporal
-// query — confirms readUnderRLock-based methods exhibit the same deadlock.
-
-func TestTxBulkReads_NodesAtDeadlockRegression(t *testing.T) {
+// TestTxBulkReads_NodesAtInsideTx (v4.1.0): mirror for a readUnderRLock-based
+// temporal query. Same Path B guarantee: must complete concurrently with
+// the open tx.
+func TestTxBulkReads_NodesAtInsideTx(t *testing.T) {
 	t.Parallel()
 	g, _, _, _, _ := setupTxReadFixture(t)
 	now := types.Instant(time.Now().UnixMilli() + 1000)
 
 	tx, _ := g.BeginTx()
+	defer func() { _ = tx.Rollback() }()
 
-	done := make(chan struct{})
+	done := make(chan []*types.Node)
 	go func() {
-		_, _ = g.Temporal.NodesAt(now)
-		close(done)
+		nodes, _ := g.Temporal.NodesAt(now)
+		done <- nodes
 	}()
 
 	select {
-	case <-done:
-		t.Fatal("g.Temporal.NodesAt returned inside an open tx — readUnderRLock unexpectedly reentrant")
-	case <-time.After(250 * time.Millisecond):
-		// expected hang
+	case got := <-done:
+		if len(got) != 2 {
+			t.Errorf("g.Temporal.NodesAt inside tx returned %d nodes, want 2", len(got))
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("g.Temporal.NodesAt deadlocked inside an open tx — Path B regressed")
+	}
+}
+
+// TestPathB_ConcurrentDisjointMutations (v4.1.0): the Path B headline
+// promise — a standalone mutation on an entity DIFFERENT from anything
+// the tx has touched proceeds concurrently. v3.4/v4.0.x would block the
+// standalone mutation behind c.mu.Lock for the tx lifetime; v4.1.0
+// serializes only at the entity-lock level.
+func TestPathB_ConcurrentDisjointMutations(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+	ctx := context.Background()
+
+	// Tx creates a node that won't be touched by the concurrent op.
+	tx, _ := g.BeginTx()
+	if _, err := tx.AddNode([]string{"InTx"}, nil); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("tx.AddNode: %v", err)
 	}
 
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("rollback: %v", err)
+	// Standalone goroutine creates a separate node — must finish promptly.
+	done := make(chan error)
+	go func() {
+		_, err := g.Nodes.Add(ctx, []string{"Standalone"}, nil)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("concurrent standalone AddNode: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		_ = tx.Rollback()
+		t.Fatal("concurrent standalone AddNode blocked on open tx — Path B isolation regressed")
 	}
-	<-done
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Both nodes must exist.
+	cnt, err := g.Nodes.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if cnt != 2 {
+		t.Errorf("Count after commit = %d, want 2", cnt)
+	}
 }

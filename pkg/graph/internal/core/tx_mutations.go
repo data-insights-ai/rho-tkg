@@ -23,10 +23,10 @@ import (
 // section so concurrent goroutines using the same *GraphTx serialize
 // instead of racing Commit/Rollback against an in-flight method.
 func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
 	tx.noteNodeCreateResultLocked(n)
@@ -41,10 +41,10 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 // The relationship ID is tracked for rollback. Delegates to Graph.Rels.Add.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
 	tx.noteRelCreateResultLocked(r)
@@ -59,10 +59,10 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 // The relationship ID is tracked for rollback. Delegates to Graph.addRelationshipByIDInternal.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
 	tx.noteRelCreateResultLocked(r)
@@ -79,10 +79,10 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 // The relationship ID is tracked for rollback only if created.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, false, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
 	if created && r != nil {
@@ -99,10 +99,10 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 // The node ID is tracked for rollback. Delegates to Graph.Nodes.Import.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
-	if err := tx.lockActiveContext(ctx); err != nil {
+	if err := tx.lockActiveCoreContext(ctx); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if _, deletedInTx := tx.deletedNodeSet[id.SnowflakeID()]; deletedInTx {
 		if err := tx.materializeDeletedNodeHistoryLocked(id); err != nil {
 			return nil, err
@@ -122,10 +122,10 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 // The relationship ID is tracked for rollback. Delegates to Graph.Rels.Import.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	if err := tx.lockActiveContext(ctx); err != nil {
+	if err := tx.lockActiveCoreContext(ctx); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if _, deletedInTx := tx.deletedRelSet[id.SnowflakeID()]; deletedInTx {
 		if err := tx.materializeDeletedRelHistoryLocked(id); err != nil {
 			return nil, err
@@ -166,10 +166,10 @@ func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
 // Delegates the actual update to Graph.Nodes.Update.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -222,10 +222,10 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 // Delegates the actual update to Graph.Rels.Update.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
@@ -302,10 +302,10 @@ func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error 
 // Delegates the actual deletion to Graph.Nodes.Delete.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) DeleteNode(id types.NodeID) error {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
@@ -389,10 +389,10 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 // Snapshots the relationship for rollback. Delegates to Graph.Rels.Delete.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
@@ -555,10 +555,10 @@ func relHistoryBeforeVersion(history []*types.Relationship, minVersion uint32) [
 // label, returns nil with no snapshot recorded.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateName(label); err != nil {
 		return err
 	}
@@ -595,10 +595,10 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 // only one on the node.
 // Holds tx.mu for the whole call — see AddNode (R4-F2).
 func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateName(label); err != nil {
 		return err
 	}

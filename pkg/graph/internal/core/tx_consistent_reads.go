@@ -30,10 +30,10 @@ import (
 // interleave with the export's reads while the transaction is live.
 // See (*IOOps).Export for stream format details.
 func (tx *GraphTx) Export(w io.Writer) error {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.exportLocked(w)
 }
 
@@ -42,10 +42,10 @@ func (tx *GraphTx) Export(w io.Writer) error {
 // mutations can interleave with the snapshot's reads while the
 // transaction is live.
 func (tx *GraphTx) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.snapshotAt(at)
 }
 
@@ -55,10 +55,10 @@ func (tx *GraphTx) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error
 // Returns ErrNotTieredStore if the underlying store does not support
 // shard-level verification.
 func (tx *GraphTx) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.verifyShardLocked(shardName)
 }
 
@@ -199,10 +199,10 @@ func (tx *GraphTx) RelProperty(r *types.Relationship, key string) (any, bool) {
 
 // GetByIDs is a tx-side mirror for g.Nodes.GetByIDs.
 func (tx *GraphTx) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -216,10 +216,10 @@ func (tx *GraphTx) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 
 // AllNodes is a tx-side mirror for g.Nodes.All.
 func (tx *GraphTx) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
@@ -228,10 +228,10 @@ func (tx *GraphTx) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
 
 // NodesByLabel is a tx-side mirror for g.Nodes.ByLabel.
 func (tx *GraphTx) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
@@ -243,10 +243,10 @@ func (tx *GraphTx) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types
 
 // NodesByLabelAndProperty is a tx-side mirror for g.Nodes.ByLabelAndProperty.
 func (tx *GraphTx) NodesByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
@@ -264,19 +264,19 @@ func (tx *GraphTx) NodesByLabelAndProperty(label, key string, value any, opts st
 
 // NodeCount is a tx-side mirror for g.Nodes.Count.
 func (tx *GraphTx) NodeCount() (int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return 0, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.nodeCount()
 }
 
 // NodeCountByLabel is a tx-side mirror for g.Nodes.CountByLabel.
 func (tx *GraphTx) NodeCountByLabel(label string) (int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return 0, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return 0, err
 	}
@@ -287,10 +287,10 @@ func (tx *GraphTx) NodeCountByLabel(label string) (int, error) {
 
 // GetRelsByIDs is a tx-side mirror for g.Rels.GetByIDs.
 func (tx *GraphTx) GetRelsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -304,10 +304,10 @@ func (tx *GraphTx) GetRelsByIDs(ids []types.RelID) ([]*types.Relationship, error
 
 // AllRels is a tx-side mirror for g.Rels.All.
 func (tx *GraphTx) AllRels(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
@@ -316,10 +316,10 @@ func (tx *GraphTx) AllRels(opts storepkg.QueryOpts) ([]*types.Relationship, erro
 
 // RelsByType is a tx-side mirror for g.Rels.ByType.
 func (tx *GraphTx) RelsByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
@@ -331,10 +331,10 @@ func (tx *GraphTx) RelsByType(typeName string, opts storepkg.QueryOpts) ([]*type
 
 // OutgoingRels is a tx-side mirror for g.Rels.Outgoing.
 func (tx *GraphTx) OutgoingRels(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if typeName != "" {
 		if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
@@ -348,10 +348,10 @@ func (tx *GraphTx) OutgoingRels(nodeID types.NodeID, typeName string) ([]*types.
 
 // IncomingRels is a tx-side mirror for g.Rels.Incoming.
 func (tx *GraphTx) IncomingRels(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if typeName != "" {
 		if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
@@ -365,10 +365,10 @@ func (tx *GraphTx) IncomingRels(nodeID types.NodeID, typeName string) ([]*types.
 
 // OutgoingRelsForNodes is a tx-side mirror for g.Rels.OutgoingForNodes.
 func (tx *GraphTx) OutgoingRelsForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if typeName != "" {
 		if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
@@ -387,10 +387,10 @@ func (tx *GraphTx) OutgoingRelsForNodes(nodeIDs []types.NodeID, typeName string)
 
 // IncomingRelsForNodes is a tx-side mirror for g.Rels.IncomingForNodes.
 func (tx *GraphTx) IncomingRelsForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if typeName != "" {
 		if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 			return nil, err
@@ -409,19 +409,19 @@ func (tx *GraphTx) IncomingRelsForNodes(nodeIDs []types.NodeID, typeName string)
 
 // RelCount is a tx-side mirror for g.Rels.Count.
 func (tx *GraphTx) RelCount() (int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return 0, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.relCount()
 }
 
 // RelCountByType is a tx-side mirror for g.Rels.CountByType.
 func (tx *GraphTx) RelCountByType(typeName string) (int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return 0, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 		return 0, err
 	}
@@ -432,28 +432,28 @@ func (tx *GraphTx) RelCountByType(typeName string) (int, error) {
 
 // NodesAt is a tx-side mirror for g.Temporal.NodesAt.
 func (tx *GraphTx) NodesAt(at types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.nodesAtLocked(at)
 }
 
 // RelsAt is a tx-side mirror for g.Temporal.RelsAt.
 func (tx *GraphTx) RelsAt(at types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.relationshipsAtLocked(at)
 }
 
 // NodesByLabelAt is a tx-side mirror for g.Temporal.NodesByLabelAt.
 func (tx *GraphTx) NodesByLabelAt(label string, at types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
@@ -462,10 +462,10 @@ func (tx *GraphTx) NodesByLabelAt(label string, at types.Instant) ([]*types.Node
 
 // NodesDuring is a tx-side mirror for g.Temporal.NodesDuring.
 func (tx *GraphTx) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
@@ -475,10 +475,10 @@ func (tx *GraphTx) NodesDuring(start, end types.Instant) ([]*types.Node, error) 
 
 // RelsDuring is a tx-side mirror for g.Temporal.RelsDuring.
 func (tx *GraphTx) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
@@ -488,10 +488,10 @@ func (tx *GraphTx) RelsDuring(start, end types.Instant) ([]*types.Relationship, 
 
 // NodeAt is a tx-side mirror for g.Temporal.NodeAt.
 func (tx *GraphTx) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -500,10 +500,10 @@ func (tx *GraphTx) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error
 
 // RelAt is a tx-side mirror for g.Temporal.RelAt.
 func (tx *GraphTx) RelAt(id types.RelID, at types.Instant) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -512,10 +512,10 @@ func (tx *GraphTx) RelAt(id types.RelID, at types.Instant) (*types.Relationship,
 
 // NeighborsAt is a tx-side mirror for g.Temporal.NeighborsAt.
 func (tx *GraphTx) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return nil, err
 	}
@@ -524,10 +524,10 @@ func (tx *GraphTx) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.
 
 // OutgoingRelsAt is a tx-side mirror for g.Temporal.OutgoingRelsAt.
 func (tx *GraphTx) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return nil, err
 	}
@@ -536,10 +536,10 @@ func (tx *GraphTx) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*typ
 
 // IncomingRelsAt is a tx-side mirror for g.Temporal.IncomingRelsAt.
 func (tx *GraphTx) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return nil, err
 	}
@@ -548,10 +548,10 @@ func (tx *GraphTx) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*typ
 
 // NodesByLabelPropertyAt is a tx-side mirror for g.Temporal.NodesByLabelPropertyAt.
 func (tx *GraphTx) NodesByLabelPropertyAt(label, key string, value any, at types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
@@ -566,10 +566,10 @@ func (tx *GraphTx) NodesByLabelPropertyAt(label, key string, value any, at types
 
 // NodesByLabelPropertyDuring is a tx-side mirror for g.Temporal.NodesByLabelPropertyDuring.
 func (tx *GraphTx) NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
@@ -588,10 +588,10 @@ func (tx *GraphTx) NodesByLabelPropertyDuring(label, key string, value any, star
 
 // RelsByTypePropertyAt is a tx-side mirror for g.Temporal.RelsByTypePropertyAt.
 func (tx *GraphTx) RelsByTypePropertyAt(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := tx.g.validateRelTypeQueryName(relType); err != nil {
 		return nil, err
 	}
@@ -606,10 +606,10 @@ func (tx *GraphTx) RelsByTypePropertyAt(relType, key string, value any, at types
 
 // RelsByTypePropertyDuring is a tx-side mirror for g.Temporal.RelsByTypePropertyDuring.
 func (tx *GraphTx) RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	resolvedEnd, err := normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
@@ -630,10 +630,10 @@ func (tx *GraphTx) RelsByTypePropertyDuring(relType, key string, value any, star
 
 // NodeAsOf is a tx-side mirror for g.Temporal.NodeAsOf.
 func (tx *GraphTx) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -642,10 +642,10 @@ func (tx *GraphTx) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node,
 
 // RelAsOf is a tx-side mirror for g.Temporal.RelAsOf.
 func (tx *GraphTx) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -654,19 +654,19 @@ func (tx *GraphTx) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relatio
 
 // NodesAsOf is a tx-side mirror for g.Temporal.NodesAsOf.
 func (tx *GraphTx) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.nodesAsOfLocked(txTime)
 }
 
 // RelsAsOf is a tx-side mirror for g.Temporal.RelsAsOf.
 func (tx *GraphTx) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.relsAsOfLocked(txTime)
 }
 
@@ -674,28 +674,28 @@ func (tx *GraphTx) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 
 // Stats is a tx-side mirror for g.Stats.Get.
 func (tx *GraphTx) Stats() (GraphStats, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return GraphStats{}, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.statsLocked()
 }
 
 // AllLabelCounts is a tx-side mirror for g.Stats.AllLabelCounts.
 func (tx *GraphTx) AllLabelCounts() (map[string]int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.allLabelCountsLocked()
 }
 
 // AllRelTypeCounts is a tx-side mirror for g.Stats.AllRelTypeCounts.
 func (tx *GraphTx) AllRelTypeCounts() (map[string]int, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	return tx.g.allRelTypeCountsLocked()
 }
 
@@ -703,10 +703,10 @@ func (tx *GraphTx) AllRelTypeCounts() (map[string]int, error) {
 
 // SearchNearest is a tx-side mirror for g.Index.SearchNearest.
 func (tx *GraphTx) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
@@ -741,10 +741,10 @@ func (tx *GraphTx) IndexProviders() []string {
 
 // ListShards is a tx-side mirror for g.Tier.ListShards.
 func (tx *GraphTx) ListShards() ([]tiered.ShardInfo, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 	if ts, ok := tx.g.store.(tieredAdminStore); ok {
 		return ts.ListShards()
 	}

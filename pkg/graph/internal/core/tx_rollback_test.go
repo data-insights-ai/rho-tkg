@@ -365,7 +365,15 @@ func TestGraphTxAddNodeCleanupFailureRollbackDeletesLivePartialRow(t *testing.T)
 	}
 }
 
-func TestGraphTx_PublicResolverReadsWaitForRollback(t *testing.T) {
+// TestGraphTx_PublicResolverReadsDoNotBlock (v4.1.0, Path B): public
+// resolver reads from a concurrent goroutine no longer block on an active
+// tx. They proceed under c.mu.RLock — the tx holds c.txMu (not c.mu.Lock)
+// for its lifetime. After Rollback, the in-progress label/type tokens that
+// the tx allocated are revoked from the registry, so a *subsequent* lookup
+// returns (0, false). A lookup that races mid-tx may observe either the
+// pre-tx state or the in-progress allocation; both are accepted under
+// the new isolation contract (documented in CHANGELOG [4.1.0]).
+func TestGraphTx_PublicResolverReadsDoNotBlock(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
@@ -391,58 +399,40 @@ func TestGraphTx_PublicResolverReadsWaitForRollback(t *testing.T) {
 		t.Fatalf("tx.AddRelationship: %v", err)
 	}
 
-	labelStarted := make(chan struct{})
+	// Lookups from a concurrent goroutine must complete promptly — no
+	// blocking on c.mu.Lock since the tx doesn't hold it under Path B.
 	labelDone := make(chan struct{})
-	var labelTok uint16
-	var labelOK bool
 	go func() {
-		close(labelStarted)
-		labelTok, labelOK = g.Resolve.LookupLabel("TxOnly")
+		_, _ = g.Resolve.LookupLabel("TxOnly")
 		close(labelDone)
 	}()
-
-	relStarted := make(chan struct{})
 	relDone := make(chan struct{})
-	var relTok uint16
-	var relOK bool
 	go func() {
-		close(relStarted)
-		relTok, relOK = g.Resolve.LookupRelType("TX_REL")
+		_, _ = g.Resolve.LookupRelType("TX_REL")
 		close(relDone)
 	}()
 
-	<-labelStarted
-	<-relStarted
-	assertBlocked := func(name string, done <-chan struct{}) {
+	assertCompletes := func(name string, done <-chan struct{}) {
 		t.Helper()
 		select {
 		case <-done:
-			t.Fatalf("%s returned while the transaction was still active", name)
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("%s did NOT complete concurrently with an open tx — Path B regressed", name)
 		}
 	}
-	assertBlocked("LookupLabel", labelDone)
-	assertBlocked("LookupRelType", relDone)
+	assertCompletes("LookupLabel", labelDone)
+	assertCompletes("LookupRelType", relDone)
 
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
-	waitDone := func(name string, done <-chan struct{}) {
-		t.Helper()
-		select {
-		case <-done:
-		case <-time.After(time.Second):
-			t.Fatalf("%s did not resume after rollback", name)
-		}
-	}
-	waitDone("LookupLabel", labelDone)
-	waitDone("LookupRelType", relDone)
 
-	if labelOK || labelTok != 0 {
-		t.Fatalf("LookupLabel after rollback = (%d, %v), want (0, false)", labelTok, labelOK)
+	// After rollback, the labels/types the tx allocated must be gone.
+	if tok, ok := g.Resolve.LookupLabel("TxOnly"); ok || tok != 0 {
+		t.Fatalf("LookupLabel after rollback = (%d, %v), want (0, false)", tok, ok)
 	}
-	if relOK || relTok != 0 {
-		t.Fatalf("LookupRelType after rollback = (%d, %v), want (0, false)", relTok, relOK)
+	if tok, ok := g.Resolve.LookupRelType("TX_REL"); ok || tok != 0 {
+		t.Fatalf("LookupRelType after rollback = (%d, %v), want (0, false)", tok, ok)
 	}
 }
 

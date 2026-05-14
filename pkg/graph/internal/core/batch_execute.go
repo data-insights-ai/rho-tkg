@@ -33,6 +33,13 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		b.mu.Unlock()
 		return nil, err
 	}
+	// Take c.txMu first to serialize against any open *GraphTx (which now
+	// uses c.txMu instead of c.mu.Lock — Path B v4.1.0). Then c.mu.Lock to
+	// fence against concurrent readers/writers during the batch's atomic
+	// store mutations. Batches are short-lived single-shot executions, so
+	// holding c.mu.Lock for the duration is acceptable; that's what
+	// preserves "Batch.Execute appears atomic to concurrent readers".
+	b.g.txMu.Lock()
 	b.g.mu.Lock()
 	if b.g.closed.Load() {
 		// Re-check under the lock — Close may have run between
@@ -40,6 +47,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// race past a fully-completed Close and operate on a torn
 		// store (R5-F5 lifecycle gate, mirrors BeginTx).
 		b.g.mu.Unlock()
+		b.g.txMu.Unlock()
 		b.mu.Unlock()
 		return nil, ErrGraphClosed
 	}
@@ -55,6 +63,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		if !unlocked {
 			b.g.txEventBuffer = nil
 			b.g.mu.Unlock()
+			b.g.txMu.Unlock()
 		}
 		if !builderUnlocked {
 			b.mu.Unlock()
@@ -517,6 +526,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	ep := b.g.events
 	b.g.txEventBuffer = nil
 	b.g.mu.Unlock()
+	b.g.txMu.Unlock()
 	unlocked = true
 	b.mu.Unlock()
 	builderUnlocked = true
