@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -93,15 +94,15 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 	}
 
 	// Add entities to populate registries.
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "test"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Case"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = g.Rels.Add("RELATES_TO", n, n2, nil)
+	_, err = g.Rels.Add(context.Background(), "RELATES_TO", n, n2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,15 +151,15 @@ func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
 func TestTieredStore_GraphGetByIDsSorted(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	case1, err := g.Nodes.Add([]string{"Case"}, nil)
+	case1, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signal, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signal, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	case2, err := g.Nodes.Add([]string{"Case"}, nil)
+	case2, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +185,11 @@ func TestTieredStore_GraphGetByIDsSorted(t *testing.T) {
 			nodes[0].ID(), nodes[1].ID(), case1.ID(), signal.ID())
 	}
 
-	rel1, err := g.Rels.Add("LINKS", case1, signal, nil)
+	rel1, err := g.Rels.Add(context.Background(), "LINKS", case1, signal, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel2, err := g.Rels.Add("LINKS", signal, case2, nil)
+	rel2, err := g.Rels.Add(context.Background(), "LINKS", signal, case2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,17 +265,17 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 	_ = ts
 
-	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
-	sig1, _ := g.Nodes.Add([]string{"Signal"}, nil)
-	sig2, _ := g.Nodes.Add([]string{"Signal"}, nil)
+	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
+	sig1, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
+	sig2, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 
-	_, _ = g.Rels.Add("TRIGGERED", sig1, case1, nil)
+	_, _ = g.Rels.Add(context.Background(), "TRIGGERED", sig1, case1, nil)
 
 	// Rotate.
 	time.Sleep(2 * time.Millisecond)
 	_ = ts.RotateHotShard()
 
-	_, _ = g.Rels.Add("TRIGGERED", sig2, case1, nil)
+	_, _ = g.Rels.Add(context.Background(), "TRIGGERED", sig2, case1, nil)
 
 	// RelationshipsByType should find rels across shards (parallel).
 	tok, _ := g.Resolve.LookupRelType("TRIGGERED")
@@ -292,7 +293,7 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 func TestTieredStore_ArchiveNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C001"})
+	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C001"})
 	caseID := caseNode.ID()
 
 	// Archive.
@@ -312,7 +313,7 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 	}
 
 	// GetNode should still find it (via archive routing).
-	got, err := g.Nodes.Get(caseID)
+	got, err := g.Nodes.Get(context.Background(), caseID)
 	if err != nil {
 		t.Fatalf("GetNode after archive: %v", err)
 	}
@@ -324,9 +325,9 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 func TestTieredStore_ArchiveWithRels(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
-	case2, _ := g.Nodes.Add([]string{"Case"}, nil)
-	rel, _ := g.Rels.Add("RELATED_TO", case1, case2, nil)
+	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
+	case2, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
+	rel, _ := g.Rels.Add(context.Background(), "RELATED_TO", case1, case2, nil)
 
 	case1ID := case1.ID()
 	case2ID := case2.ID()
@@ -357,7 +358,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 func TestTieredStore_RestoreNode(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "closed"})
+	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "closed"})
 	caseID := caseNode.ID()
 
 	// Archive then restore.
@@ -379,7 +380,7 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 	}
 
 	// GetNode should work normally.
-	got, err := g.Nodes.Get(caseID)
+	got, err := g.Nodes.Get(context.Background(), caseID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +398,7 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 		t.Error("refArchive should be nil initially")
 	}
 
-	caseNode, _ := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	_ = ts.ArchiveNode(caseNode.ID())
 
 	if ts.RefArchiveForTest().Load() == nil {
@@ -409,7 +410,7 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	// Verify shardForNodeID falls back to archive.
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, _ := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	caseID := caseNode.ID()
 
 	_ = ts.ArchiveNode(caseID)
@@ -427,14 +428,14 @@ func TestTieredStore_ArchiveDepthAll(t *testing.T) {
 	// AllNodes with archive data should include archived nodes.
 	g, ts := newTestTieredGraph(t)
 
-	case1, _ := g.Nodes.Add([]string{"Case"}, nil)
-	sig1, _ := g.Nodes.Add([]string{"Signal"}, nil)
+	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
+	sig1, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	_ = sig1
 
 	_ = ts.ArchiveNode(case1.ID())
 
 	// GetNode should find archived node.
-	got, err := g.Nodes.Get(case1.ID())
+	got, err := g.Nodes.Get(context.Background(), case1.ID())
 	if err != nil {
 		t.Fatalf("GetNode for archived node: %v", err)
 	}
@@ -445,7 +446,7 @@ func TestTieredStore_ArchiveDepthAll(t *testing.T) {
 func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	sigNode, _ := g.Nodes.Add([]string{"Signal"}, nil)
+	sigNode, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	err := ts.ArchiveNode(sigNode.ID())
 	if !errors.Is(err, tiered.ErrNotReferenceEntity) {
 		t.Errorf("expected tiered.ErrNotReferenceEntity for event node archive, got %v", err)
@@ -629,15 +630,15 @@ func TestTieredStore_VerifyShard_Hot(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	// Add nodes and a relationship to the hot shard.
-	n, err := g.Nodes.Add([]string{"Signal"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Signal"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n2: %v", err)
 	}
-	if _, err := g.Rels.Add("OBSERVED", n, n2, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "OBSERVED", n, n2, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
@@ -666,7 +667,7 @@ func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
 	// Add a node to hot, then rotate → becomes warm.
-	_, err := g.Nodes.Add([]string{"Signal"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -716,15 +717,15 @@ func TestTieredStore_Repair_NoOrphans(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
 	// Create a ref node and an event node with a cross-shard rel.
-	refNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	refNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode ref: %v", err)
 	}
-	evtNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	evtNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode evt: %v", err)
 	}
-	_, err = g.Rels.Add("TRIGGERED", evtNode, refNode, nil)
+	_, err = g.Rels.Add(context.Background(), "TRIGGERED", evtNode, refNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -766,12 +767,12 @@ func TestGraph_DecomposeID(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n, err := g.Nodes.Add([]string{"Test"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	c := g.Admin.DecomposeID(n.ID().SnowflakeID())
+	c := g.Admin.DecomposeNodeID(n.ID())
 	// SnowflakeNodeID 5 → nodeGen uses 5*2=10, relGen uses 5*2+1=11.
 	if c.NodeID != 10 {
 		t.Errorf("NodeID = %d, want 10", c.NodeID)
@@ -940,11 +941,11 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Signal"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Signal"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -958,7 +959,7 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := g.Rels.Add("OBSERVED", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,11 +999,11 @@ func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C1"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Rels.Add("LOOPS_TO", n1, n1, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "LOOPS_TO", n1, n1, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1049,11 +1050,11 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C1"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := g.Rels.Add("LOOPS_TO", n1, n1, nil)
+	rel, err := g.Rels.Add(context.Background(), "LOOPS_TO", n1, n1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

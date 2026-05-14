@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -46,7 +47,7 @@ func TestTxFromSetOnAdd(t *testing.T) {
 	clk := useTestClock(t, g)
 	before := clk.PeekInstant()
 
-	n, err := g.Nodes.Add([]string{"A"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -64,9 +65,9 @@ func TestTxFromSetOnAdd(t *testing.T) {
 	}
 
 	// Same for relationship
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	before2 := clk.PeekInstant()
-	r, err := g.Rels.Add("REL", n, n2, nil)
+	r, err := g.Rels.Add(context.Background(), "REL", n, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -86,14 +87,14 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	nid := n.ID()
 	origTxFrom := n.Temporal().TxFrom
 
 	// Test clock advances 1ms per c.now() call — Update gets a strictly
 	// greater TxFrom without a wall-clock sleep (R5-F10).
 
-	updated, err := g.Nodes.Update(nid, map[string]any{"x": 1})
+	updated, err := g.Nodes.Update(context.Background(), nid, map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -130,11 +131,11 @@ func TestTxTimeMonotonicWhenClockRepeats(t *testing.T) {
 	fixed := time.Now().Add(time.Second)
 	g.SetClockForTest(t, func() time.Time { return fixed })
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"state": "initial"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	updated, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"})
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"state": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -163,19 +164,19 @@ func TestRelTxTimeMonotonicWhenClockRepeats(t *testing.T) {
 	fixed := time.Now().Add(time.Second)
 	g.SetClockForTest(t, func() time.Time { return fixed })
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("REL", a, b, map[string]any{"state": "initial"})
+	r, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	updated, err := g.Rels.Update(r.ID(), map[string]any{"state": "updated"})
+	updated, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -206,13 +207,13 @@ func TestTxTimeMandatoryFallback_NodeAndRelVersions(t *testing.T) {
 	}
 	clk := useTestClock(t, g)
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"state": "initial"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	origNodeTx := n.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
-	updatedNode, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"})
+	updatedNode, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"state": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -232,17 +233,17 @@ func TestTxTimeMandatoryFallback_NodeAndRelVersions(t *testing.T) {
 		t.Fatalf("fallback current node state = %v, %v; want updated", state, ok)
 	}
 
-	other, err := g.Nodes.Add([]string{"B"}, nil)
+	other, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode other: %v", err)
 	}
-	r, err := g.Rels.Add("REL", updatedNode, other, map[string]any{"state": "initial"})
+	r, err := g.Rels.Add(context.Background(), "REL", updatedNode, other, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	origRelTx := r.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
-	updatedRel, err := g.Rels.Update(r.ID(), map[string]any{"state": "updated"})
+	updatedRel, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -270,22 +271,22 @@ func TestTxTimeMandatoryFallback_BulkUsesHistoryIDsAndSkipsDeleted(t *testing.T)
 	}
 	clk := useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "deleted later"})
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"name": "deleted later"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("REL", a, b, map[string]any{"state": "deleted later"})
+	r, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"state": "deleted later"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	asOf := r.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
 
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Fatalf("DeleteNode cascade: %v", err)
 	}
 
@@ -345,11 +346,11 @@ func TestTxToSetOnDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	nid := n.ID()
 	origTxFrom := n.Temporal().TxFrom
 
-	if err := g.Nodes.Delete(nid); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -385,7 +386,7 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 	useTestClock(t, g)
 
 	before := types.Instant(time.Now().UnixMilli() - 1000) // 1 second in past
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	nid := n.ID()
 
 	_, err := g.Temporal.NodeAsOf(nid, before)
@@ -398,7 +399,7 @@ func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	nid := n.ID()
 
 	after := types.Instant(time.Now().UnixMilli() + 1000) // 1 second in future
@@ -416,7 +417,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	nid := n.ID()
 
 	// Record the TxFrom of the original version
@@ -427,7 +428,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	clk.Advance(2 * time.Millisecond)
 
 	// Update the node
-	updated, _ := g.Nodes.Update(nid, map[string]any{"x": 1})
+	updated, _ := g.Nodes.Update(context.Background(), nid, map[string]any{"x": 1})
 	newTxFrom := updated.Temporal().TxFrom
 
 	// Query at a time between original TxFrom and newTxFrom
@@ -451,7 +452,7 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	clk := useTestClock(t, g)
 
 	// Create first node — TxFrom comes from the test clock.
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	_ = n1
 
 	// Capture midTime AFTER n1's c.now(). Then advance the clock by
@@ -463,7 +464,7 @@ func TestGetNodesAsOf_FiltersCorrectly(t *testing.T) {
 	clk.Advance(1 * time.Millisecond)
 
 	// Create second node after midTime
-	n2, _ := g.Nodes.Add([]string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	_ = n2
 
 	// GetNodesAsOf(midTime) should return only n1 (n2 didn't exist yet)
@@ -494,7 +495,7 @@ func TestNodeAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"name": "live"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -502,7 +503,7 @@ func TestNodeAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	asOf := n.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
 
-	if err := g.Nodes.Delete(nid); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -529,7 +530,7 @@ func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"name": "live"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -537,7 +538,7 @@ func TestNodesAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	asOf := n.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
 
-	if err := g.Nodes.Delete(nid); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nid); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -575,7 +576,7 @@ func TestNodeAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"name": "live"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"name": "live"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -621,7 +622,7 @@ func TestNodesAsOfReturnsSortedByID(t *testing.T) {
 	clk := useTestClock(t, g)
 
 	for i := 0; i < 64; i++ {
-		if _, err := g.Nodes.Add([]string{"SortedNode"}, map[string]any{"i": int64(i)}); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), []string{"SortedNode"}, map[string]any{"i": int64(i)}); err != nil {
 			t.Fatalf("AddNode %d: %v", i, err)
 		}
 	}
@@ -643,9 +644,9 @@ func TestRelAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "REL", n1, n2, map[string]any{"state": "live"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -653,7 +654,7 @@ func TestRelAsOfDeletedEntityBeforeDelete(t *testing.T) {
 	asOf := r.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
 
-	if err := g.Rels.Delete(rid); err != nil {
+	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -680,9 +681,9 @@ func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "REL", n1, n2, map[string]any{"state": "live"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -690,7 +691,7 @@ func TestRelsAsOfCascadeDeletedRelationshipBeforeDelete(t *testing.T) {
 	asOf := r.Temporal().TxFrom
 	clk.Advance(2 * time.Millisecond)
 
-	if err := g.Nodes.Delete(n1.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), n1.ID()); err != nil {
 		t.Fatalf("DeleteNode cascade: %v", err)
 	}
 
@@ -728,9 +729,9 @@ func TestRelAsOfBeforeCloseVersionHidesCloseState(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("REL", n1, n2, map[string]any{"state": "live"})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "REL", n1, n2, map[string]any{"state": "live"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -775,16 +776,16 @@ func TestRelsAsOfReturnsSortedByID(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{"SortedEndpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"SortedEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"SortedEndpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"SortedEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
 	for i := 0; i < 64; i++ {
-		if _, err := g.Rels.Add("SORTED_REL", a, b, map[string]any{"i": int64(i)}); err != nil {
+		if _, err := g.Rels.Add(context.Background(), "SORTED_REL", a, b, map[string]any{"i": int64(i)}); err != nil {
 			t.Fatalf("AddRelationship %d: %v", i, err)
 		}
 	}
@@ -806,9 +807,9 @@ func TestGetRelAsOf(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("REL", n1, n2, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "REL", n1, n2, nil)
 	rid := r.ID()
 
 	before := r.Temporal().TxFrom - 1
@@ -836,15 +837,15 @@ func TestTxTimeQueriesAfterCloseReturnGraphClosed(t *testing.T) {
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("REL", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}

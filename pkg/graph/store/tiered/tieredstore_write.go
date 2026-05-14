@@ -47,6 +47,12 @@ type temporalIndexShardRef struct {
 	archive   bool
 }
 
+// temporalIndexShardRefsLocked builds the snapshot list of shards involved in
+// a temporal-index fanout operation. Caller MUST hold ts.mu (read or write
+// lock) for the duration of this call AND for any work that dereferences the
+// returned refs without separate pinning. Lock order across this and the
+// follow-on operations: ts.mu → archiveMu (via ensureTemporalIndexArchiveOpenLocked
+// and checkoutArchive). archiveMu must NOT be taken before ts.mu.
 func (ts *Store) temporalIndexShardRefsLocked() []temporalIndexShardRef {
 	refs := []temporalIndexShardRef{{name: "reference", reference: true}}
 	if ts.refArchive.Load() != nil || ts.hasArchiveShard() {

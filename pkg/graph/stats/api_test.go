@@ -28,8 +28,8 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 			t.Fatalf("%s nil error = %v, want ErrNilGraph", check.name, err)
 		}
 	}
-	if got := nilAPI.Get(); got != (GraphStats{}) {
-		t.Fatalf("nil Get = %+v, want zero", got)
+	if got, err := nilAPI.Get(); got != (GraphStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil Get = (%+v, %v), want (zero, ErrNilGraph)", got, err)
 	}
 	if got, err := nilAPI.AllLabelCounts(); got != nil || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil AllLabelCounts = (%v, %v), want (nil, ErrNilGraph)", got, err)
@@ -42,8 +42,8 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if got, err := api.NodeCount(); got != 0 || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("typed-nil NodeCount = (%d, %v), want (0, ErrNilGraph)", got, err)
 	}
-	if got := api.Get(); got != (GraphStats{}) {
-		t.Fatalf("typed-nil Get = %+v, want zero", got)
+	if got, err := api.Get(); got != (GraphStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("typed-nil Get = (%+v, %v), want (zero, ErrNilGraph)", got, err)
 	}
 }
 
@@ -82,7 +82,7 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		t.Fatalf("AllRelTypeCounts = (%v, %v), want KNOWS=4 nil", relTypeCounts, err)
 	}
 
-	if got := api.Get(); got != (GraphStats{
+	if got, err := api.Get(); err != nil || got != (GraphStats{
 		NodesAdded:      1,
 		NodesRead:       2,
 		NodesUpdated:    3,
@@ -96,7 +96,7 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		RelCacheHits:    11,
 		RelCacheMisses:  12,
 	}) {
-		t.Fatalf("Get = %+v, want mapped snapshot", got)
+		t.Fatalf("Get = (%+v, %v), want mapped snapshot", got, err)
 	}
 
 	if ops.nodeLabelArg != "Person" || ops.relTypeArg != "KNOWS" {

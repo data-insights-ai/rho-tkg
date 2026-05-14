@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,9 +31,9 @@ func TestPriority_GraphDeleteIsCritical(t *testing.T) {
 		}
 	})
 
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	nid := n.ID()
-	_ = g.Nodes.Delete(nid)
+	_ = g.Nodes.Delete(context.Background(), nid)
 
 	// Wait for delivery
 	deadline := time.Now().Add(2 * time.Second)
@@ -74,7 +75,7 @@ func TestPriority_GraphCreateIsHigh(t *testing.T) {
 		}
 	})
 
-	_, err = g.Nodes.Add([]string{"Y"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Y"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
 		}
 	})
 
-	_, err = g.Nodes.Add([]string{"Test"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

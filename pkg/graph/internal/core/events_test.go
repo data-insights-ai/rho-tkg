@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -78,11 +79,11 @@ func TestGraph_EventBus_NilDefault(t *testing.T) {
 	}
 
 	// Should not panic even without an event bus.
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode without event bus: %v", err)
 	}
-	if _, err := g.Nodes.Update(n.ID(), map[string]any{"x": "y"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"x": "y"}); err != nil {
 		t.Fatalf("UpdateNode without event bus: %v", err)
 	}
 }
@@ -132,7 +133,7 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 	events := collectEvents(g, eventspkg.EventNodeCreate)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -156,7 +157,7 @@ func TestGraph_NodeCreate_Event(t *testing.T) {
 func TestGraph_NodeUpdate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -164,7 +165,7 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
 
-	if _, err := g.Nodes.Update(id, map[string]any{"name": "Alice"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alice"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -178,7 +179,7 @@ func TestGraph_NodeUpdate_Event(t *testing.T) {
 func TestGraph_NodeDelete_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	n, err := g.Nodes.Add([]string{"Thing"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 
 	events := collectEvents(g, eventspkg.EventNodeDelete)
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -199,29 +200,29 @@ func TestGraph_NodeDelete_Event(t *testing.T) {
 func TestGraph_NodeCascadeDelete_RelDeleteEvents(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"C"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"C"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	out, err := g.Rels.Add("OUT", a, b, nil)
+	out, err := g.Rels.Add(context.Background(), "OUT", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship out: %v", err)
 	}
-	in, err := g.Rels.Add("IN", c, a, nil)
+	in, err := g.Rels.Add(context.Background(), "IN", c, a, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship in: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventRelDelete)
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Fatalf("DeleteNode cascade: %v", err)
 	}
 
@@ -265,12 +266,12 @@ func TestGraph_NodeCascadeDelete_RelDeleteEvents(t *testing.T) {
 func TestGraph_RelCreate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	events := collectEvents(g, eventspkg.EventRelCreate)
 
-	r, err := g.Rels.Add("LINKS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -285,14 +286,14 @@ func TestGraph_RelCreate_Event(t *testing.T) {
 func TestGraph_RelDelete_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("LINKS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 	rid := r.ID()
 
 	events := collectEvents(g, eventspkg.EventRelDelete)
 
-	if err := g.Rels.Delete(rid); err != nil {
+	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -306,14 +307,14 @@ func TestGraph_RelDelete_Event(t *testing.T) {
 func TestGraph_RelUpdate_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("LINKS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 	rid := r.ID()
 
 	events := collectEvents(g, eventspkg.EventRelUpdate)
 
-	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(1)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rid, map[string]any{"w": int64(1)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
@@ -326,14 +327,14 @@ func TestGraph_RelUpdate_Event(t *testing.T) {
 func TestGraph_RelCompareAndSetProperty_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"w": int64(1)})
 	rid := r.ID()
 
 	events := collectEvents(g, eventspkg.EventRelUpdate)
 
-	ok, err := g.Rels.CompareAndSetProperty(rid, "w", int64(1), int64(2))
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), rid, "w", int64(1), int64(2))
 	if err != nil {
 		t.Fatalf("CompareAndSetProperty: %v", err)
 	}
@@ -357,7 +358,7 @@ func TestEventBus_AsyncHandler(t *testing.T) {
 
 	const n = 5
 	for i := range n {
-		if _, err := g.Nodes.Add([]string{"X"}, map[string]any{"i": int64(i)}); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"i": int64(i)}); err != nil {
 			t.Fatalf("AddNode %d: %v", i, err)
 		}
 	}
@@ -378,7 +379,7 @@ func TestEventBus_AsyncHandler(t *testing.T) {
 func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	n, err := g.Nodes.Add([]string{"E"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"E"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -401,9 +402,9 @@ func TestGraph_CloseNodeVersion_Event(t *testing.T) {
 func TestGraph_CloseRelVersion_Event(t *testing.T) {
 	g := newTestGraphForEvents(t)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("E", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "E", a, b, nil)
 	rid := r.ID()
 
 	events := collectEvents(g, eventspkg.EventRelUpdate)

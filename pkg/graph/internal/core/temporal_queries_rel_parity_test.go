@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"math"
 	"testing"
 
@@ -33,15 +34,15 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": "2020"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": "2020"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -49,14 +50,14 @@ func TestGetRelationshipsByTypeValidAt_TwoPhase(t *testing.T) {
 	queryTime := g.relValidFrom(r)
 
 	// Phase 2: mutate after t0.
-	if _, err := g.Rels.Update(id, map[string]any{"since": "2024"}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), id, map[string]any{"since": "2024"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	// Querying at the pre-mutation instant must still return the rel — the
 	// type didn't change, so this primarily exercises the history-aware
 	// chain (covers deleted-rel + closed-out version cases too).
-	got, err := g.Temporal.RelationshipsByTypeAt("KNOWS", queryTime)
+	got, err := g.Temporal.RelsByTypeAt("KNOWS", queryTime)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt: %v", err)
 	}
@@ -85,32 +86,32 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Person"}, nil)
-	d, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	d, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Two KNOWS rels live at t0; one is later deleted, one survives.
-	rKept, err := g.Rels.Add("KNOWS", a, b, nil)
+	rKept, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rKept: %v", err)
 	}
-	rDeleted, err := g.Rels.Add("KNOWS", c, d, nil)
+	rDeleted, err := g.Rels.Add(context.Background(), "KNOWS", c, d, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rDeleted: %v", err)
 	}
 	// One LIKES rel should never appear in KNOWS results.
-	rOtherType, err := g.Rels.Add("LIKES", a, b, nil)
+	rOtherType, err := g.Rels.Add(context.Background(), "LIKES", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship rOtherType: %v", err)
 	}
 	t0 := maxRelValidFrom(g, rKept, rDeleted, rOtherType)
 
-	if err := g.Rels.Delete(rDeleted.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), rDeleted.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	got, err := g.Temporal.RelationshipsByTypeAt("KNOWS", t0)
+	got, err := g.Temporal.RelsByTypeAt("KNOWS", t0)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestGetRelationshipsByTypeValidAt_Adversarial(t *testing.T) {
 	}
 
 	// Phantom type returns nil/empty.
-	phantom, err := g.Temporal.RelationshipsByTypeAt("Phantom", t0)
+	phantom, err := g.Temporal.RelsByTypeAt("Phantom", t0)
 	if err != nil {
 		t.Fatalf("GetRelationshipsByTypeValidAt phantom: %v", err)
 	}
@@ -140,16 +141,16 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	id := r.ID()
 	queryTime := g.relValidFrom(r)
 
-	if _, err := g.Rels.Update(id, map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), id, map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
@@ -177,26 +178,26 @@ func TestRelsByTypePropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *tes
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	nanA64 := math.Float64frombits(0x7ff8000000000001)
 	nanB64 := math.Float64frombits(0x7ff8000000000002)
 	nanA32 := math.Float32frombits(0x7fc00001)
 	nanB32 := math.Float32frombits(0x7fc00002)
 
-	a64, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanA64})
+	a64, err := g.Rels.Add(context.Background(), "MEASURES", a, b, map[string]any{"score": nanA64})
 	if err != nil {
 		t.Fatalf("Add a64: %v", err)
 	}
-	b64, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanB64})
+	b64, err := g.Rels.Add(context.Background(), "MEASURES", a, b, map[string]any{"score": nanB64})
 	if err != nil {
 		t.Fatalf("Add b64: %v", err)
 	}
-	a32, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanA32})
+	a32, err := g.Rels.Add(context.Background(), "MEASURES", a, b, map[string]any{"score": nanA32})
 	if err != nil {
 		t.Fatalf("Add a32: %v", err)
 	}
-	b32, err := g.Rels.Add("MEASURES", a, b, map[string]any{"score": nanB32})
+	b32, err := g.Rels.Add(context.Background(), "MEASURES", a, b, map[string]any{"score": nanB32})
 	if err != nil {
 		t.Fatalf("Add b32: %v", err)
 	}
@@ -235,19 +236,19 @@ func TestRelationshipsByTypePropertyAndTime_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// rDraft: "draft" at t0, mutated to "published" later (must be in result).
-	rDraft, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	rDraft, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	// rPublished: "published" from creation (must NOT be in result for "draft").
-	rPublished, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "published"})
+	rPublished, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "published"})
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
-	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
+	rOtherType, _ := g.Rels.Add(context.Background(), "LIKES", a, b, map[string]any{"status": "draft"})
 
 	t0 := maxRelValidFrom(g, rDraft, rPublished, rOtherType)
 
-	if _, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rDraft.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
@@ -293,18 +294,18 @@ func TestRelationshipsByTypePropertyAndTime_FiltersOtherTypes(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// rKnows: KNOWS with status=draft (must be in result).
-	rKnows, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	rKnows, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	// rLikes: LIKES with same property value, then mutated → forces it into
 	// the rel-history index, so its ID appears in forEachRelCandidateID's
 	// union when querying KNOWS. The HasTypeTokenRaw filter must reject it.
-	rLikes, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
+	rLikes, _ := g.Rels.Add(context.Background(), "LIKES", a, b, map[string]any{"status": "draft"})
 	t0 := maxRelValidFrom(g, rKnows, rLikes)
 
-	if _, err := g.Rels.Update(rLikes.ID(), map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rLikes.ID(), map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateRelationship rLikes: %v", err)
 	}
 
@@ -327,16 +328,16 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	id := r.ID()
 	t0 := g.relValidFrom(r)
 
-	if err := g.Rels.Delete(id); err != nil {
+	if err := g.Rels.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -362,17 +363,17 @@ func TestRelationshipsByTypePropertyDuring_PredicateDuringInterval(t *testing.T)
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	id := r.ID()
 	start := g.relValidFrom(r)
 
-	updated, err := g.Rels.Update(id, map[string]any{"status": "published"})
+	updated, err := g.Rels.Update(context.Background(), id, map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -399,19 +400,19 @@ func TestRelationshipsByTypePropertyDuring_Adversarial(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// rDraft: had status=draft during the interval, then mutated.
-	rDraft, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	rDraft, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	// rNever: never had status=draft (always published).
-	rNever, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "published"})
+	rNever, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "published"})
 	// rOtherType: LIKES with status=draft (different type, must NOT appear).
-	rOtherType, _ := g.Rels.Add("LIKES", a, b, map[string]any{"status": "draft"})
+	rOtherType, _ := g.Rels.Add(context.Background(), "LIKES", a, b, map[string]any{"status": "draft"})
 
 	start := maxRelValidFrom(g, rDraft, rNever, rOtherType)
 
-	updated, err := g.Rels.Update(rDraft.ID(), map[string]any{"status": "published"})
+	updated, err := g.Rels.Update(context.Background(), rDraft.ID(), map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -456,10 +457,10 @@ func TestRelationshipsByTypePropertyDuring_OpenEnded(t *testing.T) {
 	g := newTestGraph(t)
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}

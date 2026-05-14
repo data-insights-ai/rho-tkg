@@ -12,6 +12,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -27,22 +28,22 @@ func TestR4_TestClock_AssignsStrictlyIncreasingInstants(t *testing.T) {
 	useTestClock(t, g)
 
 	// Three mutations in rapid succession (no sleeps).
-	a, err := g.Nodes.Add([]string{"X"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tm0 := a.Temporal().TxFrom
 
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"v": 1}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"v": 1}); err != nil {
 		t.Fatal(err)
 	}
-	v1, _ := g.Nodes.Get(a.ID())
+	v1, _ := g.Nodes.Get(context.Background(), a.ID())
 	tm1 := v1.Temporal().UpdatedAt
 
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"v": 2}); err != nil {
 		t.Fatal(err)
 	}
-	v2, _ := g.Nodes.Get(a.ID())
+	v2, _ := g.Nodes.Get(context.Background(), a.ID())
 	tm2 := v2.Temporal().UpdatedAt
 
 	if tm0 >= tm1 || tm1 >= tm2 {
@@ -59,7 +60,7 @@ func TestR4_TestClock_AdvanceJumpsAhead(t *testing.T) {
 	g := newTestGraph(t)
 	clk := useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{"X"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +68,10 @@ func TestR4_TestClock_AdvanceJumpsAhead(t *testing.T) {
 
 	clk.Advance(time.Hour)
 
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"v": 1}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"v": 1}); err != nil {
 		t.Fatal(err)
 	}
-	v1, _ := g.Nodes.Get(a.ID())
+	v1, _ := g.Nodes.Get(context.Background(), a.ID())
 	t1 := v1.Temporal().UpdatedAt
 
 	gap := int64(t1) - int64(t0)

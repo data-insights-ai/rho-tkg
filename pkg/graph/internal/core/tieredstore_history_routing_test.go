@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -143,11 +144,11 @@ func mustArchivedRelationshipFixture(t *testing.T) (*tiered.Store, types.RelID, 
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	node, err := g.Nodes.Add([]string{"Case"}, nil)
+	node, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	rel, err := g.Rels.Add("KNOWS", node, node, nil)
+	rel, err := g.Rels.Add(context.Background(), "KNOWS", node, node, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}

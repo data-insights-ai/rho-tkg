@@ -16,6 +16,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"math"
 	"testing"
@@ -36,10 +37,10 @@ func TestNodesByLabelAndProperty_Fallback_UnindexableQueryValueReturnsEmpty(t *t
 
 	// Seed two distinct nodes, each with a different unindexable
 	// property value (slices). Their canonicalised key is "" for both.
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"v": []float32{1, 2, 3}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"v": []float32{1, 2, 3}}); err != nil {
 		t.Fatalf("seed Doc1: %v", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"v": []float32{4, 5, 6}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"v": []float32{4, 5, 6}}); err != nil {
 		t.Fatalf("seed Doc2: %v", err)
 	}
 
@@ -65,10 +66,10 @@ func TestNodesByLabelAndProperty_Fallback_StoredUnindexableNotMatchedByQuery(t *
 
 	// Seed: Alice has an unindexable map property; Bob has a normal
 	// scalar value.
-	if _, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "extra": map[string]any{"k": "v"}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "extra": map[string]any{"k": "v"}}); err != nil {
 		t.Fatalf("seed Alice: %v", err)
 	}
-	bob, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	bob, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("seed Bob: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 
 	// Seed a small label cohort with eligible vectors.
 	for i := 0; i < 3; i++ {
-		if _, err := g.Nodes.Add([]string{"Target"}, map[string]any{"v": []float32{float32(i), 0, 0}}); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), []string{"Target"}, map[string]any{"v": []float32{float32(i), 0, 0}}); err != nil {
 			t.Fatalf("seed %d: %v", i, err)
 		}
 	}
@@ -172,7 +173,7 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 func TestSearchNearest_Overfetch_KZero_ValidatesBackendOnce(t *testing.T) {
 	t.Parallel()
 	g, store := newCountingVectorGraph(t)
-	if _, err := g.Nodes.Add([]string{"Target"}, map[string]any{"v": []float32{1, 2, 3}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Target"}, map[string]any{"v": []float32{1, 2, 3}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	if err := g.Index.CreateVector("Target", "v", 3, storepkg.DistanceCosine); err != nil {

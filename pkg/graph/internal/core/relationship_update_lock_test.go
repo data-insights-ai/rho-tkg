@@ -81,7 +81,7 @@ func TestUpdateRelationship_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)
 
-	_, err := g.Rels.Update(relID, map[string]any{"weight": int64(7)})
+	_, err := g.Rels.Update(context.Background(), relID, map[string]any{"weight": int64(7)})
 	if err != nil {
 		t.Fatalf("Update relationship after endpoint reuse: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestUpdateRelationshipInPlace_RetriesWhenReusedIDHasDifferentEndpoints(t *t
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)
 
-	_, err := g.Rels.UpdateInPlace(relID, map[string]any{"weight": int64(7)})
+	_, err := g.Rels.UpdateInPlace(context.Background(), relID, map[string]any{"weight": int64(7)})
 	if err != nil {
 		t.Fatalf("Update relationship in place after endpoint reuse: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRelationshipCAS_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.T) 
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)
 
-	ok, err := g.Rels.CompareAndSetProperty(relID, "weight", nil, int64(7))
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), relID, "weight", nil, int64(7))
 	if err != nil {
 		t.Fatalf("CompareAndSetProperty after endpoint reuse: %v", err)
 	}
@@ -164,7 +164,7 @@ func assertReusedRelEndpointProbe(t *testing.T, probe *reusedRelEndpointProbeSto
 
 func addUpdateLockNode(t *testing.T, g *Core, label string) *types.Node {
 	t.Helper()
-	n, err := g.Nodes.Add([]string{label}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{label}, nil)
 	if err != nil {
 		t.Fatalf("Add node %s: %v", label, err)
 	}

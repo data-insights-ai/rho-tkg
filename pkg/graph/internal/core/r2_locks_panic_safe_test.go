@@ -94,11 +94,11 @@ func TestBatch_PanicInGetNode_DoesNotLeakEndpointLocks(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("Add a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("Add b: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestBatch_PanicInGetNode_DoesNotLeakEndpointLocks(t *testing.T) {
 	// Follow-up mutation on the same endpoints. If the panic leaked
 	// LockTwo, this hangs forever — bound by a short wall-clock budget.
 	completed := withDeadline(t, 2*time.Second, func() {
-		_, _ = g.Rels.AddWithContext(context.Background(), "KNOWS2", a, b, nil)
+		_, _ = g.Rels.Add(context.Background(), "KNOWS2", a, b, nil)
 	})
 	if !completed {
 		t.Fatal("follow-up Rels.Add deadlocked — endpoint locks leaked across the panic")
@@ -135,11 +135,11 @@ func TestBatch_PanicInPutRelationship_DoesNotLeakEndpointLocks(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("Add a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("Add b: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestBatch_PanicInPutRelationship_DoesNotLeakEndpointLocks(t *testing.T) {
 	store.armed = false
 
 	completed := withDeadline(t, 2*time.Second, func() {
-		_, _ = g.Rels.AddWithContext(context.Background(), "KNOWS2", a, b, nil)
+		_, _ = g.Rels.Add(context.Background(), "KNOWS2", a, b, nil)
 	})
 	if !completed {
 		t.Fatal("follow-up Rels.Add deadlocked — endpoint locks leaked across the PutRelationship panic")
@@ -172,7 +172,7 @@ func TestDeleteNode_PanicInAdjacencyRead_DoesNotLeakEntityLocks(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("Add a: %v", err)
 	}
@@ -180,14 +180,14 @@ func TestDeleteNode_PanicInAdjacencyRead_DoesNotLeakEntityLocks(t *testing.T) {
 	store.armed = true
 	func() {
 		defer func() { _ = recover() }()
-		_ = g.Nodes.Delete(a.ID())
+		_ = g.Nodes.Delete(context.Background(), a.ID())
 	}()
 	store.armed = false
 
 	// Follow-up mutation on the same node ID. If Phase A leaked the
 	// LockEntity, this hangs forever.
 	completed := withDeadline(t, 2*time.Second, func() {
-		_, _ = g.Nodes.Update(a.ID(), map[string]any{"k": "v"})
+		_, _ = g.Nodes.Update(context.Background(), a.ID(), map[string]any{"k": "v"})
 	})
 	if !completed {
 		t.Fatal("follow-up Nodes.Update deadlocked — entity lock leaked across the adjacency-read panic")
@@ -205,8 +205,8 @@ func TestBatch_EndpointNotFound_StillRunsToCompletion(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	bb, _ := NewBatchBuilder(g)
 	if _, err := bb.AddRelationship("KNOWS", a, b, nil); err != nil {

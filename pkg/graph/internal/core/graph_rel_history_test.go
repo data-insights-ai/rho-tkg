@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -15,12 +16,12 @@ func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	nA, _ := g1.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g1.Nodes.Add([]string{"X"}, nil)
-	r, _ := g1.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020})
+	nA, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g1.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020})
 	relID := r.ID()
 
-	_, err = g1.Rels.Update(relID, map[string]any{"since": 2021})
+	_, err = g1.Rels.Update(context.Background(), relID, map[string]any{"since": 2021})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -35,7 +36,7 @@ func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
 	}
 	defer g2.Close()
 
-	got, err := g2.Rels.Get(relID)
+	got, err := g2.Rels.Get(context.Background(), relID)
 	if err != nil {
 		t.Fatalf("GetRelationship after reopen: %v", err)
 	}
@@ -55,12 +56,12 @@ func TestGraphUpdateRelSavesHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"weight": 1.0})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"weight": 1.0})
 	id := r.ID()
 
-	_, err := g.Rels.Update(id, map[string]any{"weight": 2.0})
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{"weight": 2.0})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -86,13 +87,13 @@ func TestGraphUpdateRelHistoryGrows(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	id := r.ID()
 
 	for i := 1; i <= 5; i++ {
-		g.Rels.Update(id, map[string]any{"w": int64(i)})
+		g.Rels.Update(context.Background(), id, map[string]any{"w": int64(i)})
 	}
 
 	history, _ := g.Rels.History(id)
@@ -106,13 +107,13 @@ func TestGraphUpdateRelHistoryAscendingOrder(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	id := r.ID()
 
 	for i := 1; i <= 3; i++ {
-		g.Rels.Update(id, map[string]any{"w": int64(i)})
+		g.Rels.Update(context.Background(), id, map[string]any{"w": int64(i)})
 	}
 
 	history, _ := g.Rels.History(id)
@@ -129,15 +130,15 @@ func TestGraphDeleteRelPreservesHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	id := r.ID()
 
-	g.Rels.Update(id, map[string]any{"w": int64(1)})
-	g.Rels.Update(id, map[string]any{"w": int64(2)})
+	g.Rels.Update(context.Background(), id, map[string]any{"w": int64(1)})
+	g.Rels.Update(context.Background(), id, map[string]any{"w": int64(2)})
 
-	if err := g.Rels.Delete(id); err != nil {
+	if err := g.Rels.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -158,14 +159,14 @@ func TestGraphBadgerDeleteRelPreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	nA, _ := g1.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g1.Nodes.Add([]string{"X"}, nil)
-	r, _ := g1.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g1.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	relID := r.ID()
 
-	g1.Rels.Update(relID, map[string]any{"w": int64(1)})
+	g1.Rels.Update(context.Background(), relID, map[string]any{"w": int64(1)})
 
-	if err := g1.Rels.Delete(relID); err != nil {
+	if err := g1.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 	if err := g1.Close(); err != nil {

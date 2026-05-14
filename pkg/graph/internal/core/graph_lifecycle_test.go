@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -29,15 +30,15 @@ func TestGraphCloseAndReopenBadger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	nA, err := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	nA, err := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nB, err := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	nB, err := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	_, err = g1.Rels.Add("KNOWS", nA, nB, nil)
+	_, err = g1.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestGraphRegistryPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	g1.Nodes.Add([]string{"Person", "Actor"}, nil)
+	g1.Nodes.Add(context.Background(), []string{"Person", "Actor"}, nil)
 	if err := g1.Close(); err != nil {
 		t.Fatalf("Close 1: %v", err)
 	}

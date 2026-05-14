@@ -19,7 +19,7 @@ import (
 
 // UpdateWithContext applies property updates to an existing relationship with context support.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (r *RelOps) UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -200,8 +200,14 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 // lockRelationshipCurrentEndpoints locks the relationship ID plus the endpoint
 // IDs from a stable current row. Caller must unlock with the returned start/end
 // IDs via c.entityLocks.UnlockThree.
+//
+// Bounded retry: peek-then-lock can race with a concurrent delete+reimport of
+// the same RelID with different endpoints. We retry up to maxRetries times
+// before giving up — parity with deleteNodeInternal's adjacency retry. An
+// unbounded loop here lets a hostile concurrent workload deadlock the caller.
 func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.RelID) (*types.Relationship, types.NodeID, types.NodeID, error) {
-	for {
+	const maxRetries = 10
+	for range maxRetries {
 		if err := checkCtx(ctx); err != nil {
 			return nil, 0, 0, err
 		}
@@ -232,6 +238,7 @@ func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.Re
 		}
 		return lockedCurrent, startID, endID, nil
 	}
+	return nil, 0, 0, fmt.Errorf("graph: relationship %d: endpoints changed after %d retries", id, maxRetries)
 }
 
 func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG *types.RelIntegrity) error {
@@ -284,20 +291,12 @@ func (c *Core) refreshNodeHash(id types.NodeID) (string, error) {
 	return nodeIntegrityHash(node), nil
 }
 
-// UpdateInPlace applies property updates to a relationship without creating a version history entry.
-// Version number is NOT incremented. PrevHash in the integrity chain is preserved.
-// Returns storepkg.ErrRelNotFound if the relationship does not exist. Empty updates map is a no-op.
-func (r *RelOps) UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
-	return c.Rels.UpdateInPlaceWithContext(context.Background(), id, updates)
-}
-
-// UpdateInPlaceWithContext applies property updates to a relationship without history.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (r *RelOps) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+// UpdateInPlace applies property updates to a relationship without creating a
+// version history entry. Version number is NOT incremented. PrevHash in the
+// integrity chain is preserved. Returns storepkg.ErrRelNotFound if the
+// relationship does not exist. Empty updates map is a no-op. Acquires
+// c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+func (r *RelOps) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err

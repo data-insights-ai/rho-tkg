@@ -37,10 +37,10 @@ func TestR5_PostClose_NodeOps_AllReadsReturnErrGraphClosed(t *testing.T) {
 	t.Parallel()
 	g := closedGraph(t)
 
-	if _, err := g.Nodes.Get(types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
+	if _, err := g.Nodes.Get(context.Background(), types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Nodes.Get: %v, want ErrGraphClosed", err)
 	}
-	if _, err := g.Nodes.GetWithContext(context.Background(), types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
+	if _, err := g.Nodes.Get(context.Background(), types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Nodes.GetWithContext: %v, want ErrGraphClosed", err)
 	}
 	if _, err := g.Nodes.ByLabel("X", storepkg.QueryOpts{}); !errors.Is(err, ErrGraphClosed) {
@@ -70,10 +70,10 @@ func TestR5_PostClose_RelOps_AllReadsReturnErrGraphClosed(t *testing.T) {
 	t.Parallel()
 	g := closedGraph(t)
 
-	if _, err := g.Rels.Get(types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
+	if _, err := g.Rels.Get(context.Background(), types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Rels.Get: %v, want ErrGraphClosed", err)
 	}
-	if _, err := g.Rels.GetWithContext(context.Background(), types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
+	if _, err := g.Rels.Get(context.Background(), types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Rels.GetWithContext: %v, want ErrGraphClosed", err)
 	}
 	if _, err := g.Rels.ByType("X", storepkg.QueryOpts{}); !errors.Is(err, ErrGraphClosed) {
@@ -190,15 +190,15 @@ func TestR5_PostClose_NoErrorResolversReturnZeroValues(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestR5_PostClose_IO_ReturnErrGraphClosed(t *testing.T) {
 	if err := g.IO.Export(&out); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("IO.Export: %v, want ErrGraphClosed", err)
 	}
-	if err := g.IO.Import(bytes.NewReader(nil)); !errors.Is(err, ErrGraphClosed) {
+	if err := g.IO.Import(bytes.NewReader(nil), tkgio.ImportOptions{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("IO.Import: %v, want ErrGraphClosed", err)
 	}
 	if err := g.IO.ImportWithOptions(bytes.NewReader(nil), tkgio.ImportOptions{}); !errors.Is(err, ErrGraphClosed) {

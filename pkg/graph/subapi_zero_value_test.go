@@ -9,6 +9,7 @@ import (
 
 	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	adminpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/admin"
+	tierpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/tier"
 	constraintspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/constraints"
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
 	hashpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hash"
@@ -36,20 +37,20 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 	}{
 		{name: "Nodes.Add", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.Add(nil, nil)
+			got, err := a.Add(ctx, nil, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Nodes.AddWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.AddWithContext(ctx, nil, nil)
+			got, err := a.Add(ctx, nil, nil)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Nodes.Get", fn: func(t *testing.T) error { var a nodespkg.API; got, err := a.Get(0); requireNil(t, got); return err }},
+		{name: "Nodes.Get", fn: func(t *testing.T) error { var a nodespkg.API; got, err := a.Get(context.Background(), 0); requireNil(t, got); return err }},
 		{name: "Nodes.GetWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.GetWithContext(ctx, 0)
+			got, err := a.Get(ctx, 0)
 			requireNil(t, got)
 			return err
 		}},
@@ -61,30 +62,30 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		}},
 		{name: "Nodes.Update", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.Update(0, nil)
+			got, err := a.Update(context.Background(), 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Nodes.UpdateWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.UpdateWithContext(ctx, 0, nil)
+			got, err := a.Update(ctx, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Nodes.UpdateInPlace", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.UpdateInPlace(0, nil)
+			got, err := a.UpdateInPlace(context.Background(), 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Nodes.UpdateInPlaceWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.UpdateInPlaceWithContext(ctx, 0, nil)
+			got, err := a.UpdateInPlace(ctx, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Nodes.Delete", fn: func(t *testing.T) error { var a nodespkg.API; return a.Delete(0) }},
-		{name: "Nodes.DeleteWithContext", fn: func(t *testing.T) error { var a nodespkg.API; return a.DeleteWithContext(ctx, 0) }},
+		{name: "Nodes.Delete", fn: func(t *testing.T) error { var a nodespkg.API; return a.Delete(context.Background(), 0) }},
+		{name: "Nodes.DeleteWithContext", fn: func(t *testing.T) error { var a nodespkg.API; return a.Delete(ctx, 0) }},
 		{name: "Nodes.Import", fn: func(t *testing.T) error {
 			var a nodespkg.API
 			got, err := a.Import(ctx, 0, nil, nil)
@@ -120,13 +121,13 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		{name: "Nodes.DeleteProperty", fn: func(t *testing.T) error { var a nodespkg.API; return a.DeleteProperty(0, "") }},
 		{name: "Nodes.CompareAndSetProperty", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.CompareAndSetProperty(0, "", nil, nil)
+			got, err := a.CompareAndSetProperty(context.Background(), 0, "", nil, nil)
 			requireFalse(t, got)
 			return err
 		}},
 		{name: "Nodes.CompareAndSetPropertyWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.CompareAndSetPropertyWithContext(ctx, 0, "", nil, nil)
+			got, err := a.CompareAndSetProperty(ctx, 0, "", nil, nil)
 			requireFalse(t, got)
 			return err
 		}},
@@ -134,61 +135,61 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		{name: "Nodes.RemoveLabel", fn: func(t *testing.T) error { var a nodespkg.API; return a.RemoveLabel(0, "") }},
 		{name: "Nodes.CloseVersion", fn: func(t *testing.T) error { var a nodespkg.API; return a.CloseVersion(0, now) }},
 		{name: "Nodes.History", fn: func(t *testing.T) error { var a nodespkg.API; got, err := a.History(0); requireNil(t, got); return err }},
-		{name: "Nodes.NextVersion", fn: func(t *testing.T) error {
+		{name: "Nodes.VersionAfter", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.NextVersion(0, 0)
+			got, err := a.VersionAfter(0, 0)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Nodes.PreviousVersion", fn: func(t *testing.T) error {
+		{name: "Nodes.VersionBefore", fn: func(t *testing.T) error {
 			var a nodespkg.API
-			got, err := a.PreviousVersion(0, 0)
+			got, err := a.VersionBefore(0, 0)
 			requireNil(t, got)
 			return err
 		}},
 
 		{name: "Rels.Add", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.Add("", nil, nil, nil)
+			got, err := a.Add(context.Background(), "", nil, nil, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.AddWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.AddWithContext(ctx, "", nil, nil, nil)
+			got, err := a.Add(ctx, "", nil, nil, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.AddByID", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.AddByID("", 0, 0, nil)
+			got, err := a.AddByID(context.Background(), "", 0, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.AddByIDWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.AddByIDWithContext(ctx, "", 0, 0, nil)
+			got, err := a.AddByID(ctx, "", 0, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.AddByIDIfAbsent", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, ok, err := a.AddByIDIfAbsent("", 0, 0, nil)
+			got, ok, err := a.AddByIDIfAbsent(context.Background(), "", 0, 0, nil)
 			requireNil(t, got)
 			requireFalse(t, ok)
 			return err
 		}},
 		{name: "Rels.AddByIDIfAbsentWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, ok, err := a.AddByIDIfAbsentWithContext(ctx, "", 0, 0, nil)
+			got, ok, err := a.AddByIDIfAbsent(ctx, "", 0, 0, nil)
 			requireNil(t, got)
 			requireFalse(t, ok)
 			return err
 		}},
-		{name: "Rels.Get", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.Get(0); requireNil(t, got); return err }},
+		{name: "Rels.Get", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.Get(context.Background(), 0); requireNil(t, got); return err }},
 		{name: "Rels.GetWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.GetWithContext(ctx, 0)
+			got, err := a.Get(ctx, 0)
 			requireNil(t, got)
 			return err
 		}},
@@ -200,30 +201,30 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		}},
 		{name: "Rels.Update", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.Update(0, nil)
+			got, err := a.Update(context.Background(), 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.UpdateWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.UpdateWithContext(ctx, 0, nil)
+			got, err := a.Update(ctx, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.UpdateInPlace", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.UpdateInPlace(0, nil)
+			got, err := a.UpdateInPlace(context.Background(), 0, nil)
 			requireNil(t, got)
 			return err
 		}},
 		{name: "Rels.UpdateInPlaceWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.UpdateInPlaceWithContext(ctx, 0, nil)
+			got, err := a.UpdateInPlace(ctx, 0, nil)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Rels.Delete", fn: func(t *testing.T) error { var a relspkg.API; return a.Delete(0) }},
-		{name: "Rels.DeleteWithContext", fn: func(t *testing.T) error { var a relspkg.API; return a.DeleteWithContext(ctx, 0) }},
+		{name: "Rels.Delete", fn: func(t *testing.T) error { var a relspkg.API; return a.Delete(context.Background(), 0) }},
+		{name: "Rels.DeleteWithContext", fn: func(t *testing.T) error { var a relspkg.API; return a.Delete(ctx, 0) }},
 		{name: "Rels.Import", fn: func(t *testing.T) error {
 			var a relspkg.API
 			got, err := a.Import(ctx, 0, "", nil, nil, nil)
@@ -277,44 +278,44 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		{name: "Rels.DeleteProperty", fn: func(t *testing.T) error { var a relspkg.API; return a.DeleteProperty(0, "") }},
 		{name: "Rels.CompareAndSetProperty", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.CompareAndSetProperty(0, "", nil, nil)
+			got, err := a.CompareAndSetProperty(context.Background(), 0, "", nil, nil)
 			requireFalse(t, got)
 			return err
 		}},
 		{name: "Rels.CompareAndSetPropertyWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.CompareAndSetPropertyWithContext(ctx, 0, "", nil, nil)
+			got, err := a.CompareAndSetProperty(ctx, 0, "", nil, nil)
 			requireFalse(t, got)
 			return err
 		}},
 		{name: "Rels.CloseVersion", fn: func(t *testing.T) error { var a relspkg.API; return a.CloseVersion(0, now) }},
 		{name: "Rels.History", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.History(0); requireNil(t, got); return err }},
-		{name: "Rels.NextVersion", fn: func(t *testing.T) error {
+		{name: "Rels.VersionAfter", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.NextVersion(0, 0)
+			got, err := a.VersionAfter(0, 0)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Rels.PreviousVersion", fn: func(t *testing.T) error {
+		{name: "Rels.VersionBefore", fn: func(t *testing.T) error {
 			var a relspkg.API
-			got, err := a.PreviousVersion(0, 0)
+			got, err := a.VersionBefore(0, 0)
 			requireNil(t, got)
 			return err
 		}},
 
-		{name: "Admin.Archive", fn: func(t *testing.T) error { var a adminpkg.API; return a.Archive(0) }},
-		{name: "Admin.Restore", fn: func(t *testing.T) error { var a adminpkg.API; return a.Restore(0) }},
-		{name: "Admin.ForceRotate", fn: func(t *testing.T) error { var a adminpkg.API; return a.ForceRotate() }},
-		{name: "Admin.ListShards", fn: func(t *testing.T) error {
-			var a adminpkg.API
+		{name: "Tier.Archive", fn: func(t *testing.T) error { var a tierpkg.API; return a.Archive(0) }},
+		{name: "Tier.Restore", fn: func(t *testing.T) error { var a tierpkg.API; return a.Restore(0) }},
+		{name: "Tier.ForceRotate", fn: func(t *testing.T) error { var a tierpkg.API; return a.ForceRotate() }},
+		{name: "Tier.ListShards", fn: func(t *testing.T) error {
+			var a tierpkg.API
 			got, err := a.ListShards()
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Admin.RebuildCatalog", fn: func(t *testing.T) error { var a adminpkg.API; return a.RebuildCatalog() }},
-		{name: "Admin.Repair", fn: func(t *testing.T) error { var a adminpkg.API; got, err := a.Repair(); requireNil(t, got); return err }},
-		{name: "Admin.VerifyShard", fn: func(t *testing.T) error {
-			var a adminpkg.API
+		{name: "Tier.RebuildCatalog", fn: func(t *testing.T) error { var a tierpkg.API; return a.RebuildCatalog() }},
+		{name: "Tier.Repair", fn: func(t *testing.T) error { var a tierpkg.API; got, err := a.Repair(); requireNil(t, got); return err }},
+		{name: "Tier.VerifyShard", fn: func(t *testing.T) error {
+			var a tierpkg.API
 			got, err := a.VerifyShard("")
 			requireNil(t, got)
 			return err
@@ -338,20 +339,7 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			return err
 		}},
 		{name: "IO.Export", fn: func(t *testing.T) error { var a tkgio.API; return a.Export(nil) }},
-		{name: "IO.Import", fn: func(t *testing.T) error { var a tkgio.API; return a.Import(nil) }},
-		{name: "IO.ImportWithOptions", fn: func(t *testing.T) error { var a tkgio.API; return a.ImportWithOptions(nil, tkgio.ImportOptions{}) }},
-		{name: "Resolve.LabelToken", fn: func(t *testing.T) error {
-			var a resolvepkg.API
-			got, err := a.LabelToken("")
-			requireZero(t, got)
-			return err
-		}},
-		{name: "Resolve.RelTypeToken", fn: func(t *testing.T) error {
-			var a resolvepkg.API
-			got, err := a.RelTypeToken("")
-			requireZero(t, got)
-			return err
-		}},
+		{name: "IO.Import", fn: func(t *testing.T) error { var a tkgio.API; return a.Import(nil, tkgio.ImportOptions{}) }},
 		{name: "Stats.NodeCount", fn: func(t *testing.T) error {
 			var a statspkg.API
 			got, err := a.NodeCount()
@@ -407,7 +395,6 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			return err
 		}},
 		{name: "Index.RegisterProvider", fn: func(t *testing.T) error { var a indexpkg.API; return a.RegisterProvider(nil) }},
-		{name: "Index.RegisterLegacyProvider", fn: func(t *testing.T) error { var a indexpkg.API; return a.RegisterLegacyProvider(nil) }},
 		{name: "Index.UnregisterProvider", fn: func(t *testing.T) error { var a indexpkg.API; return a.UnregisterProvider("") }},
 
 		{name: "Temporal.NodeAt", fn: func(t *testing.T) error {
@@ -434,15 +421,15 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Temporal.RelationshipsAt", fn: func(t *testing.T) error {
+		{name: "Temporal.RelsAt", fn: func(t *testing.T) error {
 			var a temporalpkg.API
-			got, err := a.RelationshipsAt(now)
+			got, err := a.RelsAt(now)
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Temporal.RelationshipsByTypeAt", fn: func(t *testing.T) error {
+		{name: "Temporal.RelsByTypeAt", fn: func(t *testing.T) error {
 			var a temporalpkg.API
-			got, err := a.RelationshipsByTypeAt("", now)
+			got, err := a.RelsByTypeAt("", now)
 			requireNil(t, got)
 			return err
 		}},
@@ -470,9 +457,9 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Temporal.RelationshipsDuring", fn: func(t *testing.T) error {
+		{name: "Temporal.RelsDuring", fn: func(t *testing.T) error {
 			var a temporalpkg.API
-			got, err := a.RelationshipsDuring(now, later)
+			got, err := a.RelsDuring(now, later)
 			requireNil(t, got)
 			return err
 		}},
@@ -594,8 +581,11 @@ func TestSubAPIZeroValuesReturnZeroForNoErrorMethods(t *testing.T) {
 	}
 
 	var adminAPI adminpkg.API
-	if got := adminAPI.DecomposeID(0); !reflect.DeepEqual(got, adminpkg.IDComponents{}) {
-		t.Fatalf("zero Admin.DecomposeID = %#v, want zero", got)
+	if got := adminAPI.DecomposeNodeID(0); !reflect.DeepEqual(got, adminpkg.IDComponents{}) {
+		t.Fatalf("zero Admin.DecomposeNodeID = %#v, want zero", got)
+	}
+	if got := adminAPI.DecomposeRelID(0); !reflect.DeepEqual(got, adminpkg.IDComponents{}) {
+		t.Fatalf("zero Admin.DecomposeRelID = %#v, want zero", got)
 	}
 
 	var constraintsAPI constraintspkg.API
@@ -623,16 +613,11 @@ func TestSubAPIZeroValuesReturnZeroForNoErrorMethods(t *testing.T) {
 	if got, ok := resolveAPI.RelProperty(nil, ""); got != nil || ok {
 		t.Fatalf("zero Resolve.RelProperty = (%v, %v), want (nil, false)", got, ok)
 	}
-	if got, ok := resolveAPI.LookupLabel(""); got != 0 || ok {
-		t.Fatalf("zero Resolve.LookupLabel = (%d, %v), want (0, false)", got, ok)
-	}
-	if got, ok := resolveAPI.LookupRelType(""); got != 0 || ok {
-		t.Fatalf("zero Resolve.LookupRelType = (%d, %v), want (0, false)", got, ok)
-	}
+	_ = resolveAPI
 
 	var statsAPI statspkg.API
-	if got := statsAPI.Get(); got != (statspkg.GraphStats{}) {
-		t.Fatalf("zero Stats.Get = %#v, want zero", got)
+	if got, err := statsAPI.Get(); got != (statspkg.GraphStats{}) || !errors.Is(err, graphpkg.ErrNilGraph) {
+		t.Fatalf("zero Stats.Get = (%#v, %v), want (zero, ErrNilGraph)", got, err)
 	}
 }
 
@@ -643,15 +628,21 @@ func TestSubAPINilPointerReceiversReturnErrNilGraph(t *testing.T) {
 		name string
 		fn   func(t *testing.T) error
 	}{
-		{name: "Nodes", fn: func(t *testing.T) error { var a *nodespkg.API; _, err := a.Get(0); return err }},
-		{name: "Rels", fn: func(t *testing.T) error { var a *relspkg.API; _, err := a.Get(0); return err }},
+		{name: "Nodes", fn: func(t *testing.T) error { var a *nodespkg.API; _, err := a.Get(context.Background(), 0); return err }},
+		{name: "Rels", fn: func(t *testing.T) error { var a *relspkg.API; _, err := a.Get(context.Background(), 0); return err }},
 		{name: "Admin", fn: func(t *testing.T) error { var a *adminpkg.API; return a.Reset() }},
 		{name: "Constraints", fn: func(t *testing.T) error { var a *constraintspkg.API; return a.Set(temporalpkg.ConstraintSet{}) }},
 		{name: "Events", fn: func(t *testing.T) error { var a *eventspkg.API; return a.SetSync(nil) }},
 		{name: "Hash", fn: func(t *testing.T) error { var a *hashpkg.API; _, err := a.VerifyNodeChain(0); return err }},
 		{name: "Index", fn: func(t *testing.T) error { var a *indexpkg.API; return a.CreateProperty("", "") }},
 		{name: "IO", fn: func(t *testing.T) error { var a *tkgio.API; return a.Export(nil) }},
-		{name: "Resolve", fn: func(t *testing.T) error { var a *resolvepkg.API; _, err := a.LabelToken(""); return err }},
+		{name: "Resolve", fn: func(t *testing.T) error {
+			var a *resolvepkg.API
+			if _, ok := a.NodeProperty(nil, ""); ok {
+				return errors.New("Resolve.NodeProperty did not return false on nil receiver")
+			}
+			return graphpkg.ErrNilGraph
+		}},
 		{name: "Stats", fn: func(t *testing.T) error { var a *statspkg.API; _, err := a.NodeCount(); return err }},
 		{name: "Temporal", fn: func(t *testing.T) error { var a *temporalpkg.API; _, err := a.NodesAt(0); return err }},
 	} {

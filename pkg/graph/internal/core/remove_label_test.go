@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -11,14 +12,14 @@ import (
 
 func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person", "Employee"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.RemoveLabel(id, "Employee"); err != nil {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if g.Nodes.HasLabel(updated, "Employee") {
 		t.Error("label 'Employee' still present after removal")
 	}
@@ -29,14 +30,14 @@ func TestRemoveNodeLabel_ExtraLabel(t *testing.T) {
 
 func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Primary", "Secondary"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Primary", "Secondary"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.RemoveLabel(id, "Primary"); err != nil {
 		t.Fatalf("RemoveNodeLabel primary: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	// After removing primary, "Secondary" should be promoted.
 	labels := g.Nodes.Labels(updated)
 	if len(labels) != 1 || labels[0] != "Secondary" {
@@ -46,7 +47,7 @@ func TestRemoveNodeLabel_PrimaryPromotesExtra(t *testing.T) {
 
 func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Solo"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Solo"}, nil)
 	id := n.ID()
 
 	err := g.Nodes.RemoveLabel(id, "Solo")
@@ -57,7 +58,7 @@ func TestRemoveNodeLabel_LastLabelError(t *testing.T) {
 
 func TestRemoveNodeLabel_LabelNotFoundError(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	err := g.Nodes.RemoveLabel(id, "Ghost")
@@ -80,7 +81,7 @@ func TestRemoveNodeLabel_NodeNotFoundError(t *testing.T) {
 
 func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 	origHash := ""
 	if ig := n.Integrity(); ig != nil {
@@ -91,7 +92,7 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	newHash := ""
 	if ig := updated.Integrity(); ig != nil {
 		newHash = ig.Hash
@@ -106,7 +107,7 @@ func TestRemoveNodeLabel_HashUpdated(t *testing.T) {
 
 func TestRemoveNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Thing", "Tag"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Thing", "Tag"}, nil)
 	id := n.ID()
 
 	before, _ := g.Nodes.ByLabel("Tag", storepkg.QueryOpts{})
@@ -131,7 +132,7 @@ func TestRemoveNodeLabel_PublishesEvent(t *testing.T) {
 	bus := eventspkg.NewEventBus()
 	_ = g.Events.SetSync(bus)
 
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	var events []eventspkg.Event

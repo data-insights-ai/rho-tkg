@@ -23,24 +23,24 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := nilAPI.Add("KNOWS", nil, nil, nil); return err }},
-		{name: "AddWithContext", run: func() error { _, err := nilAPI.AddWithContext(ctx, "KNOWS", nil, nil, nil); return err }},
-		{name: "AddByID", run: func() error { _, err := nilAPI.AddByID("KNOWS", nodeID, nodeID, nil); return err }},
-		{name: "AddByIDWithContext", run: func() error { _, err := nilAPI.AddByIDWithContext(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
-		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent("KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "Add", run: func() error { _, err := nilAPI.Add(context.Background(), "KNOWS", nil, nil, nil); return err }},
+		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, "KNOWS", nil, nil, nil); return err }},
+		{name: "AddByID", run: func() error { _, err := nilAPI.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "AddByIDWithContext", run: func() error { _, err := nilAPI.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDIfAbsentWithContext", run: func() error {
-			_, _, err := nilAPI.AddByIDIfAbsentWithContext(ctx, "KNOWS", nodeID, nodeID, nil)
+			_, _, err := nilAPI.AddByIDIfAbsent(ctx, "KNOWS", nodeID, nodeID, nil)
 			return err
 		}},
-		{name: "Get", run: func() error { _, err := nilAPI.Get(relID); return err }},
-		{name: "GetWithContext", run: func() error { _, err := nilAPI.GetWithContext(ctx, relID); return err }},
+		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), relID); return err }},
+		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.RelID{relID}); return err }},
-		{name: "Update", run: func() error { _, err := nilAPI.Update(relID, nil); return err }},
-		{name: "UpdateWithContext", run: func() error { _, err := nilAPI.UpdateWithContext(ctx, relID, nil); return err }},
-		{name: "UpdateInPlace", run: func() error { _, err := nilAPI.UpdateInPlace(relID, nil); return err }},
-		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlaceWithContext(ctx, relID, nil); return err }},
-		{name: "Delete", run: func() error { return nilAPI.Delete(relID) }},
-		{name: "DeleteWithContext", run: func() error { return nilAPI.DeleteWithContext(ctx, relID) }},
+		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), relID, nil); return err }},
+		{name: "UpdateWithContext", run: func() error { _, err := nilAPI.Update(ctx, relID, nil); return err }},
+		{name: "UpdateInPlace", run: func() error { _, err := nilAPI.UpdateInPlace(context.Background(), relID, nil); return err }},
+		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlace(ctx, relID, nil); return err }},
+		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), relID) }},
+		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, relID) }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ByType", run: func() error { _, err := nilAPI.ByType("KNOWS", opts); return err }},
@@ -52,15 +52,15 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "IncomingForNodes", run: func() error { _, err := nilAPI.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(relID, "since") }},
-		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(relID, "since", 2025, 2026); return err }},
+		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026); return err }},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
-			_, err := nilAPI.CompareAndSetPropertyWithContext(ctx, relID, "since", 2025, 2026)
+			_, err := nilAPI.CompareAndSetProperty(ctx, relID, "since", 2025, 2026)
 			return err
 		}},
 		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(relID, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(relID); return err }},
-		{name: "NextVersion", run: func() error { _, err := nilAPI.NextVersion(relID, 1); return err }},
-		{name: "PreviousVersion", run: func() error { _, err := nilAPI.PreviousVersion(relID, 1); return err }},
+		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(relID, 1); return err }},
+		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(relID, 1); return err }},
 	} {
 		if err := tc.run(); !errors.Is(err, grapherr.ErrNilGraph) {
 			t.Fatalf("%s = %v, want ErrNilGraph", tc.name, err)
@@ -77,7 +77,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 	}
 
 	api := New((*relOpsSpy)(nil))
-	if _, err := api.Get(relID); !errors.Is(err, grapherr.ErrNilGraph) {
+	if _, err := api.Get(context.Background(), relID); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("typed-nil Get = %v, want ErrNilGraph", err)
 	}
 	if api.HasType(nil, "KNOWS") {
@@ -110,33 +110,33 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := api.Add("KNOWS", nil, nil, map[string]any{"since": 2026}); return err }},
-		{name: "AddWithContext", run: func() error { _, err := api.AddWithContext(ctx, "KNOWS", nil, nil, nil); return err }},
-		{name: "AddByID", run: func() error { _, err := api.AddByID("KNOWS", nodeID, nodeID, nil); return err }},
-		{name: "AddByIDWithContext", run: func() error { _, err := api.AddByIDWithContext(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "Add", run: func() error { _, err := api.Add(context.Background(), "KNOWS", nil, nil, map[string]any{"since": 2026}); return err }},
+		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, "KNOWS", nil, nil, nil); return err }},
+		{name: "AddByID", run: func() error { _, err := api.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "AddByIDWithContext", run: func() error { _, err := api.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error {
-			_, created, err := api.AddByIDIfAbsent("KNOWS", nodeID, nodeID, nil)
+			_, created, err := api.AddByIDIfAbsent(context.Background(), "KNOWS", nodeID, nodeID, nil)
 			if !created {
 				t.Fatal("AddByIDIfAbsent created = false, want true")
 			}
 			return err
 		}},
 		{name: "AddByIDIfAbsentWithContext", run: func() error {
-			_, created, err := api.AddByIDIfAbsentWithContext(ctx, "KNOWS", nodeID, nodeID, nil)
+			_, created, err := api.AddByIDIfAbsent(ctx, "KNOWS", nodeID, nodeID, nil)
 			if !created {
 				t.Fatal("AddByIDIfAbsentWithContext created = false, want true")
 			}
 			return err
 		}},
-		{name: "Get", run: func() error { _, err := api.Get(relID); return err }},
-		{name: "GetWithContext", run: func() error { _, err := api.GetWithContext(ctx, relID); return err }},
+		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
+		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
-		{name: "Update", run: func() error { _, err := api.Update(relID, map[string]any{"since": 2027}); return err }},
-		{name: "UpdateWithContext", run: func() error { _, err := api.UpdateWithContext(ctx, relID, nil); return err }},
-		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(relID, nil); return err }},
-		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlaceWithContext(ctx, relID, nil); return err }},
-		{name: "Delete", run: func() error { return api.Delete(relID) }},
-		{name: "DeleteWithContext", run: func() error { return api.DeleteWithContext(ctx, relID) }},
+		{name: "Update", run: func() error { _, err := api.Update(context.Background(), relID, map[string]any{"since": 2027}); return err }},
+		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, relID, nil); return err }},
+		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), relID, nil); return err }},
+		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, relID, nil); return err }},
+		{name: "Delete", run: func() error { return api.Delete(context.Background(), relID) }},
+		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, relID) }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ByType", run: func() error { _, err := api.ByType("KNOWS", opts); return err }},
@@ -149,14 +149,14 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "SetProperty", run: func() error { return api.SetProperty(relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
-			ok, err := api.CompareAndSetProperty(relID, "since", 2025, 2026)
+			ok, err := api.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026)
 			if !ok {
 				t.Fatal("CompareAndSetProperty bool = false, want true")
 			}
 			return err
 		}},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
-			ok, err := api.CompareAndSetPropertyWithContext(ctx, relID, "since", 2025, 2026)
+			ok, err := api.CompareAndSetProperty(ctx, relID, "since", 2025, 2026)
 			if !ok {
 				t.Fatal("CompareAndSetPropertyWithContext bool = false, want true")
 			}
@@ -164,8 +164,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		}},
 		{name: "CloseVersion", run: func() error { return api.CloseVersion(relID, 100) }},
 		{name: "History", run: func() error { _, err := api.History(relID); return err }},
-		{name: "NextVersion", run: func() error { _, err := api.NextVersion(relID, 1); return err }},
-		{name: "PreviousVersion", run: func() error { _, err := api.PreviousVersion(relID, 1); return err }},
+		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(relID, 1); return err }},
+		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(relID, 1); return err }},
 	} {
 		if err := tc.run(); !errors.Is(err, wantErr) {
 			t.Fatalf("%s = %v, want %v", tc.name, err, wantErr)
@@ -182,13 +182,13 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "AddWithContext", "AddByID", "AddByIDWithContext",
-		"AddByIDIfAbsent", "AddByIDIfAbsentWithContext", "Get", "GetWithContext", "GetByIDs",
-		"Update", "UpdateWithContext", "UpdateInPlace", "UpdateInPlaceWithContext",
-		"Delete", "DeleteWithContext", "Import", "All", "ByType", "Count", "CountByType",
+		"Add", "Add", "AddByID", "AddByID",
+		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
+		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
+		"Delete", "Delete", "Import", "All", "ByType", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes", "SetProperty", "DeleteProperty",
-		"CompareAndSetProperty", "CompareAndSetPropertyWithContext",
-		"CloseVersion", "History", "NextVersion", "PreviousVersion", "HasType", "Type", "NextID",
+		"CompareAndSetProperty", "CompareAndSetProperty",
+		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -224,7 +224,7 @@ type relOpsSpy struct {
 
 func (s *relOpsSpy) record(name string) { s.calls = append(s.calls, name) }
 
-func (s *relOpsSpy) Add(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (s *relOpsSpy) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	s.record("Add")
 	s.lastType = typeName
 	return nil, s.err
@@ -236,7 +236,7 @@ func (s *relOpsSpy) AddWithContext(ctx context.Context, typeName string, startNo
 	return nil, s.err
 }
 
-func (s *relOpsSpy) AddByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (s *relOpsSpy) AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	s.record("AddByID")
 	s.lastType = typeName
 	s.lastNodeID = startID
@@ -250,7 +250,7 @@ func (s *relOpsSpy) AddByIDWithContext(ctx context.Context, typeName string, sta
 	return nil, s.err
 }
 
-func (s *relOpsSpy) AddByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
+func (s *relOpsSpy) AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	s.record("AddByIDIfAbsent")
 	s.lastType = typeName
 	s.lastNodeID = startID
@@ -264,7 +264,7 @@ func (s *relOpsSpy) AddByIDIfAbsentWithContext(ctx context.Context, typeName str
 	return nil, s.created, s.err
 }
 
-func (s *relOpsSpy) Get(id types.RelID) (*types.Relationship, error) {
+func (s *relOpsSpy) Get(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	s.record("Get")
 	s.lastRelID = id
 	return nil, s.err
@@ -284,7 +284,7 @@ func (s *relOpsSpy) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	return nil, s.err
 }
 
-func (s *relOpsSpy) Update(id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (s *relOpsSpy) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	s.record("Update")
 	s.lastRelID = id
 	return nil, s.err
@@ -296,7 +296,7 @@ func (s *relOpsSpy) UpdateWithContext(ctx context.Context, id types.RelID, updat
 	return nil, s.err
 }
 
-func (s *relOpsSpy) UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
+func (s *relOpsSpy) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	s.record("UpdateInPlace")
 	s.lastRelID = id
 	return nil, s.err
@@ -308,7 +308,7 @@ func (s *relOpsSpy) UpdateInPlaceWithContext(ctx context.Context, id types.RelID
 	return nil, s.err
 }
 
-func (s *relOpsSpy) Delete(id types.RelID) error {
+func (s *relOpsSpy) Delete(ctx context.Context, id types.RelID) error {
 	s.record("Delete")
 	s.lastRelID = id
 	return s.err
@@ -397,7 +397,7 @@ func (s *relOpsSpy) DeleteProperty(id types.RelID, key string) error {
 	return s.err
 }
 
-func (s *relOpsSpy) CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error) {
+func (s *relOpsSpy) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	s.record("CompareAndSetProperty")
 	s.lastRelID = id
 	s.lastKey = key
@@ -434,14 +434,14 @@ func (s *relOpsSpy) History(id types.RelID) ([]*types.Relationship, error) {
 	return nil, s.err
 }
 
-func (s *relOpsSpy) NextVersion(id types.RelID, version uint32) (*types.Relationship, error) {
-	s.record("NextVersion")
+func (s *relOpsSpy) VersionAfter(id types.RelID, version uint32) (*types.Relationship, error) {
+	s.record("VersionAfter")
 	s.lastRelID = id
 	return nil, s.err
 }
 
-func (s *relOpsSpy) PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error) {
-	s.record("PreviousVersion")
+func (s *relOpsSpy) VersionBefore(id types.RelID, version uint32) (*types.Relationship, error) {
+	s.record("VersionBefore")
 	s.lastRelID = id
 	return nil, s.err
 }

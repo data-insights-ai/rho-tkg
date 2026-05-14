@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -10,7 +11,7 @@ func TestGraphAddNodeSetsIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -34,8 +35,8 @@ func TestGraphAddNodeHashDeterministic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n1, _ := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
-	n2, _ := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": int64(30)})
 
 	// Different IDs means different hashes — but same labels+props with same ID would match.
 	// We verify that both hashes are non-empty and well-formed.
@@ -52,7 +53,7 @@ func TestGraphAddNodeGenesisZeroPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 	if n.Integrity().PrevHash != "" {
 		t.Fatalf("PrevHash = %q, want empty for genesis", n.Integrity().PrevHash)
@@ -65,12 +66,12 @@ func TestGraphUpdateNodeHashChain(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	oldHash := n.Integrity().Hash
 
-	updated, err := g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	updated, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -91,24 +92,24 @@ func TestGraphUpdateNodeMultipleUpdatesChain(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	h0 := n.Integrity().Hash
 
-	n1, _ := g.Nodes.Update(id, map[string]any{"name": "v1"})
+	n1, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
 	h1 := n1.Integrity().Hash
 	if n1.Integrity().PrevHash != h0 {
 		t.Fatalf("update 1: PrevHash = %q, want %q", n1.Integrity().PrevHash, h0)
 	}
 
-	n2, _ := g.Nodes.Update(id, map[string]any{"name": "v2"})
+	n2, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "v2"})
 	h2 := n2.Integrity().Hash
 	if n2.Integrity().PrevHash != h1 {
 		t.Fatalf("update 2: PrevHash = %q, want %q", n2.Integrity().PrevHash, h1)
 	}
 
-	n3, _ := g.Nodes.Update(id, map[string]any{"name": "v3"})
+	n3, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "v3"})
 	if n3.Integrity().PrevHash != h2 {
 		t.Fatalf("update 3: PrevHash = %q, want %q", n3.Integrity().PrevHash, h2)
 	}
@@ -124,11 +125,11 @@ func TestGraphUpdateNodeHashChanges(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 	hashBefore := n.Integrity().Hash
 
-	updated, _ := g.Nodes.Update(id, map[string]any{"age": int64(30)})
+	updated, _ := g.Nodes.Update(context.Background(), id, map[string]any{"age": int64(30)})
 	if updated.Integrity().Hash == hashBefore {
 		t.Fatal("hash did not change when properties changed")
 	}

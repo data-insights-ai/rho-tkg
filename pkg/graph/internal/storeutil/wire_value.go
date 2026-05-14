@@ -557,6 +557,13 @@ func reconstructCustomPropertyValue(data []byte, typeName string, pointer bool) 
 	return rv.Elem().Interface(), nil
 }
 
+// reconstructTypedValue reverses the encode-side type loss using the tag.
+// Pre-condition: tag has already been validated by validatePropertyWireValue
+// (checked path) or is ptUnknown=0 (legacy data without a type tag). For any
+// other unrecognized tag — including the gap between ptMapStrStr and ptCustom
+// or any value > ptCustom — the function falls through to the best-effort
+// integer normalization; this is documented and the validatePropertyWire
+// gate rejects unknown tags before this point in the checked path.
 func reconstructTypedValue(v any, tag byte) any {
 	if v == nil {
 		return nil

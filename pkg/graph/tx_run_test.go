@@ -49,7 +49,7 @@ func TestTxRun_PanicReleasesLock(t *testing.T) {
 		// timeout. A leaked lock would block this indefinitely.
 		done := make(chan error, 1)
 		go func() {
-			_, addErr := g.Nodes.Add([]string{"X"}, nil)
+			_, addErr := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 			done <- addErr
 		}()
 		select {
@@ -84,7 +84,7 @@ func TestTxRunRejectsNilCallbackBeforeBegin(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, addErr := g.Nodes.Add([]string{"AfterNilCallback"}, nil)
+		_, addErr := g.Nodes.Add(context.Background(), []string{"AfterNilCallback"}, nil)
 		done <- addErr
 	}()
 	select {
@@ -301,7 +301,7 @@ func TestTxRunContextRejectsCanceledContextBeforeBegin(t *testing.T) {
 	if called {
 		t.Fatal("RunContext called callback despite pre-canceled context")
 	}
-	if _, err := g.Nodes.Add([]string{"AfterCanceled"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"AfterCanceled"}, nil); err != nil {
 		t.Fatalf("post-canceled-context Add: %v", err)
 	}
 }
@@ -326,7 +326,7 @@ func TestTxRunContextRechecksContextAfterBeginBeforeCallback(t *testing.T) {
 	if called {
 		t.Fatal("RunContext called callback after context cancellation became visible post-BeginTx")
 	}
-	if _, err := g.Nodes.Add([]string{"AfterCanceledPostBegin"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"AfterCanceledPostBegin"}, nil); err != nil {
 		t.Fatalf("post-canceled-post-begin Add: %v", err)
 	}
 }
@@ -373,7 +373,7 @@ func TestTxRun_FnErrorRollsBack(t *testing.T) {
 		t.Fatalf("Run = %v, want %v wrapped", got, want)
 	}
 	// Lock released — a follow-up mutation must complete.
-	if _, err := g.Nodes.Add([]string{"After"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"After"}, nil); err != nil {
 		t.Fatalf("post-rollback Add: %v", err)
 	}
 }
@@ -424,7 +424,7 @@ func TestTxRunContext_CtxCancelledAfterFn(t *testing.T) {
 		t.Fatalf("RunContext = %v, want context.Canceled", got)
 	}
 	// Lock released.
-	if _, err := g.Nodes.Add([]string{"After"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"After"}, nil); err != nil {
 		t.Fatalf("post-cancel Add: %v", err)
 	}
 }
@@ -447,7 +447,7 @@ func TestTxRunContext_PanicReleasesLock(t *testing.T) {
 	defer func() {
 		done := make(chan error, 1)
 		go func() {
-			_, addErr := g.Nodes.Add([]string{"X"}, nil)
+			_, addErr := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 			done <- addErr
 		}()
 		select {

@@ -22,17 +22,17 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := nilAPI.Add([]string{"Node"}, nil); return err }},
-		{name: "AddWithContext", run: func() error { _, err := nilAPI.AddWithContext(ctx, []string{"Node"}, nil); return err }},
-		{name: "Get", run: func() error { _, err := nilAPI.Get(id); return err }},
-		{name: "GetWithContext", run: func() error { _, err := nilAPI.GetWithContext(ctx, id); return err }},
+		{name: "Add", run: func() error { _, err := nilAPI.Add(context.Background(), []string{"Node"}, nil); return err }},
+		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, []string{"Node"}, nil); return err }},
+		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), id); return err }},
+		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.NodeID{id}); return err }},
-		{name: "Update", run: func() error { _, err := nilAPI.Update(id, nil); return err }},
-		{name: "UpdateWithContext", run: func() error { _, err := nilAPI.UpdateWithContext(ctx, id, nil); return err }},
-		{name: "UpdateInPlace", run: func() error { _, err := nilAPI.UpdateInPlace(id, nil); return err }},
-		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlaceWithContext(ctx, id, nil); return err }},
-		{name: "Delete", run: func() error { return nilAPI.Delete(id) }},
-		{name: "DeleteWithContext", run: func() error { return nilAPI.DeleteWithContext(ctx, id) }},
+		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), id, nil); return err }},
+		{name: "UpdateWithContext", run: func() error { _, err := nilAPI.Update(ctx, id, nil); return err }},
+		{name: "UpdateInPlace", run: func() error { _, err := nilAPI.UpdateInPlace(context.Background(), id, nil); return err }},
+		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlace(ctx, id, nil); return err }},
+		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), id) }},
+		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ByLabel", run: func() error { _, err := nilAPI.ByLabel("Node", opts); return err }},
@@ -41,17 +41,17 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "CountByLabel", run: func() error { _, err := nilAPI.CountByLabel("Node"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(id, "name", "Ada") }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(id, "name") }},
-		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(id, "name", "old", "new"); return err }},
+		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), id, "name", "old", "new"); return err }},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
-			_, err := nilAPI.CompareAndSetPropertyWithContext(ctx, id, "name", "old", "new")
+			_, err := nilAPI.CompareAndSetProperty(ctx, id, "name", "old", "new")
 			return err
 		}},
 		{name: "AddLabel", run: func() error { return nilAPI.AddLabel(id, "Admin") }},
 		{name: "RemoveLabel", run: func() error { return nilAPI.RemoveLabel(id, "Admin") }},
 		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(id, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(id); return err }},
-		{name: "NextVersion", run: func() error { _, err := nilAPI.NextVersion(id, 1); return err }},
-		{name: "PreviousVersion", run: func() error { _, err := nilAPI.PreviousVersion(id, 1); return err }},
+		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(id, 1); return err }},
+		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(id, 1); return err }},
 	} {
 		if err := tc.run(); !errors.Is(err, grapherr.ErrNilGraph) {
 			t.Fatalf("%s = %v, want ErrNilGraph", tc.name, err)
@@ -71,7 +71,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 	}
 
 	api := New((*nodeOpsSpy)(nil))
-	if _, err := api.Get(id); !errors.Is(err, grapherr.ErrNilGraph) {
+	if _, err := api.Get(context.Background(), id); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("typed-nil Get = %v, want ErrNilGraph", err)
 	}
 	if api.HasLabel(nil, "Node") {
@@ -104,17 +104,17 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := api.Add([]string{"Node"}, map[string]any{"name": "Ada"}); return err }},
-		{name: "AddWithContext", run: func() error { _, err := api.AddWithContext(ctx, []string{"Node"}, nil); return err }},
-		{name: "Get", run: func() error { _, err := api.Get(id); return err }},
-		{name: "GetWithContext", run: func() error { _, err := api.GetWithContext(ctx, id); return err }},
+		{name: "Add", run: func() error { _, err := api.Add(context.Background(), []string{"Node"}, map[string]any{"name": "Ada"}); return err }},
+		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, []string{"Node"}, nil); return err }},
+		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
+		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
-		{name: "Update", run: func() error { _, err := api.Update(id, map[string]any{"name": "Grace"}); return err }},
-		{name: "UpdateWithContext", run: func() error { _, err := api.UpdateWithContext(ctx, id, nil); return err }},
-		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(id, nil); return err }},
-		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlaceWithContext(ctx, id, nil); return err }},
-		{name: "Delete", run: func() error { return api.Delete(id) }},
-		{name: "DeleteWithContext", run: func() error { return api.DeleteWithContext(ctx, id) }},
+		{name: "Update", run: func() error { _, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"}); return err }},
+		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, id, nil); return err }},
+		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), id, nil); return err }},
+		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, id, nil); return err }},
+		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
+		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ByLabel", run: func() error { _, err := api.ByLabel("Node", opts); return err }},
@@ -124,14 +124,14 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "SetProperty", run: func() error { return api.SetProperty(id, "name", "Ada") }},
 		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(id, "name") }},
 		{name: "CompareAndSetProperty", run: func() error {
-			got, err := api.CompareAndSetProperty(id, "name", "old", "new")
+			got, err := api.CompareAndSetProperty(context.Background(), id, "name", "old", "new")
 			if !got {
 				t.Fatal("CompareAndSetProperty bool = false, want true")
 			}
 			return err
 		}},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
-			got, err := api.CompareAndSetPropertyWithContext(ctx, id, "name", "old", "new")
+			got, err := api.CompareAndSetProperty(ctx, id, "name", "old", "new")
 			if !got {
 				t.Fatal("CompareAndSetPropertyWithContext bool = false, want true")
 			}
@@ -141,8 +141,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "RemoveLabel", run: func() error { return api.RemoveLabel(id, "Admin") }},
 		{name: "CloseVersion", run: func() error { return api.CloseVersion(id, 100) }},
 		{name: "History", run: func() error { _, err := api.History(id); return err }},
-		{name: "NextVersion", run: func() error { _, err := api.NextVersion(id, 1); return err }},
-		{name: "PreviousVersion", run: func() error { _, err := api.PreviousVersion(id, 1); return err }},
+		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(id, 1); return err }},
+		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(id, 1); return err }},
 	} {
 		if err := tc.run(); !errors.Is(err, wantErr) {
 			t.Fatalf("%s = %v, want %v", tc.name, err, wantErr)
@@ -167,12 +167,12 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "AddWithContext", "Get", "GetWithContext", "GetByIDs",
-		"Update", "UpdateWithContext", "UpdateInPlace", "UpdateInPlaceWithContext",
-		"Delete", "DeleteWithContext", "Import", "All", "ByLabel", "ByLabelAndProperty",
+		"Add", "Add", "Get", "Get", "GetByIDs",
+		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
+		"Delete", "Delete", "Import", "All", "ByLabel", "ByLabelAndProperty",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
-		"CompareAndSetProperty", "CompareAndSetPropertyWithContext",
-		"AddLabel", "RemoveLabel", "CloseVersion", "History", "NextVersion", "PreviousVersion",
+		"CompareAndSetProperty", "CompareAndSetProperty",
+		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
 		"HasLabel", "Labels", "Labels", "PrimaryLabel", "NextID",
 	}
 	if len(ops.calls) != len(wantCalls) {
@@ -209,7 +209,7 @@ type nodeOpsSpy struct {
 
 func (s *nodeOpsSpy) record(name string) { s.calls = append(s.calls, name) }
 
-func (s *nodeOpsSpy) Add(labels []string, props map[string]any) (*types.Node, error) {
+func (s *nodeOpsSpy) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	s.record("Add")
 	if len(labels) > 0 {
 		s.lastLabel = labels[0]
@@ -222,7 +222,7 @@ func (s *nodeOpsSpy) AddWithContext(ctx context.Context, labels []string, props 
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) Get(id types.NodeID) (*types.Node, error) {
+func (s *nodeOpsSpy) Get(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	s.record("Get")
 	s.lastID = id
 	return nil, s.err
@@ -242,7 +242,7 @@ func (s *nodeOpsSpy) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) Update(id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (s *nodeOpsSpy) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	s.record("Update")
 	s.lastID = id
 	return nil, s.err
@@ -254,7 +254,7 @@ func (s *nodeOpsSpy) UpdateWithContext(ctx context.Context, id types.NodeID, upd
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (s *nodeOpsSpy) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	s.record("UpdateInPlace")
 	s.lastID = id
 	return nil, s.err
@@ -266,7 +266,7 @@ func (s *nodeOpsSpy) UpdateInPlaceWithContext(ctx context.Context, id types.Node
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) Delete(id types.NodeID) error {
+func (s *nodeOpsSpy) Delete(ctx context.Context, id types.NodeID) error {
 	s.record("Delete")
 	s.lastID = id
 	return s.err
@@ -330,7 +330,7 @@ func (s *nodeOpsSpy) DeleteProperty(id types.NodeID, key string) error {
 	return s.err
 }
 
-func (s *nodeOpsSpy) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
+func (s *nodeOpsSpy) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	s.record("CompareAndSetProperty")
 	s.lastID = id
 	s.lastKey = key
@@ -386,14 +386,14 @@ func (s *nodeOpsSpy) History(id types.NodeID) ([]*types.Node, error) {
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) NextVersion(id types.NodeID, version uint32) (*types.Node, error) {
-	s.record("NextVersion")
+func (s *nodeOpsSpy) VersionAfter(id types.NodeID, version uint32) (*types.Node, error) {
+	s.record("VersionAfter")
 	s.lastID = id
 	return nil, s.err
 }
 
-func (s *nodeOpsSpy) PreviousVersion(id types.NodeID, version uint32) (*types.Node, error) {
-	s.record("PreviousVersion")
+func (s *nodeOpsSpy) VersionBefore(id types.NodeID, version uint32) (*types.Node, error) {
+	s.record("VersionBefore")
 	s.lastID = id
 	return nil, s.err
 }

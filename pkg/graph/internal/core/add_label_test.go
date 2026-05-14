@@ -31,6 +31,7 @@ package core
 //     - storepkg.ErrTxDone after Commit/Rollback
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -47,14 +48,14 @@ import (
 
 func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.AddLabel(id, "Employee"); err != nil {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if !g.Nodes.HasLabel(updated, "Employee") {
 		t.Error("Employee label missing after AddNodeLabel")
 	}
@@ -65,17 +66,17 @@ func TestAddNodeLabel_AddsExtraLabel(t *testing.T) {
 
 func TestAddNodeLabel_IdempotentIfAlreadyPresent(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person", "Employee"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, nil)
 	id := n.ID()
 
-	before, _ := g.Nodes.Get(id)
+	before, _ := g.Nodes.Get(context.Background(), id)
 	beforeVersion := before.Version()
 
 	if err := g.Nodes.AddLabel(id, "Employee"); err != nil {
 		t.Fatalf("AddNodeLabel on existing label should be a no-op, got: %v", err)
 	}
 
-	after, _ := g.Nodes.Get(id)
+	after, _ := g.Nodes.Get(context.Background(), id)
 	if after.Version() != beforeVersion {
 		t.Errorf("version should not bump on idempotent add: before=%d after=%d",
 			beforeVersion, after.Version())
@@ -127,7 +128,7 @@ func TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry(t *testing.T) {
 
 func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.AddLabel(id, ""); err == nil {
@@ -137,7 +138,7 @@ func TestAddNodeLabel_EmptyNameRejected(t *testing.T) {
 
 func TestAddNodeLabel_NameTooLong(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
-	n, _ := g.Nodes.Add([]string{"Short"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Short"}, nil)
 	id := n.ID()
 
 	err := g.Nodes.AddLabel(id, strings.Repeat("a", 6))
@@ -148,7 +149,7 @@ func TestAddNodeLabel_NameTooLong(t *testing.T) {
 
 func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	err := g.Nodes.AddLabel(id, "C")
@@ -159,7 +160,7 @@ func TestAddNodeLabel_TooManyLabelsRejected(t *testing.T) {
 
 func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 
 	err := g.Nodes.AddLabel(n.ID(), "Rejected")
 	if !errors.Is(err, ErrTooManyLabels) {
@@ -204,7 +205,7 @@ func TestNodeLabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
 
 func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	origHash := ""
@@ -216,7 +217,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 		t.Fatalf("AddNodeLabel: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	ig := updated.Integrity()
 	if ig == nil {
 		t.Fatal("updated node missing integrity")
@@ -231,7 +232,7 @@ func TestAddNodeLabel_HashChainAdvances(t *testing.T) {
 
 func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	before, _ := g.Nodes.History(id)
@@ -251,7 +252,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 		t.Errorf("history[0].Version() = %d, want 0", after[0].Version())
 	}
 
-	cur, _ := g.Nodes.Get(id)
+	cur, _ := g.Nodes.Get(context.Background(), id)
 	if cur.Version() != 1 {
 		t.Errorf("current.Version() = %d, want 1", cur.Version())
 	}
@@ -259,7 +260,7 @@ func TestAddNodeLabel_WritesHistoryEntry(t *testing.T) {
 
 func TestAddNodeLabel_NodesByLabelUpdated(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Thing"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.AddLabel(id, "Tag"); err != nil {
@@ -284,7 +285,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 	bus := eventspkg.NewEventBus()
 	_ = g.Events.SetSync(bus)
 
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	var events []eventspkg.Event
@@ -309,7 +310,7 @@ func TestAddNodeLabel_PublishesEvent(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -321,7 +322,7 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if !g.Nodes.HasLabel(updated, "B") {
 		t.Error("label B missing after tx.Commit")
 	}
@@ -329,7 +330,7 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -341,7 +342,7 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if g.Nodes.HasLabel(updated, "B") {
 		t.Error("label B should be absent after Rollback")
 	}
@@ -349,7 +350,7 @@ func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_IdempotentDoesNotSnapshot(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -365,7 +366,7 @@ func TestGraphTx_AddNodeLabel_IdempotentDoesNotSnapshot(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if updated.Version() != 0 {
 		t.Fatalf("version = %d, want 0 for idempotent add-label", updated.Version())
 	}
@@ -373,7 +374,7 @@ func TestGraphTx_AddNodeLabel_IdempotentDoesNotSnapshot(t *testing.T) {
 
 func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 1}})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 
 	tx, _ := g.BeginTx()
 	err := tx.AddNodeLabel(n.ID(), "Rejected")
@@ -394,7 +395,7 @@ func TestGraphTx_AddNodeLabelFailedTooManyLabelsDoesNotRegisterOnCommit(t *testi
 
 func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 	closeTime := g.nodeValidFrom(n) + 1000
 	if err := g.Nodes.CloseVersion(id, closeTime); err != nil {
@@ -415,7 +416,7 @@ func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -438,7 +439,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -454,7 +455,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if !g.Nodes.HasLabel(updated, "A") {
 		t.Fatal("label A should remain after Rollback")
 	}
@@ -477,7 +478,7 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -504,7 +505,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_RollbackRestoresMultipleLabelRemoves(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B", "C"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -520,7 +521,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresMultipleLabelRemoves(t *testing
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	for _, label := range []string{"A", "B", "C"} {
 		if !g.Nodes.HasLabel(updated, label) {
 			t.Fatalf("label %s should be restored after Rollback", label)
@@ -544,7 +545,7 @@ func TestGraphTx_RemoveNodeLabel_RollbackRestoresMultipleLabelRemoves(t *testing
 
 func TestGraphTx_LabelRollbackRestoresMixedLabelOrder(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B", "C"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -560,7 +561,7 @@ func TestGraphTx_LabelRollbackRestoresMixedLabelOrder(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	for _, label := range []string{"A", "B", "C"} {
 		if !g.Nodes.HasLabel(updated, label) {
 			t.Fatalf("label %s should be restored after Rollback", label)
@@ -596,7 +597,7 @@ func TestGraphTx_LabelRollbackRestoresMixedLabelOrder(t *testing.T) {
 
 func TestGraphTx_LabelRollbackRestoresPrimaryLabelOrder(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B", "C"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -612,7 +613,7 @@ func TestGraphTx_LabelRollbackRestoresPrimaryLabelOrder(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	for _, label := range []string{"A", "B", "C"} {
 		if !g.Nodes.HasLabel(updated, label) {
 			t.Fatalf("label %s should be restored after Rollback", label)
@@ -628,7 +629,7 @@ func TestGraphTx_LabelRollbackRestoresPrimaryLabelOrder(t *testing.T) {
 
 func TestGraphTx_LabelRollbackRestoresTieredPrimaryWithoutClassHop(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	n, err := g.Nodes.Add([]string{"Case", "User", "Signal"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User", "Signal"}, nil)
 	if err != nil {
 		t.Fatalf("Nodes.Add: %v", err)
 	}
@@ -647,7 +648,7 @@ func TestGraphTx_LabelRollbackRestoresTieredPrimaryWithoutClassHop(t *testing.T)
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, err := g.Nodes.Get(id)
+	updated, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("Nodes.Get: %v", err)
 	}
@@ -695,7 +696,7 @@ func TestGraphTx_LabelMutationsValidateNameBeforeNodeLookup(t *testing.T) {
 
 func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -711,7 +712,7 @@ func TestGraphTx_AddNodeLabel_AfterCommitReturnsTxDone(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -723,7 +724,7 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if g.Nodes.HasLabel(updated, "B") {
 		t.Error("label B should be gone after Commit")
 	}
@@ -731,7 +732,7 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -743,7 +744,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if !g.Nodes.HasLabel(updated, "B") {
 		t.Error("label B should be restored after Rollback")
 	}
@@ -751,7 +752,7 @@ func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Solo"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Solo"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()
@@ -768,7 +769,7 @@ func TestGraphTx_RemoveNodeLabel_LastLabelError(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_LabelNotFoundDoesNotSnapshot(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 	if _, err := g.Resolve.GetOrCreateLabel("C"); err != nil {
 		t.Fatalf("GetOrCreateLabel C: %v", err)
@@ -803,7 +804,7 @@ func TestGraphTx_RemoveNodeLabel_UnknownLabelPrecedesNodeLookup(t *testing.T) {
 
 func TestGraphTx_RemoveNodeLabel_AfterRollbackReturnsTxDone(t *testing.T) {
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	id := n.ID()
 
 	tx, _ := g.BeginTx()

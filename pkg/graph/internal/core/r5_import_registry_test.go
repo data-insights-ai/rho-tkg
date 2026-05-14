@@ -1,12 +1,14 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestR5_Import_MalformedRegistryRecordsAreCorruptExport(t *testing.T) {
@@ -14,15 +16,15 @@ func TestR5_Import_MalformedRegistryRecordsAreCorruptExport(t *testing.T) {
 
 	src := newTestGraph(t)
 	defer src.Close()
-	a, err := src.Nodes.Add([]string{"Person"}, nil)
+	a, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := src.Nodes.Add([]string{"Person"}, nil)
+	b, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.Rels.Add("KNOWS", a, b, nil); err != nil {
+	if _, err := src.Rels.Add(context.Background(), "KNOWS", a, b, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,7 +65,7 @@ func TestR5_Import_MalformedRegistryRecordsAreCorruptExport(t *testing.T) {
 			dst := newTestGraph(t)
 			defer dst.Close()
 
-			err := dst.IO.Import(bytes.NewReader(corrupt))
+			err := dst.IO.Import(bytes.NewReader(corrupt), tkgio.ImportOptions{})
 			if !errors.Is(err, ErrCorruptExport) {
 				t.Fatalf("Import: got %v, want errors.Is ErrCorruptExport", err)
 			}

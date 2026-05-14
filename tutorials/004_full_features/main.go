@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -61,7 +62,7 @@ func main() {
 	fmt.Println("=== 1. Multi-label Nodes ===")
 	// ----------------------------------------------------------------
 
-	eng, err := g.Nodes.Add([]string{"Department"}, map[string]any{
+	eng, err := g.Nodes.Add(context.Background(), []string{"Department"}, map[string]any{
 		"name":   "Engineering",
 		"budget": float64(2_500_000),
 	})
@@ -70,7 +71,7 @@ func main() {
 	}
 	fmt.Printf("Department: %v\n", g.Nodes.Labels(eng))
 
-	atlas, err := g.Nodes.Add([]string{"Project", "Internal"}, map[string]any{
+	atlas, err := g.Nodes.Add(context.Background(), []string{"Project", "Internal"}, map[string]any{
 		"name":     "Atlas",
 		"priority": int64(1),
 	})
@@ -79,7 +80,7 @@ func main() {
 	}
 	fmt.Printf("Project: %v (2 labels)\n", g.Nodes.Labels(atlas))
 
-	alice, err := g.Nodes.Add([]string{"Person", "Employee", "Engineer"}, map[string]any{
+	alice, err := g.Nodes.Add(context.Background(), []string{"Person", "Employee", "Engineer"}, map[string]any{
 		"name":  "Alice",
 		"email": "alice@example.com",
 	})
@@ -88,7 +89,7 @@ func main() {
 	}
 	fmt.Printf("Person: %v (3 labels)\n", g.Nodes.Labels(alice))
 
-	bob, err := g.Nodes.Add([]string{"Person", "Employee"}, map[string]any{
+	bob, err := g.Nodes.Add(context.Background(), []string{"Person", "Employee"}, map[string]any{
 		"name": "Bob",
 	})
 	if err != nil {
@@ -99,7 +100,7 @@ func main() {
 	fmt.Println("\n=== 2. Rich Properties ===")
 	// ----------------------------------------------------------------
 
-	richNode, err := g.Nodes.Add([]string{"Config"}, map[string]any{
+	richNode, err := g.Nodes.Add(context.Background(), []string{"Config"}, map[string]any{
 		"name":    "app-config",
 		"enabled": true,
 		"count":   int64(42),
@@ -122,39 +123,39 @@ func main() {
 	fmt.Println("\n=== 3. Relationships ===")
 	// ----------------------------------------------------------------
 
-	worksIn, err := g.Rels.Add("WORKS_IN", alice, eng, map[string]any{
+	worksIn, err := g.Rels.Add(context.Background(), "WORKS_IN", alice, eng, map[string]any{
 		"since": int64(2022),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("WORKS_IN", bob, eng, nil)
+	_, err = g.Rels.Add(context.Background(), "WORKS_IN", bob, eng, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	assignedTo, err := g.Rels.Add("ASSIGNED_TO", alice, atlas, map[string]any{
+	assignedTo, err := g.Rels.Add(context.Background(), "ASSIGNED_TO", alice, atlas, map[string]any{
 		"role": "lead",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("ASSIGNED_TO", bob, atlas, map[string]any{
+	_, err = g.Rels.Add(context.Background(), "ASSIGNED_TO", bob, atlas, map[string]any{
 		"role": "contributor",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	manages, err := g.Rels.Add("MANAGES", alice, bob, nil)
+	manages, err := g.Rels.Add(context.Background(), "MANAGES", alice, bob, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Self-loop: Alice reviews her own code.
-	selfLoop, err := g.Rels.Add("REVIEWS", alice, alice, map[string]any{
+	selfLoop, err := g.Rels.Add(context.Background(), "REVIEWS", alice, alice, map[string]any{
 		"type": "self-review",
 	})
 	if err != nil {
@@ -351,7 +352,7 @@ func main() {
 
 	// Delete Alice — cascade removes all her relationships.
 	aliceID := alice.ID()
-	if err := g.Nodes.Delete(aliceID); err != nil {
+	if err := g.Nodes.Delete(context.Background(), aliceID); err != nil {
 		log.Fatal(err)
 	}
 
@@ -363,12 +364,12 @@ func main() {
 	fmt.Println("\n=== 11. Error Handling ===")
 	// ----------------------------------------------------------------
 
-	_, err = g.Nodes.Get(aliceID)
+	_, err = g.Nodes.Get(context.Background(), aliceID)
 	if errors.Is(err, store.ErrNodeNotFound) {
 		fmt.Println("GetNode(deleted Alice): ErrNodeNotFound")
 	}
 
-	_, err = g.Rels.Get(worksIn.ID())
+	_, err = g.Rels.Get(context.Background(), worksIn.ID())
 	if errors.Is(err, store.ErrRelNotFound) {
 		fmt.Println("GetRelationship(cascaded rel): ErrRelNotFound")
 	}

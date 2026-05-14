@@ -8,6 +8,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -43,11 +44,11 @@ func newMandatoryOnlyGraph(t *testing.T) *Core {
 func TestCapability_PropertyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
-	alice, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	alice, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("seed Add: %v", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"}); err != nil {
 		t.Fatalf("seed Add Bob: %v", err)
 	}
 
@@ -80,7 +81,7 @@ func TestCapability_TemporalIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	if err := g.Index.CreateTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateTemporal err = %v, want ErrCapabilityNotSupported", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed Person: %v", err)
 	}
 	if err := g.Index.DropTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
@@ -95,7 +96,7 @@ func TestCapability_HighFrequencyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T
 	if err := g.Index.CreateHighFrequency("Person", time.Hour); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateHighFrequency err = %v, want ErrCapabilityNotSupported", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed Person: %v", err)
 	}
 	if err := g.Index.DropHighFrequency("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
@@ -113,7 +114,7 @@ func TestCapability_VectorIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	if err := g.Index.CreateVector("Doc", "embedding", 3, storepkg.DistanceCosine); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateVector err = %v, want ErrCapabilityNotSupported", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 2, 3}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 2, 3}}); err != nil {
 		t.Fatalf("seed Doc: %v", err)
 	}
 	if err := g.Index.DropVector("Doc", "embedding"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
@@ -128,11 +129,11 @@ func TestCapability_MandatoryOnlyBackend_CRUDStillWorks(t *testing.T) {
 	t.Parallel()
 	g := newMandatoryOnlyGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	got, err := g.Nodes.Get(a.ID())
+	got, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -142,13 +143,13 @@ func TestCapability_MandatoryOnlyBackend_CRUDStillWorks(t *testing.T) {
 	if cnt, _ := g.Nodes.Count(); cnt != 1 {
 		t.Errorf("Count = %d, want 1", cnt)
 	}
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"age": int64(30)}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"age": int64(30)}); err != nil {
 		t.Errorf("Update: %v", err)
 	}
 	if hist, err := g.Nodes.History(a.ID()); err != nil || len(hist) == 0 {
 		t.Errorf("History: %v len=%d", err, len(hist))
 	}
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Errorf("Delete: %v", err)
 	}
 }

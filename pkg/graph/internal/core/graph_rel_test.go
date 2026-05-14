@@ -57,11 +57,11 @@ func newRelCreateRollbackGraph(t *testing.T) (*Core, *relCreateFailAfterInstallS
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -107,10 +107,10 @@ func TestGraphAddRelationship(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	nB, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 
-	r, err := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020})
 	if err != nil {
 		t.Fatalf("AddRelationship() returned error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestGraphAddRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *te
 	g, fs, a, b := newRelCreateRollbackGraph(t)
 
 	fs.failPut = true
-	_, err := g.Rels.Add("TRANSIENT_REL", a, b, nil)
+	_, err := g.Rels.Add(context.Background(), "TRANSIENT_REL", a, b, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add transient relationship error = %v, want injected", err)
 	}
@@ -150,7 +150,7 @@ func TestGraphAddRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *te
 	}
 
 	fs.failPut = false
-	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "REAL_REL", a, b, nil); err != nil {
 		t.Fatalf("Add real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -171,13 +171,13 @@ func TestGraphAddRelationshipExistingRelTypeFailureDeletesPartialRow(t *testing.
 	}
 
 	fs.failPut = true
-	_, err := g.Rels.Add("EXISTING_REL", a, b, nil)
+	_, err := g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add existing-type relationship error = %v, want injected", err)
 	}
 
 	fs.failPut = false
-	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil); err != nil {
 		t.Fatalf("retry Add existing-type relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
@@ -204,11 +204,11 @@ func TestGraphAddRelationshipExistingRelTypePanicDeletesPartialRow(t *testing.T)
 				t.Fatal("Add existing-type relationship did not panic")
 			}
 		}()
-		_, _ = g.Rels.Add("EXISTING_REL", a, b, nil)
+		_, _ = g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil)
 	}()
 
 	fs.panicPut = false
-	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil); err != nil {
 		t.Fatalf("retry Add existing-type relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
@@ -230,7 +230,7 @@ func TestGraphAddRelationshipExistingRelTypeCleanupFailureReturnsPartialRow(t *t
 
 	fs.failPut = true
 	fs.failDelete = true
-	rel, err := g.Rels.Add("EXISTING_REL", a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add existing-type relationship error = %v, want injected", err)
 	}
@@ -253,7 +253,7 @@ func TestGraphAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
 
 	fs.failPut = true
 	fs.failDelete = true
-	rel, err := g.Rels.Add("QUARANTINED_REL", a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), "QUARANTINED_REL", a, b, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add relationship error = %v, want injected", err)
 	}
@@ -273,7 +273,7 @@ func TestGraphAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
 
 	fs.failPut = false
 	fs.failDelete = false
-	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "REAL_REL", a, b, nil); err != nil {
 		t.Fatalf("Add real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -291,7 +291,7 @@ func TestGraphAddRelationshipByIDFailureDeletesPartialRowBeforeRelTypeRollback(t
 	g, fs, a, b := newRelCreateRollbackGraph(t)
 
 	fs.failPut = true
-	_, err := g.Rels.AddByIDWithContext(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
+	_, err := g.Rels.AddByID(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("AddByID transient relationship error = %v, want injected", err)
 	}
@@ -300,7 +300,7 @@ func TestGraphAddRelationshipByIDFailureDeletesPartialRowBeforeRelTypeRollback(t
 	}
 
 	fs.failPut = false
-	if _, err := g.Rels.AddByIDWithContext(context.Background(), "REAL_REL", a.ID(), b.ID(), nil); err != nil {
+	if _, err := g.Rels.AddByID(context.Background(), "REAL_REL", a.ID(), b.ID(), nil); err != nil {
 		t.Fatalf("AddByID real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -318,7 +318,7 @@ func TestGraphAddRelationshipByIDIfAbsentFailureDeletesPartialRowBeforeRelTypeRo
 	g, fs, a, b := newRelCreateRollbackGraph(t)
 
 	fs.failPut = true
-	_, created, err := g.Rels.AddByIDIfAbsentWithContext(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
+	_, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "TRANSIENT_REL", a.ID(), b.ID(), nil)
 	if !errors.Is(err, fs.err) || created {
 		t.Fatalf("AddByIDIfAbsent transient = created %v, err %v; want injected create failure", created, err)
 	}
@@ -327,7 +327,7 @@ func TestGraphAddRelationshipByIDIfAbsentFailureDeletesPartialRowBeforeRelTypeRo
 	}
 
 	fs.failPut = false
-	_, created, err = g.Rels.AddByIDIfAbsentWithContext(context.Background(), "REAL_REL", a.ID(), b.ID(), nil)
+	_, created, err = g.Rels.AddByIDIfAbsent(context.Background(), "REAL_REL", a.ID(), b.ID(), nil)
 	if err != nil || !created {
 		t.Fatalf("AddByIDIfAbsent real = created %v, err %v; want create", created, err)
 	}
@@ -393,7 +393,7 @@ func TestBatchAddRelationshipFailureDeletesPartialRowBeforeRelTypeRollback(t *te
 	}
 
 	fs.failPut = false
-	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "REAL_REL", a, b, nil); err != nil {
 		t.Fatalf("Add real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -427,7 +427,7 @@ func TestBatchAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
 	if res == nil || res.Created != 1 || res.Failed != 1 {
 		t.Fatalf("Execute result = %+v, want Created=1 Failed=1", res)
 	}
-	if stats := g.Stats.Get(); stats.RelsAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.RelsAdded != 1 {
 		t.Fatalf("RelsAdded after live failed batch relationship = %d, want 1", stats.RelsAdded)
 	}
 	if tok, ok := g.Resolve.LookupRelType("QUARANTINED_REL"); !ok || tok == 0 {
@@ -443,7 +443,7 @@ func TestBatchAddRelationshipCleanupFailureRetainsRelTypeToken(t *testing.T) {
 
 	fs.failPut = false
 	fs.failDelete = false
-	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "REAL_REL", a, b, nil); err != nil {
 		t.Fatalf("Add real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -481,7 +481,7 @@ func TestBatchAddRelationshipExistingRelTypePanicDeletesPartialRow(t *testing.T)
 	}()
 
 	fs.panicPut = false
-	if _, err := g.Rels.Add("EXISTING_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "EXISTING_REL", a, b, nil); err != nil {
 		t.Fatalf("Add existing-type relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("EXISTING_REL", storepkg.QueryOpts{})
@@ -497,9 +497,9 @@ func TestGraphAddRelNilStart(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	_, err := g.Rels.Add("KNOWS", nil, nB, nil)
+	_, err := g.Rels.Add(context.Background(), "KNOWS", nil, nB, nil)
 	if !errors.Is(err, ErrNilNode) {
 		t.Errorf("AddRelationship(nil start): errors.Is(err, ErrNilNode) = false; err = %v", err)
 	}
@@ -509,9 +509,9 @@ func TestGraphAddRelNilEnd(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	_, err := g.Rels.Add("KNOWS", nA, nil, nil)
+	_, err := g.Rels.Add(context.Background(), "KNOWS", nA, nil, nil)
 	if !errors.Is(err, ErrNilNode) {
 		t.Errorf("AddRelationship(nil end): errors.Is(err, ErrNilNode) = false; err = %v", err)
 	}
@@ -521,10 +521,10 @@ func TestGraphAddRelEmptyType(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	_, err := g.Rels.Add("", nA, nB, nil)
+	_, err := g.Rels.Add(context.Background(), "", nA, nB, nil)
 	if err == nil {
 		t.Fatal("AddRelationship(\"\") should return error")
 	}
@@ -536,13 +536,13 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	nB, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 
 	aID := nA.ID()
 	bID := nB.ID()
 
-	r, err := g.Rels.AddByID("KNOWS", aID, bID, map[string]any{"since": 2020})
+	r, err := g.Rels.AddByID(context.Background(), "KNOWS", aID, bID, map[string]any{"since": 2020})
 	if err != nil {
 		t.Fatalf("AddRelationshipByID() returned error: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestGraphAddRelationshipByID(t *testing.T) {
 	}
 
 	// Verify relationship is retrievable from the store.
-	fetched, err := g.Rels.Get(r.ID())
+	fetched, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship() returned error: %v", err)
 	}
@@ -604,10 +604,10 @@ func TestGraphAddRelationshipByID_SelfLoop(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	nID := n.ID()
 
-	_, err := g.Rels.AddByID("SELF", nID, nID, nil)
+	_, err := g.Rels.AddByID(context.Background(), "SELF", nID, nID, nil)
 	if !errors.Is(err, ErrSelfLoop) {
 		t.Errorf("AddRelationshipByID(self): got %v, want ErrSelfLoop", err)
 	}
@@ -617,13 +617,13 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	aID := nA.ID()
 	bID := nB.ID()
 
 	// First call: should create.
-	r1, created1, err := g.Rels.AddByIDIfAbsent("KNOWS", aID, bID, nil)
+	r1, created1, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", aID, bID, nil)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
@@ -635,7 +635,7 @@ func TestGraphAddRelationshipByIDIfAbsent(t *testing.T) {
 	}
 
 	// Second call: should return existing.
-	r2, created2, err := g.Rels.AddByIDIfAbsent("KNOWS", aID, bID, nil)
+	r2, created2, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", aID, bID, nil)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -679,15 +679,15 @@ func TestGraphAddRelationshipByIDIfAbsentCopiesExistingCustomStoreRow(t *testing
 	}
 	defer g.Close()
 
-	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	nA, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nA: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	nB, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nB: %v", err)
 	}
-	rel, err := g.Rels.AddByID("KNOWS", nA.ID(), nB.ID(), nil)
+	rel, err := g.Rels.AddByID(context.Background(), "KNOWS", nA.ID(), nB.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
@@ -696,7 +696,7 @@ func TestGraphAddRelationshipByIDIfAbsentCopiesExistingCustomStoreRow(t *testing
 	store.start = nA.ID()
 	store.existingRows = []*types.Relationship{storeRow}
 
-	got, created, err := g.Rels.AddByIDIfAbsent("KNOWS", nA.ID(), nB.ID(), nil)
+	got, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", nA.ID(), nB.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDIfAbsent existing: %v", err)
 	}
@@ -722,8 +722,8 @@ func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	aID := nA.ID()
 	bID := nB.ID()
 
@@ -739,7 +739,7 @@ func TestGraphAddRelationshipByIDIfAbsent_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				_, created, err := g.Rels.AddByIDIfAbsent("KNOWS", aID, bID, nil)
+				_, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", aID, bID, nil)
 				if err != nil {
 					errCount.Add(1)
 					continue
@@ -772,12 +772,12 @@ func TestGraphRelationshipsByType(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	g.Rels.Add("KNOWS", nA, nB, nil)
-	g.Rels.Add("KNOWS", nB, nA, nil)
-	g.Rels.Add("LIKES", nA, nB, nil)
+	g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
+	g.Rels.Add(context.Background(), "KNOWS", nB, nA, nil)
+	g.Rels.Add(context.Background(), "LIKES", nA, nB, nil)
 
 	knows, err := g.Rels.ByType("KNOWS", storepkg.QueryOpts{})
 	if err != nil {
@@ -808,9 +808,9 @@ func TestGraphRelCount(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	g.Rels.Add("R", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	g.Rels.Add(context.Background(), "R", nA, nB, nil)
 	rc, err := g.Rels.Count()
 	if err != nil {
 		t.Fatal(err)
@@ -824,11 +824,11 @@ func TestGraphDeleteRelationship(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("R", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "R", nA, nB, nil)
 
-	if err := g.Rels.Delete(r.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship() returned error: %v", err)
 	}
 	rc, err := g.Rels.Count()
@@ -844,12 +844,12 @@ func TestGraphOutgoingRelationships(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("WORKS_WITH", a, c, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "WORKS_WITH", a, c, nil)
 
 	// All outgoing from A.
 	all, err := g.Rels.Outgoing(a.ID(), "")
@@ -892,12 +892,12 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("WORKS_WITH", c, b, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "WORKS_WITH", c, b, nil)
 
 	// All incoming to B.
 	all, err := g.Rels.Incoming(b.ID(), "")
@@ -942,12 +942,12 @@ func TestGraphUpdateRelationship(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020})
 	id := r.ID()
 
-	updated, err := g.Rels.Update(id, map[string]any{"since": 2021})
+	updated, err := g.Rels.Update(context.Background(), id, map[string]any{"since": 2021})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -957,7 +957,7 @@ func TestGraphUpdateRelationship(t *testing.T) {
 	}
 
 	// Verify persisted.
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ = got.GetProperty("since")
 	if v != 2021 {
 		t.Fatalf("persisted since = %v, want 2021", v)
@@ -968,17 +968,17 @@ func TestGraphUpdateRelAddProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
-	_, err := g.Rels.Update(id, map[string]any{"weight": 0.5})
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{"weight": 0.5})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, ok := got.GetProperty("weight")
 	if !ok || v != 0.5 {
 		t.Fatalf("weight = %v, want 0.5", v)
@@ -989,17 +989,17 @@ func TestGraphUpdateRelDeleteProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
 	id := r.ID()
 
-	_, err := g.Rels.Update(id, map[string]any{"note": nil})
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{"note": nil})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	_, ok := got.GetProperty("note")
 	if ok {
 		t.Fatal("note should be deleted")
@@ -1014,12 +1014,12 @@ func TestGraphUpdateRelMixed(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020, "note": "friend"})
 	id := r.ID()
 
-	_, err := g.Rels.Update(id, map[string]any{
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{
 		"since":  2021,
 		"note":   nil,
 		"weight": 0.8,
@@ -1028,7 +1028,7 @@ func TestGraphUpdateRelMixed(t *testing.T) {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("since")
 	if v != 2021 {
 		t.Fatalf("since = %v, want 2021", v)
@@ -1047,7 +1047,7 @@ func TestGraphUpdateRelNotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	_, err := g.Rels.Update(types.RelID(999), map[string]any{"x": 1})
+	_, err := g.Rels.Update(context.Background(), types.RelID(999), map[string]any{"x": 1})
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("UpdateRelationship(nonexistent): errors.Is(err, storepkg.ErrRelNotFound) = false; err = %v", err)
 	}
@@ -1057,12 +1057,12 @@ func TestGraphUpdateRelInvalidProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
-	_, err := g.Rels.Update(id, map[string]any{"tkg_hack": "bad"})
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{"tkg_hack": "bad"})
 	if !errors.Is(err, types.ErrReservedPrefix) {
 		t.Fatalf("UpdateRelationship(tkg_ key): errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
 	}
@@ -1072,13 +1072,13 @@ func TestGraphUpdateRelInvalidValue(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
 	type badStruct struct{ X int }
-	_, err := g.Rels.Update(id, map[string]any{"bad": badStruct{42}})
+	_, err := g.Rels.Update(context.Background(), id, map[string]any{"bad": badStruct{42}})
 	if !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Fatalf("UpdateRelationship(bad value): errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
 	}
@@ -1088,21 +1088,21 @@ func TestGraphUpdateRelVersionIncrement(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
 	if r.Version() != 0 {
 		t.Fatalf("initial version = %d, want 0", r.Version())
 	}
 
-	u1, _ := g.Rels.Update(id, map[string]any{"x": 1})
+	u1, _ := g.Rels.Update(context.Background(), id, map[string]any{"x": 1})
 	if u1.Version() != 1 {
 		t.Fatalf("version after first update = %d, want 1", u1.Version())
 	}
 
-	u2, _ := g.Rels.Update(id, map[string]any{"x": 2})
+	u2, _ := g.Rels.Update(context.Background(), id, map[string]any{"x": 2})
 	if u2.Version() != 2 {
 		t.Fatalf("version after second update = %d, want 2", u2.Version())
 	}
@@ -1112,12 +1112,12 @@ func TestGraphUpdateRelEmptyUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"x": 1})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"x": 1})
 	id := r.ID()
 
-	got, err := g.Rels.Update(id, map[string]any{})
+	got, err := g.Rels.Update(context.Background(), id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateRelationship(empty): %v", err)
 	}
@@ -1130,16 +1130,16 @@ func TestGraphUpdateRelEndpointsUnchanged(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"x": 1})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"x": 1})
 	id := r.ID()
 	origStartID := r.StartNodeID().SnowflakeID()
 	origEndID := r.EndNodeID().SnowflakeID()
 
-	g.Rels.Update(id, map[string]any{"x": 2})
+	g.Rels.Update(context.Background(), id, map[string]any{"x": 2})
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	if got.StartNodeID().SnowflakeID() != origStartID {
 		t.Fatal("startID changed after update")
 	}
@@ -1154,16 +1154,16 @@ func TestGraphSetRelationshipProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
 	if err := g.Rels.SetProperty(id, "weight", 0.5); err != nil {
 		t.Fatalf("SetRelationshipProperty: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, ok := got.GetProperty("weight")
 	if !ok || v != 0.5 {
 		t.Fatalf("weight = %v, want 0.5", v)
@@ -1174,16 +1174,16 @@ func TestGraphDeleteRelationshipProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"weight": 0.5})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"weight": 0.5})
 	id := r.ID()
 
 	if err := g.Rels.DeleteProperty(id, "weight"); err != nil {
 		t.Fatalf("DeleteRelationshipProperty: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	_, ok := got.GetProperty("weight")
 	if ok {
 		t.Fatal("weight should be deleted")
@@ -1201,17 +1201,17 @@ func TestGraphUpdateRelWithMemStore(t *testing.T) {
 	}
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": 2020})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": 2020})
 	id := r.ID()
 
-	_, err = g.Rels.Update(id, map[string]any{"since": 2021})
+	_, err = g.Rels.Update(context.Background(), id, map[string]any{"since": 2021})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("since")
 	if v != 2021 {
 		t.Fatalf("since = %v, want 2021", v)
@@ -1231,8 +1231,8 @@ func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
 			}
 			defer g.Close()
 
-			nA, _ := g.Nodes.Add([]string{"A"}, nil)
-			nB, _ := g.Nodes.Add([]string{"B"}, nil)
+			nA, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+			nB, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 			var wg sync.WaitGroup
 			wg.Add(2)
@@ -1240,11 +1240,11 @@ func TestGraphConcurrentAddRelSameEndpoints(t *testing.T) {
 			var err1, err2 error
 			go func() {
 				defer wg.Done()
-				_, err1 = g.Rels.Add("R1", nA, nB, nil)
+				_, err1 = g.Rels.Add(context.Background(), "R1", nA, nB, nil)
 			}()
 			go func() {
 				defer wg.Done()
-				_, err2 = g.Rels.Add("R2", nA, nB, nil)
+				_, err2 = g.Rels.Add(context.Background(), "R2", nA, nB, nil)
 			}()
 			wg.Wait()
 
@@ -1275,11 +1275,11 @@ func TestGraphAllRels(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nC, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Rels.Add("KNOWS", nA, nB, nil)
-	g.Rels.Add("LIKES", nB, nC, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nC, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
+	g.Rels.Add(context.Background(), "LIKES", nB, nC, nil)
 
 	got, err := g.Rels.All(storepkg.QueryOpts{})
 	if err != nil {
@@ -1307,10 +1307,10 @@ func TestGraphGetRelsByIDs(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r1, _ := g.Rels.Add("KNOWS", nA, nB, nil)
-	r2, _ := g.Rels.Add("LIKES", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r1, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
+	r2, _ := g.Rels.Add(context.Background(), "LIKES", nA, nB, nil)
 
 	ids := []types.RelID{
 		r1.ID(),
@@ -1328,24 +1328,26 @@ func TestGraphGetRelsByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	nA, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nA: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	nB, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nB: %v", err)
 	}
-	r1, err := g.Rels.Add("KNOWS", nA, nB, nil)
+	r1, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("Add r1: %v", err)
 	}
-	r2, err := g.Rels.Add("LIKES", nA, nB, nil)
+	r2, err := g.Rels.Add(context.Background(), "LIKES", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("Add r2: %v", err)
 	}
 
-	before := g.Stats.Get().RelsRead
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.RelsRead
 	got, err := g.Rels.GetByIDs([]types.RelID{r2.ID(), r1.ID(), r2.ID()})
 	if err != nil {
 		t.Fatalf("GetRelationshipsByIDs duplicates: %v", err)
@@ -1367,7 +1369,8 @@ func TestGraphGetRelsByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 	if len(copies) != 2 || copies[0] == copies[1] {
 		t.Fatal("GetRelationshipsByIDs returned aliased rows for duplicate relationship IDs")
 	}
-	if after := g.Stats.Get().RelsRead; after != before+int64(len(got)) {
+	afterSnap, _ := g.Stats.Get()
+	if after := afterSnap.RelsRead; after != before+int64(len(got))  {
 		t.Fatalf("RelsRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
 	}
 }
@@ -1419,9 +1422,9 @@ func TestRelCountByType_SingleRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
 	count, err := g.Rels.CountByType("KNOWS")
 	if err != nil {
@@ -1436,12 +1439,12 @@ func TestRelCountByType_AfterDelete(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r1, _ := g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("KNOWS", b, a, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r1, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "KNOWS", b, a, nil)
 
-	g.Rels.Delete(r1.ID())
+	g.Rels.Delete(context.Background(), r1.ID())
 
 	count, err := g.Rels.CountByType("KNOWS")
 	if err != nil {
@@ -1500,13 +1503,13 @@ func TestGraphOutgoingRelationshipsForNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("WORKS_WITH", a, c, nil)
-	g.Rels.Add("KNOWS", b, c, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "WORKS_WITH", a, c, nil)
+	g.Rels.Add(context.Background(), "KNOWS", b, c, nil)
 
 	aID := a.ID()
 	bID := b.ID()
@@ -1559,9 +1562,9 @@ func TestGraphOutgoingForNodesUnregisteredType(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
 	got, err := g.Rels.OutgoingForNodes(
 		[]types.NodeID{a.ID()}, "NONEXISTENT")
@@ -1579,13 +1582,13 @@ func TestGraphIncomingRelationshipsForNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("WORKS_WITH", a, c, nil)
-	g.Rels.Add("KNOWS", c, b, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "WORKS_WITH", a, c, nil)
+	g.Rels.Add(context.Background(), "KNOWS", c, b, nil)
 
 	aID := a.ID()
 	bID := b.ID()
@@ -1638,9 +1641,9 @@ func TestGraphIncomingForNodesUnregisteredType(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
 	got, err := g.Rels.IncomingForNodes(
 		[]types.NodeID{b.ID()}, "NONEXISTENT")
@@ -1656,9 +1659,9 @@ func TestGraphAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1681,9 +1684,9 @@ func TestGraphAdjacencyMissingNodeWithUnregisteredTypeReturnsErrNodeNotFound(t *
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	if _, err := g.Rels.Add("KNOWS", a, b, nil); err != nil {
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil); err != nil {
 		t.Fatal(err)
 	}
 

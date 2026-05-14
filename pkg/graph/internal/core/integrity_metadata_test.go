@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -48,7 +49,7 @@ func assertRelIntegrityMetadata(t *testing.T, r *types.Relationship, author, sig
 
 func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{
 		"state":             "draft",
 		"tkg_author_id":     "node-author",
 		"tkg_signature":     []byte("node-signature"),
@@ -62,7 +63,7 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 	if err := g.Nodes.AddLabel(n.ID(), "Reviewed"); err != nil {
 		t.Fatalf("AddLabel: %v", err)
 	}
-	loaded, err := g.Nodes.Get(n.ID())
+	loaded, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("Get after AddLabel: %v", err)
 	}
@@ -71,26 +72,26 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 	if err := g.Nodes.RemoveLabel(n.ID(), "Reviewed"); err != nil {
 		t.Fatalf("RemoveLabel: %v", err)
 	}
-	loaded, err = g.Nodes.Get(n.ID())
+	loaded, err = g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("Get after RemoveLabel: %v", err)
 	}
 	assertNodeIntegrityMetadata(t, loaded, "node-author", "node-signature", "policy", 6)
 
-	ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "state", "draft", "published")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "state", "draft", "published")
 	if err != nil {
 		t.Fatalf("CompareAndSetProperty: %v", err)
 	}
 	if !ok {
 		t.Fatal("CompareAndSetProperty returned ok=false")
 	}
-	loaded, err = g.Nodes.Get(n.ID())
+	loaded, err = g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("Get after CompareAndSetProperty: %v", err)
 	}
 	assertNodeIntegrityMetadata(t, loaded, "node-author", "node-signature", "policy", 6)
 
-	loaded, err = g.Nodes.UpdateInPlace(n.ID(), map[string]any{"state": "cached"})
+	loaded, err = g.Nodes.UpdateInPlace(context.Background(), n.ID(), map[string]any{"state": "cached"})
 	if err != nil {
 		t.Fatalf("UpdateInPlace: %v", err)
 	}
@@ -99,15 +100,15 @@ func TestNodeIntegrityMetadataPreservedAcrossBlindMutations(t *testing.T) {
 
 func TestRelInPlacePreservesEndpointHashesAndIntegrityMetadata(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, err := g.Nodes.Add([]string{"Person"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Person"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", start, end, map[string]any{
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, map[string]any{
 		"weight":            int64(1),
 		"tkg_author_id":     "rel-author",
 		"tkg_signature":     []byte("rel-signature"),
@@ -126,7 +127,7 @@ func TestRelInPlacePreservesEndpointHashesAndIntegrityMetadata(t *testing.T) {
 	}
 	before = before.DeepCopy()
 
-	updated, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"weight": int64(2)})
+	updated, err := g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"weight": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}

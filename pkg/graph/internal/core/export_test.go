@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -179,21 +180,21 @@ func buildExportGraph(t *testing.T) (g *Core, nodeID, relID uint64) {
 		t.Fatalf("New: %v", err)
 	}
 
-	start, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"City"}, map[string]any{"city": "Vienna"})
+	end, err := g.Nodes.Add(context.Background(), []string{"City"}, map[string]any{"city": "Vienna"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.Rels.Add("LIVES_IN", start, end, map[string]any{"since": int64(2020)})
+	r, err := g.Rels.Add(context.Background(), "LIVES_IN", start, end, map[string]any{"since": int64(2020)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	// Create a version history entry on the start node.
-	_, err = g.Nodes.Update(start.ID(), map[string]any{"name": "Alice Updated"})
+	_, err = g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "Alice Updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 	}
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
@@ -272,7 +273,7 @@ func TestExport_Empty_Graph(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph empty: %v", err)
 	}
 	nc, _ := dst.Nodes.Count()
@@ -307,7 +308,7 @@ func TestIOImportNilReaderReturnsSentinel(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	var nilReader io.Reader
-	if err := g.IO.Import(nilReader); !errors.Is(err, ErrNilReader) {
+	if err := g.IO.Import(nilReader, tkgio.ImportOptions{}); !errors.Is(err, ErrNilReader) {
 		t.Fatalf("Import(nil reader): got %v, want ErrNilReader", err)
 	}
 
@@ -341,10 +342,10 @@ func TestExport_WithNodeHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"Item"}, map[string]any{"v": int64(1)})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"v": int64(1)})
 	id := n.ID()
-	_, _ = g.Nodes.Update(id, map[string]any{"v": int64(2)})
-	_, _ = g.Nodes.Update(id, map[string]any{"v": int64(3)})
+	_, _ = g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(2)})
+	_, _ = g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(3)})
 
 	srcHistory, _ := g.Nodes.History(id)
 
@@ -356,7 +357,7 @@ func TestExport_WithNodeHistory(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
@@ -374,11 +375,11 @@ func TestExport_RelHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close() //nolint:errcheck
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("EDGE", a, b, map[string]any{"w": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "EDGE", a, b, map[string]any{"w": int64(1)})
 	rid := r.ID()
-	_, _ = g.Rels.Update(rid, map[string]any{"w": int64(2)})
+	_, _ = g.Rels.Update(context.Background(), rid, map[string]any{"w": int64(2)})
 
 	srcHistory, _ := g.Rels.History(rid)
 
@@ -390,7 +391,7 @@ func TestExport_RelHistory(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
@@ -409,7 +410,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
-	src.Nodes.Add([]string{"Foo"}, nil) //nolint:errcheck
+	src.Nodes.Add(context.Background(), []string{"Foo"}, nil) //nolint:errcheck
 
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
@@ -419,10 +420,10 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 	// Destination already has the "Foo" label registered (from a prior node add).
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close()                   //nolint:errcheck
-	dst.Nodes.Add([]string{"Foo"}, nil) //nolint:errcheck
+	dst.Nodes.Add(context.Background(), []string{"Foo"}, nil) //nolint:errcheck
 
 	// Importing with a pre-populated registry must not fail.
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph with existing registry: %v", err)
 	}
 }
@@ -431,7 +432,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 func TestExport_Writer_Error(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()                 //nolint:errcheck
-	g.Nodes.Add([]string{"X"}, nil) //nolint:errcheck
+	g.Nodes.Add(context.Background(), []string{"X"}, nil) //nolint:errcheck
 
 	// errWriter fails after 0 bytes written.
 	ew := &errWriter{failAfter: 0}
@@ -467,7 +468,7 @@ func TestImport_InvalidHeader(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	err := dst.IO.Import(badBuf)
+	err := dst.IO.Import(badBuf, tkgio.ImportOptions{})
 	if !errors.Is(err, ErrIncompatibleExport) {
 		t.Errorf("expected ErrIncompatibleExport, got: %v", err)
 	}
@@ -480,9 +481,9 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
-	a, _ := src.Nodes.Add([]string{"Node"}, map[string]any{"v": int64(1)})
-	b, _ := src.Nodes.Add([]string{"Node"}, map[string]any{"v": int64(2)})
-	r, _ := src.Rels.Add("EDGE", a, b, nil)
+	a, _ := src.Nodes.Add(context.Background(), []string{"Node"}, map[string]any{"v": int64(1)})
+	b, _ := src.Nodes.Add(context.Background(), []string{"Node"}, map[string]any{"v": int64(2)})
+	r, _ := src.Rels.Add(context.Background(), "EDGE", a, b, nil)
 
 	srcAHash := a.Integrity().Hash
 	srcRHash := r.Integrity().Hash
@@ -495,12 +496,12 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
 	// Verify imported node hash is preserved.
-	importedA, err := dst.Nodes.Get(a.ID())
+	importedA, err := dst.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode after import: %v", err)
 	}
@@ -512,7 +513,7 @@ func TestExportImport_IntegrityPreserved(t *testing.T) {
 	}
 
 	// Verify imported rel hash is preserved.
-	importedR, err := dst.Rels.Get(r.ID())
+	importedR, err := dst.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after import: %v", err)
 	}
@@ -530,9 +531,9 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
-	a, _ := src.Nodes.Add([]string{"A"}, nil)
-	b, _ := src.Nodes.Add([]string{"B"}, nil)
-	r, _ := src.Rels.Add("R", a, b, nil)
+	a, _ := src.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := src.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := src.Rels.Add(context.Background(), "R", a, b, nil)
 
 	srcFrom := r.Integrity().FromNodeHash
 	srcTo := r.Integrity().ToNodeHash
@@ -545,11 +546,11 @@ func TestExportImport_EndpointHashesPreserved(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	importedR, err := dst.Rels.Get(r.ID())
+	importedR, err := dst.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
-	n, _ := src.Nodes.Add([]string{"Doc"}, map[string]any{
+	n, _ := src.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{
 		"tkg_author_id": "author@example.com",
 		"tkg_signature": []byte("test-sig"),
 	})
@@ -580,11 +581,11 @@ func TestExportImport_AuthorIDPreserved(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	imported, err := dst.Nodes.Get(n.ID())
+	imported, err := dst.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -606,7 +607,7 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 	src, _ := New(Config{Store: memory.New()})
 	defer src.Close() //nolint:errcheck
 
-	n, _ := src.Nodes.Add([]string{"X"}, map[string]any{"k": int64(7)})
+	n, _ := src.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"k": int64(7)})
 	srcHash, _ := src.Resolve.NodeProperty(n, types.ShadowHash)
 
 	var buf bytes.Buffer
@@ -617,11 +618,11 @@ func TestExport_ShadowProperty_Survives(t *testing.T) {
 	dst, _ := New(Config{Store: memory.New()})
 	defer dst.Close() //nolint:errcheck
 
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	imported, _ := dst.Nodes.Get(n.ID())
+	imported, _ := dst.Nodes.Get(context.Background(), n.ID())
 	dstHash, _ := dst.Resolve.NodeProperty(imported, types.ShadowHash)
 	if dstHash != srcHash {
 		t.Errorf("tkg_hash: dst=%v, src=%v", dstHash, srcHash)
@@ -641,9 +642,9 @@ func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
 	}
 	defer src.Close() //nolint:errcheck
 
-	start, _ := src.Nodes.Add([]string{"Person"}, nil)
-	end, _ := src.Nodes.Add([]string{"City"}, nil)
-	_, _ = src.Rels.Add("LIVES_IN", start, end, nil)
+	start, _ := src.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	end, _ := src.Nodes.Add(context.Background(), []string{"City"}, nil)
+	_, _ = src.Rels.Add(context.Background(), "LIVES_IN", start, end, nil)
 
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
@@ -656,9 +657,9 @@ func TestImportGraph_IncompatibleLabelRegistry(t *testing.T) {
 		t.Fatalf("New dst: %v", err)
 	}
 	defer dst.Close() //nolint:errcheck
-	_, _ = dst.Nodes.Add([]string{"Company"}, nil)
+	_, _ = dst.Nodes.Add(context.Background(), []string{"Company"}, nil)
 
-	err = dst.IO.Import(&buf)
+	err = dst.IO.Import(&buf, tkgio.ImportOptions{})
 	if !errors.Is(err, ErrIncompatibleRegistry) {
 		t.Errorf("ImportGraph: got %v, want ErrIncompatibleRegistry", err)
 	}
@@ -674,9 +675,9 @@ func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
 	}
 	defer src.Close() //nolint:errcheck
 
-	a, _ := src.Nodes.Add([]string{"Alpha"}, map[string]any{"x": int64(1)})
-	b, _ := src.Nodes.Add([]string{"Beta"}, nil)
-	_, _ = src.Rels.Add("LINK", a, b, nil)
+	a, _ := src.Nodes.Add(context.Background(), []string{"Alpha"}, map[string]any{"x": int64(1)})
+	b, _ := src.Nodes.Add(context.Background(), []string{"Beta"}, nil)
+	_, _ = src.Rels.Add(context.Background(), "LINK", a, b, nil)
 
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
@@ -691,12 +692,12 @@ func TestImportGraph_CompatibleRegistryIdempotent(t *testing.T) {
 	defer dst.Close() //nolint:errcheck
 
 	// First import — fresh graph, registries empty.
-	if err := dst.IO.Import(bytes.NewReader(exportedBytes)); err != nil {
+	if err := dst.IO.Import(bytes.NewReader(exportedBytes), tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("first ImportGraph: %v", err)
 	}
 
 	// Second import — same export bytes, registry now populated with identical mapping.
-	if err := dst.IO.Import(bytes.NewReader(exportedBytes)); err != nil {
+	if err := dst.IO.Import(bytes.NewReader(exportedBytes), tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("second ImportGraph (idempotent): %v", err)
 	}
 
@@ -729,7 +730,7 @@ func TestReadExportRecord_OversizeRecord(t *testing.T) {
 	}
 	defer g.Close() //nolint:errcheck
 
-	err = g.IO.Import(&buf)
+	err = g.IO.Import(&buf, tkgio.ImportOptions{})
 	if err == nil {
 		t.Fatal("ImportGraph: expected error for oversize record, got nil")
 	}
@@ -988,15 +989,15 @@ func TestExportGraph_CurrentEntitiesPageIDsBeforeFetching(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "b"})
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "b"})
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	if _, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), nil); err != nil {
+	if _, err := g.Rels.AddByID(context.Background(), "LINKS", start.ID(), end.ID(), nil); err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
 
@@ -1034,22 +1035,22 @@ func TestExportGraph_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "b"})
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "b"})
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.AddByID(context.Background(), "LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
-	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "c"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "c"}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
-	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("Update rel: %v", err)
 	}
 
@@ -1114,22 +1115,22 @@ func TestExportGraph_HistoryFallsBackWithoutVersionPager(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.AddByID(context.Background(), "LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
-	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "b"}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
-	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("Update rel: %v", err)
 	}
 
@@ -1155,22 +1156,22 @@ func TestExportGraph_IgnoresInheritedNativeHistoryPagerOnWrapper(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	rel, err := g.Rels.AddByID("LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.AddByID(context.Background(), "LINKS", start.ID(), end.ID(), map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
-	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "b"}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
-	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("Update rel: %v", err)
 	}
 
@@ -1262,7 +1263,7 @@ func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
 	// Create 1100 nodes — more than exportBatchSize (1024) to exercise pagination.
 	const total = 1100
 	for i := 0; i < total; i++ {
-		if _, err := g.Nodes.Add([]string{"Batch"}, map[string]any{"i": i}); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), []string{"Batch"}, map[string]any{"i": i}); err != nil {
 			t.Fatalf("AddNode %d: %v", i, err)
 		}
 	}
@@ -1280,7 +1281,7 @@ func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
 	}
 	defer g2.Close() //nolint:errcheck
 
-	if err := g2.IO.Import(&buf); err != nil {
+	if err := g2.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 

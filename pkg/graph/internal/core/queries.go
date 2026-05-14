@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"errors"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -25,24 +24,10 @@ func (c *Core) lookupRelTypeQueryToken(typeName string) (uint16, bool) {
 }
 
 // --- Store passthrough queries ---
-
-// Get retrieves a node by snowflake ID.
-func (n *NodeOps) Get(id types.NodeID) (*types.Node, error) {
-	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
-	return c.Nodes.GetWithContext(context.Background(), id)
-}
-
-// Get retrieves a relationship by snowflake ID.
-func (r *RelOps) Get(id types.RelID) (*types.Relationship, error) {
-	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
-	return c.Rels.GetWithContext(context.Background(), id)
-}
+//
+// Get is defined alongside Delete in node_delete.go / relationship_delete.go;
+// the API 4.0 collapse merged the historical Get/GetWithContext pair into a
+// single context-aware Get.
 
 // ByLabel returns nodes with the given label (resolved from string),
 // with optional pagination. Returns nil if the label is not registered.

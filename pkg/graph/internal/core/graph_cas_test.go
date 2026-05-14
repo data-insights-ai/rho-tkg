@@ -17,10 +17,10 @@ import (
 func TestCAS_Match(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", "draft", "published")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", "draft", "published")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestCAS_Match(t *testing.T) {
 		t.Fatal("CAS should return true on match")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := got.GetProperty("status")
 	if v != "published" {
 		t.Fatalf("status = %v, want published", v)
@@ -38,10 +38,10 @@ func TestCAS_Match(t *testing.T) {
 func TestCAS_Mismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", "archived", "published")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", "archived", "published")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestCAS_Mismatch(t *testing.T) {
 		t.Fatal("CAS should return false on mismatch")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := got.GetProperty("status")
 	if v != "draft" {
 		t.Fatalf("status = %v, want draft (unchanged)", v)
@@ -59,10 +59,10 @@ func TestCAS_Mismatch(t *testing.T) {
 func TestCAS_NilExpected_Absent(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", nil, "active")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", nil, "active")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestCAS_NilExpected_Absent(t *testing.T) {
 		t.Fatal("CAS should return true when expected=nil and property absent")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, found := got.GetProperty("status")
 	if !found || v != "active" {
 		t.Fatalf("status = (%v, %v), want (active, true)", v, found)
@@ -83,10 +83,10 @@ func TestCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
 		Store:      memory.New(),
 		Validation: ValidationLimits{MaxPropertiesPerEntity: 1},
 	})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"a": 1})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"a": 1})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "b", nil, 2)
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "b", nil, 2)
 	if err == nil {
 		t.Fatal("expected property count limit error")
 	}
@@ -97,7 +97,7 @@ func TestCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
 		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
 	}
 
-	got, getErr := g.Nodes.Get(id)
+	got, getErr := g.Nodes.Get(context.Background(), id)
 	if getErr != nil {
 		t.Fatal(getErr)
 	}
@@ -112,10 +112,10 @@ func TestCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
 func TestCAS_NilExpected_Present(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", nil, "active")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", nil, "active")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,10 +127,10 @@ func TestCAS_NilExpected_Present(t *testing.T) {
 func TestCAS_DeleteOnMatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", "draft", nil)
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", "draft", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestCAS_DeleteOnMatch(t *testing.T) {
 		t.Fatal("CAS should return true on match+delete")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	if _, found := got.GetProperty("status"); found {
 		t.Fatal("property should be deleted")
 	}
@@ -147,10 +147,10 @@ func TestCAS_DeleteOnMatch(t *testing.T) {
 func TestCAS_NilBoth_Absent(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", nil, nil)
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,10 +162,10 @@ func TestCAS_NilBoth_Absent(t *testing.T) {
 func TestCAS_ShadowKey(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	_, err := g.Nodes.CompareAndSetProperty(id, "tkg_labels", nil, "hack")
+	_, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "tkg_labels", nil, "hack")
 	if err == nil {
 		t.Fatal("CAS should reject tkg_ prefix")
 	}
@@ -178,7 +178,7 @@ func TestCAS_NodeNotFound(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 
-	_, err := g.Nodes.CompareAndSetProperty(types.NodeID(999999), "status", nil, "x")
+	_, err := g.Nodes.CompareAndSetProperty(context.Background(), types.NodeID(999999), "status", nil, "x")
 	if err == nil {
 		t.Fatal("CAS should return error for non-existent node")
 	}
@@ -190,17 +190,17 @@ func TestCAS_NodeNotFound(t *testing.T) {
 func TestCAS_VersionBump(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"v": 1})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
-	before, _ := g.Nodes.Get(id)
+	before, _ := g.Nodes.Get(context.Background(), id)
 	vBefore := before.Version()
 
-	ok, _ := g.Nodes.CompareAndSetProperty(id, "v", 1, 2)
+	ok, _ := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", 1, 2)
 	if !ok {
 		t.Fatal("CAS should succeed")
 	}
 
-	after, _ := g.Nodes.Get(id)
+	after, _ := g.Nodes.Get(context.Background(), id)
 	if after.Version() != vBefore+1 {
 		t.Fatalf("version = %d, want %d", after.Version(), vBefore+1)
 	}
@@ -209,17 +209,17 @@ func TestCAS_VersionBump(t *testing.T) {
 func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"v": 1})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
-	before, _ := g.Nodes.Get(id)
+	before, _ := g.Nodes.Get(context.Background(), id)
 	vBefore := before.Version()
 
-	ok, _ := g.Nodes.CompareAndSetProperty(id, "v", 999, 2)
+	ok, _ := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", 999, 2)
 	if ok {
 		t.Fatal("CAS should fail on mismatch")
 	}
 
-	after, _ := g.Nodes.Get(id)
+	after, _ := g.Nodes.Get(context.Background(), id)
 	if after.Version() != vBefore {
 		t.Fatalf("version = %d, want %d (unchanged)", after.Version(), vBefore)
 	}
@@ -228,10 +228,10 @@ func TestCAS_NoVersionBumpOnMismatch(t *testing.T) {
 func TestCAS_History(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"v": 1})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": 1})
 	id := n.ID()
 
-	ok, _ := g.Nodes.CompareAndSetProperty(id, "v", 1, 2)
+	ok, _ := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", 1, 2)
 	if !ok {
 		t.Fatal("CAS should succeed")
 	}
@@ -253,11 +253,11 @@ func TestCAS_History(t *testing.T) {
 func TestCAS_TypeMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"v": int(42)})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": int(42)})
 	id := n.ID()
 
 	// int64(42) != int(42) — type must match exactly.
-	ok, err := g.Nodes.CompareAndSetProperty(id, "v", int64(42), int(99))
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", int64(42), int(99))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestCAS_TypeMismatch(t *testing.T) {
 		t.Fatal("CAS should fail: int64(42) != int(42)")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := got.GetProperty("v")
 	if v != int(42) {
 		t.Fatalf("v = %v, want 42 (unchanged)", v)
@@ -275,16 +275,16 @@ func TestCAS_TypeMismatch(t *testing.T) {
 func TestCAS_InvalidExpectedValueRejectedBeforeMutation(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 
-	ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "status", []any{struct{ X int }{X: 1}}, "published")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "status", []any{struct{ X int }{X: 1}}, "published")
 	if ok {
 		t.Fatal("CAS should not report success for unsupported expected values")
 	}
 	if !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Fatalf("CompareAndSetProperty invalid expected = %v, want ErrUnsupportedValueType", err)
 	}
-	got, err := g.Nodes.Get(n.ID())
+	got, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -296,14 +296,14 @@ func TestCAS_InvalidExpectedValueRejectedBeforeMutation(t *testing.T) {
 func TestCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 		"score": float64(math.NaN()),
 		"vec":   []float32{1, float32(math.NaN())},
 		"meta":  map[string]any{"score": float32(math.NaN())},
 	})
 	id := n.ID()
 
-	ok, err := g.Nodes.CompareAndSetProperty(id, "score", float64(math.NaN()), "matched")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "score", float64(math.NaN()), "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 		t.Fatal("CAS should match scalar NaN properties")
 	}
 
-	ok, err = g.Nodes.CompareAndSetProperty(id, "vec", []float32{1, float32(math.NaN())}, "matched")
+	ok, err = g.Nodes.CompareAndSetProperty(context.Background(), id, "vec", []float32{1, float32(math.NaN())}, "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 		t.Fatal("CAS should match NaN inside []float32 properties")
 	}
 
-	ok, err = g.Nodes.CompareAndSetProperty(id, "meta", map[string]any{"score": float32(math.NaN())}, "matched")
+	ok, err = g.Nodes.CompareAndSetProperty(context.Background(), id, "meta", map[string]any{"score": float32(math.NaN())}, "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,9 +331,9 @@ func TestCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 func TestCAS_NaNStillRequiresExactType(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"score": float32(math.NaN())})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"score": float32(math.NaN())})
 
-	ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "score", float64(math.NaN()), "matched")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "score", float64(math.NaN()), "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,12 +352,12 @@ func TestCAS_RegisteredCustomStructNaNMatches(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	want := casNaNProperty{Score: math.NaN(), Trail: []float32{float32(math.NaN())}}
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"shape": want})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"shape": want})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "shape", casNaNProperty{Score: math.NaN(), Trail: []float32{float32(math.NaN())}}, "matched")
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "shape", casNaNProperty{Score: math.NaN(), Trail: []float32{float32(math.NaN())}}, "matched")
 	if err != nil {
 		t.Fatalf("node CAS: %v", err)
 	}
@@ -365,19 +365,19 @@ func TestCAS_RegisteredCustomStructNaNMatches(t *testing.T) {
 		t.Fatal("node CAS should match NaN fields inside registered custom structs")
 	}
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"shape": want})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"shape": want})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	ok, err = g.Rels.CompareAndSetProperty(r.ID(), "shape", casNaNProperty{Score: math.NaN(), Trail: []float32{float32(math.NaN())}}, "matched")
+	ok, err = g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "shape", casNaNProperty{Score: math.NaN(), Trail: []float32{float32(math.NaN())}}, "matched")
 	if err != nil {
 		t.Fatalf("relationship CAS: %v", err)
 	}
@@ -582,11 +582,11 @@ func (p casNaNProperty) DeepCopyValue() any {
 func TestCAS_DeleteMismatch(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	id := n.ID()
 
 	// Try to delete with wrong expected value.
-	ok, err := g.Nodes.CompareAndSetProperty(id, "status", "archived", nil)
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "status", "archived", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -594,7 +594,7 @@ func TestCAS_DeleteMismatch(t *testing.T) {
 		t.Fatal("CAS delete should fail on mismatch")
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, found := got.GetProperty("status")
 	if !found || v != "draft" {
 		t.Fatalf("status = (%v, %v), want (draft, true) — unchanged", v, found)
@@ -604,9 +604,9 @@ func TestCAS_DeleteMismatch(t *testing.T) {
 func TestCAS_WithContextRejectsNilContext(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	ok, err := g.Nodes.CompareAndSetPropertyWithContext(nil, n.ID(), "status", nil, "active") //nolint:staticcheck // intentional nil context boundary test
+	ok, err := g.Nodes.CompareAndSetProperty(nil, n.ID(), "status", nil, "active") //nolint:staticcheck // intentional nil context boundary test
 	if ok {
 		t.Fatal("CAS should not report success for nil context")
 	}
@@ -622,7 +622,7 @@ func TestCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"status": "draft"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 	defer cancel()
 	store.cancel = cancel
 
-	ok, err := g.Nodes.CompareAndSetPropertyWithContext(ctx, n.ID(), "status", "draft", "published")
+	ok, err := g.Nodes.CompareAndSetProperty(ctx, n.ID(), "status", "draft", "published")
 	if ok {
 		t.Fatal("CAS should not report success when context is canceled after the entity read")
 	}
@@ -639,7 +639,7 @@ func TestCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 		t.Fatalf("CompareAndSetPropertyWithContext = %v, want context.Canceled", err)
 	}
 
-	got, err := g.Nodes.Get(n.ID())
+	got, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -669,15 +669,15 @@ func newRelCASFixture(t *testing.T, props map[string]any) (*Core, types.RelID) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, props)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, props)
 	if err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
@@ -688,7 +688,7 @@ func TestRelCAS_Match(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", "draft", "published")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", "draft", "published")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -696,7 +696,7 @@ func TestRelCAS_Match(t *testing.T) {
 		t.Fatal("relationship CAS should return true on match")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("status")
 	if v != "published" {
 		t.Fatalf("status = %v, want published", v)
@@ -707,7 +707,7 @@ func TestRelCAS_Mismatch(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", "archived", "published")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", "archived", "published")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,7 +715,7 @@ func TestRelCAS_Mismatch(t *testing.T) {
 		t.Fatal("relationship CAS should return false on mismatch")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("status")
 	if v != "draft" {
 		t.Fatalf("status = %v, want draft (unchanged)", v)
@@ -726,7 +726,7 @@ func TestRelCAS_NilExpectedAbsent(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, nil)
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", nil, "active")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", nil, "active")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -734,7 +734,7 @@ func TestRelCAS_NilExpectedAbsent(t *testing.T) {
 		t.Fatal("relationship CAS should return true when expected=nil and property absent")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, found := got.GetProperty("status")
 	if !found || v != "active" {
 		t.Fatalf("status = (%v, %v), want (active, true)", v, found)
@@ -750,11 +750,11 @@ func TestRelCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"a": 1})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"a": 1})
 
-	ok, err := g.Rels.CompareAndSetProperty(r.ID(), "b", nil, 2)
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "b", nil, 2)
 	if err == nil {
 		t.Fatal("expected property count limit error")
 	}
@@ -765,7 +765,7 @@ func TestRelCAS_AddPropertyRejectsFinalPropertyCountOverLimit(t *testing.T) {
 		t.Fatalf("expected ErrTooManyProperties, got: %v", err)
 	}
 
-	got, getErr := g.Rels.Get(r.ID())
+	got, getErr := g.Rels.Get(context.Background(), r.ID())
 	if getErr != nil {
 		t.Fatal(getErr)
 	}
@@ -781,7 +781,7 @@ func TestRelCAS_NilExpectedPresent(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", nil, "active")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", nil, "active")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -794,7 +794,7 @@ func TestRelCAS_DeleteOnMatch(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", "draft", nil)
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", "draft", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +802,7 @@ func TestRelCAS_DeleteOnMatch(t *testing.T) {
 		t.Fatal("relationship CAS should return true on match+delete")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	if _, found := got.GetProperty("status"); found {
 		t.Fatal("property should be deleted")
 	}
@@ -812,7 +812,7 @@ func TestRelCAS_NilBothAbsent(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, nil)
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", nil, nil)
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -825,7 +825,7 @@ func TestRelCAS_ShadowKey(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, nil)
 
-	_, err := g.Rels.CompareAndSetProperty(id, "tkg_type", nil, "hack")
+	_, err := g.Rels.CompareAndSetProperty(context.Background(), id, "tkg_type", nil, "hack")
 	if err == nil {
 		t.Fatal("relationship CAS should reject tkg_ prefix")
 	}
@@ -838,14 +838,14 @@ func TestRelCAS_InvalidNewValueRejectedBeforeMutation(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, nil)
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "bad", nil, struct{ X int }{X: 1})
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "bad", nil, struct{ X int }{X: 1})
 	if ok {
 		t.Fatal("relationship CAS should not report success for unsupported property values")
 	}
 	if !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Fatalf("CompareAndSetProperty invalid value = %v, want ErrUnsupportedValueType", err)
 	}
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -858,14 +858,14 @@ func TestRelCAS_InvalidExpectedValueRejectedBeforeMutation(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", []any{struct{ X int }{X: 1}}, "published")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", []any{struct{ X int }{X: 1}}, "published")
 	if ok {
 		t.Fatal("relationship CAS should not report success for unsupported expected values")
 	}
 	if !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Fatalf("CompareAndSetProperty invalid expected = %v, want ErrUnsupportedValueType", err)
 	}
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -878,7 +878,7 @@ func TestRelCAS_NotFound(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 
-	_, err := g.Rels.CompareAndSetProperty(types.RelID(999999), "status", nil, "x")
+	_, err := g.Rels.CompareAndSetProperty(context.Background(), types.RelID(999999), "status", nil, "x")
 	if err == nil {
 		t.Fatal("relationship CAS should return error for non-existent relationship")
 	}
@@ -890,15 +890,15 @@ func TestRelCAS_NotFound(t *testing.T) {
 func TestRelCAS_VersionBump(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"v": 1})
-	before, _ := g.Rels.Get(id)
+	before, _ := g.Rels.Get(context.Background(), id)
 	vBefore := before.Version()
 
-	ok, _ := g.Rels.CompareAndSetProperty(id, "v", 1, 2)
+	ok, _ := g.Rels.CompareAndSetProperty(context.Background(), id, "v", 1, 2)
 	if !ok {
 		t.Fatal("relationship CAS should succeed")
 	}
 
-	after, _ := g.Rels.Get(id)
+	after, _ := g.Rels.Get(context.Background(), id)
 	if after.Version() != vBefore+1 {
 		t.Fatalf("version = %d, want %d", after.Version(), vBefore+1)
 	}
@@ -907,15 +907,15 @@ func TestRelCAS_VersionBump(t *testing.T) {
 func TestRelCAS_NoVersionBumpOnMismatch(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"v": 1})
-	before, _ := g.Rels.Get(id)
+	before, _ := g.Rels.Get(context.Background(), id)
 	vBefore := before.Version()
 
-	ok, _ := g.Rels.CompareAndSetProperty(id, "v", 999, 2)
+	ok, _ := g.Rels.CompareAndSetProperty(context.Background(), id, "v", 999, 2)
 	if ok {
 		t.Fatal("relationship CAS should fail on mismatch")
 	}
 
-	after, _ := g.Rels.Get(id)
+	after, _ := g.Rels.Get(context.Background(), id)
 	if after.Version() != vBefore {
 		t.Fatalf("version = %d, want %d (unchanged)", after.Version(), vBefore)
 	}
@@ -925,7 +925,7 @@ func TestRelCAS_History(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"v": 1})
 
-	ok, _ := g.Rels.CompareAndSetProperty(id, "v", 1, 2)
+	ok, _ := g.Rels.CompareAndSetProperty(context.Background(), id, "v", 1, 2)
 	if !ok {
 		t.Fatal("relationship CAS should succeed")
 	}
@@ -947,7 +947,7 @@ func TestRelCAS_TypeMismatch(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"v": int(42)})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "v", int64(42), int(99))
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "v", int64(42), int(99))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +955,7 @@ func TestRelCAS_TypeMismatch(t *testing.T) {
 		t.Fatal("relationship CAS should fail: int64(42) != int(42)")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("v")
 	if v != int(42) {
 		t.Fatalf("v = %v, want 42 (unchanged)", v)
@@ -969,7 +969,7 @@ func TestRelCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 		"trail":  []any{float32(math.NaN()), "done"},
 	})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "weight", float64(math.NaN()), "matched")
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "weight", float64(math.NaN()), "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,7 +977,7 @@ func TestRelCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 		t.Fatal("relationship CAS should match scalar NaN properties")
 	}
 
-	ok, err = g.Rels.CompareAndSetProperty(id, "trail", []any{float32(math.NaN()), "done"}, "matched")
+	ok, err = g.Rels.CompareAndSetProperty(context.Background(), id, "trail", []any{float32(math.NaN()), "done"}, "matched")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -990,7 +990,7 @@ func TestRelCAS_DeleteMismatch(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"status": "draft"})
 
-	ok, err := g.Rels.CompareAndSetProperty(id, "status", "archived", nil)
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "status", "archived", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,7 +998,7 @@ func TestRelCAS_DeleteMismatch(t *testing.T) {
 		t.Fatal("relationship CAS delete should fail on mismatch")
 	}
 
-	got, _ := g.Rels.Get(id)
+	got, _ := g.Rels.Get(context.Background(), id)
 	v, found := got.GetProperty("status")
 	if !found || v != "draft" {
 		t.Fatalf("status = (%v, %v), want (draft, true) — unchanged", v, found)
@@ -1009,7 +1009,7 @@ func TestRelCAS_WithContextRejectsNilContext(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, nil)
 
-	ok, err := g.Rels.CompareAndSetPropertyWithContext(nil, id, "status", nil, "active") //nolint:staticcheck // intentional nil context boundary test
+	ok, err := g.Rels.CompareAndSetProperty(nil, id, "status", nil, "active") //nolint:staticcheck // intentional nil context boundary test
 	if ok {
 		t.Fatal("relationship CAS should not report success for nil context")
 	}
@@ -1025,15 +1025,15 @@ func TestRelCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1042,7 +1042,7 @@ func TestRelCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 	defer cancel()
 	store.cancel = cancel
 
-	ok, err := g.Rels.CompareAndSetPropertyWithContext(ctx, r.ID(), "status", "draft", "published")
+	ok, err := g.Rels.CompareAndSetProperty(ctx, r.ID(), "status", "draft", "published")
 	if ok {
 		t.Fatal("relationship CAS should not report success when context is canceled after the locked entity read")
 	}
@@ -1050,7 +1050,7 @@ func TestRelCAS_WithContextCanceledAfterReadDoesNotPersist(t *testing.T) {
 		t.Fatalf("CompareAndSetPropertyWithContext = %v, want context.Canceled", err)
 	}
 
-	got, err := g.Rels.Get(r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -1066,15 +1066,15 @@ func TestRelCAS_WithContextCanceledBeforePersistDoesNotPersist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1083,7 +1083,7 @@ func TestRelCAS_WithContextCanceledBeforePersistDoesNotPersist(t *testing.T) {
 	defer cancel()
 	store.cancel = cancel
 
-	ok, err := g.Rels.CompareAndSetPropertyWithContext(ctx, r.ID(), "status", "draft", "published")
+	ok, err := g.Rels.CompareAndSetProperty(ctx, r.ID(), "status", "draft", "published")
 	if ok {
 		t.Fatal("relationship CAS should not report success when context is canceled before persist")
 	}
@@ -1091,7 +1091,7 @@ func TestRelCAS_WithContextCanceledBeforePersistDoesNotPersist(t *testing.T) {
 		t.Fatalf("CompareAndSetPropertyWithContext = %v, want context.Canceled", err)
 	}
 
-	got, err := g.Rels.Get(r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}

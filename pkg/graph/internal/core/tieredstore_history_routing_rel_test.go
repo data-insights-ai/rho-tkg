@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -18,15 +19,15 @@ import (
 // relationship and return a checkin that is safe to invoke.
 func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	a, err := g.Nodes.Add([]string{"Case"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Case"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("LINK", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,23 +65,23 @@ func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T)
 // fallback combined with shardForRelIDChecked.
 func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	caseN, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signalN, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalN, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("OBSERVED", caseN, signalN, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", caseN, signalN, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	relID := r.ID()
-	if _, err := g.Rels.Update(relID, map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Rels.Delete(relID); err != nil {
+	if err := g.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -114,19 +115,19 @@ func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
 func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	refA, err := g.Nodes.Add([]string{"Case"}, nil)
+	refA, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("Add ref A: %v", err)
 	}
-	refB, err := g.Nodes.Add([]string{"Case"}, nil)
+	refB, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("Add ref B: %v", err)
 	}
-	refRel, err := g.Rels.Add("LINK", refA, refB, map[string]any{"v": int64(1)})
+	refRel, err := g.Rels.Add(context.Background(), "LINK", refA, refB, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("Add ref rel: %v", err)
 	}
-	if _, err := g.Rels.Update(refRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), refRel.ID(), map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("Update ref rel: %v", err)
 	}
 	refPage, err := ts.RelHistoryVersionsFrom(refRel.ID(), 0, 1)
@@ -147,19 +148,19 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 		t.Fatalf("RelHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
 	}
 
-	eventA, err := g.Nodes.Add([]string{"Signal"}, nil)
+	eventA, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("Add event A: %v", err)
 	}
-	eventB, err := g.Nodes.Add([]string{"Signal"}, nil)
+	eventB, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("Add event B: %v", err)
 	}
-	eventRel, err := g.Rels.Add("LINK", eventA, eventB, map[string]any{"v": int64(1)})
+	eventRel, err := g.Rels.Add(context.Background(), "LINK", eventA, eventB, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("Add event rel: %v", err)
 	}
-	if _, err := g.Rels.Update(eventRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), eventRel.ID(), map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("Update event rel: %v", err)
 	}
 	eventPage, err := ts.RelHistoryVersionsFrom(eventRel.ID(), 0, 1)
@@ -170,11 +171,11 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 		t.Fatalf("live event rel page versions = %v, want [0]", relVersionsForTest(eventPage))
 	}
 
-	archivedRel, err := g.Rels.Add("OWNS", refA, refB, map[string]any{"v": int64(1)})
+	archivedRel, err := g.Rels.Add(context.Background(), "OWNS", refA, refB, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("Add archive rel: %v", err)
 	}
-	if _, err := g.Rels.Update(archivedRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), archivedRel.ID(), map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("Update archive rel before archive: %v", err)
 	}
 	if err := ts.ArchiveNode(refA.ID()); err != nil {
@@ -187,7 +188,7 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 	if len(archivePage) == 0 {
 		t.Fatal("RelHistoryVersionsFrom archived rel returned no history")
 	}
-	if _, err := g.Rels.Update(archivedRel.ID(), map[string]any{"v": int64(3)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), archivedRel.ID(), map[string]any{"v": int64(3)}); err != nil {
 		t.Fatalf("Update archived rel: %v", err)
 	}
 	if err := ts.RestoreNode(refA.ID()); err != nil {
@@ -206,25 +207,25 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 // the tombstone history (on the start-node's shard) and truncate it.
 func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	caseN, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signalN, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalN, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("OBSERVED", caseN, signalN, map[string]any{"w": int64(0)})
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", caseN, signalN, map[string]any{"w": int64(0)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	relID := r.ID()
 	for i := 1; i <= 3; i++ {
-		if _, err := g.Rels.Update(relID, map[string]any{"w": int64(i)}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(i)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := g.Rels.Delete(relID); err != nil {
+	if err := g.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,11 +277,11 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 	g, ts := newTestTieredGraph(t)
 
 	// Step 1: nodes created in the original hot shard.
-	a, err := g.Nodes.Add([]string{"Signal"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Signal"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +302,7 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 	// Step 3: create the rel AFTER rotation. Its snowflake timestamp lands in
 	// the new hot shard's window, but the rel entity routes to the start
 	// node's home shard (= origin / now-warm shard).
-	r, err := g.Rels.Add("OBSERVED", a, b, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,10 +310,10 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 
 	// Step 4: update + delete the rel. Tombstone history is written to the
 	// origin (warm) shard via the start-node-routing rule.
-	if _, err := g.Rels.Update(relID, map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Rels.Delete(relID); err != nil {
+	if err := g.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -343,11 +344,11 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Signal"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Signal"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +365,7 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	}
 	time.Sleep(2 * time.Millisecond)
 
-	r, err := g.Rels.Add("OBSERVED", a, b, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +379,7 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 	}
 	assertRelIDs(t, "OutgoingRelationships proves rel remains live on start shard", outgoing, []types.RelID{relID})
 
-	got, err := g.Rels.Get(relID)
+	got, err := g.Rels.Get(context.Background(), relID)
 	if err != nil {
 		t.Errorf("GetRelationship(%d) after start shard cold demotion: %v", relID, err)
 	} else if got.ID() != relID {
@@ -406,11 +407,11 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *testing.T) {
 	g, ts := newDiskTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Signal"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Signal"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +426,7 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 	}
 	time.Sleep(2 * time.Millisecond)
 
-	r, err := g.Rels.Add("OBSERVED", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "OBSERVED", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +493,7 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 	t.Run("Graph.Nodes.History current node", func(t *testing.T) {
 		g, _, cold := newTieredGraphWithClosedColdShard(t)
-		n, err := g.Nodes.Add([]string{"Case"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -509,15 +510,15 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 
 	t.Run("Graph.Rels.History current rel", func(t *testing.T) {
 		g, _, cold := newTieredGraphWithClosedColdShard(t)
-		a, err := g.Nodes.Add([]string{"Case"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Case"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("LINK", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -534,7 +535,7 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 
 	t.Run("Store.Nodes.GetVersion missing version", func(t *testing.T) {
 		g, ts, cold := newTieredGraphWithClosedColdShard(t)
-		n, err := g.Nodes.Add([]string{"Case"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -548,15 +549,15 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 
 	t.Run("Store.GetRelVersion missing version", func(t *testing.T) {
 		g, ts, cold := newTieredGraphWithClosedColdShard(t)
-		a, err := g.Nodes.Add([]string{"Case"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Case"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("LINK", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -570,7 +571,7 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 
 	t.Run("Store.TruncateNodeHistory current node", func(t *testing.T) {
 		g, ts, cold := newTieredGraphWithClosedColdShard(t)
-		n, err := g.Nodes.Add([]string{"Case"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -583,15 +584,15 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 
 	t.Run("Store.TruncateRelHistory current rel", func(t *testing.T) {
 		g, ts, cold := newTieredGraphWithClosedColdShard(t)
-		a, err := g.Nodes.Add([]string{"Case"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Case"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("LINK", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -636,15 +637,15 @@ func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T
 func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode Case: %v", err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode Signal: %v", err)
 	}
-	r, err := g.Rels.Add("OBSERVES", caseNode, signalNode, nil)
+	r, err := g.Rels.Add(context.Background(), "OBSERVES", caseNode, signalNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -661,7 +662,7 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 	}
 	demoteToCold(ts, originName)
 
-	if err := g.Rels.Delete(relID); err != nil {
+	if err := g.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatalf("DeleteRelationship after cold demotion: %v", err)
 	}
 
@@ -690,15 +691,15 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 
 	t.Run("UpdateRelationship after cold demotion", func(t *testing.T) {
 		g, ts := newTestTieredGraph(t)
-		a, err := g.Nodes.Add([]string{"Signal"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Signal"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("OBSERVES", a, b, map[string]any{"w": int64(1)})
+		r, err := g.Rels.Add(context.Background(), "OBSERVES", a, b, map[string]any{"w": int64(1)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -706,10 +707,10 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 
 		rotateAndDemoteHot(t, ts)
 
-		if _, err := g.Rels.Update(relID, map[string]any{"w": int64(2)}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)}); err != nil {
 			t.Fatalf("UpdateRelationship after cold demotion: %v", err)
 		}
-		got, err := g.Rels.Get(relID)
+		got, err := g.Rels.Get(context.Background(), relID)
 		if err != nil {
 			t.Fatalf("GetRelationship after update: %v", err)
 		}
@@ -735,15 +736,15 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 
 	t.Run("DeleteRelationship full lifecycle after cold demotion", func(t *testing.T) {
 		g, ts := newTestTieredGraph(t)
-		a, err := g.Nodes.Add([]string{"Signal"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Signal"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("OBSERVES", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "OBSERVES", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -751,7 +752,7 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 
 		rotateAndDemoteHot(t, ts)
 
-		if err := g.Rels.Delete(relID); err != nil {
+		if err := g.Rels.Delete(context.Background(), relID); err != nil {
 			t.Fatalf("DeleteRelationship after cold demotion: %v", err)
 		}
 
@@ -777,15 +778,15 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	src, err := g.Nodes.Add([]string{"Case"}, nil)
+	src, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode src: %v", err)
 	}
-	dst, err := g.Nodes.Add([]string{"Case"}, nil)
+	dst, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode dst: %v", err)
 	}
-	r, err := g.Rels.Add("LINKS", src, dst, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", src, dst, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -863,7 +864,7 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"k": "v"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -902,7 +903,7 @@ func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
 func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"k": "v"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -942,15 +943,15 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("RAISED", caseNode, signalNode, nil)
+	r, err := g.Rels.Add(context.Background(), "RAISED", caseNode, signalNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -969,7 +970,7 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 
 	// Use the cascade-history aware Graph delete path so DeleteRelWithHistory
 	// is exercised cross-shard (start on refShard, end on event shard).
-	if err := g.Rels.Delete(rid); err != nil {
+	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
@@ -1002,15 +1003,15 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Case"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Case"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1057,15 +1058,15 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 // rollback would leave inIdx in a state different from before the delete.
 func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("RAISED", caseNode, signalNode, nil)
+	r, err := g.Rels.Add(context.Background(), "RAISED", caseNode, signalNode, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

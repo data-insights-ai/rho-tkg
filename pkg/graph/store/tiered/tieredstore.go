@@ -515,6 +515,17 @@ func (ts *Store) Close() error {
 	return closeErr
 }
 
+// recordBackgroundError appends a background-task failure to the store's
+// sticky error set. Once recorded, every subsequent checkout/read/write path
+// returns the combined error via backgroundError() and the store is
+// effectively poisoned — there is no clear/reset path. This is intentional
+// "fail loud" behavior for catalog-save corruption, idle-shard close
+// failures, and rotation errors that compromise persistence integrity.
+//
+// Operational note: a transient OS-level close error (e.g., an NFS hiccup
+// during idle-shard close) currently produces the same poison effect as a
+// catalog-save failure. If your deployment cannot tolerate this conflation,
+// run on local storage and avoid network filesystems for the data dir.
 func (ts *Store) recordBackgroundError(err error) {
 	if err == nil {
 		return
@@ -524,6 +535,9 @@ func (ts *Store) recordBackgroundError(err error) {
 	ts.bgErrMu.Unlock()
 }
 
+// backgroundError returns the sticky background-error set. Once non-nil,
+// stays non-nil for the store's lifetime — there is no recovery from a
+// background error, callers must close the store and re-open.
 func (ts *Store) backgroundError() error {
 	ts.bgErrMu.Lock()
 	defer ts.bgErrMu.Unlock()

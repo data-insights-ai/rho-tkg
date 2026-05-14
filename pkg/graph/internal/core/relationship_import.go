@@ -37,7 +37,7 @@ func (r *RelOps) Import(ctx context.Context, id types.RelID, typeName string, st
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	if rel != nil {
+	if rel != nil && ep != nil {
 		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventRelCreate, EntityID: types.EntityID(rel.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
 	}
 	return rel, err

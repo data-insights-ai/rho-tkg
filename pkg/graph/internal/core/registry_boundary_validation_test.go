@@ -8,6 +8,7 @@ import (
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestImportRejectsRegistryNamesOverGraphLimit(t *testing.T) {
@@ -45,7 +46,7 @@ func TestImportRejectsRegistryNamesOverGraphLimit(t *testing.T) {
 			writeImportMsgpackRecord(t, &stream, exportTagHeader, exportHeader{Version: exportFormatVersion})
 			writeImportMsgpackRecord(t, &stream, exportTagRegistry, tc.reg)
 
-			err = g.IO.Import(bytes.NewReader(stream.Bytes()))
+			err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 			if !errors.Is(err, ErrNameTooLong) {
 				t.Fatalf("Import = %v, want ErrNameTooLong", err)
 			}

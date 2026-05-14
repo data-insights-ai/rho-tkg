@@ -553,6 +553,43 @@ func TestAppendPropertyValue_Float64_PositiveNegativeZero(t *testing.T) {
 	}
 }
 
+// TestAppendPropertyValue_Float64_NaN_BitsPreserved documents the same
+// "hash preserves bit pattern" contract for NaN values. IEEE-754 admits
+// multiple distinct NaN bit patterns; types.PropertyValueEqual treats them
+// as equal (CAS short-circuit semantics) but the integrity hash distinguishes
+// them. The asymmetry is intentional and mirrors the +0/-0 case above.
+//
+// Callers exchanging data with systems that canonicalize NaN bit patterns
+// (e.g., non-Go msgpack encoders, FFI boundaries) MUST canonicalize at the
+// boundary if cross-system hash chains are expected to verify.
+func TestAppendPropertyValue_Float64_NaN_BitsPreserved(t *testing.T) {
+	nanQuiet := math.Float64frombits(0x7FF8000000000001)
+	nanAlt := math.Float64frombits(0x7FF8000000000099)
+	if !math.IsNaN(nanQuiet) || !math.IsNaN(nanAlt) {
+		t.Fatal("test setup: both values must be NaN")
+	}
+	h1 := hashPropOnly(t, "k", nanQuiet)
+	h2 := hashPropOnly(t, "k", nanAlt)
+	if h1 == h2 {
+		t.Fatal("two NaN bit patterns hash identically — payload bits lost")
+	}
+}
+
+// TestAppendPropertyValue_Float32_NaN_BitsPreserved mirrors the float64 test
+// for float32 NaN. Same contract: distinct NaN bit patterns hash distinctly.
+func TestAppendPropertyValue_Float32_NaN_BitsPreserved(t *testing.T) {
+	nanQuiet := math.Float32frombits(0x7FC00001)
+	nanAlt := math.Float32frombits(0x7FC00099)
+	if !math.IsNaN(float64(nanQuiet)) || !math.IsNaN(float64(nanAlt)) {
+		t.Fatal("test setup: both values must be NaN")
+	}
+	h1 := hashPropOnly(t, "k", nanQuiet)
+	h2 := hashPropOnly(t, "k", nanAlt)
+	if h1 == h2 {
+		t.Fatal("two float32 NaN bit patterns hash identically — payload bits lost")
+	}
+}
+
 func TestAppendPropertyValue_String(t *testing.T) {
 	h1 := hashPropOnly(t, "k", "alpha")
 	h2 := hashPropOnly(t, "k", "beta")

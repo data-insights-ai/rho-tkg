@@ -1,6 +1,7 @@
 package stats_test
 
 import (
+	"context"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/stats" // godoc anchor: ExampleAPI_<method> resolves against stats.API
 )
@@ -13,8 +14,8 @@ func ExampleAPI_NodeCount() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 
 	cnt, err := g.Stats.NodeCount()
 	if err != nil {
@@ -31,8 +32,8 @@ func ExampleAPI_NodeCountByLabel() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	_, _ = g.Nodes.Add([]string{"Org"}, map[string]any{"name": "BDS"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Org"}, map[string]any{"name": "BDS"})
 
 	cnt, err := g.Stats.NodeCountByLabel("Person")
 	if err != nil {
@@ -50,7 +51,7 @@ func ExampleAPI_AllLabelCounts() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	counts, err := g.Stats.AllLabelCounts()
 	if err != nil {
 		panic(err)

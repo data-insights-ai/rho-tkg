@@ -158,7 +158,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 	// Apply the same self-loop policy as the standalone path
 	// (addRelationshipInternal). Without this gate a default graph would
-	// reject c.Rels.Add("R", n, n, nil) but accept the same rel
+	// reject c.Rels.Add(context.Background(), "R", n, n, nil) but accept the same rel
 	// through batch execution.
 	if startID == endID && !b.g.validation.AllowSelfLoops {
 		return nil, ErrSelfLoop

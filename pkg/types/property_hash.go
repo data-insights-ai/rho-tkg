@@ -148,8 +148,18 @@ func appendPropertyValueHashBytes(buf []byte, v any, depth int) []byte {
 	case uint64:
 		buf = binary.BigEndian.AppendUint64(buf, val)
 	case float32:
+		// Hash by raw IEEE-754 bit pattern. Preserves ±0 sign-bit distinction
+		// (deliberate — see TestAppendPropertyValue_Float64_PositiveNegativeZero)
+		// and NaN payload bits (deliberate — see
+		// TestAppendPropertyValue_Float32_NaN_BitsPreserved). PropertyValueEqual
+		// treats all NaN as equal for CAS short-circuit purposes, so a no-op
+		// SetProperty that replaces one NaN bit pattern with another will not
+		// trigger a version bump; but a fresh write that stores a different bit
+		// pattern produces a distinct hash. Callers exchanging data with
+		// systems that canonicalize NaN bits must canonicalize at the boundary.
 		buf = binary.BigEndian.AppendUint32(buf, math.Float32bits(val))
 	case float64:
+		// See float32 comment above; same contract for float64.
 		buf = binary.BigEndian.AppendUint64(buf, math.Float64bits(val))
 	case string:
 		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115

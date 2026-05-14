@@ -16,6 +16,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"testing"
@@ -30,7 +31,7 @@ func TestR4_Import_NodeBeforeRegistry_Rejected(t *testing.T) {
 	src := newTestGraph(t)
 	defer src.Close()
 
-	if _, err := src.Nodes.Add([]string{"A"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"A"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -46,7 +47,7 @@ func TestR4_Import_NodeBeforeRegistry_Rejected(t *testing.T) {
 
 	dst := newTestGraph(t)
 	defer dst.Close()
-	err := dst.IO.Import(bytes.NewReader(stripped))
+	err := dst.IO.Import(bytes.NewReader(stripped), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import without registry: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -60,7 +61,7 @@ func TestR4_Import_RegistryBeforeHeader_Rejected(t *testing.T) {
 	src := newTestGraph(t)
 	defer src.Close()
 
-	if _, err := src.Nodes.Add([]string{"A"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"A"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +74,7 @@ func TestR4_Import_RegistryBeforeHeader_Rejected(t *testing.T) {
 
 	dst := newTestGraph(t)
 	defer dst.Close()
-	err := dst.IO.Import(bytes.NewReader(stripped))
+	err := dst.IO.Import(bytes.NewReader(stripped), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import without header: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -87,7 +88,7 @@ func TestR4_Import_ConflictingDuplicateNode_Rejected(t *testing.T) {
 	// Source graph with node A and a property "v": 1.
 	src := newTestGraph(t)
 	defer src.Close()
-	srcNode, err := src.Nodes.Add([]string{"X"}, map[string]any{"v": int64(1)})
+	srcNode, err := src.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestR4_Import_IdenticalDuplicateNode_Allowed(t *testing.T) {
 	t.Parallel()
 	src := newTestGraph(t)
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"X"}, map[string]any{"v": int64(1)}); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"v": int64(1)}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +131,7 @@ func TestR4_Import_IdenticalDuplicateNode_Allowed(t *testing.T) {
 
 	// Re-import into the SAME graph (so the existing node is byte-identical
 	// to the one in the stream).
-	if err := src.IO.Import(bytes.NewReader(stream.Bytes())); err != nil {
+	if err := src.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("idempotent re-import: %v", err)
 	}
 }

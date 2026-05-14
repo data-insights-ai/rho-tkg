@@ -626,7 +626,7 @@ g, err := graph.New(graph.Config{Store: memory.New()})
 // ...
 n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
 // Snowflake ID assigned automatically; n.ID() is the typed wrapper.
-// Context-aware variant: g.Nodes.AddWithContext(ctx, labels, props).
+// Context-aware variant: g.Nodes.Add(ctx, labels, props).
 ```
 
 ### 12.2 Relationship Creation
@@ -908,7 +908,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43z | History retention is non-negative | `TruncateNodeHistory` and `TruncateRelHistory` treat `keepVersions == 0` as explicit clear-all, but negative retention values return `ErrInvalidStoreMutation` without deleting history |
 | 43aa | Persisted entity IDs are positive | Graph import-by-ID APIs reject negative caller-supplied IDs with `ErrInvalidID`; graph update, label mutation, property CAS, close-version, delete, admin archive/restore, and tx/batch variants reject zero or negative target IDs with `ErrInvalidStoreMutation` before lookup, snapshot, capability checks, or queueing; graph relationship create/import paths reject zero or negative endpoint IDs before endpoint work; Store current-row, history snapshot, relationship index, delete/cascade, archive/restore, batch write/delete, direct single-ID read, bulk-ID read, adjacency read, Badger split-helper, and Badger repair-helper paths reject zero or negative entity IDs with `ErrInvalidStoreMutation` before mutation, not-found, scan, or no-op handling |
 | 43ab | Import staging caps are non-negative and overflow-safe | `ImportOptions.MaxStagedBytes == 0` is unlimited, positive values cap staging bytes without `staged + recordSize` overflow, and negative values return `ErrImportSizeLimit` before staging-file creation |
-| 43ac | Entity versions never wrap | Versioned mutations reject current version `math.MaxUint32` with `ErrVersionOverflow` before writing history, wrapping to version `0`, or allocating labels for rejected add-label calls; `NextVersion(..., math.MaxUint32)` returns no successor instead of wrapping to genesis |
+| 43ac | Entity versions never wrap | Versioned mutations reject current version `math.MaxUint32` with `ErrVersionOverflow` before writing history, wrapping to version `0`, or allocating labels for rejected add-label calls; `VersionAfter(..., math.MaxUint32)` returns no successor instead of wrapping to genesis |
 | 43ad | Resolver reads observe transaction isolation | No-error resolver helpers must acquire the graph read lock before reading registry pointers and return zero values once close is visible; internal mutation/hash paths already under the graph lock must use lock-free helpers instead of recursive `RLock` |
 | 43ae | Batch creates count in graph stats | Successful batch node and relationship creates increment `g.Stats.Get().NodesAdded` and `RelsAdded` in the same units as their contribution to `BatchResult.Created` |
 | 43ae1 | Batch event flushes are atomic publisher batches | `BatchBuilder.Execute` publishes buffered mutation events with one `Publisher.PublishBatch` call after releasing graph and builder locks, so async priority ordering applies to the whole batch |
@@ -926,7 +926,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43al | Batch node row delete cannot orphan relationships | `DeleteNodesBatch` returns `ErrInvalidStoreMutation` and leaves all target nodes unchanged when any target node still has connected relationships |
 | 43am | Graph node delete tombstones use Phase B state | `deleteNodeInternal` re-reads the node after locking the node plus connected relationships and builds the node tombstone from that locked row, not from the initial adjacency-scan snapshot |
 | 43an | Explicit adjacency targets are all-or-error | Outgoing/incoming adjacency reads return `ErrNodeNotFound` for any missing requested node while preserving empty results for existing nodes with no matching relationships; batched reads must not return partial maps when a requested node is absent; temporal neighbor queries validate target validity at the queried instant before treating current-adjacency `ErrNodeNotFound` as no current candidates |
-| 43ao | Version-chain navigation validates explicit IDs | Node/relationship `PreviousVersion` and `NextVersion` return `ErrNodeNotFound`/`ErrRelNotFound` for unknown IDs; `nil, nil` is reserved for missing neighboring versions on entities that exist now or in history |
+| 43ao | Version-chain navigation validates explicit IDs | Node/relationship `VersionBefore` and `VersionAfter` return `ErrNodeNotFound`/`ErrRelNotFound` for unknown IDs; `nil, nil` is reserved for missing neighboring versions on entities that exist now or in history |
 | 43ap | Event bus setters fail closed | `g.Events.SetSync` and `SetAsync` return `ErrGraphClosed` after graph close and do not mutate the installed publisher |
 | 43aq | Provider teardown waits for Init | `Graph.Close()` and `g.Index.UnregisterProvider` must not call provider `Close()` while an `Initializable.Init` callback from registration is still running |
 | 44 | Shadow resolution preserves public wrapper types | `tkg_base_entity` resolves to `types.EntityID`; shadow-property APIs must not leak raw dependency IDs where a public wrapper type exists |

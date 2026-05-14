@@ -728,6 +728,20 @@ func (ts *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 
 	// Delete the node itself with its tombstone. relTombstones=nil because
 	// all rels were handled individually above.
+	//
+	// Error semantics on partial failure:
+	//   * shard reports error AND node is GONE (ErrNodeNotFound on the
+	//     liveness check): the node delete actually succeeded in the
+	//     underlying state but the call's response framing or async
+	//     bookkeeping failed. We surface the original error to the caller
+	//     so they can retry/log, but we do NOT roll back the relationship
+	//     deletes — the final on-disk state (node + rels gone) is the
+	//     intended outcome. Callers that retry should observe the operation
+	//     as already-applied.
+	//   * shard reports error AND node is STILL LIVE: full rollback of
+	//     prior relationship deletes via wrapDeleteNodeRelationshipRollbackError.
+	//   * shard reports error AND the liveness check itself fails (corruption
+	//     or shard-level error): attempt rollback anyway and wrap both errors.
 	if err := shard.DeleteNodeWithHistory(types.NodeID(id), prevNodeVersion, nodeTombstone, nil); err != nil {
 		ts.removeNodeFromVectorIndexesIfDeleted(shard, id, old)
 		if _, getErr := shard.GetNode(types.NodeID(id)); getErr == nil {

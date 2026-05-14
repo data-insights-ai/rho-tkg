@@ -54,31 +54,31 @@ func TestGraphTx_RollbackRestoresStatsCounters(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"TxStats"}, map[string]any{"v": int64(1)})
+	a, err := g.Nodes.Add(context.Background(), []string{"TxStats"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"TxStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"TxStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"TxStats"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"TxStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	d, err := g.Nodes.Add([]string{"TxStats"}, nil)
+	d, err := g.Nodes.Add(context.Background(), []string{"TxStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode d: %v", err)
 	}
-	updatedRel, err := g.Rels.Add("TX_STATS_UPDATE", a, b, map[string]any{"v": int64(1)})
+	updatedRel, err := g.Rels.Add(context.Background(), "TX_STATS_UPDATE", a, b, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship update: %v", err)
 	}
-	deletedRel, err := g.Rels.Add("TX_STATS_DELETE", c, d, nil)
+	deletedRel, err := g.Rels.Add(context.Background(), "TX_STATS_DELETE", c, d, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship delete: %v", err)
 	}
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
 	tx, err := g.BeginTx()
 	if err != nil {
@@ -106,7 +106,7 @@ func TestGraphTx_RollbackRestoresStatsCounters(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesAdded != before.NodesAdded ||
 		after.NodesRead != before.NodesRead ||
 		after.NodesUpdated != before.NodesUpdated ||
@@ -123,11 +123,11 @@ func TestGraphTx_RollbackSnapshotsNodeAndRelWithSameSnowflakeID(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"TxSharedID"}, map[string]any{"node": "before"})
+	a, err := g.Nodes.Add(context.Background(), []string{"TxSharedID"}, map[string]any{"node": "before"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"TxSharedID"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"TxSharedID"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
@@ -157,14 +157,14 @@ func TestGraphTx_RollbackSnapshotsNodeAndRelWithSameSnowflakeID(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get node after rollback: %v", err)
 	}
 	if got, _ := gotNode.GetProperty("node"); got != "before" {
 		t.Fatalf("node property after rollback = %v, want before", got)
 	}
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("Get relationship after rollback: %v", err)
 	}
@@ -177,11 +177,11 @@ func TestGraphTx_RollbackRestoresRegistries(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Existing"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Existing"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestGraphTx_RollbackRestoresRegistries(t *testing.T) {
 	if _, ok := g.Resolve.LookupRelType("TX_REL"); ok {
 		t.Fatal("rollback kept relationship type token created by tx AddRelationship")
 	}
-	restored, err := g.Nodes.Get(a.ID())
+	restored, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get node a after rollback: %v", err)
 	}
@@ -228,11 +228,11 @@ func TestGraphTx_RollbackInvalidatesRelTypeCache(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Existing"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Existing"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestGraphTx_RollbackInvalidatesRelTypeCache(t *testing.T) {
 		t.Fatalf("LookupRelType after rollback = (%d, %v), want (0, false)", tok, ok)
 	}
 
-	rel, err := g.Rels.Add(typ, a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), typ, a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship after rollback: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestGraphTxAddRelationshipCleanupFailureRollbackDeletesLivePartialRow(t *te
 	if tok, ok := g.Resolve.LookupRelType("TX_QUARANTINED_REL"); ok || tok != 0 {
 		t.Fatalf("LookupRelType(TX_QUARANTINED_REL) = %d, %v; want rollback", tok, ok)
 	}
-	if _, err := g.Rels.Add("REAL_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "REAL_REL", a, b, nil); err != nil {
 		t.Fatalf("Add real relationship: %v", err)
 	}
 	rels, err := g.Rels.ByType("REAL_REL", storepkg.QueryOpts{})
@@ -353,7 +353,7 @@ func TestGraphTxAddNodeCleanupFailureRollbackDeletesLivePartialRow(t *testing.T)
 	if tok, ok := g.Resolve.LookupLabel("TX_QUARANTINED_LABEL"); ok || tok != 0 {
 		t.Fatalf("LookupLabel(TX_QUARANTINED_LABEL) = %d, %v; want rollback", tok, ok)
 	}
-	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"REAL_LABEL"}, nil); err != nil {
 		t.Fatalf("Add real node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
@@ -369,11 +369,11 @@ func TestGraphTx_PublicResolverReadsWaitForRollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Existing"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Existing"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
@@ -548,11 +548,11 @@ func TestGraphTx_UpdateNodeRollbackRestoresHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Nodes.Update(n.ID(), map[string]any{"name": "Committed"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "Committed"}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := g.Nodes.History(n.ID())
@@ -589,7 +589,7 @@ func TestGraphTx_DeleteNodeRollbackRestoresHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,19 +614,19 @@ func TestGraphTx_UpdateRelRollbackRestoresHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Rels.Update(r.ID(), map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"w": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := g.Rels.History(r.ID())
@@ -663,23 +663,23 @@ func TestGraphTx_DeleteRollbackUsesHistoryTrimSnapshots(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	a, err = g.Nodes.Update(a.ID(), map[string]any{"name": "Alice committed"})
+	a, err = g.Nodes.Update(context.Background(), a.ID(), map[string]any{"name": "Alice committed"})
 	if err != nil {
 		t.Fatalf("UpdateNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"state": "before"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	r, err = g.Rels.Update(r.ID(), map[string]any{"state": "committed"})
+	r, err = g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -735,23 +735,23 @@ func TestGraphTx_DeleteRollbackMaterializesHistoryWithoutNativeTrim(t *testing.T
 		t.Fatal("wrapped memory store unexpectedly enabled native history trim")
 	}
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	a, err = g.Nodes.Update(a.ID(), map[string]any{"name": "Alice committed"})
+	a, err = g.Nodes.Update(context.Background(), a.ID(), map[string]any{"name": "Alice committed"})
 	if err != nil {
 		t.Fatalf("UpdateNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"state": "before"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	if _, err := g.Rels.Update(r.ID(), map[string]any{"state": "committed"}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "committed"}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
@@ -786,18 +786,18 @@ func TestGraphTx_DeleteRollbackMaterializesWhenCurrentVersionHistoryExists(t *te
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
 	if err := g.store.PutNodeVersion(a.ID(), a.Version(), a.DeepCopy()); err != nil {
 		t.Fatalf("PutNodeVersion current: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"state": "before"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -836,18 +836,18 @@ func TestGraphTx_UpdateRollbackMaterializesWhenCurrentVersionHistoryExists(t *te
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"state": "before"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
 	if err := g.store.PutNodeVersion(a.ID(), a.Version(), a.DeepCopy()); err != nil {
 		t.Fatalf("PutNodeVersion current: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"state": "rel-before"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"state": "rel-before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -973,11 +973,11 @@ func TestGraphTx_DeleteImportUpdateSameNodeID_RollbackRestoresOriginalHistory(t 
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "initial"})
+	original, err := g.Nodes.Add(context.Background(), []string{"Original"}, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	original, err = g.Nodes.Update(original.ID(), map[string]any{"state": "committed"})
+	original, err = g.Nodes.Update(context.Background(), original.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -1007,7 +1007,7 @@ func TestGraphTx_DeleteImportUpdateSameNodeID_RollbackRestoresOriginalHistory(t 
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Nodes.Get(original.ID())
+	got, err := g.Nodes.Get(context.Background(), original.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -1025,19 +1025,19 @@ func TestGraphTx_DeleteImportUpdateSameRelID_RollbackRestoresOriginalHistory(t *
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
+	original, err := g.Rels.Add(context.Background(), "ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	original, err = g.Rels.Update(original.ID(), map[string]any{"state": "committed"})
+	original, err = g.Rels.Update(context.Background(), original.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -1067,7 +1067,7 @@ func TestGraphTx_DeleteImportUpdateSameRelID_RollbackRestoresOriginalHistory(t *
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Rels.Get(original.ID())
+	got, err := g.Rels.Get(context.Background(), original.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -1088,23 +1088,23 @@ func TestGraphTx_DeleteNodeImportEndpointAndRelSameIDs_RollbackRestoresCascadeRe
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"OriginalEndpoint"}, map[string]any{"state": "initial"})
+	a, err := g.Nodes.Add(context.Background(), []string{"OriginalEndpoint"}, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	a, err = g.Nodes.Update(a.ID(), map[string]any{"state": "committed"})
+	a, err = g.Nodes.Update(context.Background(), a.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	rel, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
+	rel, err := g.Rels.Add(context.Background(), "ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	rel, err = g.Rels.Update(rel.ID(), map[string]any{"state": "committed"})
+	rel, err = g.Rels.Update(context.Background(), rel.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -1135,14 +1135,14 @@ func TestGraphTx_DeleteNodeImportEndpointAndRelSameIDs_RollbackRestoresCascadeRe
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
 	if !g.Nodes.HasLabel(gotNode, "OriginalEndpoint") {
 		t.Fatal("rollback did not restore original endpoint label")
 	}
-	gotRel, err := g.Rels.Get(rel.ID())
+	gotRel, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -1211,7 +1211,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1229,7 +1229,7 @@ func TestGraphTx_UpdateThenDelete_Rollback(t *testing.T) {
 	}
 
 	// Pre-existing node should be restored to original state.
-	got, err := g.Nodes.Get(nodeID)
+	got, err := g.Nodes.Get(context.Background(), nodeID)
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -1243,7 +1243,7 @@ func TestGraphTx_DeleteThenImportSameNodeID_RollbackRestoresOriginal(t *testing.
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "before"})
+	original, err := g.Nodes.Add(context.Background(), []string{"Original"}, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1263,7 +1263,7 @@ func TestGraphTx_DeleteThenImportSameNodeID_RollbackRestoresOriginal(t *testing.
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -1286,7 +1286,7 @@ func TestGraphTx_DeleteImportUpdateSameNodeID_RollbackRestoresOriginal(t *testin
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "before"})
+	original, err := g.Nodes.Add(context.Background(), []string{"Original"}, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1309,7 +1309,7 @@ func TestGraphTx_DeleteImportUpdateSameNodeID_RollbackRestoresOriginal(t *testin
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -1332,15 +1332,15 @@ func TestGraphTx_DeleteThenImportSameRelID_RollbackRestoresOriginal(t *testing.T
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "before"})
+	original, err := g.Rels.Add(context.Background(), "ORIGINAL_REL", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1360,7 +1360,7 @@ func TestGraphTx_DeleteThenImportSameRelID_RollbackRestoresOriginal(t *testing.T
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -1380,15 +1380,15 @@ func TestGraphTx_DeleteImportUpdateSameRelID_RollbackRestoresOriginal(t *testing
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "before"})
+	original, err := g.Rels.Add(context.Background(), "ORIGINAL_REL", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1411,7 +1411,7 @@ func TestGraphTx_DeleteImportUpdateSameRelID_RollbackRestoresOriginal(t *testing
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -1431,23 +1431,23 @@ func TestGraphTx_DeleteImportSameRelIDSameTypeDifferentEndpoints_RollbackRestore
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	d, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	d, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode d: %v", err)
 	}
-	original, err := g.Rels.Add("SAME_REL", a, b, map[string]any{"state": "before"})
+	original, err := g.Rels.Add(context.Background(), "SAME_REL", a, b, map[string]any{"state": "before"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1466,7 +1466,7 @@ func TestGraphTx_DeleteImportSameRelIDSameTypeDifferentEndpoints_RollbackRestore
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	got, err := g.Rels.Get(original.ID())
+	got, err := g.Rels.Get(context.Background(), original.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -1524,7 +1524,7 @@ func TestGraphTx_CreateDeleteImportSameNodeID_RollbackRemovesNode(t *testing.T) 
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	if _, err := g.Nodes.Get(id); !errors.Is(err, storepkg.ErrNodeNotFound) {
+	if _, err := g.Nodes.Get(context.Background(), id); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("GetNode after rollback = %v, want ErrNodeNotFound", err)
 	}
 }
@@ -1533,11 +1533,11 @@ func TestGraphTx_CreateDeleteImportSameRelID_RollbackRemovesRelationship(t *test
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
@@ -1561,7 +1561,7 @@ func TestGraphTx_CreateDeleteImportSameRelID_RollbackRemovesRelationship(t *test
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	if _, err := g.Rels.Get(id); !errors.Is(err, storepkg.ErrRelNotFound) {
+	if _, err := g.Rels.Get(context.Background(), id); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("GetRelationship after rollback = %v, want ErrRelNotFound", err)
 	}
 }
@@ -1570,15 +1570,15 @@ func TestGraphTx_DeleteRelThenEndpoint_RollbackRestoresRelationship(t *testing.T
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1594,13 +1594,13 @@ func TestGraphTx_DeleteRelThenEndpoint_RollbackRestoresRelationship(t *testing.T
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	if _, err := g.Nodes.Get(a.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), a.ID()); err != nil {
 		t.Fatalf("endpoint a missing after rollback: %v", err)
 	}
-	if _, err := g.Nodes.Get(b.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), b.ID()); err != nil {
 		t.Fatalf("endpoint b missing after rollback: %v", err)
 	}
-	got, err := g.Rels.Get(r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("relationship missing after rollback: %v", err)
 	}
@@ -1614,17 +1614,17 @@ func TestGraphTx_AfterDone_ReturnsErrTxDone(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	nodeID := n.ID()
 
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", n, n2, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", n, n2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

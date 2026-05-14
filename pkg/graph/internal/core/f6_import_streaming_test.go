@@ -13,6 +13,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {
@@ -30,7 +32,7 @@ func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -46,7 +48,7 @@ func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {
 	defer dst.Close()
 
 	before := countTempStagingFiles(t)
-	if err := dst.IO.Import(&exported); err != nil {
+	if err := dst.IO.Import(&exported, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	after := countTempStagingFiles(t)
@@ -71,7 +73,7 @@ func TestImport_StagingFile_RemovedAfterPhase1Error(t *testing.T) {
 	bad := []byte{exportTagHeader, 0xff, 0xff, 0xff, 0xff}
 
 	before := countTempStagingFiles(t)
-	err = dst.IO.Import(bytes.NewReader(bad))
+	err = dst.IO.Import(bytes.NewReader(bad), tkgio.ImportOptions{})
 	if err == nil {
 		t.Fatal("Import: nil error on truncated stream, want failure")
 	}
@@ -92,9 +94,9 @@ func TestImport_RoundTripUnchanged(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	a, _ := src.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := src.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	r, _ := src.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2025)})
+	a, _ := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, _ := src.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2025)})
 
 	var exported bytes.Buffer
 	if err := src.IO.Export(&exported); err != nil {
@@ -106,14 +108,14 @@ func TestImport_RoundTripUnchanged(t *testing.T) {
 		t.Fatalf("New(dst): %v", err)
 	}
 	defer dst.Close()
-	if err := dst.IO.Import(&exported); err != nil {
+	if err := dst.IO.Import(&exported, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 
-	if got, err := dst.Nodes.Get(a.ID()); err != nil || got == nil {
+	if got, err := dst.Nodes.Get(context.Background(), a.ID()); err != nil || got == nil {
 		t.Errorf("dst.Get(a): err=%v got=%v", err, got)
 	}
-	if got, err := dst.Rels.Get(r.ID()); err != nil || got == nil {
+	if got, err := dst.Rels.Get(context.Background(), r.ID()); err != nil || got == nil {
 		t.Errorf("dst.Get(r): err=%v got=%v", err, got)
 	}
 	if cnt, _ := dst.Nodes.Count(); cnt != 2 {

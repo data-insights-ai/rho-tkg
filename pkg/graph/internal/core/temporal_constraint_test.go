@@ -152,16 +152,16 @@ func TestTemporalConstraintUnknownKindRejectedAtRegistration(t *testing.T) {
 		t.Fatalf("Constraints.Get().Len after rejected Set = %d, want 0", got)
 	}
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Fatalf("relationship write after rejected invalid constraint = %v, want nil", err)
 	}
@@ -184,21 +184,21 @@ func TestTemporalConstraintRejectedRelationshipDoesNotRegisterRelType(t *testing
 		{
 			name: "Add",
 			run: func(g *Core, a, b *types.Node, typ string) error {
-				_, err := g.Rels.Add(typ, a, b, nil)
+				_, err := g.Rels.Add(context.Background(), typ, a, b, nil)
 				return err
 			},
 		},
 		{
 			name: "AddByID",
 			run: func(g *Core, a, b *types.Node, typ string) error {
-				_, err := g.Rels.AddByID(typ, a.ID(), b.ID(), nil)
+				_, err := g.Rels.AddByID(context.Background(), typ, a.ID(), b.ID(), nil)
 				return err
 			},
 		},
 		{
 			name: "AddByIDIfAbsent",
 			run: func(g *Core, a, b *types.Node, typ string) error {
-				_, _, err := g.Rels.AddByIDIfAbsent(typ, a.ID(), b.ID(), nil)
+				_, _, err := g.Rels.AddByIDIfAbsent(context.Background(), typ, a.ID(), b.ID(), nil)
 				return err
 			},
 		},
@@ -238,11 +238,11 @@ func TestTemporalConstraintRejectedRelationshipDoesNotRegisterRelType(t *testing
 			addRelWithinEndpointsConstraint(t, g)
 
 			future := int64(1 << 60)
-			a, err := g.Nodes.Add([]string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
+			a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
 			if err != nil {
 				t.Fatalf("AddNode A: %v", err)
 			}
-			b, err := g.Nodes.Add([]string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
+			b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, map[string]any{"tkg_valid_from": future})
 			if err != nil {
 				t.Fatalf("AddNode B: %v", err)
 			}
@@ -266,11 +266,11 @@ func TestConstraintRelWithinEndpoints_NoConstraint(t *testing.T) {
 	g := newTestGraph(t)
 	// No constraint added.
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestConstraintRelWithinEndpoints_NoConstraint(t *testing.T) {
 	// Even with an expired start node, no constraint means no error.
 	a.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Errorf("unexpected error without constraints: %v", err)
 	}
@@ -290,15 +290,15 @@ func TestConstraintRelWithinEndpoints_Valid(t *testing.T) {
 	addRelWithinEndpointsConstraint(t, g)
 
 	// Open-ended nodes, open-ended rel — always valid.
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Errorf("AddRelationship with open-ended nodes: %v", err)
 	}
@@ -311,18 +311,18 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 
 	// Set start node's ValidFrom to the far future at creation time so the
 	// store-side state seen by the constraint check (R4-F5) reflects it.
-	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(9_999_999_999_999),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err == nil {
 		t.Fatal("expected temporalpkg.ErrRelBeforeStartNode, got nil")
 	}
@@ -339,20 +339,20 @@ func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// End node valid from the far future — persisted via shadow props so the
 	// store-side state seen by the constraint check (R4-F5) reflects it.
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(9_999_999_999_999),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err == nil {
 		t.Fatal("expected temporalpkg.ErrRelBeforeEndNode, got nil")
 	}
@@ -373,19 +373,19 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	// props (R4-F5). ValidFrom must be explicit; otherwise the effective start
 	// comes from the snowflake timestamp and can classify the relationship as
 	// before-validity instead of after-expiry under tight timing.
-	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err == nil {
 		t.Fatal("expected temporalpkg.ErrRelAfterStartNode, got nil")
 	}
@@ -402,13 +402,13 @@ func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// End node has a deterministic expired interval — persisted via shadow
 	// props (R4-F5).
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
@@ -416,7 +416,7 @@ func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err == nil {
 		t.Fatal("expected temporalpkg.ErrRelAfterEndNode, got nil")
 	}
@@ -435,11 +435,11 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,19 +484,19 @@ func TestConstraintRelWithinEndpoints_OpenEndedRelExceedsFiniteEndpoint(t *testi
 		addRelWithinEndpointsConstraint(t, g)
 
 		finiteFuture := types.Instant(1 << 60)
-		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 			"tkg_valid_from": types.Instant(1),
 			"tkg_valid_to":   finiteFuture,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = g.Rels.Add("LINK", a, b, nil)
+		_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err == nil {
 			t.Fatal("expected open-ended relationship to exceed finite start endpoint, got nil")
 		}
@@ -513,12 +513,12 @@ func TestConstraintRelWithinEndpoints_OpenEndedRelExceedsFiniteEndpoint(t *testi
 		g := newTestGraph(t)
 		addRelWithinEndpointsConstraint(t, g)
 
-		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		finiteFuture := types.Instant(1 << 60)
-		b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 			"tkg_valid_from": types.Instant(1),
 			"tkg_valid_to":   finiteFuture,
 		})
@@ -526,7 +526,7 @@ func TestConstraintRelWithinEndpoints_OpenEndedRelExceedsFiniteEndpoint(t *testi
 			t.Fatal(err)
 		}
 
-		_, err = g.Rels.AddByID("LINK", a.ID(), b.ID(), nil)
+		_, err = g.Rels.AddByID(context.Background(), "LINK", a.ID(), b.ID(), nil)
 		if err == nil {
 			t.Fatal("expected open-ended relationship to exceed finite end endpoint, got nil")
 		}
@@ -545,15 +545,15 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		g := newTestGraph(t)
 		addRelWithinEndpointsConstraint(t, g)
 
-		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := g.Rels.Add("LINK", a, b, nil); err != nil {
+		if _, err := g.Rels.Add(context.Background(), "LINK", a, b, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -568,7 +568,7 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
 			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
 		}
-		loaded, getErr := g.Nodes.Get(a.ID())
+		loaded, getErr := g.Nodes.Get(context.Background(), a.ID())
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -582,15 +582,15 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		g := newTestGraph(t)
 		addRelWithinEndpointsConstraint(t, g)
 
-		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := g.Rels.Add("LINK", a, b, nil); err != nil {
+		if _, err := g.Rels.Add(context.Background(), "LINK", a, b, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -612,23 +612,23 @@ func TestConstraintRelWithinEndpoints_NodeClosePreservesExistingRelationships(t 
 		g := newTestGraph(t)
 		addRelWithinEndpointsConstraint(t, g)
 
-		a, err := g.Nodes.Add([]string{"Item"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		closeAt := types.Instant(1 << 60)
-		if _, err := g.Rels.Add("LINK", a, b, map[string]any{"tkg_valid_to": closeAt - 1}); err != nil {
+		if _, err := g.Rels.Add(context.Background(), "LINK", a, b, map[string]any{"tkg_valid_to": closeAt - 1}); err != nil {
 			t.Fatal(err)
 		}
 
 		if err := g.Nodes.CloseVersion(a.ID(), closeAt); err != nil {
 			t.Fatalf("CloseVersion with contained relationship: %v", err)
 		}
-		loaded, getErr := g.Nodes.Get(a.ID())
+		loaded, getErr := g.Nodes.Get(context.Background(), a.ID())
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -644,18 +644,18 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		g := newTestGraph(t)
 
 		nodeTo := types.Instant(1 << 60)
-		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 			"tkg_valid_from": types.Instant(1),
 			"tkg_valid_to":   nodeTo,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("LINK", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -671,7 +671,7 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		if !errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) {
 			t.Errorf("errors.Is(err, temporalpkg.ErrRelExceedsStartNodeValidity) = false; err = %v", err)
 		}
-		loaded, getErr := g.Rels.Get(r.ID())
+		loaded, getErr := g.Rels.Get(context.Background(), r.ID())
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -685,18 +685,18 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		g := newTestGraph(t)
 
 		nodeTo := types.Instant(1 << 60)
-		a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+		a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 			"tkg_valid_from": types.Instant(1),
 			"tkg_valid_to":   nodeTo,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		b, err := g.Nodes.Add([]string{"Item"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := g.Rels.Add("LINK", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -706,7 +706,7 @@ func TestConstraintRelWithinEndpoints_RelClosePreservesEndpointBounds(t *testing
 		if err := g.Rels.CloseVersion(r.ID(), closeAt); err != nil {
 			t.Fatalf("CloseVersion within endpoint bounds: %v", err)
 		}
-		loaded, getErr := g.Rels.Get(r.ID())
+		loaded, getErr := g.Rels.Get(context.Background(), r.ID())
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -722,11 +722,11 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,19 +768,19 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 
 	// Start node has a deterministic expired interval — persisted via shadow
 	// props (R4-F5).
-	a, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err == nil {
 		t.Fatal("expected constraint error")
 	}
@@ -800,13 +800,13 @@ func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// End node has a deterministic expired interval — persisted via shadow
 	// props (R4-F5).
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})

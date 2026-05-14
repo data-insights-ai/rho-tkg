@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
@@ -11,15 +12,15 @@ import (
 func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"old": "value"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"old": "value"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("REL", n, b, map[string]any{"old_weight": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "REL", n, b, map[string]any{"old_weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	gotNode, err := g.Nodes.Get(n.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -56,7 +57,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 		t.Fatal("node old property should be deleted")
 	}
 
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

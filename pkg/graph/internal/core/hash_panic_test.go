@@ -50,7 +50,7 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 	t.Run("node add", func(t *testing.T) {
 		g := newTestGraph(t)
 		err := runWithoutPanic(t, func() error {
-			_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
@@ -86,16 +86,16 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 
 	t.Run("relationship add", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Rels.Add("KNOWS", a, b, map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
@@ -106,16 +106,16 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 
 	t.Run("relationship add by id", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Rels.AddByID("KNOWS", a.ID(), b.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Rels.AddByID(context.Background(), "KNOWS", a.ID(), b.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
@@ -126,16 +126,16 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 
 	t.Run("relationship add by id if absent", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, _, err := g.Rels.AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, _, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", a.ID(), b.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
@@ -146,11 +146,11 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 
 	t.Run("relationship import", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
@@ -166,11 +166,11 @@ func TestHashPanicProperty_CreatePathsReturnError(t *testing.T) {
 
 	t.Run("batch relationship add", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		bNode, err := g.Nodes.Add([]string{"Person"}, nil)
+		bNode, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
@@ -191,16 +191,16 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("node update", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 		if err != nil {
 			t.Fatalf("add node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Nodes.Update(n.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
-		stored, err := g.Nodes.Get(n.ID())
+		stored, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("get node: %v", err)
 		}
@@ -211,16 +211,16 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("node update in place", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 		if err != nil {
 			t.Fatalf("add node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Nodes.UpdateInPlace(n.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Nodes.UpdateInPlace(context.Background(), n.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
-		stored, err := g.Nodes.Get(n.ID())
+		stored, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("get node: %v", err)
 		}
@@ -231,16 +231,16 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("node compare and set", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"state": "old"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"state": "old"})
 		if err != nil {
 			t.Fatalf("add node: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Nodes.CompareAndSetProperty(n.ID(), "state", "old", panicHashProperty{V: 1})
+			_, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "state", "old", panicHashProperty{V: 1})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
-		stored, err := g.Nodes.Get(n.ID())
+		stored, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("get node: %v", err)
 		}
@@ -251,24 +251,24 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("relationship update", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
-		r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(1)})
+		r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(1)})
 		if err != nil {
 			t.Fatalf("add relationship: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Rels.Update(r.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
-		stored, err := g.Rels.Get(r.ID())
+		stored, err := g.Rels.Get(context.Background(), r.ID())
 		if err != nil {
 			t.Fatalf("get relationship: %v", err)
 		}
@@ -279,24 +279,24 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("relationship update in place", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
-		r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(1)})
+		r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(1)})
 		if err != nil {
 			t.Fatalf("add relationship: %v", err)
 		}
 		err = runWithoutPanic(t, func() error {
-			_, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
+			_, err := g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"bad": panicHashProperty{V: 1}})
 			return err
 		})
 		requireUnsupportedHashError(t, err)
-		stored, err := g.Rels.Get(r.ID())
+		stored, err := g.Rels.Get(context.Background(), r.ID())
 		if err != nil {
 			t.Fatalf("get relationship: %v", err)
 		}
@@ -307,7 +307,7 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("hash verify node", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add node: %v", err)
 		}
@@ -326,15 +326,15 @@ func TestHashPanicProperty_UpdateAndVerifyPathsReturnError(t *testing.T) {
 
 	t.Run("hash verify relationship", func(t *testing.T) {
 		g := newTestGraph(t)
-		a, err := g.Nodes.Add([]string{"Person"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add start node: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Person"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("add end node: %v", err)
 		}
-		r, err := g.Rels.Add("KNOWS", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 		if err != nil {
 			t.Fatalf("add relationship: %v", err)
 		}

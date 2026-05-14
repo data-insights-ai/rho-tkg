@@ -297,3 +297,43 @@ GOOD: use exact bit keys for values whose printable form loses equality detail
 Property-index value keys are not display strings. They must preserve the
 library's property equality contract, including special float values, so
 fallback scans and indexed lookups return the same exact result set.
+
+## 24. Bound Every Retry Loop
+
+```
+BAD:  for { peek; lockAll; reread; if changed { continue } } // unbounded
+GOOD: for range maxRetries { ... }; return "changed after N retries" error
+```
+
+Peek-then-lock patterns retry when a concurrent writer changes the lock set
+between peek and acquire. Every retry loop must have a max-iteration ceiling
+so a hostile concurrent workload cannot deadlock the caller. Mirror the
+ceiling across symmetric methods — `deleteNodeInternal` uses
+`const maxRetries = 10`; `lockRelationshipCurrentEndpoints` must match.
+
+## 25. Equality and Hash Have Different Contracts (Float Bit-Pattern Case)
+
+```
+BAD:  assume "equal CAS short-circuit" implies "equal hash"
+GOOD: document the divergence — IEEE-754 ±0 and NaN payloads are equal
+      by CAS short-circuit but distinct by integrity hash
+```
+
+`PropertyValueEqual` is the CAS short-circuit contract (NaN == NaN, +0 == -0).
+The integrity hash is the durable-identity contract — it preserves IEEE-754
+bit patterns. The asymmetry is intentional and tested. Callers exchanging
+data with systems that canonicalize NaN bits must canonicalize at the
+boundary if cross-system hash chains are expected to verify.
+
+## 26. Public Sub-API Forwarding Must Match Internal Contract Width
+
+```
+BAD:  external Ops interface lists obsolete methods after API change
+GOOD: every sub-API package declares its own minimal Ops; *core.Core
+      satisfies each by implementing the union
+```
+
+When collapsing or splitting sub-APIs, update each `Ops` interface to the
+minimal new shape and let `*core.Core` satisfy it implicitly. Old methods
+on the internal core type can stay if they're useful internally — what
+matters is that the public Ops interface advertises only the new contract.

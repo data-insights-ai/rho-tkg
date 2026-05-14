@@ -28,11 +28,11 @@ func TestR5_RelAdd_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.T) 
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestR5_RelAdd_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.T) 
 	fs.target = a.ID()
 	fs.enabled = true
 
-	if _, err := g.Rels.Add("FETCH_FAULT_TYPE", a, b, nil); !errors.Is(err, injected) {
+	if _, err := g.Rels.Add(context.Background(), "FETCH_FAULT_TYPE", a, b, nil); !errors.Is(err, injected) {
 		t.Fatalf("expected wrapped fault, got %v", err)
 	}
 
@@ -65,11 +65,11 @@ func TestR5_RelImport_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,56 +97,56 @@ func TestR5_RelCreate_PutFailureDoesNotKeepNewRelTypeToken(t *testing.T) {
 		{
 			name: "Add",
 			run: func(g *Core, typ string) error {
-				a, err := g.Nodes.Add([]string{"A"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"B"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 				if err != nil {
 					return err
 				}
-				_, err = g.Rels.Add(typ, a, b, nil)
+				_, err = g.Rels.Add(context.Background(), typ, a, b, nil)
 				return err
 			},
 		},
 		{
 			name: "AddByID",
 			run: func(g *Core, typ string) error {
-				a, err := g.Nodes.Add([]string{"A"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"B"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 				if err != nil {
 					return err
 				}
-				_, err = g.Rels.AddByID(typ, a.ID(), b.ID(), nil)
+				_, err = g.Rels.AddByID(context.Background(), typ, a.ID(), b.ID(), nil)
 				return err
 			},
 		},
 		{
 			name: "AddByIDIfAbsent",
 			run: func(g *Core, typ string) error {
-				a, err := g.Nodes.Add([]string{"A"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"B"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 				if err != nil {
 					return err
 				}
-				_, _, err = g.Rels.AddByIDIfAbsent(typ, a.ID(), b.ID(), nil)
+				_, _, err = g.Rels.AddByIDIfAbsent(context.Background(), typ, a.ID(), b.ID(), nil)
 				return err
 			},
 		},
 		{
 			name: "Import",
 			run: func(g *Core, typ string) error {
-				a, err := g.Nodes.Add([]string{"A"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"B"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 				if err != nil {
 					return err
 				}
@@ -227,11 +227,11 @@ func TestR5_RelAddByIDIfAbsent_VacuousDupCheck_StillAllocatesOnCreate(t *testing
 	g := newTestGraph(t)
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"X"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"X"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestR5_RelAddByIDIfAbsent_VacuousDupCheck_StillAllocatesOnCreate(t *testing
 		t.Fatal("FRESH_TYPE pre-existed; test premise broken")
 	}
 
-	r, created, err := g.Rels.AddByIDIfAbsentWithContext(context.Background(), "FRESH_TYPE", a.ID(), b.ID(), nil)
+	r, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "FRESH_TYPE", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDIfAbsent: %v", err)
 	}

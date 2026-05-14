@@ -22,10 +22,10 @@ func TestDeleteMutatorsRejectInvalidIDs(t *testing.T) {
 		err  error
 	}
 	checks := []checkCase{
-		{name: "Nodes.Delete zero", err: g.Nodes.Delete(0)},
-		{name: "Nodes.Delete negative", err: g.Nodes.Delete(types.NodeID(-1))},
-		{name: "Rels.Delete zero", err: g.Rels.Delete(0)},
-		{name: "Rels.Delete negative", err: g.Rels.Delete(types.RelID(-1))},
+		{name: "Nodes.Delete zero", err: g.Nodes.Delete(context.Background(), 0)},
+		{name: "Nodes.Delete negative", err: g.Nodes.Delete(context.Background(), types.NodeID(-1))},
+		{name: "Rels.Delete zero", err: g.Rels.Delete(context.Background(), 0)},
+		{name: "Rels.Delete negative", err: g.Rels.Delete(context.Background(), types.RelID(-1))},
 	}
 
 	tx, err := g.BeginTx()
@@ -74,28 +74,28 @@ func TestUpdateMutatorsRejectInvalidIDs(t *testing.T) {
 	}
 	update := map[string]any{"name": "Ada"}
 	checks := []checkCase{
-		{name: "Nodes.Update zero", err: errFromNode(g.Nodes.Update(0, update))},
-		{name: "Nodes.Update empty zero", err: errFromNode(g.Nodes.Update(0, nil))},
-		{name: "Nodes.Update negative", err: errFromNode(g.Nodes.Update(types.NodeID(-1), update))},
-		{name: "Nodes.UpdateInPlace zero", err: errFromNode(g.Nodes.UpdateInPlace(0, update))},
-		{name: "Nodes.UpdateInPlace empty zero", err: errFromNode(g.Nodes.UpdateInPlace(0, nil))},
-		{name: "Nodes.UpdateInPlace negative", err: errFromNode(g.Nodes.UpdateInPlace(types.NodeID(-1), update))},
+		{name: "Nodes.Update zero", err: errFromNode(g.Nodes.Update(context.Background(), 0, update))},
+		{name: "Nodes.Update empty zero", err: errFromNode(g.Nodes.Update(context.Background(), 0, nil))},
+		{name: "Nodes.Update negative", err: errFromNode(g.Nodes.Update(context.Background(), types.NodeID(-1), update))},
+		{name: "Nodes.UpdateInPlace zero", err: errFromNode(g.Nodes.UpdateInPlace(context.Background(), 0, update))},
+		{name: "Nodes.UpdateInPlace empty zero", err: errFromNode(g.Nodes.UpdateInPlace(context.Background(), 0, nil))},
+		{name: "Nodes.UpdateInPlace negative", err: errFromNode(g.Nodes.UpdateInPlace(context.Background(), types.NodeID(-1), update))},
 		{name: "Nodes.AddLabel zero", err: g.Nodes.AddLabel(0, "Person")},
 		{name: "Nodes.AddLabel negative", err: g.Nodes.AddLabel(types.NodeID(-1), "Person")},
 		{name: "Nodes.RemoveLabel zero", err: g.Nodes.RemoveLabel(0, "Person")},
 		{name: "Nodes.RemoveLabel negative", err: g.Nodes.RemoveLabel(types.NodeID(-1), "Person")},
-		{name: "Nodes.CompareAndSetProperty zero", err: errFromCAS(g.Nodes.CompareAndSetProperty(0, "name", nil, "Ada"))},
-		{name: "Nodes.CompareAndSetProperty negative", err: errFromCAS(g.Nodes.CompareAndSetProperty(types.NodeID(-1), "name", nil, "Ada"))},
+		{name: "Nodes.CompareAndSetProperty zero", err: errFromCAS(g.Nodes.CompareAndSetProperty(context.Background(), 0, "name", nil, "Ada"))},
+		{name: "Nodes.CompareAndSetProperty negative", err: errFromCAS(g.Nodes.CompareAndSetProperty(context.Background(), types.NodeID(-1), "name", nil, "Ada"))},
 		{name: "Nodes.CloseVersion zero", err: g.Nodes.CloseVersion(0, 100)},
 		{name: "Nodes.CloseVersion negative", err: g.Nodes.CloseVersion(types.NodeID(-1), 100)},
-		{name: "Rels.Update zero", err: errFromRel(g.Rels.Update(0, update))},
-		{name: "Rels.Update empty zero", err: errFromRel(g.Rels.Update(0, nil))},
-		{name: "Rels.Update negative", err: errFromRel(g.Rels.Update(types.RelID(-1), update))},
-		{name: "Rels.UpdateInPlace zero", err: errFromRel(g.Rels.UpdateInPlace(0, update))},
-		{name: "Rels.UpdateInPlace empty zero", err: errFromRel(g.Rels.UpdateInPlace(0, nil))},
-		{name: "Rels.UpdateInPlace negative", err: errFromRel(g.Rels.UpdateInPlace(types.RelID(-1), update))},
-		{name: "Rels.CompareAndSetProperty zero", err: errFromCAS(g.Rels.CompareAndSetProperty(0, "name", nil, "Ada"))},
-		{name: "Rels.CompareAndSetProperty negative", err: errFromCAS(g.Rels.CompareAndSetProperty(types.RelID(-1), "name", nil, "Ada"))},
+		{name: "Rels.Update zero", err: errFromRel(g.Rels.Update(context.Background(), 0, update))},
+		{name: "Rels.Update empty zero", err: errFromRel(g.Rels.Update(context.Background(), 0, nil))},
+		{name: "Rels.Update negative", err: errFromRel(g.Rels.Update(context.Background(), types.RelID(-1), update))},
+		{name: "Rels.UpdateInPlace zero", err: errFromRel(g.Rels.UpdateInPlace(context.Background(), 0, update))},
+		{name: "Rels.UpdateInPlace empty zero", err: errFromRel(g.Rels.UpdateInPlace(context.Background(), 0, nil))},
+		{name: "Rels.UpdateInPlace negative", err: errFromRel(g.Rels.UpdateInPlace(context.Background(), types.RelID(-1), update))},
+		{name: "Rels.CompareAndSetProperty zero", err: errFromCAS(g.Rels.CompareAndSetProperty(context.Background(), 0, "name", nil, "Ada"))},
+		{name: "Rels.CompareAndSetProperty negative", err: errFromCAS(g.Rels.CompareAndSetProperty(context.Background(), types.RelID(-1), "name", nil, "Ada"))},
 		{name: "Rels.CloseVersion zero", err: g.Rels.CloseVersion(0, 100)},
 		{name: "Rels.CloseVersion negative", err: g.Rels.CloseVersion(types.RelID(-1), 100)},
 	}
@@ -154,12 +154,12 @@ func TestExistingEntityMutatorsValidateInvalidIDBeforePayload(t *testing.T) {
 	}
 	invalidUpdate := map[string]any{"tkg_version": int64(1)}
 	checks := []checkCase{
-		{name: "Nodes.Update zero reserved key", err: errFromNode(g.Nodes.Update(0, invalidUpdate))},
-		{name: "Nodes.UpdateInPlace zero reserved key", err: errFromNode(g.Nodes.UpdateInPlace(0, invalidUpdate))},
-		{name: "Nodes.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Nodes.CompareAndSetProperty(0, "tkg_version", nil, "Ada"))},
-		{name: "Rels.Update zero reserved key", err: errFromRel(g.Rels.Update(0, invalidUpdate))},
-		{name: "Rels.UpdateInPlace zero reserved key", err: errFromRel(g.Rels.UpdateInPlace(0, invalidUpdate))},
-		{name: "Rels.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Rels.CompareAndSetProperty(0, "tkg_type", nil, "KNOWS"))},
+		{name: "Nodes.Update zero reserved key", err: errFromNode(g.Nodes.Update(context.Background(), 0, invalidUpdate))},
+		{name: "Nodes.UpdateInPlace zero reserved key", err: errFromNode(g.Nodes.UpdateInPlace(context.Background(), 0, invalidUpdate))},
+		{name: "Nodes.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Nodes.CompareAndSetProperty(context.Background(), 0, "tkg_version", nil, "Ada"))},
+		{name: "Rels.Update zero reserved key", err: errFromRel(g.Rels.Update(context.Background(), 0, invalidUpdate))},
+		{name: "Rels.UpdateInPlace zero reserved key", err: errFromRel(g.Rels.UpdateInPlace(context.Background(), 0, invalidUpdate))},
+		{name: "Rels.CompareAndSetProperty zero reserved key", err: errFromCAS(g.Rels.CompareAndSetProperty(context.Background(), 0, "tkg_type", nil, "KNOWS"))},
 	}
 
 	tx, err := g.BeginTx()
@@ -198,7 +198,7 @@ func TestRelationshipCreateMutatorsRejectInvalidEndpointIDs(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	valid, err := g.Nodes.Add([]string{"Person"}, nil)
+	valid, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add valid node: %v", err)
 	}
@@ -210,12 +210,12 @@ func TestRelationshipCreateMutatorsRejectInvalidEndpointIDs(t *testing.T) {
 		err  error
 	}
 	checks := []checkCase{
-		{name: "Rels.Add zero start", err: errFromRel(g.Rels.Add("KNOWS", zeroNode, valid, nil))},
-		{name: "Rels.Add negative start", err: errFromRel(g.Rels.Add("KNOWS", negativeNode, valid, nil))},
-		{name: "Rels.AddByID zero start", err: errFromRel(g.Rels.AddByID("KNOWS", 0, valid.ID(), nil))},
-		{name: "Rels.AddByID negative end", err: errFromRel(g.Rels.AddByID("KNOWS", valid.ID(), types.NodeID(-1), nil))},
-		{name: "Rels.AddByIDIfAbsent zero start", err: errFromRelIfAbsent(g.Rels.AddByIDIfAbsent("KNOWS", 0, valid.ID(), nil))},
-		{name: "Rels.AddByIDIfAbsent negative end", err: errFromRelIfAbsent(g.Rels.AddByIDIfAbsent("KNOWS", valid.ID(), types.NodeID(-1), nil))},
+		{name: "Rels.Add zero start", err: errFromRel(g.Rels.Add(context.Background(), "KNOWS", zeroNode, valid, nil))},
+		{name: "Rels.Add negative start", err: errFromRel(g.Rels.Add(context.Background(), "KNOWS", negativeNode, valid, nil))},
+		{name: "Rels.AddByID zero start", err: errFromRel(g.Rels.AddByID(context.Background(), "KNOWS", 0, valid.ID(), nil))},
+		{name: "Rels.AddByID negative end", err: errFromRel(g.Rels.AddByID(context.Background(), "KNOWS", valid.ID(), types.NodeID(-1), nil))},
+		{name: "Rels.AddByIDIfAbsent zero start", err: errFromRelIfAbsent(g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", 0, valid.ID(), nil))},
+		{name: "Rels.AddByIDIfAbsent negative end", err: errFromRelIfAbsent(g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", valid.ID(), types.NodeID(-1), nil))},
 		{name: "Rels.Import zero start", err: errFromRel(g.Rels.Import(context.Background(), g.Rels.NextID(), "KNOWS", zeroNode, valid, nil))},
 		{name: "Rels.Import negative start", err: errFromRel(g.Rels.Import(context.Background(), g.Rels.NextID(), "KNOWS", negativeNode, valid, nil))},
 	}

@@ -12,9 +12,9 @@ func TestAddRelationshipTypeNameTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	_, err := g.Rels.Add("TOOLONG", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	_, err := g.Rels.Add(context.Background(), "TOOLONG", a, b, nil)
 	if err == nil {
 		t.Fatal("expected error for type name too long")
 	}
@@ -27,9 +27,9 @@ func TestAddRelationshipTooManyProperties(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	_, err := g.Rels.Add("REL", a, b, map[string]any{"a": 1, "b": 2})
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	_, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"a": 1, "b": 2})
 	if err == nil {
 		t.Fatal("expected error for too many properties")
 	}
@@ -50,15 +50,15 @@ func TestAddRelationshipInvalidTypePrecedesEntityAndPropertyValidation(t *testin
 		run  func() error
 	}{
 		{name: "Add", run: func() error {
-			_, err := g.Rels.Add(" ", missingStart, missingEnd, props)
+			_, err := g.Rels.Add(context.Background(), " ", missingStart, missingEnd, props)
 			return err
 		}},
 		{name: "AddByID", run: func() error {
-			_, err := g.Rels.AddByID(" ", missingStart.ID(), missingEnd.ID(), props)
+			_, err := g.Rels.AddByID(context.Background(), " ", missingStart.ID(), missingEnd.ID(), props)
 			return err
 		}},
 		{name: "AddByIDIfAbsent", run: func() error {
-			_, _, err := g.Rels.AddByIDIfAbsent(" ", missingStart.ID(), missingEnd.ID(), props)
+			_, _, err := g.Rels.AddByIDIfAbsent(context.Background(), " ", missingStart.ID(), missingEnd.ID(), props)
 			return err
 		}},
 		{name: "Import", run: func() error {
@@ -80,9 +80,9 @@ func TestAddRelationshipPropertyKeyTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	_, err := g.Rels.Add("REL", a, b, map[string]any{"toolong": "v"})
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	_, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"toolong": "v"})
 	if err == nil {
 		t.Fatal("expected error for key too long")
 	}
@@ -95,9 +95,9 @@ func TestAddRelationshipPropertyValueTooLarge(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	_, err := g.Rels.Add("REL", a, b, map[string]any{"k": "toolong"})
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	_, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"k": "toolong"})
 	if err == nil {
 		t.Fatal("expected error for value too large")
 	}
@@ -117,23 +117,23 @@ func TestRelationshipMutationsRejectNestedPropertyStringValueTooLarge(t *testing
 		{
 			name: "add",
 			run: func(g *Core, _ types.RelID) error {
-				a, _ := g.Nodes.Add([]string{"X"}, nil)
-				b, _ := g.Nodes.Add([]string{"X"}, nil)
-				_, err := g.Rels.Add("REL", a, b, map[string]any{"k": oversized})
+				a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+				b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+				_, err := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"k": oversized})
 				return err
 			},
 		},
 		{
 			name: "update",
 			run: func(g *Core, id types.RelID) error {
-				_, err := g.Rels.Update(id, map[string]any{"k": oversized})
+				_, err := g.Rels.Update(context.Background(), id, map[string]any{"k": oversized})
 				return err
 			},
 		},
 		{
 			name: "update in place",
 			run: func(g *Core, id types.RelID) error {
-				_, err := g.Rels.UpdateInPlace(id, map[string]any{"k": oversized})
+				_, err := g.Rels.UpdateInPlace(context.Background(), id, map[string]any{"k": oversized})
 				return err
 			},
 		},
@@ -146,7 +146,7 @@ func TestRelationshipMutationsRejectNestedPropertyStringValueTooLarge(t *testing
 		{
 			name: "compare and set property",
 			run: func(g *Core, id types.RelID) error {
-				_, err := g.Rels.CompareAndSetProperty(id, "k", nil, oversized)
+				_, err := g.Rels.CompareAndSetProperty(context.Background(), id, "k", nil, oversized)
 				return err
 			},
 		},
@@ -156,9 +156,9 @@ func TestRelationshipMutationsRejectNestedPropertyStringValueTooLarge(t *testing
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
-			a, _ := g.Nodes.Add([]string{"X"}, nil)
-			b, _ := g.Nodes.Add([]string{"X"}, nil)
-			r, _ := g.Rels.Add("REL", a, b, nil)
+			a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+			b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+			r, _ := g.Rels.Add(context.Background(), "REL", a, b, nil)
 
 			err := tc.run(g, r.ID())
 			if err == nil {
@@ -175,11 +175,11 @@ func TestUpdateRelPropertyCountExceedsLimit(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("REL", a, b, map[string]any{"a": 1})
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "REL", a, b, map[string]any{"a": 1})
 
-	_, err := g.Rels.Update(r.ID(), map[string]any{"b": 2})
+	_, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"b": 2})
 	if err == nil {
 		t.Fatal("expected error for exceeding property limit on rel update")
 	}

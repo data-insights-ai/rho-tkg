@@ -1,6 +1,7 @@
 package rels_test
 
 import (
+	"context"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/rels" // godoc anchor: ExampleAPI_<method> resolves against rels.API
 )
@@ -14,9 +15,9 @@ func ExampleAPI_Add() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		panic(err)
 	}
@@ -31,9 +32,9 @@ func ExampleAPI_Outgoing() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	_, _ = g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	_, _ = g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
 	out, err := g.Rels.Outgoing(a.ID(), "KNOWS")
 	if err != nil {
@@ -51,9 +52,9 @@ func ExampleAPI_AddByID() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	r, err := g.Rels.AddByID("KNOWS", a.ID(), b.ID(), nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, err := g.Rels.AddByID(context.Background(), "KNOWS", a.ID(), b.ID(), nil)
 	if err != nil {
 		panic(err)
 	}

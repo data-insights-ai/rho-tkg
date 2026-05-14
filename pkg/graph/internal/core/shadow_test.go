@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -13,7 +14,7 @@ func makeNodeWithMeta(t *testing.T) (*Core, *types.Node) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person", "Actor"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,9 +43,9 @@ func makeRelWithMeta(t *testing.T) (*Core, *types.Relationship) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, err := g.Rels.Add("KNOWS", nA, nB, map[string]any{"weight": 1.5})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"weight": 1.5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +536,7 @@ func TestResolveNodeCreatedAtZeroFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	n.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
 
 	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt)
@@ -571,9 +572,9 @@ func TestResolveRelCreatedAtZeroFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("R", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "R", nA, nB, nil)
 	r.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
 
 	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt)

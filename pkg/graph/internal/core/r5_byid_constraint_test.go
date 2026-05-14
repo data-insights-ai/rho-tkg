@@ -23,14 +23,14 @@ func TestR5_AddByID_EnforcesTemporalConstraint(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Persist b with a deterministic already-expired interval so the
 	// constraint check on the rel must reject as after-expiry rather
 	// than before-validity.
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
@@ -38,7 +38,7 @@ func TestR5_AddByID_EnforcesTemporalConstraint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = g.Rels.AddByIDWithContext(context.Background(), "LINK", a.ID(), b.ID(), nil)
+	_, err = g.Rels.AddByID(context.Background(), "LINK", a.ID(), b.ID(), nil)
 	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
 		t.Fatalf("AddByID with expired endpoint: got %v, want errors.Is(ErrTemporalConstraint)", err)
 	}
@@ -50,11 +50,11 @@ func TestR5_AddByIDIfAbsent_EnforcesTemporalConstraint(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
@@ -62,7 +62,7 @@ func TestR5_AddByIDIfAbsent_EnforcesTemporalConstraint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = g.Rels.AddByIDIfAbsentWithContext(context.Background(), "LINK", a.ID(), b.ID(), nil)
+	_, _, err = g.Rels.AddByIDIfAbsent(context.Background(), "LINK", a.ID(), b.ID(), nil)
 	if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
 		t.Fatalf("AddByIDIfAbsent with expired endpoint: got %v, want errors.Is(ErrTemporalConstraint)", err)
 	}
@@ -76,16 +76,16 @@ func TestR9_AddByID_CapturesEndpointHashesWithoutConstraints(t *testing.T) {
 	g := newTestGraph(t)
 	// No constraints configured.
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	r, err := g.Rels.AddByIDWithContext(context.Background(), "LINK", a.ID(), b.ID(), nil)
+	r, err := g.Rels.AddByID(context.Background(), "LINK", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByID with no constraints: %v", err)
 	}
@@ -106,16 +106,16 @@ func TestR5_AddByID_ConstrainedPathCapturesEndpointHashes(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	r, err := g.Rels.AddByIDWithContext(context.Background(), "LINK", a.ID(), b.ID(), nil)
+	r, err := g.Rels.AddByID(context.Background(), "LINK", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByID with constraints: %v", err)
 	}

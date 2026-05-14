@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -13,10 +14,10 @@ func TestGraphAddRelationshipByID_TemporalProps(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	r, err := g.Rels.AddByID("REL", nA.ID(), nB.ID(), map[string]any{
+	r, err := g.Rels.AddByID(context.Background(), "REL", nA.ID(), nB.ID(), map[string]any{
 		"tkg_valid_from": int64(1000),
 		"tkg_created_at": int64(2000),
 	})
@@ -41,13 +42,13 @@ func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	aID := nA.ID()
 	bID := nB.ID()
 
 	// Same endpoints, different types — both should create.
-	_, created1, err := g.Rels.AddByIDIfAbsent("KNOWS", aID, bID, nil)
+	_, created1, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", aID, bID, nil)
 	if err != nil {
 		t.Fatalf("KNOWS: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestGraphAddRelationshipByIDIfAbsent_DifferentTypes(t *testing.T) {
 		t.Error("KNOWS: created should be true")
 	}
 
-	_, created2, err := g.Rels.AddByIDIfAbsent("LIKES", aID, bID, nil)
+	_, created2, err := g.Rels.AddByIDIfAbsent(context.Background(), "LIKES", aID, bID, nil)
 	if err != nil {
 		t.Fatalf("LIKES: %v", err)
 	}
@@ -77,10 +78,10 @@ func TestGraphUpdateNodeUpdatedAt(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	updated, _ := g.Nodes.Update(id, map[string]any{"name": "Alice"})
+	updated, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alice"})
 	tm := updated.Temporal()
 	if tm == nil {
 		t.Fatal("temporal should be set after update")
@@ -98,7 +99,7 @@ func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
 	const count = 20
 	ids := make([]types.NodeID, count)
 	for i := range count {
-		n, _ := g.Nodes.Add([]string{"X"}, map[string]any{"v": 0})
+		n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"v": 0})
 		ids[i] = n.ID()
 	}
 
@@ -107,13 +108,13 @@ func TestGraphUpdateNodeConcurrentDifferentNodes(t *testing.T) {
 	for i := range count {
 		go func(idx int) {
 			defer wg.Done()
-			g.Nodes.Update(ids[idx], map[string]any{"v": idx + 1})
+			g.Nodes.Update(context.Background(), ids[idx], map[string]any{"v": idx + 1})
 		}(i)
 	}
 	wg.Wait()
 
 	for i, id := range ids {
-		got, err := g.Nodes.Get(id)
+		got, err := g.Nodes.Get(context.Background(), id)
 		if err != nil {
 			t.Fatalf("GetNode(%d): %v", id, err)
 		}
@@ -128,12 +129,12 @@ func TestGraphUpdateRelUpdatedAt(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
-	updated, _ := g.Rels.Update(id, map[string]any{"x": 1})
+	updated, _ := g.Rels.Update(context.Background(), id, map[string]any{"x": 1})
 	tm := updated.Temporal()
 	if tm == nil {
 		t.Fatal("temporal should be set after update")
@@ -151,20 +152,20 @@ func TestGraphVerifyNodeChain_DeletedEntity(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nodeID := n.ID()
 
 	// Update to create version history.
-	_, err = g.Nodes.Update(nodeID, map[string]any{"name": "Bob"})
+	_, err = g.Nodes.Update(context.Background(), nodeID, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Delete the node — tombstone saved to history.
-	if err := g.Nodes.Delete(nodeID); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nodeID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,19 +187,19 @@ func TestGraphVerifyRelChain_DeletedEntity(t *testing.T) {
 	}
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(1)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(1)})
 	relID := r.ID()
 
 	// Update to create version history.
-	_, err = g.Rels.Update(relID, map[string]any{"w": int64(2)})
+	_, err = g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Delete the relationship — tombstone saved to history.
-	if err := g.Rels.Delete(relID); err != nil {
+	if err := g.Rels.Delete(context.Background(), relID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,13 +224,13 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 	defer g.Close()
 	clk := useTestClock(t, g)
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	id := n.ID()
 
 	validTime := nowMs() // wall-clock: before any test-clock-stamped Delete (R5-F10)
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -263,13 +264,13 @@ func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
 	defer g.Close()
 	useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
 	snapshotTime := nowMs() // wall-clock: before test-clock-stamped Delete (R5-F10)
 
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 

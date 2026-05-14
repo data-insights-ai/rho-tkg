@@ -23,7 +23,7 @@ func TestR5_NodeCreate_PutFailureDoesNotKeepNewLabelToken(t *testing.T) {
 		{
 			name: "Add",
 			run: func(g *Core, label string) error {
-				_, err := g.Nodes.Add([]string{label}, nil)
+				_, err := g.Nodes.Add(context.Background(), []string{label}, nil)
 				return err
 			},
 		},
@@ -67,7 +67,7 @@ func TestR5_AddNodeLabel_WriteFailureDoesNotKeepNewLabelToken(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"Existing"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatalf("Add existing node: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestR5_NodeCreateCapacityFailureDoesNotKeepPartiallyAllocatedLabelToken(t *
 	defer g.Close()
 	importLabelRegistryNames(t, g, int(registrypkg.TokenCapacityMax)-1)
 
-	if _, err := g.Nodes.Add([]string{"CapacityPrimary", "CapacityExtra"}, nil); err == nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"CapacityPrimary", "CapacityExtra"}, nil); err == nil {
 		t.Fatal("Nodes.Add error = nil, want label registry capacity failure")
 	}
 	if _, ok := g.labels.Lookup("CapacityPrimary"); ok {
@@ -259,7 +259,7 @@ func TestBatchBuilderAddNodePanicDoesNotLeakRegistryLock(t *testing.T) {
 
 	var addErr error
 	completed := withDeadline(t, 2*time.Second, func() {
-		_, addErr = g.Nodes.Add([]string{"AfterBatchPanic"}, nil)
+		_, addErr = g.Nodes.Add(context.Background(), []string{"AfterBatchPanic"}, nil)
 	})
 	if !completed {
 		t.Fatal("follow-up Nodes.Add deadlocked; registry rollback leaked its mutex")

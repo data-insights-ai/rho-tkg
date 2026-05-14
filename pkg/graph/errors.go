@@ -62,12 +62,8 @@ var (
 	ErrInvalidTimeRange = core.ErrInvalidTimeRange
 	ErrLabelNotFound    = core.ErrLabelNotFound
 	ErrLastLabel        = core.ErrLastLabel
-	// Deprecated: kept only for source compatibility with older callers.
-	// Temporal filters and tiered-store Depth now compose across current,
-	// history-aware, and vector query paths.
-	ErrDepthTemporalUnsupported = core.ErrDepthTemporalUnsupported
-	ErrBatchFailed              = core.ErrBatchFailed
-	ErrBatchDone                = core.ErrBatchDone
+	ErrBatchFailed      = core.ErrBatchFailed
+	ErrBatchDone        = core.ErrBatchDone
 	ErrTooManyLabels            = core.ErrTooManyLabels
 	ErrTooManyProperties        = core.ErrTooManyProperties
 	ErrKeyTooLong               = core.ErrKeyTooLong

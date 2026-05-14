@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -31,11 +32,11 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 	defer g.Close()
 
 	// Create two nodes before the transaction so we can add a relationship.
-	n1, err := g.Nodes.Add([]string{"A"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n1: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"B"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n2: %v", err)
 	}

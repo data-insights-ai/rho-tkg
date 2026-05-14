@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -14,9 +15,9 @@ func TestVectorIndex_CreateAndSearch_Cosine(t *testing.T) {
 	label := "Item"
 	key := "embedding"
 
-	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0, 0}})
-	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1, 0}})
-	n3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0.1, 0}})
+	n1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
+	n2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
+	n3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0.1, 0}})
 
 	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -51,9 +52,9 @@ func TestVectorIndex_CreateAndSearch_Euclidean(t *testing.T) {
 	label := "Vec"
 	key := "v"
 
-	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
-	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 1}})
-	n3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 10}})
+	n1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}})
+	n2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 1}})
+	n3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{10, 10}})
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -80,7 +81,7 @@ func TestVectorIndex_AutoMaintained_OnAdd(t *testing.T) {
 	key := "v"
 
 	// Register the label by adding a seed node without a vector, then create the index.
-	seed, _ := g.Nodes.Add([]string{label}, nil) // registers label; no vector property
+	seed, _ := g.Nodes.Add(context.Background(), []string{label}, nil) // registers label; no vector property
 	_ = seed
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
@@ -88,7 +89,7 @@ func TestVectorIndex_AutoMaintained_OnAdd(t *testing.T) {
 	}
 
 	// Add a node with a vector AFTER the index was created — should be auto-indexed.
-	n, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	n, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 
 	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if err != nil {
@@ -104,14 +105,14 @@ func TestVectorIndex_AutoMaintained_OnDelete(t *testing.T) {
 	label := "E"
 	key := "v"
 
-	n, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	n, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 	id := n.ID()
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -130,7 +131,7 @@ func TestVectorIndex_DimensionMismatch(t *testing.T) {
 	g, _ := New(Config{})
 	label := "X"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, nil) // register label
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil) // register label
 
 	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -146,7 +147,7 @@ func TestVectorIndex_IndexAlreadyExists(t *testing.T) {
 	g, _ := New(Config{})
 	label := "X"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, nil)
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil)
 
 	_ = g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine)
 	err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine)
@@ -158,7 +159,7 @@ func TestVectorIndex_IndexAlreadyExists(t *testing.T) {
 func TestVectorIndex_IndexNotFound(t *testing.T) {
 	g, _ := New(Config{})
 	label := "X"
-	_, _ = g.Nodes.Add([]string{label}, nil)
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil)
 
 	err := g.Index.DropVector(label, "nonexistent")
 	if !errors.Is(err, ErrVectorIndexNotFound) {
@@ -175,7 +176,7 @@ func TestVectorIndex_CreateBeforeLabelExistsIndexesFutureNodes(t *testing.T) {
 		t.Fatalf("CreateVector before label registration: %v", err)
 	}
 
-	n, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	n, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("Add future indexed node: %v", err)
 	}
@@ -281,7 +282,7 @@ func TestVectorIndex_SearchEmpty_ReturnsNil(t *testing.T) {
 	g, _ := New(Config{})
 	label := "Empty"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, nil) // register label, no vector property
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil) // register label, no vector property
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -299,7 +300,7 @@ func TestVectorIndex_SearchEmpty_ReturnsNil(t *testing.T) {
 func TestVectorIndex_SearchNotFound_ReturnsError(t *testing.T) {
 	g, _ := New(Config{})
 	label := "X"
-	_, _ = g.Nodes.Add([]string{label}, nil)
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil)
 
 	_, err := g.Index.SearchNearest(label, "missing", []float32{1, 0}, 1, storepkg.QueryOpts{})
 	if !errors.Is(err, ErrVectorIndexNotFound) {
@@ -313,7 +314,7 @@ func TestVectorIndex_SearchRejectsInvalidAndUnknownTargets(t *testing.T) {
 			MaxPropertyKeyLength: 4,
 		},
 	})
-	_, _ = g.Nodes.Add([]string{"Person"}, nil)
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	tests := []struct {
 		name string
@@ -377,7 +378,7 @@ func TestVectorIndex_SearchValidatesTargetsBeforeNonPositiveKShortcut(t *testing
 			MaxPropertyKeyLength: 4,
 		},
 	})
-	_, _ = g.Nodes.Add([]string{"Person"}, nil)
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	tests := []struct {
 		name string
@@ -431,7 +432,7 @@ func TestVectorIndex_DropAndRecreate(t *testing.T) {
 	g, _ := New(Config{})
 	label := "D"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("first CreateVectorIndex: %v", err)
@@ -452,7 +453,7 @@ func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
 	label := "U"
 	key := "v"
 
-	n, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
+	n, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
 	id := n.ID()
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
@@ -460,7 +461,7 @@ func TestVectorIndex_AutoMaintained_OnUpdate(t *testing.T) {
 	}
 
 	// Update node vector.
-	if _, err := g.Nodes.Update(id, map[string]any{key: []float32{1, 0}}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{key: []float32{1, 0}}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -482,7 +483,7 @@ func TestVectorIndex_toFloat32Slice_MixedAny(t *testing.T) {
 
 	// Store as []any of float64 (what JSON unmarshaling produces).
 	mixedVec := []any{float64(1), float64(0)}
-	n, err := g.Nodes.Add([]string{label}, map[string]any{key: mixedVec})
+	n, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: mixedVec})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

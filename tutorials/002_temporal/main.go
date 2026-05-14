@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -70,7 +71,7 @@ func main() {
 
 	// Every entity gets an accurate creation timestamp from its snowflake ID,
 	// even without calling SetTemporal.
-	emp, err := g.Nodes.Add([]string{"Employee"}, map[string]any{
+	emp, err := g.Nodes.Add(context.Background(), []string{"Employee"}, map[string]any{
 		"name":       "Alice",
 		"department": "Engineering",
 	})
@@ -117,7 +118,7 @@ func main() {
 	eventTime := types.Instant(time.Date(2026, 3, 9, 14, 30, 0, 0, time.UTC).UnixMilli())
 	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
 
-	sensor, err := g.Nodes.Add([]string{"Sensor"}, map[string]any{
+	sensor, err := g.Nodes.Add(context.Background(), []string{"Sensor"}, map[string]any{
 		"name":           "temperature-east-wing",
 		"location":       "building-A",
 		"tkg_valid_from": int64(eventTime), // when this fact becomes valid
@@ -145,7 +146,7 @@ func main() {
 	fmt.Println("tkg_valid_from NOT in regular properties (correctly extracted)")
 
 	// Works with relationships too:
-	reading, err := g.Rels.Add("HAS_READING", sensor, emp, map[string]any{
+	reading, err := g.Rels.Add(context.Background(), "HAS_READING", sensor, emp, map[string]any{
 		"value":          float64(22.5),
 		"tkg_valid_from": int64(eventTime),
 		"tkg_created_at": int64(eventTime),
@@ -159,14 +160,14 @@ func main() {
 
 	fmt.Println("\n=== 4. Relationship with Temporal Data (Direct SetTemporal) ===")
 
-	mgr, err := g.Nodes.Add([]string{"Employee", "Manager"}, map[string]any{
+	mgr, err := g.Nodes.Add(context.Background(), []string{"Employee", "Manager"}, map[string]any{
 		"name": "Bob",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	reports, err := g.Rels.Add("REPORTS_TO", emp, mgr, map[string]any{
+	reports, err := g.Rels.Add(context.Background(), "REPORTS_TO", emp, mgr, map[string]any{
 		"role": "direct",
 	})
 	if err != nil {
@@ -258,7 +259,7 @@ func main() {
 	fmt.Println("\n=== 9. Base Entity ID (Version Chain) ===")
 
 	// Create a new version linked back to the original.
-	empV2, err := g.Nodes.Add([]string{"Employee"}, map[string]any{
+	empV2, err := g.Nodes.Add(context.Background(), []string{"Employee"}, map[string]any{
 		"name":       "Alice",
 		"department": "Platform",
 	})

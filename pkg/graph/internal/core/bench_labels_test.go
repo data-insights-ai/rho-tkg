@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"strconv"
 	"testing"
 
@@ -21,7 +22,7 @@ func BenchmarkAddNodeLabel(b *testing.B) {
 
 	ids := make([]types.NodeID, b.N)
 	for i := range ids {
-		n, err := g.Nodes.Add([]string{"Base"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Base"}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -51,7 +52,7 @@ func BenchmarkAddNodeLabelIdempotent(b *testing.B) {
 	}
 	b.Cleanup(func() { g.Close() })
 
-	n, err := g.Nodes.Add([]string{"Base", "Extra"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Base", "Extra"}, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func BenchmarkRemoveNodeLabel(b *testing.B) {
 	labels := make([]string, b.N)
 	for i := range ids {
 		lbl := "L" + strconv.Itoa(i%64)
-		n, err := g.Nodes.Add([]string{"Base", lbl}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Base", lbl}, nil)
 		if err != nil {
 			b.Fatal(err)
 		}

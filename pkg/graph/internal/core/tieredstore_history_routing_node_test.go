@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ import (
 func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 	// primary=Case (reference), extra=Person (event); RefLabels in newTestTieredStore.
-	n, err := g.Nodes.Add([]string{"Case", "Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case", "Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
 // still succeed. Ensures the guard is targeted, not blanket.
 func TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	n, err := g.Nodes.Add([]string{"Case", "User"}, nil) // both reference
+	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, nil) // both reference
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed(t *testing.T) {
 // Adding a label of the same class as the current primary must succeed.
 func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	n, err := g.Nodes.Add([]string{"Case"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
 func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 	// Both Case and User are reference labels in newTestTieredStore.
-	n, err := g.Nodes.Add([]string{"Case", "User"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,15 +85,15 @@ func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testin
 // historical snapshot v from whichever shard now owns the tombstone history.
 func TestTieredStore_GetNodeVersion_AfterRefDelete(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": int64(0)})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": int64(0)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := n.ID()
-	if _, err := g.Nodes.Update(id, map[string]any{"v": int64(1)}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -119,17 +120,17 @@ func TestTieredStore_GetNodeVersion_AfterRefDelete(t *testing.T) {
 // tombstone history on the reference shard and truncate it.
 func TestTieredStore_TruncateNodeHistory_AfterRefDelete(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": int64(0)})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": int64(0)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := n.ID()
 	for i := 1; i <= 4; i++ {
-		if _, err := g.Nodes.Update(id, map[string]any{"v": int64(i)}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(i)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,17 +172,17 @@ func TestTieredStore_TruncateNodeHistory_UnknownID_NoError(t *testing.T) {
 func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "draft"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// Mutate twice to produce two history entries on refShard before archiving.
-	if _, err := g.Nodes.Update(id, map[string]any{"status": "review"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"status": "review"}); err != nil {
 		t.Fatalf("UpdateNode review: %v", err)
 	}
-	if _, err := g.Nodes.Update(id, map[string]any{"status": "published"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"status": "published"}); err != nil {
 		t.Fatalf("UpdateNode published: %v", err)
 	}
 
@@ -259,11 +260,11 @@ func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	eventNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"v": 1})
+	eventNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatalf("Add event node: %v", err)
 	}
-	if _, err := g.Nodes.Update(eventNode.ID(), map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), eventNode.ID(), map[string]any{"v": 2}); err != nil {
 		t.Fatalf("Update event node: %v", err)
 	}
 	eventPage, err := ts.NodeHistoryVersionsFrom(eventNode.ID(), 0, 1)
@@ -287,14 +288,14 @@ func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 		t.Fatalf("NodeHistoryVersionsFrom closed store = %v, want ErrStoreClosed", err)
 	}
 
-	deletedNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"v": 1})
+	deletedNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatalf("Add deleted node: %v", err)
 	}
-	if _, err := g.Nodes.Update(deletedNode.ID(), map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), deletedNode.ID(), map[string]any{"v": 2}); err != nil {
 		t.Fatalf("Update deleted node: %v", err)
 	}
-	if err := g.Nodes.Delete(deletedNode.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), deletedNode.ID()); err != nil {
 		t.Fatalf("Delete node: %v", err)
 	}
 	deletedPage, err := ts.NodeHistoryVersionsFrom(deletedNode.ID(), 0, 10)
@@ -305,17 +306,17 @@ func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 		t.Fatal("NodeHistoryVersionsFrom deleted node returned no history")
 	}
 
-	refNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	refNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatalf("Add ref node: %v", err)
 	}
-	if _, err := g.Nodes.Update(refNode.ID(), map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), refNode.ID(), map[string]any{"v": 2}); err != nil {
 		t.Fatalf("Update ref node before archive: %v", err)
 	}
 	if err := ts.ArchiveNode(refNode.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
-	if _, err := g.Nodes.Update(refNode.ID(), map[string]any{"v": 3}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), refNode.ID(), map[string]any{"v": 3}); err != nil {
 		t.Fatalf("Update archived node: %v", err)
 	}
 	if err := ts.RestoreNode(refNode.ID()); err != nil {
@@ -333,11 +334,11 @@ func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 func TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatalf("Add node: %v", err)
 	}
-	if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"v": 2}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
 	corruptTieredRefNodeHistoryWire(t, ts, n.ID(), 0)
@@ -361,19 +362,19 @@ func TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError(t *testing
 func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := n.ID()
-	if _, err := g.Nodes.Update(id, map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": 2}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ts.ArchiveNode(id); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 	// Post-archive update: history entry lands on refArchive.
-	if _, err := g.Nodes.Update(id, map[string]any{"v": 3}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": 3}); err != nil {
 		t.Fatalf("post-archive UpdateNode: %v", err)
 	}
 
@@ -401,7 +402,7 @@ func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
 func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,15 +428,15 @@ func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 func TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	rel, err := g.Rels.Add("TOUCHES", caseNode, signalNode, nil)
+	rel, err := g.Rels.Add(context.Background(), "TOUCHES", caseNode, signalNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -478,15 +479,15 @@ func TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE(t *testing.T) {
 func TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	rel, err := g.Rels.Add("TARGETS", signalNode, caseNode, nil)
+	rel, err := g.Rels.Add(context.Background(), "TARGETS", signalNode, caseNode, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -525,15 +526,15 @@ func TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR(t *testing.T) {
 func TestTieredStore_ArchiveNode_MigratesRefRefRel(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Case"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	a2, err := g.Nodes.Add([]string{"Case"}, nil)
+	a2, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a2: %v", err)
 	}
-	rel, err := g.Rels.Add("LINKED", a, a2, nil)
+	rel, err := g.Rels.Add(context.Background(), "LINKED", a, a2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -626,15 +627,15 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 	}
 	defer func() { _ = g.Close() }()
 
-	node, err := g.Nodes.Add([]string{"Case"}, nil)
+	node, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	partner, err := g.Nodes.Add([]string{"Case"}, nil)
+	partner, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode partner: %v", err)
 	}
-	if _, err := g.Rels.Add("LOOPS", node, node, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "LOOPS", node, node, nil); err != nil {
 		t.Fatalf("AddRelationship self-loop: %v", err)
 	}
 
@@ -654,7 +655,7 @@ func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
 		t.Fatal("node still present in refShard after g.Admin.Archive")
 	}
 
-	touches, err := g.Rels.Add("TOUCHES", node, partner, nil)
+	touches, err := g.Rels.Add(context.Background(), "TOUCHES", node, partner, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship archive→live: %v", err)
 	}

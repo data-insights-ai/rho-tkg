@@ -164,7 +164,7 @@ func BenchmarkAddNode(b *testing.B) {
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := g.Nodes.Add(labels, benchProps()); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), labels, benchProps()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -179,7 +179,7 @@ func BenchmarkAddNodeMemStore(b *testing.B) {
 	labels := []string{"LoadTest"}
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err := g.Nodes.Add(labels, benchProps()); err != nil {
+		if _, err := g.Nodes.Add(context.Background(), labels, benchProps()); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -193,14 +193,14 @@ func BenchmarkAddRelationship(b *testing.B) {
 	type pair struct{ start, end *types.Node }
 	pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 	for i := range pairs {
-		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
-		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
+		n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i})
+		n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i + 1000000})
 		pairs[i] = pair{n1, n2}
 	}
 	b.ResetTimer()
 	for i := range b.N {
 		pair := pairs[i%len(pairs)]
-		if _, err := g.Rels.Add("KNOWS", pair.start, pair.end,
+		if _, err := g.Rels.Add(context.Background(), "KNOWS", pair.start, pair.end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}
@@ -216,14 +216,14 @@ func BenchmarkAddRelationshipMemStore(b *testing.B) {
 	type pair struct{ start, end *types.Node }
 	pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 	for i := range pairs {
-		n1, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
-		n2, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + 1000000})
+		n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i})
+		n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i + 1000000})
 		pairs[i] = pair{n1, n2}
 	}
 	b.ResetTimer()
 	for i := range b.N {
 		pair := pairs[i%len(pairs)]
-		if _, err := g.Rels.Add("KNOWS", pair.start, pair.end,
+		if _, err := g.Rels.Add(context.Background(), "KNOWS", pair.start, pair.end,
 			map[string]any{"weight": 1}); err != nil {
 			b.Fatal(err)
 		}

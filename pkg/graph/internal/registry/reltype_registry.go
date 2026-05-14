@@ -209,6 +209,20 @@ func (r *RelTypeRegistry) ImportNames(names []string) error {
 	}
 
 	r.nextToken = uint16(len(names)) // #nosec G115 — bounds checked at function entry against TokenCapacityMax
+
+	// Fire the capacity warning if the imported set already exceeds the
+	// threshold; otherwise a large restore could push the registry past
+	// tokenCapacityWarning without any operator-visible signal until the
+	// next GetOrCreate happens to allocate a new token.
+	if len(r.toName) > tokenCapacityWarning {
+		r.warnOnce.Do(func() {
+			slog.Warn("reltype registry approaching capacity",
+				"count", len(r.toName)-1,
+				"max", TokenCapacityMax,
+			)
+		})
+	}
+
 	return nil
 }
 

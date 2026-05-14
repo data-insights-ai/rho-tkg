@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -216,52 +217,52 @@ func TestGraphMutationsRejectOversizedStringInsideRegisteredPropertyStruct(t *te
 		{
 			name: "node add",
 			run: func(g *Core) error {
-				_, err := g.Nodes.Add([]string{"Custom"}, map[string]any{"custom": oversized})
+				_, err := g.Nodes.Add(context.Background(), []string{"Custom"}, map[string]any{"custom": oversized})
 				return err
 			},
 		},
 		{
 			name: "node update",
 			run: func(g *Core) error {
-				n, err := g.Nodes.Add([]string{"Custom"}, map[string]any{"custom": valid})
+				n, err := g.Nodes.Add(context.Background(), []string{"Custom"}, map[string]any{"custom": valid})
 				if err != nil {
 					return err
 				}
-				_, err = g.Nodes.Update(n.ID(), map[string]any{"custom": oversized})
+				_, err = g.Nodes.Update(context.Background(), n.ID(), map[string]any{"custom": oversized})
 				return err
 			},
 		},
 		{
 			name: "relationship add pointer",
 			run: func(g *Core) error {
-				a, err := g.Nodes.Add([]string{"Custom"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"Custom"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"Custom"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"Custom"}, nil)
 				if err != nil {
 					return err
 				}
-				_, err = g.Rels.Add("LINKS", a, b, map[string]any{"custom": &oversized})
+				_, err = g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"custom": &oversized})
 				return err
 			},
 		},
 		{
 			name: "relationship update pointer",
 			run: func(g *Core) error {
-				a, err := g.Nodes.Add([]string{"Custom"}, nil)
+				a, err := g.Nodes.Add(context.Background(), []string{"Custom"}, nil)
 				if err != nil {
 					return err
 				}
-				b, err := g.Nodes.Add([]string{"Custom"}, nil)
+				b, err := g.Nodes.Add(context.Background(), []string{"Custom"}, nil)
 				if err != nil {
 					return err
 				}
-				r, err := g.Rels.Add("LINKS", a, b, map[string]any{"custom": valid})
+				r, err := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"custom": valid})
 				if err != nil {
 					return err
 				}
-				_, err = g.Rels.Update(r.ID(), map[string]any{"custom": &oversized})
+				_, err = g.Rels.Update(context.Background(), r.ID(), map[string]any{"custom": &oversized})
 				return err
 			},
 		},

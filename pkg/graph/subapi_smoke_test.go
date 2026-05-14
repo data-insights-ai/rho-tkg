@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 )
 
@@ -22,15 +23,15 @@ func TestSubAPISmoke(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	// Nodes
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("Nodes.Add: %v", err)
 	}
-	b, err := g.Nodes.AddWithContext(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("Nodes.AddWithContext: %v", err)
 	}
-	if got, _ := g.Nodes.Get(a.ID()); got == nil || got.ID() != a.ID() {
+	if got, _ := g.Nodes.Get(context.Background(), a.ID()); got == nil || got.ID() != a.ID() {
 		t.Fatalf("Nodes.Get returned %v", got)
 	}
 	if cnt, _ := g.Nodes.Count(); cnt != 2 {
@@ -54,11 +55,11 @@ func TestSubAPISmoke(t *testing.T) {
 	}
 
 	// Rels
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("Rels.Add: %v", err)
 	}
-	if got, _ := g.Rels.Get(r.ID()); got == nil || got.ID() != r.ID() {
+	if got, _ := g.Rels.Get(context.Background(), r.ID()); got == nil || got.ID() != r.ID() {
 		t.Fatalf("Rels.Get returned %v", got)
 	}
 	if cnt, _ := g.Rels.Count(); cnt != 1 {
@@ -82,7 +83,7 @@ func TestSubAPISmoke(t *testing.T) {
 	if cnt, _ := g.Stats.RelCount(); cnt != 1 {
 		t.Fatalf("Stats.RelCount = %d", cnt)
 	}
-	if snap := g.Stats.Get(); snap.NodesAdded != 2 || snap.RelsAdded != 1 {
+	if snap, _ := g.Stats.Get(); snap.NodesAdded != 2 || snap.RelsAdded != 1 {
 		t.Fatalf("Stats.Get = %+v, want NodesAdded=2 RelsAdded=1", snap)
 	}
 
@@ -99,9 +100,6 @@ func TestSubAPISmoke(t *testing.T) {
 	// Resolve
 	if v, ok := g.Resolve.NodeProperty(a, "name"); !ok || v != "Alice" {
 		t.Fatalf("Resolve.NodeProperty: ok=%v v=%v", ok, v)
-	}
-	if _, ok := g.Resolve.LookupLabel("Person"); !ok {
-		t.Fatalf("Resolve.LookupLabel(Person) missing")
 	}
 
 	// Index — create + drop
@@ -122,7 +120,7 @@ func TestSubAPISmoke(t *testing.T) {
 		t.Fatalf("New(dst): %v", err)
 	}
 	t.Cleanup(func() { _ = dst.Close() })
-	if err := dst.IO.Import(&exported); err != nil {
+	if err := dst.IO.Import(&exported, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("IO.Import: %v", err)
 	}
 
@@ -152,10 +150,10 @@ func TestSubAPISmoke(t *testing.T) {
 		t.Fatalf("after Batch.Execute, NodeCount = %d, want 4", cnt)
 	}
 
-	// Admin: DecomposeID — works on any store
-	comp := g.Admin.DecomposeID(a.ID().SnowflakeID())
+	// Admin: DecomposeNodeID — works on any store
+	comp := g.Admin.DecomposeNodeID(a.ID())
 	if comp.CreatedAt.IsZero() {
-		t.Fatalf("Admin.DecomposeID returned zero CreatedAt")
+		t.Fatalf("Admin.DecomposeNodeID returned zero CreatedAt")
 	}
 
 	// Events: install/get sync bus

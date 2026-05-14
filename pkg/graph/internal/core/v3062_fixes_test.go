@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -166,7 +167,7 @@ func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
 	// Create nodes with "Case" (reference) label.
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "C1"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -198,7 +199,7 @@ func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
 func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add([]string{"Case"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 
 	if err := g.Index.CreateTemporal("Case"); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
@@ -219,7 +220,7 @@ func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
 func TestTieredStore_CreateHighFrequencyIndex_Store(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add([]string{"Case"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 
 	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
@@ -236,7 +237,7 @@ func TestTieredStore_CreateHighFrequencyIndex_Store(t *testing.T) {
 func TestTieredStore_DropHighFrequencyIndex_Store(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add([]string{"Case"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 
 	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
@@ -258,7 +259,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Case", "User"}, map[string]any{"name": "test"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, map[string]any{"name": "test"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -279,7 +280,7 @@ func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
 	}
 
 	// Verify current node has only one label.
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -295,7 +296,7 @@ func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -319,7 +320,7 @@ func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
 	}
 
 	// Current node should be version 1.
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}

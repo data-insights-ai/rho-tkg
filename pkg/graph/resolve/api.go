@@ -1,6 +1,9 @@
-// Package resolve is a sub-API accessor for shadow-property and registry
-// resolution helpers (label/reltype lookup, GetOrCreate, Node/Rel property
-// resolution including the 21 tkg_* shadow keys).
+// Package resolve is a sub-API accessor for shadow-property resolution
+// (the 21 tkg_* shadow keys on Node and Relationship). Registry token
+// methods that previously lived here were removed in API 4.0 — they leaked
+// the internal uint16 token representation. Customers needing token lookup
+// should use a value-typed wrapper or reach internal/registry directly
+// in tests.
 package resolve
 
 import (
@@ -12,10 +15,6 @@ import (
 type Ops interface {
 	NodeProperty(n *types.Node, key string) (any, bool)
 	RelProperty(r *types.Relationship, key string) (any, bool)
-	GetOrCreateLabel(name string) (uint16, error)
-	GetOrCreateRelType(name string) (uint16, error)
-	LookupLabel(name string) (uint16, bool)
-	LookupRelType(name string) (uint16, bool)
 }
 
 // API is the resolve sub-API accessor.
@@ -48,38 +47,4 @@ func (a *API) RelProperty(r *types.Relationship, key string) (any, bool) {
 		return nil, false
 	}
 	return a.ops.RelProperty(r, key)
-}
-
-// LabelToken returns or creates the token for a label name.
-func (a *API) LabelToken(name string) (uint16, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return 0, err
-	}
-	return ops.GetOrCreateLabel(name)
-}
-
-// RelTypeToken returns or creates the token for a relationship type name.
-func (a *API) RelTypeToken(name string) (uint16, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return 0, err
-	}
-	return ops.GetOrCreateRelType(name)
-}
-
-// LookupLabel returns the token for a label name without creating one if absent.
-func (a *API) LookupLabel(name string) (uint16, bool) {
-	if a == nil || !a.ok {
-		return 0, false
-	}
-	return a.ops.LookupLabel(name)
-}
-
-// LookupRelType returns the token for a relationship type name without creating one if absent.
-func (a *API) LookupRelType(name string) (uint16, bool) {
-	if a == nil || !a.ok {
-		return 0, false
-	}
-	return a.ops.LookupRelType(name)
 }

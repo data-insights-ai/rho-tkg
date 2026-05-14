@@ -133,7 +133,6 @@ var (
 	ErrNilTxCallback            = errors.New("graph: transaction callback must not be nil")
 	ErrLabelNotFound            = errors.New("graph: node does not have the specified label")
 	ErrLastLabel                = errors.New("graph: cannot remove the last label from a node")
-	ErrDepthTemporalUnsupported = errors.New("graph: legacy depth/temporal sentinel")
 	ErrBatchFailed              = errors.New("graph: batch execution had failed operations")
 	ErrBatchDone                = errors.New("graph: batch already executed")
 )

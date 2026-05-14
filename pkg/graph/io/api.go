@@ -75,7 +75,6 @@ type ImportOptions struct {
 // Ops is the subset of *core.IOOps the io sub-API forwards to.
 type Ops interface {
 	Export(w io.Writer) error
-	Import(r io.Reader) error
 	ImportWithOptions(r io.Reader, opts ImportOptions) error
 }
 
@@ -104,20 +103,14 @@ func (a *API) Export(w io.Writer) error {
 	return ops.Export(w)
 }
 
-// Import reads a length-prefixed msgpack record stream into the graph
-// using default ImportOptions (platform default temp dir, no size cap).
-func (a *API) Import(r io.Reader) error {
-	ops, err := a.ready()
-	if err != nil {
-		return err
-	}
-	return ops.Import(r)
-}
-
-// ImportWithOptions is the explicit-options variant of Import.
-// StagingDir directs the temp file to a specific volume and
-// MaxStagedBytes bounds the staging-disk usage.
-func (a *API) ImportWithOptions(r io.Reader, opts ImportOptions) error {
+// Import reads a length-prefixed msgpack record stream into the graph.
+// Pass ImportOptions{} for default behavior (platform default temp dir,
+// no size cap).
+//
+// API 4.0 change: the previous separate `Import(r)` and `ImportWithOptions(r, opts)`
+// are merged into this single method. To migrate `Import(r)` calls, pass
+// `ImportOptions{}` as the second argument.
+func (a *API) Import(r io.Reader, opts ImportOptions) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err

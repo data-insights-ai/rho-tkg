@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -12,15 +13,15 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"since": int64(2020)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, map[string]any{"since": int64(2020)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestGraphTx_DeleteRel_Rollback(t *testing.T) {
 		t.Errorf("rel count after rollback: got %d, want 1", rc)
 	}
 
-	got, err := g.Rels.Get(relID)
+	got, err := g.Rels.Get(context.Background(), relID)
 	if err != nil {
 		t.Fatalf("GetRelationship after rollback: %v", err)
 	}
@@ -54,15 +55,15 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"weight": int64(5)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, map[string]any{"weight": int64(5)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestGraphTx_UpdateRelationship_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.Rels.Get(relID)
+	got, err := g.Rels.Get(context.Background(), relID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,15 +91,15 @@ func TestTxGetRelationship(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,15 +127,15 @@ func TestTxGetRelationship_AfterDone(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,11 +194,11 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestTxAddRelationshipByID(t *testing.T) {
 	if rc != 1 {
 		t.Errorf("rel count after commit: got %d, want 1", rc)
 	}
-	got, err := g.Rels.Get(r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -236,11 +237,11 @@ func TestTxAddRelationshipByID_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,11 +266,11 @@ func TestTxAddRelationshipByIDIfAbsent(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,11 +323,11 @@ func TestTxAddRelationshipByIDIfAbsent_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

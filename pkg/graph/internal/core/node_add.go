@@ -49,7 +49,7 @@ func (c *Core) deletePartialNodeForRollback(n *types.Node) error {
 // AddWithContext creates a new node with the given labels and properties.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
-func (n *NodeOps) AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+func (n *NodeOps) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err

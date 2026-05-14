@@ -28,7 +28,6 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 		{name: "CreateVector", run: func() error { return nilAPI.CreateVector("Node", "embedding", 3, storepkg.DistanceCosine) }},
 		{name: "DropVector", run: func() error { return nilAPI.DropVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return nilAPI.RegisterProvider(testIndexProvider{}) }},
-		{name: "RegisterLegacyProvider", run: func() error { return nilAPI.RegisterLegacyProvider(testLegacyIndexProvider{}) }},
 		{name: "UnregisterProvider", run: func() error { return nilAPI.UnregisterProvider("geo") }},
 	} {
 		if err := tc.run(); !errors.Is(err, grapherr.ErrNilGraph) {
@@ -62,7 +61,6 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	}
 	api := New(ops)
 	provider := testIndexProvider{name: "geo"}
-	legacyProvider := testLegacyIndexProvider{name: "legacy"}
 	query := []float32{0.25, 0.5, 0.75}
 	opts := storepkg.QueryOpts{Limit: 5}
 
@@ -79,7 +77,6 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		{name: "CreateVector", run: func() error { return api.CreateVector("Node", "embedding", 3, storepkg.DistanceEuclidean) }},
 		{name: "DropVector", run: func() error { return api.DropVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return api.RegisterProvider(provider) }},
-		{name: "RegisterLegacyProvider", run: func() error { return api.RegisterLegacyProvider(legacyProvider) }},
 		{name: "UnregisterProvider", run: func() error { return api.UnregisterProvider("geo") }},
 	} {
 		if err := tc.run(); !errors.Is(err, wantErr) {
@@ -101,7 +98,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	wantCalls := []string{
 		"CreateProperty", "DropProperty", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateVector", "DropVector",
-		"RegisterProvider", "RegisterLegacyProvider", "UnregisterProvider",
+		"RegisterProvider", "UnregisterProvider",
 		"SearchNearest", "Providers", "Providers",
 	}
 	if len(ops.calls) != len(wantCalls) {
@@ -118,8 +115,8 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if len(ops.query) != len(query) || ops.k != 4 || ops.opts != opts {
 		t.Fatalf("SearchNearest forwarded query/k/opts = %v/%d/%+v", ops.query, ops.k, ops.opts)
 	}
-	if ops.providerName != provider.Name() || ops.legacyProviderName != legacyProvider.Name() || ops.unregisterName != "geo" {
-		t.Fatalf("provider forwarding = %q/%q/%q", ops.providerName, ops.legacyProviderName, ops.unregisterName)
+	if ops.providerName != provider.Name() || ops.unregisterName != "geo" {
+		t.Fatalf("provider forwarding = %q/%q", ops.providerName, ops.unregisterName)
 	}
 }
 
@@ -133,9 +130,8 @@ type indexOpsSpy struct {
 	query              []float32
 	k                  int
 	opts               storepkg.QueryOpts
-	providerName       string
-	legacyProviderName string
-	unregisterName     string
+	providerName   string
+	unregisterName string
 }
 
 func (s *indexOpsSpy) record(name string) { s.calls = append(s.calls, name) }
@@ -196,12 +192,6 @@ func (s *indexOpsSpy) RegisterProvider(p IndexProvider) error {
 	return s.err
 }
 
-func (s *indexOpsSpy) RegisterLegacyProvider(p LegacyIndexProvider) error {
-	s.record("RegisterLegacyProvider")
-	s.legacyProviderName = p.Name()
-	return s.err
-}
-
 func (s *indexOpsSpy) UnregisterProvider(name string) error {
 	s.record("UnregisterProvider")
 	s.unregisterName = name
@@ -226,15 +216,3 @@ func (testIndexProvider) OnEvent(events.Event) error { return nil }
 
 func (testIndexProvider) Close() error { return nil }
 
-type testLegacyIndexProvider struct{ name string }
-
-func (p testLegacyIndexProvider) Name() string {
-	if p.name == "" {
-		return "legacy"
-	}
-	return p.name
-}
-
-func (testLegacyIndexProvider) OnEvent(events.Event, GraphReader) {}
-
-func (testLegacyIndexProvider) Close() error { return nil }

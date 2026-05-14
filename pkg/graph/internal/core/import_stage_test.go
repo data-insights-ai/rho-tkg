@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"io"
@@ -177,7 +178,7 @@ func TestImportTargetEmptyLockedDirectBranches(t *testing.T) {
 	}
 
 	withNode := newTestGraph(t)
-	if _, err := withNode.Nodes.Add([]string{"Present"}, nil); err != nil {
+	if _, err := withNode.Nodes.Add(context.Background(), []string{"Present"}, nil); err != nil {
 		t.Fatalf("seed node: %v", err)
 	}
 	withNode.mu.Lock()

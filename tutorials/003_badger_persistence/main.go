@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -68,7 +69,7 @@ func main() {
 			}
 		}()
 
-		alice, err := g.Nodes.Add([]string{"Person"}, map[string]any{
+		alice, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 			"name": "Alice",
 			"age":  int64(30),
 		})
@@ -77,7 +78,7 @@ func main() {
 		}
 		aliceID = int64(alice.ID())
 
-		bob, err := g.Nodes.Add([]string{"Person", "Developer"}, map[string]any{
+		bob, err := g.Nodes.Add(context.Background(), []string{"Person", "Developer"}, map[string]any{
 			"name": "Bob",
 			"age":  int64(28),
 		})
@@ -86,14 +87,14 @@ func main() {
 		}
 		bobID = int64(bob.ID())
 
-		charlie, err := g.Nodes.Add([]string{"Person"}, map[string]any{
+		charlie, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 			"name": "Charlie",
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		knows, err := g.Rels.Add("KNOWS", alice, bob, map[string]any{
+		knows, err := g.Rels.Add(context.Background(), "KNOWS", alice, bob, map[string]any{
 			"since": int64(2023),
 		})
 		if err != nil {
@@ -101,7 +102,7 @@ func main() {
 		}
 		knowsID = int64(knows.ID())
 
-		_, err = g.Rels.Add("WORKS_WITH", bob, charlie, nil)
+		_, err = g.Rels.Add(context.Background(), "WORKS_WITH", bob, charlie, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -146,7 +147,7 @@ func main() {
 		fmt.Printf("Counts after reopen: %d nodes, %d relationships\n", nc, rc)
 
 		// Retrieve by ID.
-		alice, err := g.Nodes.Get(types.NodeID(aliceID))
+		alice, err := g.Nodes.Get(context.Background(), types.NodeID(aliceID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -154,7 +155,7 @@ func main() {
 		age, _ := alice.GetProperty("age")
 		fmt.Printf("GetNode(Alice): name=%s, age=%d\n", name, age)
 
-		bob, err := g.Nodes.Get(types.NodeID(bobID))
+		bob, err := g.Nodes.Get(context.Background(), types.NodeID(bobID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -187,7 +188,7 @@ func main() {
 		fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
 		// Retrieve relationship by ID.
-		rel, err := g.Rels.Get(types.RelID(knowsID))
+		rel, err := g.Rels.Get(context.Background(), types.RelID(knowsID))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -197,7 +198,7 @@ func main() {
 
 		// Add more data to the reopened graph.
 		fmt.Println("\nAdding more data to reopened graph...")
-		dave, err := g.Nodes.Add([]string{"Person"}, map[string]any{
+		dave, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 			"name": "Dave",
 		})
 		if err != nil {
@@ -205,7 +206,7 @@ func main() {
 		}
 		fmt.Printf("Dave ID: %s\n", commas(int64(dave.ID())))
 
-		_, err = g.Rels.Add("KNOWS", alice, dave, nil)
+		_, err = g.Rels.Add(context.Background(), "KNOWS", alice, dave, nil)
 		if err != nil {
 			log.Fatal(err)
 		}

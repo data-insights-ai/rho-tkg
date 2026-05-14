@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"math"
 	"testing"
@@ -16,13 +17,13 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 		{
 			name: "node update",
 			run: func(t *testing.T, g *Core) {
-				n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "old"})
+				n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "old"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				forceStoredNodeVersion(t, g, n.ID(), math.MaxUint32)
 
-				if _, err := g.Nodes.Update(n.ID(), map[string]any{"name": "new"}); !errors.Is(err, ErrVersionOverflow) {
+				if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "new"}); !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("Update max-version node = %v, want ErrVersionOverflow", err)
 				}
 				assertNodeVersionAndProperty(t, g, n.ID(), math.MaxUint32, "name", "old")
@@ -31,13 +32,13 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 		{
 			name: "node compare-and-set",
 			run: func(t *testing.T, g *Core) {
-				n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"state": "old"})
+				n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"state": "old"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				forceStoredNodeVersion(t, g, n.ID(), math.MaxUint32)
 
-				ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "state", "old", "new")
+				ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "state", "old", "new")
 				if !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("CompareAndSetProperty max-version node = (%v, %v), want ErrVersionOverflow", ok, err)
 				}
@@ -50,7 +51,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 		{
 			name: "node add label",
 			run: func(t *testing.T, g *Core) {
-				n, err := g.Nodes.Add([]string{"Person"}, nil)
+				n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -62,7 +63,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 				if _, ok := g.labels.Lookup("OverflowLabel"); ok {
 					t.Fatal("AddLabel registered a new label before detecting version overflow")
 				}
-				got, err := g.Nodes.Get(n.ID())
+				got, err := g.Nodes.Get(context.Background(), n.ID())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -74,7 +75,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 		{
 			name: "node remove label",
 			run: func(t *testing.T, g *Core) {
-				n, err := g.Nodes.Add([]string{"Person", "Case"}, nil)
+				n, err := g.Nodes.Add(context.Background(), []string{"Person", "Case"}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -83,7 +84,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 				if err := g.Nodes.RemoveLabel(n.ID(), "Case"); !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("RemoveLabel max-version node = %v, want ErrVersionOverflow", err)
 				}
-				got, err := g.Nodes.Get(n.ID())
+				got, err := g.Nodes.Get(context.Background(), n.ID())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -95,21 +96,21 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 		{
 			name: "relationship update",
 			run: func(t *testing.T, g *Core) {
-				start, err := g.Nodes.Add([]string{"Person"}, nil)
+				start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				end, err := g.Nodes.Add([]string{"Place"}, nil)
+				end, err := g.Nodes.Add(context.Background(), []string{"Place"}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				r, err := g.Rels.Add("VISITED", start, end, map[string]any{"state": "old"})
+				r, err := g.Rels.Add(context.Background(), "VISITED", start, end, map[string]any{"state": "old"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				forceStoredRelVersion(t, g, r.ID(), math.MaxUint32)
 
-				if _, err := g.Rels.Update(r.ID(), map[string]any{"state": "new"}); !errors.Is(err, ErrVersionOverflow) {
+				if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "new"}); !errors.Is(err, ErrVersionOverflow) {
 					t.Fatalf("Update max-version relationship = %v, want ErrVersionOverflow", err)
 				}
 				assertRelVersionAndProperty(t, g, r.ID(), math.MaxUint32, "state", "old")
@@ -128,7 +129,7 @@ func TestVersionOverflowRejectsVersionedMutationsBeforeWrap(t *testing.T) {
 func TestVersionOverflowPropagatesThroughTxAndBatch(t *testing.T) {
 	t.Run("transaction", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "old"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "old"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +152,7 @@ func TestVersionOverflowPropagatesThroughTxAndBatch(t *testing.T) {
 
 	t.Run("batch", func(t *testing.T) {
 		g := newTestGraph(t)
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "old"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "old"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +202,7 @@ func forceStoredRelVersion(t *testing.T, g *Core, id types.RelID, version uint32
 
 func assertNodeVersionAndProperty(t *testing.T, g *Core, id types.NodeID, version uint32, key string, want any) {
 	t.Helper()
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +223,7 @@ func assertNodeVersionAndProperty(t *testing.T, g *Core, id types.NodeID, versio
 
 func assertRelVersionAndProperty(t *testing.T, g *Core, id types.RelID, version uint32, key string, want any) {
 	t.Helper()
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestR9_RegistryPersistsAfterSuccessfulWritesWithoutGraphClose(t *testing.T) {
@@ -23,15 +24,15 @@ func TestR9_RegistryPersistsAfterSuccessfulWritesWithoutGraphClose(t *testing.T)
 		t.Fatalf("New: %v", err)
 	}
 
-	a, err := g.Nodes.Add([]string{"CrashSafeLabel"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"CrashSafeLabel"}, nil)
 	if err != nil {
 		t.Fatalf("Add node a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"CrashSafeLabel"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"CrashSafeLabel"}, nil)
 	if err != nil {
 		t.Fatalf("Add node b: %v", err)
 	}
-	if _, err := g.Rels.Add("CRASH_SAFE_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "CRASH_SAFE_REL", a, b, nil); err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
 
@@ -147,15 +148,15 @@ func TestR9_ImportedRegistryPersistsWithoutGraphClose(t *testing.T) {
 
 	src := newTestGraph(t)
 	defer src.Close()
-	a, err := src.Nodes.Add([]string{"ImportedCrashSafeLabel"}, nil)
+	a, err := src.Nodes.Add(context.Background(), []string{"ImportedCrashSafeLabel"}, nil)
 	if err != nil {
 		t.Fatalf("source add node a: %v", err)
 	}
-	b, err := src.Nodes.Add([]string{"ImportedCrashSafeLabel"}, nil)
+	b, err := src.Nodes.Add(context.Background(), []string{"ImportedCrashSafeLabel"}, nil)
 	if err != nil {
 		t.Fatalf("source add node b: %v", err)
 	}
-	if _, err := src.Rels.Add("IMPORTED_CRASH_SAFE_REL", a, b, nil); err != nil {
+	if _, err := src.Rels.Add(context.Background(), "IMPORTED_CRASH_SAFE_REL", a, b, nil); err != nil {
 		t.Fatalf("source add relationship: %v", err)
 	}
 	var stream bytes.Buffer
@@ -168,7 +169,7 @@ func TestR9_ImportedRegistryPersistsWithoutGraphClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
-	if err := dst.IO.Import(bytes.NewReader(stream.Bytes())); err != nil {
+	if err := dst.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	if err := dst.store.Close(); err != nil {
@@ -205,7 +206,7 @@ func TestR9_RegistryPersistFailureSurfacesAfterTokenCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New label graph: %v", err)
 	}
-	node, err := g.Nodes.Add([]string{"PersistFailLabel"}, nil)
+	node, err := g.Nodes.Add(context.Background(), []string{"PersistFailLabel"}, nil)
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("Add node with registry persist failure = %v, want injected error", err)
 	}
@@ -215,7 +216,7 @@ func TestR9_RegistryPersistFailureSurfacesAfterTokenCommit(t *testing.T) {
 	if _, err := g.store.GetNode(node.ID()); err != nil {
 		t.Fatalf("GetNode after committed registry persist failure: %v", err)
 	}
-	if stats := g.Stats.Get(); stats.NodesAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.NodesAdded != 1 {
 		t.Fatalf("NodesAdded after committed registry persist failure = %d, want 1", stats.NodesAdded)
 	}
 
@@ -224,16 +225,16 @@ func TestR9_RegistryPersistFailureSurfacesAfterTokenCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New rel graph: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
 	st.err = errInjectedRegistryPersist
-	rel, err := g.Rels.Add("PERSIST_FAIL_REL", a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), "PERSIST_FAIL_REL", a, b, nil)
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("Add rel with registry persist failure = %v, want injected error", err)
 	}
@@ -243,7 +244,7 @@ func TestR9_RegistryPersistFailureSurfacesAfterTokenCommit(t *testing.T) {
 	if _, err := g.store.GetRelationship(rel.ID()); err != nil {
 		t.Fatalf("GetRelationship after committed registry persist failure: %v", err)
 	}
-	if stats := g.Stats.Get(); stats.RelsAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.RelsAdded != 1 {
 		t.Fatalf("RelsAdded after committed registry persist failure = %d, want 1", stats.RelsAdded)
 	}
 }
@@ -256,7 +257,7 @@ func TestR9_StandaloneCreateRegistryPersistFailurePublishesCreateEvents(t *testi
 		st.err = errInjectedRegistryPersist
 
 		before := len(drain(events))
-		n, err := g.Nodes.Add([]string{"EventPersistFailNodeAdd"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"EventPersistFailNodeAdd"}, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddNode error = %v, want injected registry persist error", err)
 		}
@@ -288,7 +289,7 @@ func TestR9_StandaloneCreateRegistryPersistFailurePublishesCreateEvents(t *testi
 		st.err = errInjectedRegistryPersist
 
 		before := len(drain(events))
-		r, err := g.Rels.Add("EVENT_PERSIST_FAIL_REL_ADD", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "EVENT_PERSIST_FAIL_REL_ADD", a, b, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddRelationship error = %v, want injected registry persist error", err)
 		}
@@ -304,7 +305,7 @@ func TestR9_StandaloneCreateRegistryPersistFailurePublishesCreateEvents(t *testi
 		st.err = errInjectedRegistryPersist
 
 		before := len(drain(events))
-		r, err := g.Rels.AddByID("EVENT_PERSIST_FAIL_REL_BY_ID", a.ID(), b.ID(), nil)
+		r, err := g.Rels.AddByID(context.Background(), "EVENT_PERSIST_FAIL_REL_BY_ID", a.ID(), b.ID(), nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddRelationshipByID error = %v, want injected registry persist error", err)
 		}
@@ -320,7 +321,7 @@ func TestR9_StandaloneCreateRegistryPersistFailurePublishesCreateEvents(t *testi
 		st.err = errInjectedRegistryPersist
 
 		before := len(drain(events))
-		r, created, err := g.Rels.AddByIDIfAbsent("EVENT_PERSIST_FAIL_REL_IF_ABSENT", a.ID(), b.ID(), nil)
+		r, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "EVENT_PERSIST_FAIL_REL_IF_ABSENT", a.ID(), b.ID(), nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddRelationshipByIDIfAbsent error = %v, want injected registry persist error", err)
 		}
@@ -364,11 +365,11 @@ func newRegistryPersistEventGraph(t *testing.T) (*Core, *registryPersistFailStor
 
 func addRegistryPersistEventEndpoints(t *testing.T, g *Core) (*types.Node, *types.Node) {
 	t.Helper()
-	a, err := g.Nodes.Add([]string{"EventPersistFailEndpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"EventPersistFailEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"EventPersistFailEndpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"EventPersistFailEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
@@ -398,7 +399,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		}
 		defer g.Close()
 
-		first, err := g.Nodes.Add([]string{"DirtyRetryLabel"}, nil)
+		first, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryLabel"}, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("first AddNode error = %v, want injected registry persist error", err)
 		}
@@ -408,7 +409,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		callsAfterFailure := st.saveCalls
 
 		st.err = nil
-		second, err := g.Nodes.Add([]string{"DirtyRetryLabel"}, nil)
+		second, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryLabel"}, nil)
 		if err != nil {
 			t.Fatalf("second AddNode with existing dirty label: %v", err)
 		}
@@ -428,13 +429,13 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		}
 		defer g.Close()
 
-		target, err := g.Nodes.Add([]string{"DirtyRetryBase"}, nil)
+		target, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryBase"}, nil)
 		if err != nil {
 			t.Fatalf("Add target node: %v", err)
 		}
 
 		st.err = errInjectedRegistryPersist
-		source, err := g.Nodes.Add([]string{"DirtyRetryAttached"}, nil)
+		source, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryAttached"}, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddNode dirty label error = %v, want injected registry persist error", err)
 		}
@@ -460,7 +461,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		}
 		defer g.Close()
 
-		n, err := g.Nodes.Add([]string{"DirtyRetryRemoveBase", "DirtyRetryRemoveAttached"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryRemoveBase", "DirtyRetryRemoveAttached"}, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("AddNode dirty label error = %v, want injected registry persist error", err)
 		}
@@ -476,7 +477,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		if st.saveCalls <= callsAfterFailure {
 			t.Fatalf("SaveRegistries calls = %d, want retry before RemoveLabel success > %d", st.saveCalls, callsAfterFailure)
 		}
-		updated, err := g.Nodes.Get(n.ID())
+		updated, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("Get updated node: %v", err)
 		}
@@ -496,17 +497,17 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		}
 		defer g.Close()
 
-		a, err := g.Nodes.Add([]string{"DirtyRetryEndpoint"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryEndpoint"}, nil)
 		if err != nil {
 			t.Fatalf("Add endpoint a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"DirtyRetryEndpoint"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"DirtyRetryEndpoint"}, nil)
 		if err != nil {
 			t.Fatalf("Add endpoint b: %v", err)
 		}
 
 		st.err = errInjectedRegistryPersist
-		first, err := g.Rels.Add("DIRTY_RETRY_REL", a, b, nil)
+		first, err := g.Rels.Add(context.Background(), "DIRTY_RETRY_REL", a, b, nil)
 		if !errors.Is(err, errInjectedRegistryPersist) {
 			t.Fatalf("first AddRelationship error = %v, want injected registry persist error", err)
 		}
@@ -516,7 +517,7 @@ func TestR9_DirtyRegistryRetryBeforeExistingTokenWriteSuccess(t *testing.T) {
 		callsAfterFailure := st.saveCalls
 
 		st.err = nil
-		second, err := g.Rels.Add("DIRTY_RETRY_REL", a, b, nil)
+		second, err := g.Rels.Add(context.Background(), "DIRTY_RETRY_REL", a, b, nil)
 		if err != nil {
 			t.Fatalf("second AddRelationship with existing dirty type: %v", err)
 		}
@@ -539,7 +540,7 @@ func TestR9_RemoveLabelDirtyRegistryCheckpointFailureDoesNotMutate(t *testing.T)
 	}
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"DirtyRemoveFailureBase", "DirtyRemoveFailureAttached"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"DirtyRemoveFailureBase", "DirtyRemoveFailureAttached"}, nil)
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("AddNode dirty label error = %v, want injected registry persist error", err)
 	}
@@ -547,7 +548,7 @@ func TestR9_RemoveLabelDirtyRegistryCheckpointFailureDoesNotMutate(t *testing.T)
 		t.Fatal("AddNode dirty label returned nil node after committed Store write")
 	}
 	callsAfterFailure := st.saveCalls
-	beforeStats := g.Stats.Get()
+	beforeStats, _ := g.Stats.Get()
 
 	err = g.Nodes.RemoveLabel(n.ID(), "DirtyRemoveFailureAttached")
 	if !errors.Is(err, errInjectedRegistryPersist) {
@@ -556,14 +557,14 @@ func TestR9_RemoveLabelDirtyRegistryCheckpointFailureDoesNotMutate(t *testing.T)
 	if st.saveCalls <= callsAfterFailure {
 		t.Fatalf("SaveRegistries calls = %d, want retry before RemoveLabel failure > %d", st.saveCalls, callsAfterFailure)
 	}
-	updated, err := g.Nodes.Get(n.ID())
+	updated, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("Get updated node: %v", err)
 	}
 	if !g.Nodes.HasLabel(updated, "DirtyRemoveFailureAttached") {
 		t.Fatal("RemoveLabel mutated node after registry checkpoint failure")
 	}
-	afterStats := g.Stats.Get()
+	afterStats, _ := g.Stats.Get()
 	if afterStats.NodesUpdated != beforeStats.NodesUpdated {
 		t.Fatalf("NodesUpdated after failed RemoveLabel = %d, want %d", afterStats.NodesUpdated, beforeStats.NodesUpdated)
 	}
@@ -579,21 +580,21 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "node update",
 			mutate: func(g *Core, n *types.Node) error {
-				_, err := g.Nodes.Update(n.ID(), map[string]any{"p": "new"})
+				_, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"p": "new"})
 				return err
 			},
 		},
 		{
 			name: "node update in place",
 			mutate: func(g *Core, n *types.Node) error {
-				_, err := g.Nodes.UpdateInPlace(n.ID(), map[string]any{"p": "new"})
+				_, err := g.Nodes.UpdateInPlace(context.Background(), n.ID(), map[string]any{"p": "new"})
 				return err
 			},
 		},
 		{
 			name: "node property cas",
 			mutate: func(g *Core, n *types.Node) error {
-				ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "p", "old", "new")
+				ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "p", "old", "new")
 				if err == nil && !ok {
 					return errors.New("node CAS did not match")
 				}
@@ -609,7 +610,7 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "node delete",
 			mutate: func(g *Core, n *types.Node) error {
-				return g.Nodes.Delete(n.ID())
+				return g.Nodes.Delete(context.Background(), n.ID())
 			},
 		},
 	}
@@ -638,21 +639,21 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "relationship update",
 			mutate: func(g *Core, r *types.Relationship) error {
-				_, err := g.Rels.Update(r.ID(), map[string]any{"p": "new"})
+				_, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"p": "new"})
 				return err
 			},
 		},
 		{
 			name: "relationship update in place",
 			mutate: func(g *Core, r *types.Relationship) error {
-				_, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"p": "new"})
+				_, err := g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"p": "new"})
 				return err
 			},
 		},
 		{
 			name: "relationship property cas",
 			mutate: func(g *Core, r *types.Relationship) error {
-				ok, err := g.Rels.CompareAndSetProperty(r.ID(), "p", "old", "new")
+				ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "p", "old", "new")
 				if err == nil && !ok {
 					return errors.New("relationship CAS did not match")
 				}
@@ -668,7 +669,7 @@ func TestR9_DirtyRegistryCheckpointFailureBlocksExistingTokenMutations(t *testin
 		{
 			name: "relationship delete",
 			mutate: func(g *Core, r *types.Relationship) error {
-				return g.Rels.Delete(r.ID())
+				return g.Rels.Delete(context.Background(), r.ID())
 			},
 		},
 	}
@@ -838,7 +839,7 @@ func TestR9_BatchNodeRegistryPersistFailureKeepsCommittedNodeShape(t *testing.T)
 	if stored.Temporal() == nil || stored.Temporal().TxFrom == 0 {
 		t.Fatal("stored batch node lost committed TxFrom after post-write registry persist failure")
 	}
-	if stats := g.Stats.Get(); stats.NodesAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.NodesAdded != 1 {
 		t.Fatalf("NodesAdded after batch registry checkpoint failure = %d, want 1", stats.NodesAdded)
 	}
 	requireOneNewCreateEvent(t, events, before, eventspkg.EventNodeCreate, types.EntityID(n.ID()))
@@ -904,11 +905,11 @@ func TestR9_BatchRelRegistryPersistFailureKeepsCommittedRelationshipShape(t *tes
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	bNode, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	bNode, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
@@ -956,7 +957,7 @@ func TestR9_BatchRelRegistryPersistFailureKeepsCommittedRelationshipShape(t *tes
 	if storedIntegrity == nil || storedIntegrity.FromNodeHash == "" || storedIntegrity.ToNodeHash == "" {
 		t.Fatal("stored batch relationship lost endpoint hashes after post-write registry persist failure")
 	}
-	if stats := g.Stats.Get(); stats.RelsAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.RelsAdded != 1 {
 		t.Fatalf("RelsAdded after batch registry checkpoint failure = %d, want 1", stats.RelsAdded)
 	}
 	requireOneNewCreateEvent(t, events, before, eventspkg.EventRelCreate, types.EntityID(rel.ID()))
@@ -1076,11 +1077,11 @@ func TestR9_TxRelRegistryPersistFailureStillRollsBackCommittedRows(t *testing.T)
 			}
 			defer g.Close()
 
-			a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+			a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 			if err != nil {
 				t.Fatalf("Add endpoint a: %v", err)
 			}
-			b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+			b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 			if err != nil {
 				t.Fatalf("Add endpoint b: %v", err)
 			}
@@ -1124,7 +1125,7 @@ func TestR9_TxCommitRetriesRegistryCheckpointAfterCreateError(t *testing.T) {
 	}
 	defer g.Close()
 
-	beforeStats := g.Stats.Get()
+	beforeStats, _ := g.Stats.Get()
 	tx, err := g.BeginTx()
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
@@ -1152,7 +1153,7 @@ func TestR9_TxCommitRetriesRegistryCheckpointAfterCreateError(t *testing.T) {
 	if _, ok := g.labels.Lookup("TxCommitRetryLabel"); !ok {
 		t.Fatal("Commit lost label token after retrying registry checkpoint")
 	}
-	afterStats := g.Stats.Get()
+	afterStats, _ := g.Stats.Get()
 	if afterStats.NodesAdded != beforeStats.NodesAdded+1 {
 		t.Fatalf("NodesAdded after Commit retry = %d, want %d", afterStats.NodesAdded, beforeStats.NodesAdded+1)
 	}
@@ -1204,15 +1205,15 @@ func TestR9_TxRelCommitRetryCountsCommittedCreateAfterRegistryCheckpointError(t 
 			}
 			defer g.Close()
 
-			a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+			a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 			if err != nil {
 				t.Fatalf("Add endpoint a: %v", err)
 			}
-			b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+			b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 			if err != nil {
 				t.Fatalf("Add endpoint b: %v", err)
 			}
-			beforeStats := g.Stats.Get()
+			beforeStats, _ := g.Stats.Get()
 
 			tx, err := g.BeginTx()
 			if err != nil {
@@ -1234,7 +1235,7 @@ func TestR9_TxRelCommitRetryCountsCommittedCreateAfterRegistryCheckpointError(t 
 			if _, err := g.store.GetRelationship(r.ID()); err != nil {
 				t.Fatalf("GetRelationship after Commit: %v", err)
 			}
-			afterStats := g.Stats.Get()
+			afterStats, _ := g.Stats.Get()
 			if afterStats.RelsAdded != beforeStats.RelsAdded+1 {
 				t.Fatalf("RelsAdded after Commit retry = %d, want %d", afterStats.RelsAdded, beforeStats.RelsAdded+1)
 			}
@@ -1288,7 +1289,7 @@ func TestR9_RegistryRollbackPersistsRestoredSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New node graph: %v", err)
 	}
-	if _, err := g.Nodes.Add([]string{"RollbackPersistLabel"}, nil); !errors.Is(err, errInjectedNodePut) {
+	if _, err := g.Nodes.Add(context.Background(), []string{"RollbackPersistLabel"}, nil); !errors.Is(err, errInjectedNodePut) {
 		t.Fatalf("Add node with failing store = %v, want injected put error", err)
 	}
 	if nodeStore.saveCalls != 1 {
@@ -1303,16 +1304,16 @@ func TestR9_RegistryRollbackPersistsRestoredSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New rel graph: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
 	relStore.saveCalls = 0
-	if _, err := g.Rels.Add("ROLLBACK_PERSIST_REL", a, b, nil); !errors.Is(err, errInjectedRelPut) {
+	if _, err := g.Rels.Add(context.Background(), "ROLLBACK_PERSIST_REL", a, b, nil); !errors.Is(err, errInjectedRelPut) {
 		t.Fatalf("Add rel with failing store = %v, want injected put error", err)
 	}
 	if relStore.saveCalls != 1 {
@@ -1331,7 +1332,7 @@ func TestR9_RegistryRollbackReportsPersistFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New node graph: %v", err)
 	}
-	_, err = g.Nodes.Add([]string{"RollbackPersistFailureLabel"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"RollbackPersistFailureLabel"}, nil)
 	if !errors.Is(err, errInjectedNodePut) {
 		t.Fatalf("Add node with failing store = %v, want injected put error", err)
 	}
@@ -1344,16 +1345,16 @@ func TestR9_RegistryRollbackReportsPersistFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New rel graph: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
 	relStore.saveErr = errInjectedRegistryPersist
-	_, err = g.Rels.Add("ROLLBACK_PERSIST_FAILURE_REL", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "ROLLBACK_PERSIST_FAILURE_REL", a, b, nil)
 	if !errors.Is(err, errInjectedRelPut) {
 		t.Fatalf("Add rel with failing store = %v, want injected put error", err)
 	}
@@ -1403,7 +1404,7 @@ func newDirtyNodeForExistingTokenMutation(t *testing.T) (*Core, *registryPersist
 		t.Fatalf("New graph: %v", err)
 	}
 
-	n, err := g.Nodes.Add([]string{"DirtyExistingNodeLabel"}, map[string]any{"p": "old"})
+	n, err := g.Nodes.Add(context.Background(), []string{"DirtyExistingNodeLabel"}, map[string]any{"p": "old"})
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("AddNode dirty label error = %v, want injected registry persist error", err)
 	}
@@ -1416,7 +1417,7 @@ func newDirtyNodeForExistingTokenMutation(t *testing.T) (*Core, *registryPersist
 func assertDirtyNodeMutationBlocked(t *testing.T, g *Core, id types.NodeID) {
 	t.Helper()
 
-	got, err := g.Nodes.Get(id)
+	got, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("Get node after blocked mutation: %v", err)
 	}
@@ -1437,17 +1438,17 @@ func newDirtyRelForExistingTokenMutation(t *testing.T) (*Core, *registryPersistF
 	if err != nil {
 		t.Fatalf("New graph: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"DirtyExistingRelEndpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"DirtyExistingRelEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"DirtyExistingRelEndpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"DirtyExistingRelEndpoint"}, nil)
 	if err != nil {
 		t.Fatalf("Add endpoint b: %v", err)
 	}
 
 	st.err = errInjectedRegistryPersist
-	r, err := g.Rels.Add("DIRTY_EXISTING_REL_TYPE", a, b, map[string]any{"p": "old"})
+	r, err := g.Rels.Add(context.Background(), "DIRTY_EXISTING_REL_TYPE", a, b, map[string]any{"p": "old"})
 	if !errors.Is(err, errInjectedRegistryPersist) {
 		t.Fatalf("AddRelationship dirty type error = %v, want injected registry persist error", err)
 	}
@@ -1460,7 +1461,7 @@ func newDirtyRelForExistingTokenMutation(t *testing.T) (*Core, *registryPersistF
 func assertDirtyRelMutationBlocked(t *testing.T, g *Core, id types.RelID) {
 	t.Helper()
 
-	got, err := g.Rels.Get(id)
+	got, err := g.Rels.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("Get relationship after blocked mutation: %v", err)
 	}

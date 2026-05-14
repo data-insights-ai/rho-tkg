@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -69,8 +70,8 @@ func TestBatchAddRelationshipInvalidTypePrecedesReservedPropertyValidation(t *te
 	t.Parallel()
 	g, _ := New(Config{})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	bn, _ := g.Nodes.Add([]string{"X"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	bn, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	batch, _ := NewBatchBuilder(g)
 	_, err := batch.AddRelationship(" ", a, bn, map[string]any{"tkg_signature": "not bytes"})
 	if !errors.Is(err, ErrEmptyName) {
@@ -82,7 +83,7 @@ func TestBatchUpdateNodePropertyKeyTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 	batch, _ := NewBatchBuilder(g)
 	err := batch.UpdateNode(n.ID(), map[string]any{"toolong": "v"})
@@ -98,9 +99,9 @@ func TestBatchUpdateRelPropertyValueTooLarge(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
 
-	a, _ := g.Nodes.Add([]string{"X"}, nil)
-	b, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("REL", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "REL", a, b, nil)
 
 	batch, _ := NewBatchBuilder(g)
 	err := batch.UpdateRelationship(r.ID(), map[string]any{"k": "toolong"})
@@ -141,7 +142,7 @@ func TestBatchBuilderRejectsNestedPropertyStringValueTooLarge(t *testing.T) {
 		{
 			name: "update node",
 			run: func(g *Core) error {
-				n, _ := g.Nodes.Add([]string{"X"}, nil)
+				n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 				batch, _ := NewBatchBuilder(g)
 				return batch.UpdateNode(n.ID(), map[string]any{"k": oversized})
 			},
@@ -149,9 +150,9 @@ func TestBatchBuilderRejectsNestedPropertyStringValueTooLarge(t *testing.T) {
 		{
 			name: "update relationship",
 			run: func(g *Core) error {
-				a, _ := g.Nodes.Add([]string{"X"}, nil)
-				b, _ := g.Nodes.Add([]string{"X"}, nil)
-				r, _ := g.Rels.Add("REL", a, b, nil)
+				a, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+				b, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+				r, _ := g.Rels.Add(context.Background(), "REL", a, b, nil)
 				batch, _ := NewBatchBuilder(g)
 				return batch.UpdateRelationship(r.ID(), map[string]any{"k": oversized})
 			},

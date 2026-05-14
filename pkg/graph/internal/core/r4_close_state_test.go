@@ -5,6 +5,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestR4_PostClose_NodeAdd_ReturnsErrGraphClosed(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	_, err := g.Nodes.Add([]string{"X"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("post-close NodeAdd: got %v, want errors.Is ErrGraphClosed", err)
 	}
@@ -27,14 +28,14 @@ func TestR4_PostClose_NodeAdd_ReturnsErrGraphClosed(t *testing.T) {
 func TestR4_PostClose_NodeUpdate_ReturnsErrGraphClosed(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	_, err = g.Nodes.Update(n.ID(), map[string]any{"k": 1})
+	_, err = g.Nodes.Update(context.Background(), n.ID(), map[string]any{"k": 1})
 	if !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("post-close NodeUpdate: got %v, want errors.Is ErrGraphClosed", err)
 	}
@@ -43,18 +44,18 @@ func TestR4_PostClose_NodeUpdate_ReturnsErrGraphClosed(t *testing.T) {
 func TestR4_PostClose_RelAdd_ReturnsErrGraphClosed(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	_, err = g.Rels.Add("LINK", a, b, nil)
+	_, err = g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("post-close RelAdd: got %v, want errors.Is ErrGraphClosed", err)
 	}
@@ -63,22 +64,22 @@ func TestR4_PostClose_RelAdd_ReturnsErrGraphClosed(t *testing.T) {
 func TestR4_PostClose_RelDelete_ReturnsErrGraphClosed(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("LINK", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if err := g.Rels.Delete(r.ID()); !errors.Is(err, ErrGraphClosed) {
+	if err := g.Rels.Delete(context.Background(), r.ID()); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("post-close RelDelete: got %v, want errors.Is ErrGraphClosed", err)
 	}
 }

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,11 +23,11 @@ import (
 type graphReaderView struct{ g *Core }
 
 func (r graphReaderView) GetNode(id types.NodeID) (*types.Node, error) {
-	return r.g.Nodes.Get(id)
+	return r.g.Nodes.Get(context.Background(), id)
 }
 
 func (r graphReaderView) GetRelationship(id types.RelID) (*types.Relationship, error) {
-	return r.g.Rels.Get(id)
+	return r.g.Rels.Get(context.Background(), id)
 }
 
 func (r graphReaderView) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
@@ -56,27 +57,9 @@ func (r graphReaderView) IncomingRelationships(nodeID types.NodeID, typeName str
 	return r.g.Rels.Incoming(nodeID, typeName)
 }
 
-// legacyAdapter wraps an indexpkg.LegacyIndexProvider so it can be stored
-// uniformly alongside new-shape IndexProviders. Forwards OnEvent(ev) to
-// the legacy provider's OnEvent(ev, reader) where reader is a GraphReader.
-type legacyAdapter struct {
-	legacy indexpkg.LegacyIndexProvider //nolint:staticcheck // intentional bridge for the deprecated provider shape
-	reader indexpkg.GraphReader
-}
-
-func (a *legacyAdapter) Name() string { return a.legacy.Name() }
-
-func (a *legacyAdapter) OnEvent(ev eventspkg.Event) error {
-	a.legacy.OnEvent(ev, a.reader)
-	return nil
-}
-
-func (a *legacyAdapter) Close() error { return a.legacy.Close() }
-
 // indexProviderEntry bundles a registered provider with the unsubscribe
 // closure returned by Subscribe. Stored in Graph.indexProviders under the
-// provider's Name. The provider field is always the new IndexProvider
-// shape — legacy providers are wrapped in legacyAdapter at registration.
+// provider's Name.
 type indexProviderEntry struct {
 	provider    indexpkg.IndexProvider
 	unsubscribe func()
@@ -247,31 +230,6 @@ func (i *IndexOps) RegisterProvider(p indexpkg.IndexProvider) error {
 		close(entry.initDone)
 	}
 	return nil
-}
-
-// RegisterLegacyProvider registers a provider that uses the legacy
-// OnEvent(eventspkg.Event, indexpkg.GraphReader) shape. Internally the
-// provider is wrapped in an adapter that satisfies the new IndexProvider
-// interface.
-//
-// All semantics (auto-bus creation, sync/async support, duplicate-name
-// rejection, race safety) match IndexOps.RegisterProvider. Legacy providers
-// cannot use Initializable — the adapter does not implement it because
-// the old API never had a bulk-load hook. Bulk-load support is provided
-// by the new IndexProvider interface.
-//
-// Deprecated: Migrate providers to indexpkg.IndexProvider (and optionally
-// Initializable). This entry point will be removed in a future major
-// version.
-func (i *IndexOps) RegisterLegacyProvider(p indexpkg.LegacyIndexProvider) error {
-	c := i.c
-	if err := c.checkOpen(); err != nil {
-		return err
-	}
-	if isNilInterfaceValue(p) {
-		return fmt.Errorf("graph: index provider is nil")
-	}
-	return i.RegisterProvider(&legacyAdapter{legacy: p, reader: graphReaderView{g: c}})
 }
 
 // UnregisterProvider detaches the provider by name and calls its

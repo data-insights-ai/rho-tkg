@@ -18,7 +18,7 @@ import (
 // UpdateWithContext applies property updates to an existing node with context support.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
-func (n *NodeOps) UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+func (n *NodeOps) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -190,22 +190,13 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	return current, true, nil
 }
 
-// UpdateInPlace applies property updates to a node without creating a version history entry.
-// Version number is NOT incremented. PrevHash in the integrity chain is preserved.
-// Use for high-frequency counter updates where history accumulation is undesirable.
-// Returns storepkg.ErrNodeNotFound if the node does not exist. Empty updates map is a no-op.
-func (n *NodeOps) UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
-	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return nil, err
-	}
-	return c.Nodes.UpdateInPlaceWithContext(context.Background(), id, updates)
-}
-
-// UpdateInPlaceWithContext applies property updates to a node without history.
-// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
-// while a tx holds c.mu.Lock.
-func (n *NodeOps) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+// UpdateInPlace applies property updates to a node without creating a version
+// history entry. Version number is NOT incremented. PrevHash in the integrity
+// chain is preserved. Use for high-frequency counter updates where history
+// accumulation is undesirable. Returns storepkg.ErrNodeNotFound if the node
+// does not exist. Empty updates map is a no-op. Acquires c.mu.RLock
+// (panic-safe) for transaction isolation — blocked while a tx holds c.mu.Lock.
+func (n *NodeOps) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err

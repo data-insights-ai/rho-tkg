@@ -16,15 +16,15 @@ type Ops interface {
 	NodesAt(t types.Instant) ([]*types.Node, error)
 	NodesByLabelAt(label string, t types.Instant) ([]*types.Node, error)
 	RelAt(id types.RelID, t types.Instant) (*types.Relationship, error)
-	RelationshipsAt(t types.Instant) ([]*types.Relationship, error)
-	RelationshipsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error)
+	RelsAt(t types.Instant) ([]*types.Relationship, error)
+	RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error)
 	NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error)
 	NodesByLabelPropertyAt(label, key string, value any, t types.Instant) ([]*types.Node, error)
 	RelsByTypePropertyAt(relType, key string, value any, t types.Instant) ([]*types.Relationship, error)
 
 	// Interval
 	NodesDuring(start, end types.Instant) ([]*types.Node, error)
-	RelationshipsDuring(start, end types.Instant) ([]*types.Relationship, error)
+	RelsDuring(start, end types.Instant) ([]*types.Relationship, error)
 	NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error)
 	RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error)
 
@@ -98,22 +98,22 @@ func (a *API) RelAt(id types.RelID, t types.Instant) (*types.Relationship, error
 	return ops.RelAt(id, t)
 }
 
-// RelationshipsAt returns relationships valid at t.
-func (a *API) RelationshipsAt(t types.Instant) ([]*types.Relationship, error) {
+// RelsAt returns relationships valid at t.
+func (a *API) RelsAt(t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.RelationshipsAt(t)
+	return ops.RelsAt(t)
 }
 
-// RelationshipsByTypeAt returns relationships of relType valid at t.
-func (a *API) RelationshipsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error) {
+// RelsByTypeAt returns relationships of relType valid at t.
+func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.RelationshipsByTypeAt(relType, t)
+	return ops.RelsByTypeAt(relType, t)
 }
 
 // NeighborsAt returns the neighbours of nodeID valid at t.
@@ -152,13 +152,13 @@ func (a *API) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 	return ops.NodesDuring(start, end)
 }
 
-// RelationshipsDuring returns relationships whose validity overlaps [start,end).
-func (a *API) RelationshipsDuring(start, end types.Instant) ([]*types.Relationship, error) {
+// RelsDuring returns relationships whose validity overlaps [start,end).
+func (a *API) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.RelationshipsDuring(start, end)
+	return ops.RelsDuring(start, end)
 }
 
 // NodesByLabelPropertyDuring returns nodes labeled with property during [start,end).

@@ -1,6 +1,12 @@
 // Package rels is a sub-API accessor exposing the relationship-management
 // surface of a Graph. The package declares a local Ops interface listing the
 // methods it forwards to; *core.RelOps satisfies it implicitly.
+//
+// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
+// (Add, AddByID, AddByIDIfAbsent, Get, Update, UpdateInPlace, Delete,
+// CompareAndSetProperty) collapsed into a single context-aware method each.
+// Pass context.Background() for the previous no-context behavior. The
+// historical *WithContext variants no longer exist.
 package rels
 
 import (
@@ -13,21 +19,14 @@ import (
 
 // Ops is the subset of *core.RelOps the rels sub-API forwards to.
 type Ops interface {
-	Add(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
-	AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
-	AddByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error)
-	AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error)
-	AddByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error)
-	AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error)
-	Get(id types.RelID) (*types.Relationship, error)
-	GetWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
+	AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error)
+	AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error)
+	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
-	Update(id types.RelID, updates map[string]any) (*types.Relationship, error)
-	UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
-	UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error)
-	UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
-	Delete(id types.RelID) error
-	DeleteWithContext(ctx context.Context, id types.RelID) error
+	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
+	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
+	Delete(ctx context.Context, id types.RelID) error
 	Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Relationship, error)
@@ -42,16 +41,15 @@ type Ops interface {
 
 	SetProperty(id types.RelID, key string, value any) error
 	DeleteProperty(id types.RelID, key string) error
-	CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error)
-	CompareAndSetPropertyWithContext(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error)
+	CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error)
 
 	HasType(r *types.Relationship, typ string) bool
 	Type(r *types.Relationship) string
 
 	CloseVersion(id types.RelID, t types.Instant) error
 	History(id types.RelID) ([]*types.Relationship, error)
-	NextVersion(id types.RelID, version uint32) (*types.Relationship, error)
-	PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error)
+	VersionAfter(id types.RelID, version uint32) (*types.Relationship, error)
+	VersionBefore(id types.RelID, version uint32) (*types.Relationship, error)
 
 	NextID() types.RelID
 }
@@ -72,82 +70,43 @@ func (a *API) ready() (Ops, error) {
 	return a.ops, nil
 }
 
-// Add creates a relationship from start to end.
-func (a *API) Add(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+// Add creates a relationship honoring ctx.
+func (a *API) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.Add(typeName, startNode, endNode, props)
+	return ops.Add(ctx, typeName, startNode, endNode, props)
 }
 
-// AddWithContext creates a relationship honoring ctx.
-func (a *API) AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.AddWithContext(ctx, typeName, startNode, endNode, props)
-}
-
-// AddByID creates a relationship by node IDs.
+// AddByID creates a relationship by node IDs honoring ctx.
 // It verifies live endpoints, captures endpoint hashes, and enforces graph
 // constraints like Add; the difference is only the endpoint input form.
-func (a *API) AddByID(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (a *API) AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.AddByID(typeName, startID, endID, props)
+	return ops.AddByID(ctx, typeName, startID, endID, props)
 }
 
-// AddByIDWithContext creates a relationship by node IDs honoring ctx.
-// Same endpoint and constraint behaviour as AddByID.
-func (a *API) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.AddByIDWithContext(ctx, typeName, startID, endID, props)
-}
-
-// AddByIDIfAbsent creates a relationship if the (start,end,type) triple does not already exist.
-// Same constraint behaviour as AddByID: the configured constraint set
-// is always enforced when present.
-func (a *API) AddByIDIfAbsent(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
+// AddByIDIfAbsent creates a relationship if the (start,end,type) triple does
+// not already exist, honoring ctx. Same constraint behaviour as AddByID.
+func (a *API) AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, false, err
 	}
-	return ops.AddByIDIfAbsent(typeName, startID, endID, props)
+	return ops.AddByIDIfAbsent(ctx, typeName, startID, endID, props)
 }
 
-// AddByIDIfAbsentWithContext is the context-aware variant of AddByIDIfAbsent.
-// Same constraint behaviour as AddByID.
-func (a *API) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, false, err
-	}
-	return ops.AddByIDIfAbsentWithContext(ctx, typeName, startID, endID, props)
-}
-
-// Get returns the relationship with the given ID.
-func (a *API) Get(id types.RelID) (*types.Relationship, error) {
+// Get returns the relationship with the given ID honoring ctx.
+func (a *API) Get(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.Get(id)
-}
-
-// GetWithContext returns the relationship honoring ctx.
-func (a *API) GetWithContext(ctx context.Context, id types.RelID) (*types.Relationship, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.GetWithContext(ctx, id)
+	return ops.Get(ctx, id)
 }
 
 // GetByIDs returns relationships for the given IDs.
@@ -159,61 +118,34 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	return ops.GetByIDs(ids)
 }
 
-// Update updates a relationship's properties.
-func (a *API) Update(id types.RelID, updates map[string]any) (*types.Relationship, error) {
+// Update updates a relationship's properties honoring ctx.
+func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.Update(id, updates)
+	return ops.Update(ctx, id, updates)
 }
 
-// UpdateWithContext updates a relationship honoring ctx.
-func (a *API) UpdateWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
+// UpdateInPlace updates a relationship in place honoring ctx (no version branch).
+func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.UpdateWithContext(ctx, id, updates)
+	return ops.UpdateInPlace(ctx, id, updates)
 }
 
-// UpdateInPlace updates a relationship in place (no version branch).
-func (a *API) UpdateInPlace(id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.UpdateInPlace(id, updates)
-}
-
-// UpdateInPlaceWithContext updates a relationship in place honoring ctx.
-func (a *API) UpdateInPlaceWithContext(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.UpdateInPlaceWithContext(ctx, id, updates)
-}
-
-// Delete deletes the relationship.
-func (a *API) Delete(id types.RelID) error {
+// Delete deletes the relationship honoring ctx.
+func (a *API) Delete(ctx context.Context, id types.RelID) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.Delete(id)
+	return ops.Delete(ctx, id)
 }
 
-// DeleteWithContext deletes the relationship honoring ctx.
-func (a *API) DeleteWithContext(ctx context.Context, id types.RelID) error {
-	ops, err := a.ready()
-	if err != nil {
-		return err
-	}
-	return ops.DeleteWithContext(ctx, id)
-}
-
-// Import imports a relationship with a caller-supplied ID.
+// Import imports a relationship with a caller-supplied ID honoring ctx.
 func (a *API) Import(ctx context.Context, id types.RelID, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -294,7 +226,7 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 	return ops.IncomingForNodes(nodeIDs, typeName)
 }
 
-// SetProperty sets a single property on the relationship.
+// SetProperty sets a single property on the relationship (uses context.Background()).
 func (a *API) SetProperty(id types.RelID, key string, value any) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -303,7 +235,7 @@ func (a *API) SetProperty(id types.RelID, key string, value any) error {
 	return ops.SetProperty(id, key, value)
 }
 
-// DeleteProperty deletes a single property from the relationship.
+// DeleteProperty deletes a single property from the relationship (uses context.Background()).
 func (a *API) DeleteProperty(id types.RelID, key string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -312,22 +244,13 @@ func (a *API) DeleteProperty(id types.RelID, key string) error {
 	return ops.DeleteProperty(id, key)
 }
 
-// CompareAndSetProperty atomically updates a relationship property.
-func (a *API) CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error) {
+// CompareAndSetProperty atomically updates a relationship property honoring ctx.
+func (a *API) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return false, err
 	}
-	return ops.CompareAndSetProperty(id, key, expected, newVal)
-}
-
-// CompareAndSetPropertyWithContext atomically updates a relationship property honoring ctx.
-func (a *API) CompareAndSetPropertyWithContext(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return false, err
-	}
-	return ops.CompareAndSetPropertyWithContext(ctx, id, key, expected, newVal)
+	return ops.CompareAndSetProperty(ctx, id, key, expected, newVal)
 }
 
 // HasType reports whether the relationship has the given type name.
@@ -364,22 +287,22 @@ func (a *API) History(id types.RelID) ([]*types.Relationship, error) {
 	return ops.History(id)
 }
 
-// NextVersion returns the next version for the given relationship.
-func (a *API) NextVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+// VersionAfter returns the next version for the given relationship.
+func (a *API) VersionAfter(id types.RelID, version uint32) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.NextVersion(id, version)
+	return ops.VersionAfter(id, version)
 }
 
-// PreviousVersion returns the previous version for the given relationship.
-func (a *API) PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+// VersionBefore returns the previous version for the given relationship.
+func (a *API) VersionBefore(id types.RelID, version uint32) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.PreviousVersion(id, version)
+	return ops.VersionBefore(id, version)
 }
 
 // NextID generates and returns the next relationship ID.

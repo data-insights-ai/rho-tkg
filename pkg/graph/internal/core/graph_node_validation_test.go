@@ -13,7 +13,7 @@ func TestAddNodeTooManyLabels(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
 
-	_, err := g.Nodes.Add([]string{"A", "B", "C"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"A", "B", "C"}, nil)
 	if err == nil {
 		t.Fatal("expected error for too many labels")
 	}
@@ -26,7 +26,7 @@ func TestAddNodeMaxLabels(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
 
-	n, err := g.Nodes.Add([]string{"A", "B"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
 	if err != nil {
 		t.Fatalf("at-limit should succeed: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestAddNodeDuplicateLabelsCountCanonicalForLimit(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 2}})
 
-	n, err := g.Nodes.Add([]string{"A", "B", "A"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A", "B", "A"}, nil)
 	if err != nil {
 		t.Fatalf("duplicate labels should count by canonical label set: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestAddNodeTooManyProperties(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
 
 	props := map[string]any{"a": 1, "b": 2, "c": 3}
-	_, err := g.Nodes.Add([]string{"X"}, props)
+	_, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err == nil {
 		t.Fatal("expected error for too many properties")
 	}
@@ -83,17 +83,17 @@ func TestAddNodeInvalidLabelPrecedesPropertyValidation(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 1}})
 
-	_, err := g.Nodes.Add([]string{" "}, map[string]any{"a": int64(1), "b": int64(2)})
+	_, err := g.Nodes.Add(context.Background(), []string{" "}, map[string]any{"a": int64(1), "b": int64(2)})
 	if !errors.Is(err, ErrEmptyName) {
 		t.Fatalf("Add invalid label with invalid props = %v, want ErrEmptyName", err)
 	}
 
-	_, err = g.Nodes.Add([]string{strings.Repeat("x", defaultMaxNameLength+1)}, map[string]any{"a": int64(1), "b": int64(2)})
+	_, err = g.Nodes.Add(context.Background(), []string{strings.Repeat("x", defaultMaxNameLength+1)}, map[string]any{"a": int64(1), "b": int64(2)})
 	if !errors.Is(err, ErrNameTooLong) {
 		t.Fatalf("Add overlong label with invalid props = %v, want ErrNameTooLong", err)
 	}
 
-	_, err = g.Nodes.Add([]string{" "}, map[string]any{"tkg_signature": "not bytes"})
+	_, err = g.Nodes.Add(context.Background(), []string{" "}, map[string]any{"tkg_signature": "not bytes"})
 	if !errors.Is(err, ErrEmptyName) {
 		t.Fatalf("Add invalid label with invalid reserved props = %v, want ErrEmptyName", err)
 	}
@@ -109,7 +109,7 @@ func TestAddNodeMaxProperties(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
 
 	props := map[string]any{"a": 1, "b": 2}
-	n, err := g.Nodes.Add([]string{"X"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err != nil {
 		t.Fatalf("at-limit should succeed: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestAddNodePropertyKeyTooLong(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 5}})
 
 	props := map[string]any{"toolong": "val"}
-	_, err := g.Nodes.Add([]string{"X"}, props)
+	_, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err == nil {
 		t.Fatal("expected error for key too long")
 	}
@@ -137,7 +137,7 @@ func TestAddNodePropertyKeyMaxLength(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 5}})
 
 	props := map[string]any{"abcde": "val"}
-	n, err := g.Nodes.Add([]string{"X"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err != nil {
 		t.Fatalf("at-limit key should succeed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestAddNodePropertyValueTooLarge(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 10}})
 
 	props := map[string]any{"key": "12345678901"} // 11 bytes
-	_, err := g.Nodes.Add([]string{"X"}, props)
+	_, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err == nil {
 		t.Fatal("expected error for value too large")
 	}
@@ -165,7 +165,7 @@ func TestAddNodePropertyValueMaxSize(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 10}})
 
 	props := map[string]any{"key": "1234567890"} // exactly 10 bytes
-	n, err := g.Nodes.Add([]string{"X"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err != nil {
 		t.Fatalf("at-limit value should succeed: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestAddNodeNestedPropertyStringValueTooLarge(t *testing.T) {
 			t.Parallel()
 			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
 
-			_, err := g.Nodes.Add([]string{"X"}, tc.props)
+			_, err := g.Nodes.Add(context.Background(), []string{"X"}, tc.props)
 			if err == nil {
 				t.Fatal("expected error for nested string value too large")
 			}
@@ -225,7 +225,7 @@ func TestAddNodeNestedPropertyStringValueMaxSize(t *testing.T) {
 			map[string]string{"def": "ghi"},
 		},
 	}
-	n, err := g.Nodes.Add([]string{"X"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err != nil {
 		t.Fatalf("nested at-limit strings should succeed: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 
 	// Numeric values should not be checked against the string size limit.
 	props := map[string]any{"key": 99999}
-	n, err := g.Nodes.Add([]string{"X"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
 	if err != nil {
 		t.Fatalf("non-string value should be ignored: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestAddNodePropertyValueNonStringContainersIgnored(t *testing.T) {
 			t.Parallel()
 			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 1}})
 
-			n, err := g.Nodes.Add([]string{"X"}, map[string]any{"key": tc.val})
+			n, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"key": tc.val})
 			if err != nil {
 				t.Fatalf("non-string container should be ignored: %v", err)
 			}
@@ -307,7 +307,7 @@ func TestAddNodeRejectsPropertyTypesOutsideHashWireAllowlist(t *testing.T) {
 			}()
 
 			g, _ := New(Config{})
-			_, err := g.Nodes.Add([]string{"X"}, map[string]any{"k": tc.val})
+			_, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"k": tc.val})
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
@@ -322,7 +322,7 @@ func TestAddNodeLabelNameTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
 
-	_, err := g.Nodes.Add([]string{"TooLong"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"TooLong"}, nil)
 	if err == nil {
 		t.Fatal("expected error for label name too long")
 	}
@@ -335,7 +335,7 @@ func TestAddNodeLabelNameMaxLength(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 5}})
 
-	n, err := g.Nodes.Add([]string{"ABCDE"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"ABCDE"}, nil)
 	if err != nil {
 		t.Fatalf("at-limit name should succeed: %v", err)
 	}
@@ -348,10 +348,10 @@ func TestUpdateNodePropertyCountExceedsLimit(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{"a": 1, "b": 2})
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Try to add a 3rd property via update — should fail.
-	_, err := g.Nodes.Update(n.ID(), map[string]any{"c": 3})
+	_, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"c": 3})
 	if err == nil {
 		t.Fatal("expected error for exceeding property limit on update")
 	}
@@ -364,9 +364,9 @@ func TestUpdateNodePropertyKeyTooLong(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 3}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	_, err := g.Nodes.Update(n.ID(), map[string]any{"toolong": "v"})
+	_, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"toolong": "v"})
 	if err == nil {
 		t.Fatal("expected error for key too long on update")
 	}
@@ -379,9 +379,9 @@ func TestUpdateNodePropertyValueTooLarge(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	_, err := g.Nodes.Update(n.ID(), map[string]any{"k": "toolong"})
+	_, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"k": "toolong"})
 	if err == nil {
 		t.Fatal("expected error for value too large on update")
 	}
@@ -401,14 +401,14 @@ func TestNodeMutationsRejectNestedPropertyStringValueTooLarge(t *testing.T) {
 		{
 			name: "update",
 			run: func(g *Core, id types.NodeID) error {
-				_, err := g.Nodes.Update(id, map[string]any{"k": oversized})
+				_, err := g.Nodes.Update(context.Background(), id, map[string]any{"k": oversized})
 				return err
 			},
 		},
 		{
 			name: "update in place",
 			run: func(g *Core, id types.NodeID) error {
-				_, err := g.Nodes.UpdateInPlace(id, map[string]any{"k": oversized})
+				_, err := g.Nodes.UpdateInPlace(context.Background(), id, map[string]any{"k": oversized})
 				return err
 			},
 		},
@@ -421,7 +421,7 @@ func TestNodeMutationsRejectNestedPropertyStringValueTooLarge(t *testing.T) {
 		{
 			name: "compare and set",
 			run: func(g *Core, id types.NodeID) error {
-				_, err := g.Nodes.CompareAndSetProperty(id, "k", nil, oversized)
+				_, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "k", nil, oversized)
 				return err
 			},
 		},
@@ -431,7 +431,7 @@ func TestNodeMutationsRejectNestedPropertyStringValueTooLarge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
-			n, _ := g.Nodes.Add([]string{"X"}, nil)
+			n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 			err := tc.run(g, n.ID())
 			if err == nil {
@@ -448,10 +448,10 @@ func TestUpdateNodeReplacementWithinLimit(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{"a": 1, "b": 2})
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Replacing an existing property should not trip the limit.
-	updated, err := g.Nodes.Update(n.ID(), map[string]any{"a": 99})
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"a": 99})
 	if err != nil {
 		t.Fatalf("replacement should succeed: %v", err)
 	}
@@ -465,10 +465,10 @@ func TestUpdateNodeDeleteThenAddWithinLimit(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxPropertiesPerEntity: 2}})
 
-	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{"a": 1, "b": 2})
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"a": 1, "b": 2})
 
 	// Delete one and add one — should still be at limit.
-	updated, err := g.Nodes.Update(n.ID(), map[string]any{"a": nil, "c": 3})
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"a": nil, "c": 3})
 	if err != nil {
 		t.Fatalf("delete+add should succeed: %v", err)
 	}

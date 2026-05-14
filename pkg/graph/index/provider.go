@@ -25,10 +25,9 @@ import (
 // routing, and threading. This is the extension point used by
 // tkgd's spatial R-tree.
 //
-// The Phase 6 redesign narrows the surface area in three ways relative to
-// LegacyIndexProvider:
+// Design constraints:
 //
-//  1. OnEvent no longer receives *Graph. Providers that need to read entity
+//  1. OnEvent does NOT receive *Graph. Providers that need to read entity
 //     data should keep a GraphReader handed to them via Init (see
 //     Initializable). This prevents providers from mutating the graph or
 //     registering more providers from inside an event handler.
@@ -91,24 +90,6 @@ type IndexProvider interface {
 // the GraphReader supplied here.
 type Initializable interface {
 	Init(g GraphReader) error
-}
-
-// LegacyIndexProvider is the pre-Phase-6 IndexProvider shape, retained for
-// external callers (notably tkgd's spatial R-tree) whose providers still
-// take a *Graph-shaped value in OnEvent. New providers should implement
-// IndexProvider (and optionally Initializable) instead.
-//
-// The OnEvent shape uses GraphReader rather than *Graph — adapters that
-// hold a *Graph should expose it via the read-only GraphReader surface to
-// preserve the extension-point's "auxiliary index, no mutations" intent.
-//
-// Deprecated: Use IndexProvider (the redesigned, narrowed shape) and
-// Initializable for bulk-load. LegacyIndexProvider will be removed in a
-// future major version.
-type LegacyIndexProvider interface {
-	Name() string
-	OnEvent(ev events.Event, g GraphReader)
-	Close() error
 }
 
 // GraphReader is the read-only Graph surface exposed to IndexProviders.

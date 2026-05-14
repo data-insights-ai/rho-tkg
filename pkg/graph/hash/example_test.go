@@ -1,6 +1,7 @@
 package hash_test
 
 import (
+	"context"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
 	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/hash" // godoc anchor: ExampleAPI_<method> resolves against hash.API
 )
@@ -14,7 +15,7 @@ func ExampleAPI_VerifyNodeChain() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	ok, err := g.Hash.VerifyNodeChain(n.ID())
 	if err != nil {
 		panic(err)
@@ -31,9 +32,9 @@ func ExampleAPI_VerifyRelChain() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	r, _ := g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	ok, err := g.Hash.VerifyRelChain(r.ID())
 	if err != nil {
 		panic(err)

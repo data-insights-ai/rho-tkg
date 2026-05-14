@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/events"
@@ -11,23 +12,23 @@ func TestAbsentPropertyDeleteVersionedUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
-	updatedNode, err := g.Nodes.Update(a.ID(), map[string]any{"missing": nil})
+	updatedNode, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"missing": nil})
 	if err != nil {
 		t.Fatalf("UpdateNode absent delete: %v", err)
 	}
@@ -41,7 +42,7 @@ func TestAbsentPropertyDeleteVersionedUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatal("absent node property became present")
 	}
 
-	updatedRel, err := g.Rels.Update(r.ID(), map[string]any{"missing": nil})
+	updatedRel, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"missing": nil})
 	if err != nil {
 		t.Fatalf("UpdateRelationship absent delete: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestAbsentPropertyDeleteVersionedUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatal("absent relationship property became present")
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated || after.RelsUpdated != before.RelsUpdated {
 		t.Fatalf("update counters changed for absent deletes: before=%+v after=%+v", before, after)
 	}
@@ -88,23 +89,23 @@ func TestAbsentPropertyDeleteInPlaceUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
-	updatedNode, err := g.Nodes.UpdateInPlace(a.ID(), map[string]any{"missing": nil})
+	updatedNode, err := g.Nodes.UpdateInPlace(context.Background(), a.ID(), map[string]any{"missing": nil})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace absent delete: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestAbsentPropertyDeleteInPlaceUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("node version = %d, want 0", updatedNode.Version())
 	}
 
-	updatedRel, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"missing": nil})
+	updatedRel, err := g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"missing": nil})
 	if err != nil {
 		t.Fatalf("UpdateRelationshipInPlace absent delete: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestAbsentPropertyDeleteInPlaceUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("relationship version = %d, want 0", updatedRel.Version())
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated || after.RelsUpdated != before.RelsUpdated {
 		t.Fatalf("update counters changed for in-place absent deletes: before=%+v after=%+v", before, after)
 	}
@@ -138,30 +139,30 @@ func TestSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
-	updatedNode, err := g.Nodes.Update(a.ID(), map[string]any{"name": "Alice"})
+	updatedNode, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("UpdateNode same value: %v", err)
 	}
 	if updatedNode.Version() != 0 {
 		t.Fatalf("node version after same-value update = %d, want 0", updatedNode.Version())
 	}
-	updatedRel, err := g.Rels.Update(r.ID(), map[string]any{"since": int64(2026)})
+	updatedRel, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("UpdateRelationship same value: %v", err)
 	}
@@ -169,14 +170,14 @@ func TestSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("relationship version after same-value update = %d, want 0", updatedRel.Version())
 	}
 
-	updatedNode, err = g.Nodes.UpdateInPlace(a.ID(), map[string]any{"name": "Alice"})
+	updatedNode, err = g.Nodes.UpdateInPlace(context.Background(), a.ID(), map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace same value: %v", err)
 	}
 	if updatedNode.Version() != 0 {
 		t.Fatalf("node version after same-value in-place update = %d, want 0", updatedNode.Version())
 	}
-	updatedRel, err = g.Rels.UpdateInPlace(r.ID(), map[string]any{"since": int64(2026)})
+	updatedRel, err = g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("UpdateRelationshipInPlace same value: %v", err)
 	}
@@ -184,14 +185,14 @@ func TestSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("relationship version after same-value in-place update = %d, want 0", updatedRel.Version())
 	}
 
-	if ok, err := g.Nodes.CompareAndSetProperty(a.ID(), "name", "Alice", "Alice"); err != nil || !ok {
+	if ok, err := g.Nodes.CompareAndSetProperty(context.Background(), a.ID(), "name", "Alice", "Alice"); err != nil || !ok {
 		t.Fatalf("Node CAS same value = (%v, %v), want (true, nil)", ok, err)
 	}
-	if ok, err := g.Rels.CompareAndSetProperty(r.ID(), "since", int64(2026), int64(2026)); err != nil || !ok {
+	if ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "since", int64(2026), int64(2026)); err != nil || !ok {
 		t.Fatalf("Relationship CAS same value = (%v, %v), want (true, nil)", ok, err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated || after.RelsUpdated != before.RelsUpdated {
 		t.Fatalf("same-value update counters changed: before=%+v after=%+v", before, after)
 	}
@@ -224,15 +225,15 @@ func TestBatchAbsentPropertyDeleteUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -261,14 +262,14 @@ func TestBatchAbsentPropertyDeleteUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("batch absent delete no-ops published events: %+v", gotEvents)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
 	if gotNode.Version() != 0 {
 		t.Fatalf("node version = %d, want 0", gotNode.Version())
 	}
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -282,21 +283,21 @@ func TestTxAbsentPropertyDeleteUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
 	tx, err := g.BeginTx()
 	if err != nil {
@@ -318,7 +319,7 @@ func TestTxAbsentPropertyDeleteUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated || after.RelsUpdated != before.RelsUpdated {
 		t.Fatalf("tx update counters changed for absent deletes: before=%+v after=%+v", before, after)
 	}
@@ -326,14 +327,14 @@ func TestTxAbsentPropertyDeleteUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("tx absent delete no-ops published events: %+v", gotEvents)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
 	if gotNode.Version() != 0 {
 		t.Fatalf("node version = %d, want 0", gotNode.Version())
 	}
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -347,21 +348,21 @@ func TestBatchAndTxSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
 	events := collectEvents(g, eventspkg.EventNodeUpdate)
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 
 	batch, err := NewBatchBuilder(g)
 	if err != nil {
@@ -401,7 +402,7 @@ func TestBatchAndTxSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated || after.RelsUpdated != before.RelsUpdated {
 		t.Fatalf("same-value batch/tx counters changed: before=%+v after=%+v", before, after)
 	}
@@ -409,14 +410,14 @@ func TestBatchAndTxSameValuePropertyUpdatesAreReadOnlyNoOps(t *testing.T) {
 		t.Fatalf("same-value batch/tx no-ops published events: %+v", gotEvents)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
 	if gotNode.Version() != 0 {
 		t.Fatalf("node version = %d, want 0", gotNode.Version())
 	}
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -429,21 +430,21 @@ func TestExistingNilValuedPropertyDeleteStillMutates(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"drop": nil})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"drop": nil})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"drop": nil})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"drop": nil})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	before := g.Stats.Get()
-	updatedNode, err := g.Nodes.Update(a.ID(), map[string]any{"drop": nil})
+	before, _ := g.Stats.Get()
+	updatedNode, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"drop": nil})
 	if err != nil {
 		t.Fatalf("UpdateNode delete nil-valued property: %v", err)
 	}
@@ -454,7 +455,7 @@ func TestExistingNilValuedPropertyDeleteStillMutates(t *testing.T) {
 		t.Fatalf("node version = %d, want 1", updatedNode.Version())
 	}
 
-	updatedRel, err := g.Rels.Update(r.ID(), map[string]any{"drop": nil})
+	updatedRel, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"drop": nil})
 	if err != nil {
 		t.Fatalf("UpdateRelationship delete nil-valued property: %v", err)
 	}
@@ -465,7 +466,7 @@ func TestExistingNilValuedPropertyDeleteStillMutates(t *testing.T) {
 		t.Fatalf("relationship version = %d, want 1", updatedRel.Version())
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesUpdated != before.NodesUpdated+1 || after.RelsUpdated != before.RelsUpdated+1 {
 		t.Fatalf("delete existing property counters = nodes %d rels %d, want %d/%d",
 			after.NodesUpdated, after.RelsUpdated, before.NodesUpdated+1, before.RelsUpdated+1)

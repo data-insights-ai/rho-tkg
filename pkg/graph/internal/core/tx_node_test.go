@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +32,7 @@ func TestGraphTx_UpdateNode_Commit(t *testing.T) {
 	}
 
 	_ = updated
-	got, err := g.Nodes.Get(nodeID)
+	got, err := g.Nodes.Get(context.Background(), nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,15 +46,15 @@ func TestGraphTx_UpdateMetadataOnlyCommitsVersionAndIntegrity(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestGraphTx_UpdateMetadataOnlyCommitsVersionAndIntegrity(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestGraphTx_UpdateMetadataOnlyCommitsVersionAndIntegrity(t *testing.T) {
 		t.Fatal("node stored tkg_author_id as a normal property")
 	}
 
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestGraphTx_UpdateNode_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.Nodes.Get(nodeID)
+	got, err := g.Nodes.Get(context.Background(), nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +152,7 @@ func TestGraphTx_UpdateNode_MultipleTimes(t *testing.T) {
 	}
 
 	// Both updates should be reverted — original state restored.
-	got, err := g.Nodes.Get(nodeID)
+	got, err := g.Nodes.Get(context.Background(), nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,15 +207,15 @@ func TestGraphTx_DeleteNode_Commit(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Rels.Add("KNOWS", n1, n2, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,15 +242,15 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Rels.Add("KNOWS", n1, n2, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,7 +273,7 @@ func TestGraphTx_DeleteNode_Rollback(t *testing.T) {
 	}
 
 	// Verify the node's properties are intact.
-	got, err := g.Nodes.Get(n1.ID())
+	got, err := g.Nodes.Get(context.Background(), n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rollback: %v", err)
 	}
@@ -286,7 +287,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +301,7 @@ func TestGraphTx_SetNodeProperty_Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := g.Nodes.Get(nodeID)
+	got, err := g.Nodes.Get(context.Background(), nodeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +317,7 @@ func TestTxGetNode(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +341,7 @@ func TestTxGetNode_AfterDone(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

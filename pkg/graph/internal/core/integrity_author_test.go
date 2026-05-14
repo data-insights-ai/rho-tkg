@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -12,7 +13,7 @@ func TestAuthorIDSetOnAdd_Node(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 		"name":          "Alice",
 		"tkg_author_id": "alice@example.com",
 	})
@@ -43,9 +44,9 @@ func TestAuthorIDSetOnAdd_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("KNOWS", start, end, map[string]any{
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, map[string]any{
 		"tkg_author_id": "bob@example.com",
 	})
 	if err != nil {
@@ -71,7 +72,7 @@ func TestSignatureSetOnAdd_Node(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("fake-sig-bytes")
-	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{
 		"tkg_signature": sig,
 	})
 	if err != nil {
@@ -95,10 +96,10 @@ func TestSignatureSetOnAdd_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	sig := []byte("rel-signature")
-	r, err := g.Rels.Add("LINKS", start, end, map[string]any{
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, map[string]any{
 		"tkg_signature": sig,
 	})
 	if err != nil {
@@ -120,9 +121,9 @@ func TestAuthorIDPreservedOnUpdate(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"User"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"User"}, nil)
 
-	updated, err := g.Nodes.Update(n.ID(), map[string]any{
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{
 		"score":         42,
 		"tkg_author_id": "updater@example.com",
 	})
@@ -151,7 +152,7 @@ func TestAuthorIDViaShadow_Node(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{
 		"tkg_author_id": "shadow-user",
 	})
 
@@ -170,7 +171,7 @@ func TestSignatureViaShadow_Node(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	sig := []byte("test-sig")
-	n, _ := g.Nodes.Add([]string{"X"}, map[string]any{
+	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{
 		"tkg_signature": sig,
 	})
 
@@ -189,9 +190,9 @@ func TestAuthorIDViaShadow_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("R", start, end, map[string]any{
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "R", start, end, map[string]any{
 		"tkg_author_id": "rel-author",
 	})
 
@@ -209,10 +210,10 @@ func TestSignatureViaShadow_Rel(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	sig := []byte("rel-sig")
-	r, _ := g.Rels.Add("R", start, end, map[string]any{
+	r, _ := g.Rels.Add(context.Background(), "R", start, end, map[string]any{
 		"tkg_signature": sig,
 	})
 
@@ -232,7 +233,7 @@ func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"Plain"}, map[string]any{"x": 1})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Plain"}, map[string]any{"x": 1})
 	ig := n.Integrity()
 	if ig == nil {
 		t.Fatal("Integrity nil")
@@ -244,9 +245,9 @@ func TestNoAuthorID_DefaultsEmpty(t *testing.T) {
 		t.Errorf("Signature = %v; want nil", ig.Signature)
 	}
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("R", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "R", start, end, nil)
 	rig := r.Integrity()
 	if rig == nil {
 		t.Fatal("rel Integrity nil")
@@ -267,8 +268,8 @@ func TestProvenanceDoesNotAffectHash(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	// Two nodes with identical user properties but different AuthorID.
-	n1, _ := g.Nodes.Add([]string{"Item"}, map[string]any{"val": 1})
-	n2, _ := g.Nodes.Add([]string{"Item"}, map[string]any{
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"val": 1})
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"val":           1,
 		"tkg_author_id": "signer",
 	})

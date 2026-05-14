@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
@@ -12,16 +13,16 @@ func TestFromNodeHashStoredOnAdd(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, err := g.Nodes.Add([]string{"Start"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Start"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"End"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"End"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
 
-	r, err := g.Rels.Add("CONNECTS", start, end, nil)
+	r, err := g.Rels.Add(context.Background(), "CONNECTS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -60,9 +61,9 @@ func TestEndpointHashFromShadow(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -98,16 +99,16 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"S"}, nil)
-	end, _ := g.Nodes.Add([]string{"E"}, nil)
-	r, err := g.Rels.Add("EDGE", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"S"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"E"}, nil)
+	r, err := g.Rels.Add(context.Background(), "EDGE", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	originalFromHash := r.Integrity().FromNodeHash
 
 	// Update the start node — its hash changes.
-	updatedStart, err := g.Nodes.Update(start.ID(), map[string]any{"x": 1})
+	updatedStart, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"x": 1})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestEndpointHashPreservedOnUpdate(t *testing.T) {
 	}
 
 	// Now update the relationship — should pick up the new start node hash.
-	updated, err := g.Rels.Update(r.ID(), map[string]any{"label": "updated"})
+	updated, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"label": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -137,16 +138,16 @@ func TestEndpointHashRefreshedOnUpdateInPlace(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	start, _ := g.Nodes.Add([]string{"S"}, nil)
-	end, _ := g.Nodes.Add([]string{"E"}, nil)
-	r, err := g.Rels.Add("EDGE", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"S"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"E"}, nil)
+	r, err := g.Rels.Add(context.Background(), "EDGE", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	originalFromHash := r.Integrity().FromNodeHash
 	originalVersion := r.Version()
 
-	updatedStart, err := g.Nodes.UpdateInPlace(start.ID(), map[string]any{"x": int64(1)})
+	updatedStart, err := g.Nodes.UpdateInPlace(context.Background(), start.ID(), map[string]any{"x": int64(1)})
 	if err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestEndpointHashRefreshedOnUpdateInPlace(t *testing.T) {
 		t.Fatal("UpdateNodeInPlace did not change start node hash")
 	}
 
-	updated, err := g.Rels.UpdateInPlace(r.ID(), map[string]any{"label": "updated"})
+	updated, err := g.Rels.UpdateInPlace(context.Background(), r.ID(), map[string]any{"label": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
@@ -188,8 +189,8 @@ func TestEndpointHashSelfLoop(t *testing.T) {
 	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"Node"}, nil)
-	r, err := g.Rels.Add("SELF", n, n, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Node"}, nil)
+	r, err := g.Rels.Add(context.Background(), "SELF", n, n, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship self-loop: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestEndpointHashNotOnNode(t *testing.T) {
 	g, _ := New(Config{})
 	defer g.Close() //nolint:errcheck
 
-	n, _ := g.Nodes.Add([]string{"N"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"N"}, nil)
 
 	if val, ok := g.Resolve.NodeProperty(n, types.ShadowFromHash); ok || val != nil {
 		t.Errorf("expected (nil, false) for tkg_from_hash on node, got (%v, %v)", val, ok)

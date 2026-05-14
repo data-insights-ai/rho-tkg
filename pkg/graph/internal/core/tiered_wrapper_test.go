@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 type tieredWrapperStore struct {
@@ -42,7 +44,7 @@ func TestTieredWrapper_AdminOperationsUseCapabilities(t *testing.T) {
 		t.Fatal("New did not wire the label registry through the tiered wrapper")
 	}
 
-	n, err := g.Nodes.Add([]string{"Case"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("Add reference node: %v", err)
 	}
@@ -107,7 +109,7 @@ func TestTieredWrapper_ImportRollbackRewiresLabelRegistry(t *testing.T) {
 		EndID:   int64(missingID.SnowflakeID()),
 	})
 
-	err := g.IO.Import(bytes.NewReader(stream.Bytes()))
+	err := g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("Import: got %v, want ErrNodeNotFound", err)
 	}

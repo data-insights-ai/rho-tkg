@@ -85,7 +85,7 @@ func newGraphBaselineFixture(b *testing.B, g *Core, size int) graphBaselineFixtu
 	nodes := make([]*types.Node, 0, size)
 	nodeIDs := make([]types.NodeID, 0, size)
 	for i := 0; i < size; i++ {
-		n, err := g.Nodes.Add([]string{"Person"}, baselineNodeProps(i))
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, baselineNodeProps(i))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -96,7 +96,7 @@ func newGraphBaselineFixture(b *testing.B, g *Core, size int) graphBaselineFixtu
 	rels := make([]*types.Relationship, 0, size)
 	relIDs := make([]types.RelID, 0, size)
 	for i := 0; i < size; i++ {
-		r, err := g.Rels.Add("KNOWS", nodes[i], nodes[(i+1)%size], map[string]any{"weight": i % 5})
+		r, err := g.Rels.Add(context.Background(), "KNOWS", nodes[i], nodes[(i+1)%size], map[string]any{"weight": i % 5})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -132,7 +132,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		i := 0
 		for b.Loop() {
-			n, err := f.g.Nodes.Get(f.nodeIDs[i%len(f.nodeIDs)])
+			n, err := f.g.Nodes.Get(context.Background(), f.nodeIDs[i%len(f.nodeIDs)])
 			if err != nil || n == nil {
 				b.Fatalf("GetNode: %v", err)
 			}
@@ -144,7 +144,7 @@ func BenchmarkGraphBaseline_Reads_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		i := 0
 		for b.Loop() {
-			r, err := f.g.Rels.Get(f.relIDs[i%len(f.relIDs)])
+			r, err := f.g.Rels.Get(context.Background(), f.relIDs[i%len(f.relIDs)])
 			if err != nil || r == nil {
 				b.Fatalf("GetRelationship: %v", err)
 			}
@@ -264,7 +264,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		ids := make([]types.NodeID, b.N)
 		for i := range ids {
-			n, err := g.Nodes.Add([]string{"Person"}, baselineNodeProps(i))
+			n, err := g.Nodes.Add(context.Background(), []string{"Person"}, baselineNodeProps(i))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -273,7 +273,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Nodes.Update(ids[i], map[string]any{"status": "updated"}); err != nil {
+			if _, err := g.Nodes.Update(context.Background(), ids[i], map[string]any{"status": "updated"}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -283,7 +283,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		ids := make([]types.NodeID, b.N)
 		for i := range ids {
-			n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"state": "open"})
+			n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"state": "open"})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -292,7 +292,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			ok, err := g.Nodes.CompareAndSetProperty(ids[i], "state", "open", "closed")
+			ok, err := g.Nodes.CompareAndSetProperty(context.Background(), ids[i], "state", "open", "closed")
 			if err != nil || !ok {
 				b.Fatalf("CompareAndSetProperty: ok=%v err=%v", ok, err)
 			}
@@ -303,9 +303,9 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		relIDs := make([]types.RelID, b.N)
 		for i := range relIDs {
-			a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
-			c, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + b.N})
-			r, err := g.Rels.Add("KNOWS", a, c, map[string]any{"weight": 1})
+			a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i})
+			c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i + b.N})
+			r, err := g.Rels.Add(context.Background(), "KNOWS", a, c, map[string]any{"weight": 1})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -314,7 +314,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Rels.Update(relIDs[i], map[string]any{"weight": 2}); err != nil {
+			if _, err := g.Rels.Update(context.Background(), relIDs[i], map[string]any{"weight": 2}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -324,9 +324,9 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		relIDs := make([]types.RelID, b.N)
 		for i := range relIDs {
-			a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
-			c, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i + b.N})
-			r, err := g.Rels.Add("KNOWS", a, c, nil)
+			a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i})
+			c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i + b.N})
+			r, err := g.Rels.Add(context.Background(), "KNOWS", a, c, nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -335,7 +335,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if err := g.Rels.Delete(relIDs[i]); err != nil {
+			if err := g.Rels.Delete(context.Background(), relIDs[i]); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -345,7 +345,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		g := newBaselineMemoryGraph(b)
 		nodeIDs := make([]types.NodeID, b.N)
 		for i := range nodeIDs {
-			n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"seq": i})
+			n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"seq": i})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -354,7 +354,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if err := g.Nodes.Delete(nodeIDs[i]); err != nil {
+			if err := g.Nodes.Delete(context.Background(), nodeIDs[i]); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -364,7 +364,7 @@ func BenchmarkGraphBaseline_Writes_MemoryStore(b *testing.B) {
 func BenchmarkGraphBaseline_Temporal_MemoryStore(b *testing.B) {
 	f := newGraphBaselineFixture(b, newBaselineMemoryGraph(b), baselineFixtureSize)
 	versionedID := f.nodeIDs[0]
-	if _, err := f.g.Nodes.Update(versionedID, map[string]any{"status": "historical"}); err != nil {
+	if _, err := f.g.Nodes.Update(context.Background(), versionedID, map[string]any{"status": "historical"}); err != nil {
 		b.Fatal(err)
 	}
 
@@ -401,7 +401,7 @@ func BenchmarkGraphBaseline_Temporal_MemoryStore(b *testing.B) {
 	b.Run("GetRelationshipsValidAt", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rels, err := f.g.Temporal.RelationshipsAt(f.relTime)
+			rels, err := f.g.Temporal.RelsAt(f.relTime)
 			if err != nil || len(rels) == 0 {
 				b.Fatalf("GetRelationshipsValidAt: len=%d err=%v", len(rels), err)
 			}
@@ -461,7 +461,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Nodes.Add([]string{"Person"}, baselineNodeProps(i)); err != nil {
+			if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, baselineNodeProps(i)); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -472,7 +472,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Nodes.Add([]string{"Person"}, baselineNodeProps(i)); err != nil {
+			if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, baselineNodeProps(i)); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -579,7 +579,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Nodes.Add([]string{"Case"}, map[string]any{"seq": i}); err != nil {
+			if _, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -590,7 +590,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i}); err != nil {
+			if _, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"seq": i}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -604,11 +604,11 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		}
 		pairs := make([]pair, benchmarkEndpointPoolSize(b.N))
 		for i := range pairs {
-			start, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"seq": i})
+			start, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"seq": i})
 			if err != nil {
 				b.Fatal(err)
 			}
-			end, err := g.Nodes.Add([]string{"Case"}, map[string]any{"seq": i})
+			end, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"seq": i})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -618,7 +618,7 @@ func BenchmarkGraphBaseline_StoreBackends(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			pair := pairs[i%len(pairs)]
-			if _, err := g.Rels.Add("ABOUT", pair.start, pair.end, map[string]any{"weight": 1}); err != nil {
+			if _, err := g.Rels.Add(context.Background(), "ABOUT", pair.start, pair.end, map[string]any{"weight": 1}); err != nil {
 				b.Fatal(err)
 			}
 		}

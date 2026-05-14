@@ -62,7 +62,21 @@ After confirming the implementation is correct and the issue isn't duplicated el
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v3.4.0 (post-cleanup) | Thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 13 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. The 130+ methods that used to live on `*Graph` were **removed** in v3.4.0 — call them via the sub-APIs (e.g. `g.Nodes.Add(...)` instead of the old `g.AddNode(...)`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`. The post-v3.4.0 cleanup additionally renamed every `*api`-suffixed sub-API package to its short form (`adminapi`→`admin`, `constraintsapi`→`constraints`, `hashapi`→`hash`, `ioapi`→`io`, `resolveapi`→`resolve`, `statsapi`→`stats`) and the `Statistics` field to `Stats`. v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends — types renamed `MemoryStore→memory.Store`/`NewMemoryStore→memory.New`, `BadgerStore→badger.Store`/`BadgerStoreConfig→badger.Config`/`NewBadgerStore→badger.New`, `TieredStore→tiered.Store`/`TieredStoreConfig→tiered.Config`/`NewTieredStore→tiered.New`), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`. See CHANGELOG.md for the full migration guide.
+Status: v4.0.0 (Unreleased — API cleanup pass) | Thin `*Graph` façade — the only public surface on `*Graph` itself is `New` and `Close` plus 14 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
+
+**v4.0 API changes vs v3.4.0** (see CHANGELOG.md for the full migration recipe):
+- `*WithContext` method pairs collapsed: `Nodes.Add(ctx, …)`, `Nodes.Get(ctx, id)`, `Nodes.Update`, `Nodes.UpdateInPlace`, `Nodes.Delete`, `Nodes.CompareAndSetProperty` and the Rel equivalents (`Add`, `AddByID`, `AddByIDIfAbsent`, `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`) now take `ctx` as first arg. The `*WithContext` siblings no longer exist.
+- `Nodes.NextVersion` / `PreviousVersion` renamed to `VersionAfter` / `VersionBefore`; same on Rels.
+- `temporal.Relationships*` long form collapsed to `temporal.Rels*` (At/ByTypeAt/During).
+- `g.Admin` split — tiered-only methods (Archive/Restore/ForceRotate/ListShards/RebuildCatalog/Repair/VerifyShard) moved to a new `g.Tier` sub-API. `g.Admin` now exposes only Reset + DecomposeNodeID + DecomposeRelID, which work on every backend.
+- `g.Admin.DecomposeID(snowflake.ID)` replaced with typed `g.Admin.DecomposeNodeID(types.NodeID)` / `g.Admin.DecomposeRelID(types.RelID)`. Same split on the top-level `graph.DecomposeNodeID` / `graph.DecomposeRelID` helpers.
+- `g.Resolve.LabelToken` / `RelTypeToken` / `LookupLabel` / `LookupRelType` removed — leaked uint16 token representation. Shadow-property accessors (`NodeProperty`, `RelProperty`) kept.
+- `index.LegacyIndexProvider` interface + `Index.RegisterLegacyProvider` removed. External providers must migrate to `IndexProvider` + optional `Initializable`.
+- `IO.Import(r)` and `IO.ImportWithOptions(r, opts)` collapsed into `IO.Import(r, opts)`. Pass `ImportOptions{}` for the previous defaults.
+- New `BatchAPI.Run(fn) (*BatchResult, error)` parallel to `TxAPI.Run`.
+- `graph.ErrDepthTemporalUnsupported` removed (unreachable sentinel).
+
+v3.3.0 baseline (audience-based public sub-packages) still applies: `pkg/graph/store` (Store contract), `pkg/graph/store/{memory,badger,tiered}` (concrete backends), `pkg/graph/events`, `pkg/graph/index`, `pkg/graph/temporal`, `pkg/graph/ontology`.
 
 **Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 

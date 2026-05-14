@@ -15,6 +15,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestImportNodeWithID_Basic(t *testing.T) {
@@ -31,7 +32,7 @@ func TestImportNodeWithID_Basic(t *testing.T) {
 	}
 
 	// Verify retrievable by the same ID.
-	got, err := g.Nodes.Get(types.NodeID(id))
+	got, err := g.Nodes.Get(context.Background(), types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -102,7 +103,7 @@ func TestImportNodeWithID_LocksCallerNodeID(t *testing.T) {
 
 	deleteDone := make(chan error, 1)
 	go func() {
-		deleteDone <- g.Nodes.DeleteWithContext(context.Background(), nodeID)
+		deleteDone <- g.Nodes.Delete(context.Background(), nodeID)
 	}()
 
 	select {
@@ -155,8 +156,8 @@ func TestImportRelationshipWithID_Basic(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	relID := snowflake.ID(99999)
 	r, err := g.Rels.Import(context.Background(), types.RelID(relID), "KNOWS", n1, n2, map[string]any{"since": int64(2024)})
@@ -168,7 +169,7 @@ func TestImportRelationshipWithID_Basic(t *testing.T) {
 	}
 
 	// Verify retrievable.
-	got, err := g.Rels.Get(types.RelID(relID))
+	got, err := g.Rels.Get(context.Background(), types.RelID(relID))
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -182,8 +183,8 @@ func TestImportRelationshipWithID_Collision(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	relID := snowflake.ID(99999)
 	_, err := g.Rels.Import(context.Background(), types.RelID(relID), "KNOWS", n1, n2, nil)
@@ -226,11 +227,11 @@ func TestImportRelationshipWithID_LocksCallerRelID(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.Nodes.Add([]string{"A"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("Add node A: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"B"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("Add node B: %v", err)
 	}
@@ -250,7 +251,7 @@ func TestImportRelationshipWithID_LocksCallerRelID(t *testing.T) {
 
 	deleteDone := make(chan error, 1)
 	go func() {
-		deleteDone <- g.Rels.DeleteWithContext(context.Background(), relID)
+		deleteDone <- g.Rels.Delete(context.Background(), relID)
 	}()
 
 	select {
@@ -272,8 +273,8 @@ func TestImportRelationshipWithID_NegativeID(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	_, err := g.Rels.Import(context.Background(), types.RelID(-1), "KNOWS", n1, n2, nil)
 	if !errors.Is(err, ErrInvalidID) {
@@ -308,7 +309,7 @@ func TestGraphTx_ImportNodeWithID(t *testing.T) {
 	}
 
 	// Verify persisted.
-	got, err := g.Nodes.Get(types.NodeID(id))
+	got, err := g.Nodes.Get(context.Background(), types.NodeID(id))
 	if err != nil {
 		t.Fatalf("GetNode after commit: %v", err)
 	}
@@ -322,8 +323,8 @@ func TestGraphTx_ImportNegativeIDs(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.Nodes.Add([]string{"A"}, nil)
-	n2, _ := g.Nodes.Add([]string{"B"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	tx, _ := g.BeginTx()
 	defer tx.Rollback()
@@ -353,7 +354,7 @@ func TestGraphTx_ImportNodeWithID_Rollback(t *testing.T) {
 	}
 
 	// Node should be gone after rollback.
-	_, err = g.Nodes.Get(types.NodeID(id))
+	_, err = g.Nodes.Get(context.Background(), types.NodeID(id))
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("after rollback: err = %v, want storepkg.ErrNodeNotFound", err)
 	}
@@ -363,11 +364,11 @@ func TestGraphTx_ImportNodeWithID_NilContextDoesNotMaterializeDeletedHistory(t *
 	t.Parallel()
 	g := newTestGraph(t)
 
-	original, err := g.Nodes.Add([]string{"Original"}, map[string]any{"state": "initial"})
+	original, err := g.Nodes.Add(context.Background(), []string{"Original"}, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	original, err = g.Nodes.Update(original.ID(), map[string]any{"state": "committed"})
+	original, err = g.Nodes.Update(context.Background(), original.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -401,19 +402,19 @@ func TestGraphTx_ImportRelationshipWithID_NilContextDoesNotMaterializeDeletedHis
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	original, err := g.Rels.Add("ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
+	original, err := g.Rels.Add(context.Background(), "ORIGINAL_REL", a, b, map[string]any{"state": "initial"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	original, err = g.Rels.Update(original.ID(), map[string]any{"state": "committed"})
+	original, err = g.Rels.Update(context.Background(), original.ID(), map[string]any{"state": "committed"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -447,11 +448,11 @@ func TestGraphTx_ImportWithID_CanceledContextDoesNotWaitBehindTxMutex(t *testing
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Endpoint"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Endpoint"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
@@ -520,15 +521,15 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	}
 	defer src.Close() //nolint:errcheck
 
-	n1, err := src.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	n2, err := src.Nodes.Add([]string{"City"}, map[string]any{"city": "Vienna"})
+	n2, err := src.Nodes.Add(context.Background(), []string{"City"}, map[string]any{"city": "Vienna"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	_, err = src.Rels.Add("LIVES_IN", n1, n2, nil)
+	_, err = src.Rels.Add(context.Background(), "LIVES_IN", n1, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	go func() {
 		defer readerWg.Done()
 		for i := 0; i < 20; i++ {
-			_, err := dst.Nodes.Get(types.NodeID(existingID))
+			_, err := dst.Nodes.Get(context.Background(), types.NodeID(existingID))
 			if err == nil {
 				readSucceeded.Store(true)
 			}
@@ -575,7 +576,7 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 		}
 	}()
 
-	if err := dst.IO.Import(slow); err != nil {
+	if err := dst.IO.Import(slow, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 

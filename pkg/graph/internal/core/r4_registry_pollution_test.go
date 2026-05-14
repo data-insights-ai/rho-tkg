@@ -30,12 +30,12 @@ func TestR4_RejectedRelAdd_DoesNotAllocateRelTypeToken(t *testing.T) {
 	g := newTestGraph(t)
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := g.Rels.Add("REJECTED_TYPE", n, n, nil); !errors.Is(err, ErrSelfLoop) {
+	if _, err := g.Rels.Add(context.Background(), "REJECTED_TYPE", n, n, nil); !errors.Is(err, ErrSelfLoop) {
 		t.Fatalf("expected ErrSelfLoop, got %v", err)
 	}
 
@@ -50,7 +50,7 @@ func TestR4_RejectedBatchAddRel_DoesNotAllocateRelTypeToken(t *testing.T) {
 	g := newTestGraph(t)
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestR4_DuplicateImportNode_DoesNotAllocateLabelTokens(t *testing.T) {
 	g := newTestGraph(t)
 	defer g.Close()
 
-	first, err := g.Nodes.Add([]string{"Existing"}, nil)
+	first, err := g.Nodes.Add(context.Background(), []string{"Existing"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +104,11 @@ func TestR4_ImportRel_StoreProbeError_Propagates(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

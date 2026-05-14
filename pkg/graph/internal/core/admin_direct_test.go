@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -62,7 +63,7 @@ func TestAdminOpsArchiveEventNodeReturnsNotReference(t *testing.T) {
 	t.Parallel()
 
 	g, _ := newTestTieredGraph(t)
-	signal, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signal, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode Signal: %v", err)
 	}
@@ -81,38 +82,38 @@ func TestAdminOpsResetClearsOperationCounters(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	a, err := g.Nodes.Add([]string{"ResetStats"}, map[string]any{"v": int64(1)})
+	a, err := g.Nodes.Add(context.Background(), []string{"ResetStats"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"ResetStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"ResetStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("RESET_STATS_REL", a, b, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "RESET_STATS_REL", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	if _, err := g.Nodes.Get(a.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), a.ID()); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	if _, err := g.Rels.Get(r.ID()); err != nil {
+	if _, err := g.Rels.Get(context.Background(), r.ID()); err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"v": int64(2)}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
-	if _, err := g.Rels.Update(r.ID(), map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
-	if err := g.Rels.Delete(r.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), r.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
-	if err := g.Nodes.Delete(b.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), b.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 	if before.NodesAdded == 0 || before.NodesRead == 0 || before.NodesUpdated == 0 || before.NodesDeleted == 0 ||
 		before.RelsAdded == 0 || before.RelsRead == 0 || before.RelsUpdated == 0 || before.RelsDeleted == 0 {
 		t.Fatalf("test did not exercise every operation counter before Reset: %+v", before)
@@ -122,7 +123,7 @@ func TestAdminOpsResetClearsOperationCounters(t *testing.T) {
 		t.Fatalf("Reset: %v", err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesAdded != 0 || after.NodesRead != 0 || after.NodesUpdated != 0 || after.NodesDeleted != 0 ||
 		after.RelsAdded != 0 || after.RelsRead != 0 || after.RelsUpdated != 0 || after.RelsDeleted != 0 {
 		t.Fatalf("operation counters after Reset = %+v, want zero operation counters", after)
@@ -144,15 +145,15 @@ func TestAdminOpsResetPersistsRegistrySnapshotAfterClear(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	a, err := g.Nodes.Add([]string{"ResetRegistry"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"ResetRegistry"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"ResetRegistry"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"ResetRegistry"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	if _, err := g.Rels.Add("RESET_REGISTRY_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "RESET_REGISTRY_REL", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 

@@ -10,12 +10,14 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
 	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/storeutil"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 // R5-F3: a node record whose PrimaryLabel exceeds the registry's
@@ -24,7 +26,7 @@ func TestR5_Import_NodeTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
 	src := newTestGraph(t)
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"X"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -42,7 +44,7 @@ func TestR5_Import_NodeTokenBeyondRegistry_Rejected(t *testing.T) {
 
 	dst := newTestGraph(t)
 	defer dst.Close()
-	err := dst.IO.Import(bytes.NewReader(corrupt))
+	err := dst.IO.Import(bytes.NewReader(corrupt), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with out-of-range node token: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -54,7 +56,7 @@ func TestR5_Import_NodeExtraTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
 	src := newTestGraph(t)
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"X", "Y"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"X", "Y"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +76,7 @@ func TestR5_Import_NodeExtraTokenBeyondRegistry_Rejected(t *testing.T) {
 
 	dst := newTestGraph(t)
 	defer dst.Close()
-	err := dst.IO.Import(bytes.NewReader(corrupt))
+	err := dst.IO.Import(bytes.NewReader(corrupt), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with out-of-range extra-label token: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -86,15 +88,15 @@ func TestR5_Import_RelTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
 	src := newTestGraph(t)
 	defer src.Close()
-	a, err := src.Nodes.Add([]string{"X"}, nil)
+	a, err := src.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := src.Nodes.Add([]string{"X"}, nil)
+	b, err := src.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.Rels.Add("KNOWS", a, b, nil); err != nil {
+	if _, err := src.Rels.Add(context.Background(), "KNOWS", a, b, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -109,7 +111,7 @@ func TestR5_Import_RelTokenBeyondRegistry_Rejected(t *testing.T) {
 
 	dst := newTestGraph(t)
 	defer dst.Close()
-	err = dst.IO.Import(bytes.NewReader(corrupt))
+	err = dst.IO.Import(bytes.NewReader(corrupt), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with out-of-range rel type token: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -127,11 +129,11 @@ func TestR5_Import_ConflictingDuplicateNodeHistory_Rejected(t *testing.T) {
 	// is materialised with property foo=1.
 	src := newTestGraph(t)
 	defer src.Close()
-	srcNode, err := src.Nodes.Add([]string{"X"}, map[string]any{"foo": int64(1)})
+	srcNode, err := src.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"foo": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.Nodes.Update(srcNode.ID(), map[string]any{"foo": int64(2)}); err != nil {
+	if _, err := src.Nodes.Update(context.Background(), srcNode.ID(), map[string]any{"foo": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	var stream bytes.Buffer
@@ -146,11 +148,11 @@ func TestR5_Import_ConflictingDuplicateNodeHistory_Rejected(t *testing.T) {
 	if _, err := dst.Nodes.Import(t.Context(), srcNode.ID(), []string{"X"}, map[string]any{"foo": int64(1)}); err != nil {
 		t.Fatalf("seed conflicting current node: %v", err)
 	}
-	if _, err := dst.Nodes.Update(srcNode.ID(), map[string]any{"foo": int64(99)}); err != nil {
+	if _, err := dst.Nodes.Update(context.Background(), srcNode.ID(), map[string]any{"foo": int64(99)}); err != nil {
 		t.Fatalf("seed conflicting v0 history: %v", err)
 	}
 
-	err = dst.IO.Import(bytes.NewReader(stream.Bytes()))
+	err = dst.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with conflicting node-history duplicate: got %v, want errors.Is ErrCorruptExport", err)
 	}
@@ -162,18 +164,18 @@ func TestR5_Import_IdenticalDuplicateNodeHistory_Allowed(t *testing.T) {
 	t.Parallel()
 	src := newTestGraph(t)
 	defer src.Close()
-	srcNode, err := src.Nodes.Add([]string{"X"}, map[string]any{"foo": int64(1)})
+	srcNode, err := src.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"foo": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.Nodes.Update(srcNode.ID(), map[string]any{"foo": int64(2)}); err != nil {
+	if _, err := src.Nodes.Update(context.Background(), srcNode.ID(), map[string]any{"foo": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	var stream bytes.Buffer
 	if err := src.IO.Export(&stream); err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	if err := src.IO.Import(bytes.NewReader(stream.Bytes())); err != nil {
+	if err := src.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("idempotent re-import with history: %v", err)
 	}
 }
@@ -184,19 +186,19 @@ func TestR5_Import_ConflictingDuplicateRelHistory_Rejected(t *testing.T) {
 
 	src := newTestGraph(t)
 	defer src.Close()
-	a, err := src.Nodes.Add([]string{"X"}, nil)
+	a, err := src.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := src.Nodes.Add([]string{"X"}, nil)
+	b, err := src.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := src.Rels.Add("KNOWS", a, b, map[string]any{"w": int64(1)})
+	rel, err := src.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := src.Rels.Update(rel.ID(), map[string]any{"w": int64(2)}); err != nil {
+	if _, err := src.Rels.Update(context.Background(), rel.ID(), map[string]any{"w": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	var stream bytes.Buffer
@@ -221,11 +223,11 @@ func TestR5_Import_ConflictingDuplicateRelHistory_Rejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed conflicting current rel: %v", err)
 	}
-	if _, err := dst.Rels.Update(dRel.ID(), map[string]any{"w": int64(99)}); err != nil {
+	if _, err := dst.Rels.Update(context.Background(), dRel.ID(), map[string]any{"w": int64(99)}); err != nil {
 		t.Fatalf("seed conflicting rel history: %v", err)
 	}
 
-	err = dst.IO.Import(bytes.NewReader(stream.Bytes()))
+	err = dst.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with conflicting rel-history duplicate: got %v, want errors.Is ErrCorruptExport", err)
 	}

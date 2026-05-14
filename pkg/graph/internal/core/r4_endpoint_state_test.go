@@ -16,6 +16,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -35,11 +36,11 @@ func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"Item"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 	// Stale local mutation — must NOT influence the constraint decision.
 	a.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
-	if _, err := g.Rels.Add("LINK", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "LINK", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship rejected: caller pointer mutation must not influence the constraint check (R4-F5): %v", err)
 	}
 }
@@ -62,14 +63,14 @@ func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 	g := newTestGraph(t)
 	addRelWithinEndpointsConstraint(t, g)
 
-	a, err := g.Nodes.Add([]string{"Item"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Persist b with a deterministic expired interval in the store so the
 	// live state seen by the batch's constraint check is genuinely
 	// past-its-expiry.
-	b, err := g.Nodes.Add([]string{"Item"}, map[string]any{
+	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
 	})
@@ -114,15 +115,15 @@ func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 func TestR4_RelUpdate_NoDeadlockWithEndpointUpdate(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("LINK", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINK", a, b, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestR4_RelUpdate_NoDeadlockWithEndpointUpdate(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
-			if _, err := g.Rels.Update(r.ID(), map[string]any{"v": i}); err != nil {
+			if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"v": i}); err != nil {
 				t.Errorf("Rels.Update[%d]: %v", i, err)
 				return
 			}
@@ -142,7 +143,7 @@ func TestR4_RelUpdate_NoDeadlockWithEndpointUpdate(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
-			if _, err := g.Nodes.Update(a.ID(), map[string]any{"v": i}); err != nil {
+			if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"v": i}); err != nil {
 				t.Errorf("Nodes.Update[%d]: %v", i, err)
 				return
 			}

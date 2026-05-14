@@ -46,6 +46,17 @@ func (ts *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 // EndpointIntegrityHashes returns both endpoint integrity hashes while each
 // owning shard is pinned. It preserves live-endpoint validation without
 // materializing endpoint node copies in relationship create paths.
+//
+// Branch behavior:
+//   - self-loop (startID == endID): read the single node's integrity hash and
+//     return it twice. NodeIntegrityHash already returns ErrNodeNotFound for a
+//     missing node, so liveness is enforced.
+//   - same shard (startID != endID): delegate to the backend's atomic
+//     EndpointIntegrityHashes which validates both endpoints under one pin.
+//   - cross shard: two independent NodeIntegrityHash reads under their own pins.
+//     The shardForNodeIDChecked pin keeps the owning shard alive for the read;
+//     a concurrent Archive of one endpoint would block on its entity lock
+//     held at the call site higher up the stack.
 func (ts *Store) EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error) {
 	if err := ts.checkOpen(); err != nil {
 		return "", "", err

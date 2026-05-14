@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 // --- F1: ImportGraph must not panic on malformed records ---
@@ -74,7 +76,7 @@ func validImportPreludeWithCounts(t *testing.T, nodeCount, relCount int64) []byt
 	return buf.Bytes()
 }
 
-// runImportSafely invokes g.IO.Import(r) and converts a panic into a t.Fatal.
+// runImportSafely invokes g.IO.Import(r, tkgio.ImportOptions{}) and converts a panic into a t.Fatal.
 // The contract is: ImportGraph must surface malformed input as an error, never
 // as a panic.
 func runImportSafely(t *testing.T, g *Core, r io.Reader) error {
@@ -86,7 +88,7 @@ func runImportSafely(t *testing.T, g *Core, r io.Reader) error {
 				t.Fatalf("ImportGraph panicked on malformed input: %v", rec)
 			}
 		}()
-		importErr = g.IO.Import(r)
+		importErr = g.IO.Import(r, tkgio.ImportOptions{})
 	}()
 	return importErr
 }
@@ -1155,15 +1157,15 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 	}
 	defer src.Close() //nolint:errcheck
 
-	caseNode, err := src.Nodes.Add([]string{"Case", "Tagged"}, map[string]any{"k": "v"})
+	caseNode, err := src.Nodes.Add(context.Background(), []string{"Case", "Tagged"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalNode, err := src.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := src.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	if _, err := src.Rels.Add("RELATES_TO", caseNode, signalNode, nil); err != nil {
+	if _, err := src.Rels.Add(context.Background(), "RELATES_TO", caseNode, signalNode, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
@@ -1183,14 +1185,14 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 		t.Fatalf("ImportGraph happy path: %v", importErr)
 	}
 
-	got, err := dst.Nodes.Get(caseNode.InternalID())
+	got, err := dst.Nodes.Get(context.Background(), caseNode.InternalID())
 	if err != nil {
 		t.Fatalf("GetNode after import: %v", err)
 	}
 	if got == nil {
 		t.Fatal("imported case node missing")
 	}
-	gotSig, err := dst.Nodes.Get(signalNode.InternalID())
+	gotSig, err := dst.Nodes.Get(context.Background(), signalNode.InternalID())
 	if err != nil {
 		t.Fatalf("GetNode signal after import: %v", err)
 	}
@@ -1229,15 +1231,15 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 	// PutRelationship Section 12 ordering writes entity+out on startShard
 	// (hot event), then in/ on endShard (ref). So the rel ENTITY lives on
 	// the hot event shard — which is the shard we'll fault-inject below.
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rel, err := g.Rels.Add("LINK", signalNode, caseNode, nil)
+	rel, err := g.Rels.Add(context.Background(), "LINK", signalNode, caseNode, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1360,15 +1362,15 @@ func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
 
 	// Build a cross-shard rel so Phase 2 enters the GetRelationship loop.
 	// (Same-shard rels short-circuit before the read.)
-	caseRef, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseRef, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode case: %v", err)
 	}
-	signalEvt, err := g.Nodes.Add([]string{"Signal"}, nil)
+	signalEvt, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode signal: %v", err)
 	}
-	rel, err := g.Rels.Add("TOUCHES", caseRef, signalEvt, nil)
+	rel, err := g.Rels.Add(context.Background(), "TOUCHES", caseRef, signalEvt, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship cross-shard: %v", err)
 	}

@@ -478,6 +478,12 @@ func (ts *Store) forEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.Nod
 				}
 			}
 		}
+		// Bound observation to the maxRaw snapshot computed before this scan
+		// started. A concurrent writer can add a new history ID between the
+		// maxNodeHistoryIDByDepth call and this iteration; without this prune,
+		// the late ID would be observed here but not reflected in maxRaw, and
+		// callers that pair this iteration with maxRaw-based reasoning would
+		// see a result set that exceeds the snapshot upper bound.
 		if id.SnowflakeID() > maxRaw {
 			return true
 		}

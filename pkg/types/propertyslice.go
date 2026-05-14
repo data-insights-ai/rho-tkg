@@ -341,6 +341,14 @@ func IndexablePropertyValueKey(v any) string {
 // semantics used by graph compare-and-set operations. Concrete types must
 // match; NaN float32/float64 values compare equal, including when nested in
 // supported slices, maps, arrays, structs, pointers, or interfaces.
+//
+// Hash divergence by design: the integrity-hash function preserves the raw
+// IEEE-754 bit pattern, so two NaN values that compare equal here can hash
+// differently (and so can ±0). PropertyValueEqual is the CAS short-circuit
+// contract; the hash is the durable-identity contract. A no-op CAS that
+// replaces one NaN bit pattern with another does NOT advance the hash
+// chain — but a fresh SetProperty with a different bit pattern does. See
+// pkg/graph/internal/integrity/integrity_test.go for the documenting tests.
 func PropertyValueEqual(cur, expected any) bool {
 	return propertyValueEqual(cur, expected, nil)
 }

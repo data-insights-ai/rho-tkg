@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dgraph-io/badger/v4/options"
@@ -20,11 +21,11 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 	defer g.Close()
 
 	// Verify we can write and read through the graph.
-	node, err := g.Nodes.Add([]string{"Test"}, nil)
+	node, err := g.Nodes.Add(context.Background(), []string{"Test"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	got, err := g.Nodes.Get(node.ID())
+	got, err := g.Nodes.Get(context.Background(), node.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}

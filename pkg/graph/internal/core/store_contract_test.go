@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"sort"
@@ -147,14 +148,14 @@ func TestStoreContract_HistoryVisibility(t *testing.T) {
 		g := newContractGraph(t, backend)
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
 
-		updatedNode, err := g.Nodes.Update(caseNode.ID(), map[string]any{"status": "investigating"})
+		updatedNode, err := g.Nodes.Update(context.Background(), caseNode.ID(), map[string]any{"status": "investigating"})
 		if err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
 		if updatedNode.Version() != 1 {
 			t.Fatalf("updated node version = %d, want 1", updatedNode.Version())
 		}
-		updatedRel, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)})
+		updatedRel, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)})
 		if err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
@@ -195,14 +196,14 @@ func TestStoreContract_HistoryVisibility(t *testing.T) {
 		assertRelIDs(t, "AllRelHistoryIDs", idsToRels(t, g.store, mustStoreRelHistoryIDs(t, g.store)),
 			[]types.RelID{rel.ID()})
 
-		gotCurrent, err := g.Nodes.Get(caseNode.ID())
+		gotCurrent, err := g.Nodes.Get(context.Background(), caseNode.ID())
 		if err != nil {
 			t.Fatalf("GetNode current: %v", err)
 		}
 		if v, ok := gotCurrent.GetProperty("status"); !ok || v != "investigating" {
 			t.Fatalf("current node status = %v (ok=%v), want investigating", v, ok)
 		}
-		gotSignal, err := g.Nodes.Get(signalNode.ID())
+		gotSignal, err := g.Nodes.Get(context.Background(), signalNode.ID())
 		if err != nil {
 			t.Fatalf("GetNode signal: %v", err)
 		}
@@ -217,29 +218,29 @@ func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
 		g := newContractGraph(t, backend)
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
 
-		if err := g.Rels.Delete(rel.ID()); err != nil {
+		if err := g.Rels.Delete(context.Background(), rel.ID()); err != nil {
 			t.Fatalf("DeleteRelationship: %v", err)
 		}
-		if _, err := g.Rels.Get(rel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+		if _, err := g.Rels.Get(context.Background(), rel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 			t.Fatalf("GetRelationship after delete err = %v, want storepkg.ErrRelNotFound", err)
 		}
 		assertRelIDs(t, "RelationshipsByType after rel delete", mustRelationshipsByType(t, g, "OBSERVED", storepkg.QueryOpts{}), nil)
 		assertRelTombstone(t, g, rel.ID())
 
-		if err := g.Nodes.Delete(signalNode.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), signalNode.ID()); err != nil {
 			t.Fatalf("DeleteNode(signal): %v", err)
 		}
-		if _, err := g.Nodes.Get(signalNode.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		if _, err := g.Nodes.Get(context.Background(), signalNode.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
 			t.Fatalf("GetNode after delete err = %v, want storepkg.ErrNodeNotFound", err)
 		}
 		assertNodeIDs(t, "NodesByLabel(Signal) after delete", mustNodesByLabel(t, g, "Signal", storepkg.QueryOpts{}), nil)
 		assertNodeTombstone(t, g, signalNode.ID())
 
 		cascadeTarget, cascadeRel := addContractSignalRel(t, g, caseNode)
-		if err := g.Nodes.Delete(caseNode.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), caseNode.ID()); err != nil {
 			t.Fatalf("DeleteNode(case cascade): %v", err)
 		}
-		if _, err := g.Rels.Get(cascadeRel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+		if _, err := g.Rels.Get(context.Background(), cascadeRel.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 			t.Fatalf("GetRelationship cascade rel err = %v, want storepkg.ErrRelNotFound", err)
 		}
 		assertNodeTombstone(t, g, caseNode.ID())
@@ -274,7 +275,7 @@ func TestStoreContract_DeleteTombstonesAndHistory(t *testing.T) {
 		}
 		assertIDSet(t, "ForEachRelHistoryID", forEachRelIDs, relHistoryIDs)
 
-		if _, err := g.Nodes.Get(cascadeTarget.ID()); err != nil {
+		if _, err := g.Nodes.Get(context.Background(), cascadeTarget.ID()); err != nil {
 			t.Fatalf("cascade target should remain current: %v", err)
 		}
 	})
@@ -286,7 +287,7 @@ func TestStoreContract_Pagination(t *testing.T) {
 
 		nodes := make([]*types.Node, 0, 5)
 		for i := range 5 {
-			n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"idx": int64(i)})
+			n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"idx": int64(i)})
 			if err != nil {
 				t.Fatalf("AddNode %d: %v", i, err)
 			}
@@ -315,7 +316,7 @@ func TestStoreContract_Pagination(t *testing.T) {
 
 		rels := make([]*types.Relationship, 0, 4)
 		for i := range 4 {
-			r, err := g.Rels.Add("LINK", nodes[0], nodes[1], map[string]any{"idx": int64(i)})
+			r, err := g.Rels.Add(context.Background(), "LINK", nodes[0], nodes[1], map[string]any{"idx": int64(i)})
 			if err != nil {
 				t.Fatalf("AddRelationship %d: %v", i, err)
 			}
@@ -391,16 +392,16 @@ func TestStoreContract_Events(t *testing.T) {
 		_ = g.Events.SetSync(bus)
 
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
-		if _, err := g.Nodes.Update(caseNode.ID(), map[string]any{"status": "closed"}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), caseNode.ID(), map[string]any{"status": "closed"}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
-		if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
-		if err := g.Rels.Delete(rel.ID()); err != nil {
+		if err := g.Rels.Delete(context.Background(), rel.ID()); err != nil {
 			t.Fatalf("DeleteRelationship: %v", err)
 		}
-		if err := g.Nodes.Delete(signalNode.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), signalNode.ID()); err != nil {
 			t.Fatalf("DeleteNode: %v", err)
 		}
 
@@ -444,26 +445,26 @@ func TestStoreContract_Stats(t *testing.T) {
 		g := newContractGraph(t, backend)
 
 		caseNode, signalNode, rel := addContractCaseSignalRel(t, g)
-		if _, err := g.Nodes.Get(caseNode.ID()); err != nil {
+		if _, err := g.Nodes.Get(context.Background(), caseNode.ID()); err != nil {
 			t.Fatalf("GetNode: %v", err)
 		}
-		if _, err := g.Rels.Get(rel.ID()); err != nil {
+		if _, err := g.Rels.Get(context.Background(), rel.ID()); err != nil {
 			t.Fatalf("GetRelationship: %v", err)
 		}
-		if _, err := g.Nodes.Update(caseNode.ID(), map[string]any{"status": "closed"}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), caseNode.ID(), map[string]any{"status": "closed"}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
-		if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
-		if err := g.Rels.Delete(rel.ID()); err != nil {
+		if err := g.Rels.Delete(context.Background(), rel.ID()); err != nil {
 			t.Fatalf("DeleteRelationship: %v", err)
 		}
-		if err := g.Nodes.Delete(signalNode.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), signalNode.ID()); err != nil {
 			t.Fatalf("DeleteNode: %v", err)
 		}
 
-		stats := g.Stats.Get()
+		stats, _ := g.Stats.Get()
 		if stats.NodesAdded != 2 || stats.RelsAdded != 1 ||
 			stats.NodesRead != 1 || stats.RelsRead != 1 ||
 			stats.NodesUpdated != 1 || stats.RelsUpdated != 1 ||
@@ -490,15 +491,15 @@ func TestStoreContract_Stats(t *testing.T) {
 
 func addContractCaseSignalRel(t *testing.T, g *Core) (*types.Node, *types.Node, *types.Relationship) {
 	t.Helper()
-	caseNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "open"})
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "open"})
 	if err != nil {
 		t.Fatalf("AddNode(Case): %v", err)
 	}
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"severity": "high"})
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"severity": "high"})
 	if err != nil {
 		t.Fatalf("AddNode(Signal): %v", err)
 	}
-	rel, err := g.Rels.Add("OBSERVED", caseNode, signalNode, map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.Add(context.Background(), "OBSERVED", caseNode, signalNode, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship(OBSERVED): %v", err)
 	}
@@ -507,11 +508,11 @@ func addContractCaseSignalRel(t *testing.T, g *Core) (*types.Node, *types.Node, 
 
 func addContractSignalRel(t *testing.T, g *Core, caseNode *types.Node) (*types.Node, *types.Relationship) {
 	t.Helper()
-	signalNode, err := g.Nodes.Add([]string{"Signal"}, map[string]any{"severity": "medium"})
+	signalNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"severity": "medium"})
 	if err != nil {
 		t.Fatalf("AddNode(cascade Signal): %v", err)
 	}
-	rel, err := g.Rels.Add("OBSERVED", caseNode, signalNode, map[string]any{"weight": int64(3)})
+	rel, err := g.Rels.Add(context.Background(), "OBSERVED", caseNode, signalNode, map[string]any{"weight": int64(3)})
 	if err != nil {
 		t.Fatalf("AddRelationship(cascade OBSERVED): %v", err)
 	}
@@ -520,7 +521,7 @@ func addContractSignalRel(t *testing.T, g *Core, caseNode *types.Node) (*types.N
 
 func addContractTemporalNode(t *testing.T, g *Core, label, color string, validFrom, validTo types.Instant) *types.Node {
 	t.Helper()
-	n, err := g.Nodes.Add([]string{label}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{
 		"color":          color,
 		"tkg_valid_from": validFrom,
 		"tkg_valid_to":   validTo,
@@ -533,7 +534,7 @@ func addContractTemporalNode(t *testing.T, g *Core, label, color string, validFr
 
 func addContractTemporalRel(t *testing.T, g *Core, start, end *types.Node, validFrom, validTo types.Instant) *types.Relationship {
 	t.Helper()
-	r, err := g.Rels.Add("TEMPORAL_LINK", start, end, map[string]any{
+	r, err := g.Rels.Add(context.Background(), "TEMPORAL_LINK", start, end, map[string]any{
 		"tkg_valid_from": validFrom,
 		"tkg_valid_to":   validTo,
 	})

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 func TestGraphStats_InitialState(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.NodesAdded != 0 || s.NodesRead != 0 || s.NodesUpdated != 0 || s.NodesDeleted != 0 {
 		t.Errorf("initial node counters non-zero: %+v", s)
 	}
@@ -26,37 +27,37 @@ func TestGraphStats_InitialState(t *testing.T) {
 func TestGraphStats_NodeCounters(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	n, err := g.Nodes.Add([]string{"X"}, map[string]any{"v": int64(1)})
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.NodesAdded != 1 {
 		t.Errorf("NodesAdded = %d, want 1", s.NodesAdded)
 	}
 
-	if _, err := g.Nodes.Get(id); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.NodesRead != 1 {
 		t.Errorf("NodesRead = %d, want 1", s.NodesRead)
 	}
 
-	if _, err := g.Nodes.Update(id, map[string]any{"v": int64(2)}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.NodesUpdated != 1 {
 		t.Errorf("NodesUpdated = %d, want 1", s.NodesUpdated)
 	}
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.NodesDeleted != 1 {
 		t.Errorf("NodesDeleted = %d, want 1", s.NodesDeleted)
 	}
@@ -65,45 +66,45 @@ func TestGraphStats_NodeCounters(t *testing.T) {
 func TestGraphStats_RelCounters(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"w": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.RelsAdded != 1 {
 		t.Errorf("RelsAdded = %d, want 1", s.RelsAdded)
 	}
 
-	if _, err := g.Rels.Get(rid); err != nil {
+	if _, err := g.Rels.Get(context.Background(), rid); err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.RelsRead != 1 {
 		t.Errorf("RelsRead = %d, want 1", s.RelsRead)
 	}
 
-	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rid, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.RelsUpdated != 1 {
 		t.Errorf("RelsUpdated = %d, want 1", s.RelsUpdated)
 	}
 
-	if err := g.Rels.Delete(rid); err != nil {
+	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
-	s = g.Stats.Get()
+	s, _ = g.Stats.Get()
 	if s.RelsDeleted != 1 {
 		t.Errorf("RelsDeleted = %d, want 1", s.RelsDeleted)
 	}
@@ -113,31 +114,31 @@ func TestGraphStats_NodeCascadeDeleteCountsRelationships(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"CascadeStats"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"CascadeStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"CascadeStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"CascadeStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"CascadeStats"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"CascadeStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	if _, err := g.Rels.Add("CASCADE_STATS_OUT", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "CASCADE_STATS_OUT", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship out: %v", err)
 	}
-	if _, err := g.Rels.Add("CASCADE_STATS_IN", c, a, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "CASCADE_STATS_IN", c, a, nil); err != nil {
 		t.Fatalf("AddRelationship in: %v", err)
 	}
 
-	before := g.Stats.Get()
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	before, _ := g.Stats.Get()
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Fatalf("DeleteNode cascade: %v", err)
 	}
 
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 	if after.NodesDeleted != before.NodesDeleted+1 {
 		t.Fatalf("NodesDeleted after cascade = %d, want %d", after.NodesDeleted, before.NodesDeleted+1)
 	}
@@ -150,20 +151,20 @@ func TestGraphStats_TxReadCountersCommitAndRollback(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"TxReadStats"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"TxReadStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"TxReadStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"TxReadStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("TX_READ_STATS_REL", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "TX_READ_STATS_REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 	tx, err := g.BeginTx()
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
@@ -180,7 +181,7 @@ func TestGraphStats_TxReadCountersCommitAndRollback(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	afterCommit := g.Stats.Get()
+	afterCommit, _ := g.Stats.Get()
 	if afterCommit.NodesRead != before.NodesRead+1 {
 		t.Fatalf("NodesRead after committed tx read = %d, want %d", afterCommit.NodesRead, before.NodesRead+1)
 	}
@@ -204,7 +205,7 @@ func TestGraphStats_TxReadCountersCommitAndRollback(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	afterRollback := g.Stats.Get()
+	afterRollback, _ := g.Stats.Get()
 	if afterRollback.NodesRead != afterCommit.NodesRead || afterRollback.RelsRead != afterCommit.RelsRead {
 		t.Fatalf("read stats changed after rollback:\nafterCommit=%+v\nafterRollback=%+v", afterCommit, afterRollback)
 	}
@@ -214,20 +215,20 @@ func TestGraphStats_BulkIDReadCounters(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"BulkReadStats"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"BulkReadStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"BulkReadStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"BulkReadStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("BULK_READ_STATS_REL", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "BULK_READ_STATS_REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 	nodes, err := g.Nodes.GetByIDs([]types.NodeID{b.ID(), a.ID(), a.ID()})
 	if err != nil {
 		t.Fatalf("GetByIDs nodes: %v", err)
@@ -235,7 +236,7 @@ func TestGraphStats_BulkIDReadCounters(t *testing.T) {
 	if len(nodes) != 3 {
 		t.Fatalf("GetByIDs nodes len = %d, want 3", len(nodes))
 	}
-	afterNodes := g.Stats.Get()
+	afterNodes, _ := g.Stats.Get()
 	if afterNodes.NodesRead != before.NodesRead+int64(len(nodes)) {
 		t.Fatalf("NodesRead after GetByIDs = %d, want %d", afterNodes.NodesRead, before.NodesRead+int64(len(nodes)))
 	}
@@ -247,7 +248,7 @@ func TestGraphStats_BulkIDReadCounters(t *testing.T) {
 	if len(rels) != 2 {
 		t.Fatalf("GetByIDs rels len = %d, want 2", len(rels))
 	}
-	afterRels := g.Stats.Get()
+	afterRels, _ := g.Stats.Get()
 	if afterRels.RelsRead != before.RelsRead+int64(len(rels)) {
 		t.Fatalf("RelsRead after GetByIDs = %d, want %d", afterRels.RelsRead, before.RelsRead+int64(len(rels)))
 	}
@@ -281,7 +282,7 @@ func TestGraphStats_BatchCreateCounters(t *testing.T) {
 		t.Fatalf("Created = %d, want 3", result.Created)
 	}
 
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.NodesAdded != 2 {
 		t.Fatalf("NodesAdded = %d, want 2", s.NodesAdded)
 	}
@@ -294,20 +295,20 @@ func TestGraphStats_BatchUpdateAndDeleteCounters(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"BatchStatsCounters"}, map[string]any{"state": "old"})
+	a, err := g.Nodes.Add(context.Background(), []string{"BatchStatsCounters"}, map[string]any{"state": "old"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"BatchStatsCounters"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"BatchStatsCounters"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("BATCH_STATS_COUNTER_REL", a, b, map[string]any{"state": "old"})
+	r, err := g.Rels.Add(context.Background(), "BATCH_STATS_COUNTER_REL", a, b, map[string]any{"state": "old"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	beforeUpdate := g.Stats.Get()
+	beforeUpdate, _ := g.Stats.Get()
 	updates, err := NewBatchBuilder(g)
 	if err != nil {
 		t.Fatalf("NewBatchBuilder update: %v", err)
@@ -325,7 +326,7 @@ func TestGraphStats_BatchUpdateAndDeleteCounters(t *testing.T) {
 	if updateResult.Updated != 2 {
 		t.Fatalf("Updated = %d, want 2", updateResult.Updated)
 	}
-	afterUpdate := g.Stats.Get()
+	afterUpdate, _ := g.Stats.Get()
 	if afterUpdate.NodesUpdated != beforeUpdate.NodesUpdated+1 {
 		t.Fatalf("NodesUpdated after batch update = %d, want %d", afterUpdate.NodesUpdated, beforeUpdate.NodesUpdated+1)
 	}
@@ -347,7 +348,7 @@ func TestGraphStats_BatchUpdateAndDeleteCounters(t *testing.T) {
 	if deleteResult.Deleted != 2 {
 		t.Fatalf("Deleted = %d, want node plus cascaded relationship", deleteResult.Deleted)
 	}
-	afterDelete := g.Stats.Get()
+	afterDelete, _ := g.Stats.Get()
 	if afterDelete.NodesDeleted != afterUpdate.NodesDeleted+1 {
 		t.Fatalf("NodesDeleted after batch delete = %d, want %d", afterDelete.NodesDeleted, afterUpdate.NodesDeleted+1)
 	}
@@ -360,25 +361,25 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"CloseStats"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"CloseStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"CloseStats"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"CloseStats"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("CLOSE_STATS_REL", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "CLOSE_STATS_REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 	nodeCloseTime := g.nodeValidFrom(a) + 1000
 	if err := g.Nodes.CloseVersion(a.ID(), nodeCloseTime); err != nil {
 		t.Fatalf("CloseVersion node: %v", err)
 	}
-	afterNode := g.Stats.Get()
+	afterNode, _ := g.Stats.Get()
 	if afterNode.NodesUpdated != before.NodesUpdated+1 {
 		t.Fatalf("NodesUpdated after node CloseVersion = %d, want %d", afterNode.NodesUpdated, before.NodesUpdated+1)
 	}
@@ -387,7 +388,7 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 	if err := g.Rels.CloseVersion(r.ID(), relCloseTime); err != nil {
 		t.Fatalf("CloseVersion rel: %v", err)
 	}
-	afterRel := g.Stats.Get()
+	afterRel, _ := g.Stats.Get()
 	if afterRel.RelsUpdated != before.RelsUpdated+1 {
 		t.Fatalf("RelsUpdated after rel CloseVersion = %d, want %d", afterRel.RelsUpdated, before.RelsUpdated+1)
 	}
@@ -398,7 +399,7 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 	if err := g.Rels.CloseVersion(r.ID(), relCloseTime+1000); !errors.Is(err, ErrAlreadyClosed) {
 		t.Fatalf("second rel CloseVersion = %v, want ErrAlreadyClosed", err)
 	}
-	afterRejected := g.Stats.Get()
+	afterRejected, _ := g.Stats.Get()
 	if afterRejected.NodesUpdated != afterNode.NodesUpdated {
 		t.Fatalf("NodesUpdated changed after rejected CloseVersion: %d -> %d", afterNode.NodesUpdated, afterRejected.NodesUpdated)
 	}
@@ -413,18 +414,18 @@ func TestGraphStats_CloseVersionCounters(t *testing.T) {
 func TestGraphStats_EmptyUpdate_NoUpdateIncrement(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
-	before := g.Stats.Get()
+	before, _ := g.Stats.Get()
 	// Empty updates → returns GetNode result; increments Read but not Updated.
-	if _, err := g.Nodes.Update(id, map[string]any{}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{}); err != nil {
 		t.Fatalf("UpdateNode (empty): %v", err)
 	}
-	after := g.Stats.Get()
+	after, _ := g.Stats.Get()
 
 	if after.NodesUpdated != before.NodesUpdated {
 		t.Errorf("NodesUpdated changed on empty update: %d -> %d", before.NodesUpdated, after.NodesUpdated)
@@ -437,19 +438,19 @@ func TestGraphStats_EmptyUpdate_NoUpdateIncrement(t *testing.T) {
 func TestGraphStats_CacheMetrics_MemoryStore_Zero(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{}) // MemoryStore — no cache instrumentation
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
-	if _, err := g.Nodes.Get(id); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	if _, err := g.Nodes.Get(id); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 		t.Fatalf("GetNode (2nd): %v", err)
 	}
 
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.NodeCacheHits != 0 || s.NodeCacheMisses != 0 {
 		t.Errorf("MemoryStore node cache metrics should be 0: hits=%d misses=%d", s.NodeCacheHits, s.NodeCacheMisses)
 	}
@@ -473,21 +474,21 @@ func TestGraphStats_CacheMetrics_BadgerStore(t *testing.T) {
 		}
 	}()
 
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// PutNode inserted the node into the LRU cache, so both GetNode calls are hits.
-	if _, err := g.Nodes.Get(id); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 		t.Fatalf("GetNode (1st): %v", err)
 	}
-	if _, err := g.Nodes.Get(id); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 		t.Fatalf("GetNode (2nd): %v", err)
 	}
 
-	s := g.Stats.Get()
+	s, _ := g.Stats.Get()
 	if s.NodeCacheHits == 0 {
 		t.Errorf("expected NodeCacheHits > 0 with badger.Store, got %d", s.NodeCacheHits)
 	}
@@ -501,26 +502,26 @@ func TestGraphStats_SnapshotCountersMatchesGet(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"StatsSnapshot"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"StatsSnapshot"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"StatsSnapshot"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"StatsSnapshot"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("STATS_SNAPSHOT_REL", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "STATS_SNAPSHOT_REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	if _, err := g.Nodes.Get(a.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), a.ID()); err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
-	if _, err := g.Rels.Get(r.ID()); err != nil {
+	if _, err := g.Rels.Get(context.Background(), r.ID()); err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
 
-	want := g.Stats.Get()
+	want, _ := g.Stats.Get()
 	nodesAdded, nodesRead, nodesUpdated, nodesDeleted,
 		relsAdded, relsRead, relsUpdated, relsDeleted,
 		nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses := g.Stats.SnapshotCounters()
@@ -543,22 +544,22 @@ func TestGraphStats_ScopedCountForwardersDirect(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"StatsScoped", "SharedStatsScoped"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"StatsScoped", "SharedStatsScoped"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"StatsScoped"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"StatsScoped"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"OtherStatsScoped"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"OtherStatsScoped"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	if _, err := g.Rels.Add("STATS_SCOPED_REL", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "STATS_SCOPED_REL", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship a-b: %v", err)
 	}
-	if _, err := g.Rels.Add("STATS_OTHER_REL", b, c, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "STATS_OTHER_REL", b, c, nil); err != nil {
 		t.Fatalf("AddRelationship b-c: %v", err)
 	}
 
@@ -583,31 +584,31 @@ func TestGraphStats_AllCountsEnumerateOmitZeroAndClosed(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"StatsAllCount", "StatsAllShared"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"StatsAllCount", "StatsAllShared"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"StatsAllCount"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"StatsAllCount"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	zeroNode, err := g.Nodes.Add([]string{"StatsAllZero"}, nil)
+	zeroNode, err := g.Nodes.Add(context.Background(), []string{"StatsAllZero"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode zero: %v", err)
 	}
-	if err := g.Nodes.Delete(zeroNode.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), zeroNode.ID()); err != nil {
 		t.Fatalf("Delete zero-count node: %v", err)
 	}
 
-	rel, err := g.Rels.Add("STATS_ALL_COUNT_REL", a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), "STATS_ALL_COUNT_REL", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship live: %v", err)
 	}
-	zeroRel, err := g.Rels.Add("STATS_ALL_ZERO_REL", b, a, nil)
+	zeroRel, err := g.Rels.Add(context.Background(), "STATS_ALL_ZERO_REL", b, a, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship zero: %v", err)
 	}
-	if err := g.Rels.Delete(zeroRel.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), zeroRel.ID()); err != nil {
 		t.Fatalf("Delete zero-count rel: %v", err)
 	}
 
@@ -632,7 +633,7 @@ func TestGraphStats_AllCountsEnumerateOmitZeroAndClosed(t *testing.T) {
 	if _, ok := relCounts["STATS_ALL_ZERO_REL"]; ok {
 		t.Fatalf("AllRelTypeCounts included zero-count type: %v", relCounts)
 	}
-	if _, err := g.Rels.Get(rel.ID()); err != nil {
+	if _, err := g.Rels.Get(context.Background(), rel.ID()); err != nil {
 		t.Fatalf("live relationship was lost while testing counts: %v", err)
 	}
 
@@ -656,7 +657,7 @@ func TestGraphStats_AllCountsPropagateStoreErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New node error store: %v", err)
 	}
-	if _, err := g.Nodes.Add([]string{"StatsCountError"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"StatsCountError"}, nil); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	if _, err := g.Stats.AllLabelCounts(); !errors.Is(err, nodeErr) {
@@ -669,15 +670,15 @@ func TestGraphStats_AllCountsPropagateStoreErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New rel error store: %v", err)
 	}
-	a, err := g.Nodes.Add([]string{"StatsRelCountError"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"StatsRelCountError"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"StatsRelCountError"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"StatsRelCountError"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	if _, err := g.Rels.Add("STATS_REL_COUNT_ERROR", a, b, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "STATS_REL_COUNT_ERROR", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	if _, err := g.Stats.AllRelTypeCounts(); !errors.Is(err, relErr) {
@@ -708,17 +709,20 @@ func (s *statsCountErrorStore) RelCountByType(token uint16) (int, error) {
 func TestGraphStats_UpdateNodeInPlace_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	n, err := g.Nodes.Add([]string{"X"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
-	before := g.Stats.Get().NodesUpdated
-	if _, err := g.Nodes.UpdateInPlace(id, map[string]any{"k": "v"}); err != nil {
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.NodesUpdated
+	if _, err := g.Nodes.UpdateInPlace(context.Background(), id, map[string]any{"k": "v"}); err != nil {
 		t.Fatalf("UpdateNodeInPlace: %v", err)
 	}
-	after := g.Stats.Get().NodesUpdated
+	afterSnap, _ := g.Stats.Get()
+	after := afterSnap.NodesUpdated
 	if after != before+1 {
 		t.Errorf("NodesUpdated after UpdateNodeInPlace: got %d, want %d", after, before+1)
 	}
@@ -727,25 +731,28 @@ func TestGraphStats_UpdateNodeInPlace_CountsAsUpdate(t *testing.T) {
 func TestGraphStats_UpdateRelInPlace_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	id := r.ID()
 
-	before := g.Stats.Get().RelsUpdated
-	if _, err := g.Rels.UpdateInPlace(id, map[string]any{"k": "v"}); err != nil {
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.RelsUpdated
+	if _, err := g.Rels.UpdateInPlace(context.Background(), id, map[string]any{"k": "v"}); err != nil {
 		t.Fatalf("UpdateRelInPlace: %v", err)
 	}
-	after := g.Stats.Get().RelsUpdated
+	afterSnap, _ := g.Stats.Get()
+	after := afterSnap.RelsUpdated
 	if after != before+1 {
 		t.Errorf("RelsUpdated after UpdateRelInPlace: got %d, want %d", after, before+1)
 	}
@@ -754,28 +761,31 @@ func TestGraphStats_UpdateRelInPlace_CountsAsUpdate(t *testing.T) {
 func TestGraphStats_RelCompareAndSetProperty_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"k": "old"})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"k": "old"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 
-	before := g.Stats.Get().RelsUpdated
-	ok, err := g.Rels.CompareAndSetProperty(r.ID(), "k", "old", "new")
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.RelsUpdated
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "k", "old", "new")
 	if err != nil {
 		t.Fatalf("CompareAndSetProperty: %v", err)
 	}
 	if !ok {
 		t.Fatal("CompareAndSetProperty ok = false, want true")
 	}
-	after := g.Stats.Get().RelsUpdated
+	afterSnap, _ := g.Stats.Get()
+	after := afterSnap.RelsUpdated
 	if after != before+1 {
 		t.Errorf("RelsUpdated after CompareAndSetProperty: got %d, want %d", after, before+1)
 	}
@@ -784,20 +794,23 @@ func TestGraphStats_RelCompareAndSetProperty_CountsAsUpdate(t *testing.T) {
 func TestGraphStats_NodeCompareAndSetProperty_CountsAsUpdate(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})
-	n, err := g.Nodes.Add([]string{"A"}, map[string]any{"k": "old"})
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"k": "old"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 
-	before := g.Stats.Get().NodesUpdated
-	ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "k", "old", "new")
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.NodesUpdated
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "k", "old", "new")
 	if err != nil {
 		t.Fatalf("CompareAndSetProperty: %v", err)
 	}
 	if !ok {
 		t.Fatal("CompareAndSetProperty ok = false, want true")
 	}
-	after := g.Stats.Get().NodesUpdated
+	afterSnap, _ := g.Stats.Get()
+	after := afterSnap.NodesUpdated
 	if after != before+1 {
 		t.Errorf("NodesUpdated after CompareAndSetProperty: got %d, want %d", after, before+1)
 	}

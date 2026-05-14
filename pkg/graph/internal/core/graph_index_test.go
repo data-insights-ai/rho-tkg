@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"math"
 	"strings"
@@ -74,7 +75,7 @@ func TestMemStoreCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	err := g.Index.CreateProperty("Person", "name")
 	if err != nil {
@@ -323,7 +324,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Index.CreateProperty("Person", "name")
 
 	// Verify index finds Alice.
@@ -334,7 +335,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 
 	// Update the property.
 	id := n.ID()
-	g.Nodes.Update(id, map[string]any{"name": "Alicia"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alicia"})
 
 	// Old value should be gone.
 	nodes, _ = g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -349,7 +350,7 @@ func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
 	}
 
 	// Delete the node.
-	g.Nodes.Delete(id)
+	g.Nodes.Delete(context.Background(), id)
 
 	nodes, _ = g.Nodes.ByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
@@ -365,11 +366,11 @@ func TestGraphNodesByLabelAndPropertyFloatSignedZeroMatches(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	negZero := math.Copysign(0, -1)
-	f64Node, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": negZero})
+	f64Node, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": negZero})
 	if err != nil {
 		t.Fatalf("Add f64 node: %v", err)
 	}
-	f32Node, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": float32(negZero)})
+	f32Node, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": float32(negZero)})
 	if err != nil {
 		t.Fatalf("Add f32 node: %v", err)
 	}
@@ -419,19 +420,19 @@ func TestGraphNodesByLabelAndPropertyNaNPayloadsMatchWithinExactType(t *testing.
 	nanA32 := math.Float32frombits(0x7fc00001)
 	nanB32 := math.Float32frombits(0x7fc00002)
 
-	a64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA64})
+	a64, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": nanA64})
 	if err != nil {
 		t.Fatalf("Add a64: %v", err)
 	}
-	b64, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB64})
+	b64, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": nanB64})
 	if err != nil {
 		t.Fatalf("Add b64: %v", err)
 	}
-	a32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanA32})
+	a32, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": nanA32})
 	if err != nil {
 		t.Fatalf("Add a32: %v", err)
 	}
-	b32, err := g.Nodes.Add([]string{"Reading"}, map[string]any{"score": nanB32})
+	b32, err := g.Nodes.Add(context.Background(), []string{"Reading"}, map[string]any{"score": nanB32})
 	if err != nil {
 		t.Fatalf("Add b32: %v", err)
 	}
@@ -488,7 +489,7 @@ func TestGraphCreatePropertyIndexBeforeLabelExistsIndexesFutureNodes(t *testing.
 		t.Fatalf("CreateProperty before label exists: %v", err)
 	}
 
-	if _, err := g.Nodes.Add([]string{"Future"}, map[string]any{"name": "Alice"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Future"}, map[string]any{"name": "Alice"}); err != nil {
 		t.Fatalf("Add future indexed node: %v", err)
 	}
 
@@ -751,9 +752,9 @@ func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	g.Index.CreateProperty("Person", "name")
 
 	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -771,11 +772,11 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Index.CreateProperty("Person", "name")
 
 	id := n.ID()
-	g.Nodes.Update(id, map[string]any{"name": "Alicia"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alicia"})
 
 	// Old value gone.
 	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -794,10 +795,10 @@ func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Index.CreateProperty("Person", "name")
 
-	g.Nodes.Delete(n.ID())
+	g.Nodes.Delete(context.Background(), n.ID())
 
 	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 0 {
@@ -809,8 +810,8 @@ func TestMemStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	g.Index.CreateProperty("Person", "name")
 
 	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -830,7 +831,7 @@ func TestMemStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Index.CreateProperty("Person", "name")
 
 	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Bob", storepkg.QueryOpts{})
@@ -846,8 +847,8 @@ func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 
 	// No index — should fall back to scan.
 	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -863,8 +864,8 @@ func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
 	g.Index.CreateProperty("Person", "name")
 
 	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
@@ -880,7 +881,7 @@ func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Index.CreateProperty("Person", "name")
 
 	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Charlie", storepkg.QueryOpts{})

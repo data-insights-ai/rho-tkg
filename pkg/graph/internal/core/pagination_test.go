@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -217,7 +218,7 @@ func TestGraphNodesByLabel_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 10 {
-		_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"i": i})
+		_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"i": i})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -241,7 +242,7 @@ func TestGraphAllNodes_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 5 {
-		_, err := g.Nodes.Add([]string{fmt.Sprintf("Type%d", i)}, nil)
+		_, err := g.Nodes.Add(context.Background(), []string{fmt.Sprintf("Type%d", i)}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -265,7 +266,7 @@ func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
 	defer func() { _ = g.Close() }()
 
 	for i := range 5 {
-		_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "i": i})
+		_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "i": i})
 		if err != nil {
 			t.Fatal(err)
 		}

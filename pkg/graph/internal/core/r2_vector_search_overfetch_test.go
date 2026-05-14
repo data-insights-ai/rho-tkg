@@ -8,6 +8,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -101,7 +102,7 @@ func TestSearchNearest_TemporalFilteredPath_PropagatesCandidateResolutionError(t
 	}
 	defer g.Close()
 
-	node, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	node, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestSearchNearest_TemporalOverfetchPath_PropagatesCandidateResolutionError(
 	}
 	defer g.Close()
 
-	node, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	node, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -182,21 +183,21 @@ func TestVectorOverfetch_TemporalFilter_FindsEligibleBeyondInitialK(t *testing.T
 		tNew = types.Instant(200)
 	)
 	for i := 0; i < 3; i++ {
-		if _, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+		if _, err := g.Nodes.Add(context.Background(), []string{"Target"}, map[string]any{
 			"v":              []float32{float32(i) * 0.1, 0},
 			"tkg_valid_from": tNew,
 		}); err != nil {
 			t.Fatalf("seed too-new Target %d: %v", i, err)
 		}
 	}
-	t1, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+	t1, err := g.Nodes.Add(context.Background(), []string{"Target"}, map[string]any{
 		"v":              []float32{10, 0},
 		"tkg_valid_from": tOld,
 	})
 	if err != nil {
 		t.Fatalf("seed Target 1: %v", err)
 	}
-	t2, err := g.Nodes.Add([]string{"Target"}, map[string]any{
+	t2, err := g.Nodes.Add(context.Background(), []string{"Target"}, map[string]any{
 		"v":              []float32{11, 0},
 		"tkg_valid_from": tOld,
 	})

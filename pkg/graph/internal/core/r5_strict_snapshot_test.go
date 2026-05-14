@@ -11,6 +11,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"sync"
@@ -47,7 +48,7 @@ func withTimeout(t *testing.T, d time.Duration, name string, fn func() error) er
 func TestR5_TxExport_DoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +74,7 @@ func TestR5_TxExport_DoesNotDeadlock(t *testing.T) {
 
 func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 	g := newTestGraph(t)
-	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,7 +97,7 @@ func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 
 	mutationDone := make(chan error, 1)
 	go func() {
-		_, err := g.Nodes.Add([]string{"DuringExport"}, nil)
+		_, err := g.Nodes.Add(context.Background(), []string{"DuringExport"}, nil)
 		mutationDone <- err
 	}()
 
@@ -151,7 +152,7 @@ func (w *blockingExportWriter) unblock() {
 func TestR5_TxSnapshot_DoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	if _, err := g.Nodes.Add([]string{"X"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
 		t.Fatal(err)
 	}
 

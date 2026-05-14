@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -39,10 +40,10 @@ func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	n, _ := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	_, err = g1.Nodes.Update(id, map[string]any{"name": "Bob"})
+	_, err = g1.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -57,7 +58,7 @@ func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
 	}
 	defer g2.Close()
 
-	got, err := g2.Nodes.Get(id)
+	got, err := g2.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode after reopen: %v", err)
 	}
@@ -75,11 +76,11 @@ func TestGraphUpdateNodeSavesHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Update: should save version 0 (pre-mutation) to history.
-	_, err := g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -109,19 +110,19 @@ func TestGraphDeleteNodeReReadsNodeForTombstoneHistory(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "stale"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "stale"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	stale := n.DeepCopy()
-	updated, err := g.Nodes.Update(n.ID(), map[string]any{"name": "fresh"})
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "fresh"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	store.target = n.ID()
 	store.stale = stale
-	if err := g.Nodes.Delete(n.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), n.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -143,11 +144,11 @@ func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	for i := 1; i <= 5; i++ {
-		_, err := g.Nodes.Update(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+		_, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": fmt.Sprintf("v%d", i)})
 		if err != nil {
 			t.Fatalf("UpdateNode %d: %v", i, err)
 		}
@@ -167,11 +168,11 @@ func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
 	for i := 1; i <= 3; i++ {
-		g.Nodes.Update(id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+		g.Nodes.Update(context.Background(), id, map[string]any{"name": fmt.Sprintf("v%d", i)})
 	}
 
 	history, _ := g.Nodes.History(id)
@@ -188,13 +189,13 @@ func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	g.Nodes.Update(id, map[string]any{"name": "v1"})
-	g.Nodes.Update(id, map[string]any{"name": "v2"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v2"})
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -215,12 +216,12 @@ func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	n, _ := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	g1.Nodes.Update(id, map[string]any{"name": "v1"})
+	g1.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
 
-	if err := g1.Nodes.Delete(id); err != nil {
+	if err := g1.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 	if err := g1.Close(); err != nil {

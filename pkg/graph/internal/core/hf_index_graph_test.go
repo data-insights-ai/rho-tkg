@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestCreateHighFrequencyIndex_Graph(t *testing.T) {
 	defer g.Close()
 
 	// Register a label first
-	_, err = g.Nodes.Add([]string{"Event"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -46,7 +47,7 @@ func TestHFIndex_ReplacesTemporalIndex(t *testing.T) {
 	defer g.Close()
 
 	// Create a temporal index first
-	_, err = g.Nodes.Add([]string{"Widget"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Widget"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestHFIndex_DuplicateCreate(t *testing.T) {
 	}
 	defer g.Close()
 
-	_, err = g.Nodes.Add([]string{"Alpha"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Alpha"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -104,7 +105,7 @@ func TestHFIndex_DropNotFound(t *testing.T) {
 	}
 	defer g.Close()
 
-	_, err = g.Nodes.Add([]string{"Beta"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Beta"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestHFIndex_ConflictsWithTemporalIndex(t *testing.T) {
 	}
 	defer g.Close()
 
-	_, err = g.Nodes.Add([]string{"Gamma"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Gamma"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

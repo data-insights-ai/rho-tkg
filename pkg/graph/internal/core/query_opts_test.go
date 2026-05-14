@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -288,15 +289,15 @@ func TestGraphReadAPIsRejectInvalidIDs(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add n1: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add n2: %v", err)
 	}
-	rel, err := g.Rels.Add("KNOWS", n1, n2, nil)
+	rel, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, nil)
 	if err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
@@ -305,10 +306,10 @@ func TestGraphReadAPIsRejectInvalidIDs(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Nodes.Get zero", run: func() error { _, err := g.Nodes.Get(0); return err }},
-		{name: "Nodes.Get negative", run: func() error { _, err := g.Nodes.Get(types.NodeID(-1)); return err }},
-		{name: "Rels.Get zero", run: func() error { _, err := g.Rels.Get(0); return err }},
-		{name: "Rels.Get negative", run: func() error { _, err := g.Rels.Get(types.RelID(-1)); return err }},
+		{name: "Nodes.Get zero", run: func() error { _, err := g.Nodes.Get(context.Background(), 0); return err }},
+		{name: "Nodes.Get negative", run: func() error { _, err := g.Nodes.Get(context.Background(), types.NodeID(-1)); return err }},
+		{name: "Rels.Get zero", run: func() error { _, err := g.Rels.Get(context.Background(), 0); return err }},
+		{name: "Rels.Get negative", run: func() error { _, err := g.Rels.Get(context.Background(), types.RelID(-1)); return err }},
 		{name: "Nodes.GetByIDs zero", run: func() error {
 			_, err := g.Nodes.GetByIDs([]types.NodeID{n1.ID(), 0})
 			return err
@@ -458,15 +459,15 @@ func TestGraphQueryOptsNonPositiveIntervalBoundsDoNotActivateTemporalFilter(t *t
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	alice, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "alice"})
+	alice, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "alice"})
 	if err != nil {
 		t.Fatalf("add alice: %v", err)
 	}
-	bob, err := g.Nodes.Add([]string{"Case"}, map[string]any{"name": "bob"})
+	bob, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "bob"})
 	if err != nil {
 		t.Fatalf("add bob: %v", err)
 	}
-	if _, err := g.Rels.Add("LINK", alice, bob, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "LINK", alice, bob, nil); err != nil {
 		t.Fatalf("add rel: %v", err)
 	}
 

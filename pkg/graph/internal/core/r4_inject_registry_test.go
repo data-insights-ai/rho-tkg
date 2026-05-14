@@ -6,6 +6,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/badger"
@@ -21,15 +22,15 @@ func TestInjectedBadgerStore_RegistriesRehydrated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("phase 1 New: %v", err)
 	}
-	a, err := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	b, err := g1.Nodes.Add([]string{"Place"}, map[string]any{"city": "Vienna"})
+	b, err := g1.Nodes.Add(context.Background(), []string{"Place"}, map[string]any{"city": "Vienna"})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if _, err := g1.Rels.Add("VISITED", a, b, nil); err != nil {
+	if _, err := g1.Rels.Add(context.Background(), "VISITED", a, b, nil); err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	if err := g1.Close(); err != nil {
@@ -61,7 +62,7 @@ func TestInjectedBadgerStore_RegistriesRehydrated(t *testing.T) {
 	}
 
 	// Persisted entity must round-trip through the rehydrated registry.
-	gotA, err := g2.Nodes.Get(a.ID())
+	gotA, err := g2.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get(a): %v", err)
 	}

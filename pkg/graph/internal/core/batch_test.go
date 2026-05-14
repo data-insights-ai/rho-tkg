@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -186,7 +187,7 @@ func TestBatchBuilderAddRelationshipDefersNewRelTypeUntilExecute(t *testing.T) {
 		t.Fatalf("returned relationship type = %q, want %q", gotType, typ)
 	}
 
-	got, err := g.Rels.Get(r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -228,15 +229,15 @@ func TestBatchBuilderUpdateAllowsProvenanceKeys(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"score": int64(1)})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"score": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	bNode, err := g.Nodes.Add([]string{"Person"}, nil)
+	bNode, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, bNode, map[string]any{"weight": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, bNode, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -263,7 +264,7 @@ func TestBatchBuilderUpdateAllowsProvenanceKeys(t *testing.T) {
 		t.Fatalf("batch failed: %+v", result.Errors)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -274,7 +275,7 @@ func TestBatchBuilderUpdateAllowsProvenanceKeys(t *testing.T) {
 		t.Fatal("node stored tkg_author_id as a normal property")
 	}
 
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -290,15 +291,15 @@ func TestBatchBuilderMetadataOnlyUpdatesAreVersioned(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -319,7 +320,7 @@ func TestBatchBuilderMetadataOnlyUpdatesAreVersioned(t *testing.T) {
 		t.Fatalf("result = %+v, want Updated=2 Failed=0", result)
 	}
 
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -333,7 +334,7 @@ func TestBatchBuilderMetadataOnlyUpdatesAreVersioned(t *testing.T) {
 		t.Fatal("node stored tkg_author_id as a normal property")
 	}
 
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -444,7 +445,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create a node via normal API.
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +465,7 @@ func TestBatchBuilderExecuteUpdates(t *testing.T) {
 	}
 
 	// Verify update.
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := updated.GetProperty("name")
 	if v != "Bob" {
 		t.Errorf("name = %v, want Bob", v)
@@ -478,15 +479,15 @@ func TestBatchBuilderUpdateQueuesSnapshotOfUpdateMaps(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bNode, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Eve"})
+	bNode, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Eve"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, bNode, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, bNode, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +520,7 @@ func TestBatchBuilderUpdateQueuesSnapshotOfUpdateMaps(t *testing.T) {
 		t.Fatalf("Updated = %d, want 2", result.Updated)
 	}
 
-	updatedNode, err := g.Nodes.Get(a.ID())
+	updatedNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +534,7 @@ func TestBatchBuilderUpdateQueuesSnapshotOfUpdateMaps(t *testing.T) {
 		t.Fatalf("late node update applied after queue mutation: %v", got)
 	}
 
-	updatedRel, err := g.Rels.Get(r.ID())
+	updatedRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +598,7 @@ func TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations(t *testin
 		t.Fatalf("Created = %d, want 3", result.Created)
 	}
 
-	storedNode, err := g.Nodes.Get(a.ID())
+	storedNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get node: %v", err)
 	}
@@ -628,7 +629,7 @@ func TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations(t *testin
 	if err := a.SetProperty("name", "PostExecuteMutation"); err != nil {
 		t.Fatalf("post-execute returned node mutation: %v", err)
 	}
-	storedAfterReturnedMutation, err := g.Nodes.Get(a.ID())
+	storedAfterReturnedMutation, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Get node after returned mutation: %v", err)
 	}
@@ -636,7 +637,7 @@ func TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations(t *testin
 		t.Fatalf("post-execute returned node mutation affected store: got %v, want Alice", got)
 	}
 
-	storedRel, err := g.Rels.Get(rel.ID())
+	storedRel, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("Get relationship: %v", err)
 	}
@@ -667,7 +668,7 @@ func TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations(t *testin
 	if err := rel.SetProperty("since", int64(2030)); err != nil {
 		t.Fatalf("post-execute returned rel mutation: %v", err)
 	}
-	storedRelAfterReturnedMutation, err := g.Rels.Get(rel.ID())
+	storedRelAfterReturnedMutation, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("Get rel after returned mutation: %v", err)
 	}
@@ -694,15 +695,15 @@ func TestBatchBuilderExecuteEmptyUpdatesAreNoOps(t *testing.T) {
 	g := newTestGraph(t)
 	_ = g.Events.SetSync(eventspkg.NewEventBus())
 
-	n1, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode n1: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode n2: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", n1, n2, map[string]any{"since": int64(2026)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", n1, n2, map[string]any{"since": int64(2026)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -728,14 +729,14 @@ func TestBatchBuilderExecuteEmptyUpdatesAreNoOps(t *testing.T) {
 		t.Fatalf("empty batch updates published events: %+v", gotEvents)
 	}
 
-	gotNode, err := g.Nodes.Get(n1.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), n1.ID())
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
 	if gotNode.Version() != 0 {
 		t.Fatalf("node version = %d, want 0", gotNode.Version())
 	}
-	gotRel, err := g.Rels.Get(r.ID())
+	gotRel, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship: %v", err)
 	}
@@ -779,9 +780,9 @@ func TestBatchBuilderExecuteDeletes(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create nodes + relationship.
-	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
-	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", n1, n2, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", n1, n2, nil)
 
 	b, _ := NewBatchBuilder(g)
 	b.DeleteRelationship(r.ID())
@@ -809,22 +810,22 @@ func TestBatchBuilderExecuteCascadeDeleteCountsRelationshipRows(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
-	bn, err := g.Nodes.Add([]string{"Person"}, nil)
+	bn, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode b: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"Person"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode c: %v", err)
 	}
-	if _, err := g.Rels.Add("KNOWS", a, bn, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", a, bn, nil); err != nil {
 		t.Fatalf("AddRelationship out: %v", err)
 	}
-	if _, err := g.Rels.Add("LIKES", c, a, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "LIKES", c, a, nil); err != nil {
 		t.Fatalf("AddRelationship in: %v", err)
 	}
 
@@ -848,7 +849,7 @@ func TestBatchBuilderExecuteMixed(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Pre-existing data.
-	existing, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Eve"})
+	existing, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Eve"})
 	existingID := existing.ID()
 
 	b, _ := NewBatchBuilder(g)
@@ -933,9 +934,9 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
-	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", n1, n2, map[string]any{"weight": 1})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", n1, n2, map[string]any{"weight": 1})
 	rID := r.ID()
 
 	b, _ := NewBatchBuilder(g)
@@ -951,7 +952,7 @@ func TestBatchBuilderExecuteUpdateRelationship(t *testing.T) {
 		t.Fatalf("Updated = %d, want 1", result.Updated)
 	}
 
-	updated, _ := g.Rels.Get(rID)
+	updated, _ := g.Rels.Get(context.Background(), rID)
 	v, _ := updated.GetProperty("weight")
 	if v != 10 {
 		t.Errorf("weight = %v, want 10", v)
@@ -992,7 +993,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Create a node so we can update it.
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	nID := n.ID()
 
 	b, _ := NewBatchBuilder(g)
@@ -1026,7 +1027,7 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	}
 
 	// Verify partial success: the valid update was applied.
-	updated, _ := g.Nodes.Get(nID)
+	updated, _ := g.Nodes.Get(context.Background(), nID)
 	v, _ := updated.GetProperty("name")
 	if v != "Bob" {
 		t.Errorf("name = %v, want Bob (partial failure should not roll back successes)", v)

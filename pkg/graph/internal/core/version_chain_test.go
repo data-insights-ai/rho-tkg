@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"math"
 	"sync/atomic"
@@ -69,13 +70,13 @@ func (s *versionInvalidIDProbeStore) GetRelVersion(types.RelID, uint32) (*types.
 // the genesis (version 0) returns nil, nil without error.
 func TestGetPreviousNodeVersion_AtGenesis(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
-	prev, err := g.Nodes.PreviousVersion(id, 0)
+	prev, err := g.Nodes.VersionBefore(id, 0)
 	if err != nil {
 		t.Fatalf("GetPreviousNodeVersion(0): unexpected error: %v", err)
 	}
@@ -86,17 +87,17 @@ func TestGetPreviousNodeVersion_AtGenesis(t *testing.T) {
 
 func TestGetNextNodeVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
-	if _, err := g.Nodes.Update(id, map[string]any{"name": "Alice v1"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alice v1"}); err != nil {
 		t.Fatalf("UpdateNode v1: %v", err)
 	}
 	forceStoredNodeVersion(t, g, id, math.MaxUint32)
 
-	next, err := g.Nodes.NextVersion(id, math.MaxUint32)
+	next, err := g.Nodes.VersionAfter(id, math.MaxUint32)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(MaxUint32): %v", err)
 	}
@@ -110,27 +111,27 @@ func TestNodeVersionChainMissingIDReturnsErrNodeNotFound(t *testing.T) {
 	missing := types.NodeID(999999999)
 
 	t.Run("previous genesis validates explicit id", func(t *testing.T) {
-		got, err := g.Nodes.PreviousVersion(missing, 0)
+		got, err := g.Nodes.VersionBefore(missing, 0)
 		if !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
-			t.Fatalf("PreviousVersion(missing, 0) = %v, %v; want nil, ErrNodeNotFound", got, err)
+			t.Fatalf("VersionBefore(missing, 0) = %v, %v; want nil, ErrNodeNotFound", got, err)
 		}
 	})
 	t.Run("previous history miss validates explicit id", func(t *testing.T) {
-		got, err := g.Nodes.PreviousVersion(missing, 1)
+		got, err := g.Nodes.VersionBefore(missing, 1)
 		if !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
-			t.Fatalf("PreviousVersion(missing, 1) = %v, %v; want nil, ErrNodeNotFound", got, err)
+			t.Fatalf("VersionBefore(missing, 1) = %v, %v; want nil, ErrNodeNotFound", got, err)
 		}
 	})
 	t.Run("next history miss validates explicit id", func(t *testing.T) {
-		got, err := g.Nodes.NextVersion(missing, 0)
+		got, err := g.Nodes.VersionAfter(missing, 0)
 		if !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
-			t.Fatalf("NextVersion(missing, 0) = %v, %v; want nil, ErrNodeNotFound", got, err)
+			t.Fatalf("VersionAfter(missing, 0) = %v, %v; want nil, ErrNodeNotFound", got, err)
 		}
 	})
 	t.Run("max version shortcut validates explicit id", func(t *testing.T) {
-		got, err := g.Nodes.NextVersion(missing, math.MaxUint32)
+		got, err := g.Nodes.VersionAfter(missing, math.MaxUint32)
 		if !errors.Is(err, storepkg.ErrNodeNotFound) || got != nil {
-			t.Fatalf("NextVersion(missing, MaxUint32) = %v, %v; want nil, ErrNodeNotFound", got, err)
+			t.Fatalf("VersionAfter(missing, MaxUint32) = %v, %v; want nil, ErrNodeNotFound", got, err)
 		}
 	})
 }
@@ -146,32 +147,32 @@ func TestVersionNavigationInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
 	defer g.Close()
 
 	for _, id := range []types.NodeID{0, types.NodeID(-1)} {
-		if got, err := g.Nodes.PreviousVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Nodes.PreviousVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Nodes.VersionBefore(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.VersionBefore(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Nodes.PreviousVersion(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Nodes.PreviousVersion(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Nodes.VersionBefore(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.VersionBefore(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Nodes.NextVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Nodes.NextVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Nodes.VersionAfter(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.VersionAfter(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Nodes.NextVersion(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Nodes.NextVersion(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Nodes.VersionAfter(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Nodes.VersionAfter(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
 	}
 
 	for _, id := range []types.RelID{0, types.RelID(-1)} {
-		if got, err := g.Rels.PreviousVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Rels.PreviousVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Rels.VersionBefore(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.VersionBefore(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Rels.PreviousVersion(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Rels.PreviousVersion(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Rels.VersionBefore(id, 1); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.VersionBefore(%d, 1) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Rels.NextVersion(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Rels.NextVersion(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Rels.VersionAfter(id, 0); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.VersionAfter(%d, 0) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
-		if got, err := g.Rels.NextVersion(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
-			t.Fatalf("Rels.NextVersion(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
+		if got, err := g.Rels.VersionAfter(id, math.MaxUint32); got != nil || !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Fatalf("Rels.VersionAfter(%d, MaxUint32) = (%v, %v), want (nil, ErrInvalidStoreMutation)", id, got, err)
 		}
 	}
 
@@ -183,14 +184,14 @@ func TestVersionNavigationInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
 // TestGetPreviousNodeVersion_Normal verifies that for version N, version N-1 is returned.
 func TestGetPreviousNodeVersion_Normal(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// Update to version 1 (stores version 0 in history).
-	n1, err := g.Nodes.Update(id, map[string]any{"name": "Alice Updated"})
+	n1, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alice Updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode v1: %v", err)
 	}
@@ -199,7 +200,7 @@ func TestGetPreviousNodeVersion_Normal(t *testing.T) {
 	}
 
 	// GetPreviousNodeVersion(1) should return version 0 content.
-	prev, err := g.Nodes.PreviousVersion(id, 1)
+	prev, err := g.Nodes.VersionBefore(id, 1)
 	if err != nil {
 		t.Fatalf("GetPreviousNodeVersion(1): %v", err)
 	}
@@ -220,13 +221,13 @@ func TestGetPreviousNodeVersion_Normal(t *testing.T) {
 // current tip returns nil, nil.
 func TestGetNextNodeVersion_AtTip(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 	// version 0 is the tip — next should be nil.
-	next, err := g.Nodes.NextVersion(id, 0)
+	next, err := g.Nodes.VersionAfter(id, 0)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(0): unexpected error: %v", err)
 	}
@@ -238,20 +239,20 @@ func TestGetNextNodeVersion_AtTip(t *testing.T) {
 // TestGetNextNodeVersion_Normal verifies that version N returns version N+1.
 func TestGetNextNodeVersion_Normal(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// Update to version 1.
-	_, err = g.Nodes.Update(id, map[string]any{"name": "Bob v1"})
+	_, err = g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob v1"})
 	if err != nil {
 		t.Fatalf("UpdateNode v1: %v", err)
 	}
 
 	// GetNextNodeVersion(0) should return version 1 (the current node).
-	next, err := g.Nodes.NextVersion(id, 0)
+	next, err := g.Nodes.VersionAfter(id, 0)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(0): %v", err)
 	}
@@ -263,7 +264,7 @@ func TestGetNextNodeVersion_Normal(t *testing.T) {
 	}
 
 	// GetNextNodeVersion(1) at tip should return nil.
-	nextTip, err := g.Nodes.NextVersion(id, 1)
+	nextTip, err := g.Nodes.VersionAfter(id, 1)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(1 tip): %v", err)
 	}
@@ -276,24 +277,24 @@ func TestGetNextNodeVersion_Normal(t *testing.T) {
 // updates where intermediate versions are stored in history.
 func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"v": "0"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": "0"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// Create versions 1 and 2.
-	_, err = g.Nodes.Update(id, map[string]any{"v": "1"})
+	_, err = g.Nodes.Update(context.Background(), id, map[string]any{"v": "1"})
 	if err != nil {
 		t.Fatalf("UpdateNode v1: %v", err)
 	}
-	_, err = g.Nodes.Update(id, map[string]any{"v": "2"})
+	_, err = g.Nodes.Update(context.Background(), id, map[string]any{"v": "2"})
 	if err != nil {
 		t.Fatalf("UpdateNode v2: %v", err)
 	}
 
 	// Version 0 -> 1 should be in history.
-	n1, err := g.Nodes.NextVersion(id, 0)
+	n1, err := g.Nodes.VersionAfter(id, 0)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(0): %v", err)
 	}
@@ -302,7 +303,7 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	}
 
 	// Version 1 -> 2 is the current tip.
-	n2, err := g.Nodes.NextVersion(id, 1)
+	n2, err := g.Nodes.VersionAfter(id, 1)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(1): %v", err)
 	}
@@ -311,7 +312,7 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	}
 
 	// Version 2 is the tip.
-	n3, err := g.Nodes.NextVersion(id, 2)
+	n3, err := g.Nodes.VersionAfter(id, 2)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion(2 tip): %v", err)
 	}
@@ -324,7 +325,7 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 // and makes the node invisible at queries after the close time.
 func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Event"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -336,7 +337,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	}
 
 	// Node is still retrievable by direct ID.
-	loaded, err := g.Nodes.Get(id)
+	loaded, err := g.Nodes.Get(context.Background(), id)
 	if err != nil {
 		t.Fatalf("GetNode after close: %v", err)
 	}
@@ -359,7 +360,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 
 func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Event"}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{
 		"tkg_author_id":     "node-author",
 		"tkg_signature":     []byte("node-signature"),
 		"tkg_authorized_by": "policy",
@@ -373,7 +374,7 @@ func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 	if err := g.Nodes.CloseVersion(n.ID(), closeTime); err != nil {
 		t.Fatalf("CloseNodeVersion: %v", err)
 	}
-	loaded, err := g.Nodes.Get(n.ID())
+	loaded, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode after close: %v", err)
 	}
@@ -399,7 +400,7 @@ func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 // returns ErrAlreadyClosed.
 func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Event"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -417,7 +418,7 @@ func TestCloseNodeVersion_AlreadyClosed(t *testing.T) {
 func TestClosedEntitiesRejectMutations(t *testing.T) {
 	t.Run("node", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Person", "Active"}, map[string]any{"state": "open"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person", "Active"}, map[string]any{"state": "open"})
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
@@ -426,13 +427,13 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("CloseVersion: %v", err)
 		}
 
-		if _, err := g.Nodes.Update(n.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
+		if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("Update closed node = %v, want ErrAlreadyClosed", err)
 		}
-		if _, err := g.Nodes.UpdateInPlace(n.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
+		if _, err := g.Nodes.UpdateInPlace(context.Background(), n.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("UpdateInPlace closed node = %v, want ErrAlreadyClosed", err)
 		}
-		ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "state", "open", "closed")
+		ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "state", "open", "closed")
 		if ok || !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("CompareAndSetProperty closed node = (%v, %v), want false, ErrAlreadyClosed", ok, err)
 		}
@@ -454,7 +455,7 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("Rollback: %v", err)
 		}
 
-		loaded, err := g.Nodes.Get(n.ID())
+		loaded, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("GetNode after rejected mutations: %v", err)
 		}
@@ -478,15 +479,15 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 
 	t.Run("relationship", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		start, err := g.Nodes.Add([]string{"Person"}, nil)
+		start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode start: %v", err)
 		}
-		end, err := g.Nodes.Add([]string{"Person"}, nil)
+		end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode end: %v", err)
 		}
-		rel, err := g.Rels.Add("KNOWS", start, end, map[string]any{"state": "open"})
+		rel, err := g.Rels.Add(context.Background(), "KNOWS", start, end, map[string]any{"state": "open"})
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
@@ -495,13 +496,13 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("CloseVersion: %v", err)
 		}
 
-		if _, err := g.Rels.Update(rel.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
+		if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("Update closed relationship = %v, want ErrAlreadyClosed", err)
 		}
-		if _, err := g.Rels.UpdateInPlace(rel.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
+		if _, err := g.Rels.UpdateInPlace(context.Background(), rel.ID(), map[string]any{"counter": int64(1)}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("UpdateInPlace closed relationship = %v, want ErrAlreadyClosed", err)
 		}
-		ok, err := g.Rels.CompareAndSetProperty(rel.ID(), "state", "open", "closed")
+		ok, err := g.Rels.CompareAndSetProperty(context.Background(), rel.ID(), "state", "open", "closed")
 		if ok || !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("CompareAndSetProperty closed relationship = (%v, %v), want false, ErrAlreadyClosed", ok, err)
 		}
@@ -521,7 +522,7 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 			t.Fatalf("batch closed relationship result = %#v, want one ErrAlreadyClosed failure", result)
 		}
 
-		loaded, err := g.Rels.Get(rel.ID())
+		loaded, err := g.Rels.Get(context.Background(), rel.ID())
 		if err != nil {
 			t.Fatalf("GetRelationship after rejected mutations: %v", err)
 		}
@@ -542,15 +543,15 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 
 func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, err := g.Nodes.Add([]string{"Event"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Event"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
-	rel, err := g.Rels.Add("LINKS", start, end, nil)
+	rel, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -562,14 +563,14 @@ func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 		t.Fatalf("CloseRelVersion zero time = %v, want ErrInvalidTimeRange", err)
 	}
 
-	loadedNode, err := g.Nodes.Get(start.ID())
+	loadedNode, err := g.Nodes.Get(context.Background(), start.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rejected close: %v", err)
 	}
 	if tm := loadedNode.Temporal(); tm != nil && tm.ValidTo != 0 {
 		t.Fatalf("node ValidTo changed after rejected zero close: %d", tm.ValidTo)
 	}
-	loadedRel, err := g.Rels.Get(rel.ID())
+	loadedRel, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after rejected close: %v", err)
 	}
@@ -580,15 +581,15 @@ func TestCloseVersionRejectsZeroCloseTime(t *testing.T) {
 
 func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, err := g.Nodes.Add([]string{"Event"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Event"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
-	rel, err := g.Rels.Add("LINKS", start, end, nil)
+	rel, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -600,14 +601,14 @@ func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
 		t.Fatalf("CloseRelVersion before valid-from = %v, want ErrInvalidTimeRange", err)
 	}
 
-	loadedNode, err := g.Nodes.Get(start.ID())
+	loadedNode, err := g.Nodes.Get(context.Background(), start.ID())
 	if err != nil {
 		t.Fatalf("GetNode after rejected close: %v", err)
 	}
 	if tm := loadedNode.Temporal(); tm != nil && tm.ValidTo != 0 {
 		t.Fatalf("node ValidTo changed after rejected non-positive lifetime: %d", tm.ValidTo)
 	}
-	loadedRel, err := g.Rels.Get(rel.ID())
+	loadedRel, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after rejected close: %v", err)
 	}
@@ -619,14 +620,14 @@ func TestCloseVersionRejectsNonPositiveLifetime(t *testing.T) {
 func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 	t.Run("node", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Event"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		start := g.nodeValidFrom(n)
 		setFixedClockInstant(t, g, start)
 
-		if err := g.Nodes.Delete(n.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), n.ID()); err != nil {
 			t.Fatalf("DeleteNode: %v", err)
 		}
 
@@ -647,22 +648,22 @@ func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 
 	t.Run("relationship", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode b: %v", err)
 		}
-		r, err := g.Rels.Add("LINKS", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		start := g.relValidFrom(r)
 		setFixedClockInstant(t, g, start)
 
-		if err := g.Rels.Delete(r.ID()); err != nil {
+		if err := g.Rels.Delete(context.Background(), r.ID()); err != nil {
 			t.Fatalf("DeleteRelationship: %v", err)
 		}
 
@@ -683,15 +684,15 @@ func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 
 	t.Run("node cascade relationship", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode b: %v", err)
 		}
-		r, err := g.Rels.Add("LINKS", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
@@ -699,7 +700,7 @@ func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 		relStart := g.relValidFrom(r)
 		setFixedClockInstant(t, g, nodeStart)
 
-		if err := g.Nodes.Delete(a.ID()); err != nil {
+		if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 			t.Fatalf("DeleteNode cascade: %v", err)
 		}
 
@@ -734,14 +735,14 @@ func TestDeleteTombstonesKeepPositiveLifetime(t *testing.T) {
 func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 	t.Run("node update", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{"v": "old"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{"v": "old"})
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		start := g.nodeValidFrom(n)
 		setFixedClockInstant(t, g, start)
 
-		if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": "new"}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"v": "new"}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
 		atStart, err := g.Temporal.NodeAt(n.ID(), start)
@@ -751,7 +752,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 		if got, _ := atStart.GetProperty("v"); got != "old" {
 			t.Fatalf("NodeAt(valid-from) property = %v, want old", got)
 		}
-		current, err := g.Nodes.Get(n.ID())
+		current, err := g.Nodes.Get(context.Background(), n.ID())
 		if err != nil {
 			t.Fatalf("GetNode: %v", err)
 		}
@@ -762,22 +763,22 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 
 	t.Run("relationship update", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode b: %v", err)
 		}
-		r, err := g.Rels.Add("LINKS", a, b, map[string]any{"v": "old"})
+		r, err := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"v": "old"})
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		start := g.relValidFrom(r)
 		setFixedClockInstant(t, g, start)
 
-		if _, err := g.Rels.Update(r.ID(), map[string]any{"v": "new"}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"v": "new"}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
 		atStart, err := g.Temporal.RelAt(r.ID(), start)
@@ -787,7 +788,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 		if got, _ := atStart.GetProperty("v"); got != "old" {
 			t.Fatalf("RelAt(valid-from) property = %v, want old", got)
 		}
-		current, err := g.Rels.Get(r.ID())
+		current, err := g.Rels.Get(context.Background(), r.ID())
 		if err != nil {
 			t.Fatalf("GetRelationship: %v", err)
 		}
@@ -798,14 +799,14 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 
 	t.Run("node cas", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{"v": "old"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{"v": "old"})
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
 		start := g.nodeValidFrom(n)
 		setFixedClockInstant(t, g, start)
 
-		ok, err := g.Nodes.CompareAndSetProperty(n.ID(), "v", "old", "new")
+		ok, err := g.Nodes.CompareAndSetProperty(context.Background(), n.ID(), "v", "old", "new")
 		if err != nil || !ok {
 			t.Fatalf("CompareAndSetProperty = (%v, %v), want (true, nil)", ok, err)
 		}
@@ -820,22 +821,22 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 
 	t.Run("relationship cas", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode b: %v", err)
 		}
-		r, err := g.Rels.Add("LINKS", a, b, map[string]any{"v": "old"})
+		r, err := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"v": "old"})
 		if err != nil {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		start := g.relValidFrom(r)
 		setFixedClockInstant(t, g, start)
 
-		ok, err := g.Rels.CompareAndSetProperty(r.ID(), "v", "old", "new")
+		ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "v", "old", "new")
 		if err != nil || !ok {
 			t.Fatalf("CompareAndSetProperty = (%v, %v), want (true, nil)", ok, err)
 		}
@@ -850,7 +851,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 
 	t.Run("add label", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Event"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
@@ -871,7 +872,7 @@ func TestVersionedMutationsKeepPositiveVersionBoundary(t *testing.T) {
 
 	t.Run("remove label", func(t *testing.T) {
 		g := newTestGraphForChain(t)
-		n, err := g.Nodes.Add([]string{"Event", "Extra"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"Event", "Extra"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
@@ -896,7 +897,7 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 		g := newTestGraphForChain(t)
 		clk := useTestClock(t, g)
 		validFrom := types.Instant(1000)
-		n, err := g.Nodes.Add([]string{"Event"}, map[string]any{
+		n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{
 			"v":              "old",
 			"tkg_valid_from": validFrom,
 		})
@@ -904,7 +905,7 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 			t.Fatalf("AddNode: %v", err)
 		}
 		updateAt := clk.PeekInstant()
-		if _, err := g.Nodes.Update(n.ID(), map[string]any{"v": "new"}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"v": "new"}); err != nil {
 			t.Fatalf("UpdateNode: %v", err)
 		}
 
@@ -927,16 +928,16 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 	t.Run("relationship", func(t *testing.T) {
 		g := newTestGraphForChain(t)
 		clk := useTestClock(t, g)
-		a, err := g.Nodes.Add([]string{"Event"}, nil)
+		a, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode a: %v", err)
 		}
-		b, err := g.Nodes.Add([]string{"Event"}, nil)
+		b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 		if err != nil {
 			t.Fatalf("AddNode b: %v", err)
 		}
 		validFrom := types.Instant(1000)
-		r, err := g.Rels.Add("LINKS", a, b, map[string]any{
+		r, err := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{
 			"v":              "old",
 			"tkg_valid_from": validFrom,
 		})
@@ -944,7 +945,7 @@ func TestInheritedExplicitValidFromDoesNotHideEarlierVersions(t *testing.T) {
 			t.Fatalf("AddRelationship: %v", err)
 		}
 		updateAt := clk.PeekInstant()
-		if _, err := g.Rels.Update(r.ID(), map[string]any{"v": "new"}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"v": "new"}); err != nil {
 			t.Fatalf("UpdateRelationship: %v", err)
 		}
 
@@ -980,28 +981,28 @@ func TestCloseNodeVersion_NotFound(t *testing.T) {
 func TestCloseRelVersion_Mirrors(t *testing.T) {
 	g := newTestGraphForChain(t)
 
-	start, err := g.Nodes.Add([]string{"Person"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Person"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", start, end, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
 	// GetPreviousRelVersion at genesis.
-	prev, err := g.Rels.PreviousVersion(rid, 0)
+	prev, err := g.Rels.VersionBefore(rid, 0)
 	if err != nil || prev != nil {
 		t.Fatalf("GetPreviousRelVersion(0): expected nil,nil got %v,%v", prev, err)
 	}
 
 	// GetNextRelVersion at tip (version 0, no updates yet).
-	next, err := g.Rels.NextVersion(rid, 0)
+	next, err := g.Rels.VersionAfter(rid, 0)
 	if err != nil || next != nil {
 		t.Fatalf("GetNextRelVersion(0 tip): expected nil,nil got %v,%v", next, err)
 	}
@@ -1011,7 +1012,7 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	if err := g.Rels.CloseVersion(rid, closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
-	loaded, err := g.Rels.Get(rid)
+	loaded, err := g.Rels.Get(context.Background(), rid)
 	if err != nil {
 		t.Fatalf("GetRelationship after close: %v", err)
 	}
@@ -1033,15 +1034,15 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.T) {
 	g := newTestGraphForChain(t)
 
-	start, err := g.Nodes.Add([]string{"Person"}, nil)
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Person"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode end: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", start, end, map[string]any{
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, map[string]any{
 		"tkg_author_id":     "rel-author",
 		"tkg_signature":     []byte("rel-signature"),
 		"tkg_authorized_by": "policy",
@@ -1062,7 +1063,7 @@ func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.
 	if err := g.Rels.CloseVersion(r.ID(), closeTime); err != nil {
 		t.Fatalf("CloseRelVersion: %v", err)
 	}
-	loaded, err := g.Rels.Get(r.ID())
+	loaded, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after close: %v", err)
 	}
@@ -1093,21 +1094,21 @@ func TestCloseRelVersion_PreservesEndpointHashesAndIntegrityMetadata(t *testing.
 // TestGetPreviousRelVersion_Normal mirrors the node variant for relationships.
 func TestGetPreviousRelVersion_Normal(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, map[string]any{"w": int64(1)})
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
 	// Update to version 1.
-	_, err = g.Rels.Update(rid, map[string]any{"w": int64(2)})
+	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"w": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateRelationship v1: %v", err)
 	}
 
-	prev, err := g.Rels.PreviousVersion(rid, 1)
+	prev, err := g.Rels.VersionBefore(rid, 1)
 	if err != nil {
 		t.Fatalf("GetPreviousRelVersion(1): %v", err)
 	}
@@ -1124,25 +1125,25 @@ func TestGetPreviousRelVersion_Normal(t *testing.T) {
 // node with no higher version in history returns nil, nil.
 func TestGetNextNodeVersion_DeletedNode(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	id := n.ID()
 
 	// Update once so v0 is in history, current = v1.
-	_, err = g.Nodes.Update(id, map[string]any{"name": "updated"})
+	_, err = g.Nodes.Update(context.Background(), id, map[string]any{"name": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
 	// Delete the node. Now GetNode returns storepkg.ErrNodeNotFound.
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
 	// GetNextNodeVersion(id, 1): v2 not in history, GetNode → storepkg.ErrNodeNotFound → nil, nil.
-	next, err := g.Nodes.NextVersion(id, 1)
+	next, err := g.Nodes.VersionAfter(id, 1)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion on deleted node: unexpected error: %v", err)
 	}
@@ -1156,7 +1157,7 @@ func TestGetNextNodeVersion_DeletedNode(t *testing.T) {
 // between the truncation boundary and the current tip.
 func TestGetNextNodeVersion_GapAfterTruncation(t *testing.T) {
 	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1164,7 +1165,7 @@ func TestGetNextNodeVersion_GapAfterTruncation(t *testing.T) {
 
 	// Build version chain: v0, v1, v2, v3 (current).
 	for i := range 3 {
-		_, err = g.Nodes.Update(id, map[string]any{"v": int64(i + 1)})
+		_, err = g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(i + 1)})
 		if err != nil {
 			t.Fatalf("UpdateNode v%d: %v", i+1, err)
 		}
@@ -1176,7 +1177,7 @@ func TestGetNextNodeVersion_GapAfterTruncation(t *testing.T) {
 	}
 
 	// GetNextNodeVersion(id, 0): v1 no longer in history, current is v3 (not v1) → nil, nil.
-	next, err := g.Nodes.NextVersion(id, 0)
+	next, err := g.Nodes.VersionAfter(id, 0)
 	if err != nil {
 		t.Fatalf("GetNextNodeVersion after truncation: %v", err)
 	}
@@ -1189,27 +1190,27 @@ func TestGetNextNodeVersion_GapAfterTruncation(t *testing.T) {
 // relationship with no higher version in history returns nil, nil.
 func TestGetNextRelVersion_DeletedRel(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
 	// Update once so v0 is in history, current = v1.
-	_, err = g.Rels.Update(rid, map[string]any{"x": "y"})
+	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"x": "y"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
 	// Delete the relationship.
-	if err := g.Rels.Delete(rid); err != nil {
+	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
 	// GetNextRelVersion(rid, 1): v2 not in history, GetRelationship → storepkg.ErrRelNotFound → nil, nil.
-	next, err := g.Rels.NextVersion(rid, 1)
+	next, err := g.Rels.VersionAfter(rid, 1)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion on deleted rel: unexpected error: %v", err)
 	}
@@ -1221,9 +1222,9 @@ func TestGetNextRelVersion_DeletedRel(t *testing.T) {
 // TestGetNextRelVersion_GapAfterTruncation verifies the gap case for relationships.
 func TestGetNextRelVersion_GapAfterTruncation(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1231,7 +1232,7 @@ func TestGetNextRelVersion_GapAfterTruncation(t *testing.T) {
 
 	// Build version chain: v0, v1, v2, v3 (current).
 	for i := range 3 {
-		_, err = g.Rels.Update(rid, map[string]any{"v": int64(i + 1)})
+		_, err = g.Rels.Update(context.Background(), rid, map[string]any{"v": int64(i + 1)})
 		if err != nil {
 			t.Fatalf("UpdateRelationship v%d: %v", i+1, err)
 		}
@@ -1243,7 +1244,7 @@ func TestGetNextRelVersion_GapAfterTruncation(t *testing.T) {
 	}
 
 	// GetNextRelVersion(rid, 0): v1 not in history, current is v3 (not v1) → nil, nil.
-	next, err := g.Rels.NextVersion(rid, 0)
+	next, err := g.Rels.VersionAfter(rid, 0)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion after truncation: %v", err)
 	}
@@ -1256,26 +1257,26 @@ func TestGetNextRelVersion_GapAfterTruncation(t *testing.T) {
 // a version that is stored in history (not just the current tip).
 func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, map[string]any{"v": "0"})
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, map[string]any{"v": "0"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
 	// Create versions 1 and 2 so version 1 lands in history.
-	_, err = g.Rels.Update(rid, map[string]any{"v": "1"})
+	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"v": "1"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship v1: %v", err)
 	}
-	_, err = g.Rels.Update(rid, map[string]any{"v": "2"})
+	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"v": "2"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship v2: %v", err)
 	}
 
 	// Version 0 → 1 is in history.
-	r1, err := g.Rels.NextVersion(rid, 0)
+	r1, err := g.Rels.VersionAfter(rid, 0)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion(0): %v", err)
 	}
@@ -1284,7 +1285,7 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	}
 
 	// Version 1 → 2 is the current tip.
-	r2, err := g.Rels.NextVersion(rid, 1)
+	r2, err := g.Rels.VersionAfter(rid, 1)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion(1): %v", err)
 	}
@@ -1293,7 +1294,7 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	}
 
 	// Version 2 is the tip.
-	r3, err := g.Rels.NextVersion(rid, 2)
+	r3, err := g.Rels.VersionAfter(rid, 2)
 	if err != nil || r3 != nil {
 		t.Fatalf("GetNextRelVersion(2 tip): expected nil,nil, got %v,%v", r3, err)
 	}
@@ -1301,25 +1302,25 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 
 func TestGetNextRelVersion_MaxUint32HasNoWrappedSuccessor(t *testing.T) {
 	g := newTestGraphForChain(t)
-	a, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
-	if _, err := g.Rels.Update(rid, map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rid, map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship v1: %v", err)
 	}
 	forceStoredRelVersion(t, g, rid, math.MaxUint32)
 
-	next, err := g.Rels.NextVersion(rid, math.MaxUint32)
+	next, err := g.Rels.VersionAfter(rid, math.MaxUint32)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion(MaxUint32): %v", err)
 	}
@@ -1333,27 +1334,27 @@ func TestRelVersionChainMissingIDReturnsErrRelNotFound(t *testing.T) {
 	missing := types.RelID(999999999)
 
 	t.Run("previous genesis validates explicit id", func(t *testing.T) {
-		got, err := g.Rels.PreviousVersion(missing, 0)
+		got, err := g.Rels.VersionBefore(missing, 0)
 		if !errors.Is(err, storepkg.ErrRelNotFound) || got != nil {
-			t.Fatalf("PreviousVersion(missing, 0) = %v, %v; want nil, ErrRelNotFound", got, err)
+			t.Fatalf("VersionBefore(missing, 0) = %v, %v; want nil, ErrRelNotFound", got, err)
 		}
 	})
 	t.Run("previous history miss validates explicit id", func(t *testing.T) {
-		got, err := g.Rels.PreviousVersion(missing, 1)
+		got, err := g.Rels.VersionBefore(missing, 1)
 		if !errors.Is(err, storepkg.ErrRelNotFound) || got != nil {
-			t.Fatalf("PreviousVersion(missing, 1) = %v, %v; want nil, ErrRelNotFound", got, err)
+			t.Fatalf("VersionBefore(missing, 1) = %v, %v; want nil, ErrRelNotFound", got, err)
 		}
 	})
 	t.Run("next history miss validates explicit id", func(t *testing.T) {
-		got, err := g.Rels.NextVersion(missing, 0)
+		got, err := g.Rels.VersionAfter(missing, 0)
 		if !errors.Is(err, storepkg.ErrRelNotFound) || got != nil {
-			t.Fatalf("NextVersion(missing, 0) = %v, %v; want nil, ErrRelNotFound", got, err)
+			t.Fatalf("VersionAfter(missing, 0) = %v, %v; want nil, ErrRelNotFound", got, err)
 		}
 	})
 	t.Run("max version shortcut validates explicit id", func(t *testing.T) {
-		got, err := g.Rels.NextVersion(missing, math.MaxUint32)
+		got, err := g.Rels.VersionAfter(missing, math.MaxUint32)
 		if !errors.Is(err, storepkg.ErrRelNotFound) || got != nil {
-			t.Fatalf("NextVersion(missing, MaxUint32) = %v, %v; want nil, ErrRelNotFound", got, err)
+			t.Fatalf("VersionAfter(missing, MaxUint32) = %v, %v; want nil, ErrRelNotFound", got, err)
 		}
 	})
 }
@@ -1361,21 +1362,21 @@ func TestRelVersionChainMissingIDReturnsErrRelNotFound(t *testing.T) {
 // TestGetNextRelVersion_Normal mirrors the node variant for relationships.
 func TestGetNextRelVersion_Normal(t *testing.T) {
 	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add([]string{"A"}, nil)
-	end, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", start, end, nil)
+	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	rid := r.ID()
 
 	// Update to version 1.
-	_, err = g.Rels.Update(rid, map[string]any{"x": "updated"})
+	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"x": "updated"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship v1: %v", err)
 	}
 
-	next, err := g.Rels.NextVersion(rid, 0)
+	next, err := g.Rels.VersionAfter(rid, 0)
 	if err != nil {
 		t.Fatalf("GetNextRelVersion(0): %v", err)
 	}
@@ -1383,7 +1384,7 @@ func TestGetNextRelVersion_Normal(t *testing.T) {
 		t.Fatalf("expected version 1, got %v", next)
 	}
 
-	atTip, err := g.Rels.NextVersion(rid, 1)
+	atTip, err := g.Rels.VersionAfter(rid, 1)
 	if err != nil || atTip != nil {
 		t.Fatalf("GetNextRelVersion(1 tip): expected nil,nil got %v,%v", atTip, err)
 	}

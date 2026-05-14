@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"reflect"
@@ -700,7 +701,7 @@ func TestPropertyQuery_IgnoresInterfaceEmbeddedNativeStore(t *testing.T) {
 		t.Fatal("interface-embedded native store must not enable the property-query fast path")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	fs.fail.Store(true)
@@ -731,7 +732,7 @@ func TestPropertyQuery_AllowsInterfaceEmbeddedDirectCapability(t *testing.T) {
 		t.Fatal("interface-embedded direct property query capability must remain enabled")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	if nodes, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{}); !errors.Is(err, queryErr) || nodes != nil {
@@ -791,15 +792,15 @@ func TestNativeTransactionTimeQuery_IgnoresConcreteMemoryWrapper(t *testing.T) {
 		t.Fatal("concrete wrapper must not enable the transaction-time query fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -834,7 +835,7 @@ func TestNativeHistoryRollbackTrim_IgnoresConcreteMemoryWrapperForNodeRollback(t
 		t.Fatal("concrete wrapper must not enable the history rollback trim fast path")
 	}
 
-	n, err := g.Nodes.Add([]string{"A"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -867,15 +868,15 @@ func TestNativeHistoryRollbackTrim_IgnoresConcreteMemoryWrapperForRelRollback(t 
 		t.Fatal("concrete wrapper must not enable the history rollback trim fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -1043,7 +1044,7 @@ func TestFilteredVectorSearch_IgnoresConcreteMemoryWrapper(t *testing.T) {
 		t.Fatal("concrete wrapper must not enable the filtered vector fast path")
 	}
 
-	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1081,7 +1082,7 @@ func TestFilteredVectorSearch_AllowsDirectExternalCapability(t *testing.T) {
 		t.Fatal("direct external filtered vector capability must remain enabled")
 	}
 
-	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1116,7 +1117,7 @@ func TestSearchNearestCopiesValidExternalVectorRows(t *testing.T) {
 		t.Fatal("direct external vector rows must be copied defensively")
 	}
 
-	backing, err = g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	backing, err = g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1157,18 +1158,18 @@ func TestSearchNearestRejectsInvalidFilteredVectorCapabilityIDs(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n1, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	n1, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode first: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{2, 0}})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{2, 0}})
 	if err != nil {
 		t.Fatalf("AddNode second: %v", err)
 	}
 	if err := g.Index.CreateVector("Doc", "embedding", 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVector: %v", err)
 	}
-	notIndexed, err := g.Nodes.Add([]string{"Doc"}, nil)
+	notIndexed, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode not indexed: %v", err)
 	}
@@ -1216,14 +1217,14 @@ func TestSearchNearestRejectsInvalidVectorCapabilityRows(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	n, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
+	n, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	if err := g.Index.CreateVector("Doc", "embedding", 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVector: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"embedding": []float32{2, 0}})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{2, 0}})
 	if err != nil {
 		t.Fatalf("AddNode second: %v", err)
 	}
@@ -1296,7 +1297,7 @@ func TestPropertyQuery_IgnoresConcreteMemoryWrapper(t *testing.T) {
 		t.Fatal("concrete wrapper must not enable the property query fast path")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	fs.fail.Store(true)
@@ -1321,14 +1322,14 @@ func TestPropertyQueryFallback_PushesCursorButNotLimitToLabelScan(t *testing.T) 
 		t.Fatal("concrete wrapper must use graph property fallback")
 	}
 
-	first, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "match"})
+	first, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "match"})
 	if err != nil {
 		t.Fatalf("Add first: %v", err)
 	}
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "skip"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "skip"}); err != nil {
 		t.Fatalf("Add middle: %v", err)
 	}
-	want, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "match"})
+	want, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "match"})
 	if err != nil {
 		t.Fatalf("Add want: %v", err)
 	}
@@ -1372,7 +1373,7 @@ func TestPropertyQuery_IgnoresNestedConcreteMemoryWrapper(t *testing.T) {
 		t.Fatal("nested concrete wrapper must not enable the property query fast path")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	fs.fail.Store(true)
@@ -1404,7 +1405,7 @@ func TestPropertyQuery_AllowsDirectExternalCapability(t *testing.T) {
 		t.Fatal("direct external property query capability must remain enabled")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	_, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{})
@@ -1435,7 +1436,7 @@ func TestPropertyQuery_UnindexableValueSkipsDirectCapability(t *testing.T) {
 		t.Fatal("direct external property query capability must remain enabled")
 	}
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"tags": []string{"alpha"}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"tags": []string{"alpha"}}); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabelAndProperty("Doc", "tags", []string{"alpha"}, storepkg.QueryOpts{})
@@ -1471,11 +1472,11 @@ func TestPropertyQueryRejectsInvalidDirectCapabilityRows(t *testing.T) {
 		t.Fatal("direct external property query capability must remain enabled")
 	}
 
-	doc, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	doc, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	doc2, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	doc2, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode second: %v", err)
 	}
@@ -1524,7 +1525,7 @@ func TestPropertyQueryCopiesValidDirectCapabilityRows(t *testing.T) {
 		t.Fatal("direct external property query rows must be copied defensively")
 	}
 
-	doc, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	doc, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1564,42 +1565,42 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 		t.Fatal("concrete external store rows must be validated")
 	}
 
-	a, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Doc"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	rel, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	rel, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	a, err = g.Nodes.Update(a.ID(), map[string]any{"status": "published"})
+	a, err = g.Nodes.Update(context.Background(), a.ID(), map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateNode A: %v", err)
 	}
-	rel, err = g.Rels.Update(rel.ID(), map[string]any{"status": "published"})
+	rel, err = g.Rels.Update(context.Background(), rel.ID(), map[string]any{"status": "published"})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
-	rel2, err := g.Rels.Add("KNOWS", b, a, map[string]any{"status": "draft"})
+	rel2, err := g.Rels.Add(context.Background(), "KNOWS", b, a, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship second: %v", err)
 	}
-	rel3, err := g.Rels.Add("LIKES", a, b, nil)
+	rel3, err := g.Rels.Add(context.Background(), "LIKES", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship third: %v", err)
 	}
 	missingNode := a.ID() + 999999
 
 	fs.failGetNode.Store(true)
-	if node, err := g.Nodes.Get(a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
+	if node, err := g.Nodes.Get(context.Background(), a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
 		t.Fatalf("Nodes.Get nil row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
 	}
 	fs.getNodeRow = b
-	if node, err := g.Nodes.Get(a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
+	if node, err := g.Nodes.Get(context.Background(), a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
 		t.Fatalf("Nodes.Get mismatched row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
 	}
 	tx, err := g.BeginTx()
@@ -1616,11 +1617,11 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	fs.getNodeRow = nil
 
 	fs.failGetRel.Store(true)
-	if gotRel, err := g.Rels.Get(rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
+	if gotRel, err := g.Rels.Get(context.Background(), rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
 		t.Fatalf("Rels.Get nil row = (%v, %v), want nil, ErrInvalidStoreMutation", gotRel, err)
 	}
 	fs.getRelRow = types.NewRelationship(rel.ID()+1, rel.TypeToken().Value(), a.ID(), b.ID())
-	if gotRel, err := g.Rels.Get(rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
+	if gotRel, err := g.Rels.Get(context.Background(), rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
 		t.Fatalf("Rels.Get mismatched row = (%v, %v), want nil, ErrInvalidStoreMutation", gotRel, err)
 	}
 	fs.failGetRel.Store(false)
@@ -1665,14 +1666,14 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	fs.relHistory = nil
 
 	fs.failNodeVer.Store(true)
-	if node, err := g.Nodes.PreviousVersion(a.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
-		t.Fatalf("Nodes.PreviousVersion nil row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
+	if node, err := g.Nodes.VersionBefore(a.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
+		t.Fatalf("Nodes.VersionBefore nil row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
 	}
 	fs.failNodeVer.Store(false)
 
 	fs.failRelVer.Store(true)
-	if gotRel, err := g.Rels.PreviousVersion(rel.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
-		t.Fatalf("Rels.PreviousVersion nil row = (%v, %v), want nil, ErrInvalidStoreMutation", gotRel, err)
+	if gotRel, err := g.Rels.VersionBefore(rel.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
+		t.Fatalf("Rels.VersionBefore nil row = (%v, %v), want nil, ErrInvalidStoreMutation", gotRel, err)
 	}
 	fs.failRelVer.Store(false)
 
@@ -1683,22 +1684,22 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 		t.Fatalf("New page fault graph: %v", err)
 	}
 	defer pageGraph.Close()
-	pageNode, err := pageGraph.Nodes.Add([]string{"PagedDoc"}, map[string]any{"name": "a"})
+	pageNode, err := pageGraph.Nodes.Add(context.Background(), []string{"PagedDoc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("page graph AddNode: %v", err)
 	}
-	pageEnd, err := pageGraph.Nodes.Add([]string{"PagedDoc"}, nil)
+	pageEnd, err := pageGraph.Nodes.Add(context.Background(), []string{"PagedDoc"}, nil)
 	if err != nil {
 		t.Fatalf("page graph AddNode end: %v", err)
 	}
-	pageRel, err := pageGraph.Rels.Add("PAGED_REL", pageNode, pageEnd, map[string]any{"v": int64(1)})
+	pageRel, err := pageGraph.Rels.Add(context.Background(), "PAGED_REL", pageNode, pageEnd, map[string]any{"v": int64(1)})
 	if err != nil {
 		t.Fatalf("page graph AddRelationship: %v", err)
 	}
-	if _, err := pageGraph.Nodes.Update(pageNode.ID(), map[string]any{"name": "b"}); err != nil {
+	if _, err := pageGraph.Nodes.Update(context.Background(), pageNode.ID(), map[string]any{"name": "b"}); err != nil {
 		t.Fatalf("page graph UpdateNode: %v", err)
 	}
-	if _, err := pageGraph.Rels.Update(pageRel.ID(), map[string]any{"v": int64(2)}); err != nil {
+	if _, err := pageGraph.Rels.Update(context.Background(), pageRel.ID(), map[string]any{"v": int64(2)}); err != nil {
 		t.Fatalf("page graph UpdateRelationship: %v", err)
 	}
 	pageStore.nodePage = []*types.Node{nil}
@@ -1924,10 +1925,10 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if nodes, err := g.Temporal.NeighborsAt(a.ID(), a.Temporal().TxFrom); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
 		t.Fatalf("NeighborsAt nil outgoing row = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
 	}
-	if got, created, err := g.Rels.AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), nil); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || got != nil || created {
+	if got, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", a.ID(), b.ID(), nil); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || got != nil || created {
 		t.Fatalf("AddByIDIfAbsent nil duplicate-probe row = (%v, %v, %v), want nil, false, ErrInvalidStoreMutation", got, created, err)
 	}
-	if err := g.Nodes.Delete(a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
 		t.Fatalf("DeleteNode nil outgoing row = %v, want ErrInvalidStoreMutation", err)
 	}
 	fs.outgoingRows = nil
@@ -2069,15 +2070,15 @@ func TestMandatoryBulkReadRowsCopyValidExternalRows(t *testing.T) {
 		t.Fatal("concrete external store rows must be copied defensively")
 	}
 
-	a, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	a, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"status": "draft"})
+	b, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	rel, err := g.Rels.Add("KNOWS", a, b, map[string]any{"status": "draft"})
+	rel, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"status": "draft"})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -2137,7 +2138,7 @@ func TestMandatoryBulkReadRowsCopyValidExternalRows(t *testing.T) {
 
 	fs.getNodeRow = a
 	fs.failGetNode.Store(true)
-	gotNode, err := g.Nodes.Get(a.ID())
+	gotNode, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("Nodes.Get: %v", err)
 	}
@@ -2178,7 +2179,7 @@ func TestMandatoryBulkReadRowsCopyValidExternalRows(t *testing.T) {
 
 	fs.getRelRow = rel
 	fs.failGetRel.Store(true)
-	gotRel, err := g.Rels.Get(rel.ID())
+	gotRel, err := g.Rels.Get(context.Background(), rel.ID())
 	if err != nil {
 		t.Fatalf("Rels.Get: %v", err)
 	}

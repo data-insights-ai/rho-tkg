@@ -2,7 +2,7 @@
 //
 // As of v3.4.0 the 130+ public methods that historically lived directly on
 // *Graph have been removed. Customers must reach the implementation through
-// the sub-API accessors: g.Nodes.Add(...), g.Rels.Add(...), g.Temporal.NodesAt(...),
+// the sub-API accessors: g.Nodes.Add(context.Background(), ...), g.Rels.Add(context.Background(), ...), g.Temporal.NodesAt(...),
 // etc. The complete public surface on *Graph itself is:
 //
 //	New(cfg Config) (*Graph, error)
@@ -24,6 +24,8 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/resolve"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/stats"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/temporal"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/tier"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
 )
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.
@@ -40,6 +42,7 @@ type Graph struct {
 	Constraints *constraints.API
 	IO          *io.API
 	Admin       *admin.API
+	Tier        *tier.API
 	Stats       *stats.API
 	Hash        *hash.API
 	Resolve     *resolve.API
@@ -95,6 +98,7 @@ func New(cfg Config) (*Graph, error) {
 	g.Constraints = constraints.New(c.Constraints)
 	g.IO = io.New(c.IO)
 	g.Admin = admin.New(c.Admin)
+	g.Tier = tier.New(c.Admin)
 	g.Stats = stats.New(c.Stats)
 	g.Hash = hash.New(c.Hash)
 	g.Resolve = resolve.New(c.Resolve)
@@ -121,6 +125,14 @@ func NewBatchBuilder(g *Graph) (*BatchBuilder, error) {
 	return core.NewBatchBuilder(g.core)
 }
 
-// DecomposeID extracts creation time, node ID, sequence number from a
-// snowflake ID. Pure helper; does not touch any graph instance.
-var DecomposeID = core.DecomposeID
+// DecomposeNodeID extracts creation time, node ID, sequence number from a
+// NodeID. Pure helper; does not touch any graph instance.
+func DecomposeNodeID(id types.NodeID) IDComponents {
+	return core.DecomposeID(id.SnowflakeID())
+}
+
+// DecomposeRelID extracts creation time, node ID, sequence number from a
+// RelID. Pure helper; does not touch any graph instance.
+func DecomposeRelID(id types.RelID) IDComponents {
+	return core.DecomposeID(id.SnowflakeID())
+}

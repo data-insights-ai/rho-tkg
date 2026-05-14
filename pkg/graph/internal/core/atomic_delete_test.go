@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -121,15 +122,15 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	defer g.Close() //nolint:errcheck
 
 	// Add reference nodes (go to refShard) and a rel between them.
-	nA, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "alice"})
+	nA, err := g.Nodes.Add(context.Background(), []string{"User"}, map[string]any{"name": "alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "bob"})
+	nB, err := g.Nodes.Add(context.Background(), []string{"User"}, map[string]any{"name": "bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", nA, nB, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
 	relVersion := r.Version()
 
 	// Delete nA — cascades the rel.
-	if err := g.Nodes.Delete(nodeID); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nodeID); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 

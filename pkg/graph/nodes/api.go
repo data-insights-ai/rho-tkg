@@ -1,6 +1,12 @@
 // Package nodes is a sub-API accessor exposing the node-management surface of
 // a Graph. The package declares a local interface (Ops) listing the methods
 // the API forwards; *core.NodeOps implements it implicitly.
+//
+// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
+// (Add, Get, Update, UpdateInPlace, Delete, CompareAndSetProperty) collapsed
+// into a single context-aware method each. Pass context.Background() for the
+// previous no-context behavior. The historical *WithContext variants no
+// longer exist.
 package nodes
 
 import (
@@ -13,17 +19,12 @@ import (
 
 // Ops is the subset of *core.NodeOps the nodes sub-API forwards to.
 type Ops interface {
-	Add(labels []string, props map[string]any) (*types.Node, error)
-	AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error)
-	Get(id types.NodeID) (*types.Node, error)
-	GetWithContext(ctx context.Context, id types.NodeID) (*types.Node, error)
+	Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error)
+	Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
-	Update(id types.NodeID, updates map[string]any) (*types.Node, error)
-	UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
-	UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error)
-	UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
-	Delete(id types.NodeID) error
-	DeleteWithContext(ctx context.Context, id types.NodeID) error
+	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
+	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
+	Delete(ctx context.Context, id types.NodeID) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
@@ -34,8 +35,7 @@ type Ops interface {
 
 	SetProperty(id types.NodeID, key string, value any) error
 	DeleteProperty(id types.NodeID, key string) error
-	CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error)
-	CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error)
+	CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error)
 
 	AddLabel(id types.NodeID, label string) error
 	RemoveLabel(id types.NodeID, label string) error
@@ -45,8 +45,8 @@ type Ops interface {
 
 	CloseVersion(id types.NodeID, t types.Instant) error
 	History(id types.NodeID) ([]*types.Node, error)
-	NextVersion(id types.NodeID, version uint32) (*types.Node, error)
-	PreviousVersion(id types.NodeID, version uint32) (*types.Node, error)
+	VersionAfter(id types.NodeID, version uint32) (*types.Node, error)
+	VersionBefore(id types.NodeID, version uint32) (*types.Node, error)
 
 	NextID() types.NodeID
 }
@@ -67,40 +67,22 @@ func (a *API) ready() (Ops, error) {
 	return a.ops, nil
 }
 
-// Add creates a new node.
-func (a *API) Add(labels []string, props map[string]any) (*types.Node, error) {
+// Add creates a new node honoring ctx.
+func (a *API) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.Add(labels, props)
+	return ops.Add(ctx, labels, props)
 }
 
-// AddWithContext creates a new node honoring ctx.
-func (a *API) AddWithContext(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+// Get returns the node with the given ID, honoring ctx.
+func (a *API) Get(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.AddWithContext(ctx, labels, props)
-}
-
-// Get returns the node with the given ID.
-func (a *API) Get(id types.NodeID) (*types.Node, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.Get(id)
-}
-
-// GetWithContext returns the node honoring ctx.
-func (a *API) GetWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.GetWithContext(ctx, id)
+	return ops.Get(ctx, id)
 }
 
 // GetByIDs returns nodes for the given IDs.
@@ -112,61 +94,34 @@ func (a *API) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return ops.GetByIDs(ids)
 }
 
-// Update updates a node's labels/properties.
-func (a *API) Update(id types.NodeID, updates map[string]any) (*types.Node, error) {
+// Update updates a node's labels/properties honoring ctx.
+func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.Update(id, updates)
+	return ops.Update(ctx, id, updates)
 }
 
-// UpdateWithContext updates a node honoring ctx.
-func (a *API) UpdateWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
+// UpdateInPlace updates a node in place honoring ctx (no version chain entry).
+func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.UpdateWithContext(ctx, id, updates)
+	return ops.UpdateInPlace(ctx, id, updates)
 }
 
-// UpdateInPlace updates a node in place.
-func (a *API) UpdateInPlace(id types.NodeID, updates map[string]any) (*types.Node, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.UpdateInPlace(id, updates)
-}
-
-// UpdateInPlaceWithContext updates a node in place honoring ctx.
-func (a *API) UpdateInPlaceWithContext(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return nil, err
-	}
-	return ops.UpdateInPlaceWithContext(ctx, id, updates)
-}
-
-// Delete deletes the node.
-func (a *API) Delete(id types.NodeID) error {
+// Delete deletes the node honoring ctx.
+func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.Delete(id)
+	return ops.Delete(ctx, id)
 }
 
-// DeleteWithContext deletes the node honoring ctx.
-func (a *API) DeleteWithContext(ctx context.Context, id types.NodeID) error {
-	ops, err := a.ready()
-	if err != nil {
-		return err
-	}
-	return ops.DeleteWithContext(ctx, id)
-}
-
-// Import imports a node with a caller-supplied ID.
+// Import imports a node with a caller-supplied ID honoring ctx.
 func (a *API) Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -220,7 +175,7 @@ func (a *API) CountByLabel(label string) (int, error) {
 	return ops.CountByLabel(label)
 }
 
-// SetProperty sets a single property.
+// SetProperty sets a single property (internally uses context.Background()).
 func (a *API) SetProperty(id types.NodeID, key string, value any) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -229,7 +184,7 @@ func (a *API) SetProperty(id types.NodeID, key string, value any) error {
 	return ops.SetProperty(id, key, value)
 }
 
-// DeleteProperty deletes a single property.
+// DeleteProperty deletes a single property (internally uses context.Background()).
 func (a *API) DeleteProperty(id types.NodeID, key string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -238,22 +193,13 @@ func (a *API) DeleteProperty(id types.NodeID, key string) error {
 	return ops.DeleteProperty(id, key)
 }
 
-// CompareAndSetProperty atomically updates a property.
-func (a *API) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
+// CompareAndSetProperty atomically updates a property honoring ctx.
+func (a *API) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return false, err
 	}
-	return ops.CompareAndSetProperty(id, key, expected, newVal)
-}
-
-// CompareAndSetPropertyWithContext atomically updates a property honoring ctx.
-func (a *API) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
-	ops, err := a.ready()
-	if err != nil {
-		return false, err
-	}
-	return ops.CompareAndSetPropertyWithContext(ctx, id, key, expected, newVal)
+	return ops.CompareAndSetProperty(ctx, id, key, expected, newVal)
 }
 
 // AddLabel adds a label to a node.
@@ -316,22 +262,22 @@ func (a *API) History(id types.NodeID) ([]*types.Node, error) {
 	return ops.History(id)
 }
 
-// NextVersion returns the next version for the given node.
-func (a *API) NextVersion(id types.NodeID, version uint32) (*types.Node, error) {
+// VersionAfter returns the next version for the given node.
+func (a *API) VersionAfter(id types.NodeID, version uint32) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.NextVersion(id, version)
+	return ops.VersionAfter(id, version)
 }
 
-// PreviousVersion returns the previous version for the given node.
-func (a *API) PreviousVersion(id types.NodeID, version uint32) (*types.Node, error) {
+// VersionBefore returns the previous version for the given node.
+func (a *API) VersionBefore(id types.NodeID, version uint32) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, err
 	}
-	return ops.PreviousVersion(id, version)
+	return ops.VersionBefore(id, version)
 }
 
 // NextID generates and returns the next node ID.

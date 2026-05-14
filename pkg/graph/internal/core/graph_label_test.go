@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -52,12 +53,12 @@ func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person", "Actor"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	labels := g.Nodes.Labels(got)
 	if len(labels) != 2 || labels[0] != "Person" || labels[1] != "Actor" {
 		t.Fatalf("labels after update = %v, want [Person Actor]", labels)

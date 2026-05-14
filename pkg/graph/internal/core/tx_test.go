@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -178,7 +179,7 @@ func TestGraphReset_ClearsEntities(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,7 @@ func TestGraphReset_PreservesRegistries(t *testing.T) {
 	g := newTxTestGraph(t)
 
 	// Register some labels and types.
-	_, err := g.Nodes.Add([]string{"Person"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,13 +222,13 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Update to create version history.
-	_, err = g.Nodes.Update(n.ID(), map[string]any{"name": "Bob"})
+	_, err = g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +273,7 @@ func TestMutationBlockedDuringTx(t *testing.T) {
 	go func() {
 		// This AddNode must block until tx commits because it acquires g.mu.RLock
 		// which is blocked by the tx's g.mu.Lock.
-		_, err2 := g.Nodes.Add([]string{"B"}, nil)
+		_, err2 := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 		if err2 != nil {
 			t.Errorf("standalone AddNode: %v", err2)
 		}
@@ -316,7 +317,7 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 
 	// Pre-create some nodes.
 	for i := 0; i < 10; i++ {
-		_, err := g.Nodes.Add([]string{"Item"}, map[string]any{"idx": i})
+		_, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": i})
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
@@ -329,7 +330,7 @@ func TestSnapshotConsistencyDuringMutation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				_, _ = g.Nodes.Add([]string{"Item"}, map[string]any{"idx": j + 100})
+				_, _ = g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": j + 100})
 			}
 		}()
 	}
@@ -435,7 +436,7 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 	bus.Subscribe(func(e eventspkg.Event) {
 		if e.Type == eventspkg.EventNodeCreate {
 			// This must not deadlock — g.mu must be unlocked at this point.
-			n, err := g.Nodes.Get(types.NodeID(e.EntityID))
+			n, err := g.Nodes.Get(context.Background(), types.NodeID(e.EntityID))
 			if err == nil && n != nil {
 				handlerOK.Store(true)
 			}
@@ -476,7 +477,7 @@ func TestBatchEventsNotBuffered(t *testing.T) {
 	})
 
 	// Standalone mutation (not in tx) — should emit immediately.
-	_, err = g.Nodes.Add([]string{"Person"}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

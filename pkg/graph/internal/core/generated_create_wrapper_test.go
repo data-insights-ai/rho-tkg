@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -88,7 +89,7 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForNodeAdd(t *testing.T) {
 	}
 
 	const label = "WrapperNodeCreate"
-	if _, err := g.Nodes.Add([]string{label}, nil); !errors.Is(err, injected) {
+	if _, err := g.Nodes.Add(context.Background(), []string{label}, nil); !errors.Is(err, injected) {
 		t.Fatalf("Nodes.Add error = %v, want injected wrapper error", err)
 	}
 	if _, ok := g.labels.Lookup(label); ok {
@@ -152,17 +153,17 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForRelationshipAdd(t *testi
 		t.Fatal("wrapped tiered.Store must not enable the generated-create fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"Case"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("Add start node: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"User"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	if err != nil {
 		t.Fatalf("Add end node: %v", err)
 	}
 
 	const typ = "WRAPPER_REL_CREATE"
-	if _, err := g.Rels.Add(typ, a, b, nil); !errors.Is(err, injected) {
+	if _, err := g.Rels.Add(context.Background(), typ, a, b, nil); !errors.Is(err, injected) {
 		t.Fatalf("Rels.Add error = %v, want injected wrapper error", err)
 	}
 	if _, ok := g.relTypes.Lookup(typ); ok {

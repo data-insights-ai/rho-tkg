@@ -4,6 +4,7 @@ package core
 // - BatchBuilder at scale: large batches must persist all operations correctly.
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -117,7 +118,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 	// Pre-populate some nodes for reads to target.
 	preNodes := make([]*types.Node, 100)
 	for i := range 100 {
-		n, err := g.Nodes.Add([]string{"Pre"}, map[string]any{"idx": i})
+		n, err := g.Nodes.Add(context.Background(), []string{"Pre"}, map[string]any{"idx": i})
 		if err != nil {
 			t.Fatalf("AddNode pre: %v", err)
 		}
@@ -142,7 +143,7 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 			defer wg.Done()
 			id := preNodes[rID%len(preNodes)].ID()
 			for range 50 {
-				if _, err := g.Nodes.Get(id); err != nil {
+				if _, err := g.Nodes.Get(context.Background(), id); err != nil {
 					errCh <- fmt.Errorf("reader %d GetNode: %v", rID, err)
 					return
 				}

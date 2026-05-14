@@ -144,7 +144,7 @@ func TestGraphAddNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, err := g.Nodes.Add([]string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": 30})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person", "Actor"}, map[string]any{"name": "Alice", "age": 30})
 	if err != nil {
 		t.Fatalf("AddNode() returned error: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestGraphAddNode(t *testing.T) {
 	}
 
 	// Verify retrievable from store.
-	got, err := g.Nodes.Get(n.ID())
+	got, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("GetNode() returned error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestGraphAddNodeFailureDeletesPartialRowBeforeLabelRollback(t *testing.T) {
 	g, fs := newNodeCreateRollbackGraph(t)
 
 	fs.failPut = true
-	_, err := g.Nodes.Add([]string{"TRANSIENT_LABEL"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"TRANSIENT_LABEL"}, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add transient node error = %v, want injected", err)
 	}
@@ -194,7 +194,7 @@ func TestGraphAddNodeFailureDeletesPartialRowBeforeLabelRollback(t *testing.T) {
 	}
 
 	fs.failPut = false
-	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"REAL_LABEL"}, nil); err != nil {
 		t.Fatalf("Add real node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
@@ -215,13 +215,13 @@ func TestGraphAddNodeExistingLabelFailureDeletesPartialRow(t *testing.T) {
 	}
 
 	fs.failPut = true
-	_, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil)
+	_, err := g.Nodes.Add(context.Background(), []string{"EXISTING_LABEL"}, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add existing-label node error = %v, want injected", err)
 	}
 
 	fs.failPut = false
-	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"EXISTING_LABEL"}, nil); err != nil {
 		t.Fatalf("retry Add existing-label node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
@@ -248,11 +248,11 @@ func TestGraphAddNodeExistingLabelPanicDeletesPartialRow(t *testing.T) {
 				t.Fatal("Add existing-label node did not panic")
 			}
 		}()
-		_, _ = g.Nodes.Add([]string{"EXISTING_LABEL"}, nil)
+		_, _ = g.Nodes.Add(context.Background(), []string{"EXISTING_LABEL"}, nil)
 	}()
 
 	fs.panicPut = false
-	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"EXISTING_LABEL"}, nil); err != nil {
 		t.Fatalf("retry Add existing-label node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
@@ -271,7 +271,7 @@ func TestGraphAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
 
 	fs.failPut = true
 	fs.failDelete = true
-	node, err := g.Nodes.Add([]string{"QUARANTINED_LABEL"}, nil)
+	node, err := g.Nodes.Add(context.Background(), []string{"QUARANTINED_LABEL"}, nil)
 	if !errors.Is(err, fs.err) {
 		t.Fatalf("Add node error = %v, want injected", err)
 	}
@@ -291,7 +291,7 @@ func TestGraphAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
 
 	fs.failPut = false
 	fs.failDelete = false
-	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"REAL_LABEL"}, nil); err != nil {
 		t.Fatalf("Add real node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
@@ -356,7 +356,7 @@ func TestBatchAddNodeFailureDeletesPartialRowsBeforeLabelRollback(t *testing.T) 
 	}
 
 	fs.failBatch = false
-	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"REAL_LABEL"}, nil); err != nil {
 		t.Fatalf("Add real node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
@@ -394,7 +394,7 @@ func TestBatchAddNodeExistingLabelPanicDeletesPartialRow(t *testing.T) {
 	}()
 
 	fs.panicBatch = false
-	if _, err := g.Nodes.Add([]string{"EXISTING_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"EXISTING_LABEL"}, nil); err != nil {
 		t.Fatalf("Add existing-label node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("EXISTING_LABEL", storepkg.QueryOpts{})
@@ -428,7 +428,7 @@ func TestBatchAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
 	if res == nil || res.Created != 1 || res.Failed != 1 {
 		t.Fatalf("Execute result = %+v, want Created=1 Failed=1", res)
 	}
-	if stats := g.Stats.Get(); stats.NodesAdded != 1 {
+	if stats, _ := g.Stats.Get(); stats.NodesAdded != 1 {
 		t.Fatalf("NodesAdded after live failed batch node = %d, want 1", stats.NodesAdded)
 	}
 	if tok, ok := g.Resolve.LookupLabel("QUARANTINED_LABEL"); !ok || tok == 0 {
@@ -444,7 +444,7 @@ func TestBatchAddNodeCleanupFailureRetainsLabelToken(t *testing.T) {
 
 	fs.failBatch = false
 	fs.failDelete = false
-	if _, err := g.Nodes.Add([]string{"REAL_LABEL"}, nil); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"REAL_LABEL"}, nil); err != nil {
 		t.Fatalf("Add real node: %v", err)
 	}
 	nodes, err := g.Nodes.ByLabel("REAL_LABEL", storepkg.QueryOpts{})
@@ -460,7 +460,7 @@ func TestGraphAddNodeNoLabels(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	_, err := g.Nodes.Add(nil, nil)
+	_, err := g.Nodes.Add(context.Background(), nil, nil)
 	if err == nil {
 		t.Fatal("AddNode(nil labels) should return error")
 	}
@@ -468,7 +468,7 @@ func TestGraphAddNodeNoLabels(t *testing.T) {
 		t.Errorf("errors.Is(err, ErrNoLabels) = false; err = %v", err)
 	}
 
-	_, err = g.Nodes.Add([]string{}, nil)
+	_, err = g.Nodes.Add(context.Background(), []string{}, nil)
 	if !errors.Is(err, ErrNoLabels) {
 		t.Errorf("errors.Is(err, ErrNoLabels) for empty slice = false; err = %v", err)
 	}
@@ -478,7 +478,7 @@ func TestGraphAddNodeInvalidProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	_, err := g.Nodes.Add([]string{"Person"}, map[string]any{"tkg_hack": "bad"})
+	_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"tkg_hack": "bad"})
 	if err == nil {
 		t.Fatal("AddNode with tkg_ property should return error")
 	}
@@ -493,7 +493,7 @@ func TestGraphAddNodeBulkProperties(t *testing.T) {
 		props[fmt.Sprintf("prop_%02d", i)] = i
 	}
 
-	n, err := g.Nodes.Add([]string{"Test"}, props)
+	n, err := g.Nodes.Add(context.Background(), []string{"Test"}, props)
 	if err != nil {
 		t.Fatalf("AddNode() returned error: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestGraphAddNodeUniqueIDs(t *testing.T) {
 	seen := make(map[snowflake.ID]struct{}, 100)
 
 	for range 100 {
-		n, err := g.Nodes.Add([]string{"X"}, nil)
+		n, err := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -533,7 +533,7 @@ func TestGraphAddNodeNilProperties(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, err := g.Nodes.Add([]string{"Empty"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Empty"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode(nil props) returned error: %v", err)
 	}
@@ -546,14 +546,14 @@ func TestGraphDeleteNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	if err := g.Nodes.Delete(id); err != nil {
+	if err := g.Nodes.Delete(context.Background(), id); err != nil {
 		t.Fatalf("DeleteNode() returned error: %v", err)
 	}
 
-	_, err := g.Nodes.Get(id)
+	_, err := g.Nodes.Get(context.Background(), id)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Errorf("GetNode after delete: errors.Is(err, storepkg.ErrNodeNotFound) = false; err = %v", err)
 	}
@@ -563,38 +563,38 @@ func TestGraphDeleteNodeCascadesRelationships(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nC, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nC, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// A → B
-	rAB, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	rAB, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	// C → A (incoming to A)
-	rCA, _ := g.Rels.Add("FOLLOWS", nC, nA, nil)
+	rCA, _ := g.Rels.Add(context.Background(), "FOLLOWS", nC, nA, nil)
 
 	// Delete A — both relationships should be cascade-deleted.
-	if err := g.Nodes.Delete(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() returned error: %v", err)
 	}
 
 	// Verify node A is gone.
-	if _, err := g.Nodes.Get(nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+	if _, err := g.Nodes.Get(context.Background(), nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 
 	// Verify relationships are gone.
-	if _, err := g.Rels.Get(rAB.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+	if _, err := g.Rels.Get(context.Background(), rAB.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Error("Rel A→B should be cascade-deleted")
 	}
-	if _, err := g.Rels.Get(rCA.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+	if _, err := g.Rels.Get(context.Background(), rCA.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Error("Rel C→A should be cascade-deleted")
 	}
 
 	// Verify B and C still exist.
-	if _, err := g.Nodes.Get(nB.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), nB.ID()); err != nil {
 		t.Errorf("Node B should still exist: %v", err)
 	}
-	if _, err := g.Nodes.Get(nC.ID()); err != nil {
+	if _, err := g.Nodes.Get(context.Background(), nC.ID()); err != nil {
 		t.Errorf("Node C should still exist: %v", err)
 	}
 }
@@ -631,15 +631,15 @@ func TestGraphDeleteNodeDoesNotMutateAdjacencyRowsOnDeleteFailure(t *testing.T) 
 	}
 	defer g.Close()
 
-	nA, err := g.Nodes.Add([]string{"Person"}, nil)
+	nA, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nA: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{"Person"}, nil)
+	nB, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add nB: %v", err)
 	}
-	rel, err := g.Rels.Add("KNOWS", nA, nB, nil)
+	rel, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	if err != nil {
 		t.Fatalf("Add rel: %v", err)
 	}
@@ -648,7 +648,7 @@ func TestGraphDeleteNodeDoesNotMutateAdjacencyRowsOnDeleteFailure(t *testing.T) 
 	store.target = nA.ID()
 	store.outgoingRows = []*types.Relationship{adjacencyRow}
 
-	if err := g.Nodes.Delete(nA.ID()); !errors.Is(err, injectedErr) {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); !errors.Is(err, injectedErr) {
 		t.Fatalf("Delete node = %v, want injected failure", err)
 	}
 
@@ -663,12 +663,12 @@ func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 	// A → B and B → A (both directions).
-	g.Rels.Add("OUT", nA, nB, nil)
-	g.Rels.Add("IN", nB, nA, nil)
+	g.Rels.Add(context.Background(), "OUT", nA, nB, nil)
+	g.Rels.Add(context.Background(), "IN", nB, nA, nil)
 
 	rc, err := g.Rels.Count()
 	if err != nil {
@@ -679,7 +679,7 @@ func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
 	}
 
 	// Delete A — both relationships should be gone.
-	g.Nodes.Delete(nA.ID())
+	g.Nodes.Delete(context.Background(), nA.ID())
 	rc, err = g.Rels.Count()
 	if err != nil {
 		t.Fatal(err)
@@ -693,9 +693,9 @@ func TestGraphNodesByLabel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Animal"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Animal"}, nil)
 
 	persons, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
 	if err != nil {
@@ -734,8 +734,8 @@ func TestGraphNodeCount(t *testing.T) {
 	if nc != 0 {
 		t.Fatalf("empty NodeCount() = %d, want 0", nc)
 	}
-	g.Nodes.Add([]string{"X"}, nil)
-	g.Nodes.Add([]string{"X"}, nil)
+	g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	g.Nodes.Add(context.Background(), []string{"X"}, nil)
 	nc, err = g.Nodes.Count()
 	if err != nil {
 		t.Fatal(err)
@@ -749,25 +749,25 @@ func TestGraphDeleteNodeCascadeToleratesPreDeletedOutgoingRel(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
-	r, _ := g.Rels.Add("R", nA, nB, nil)
+	r, _ := g.Rels.Add(context.Background(), "R", nA, nB, nil)
 
 	// Simulate a concurrent delete: remove the outgoing relationship before
 	// cascade-deleting the node. Without the storepkg.ErrRelNotFound guard in the
 	// outgoing loop, DeleteNode would return an error and leave the node stranded.
-	if err := g.Rels.Delete(r.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), r.ID()); err != nil {
 		t.Fatalf("pre-delete rel: %v", err)
 	}
 
 	// DeleteNode must succeed — the outgoing loop must tolerate storepkg.ErrRelNotFound.
-	if err := g.Nodes.Delete(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() after pre-deleted outgoing rel: %v", err)
 	}
 
 	// Node A should be gone.
-	if _, err := g.Nodes.Get(nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+	if _, err := g.Nodes.Get(context.Background(), nA.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Error("Node A should be deleted")
 	}
 }
@@ -776,10 +776,10 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Validation: ValidationLimits{AllowSelfLoops: true}})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 	// Self-loop: A → A. Appears in both outgoing and incoming lists.
-	_, err := g.Rels.Add("SELF", nA, nA, nil)
+	_, err := g.Rels.Add(context.Background(), "SELF", nA, nA, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship self-loop: %v", err)
 	}
@@ -793,7 +793,7 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 	}
 
 	// DeleteNode must handle the self-loop appearing in both loops without error.
-	if err := g.Nodes.Delete(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); err != nil {
 		t.Fatalf("DeleteNode() with self-loop: %v", err)
 	}
 
@@ -826,13 +826,13 @@ func TestGraphDeleteNodeCascade_MemStore(t *testing.T) {
 	}
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nC, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nC, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Rels.Add("KNOWS", nA, nB, nil)
-	g.Rels.Add("KNOWS", nA, nC, nil)
-	g.Rels.Add("FOLLOWS", nB, nA, nil)
+	g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
+	g.Rels.Add(context.Background(), "KNOWS", nA, nC, nil)
+	g.Rels.Add(context.Background(), "FOLLOWS", nB, nA, nil)
 
 	rc, err := g.Rels.Count()
 	if err != nil {
@@ -843,7 +843,7 @@ func TestGraphDeleteNodeCascade_MemStore(t *testing.T) {
 	}
 
 	// Cascade delete nA: should remove all 3 relationships.
-	if err := g.Nodes.Delete(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
@@ -880,9 +880,9 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 			defer g.Close()
 
 			// Create 3 nodes: A, B, target.
-			nodeA, _ := g.Nodes.Add([]string{"A"}, nil)
-			nodeB, _ := g.Nodes.Add([]string{"B"}, nil)
-			target, _ := g.Nodes.Add([]string{"Target"}, nil)
+			nodeA, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+			nodeB, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+			target, _ := g.Nodes.Add(context.Background(), []string{"Target"}, nil)
 			targetID := target.ID()
 
 			// Race: AddRelationship(A→target) vs DeleteNode(target)
@@ -892,12 +892,12 @@ func TestGraphAddRelDeleteNodeConcurrency(t *testing.T) {
 
 			go func() {
 				defer func() { done <- struct{}{} }()
-				_, addErr = g.Rels.Add("KNOWS", nodeA, target, nil)
+				_, addErr = g.Rels.Add(context.Background(), "KNOWS", nodeA, target, nil)
 			}()
 
 			go func() {
 				defer func() { done <- struct{}{} }()
-				delErr = g.Nodes.Delete(targetID)
+				delErr = g.Nodes.Delete(context.Background(), targetID)
 			}()
 
 			<-done
@@ -961,10 +961,10 @@ func TestGraphUpdateNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": 30})
 	id := n.ID()
 
-	updated, err := g.Nodes.Update(id, map[string]any{"name": "Bob", "age": 31})
+	updated, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob", "age": 31})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -978,7 +978,7 @@ func TestGraphUpdateNode(t *testing.T) {
 	}
 
 	// Verify persisted.
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ = got.GetProperty("name")
 	if v != "Bob" {
 		t.Fatalf("persisted name = %v, want Bob", v)
@@ -989,15 +989,15 @@ func TestGraphUpdateNodeAddProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	_, err := g.Nodes.Update(id, map[string]any{"email": "alice@example.com"})
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{"email": "alice@example.com"})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, ok := got.GetProperty("email")
 	if !ok || v != "alice@example.com" {
 		t.Fatalf("email = %v, want alice@example.com", v)
@@ -1013,15 +1013,15 @@ func TestGraphUpdateNodeDeleteProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": 30})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": 30})
 	id := n.ID()
 
-	_, err := g.Nodes.Update(id, map[string]any{"age": nil})
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{"age": nil})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	_, ok := got.GetProperty("age")
 	if ok {
 		t.Fatal("age should be deleted")
@@ -1036,11 +1036,11 @@ func TestGraphUpdateNodeMixed(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice", "age": 30, "city": "NYC"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": 30, "city": "NYC"})
 	id := n.ID()
 
 	// Add email, modify name, delete city — all in one call.
-	_, err := g.Nodes.Update(id, map[string]any{
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{
 		"email": "alice@example.com",
 		"name":  "Bob",
 		"city":  nil,
@@ -1049,7 +1049,7 @@ func TestGraphUpdateNodeMixed(t *testing.T) {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := got.GetProperty("name")
 	if v != "Bob" {
 		t.Fatalf("name = %v, want Bob", v)
@@ -1072,7 +1072,7 @@ func TestGraphUpdateNodeNotFound(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	_, err := g.Nodes.Update(types.NodeID(999), map[string]any{"name": "Alice"})
+	_, err := g.Nodes.Update(context.Background(), types.NodeID(999), map[string]any{"name": "Alice"})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("UpdateNode(nonexistent): errors.Is(err, storepkg.ErrNodeNotFound) = false; err = %v", err)
 	}
@@ -1082,10 +1082,10 @@ func TestGraphUpdateNodeInvalidProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
-	_, err := g.Nodes.Update(id, map[string]any{"tkg_hack": "bad"})
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{"tkg_hack": "bad"})
 	if !errors.Is(err, types.ErrReservedPrefix) {
 		t.Fatalf("UpdateNode(tkg_ key): errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
 	}
@@ -1095,11 +1095,11 @@ func TestGraphUpdateNodeInvalidValue(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	type badStruct struct{ X int }
-	_, err := g.Nodes.Update(id, map[string]any{"bad": badStruct{42}})
+	_, err := g.Nodes.Update(context.Background(), id, map[string]any{"bad": badStruct{42}})
 	if !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Fatalf("UpdateNode(bad value): errors.Is(err, ErrUnsupportedValueType) = false; err = %v", err)
 	}
@@ -1109,19 +1109,19 @@ func TestGraphUpdateNodeVersionIncrement(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	if n.Version() != 0 {
 		t.Fatalf("initial version = %d, want 0", n.Version())
 	}
 
-	updated1, _ := g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	updated1, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 	if updated1.Version() != 1 {
 		t.Fatalf("version after first update = %d, want 1", updated1.Version())
 	}
 
-	updated2, _ := g.Nodes.Update(id, map[string]any{"name": "Charlie"})
+	updated2, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Charlie"})
 	if updated2.Version() != 2 {
 		t.Fatalf("version after second update = %d, want 2", updated2.Version())
 	}
@@ -1131,10 +1131,10 @@ func TestGraphUpdateNodeEmptyUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	got, err := g.Nodes.Update(id, map[string]any{})
+	got, err := g.Nodes.Update(context.Background(), id, map[string]any{})
 	if err != nil {
 		t.Fatalf("UpdateNode(empty): %v", err)
 	}
@@ -1151,7 +1151,7 @@ func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"counter": 0})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"counter": 0})
 	id := n.ID()
 
 	const workers = 50
@@ -1162,12 +1162,12 @@ func TestGraphUpdateNodeConcurrentSameNode(t *testing.T) {
 		go func(val int) {
 			defer wg.Done()
 			// Each goroutine reads and increments a different property to avoid lost updates.
-			g.Nodes.Update(id, map[string]any{fmt.Sprintf("worker_%d", val): val})
+			g.Nodes.Update(context.Background(), id, map[string]any{fmt.Sprintf("worker_%d", val): val})
 		}(i)
 	}
 	wg.Wait()
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	// All 50 properties should be present (serialized updates, no lost writes).
 	for i := range workers {
 		key := fmt.Sprintf("worker_%d", i)
@@ -1189,14 +1189,14 @@ func TestGraphSetNodeProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	if err := g.Nodes.SetProperty(id, "name", "Alice"); err != nil {
 		t.Fatalf("SetNodeProperty: %v", err)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, ok := got.GetProperty("name")
 	if !ok || v != "Alice" {
 		t.Fatalf("name = %v, want Alice", v)
@@ -1207,14 +1207,14 @@ func TestGraphDeleteNodeProperty(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	if err := g.Nodes.DeleteProperty(id, "name"); err != nil {
 		t.Fatalf("DeleteNodeProperty: %v", err)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	_, ok := got.GetProperty("name")
 	if ok {
 		t.Fatal("name should be deleted")
@@ -1230,10 +1230,10 @@ func TestGraphUpdateNodeWithMemStore(t *testing.T) {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	updated, err := g.Nodes.Update(id, map[string]any{"name": "Bob", "age": 30})
+	updated, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob", "age": 30})
 	if err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -1242,7 +1242,7 @@ func TestGraphUpdateNodeWithMemStore(t *testing.T) {
 		t.Fatalf("name = %v, want Bob", v)
 	}
 
-	got, _ := g.Nodes.Get(id)
+	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ = got.GetProperty("name")
 	if v != "Bob" {
 		t.Fatalf("persisted name = %v, want Bob", v)
@@ -1266,24 +1266,24 @@ func TestGraphConcurrentDeleteNodeOverlappingRels(t *testing.T) {
 			}
 			defer g.Close()
 
-			nA, _ := g.Nodes.Add([]string{"A"}, nil)
-			nB, _ := g.Nodes.Add([]string{"B"}, nil)
-			nC, _ := g.Nodes.Add([]string{"C"}, nil)
+			nA, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+			nB, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+			nC, _ := g.Nodes.Add(context.Background(), []string{"C"}, nil)
 
 			// A→B, B→C, A→C — deleting A and B concurrently overlaps on A→B.
-			g.Rels.Add("R", nA, nB, nil)
-			g.Rels.Add("R", nB, nC, nil)
-			g.Rels.Add("R", nA, nC, nil)
+			g.Rels.Add(context.Background(), "R", nA, nB, nil)
+			g.Rels.Add(context.Background(), "R", nB, nC, nil)
+			g.Rels.Add(context.Background(), "R", nA, nC, nil)
 
 			var wg sync.WaitGroup
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				g.Nodes.Delete(nA.ID())
+				g.Nodes.Delete(context.Background(), nA.ID())
 			}()
 			go func() {
 				defer wg.Done()
-				g.Nodes.Delete(nB.ID())
+				g.Nodes.Delete(context.Background(), nB.ID())
 			}()
 			wg.Wait()
 
@@ -1303,9 +1303,9 @@ func TestGraphAllNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	g.Nodes.Add([]string{"City"}, map[string]any{"name": "Vienna"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add(context.Background(), []string{"City"}, map[string]any{"name": "Vienna"})
 
 	got, err := g.Nodes.All(storepkg.QueryOpts{})
 	if err != nil {
@@ -1333,9 +1333,9 @@ func TestGraphGetNodesByIDs(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
-	n2, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Person"}, nil) // n3 — not requested
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil) // n3 — not requested
 
 	ids := []types.NodeID{
 		n1.ID(),
@@ -1353,16 +1353,18 @@ func TestGraphGetNodesByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n1, err := g.Nodes.Add([]string{"Person"}, nil)
+	n1, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add n1: %v", err)
 	}
-	n2, err := g.Nodes.Add([]string{"Person"}, nil)
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("Add n2: %v", err)
 	}
 
-	before := g.Stats.Get().NodesRead
+	beforeSnap, _ := g.Stats.Get()
+
+	before := beforeSnap.NodesRead
 	got, err := g.Nodes.GetByIDs([]types.NodeID{n2.ID(), n1.ID(), n2.ID()})
 	if err != nil {
 		t.Fatalf("GetNodesByIDs duplicates: %v", err)
@@ -1384,7 +1386,8 @@ func TestGraphGetNodesByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 	if len(copies) != 2 || copies[0] == copies[1] {
 		t.Fatal("GetNodesByIDs returned aliased rows for duplicate node IDs")
 	}
-	if after := g.Stats.Get().NodesRead; after != before+int64(len(got)) {
+	afterSnap, _ := g.Stats.Get()
+	if after := afterSnap.NodesRead; after != before+int64(len(got))  {
 		t.Fatalf("NodesRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
 	}
 }
@@ -1435,7 +1438,7 @@ func TestNodeCountByLabel_SingleNode(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	count, err := g.Nodes.CountByLabel("Person")
 	if err != nil {
@@ -1450,9 +1453,9 @@ func TestNodeCountByLabel_MultipleNodes(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
-	g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Charlie"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Charlie"})
 
 	count, err := g.Nodes.CountByLabel("Person")
 	if err != nil {
@@ -1467,10 +1470,10 @@ func TestNodeCountByLabel_AfterDelete(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	n1, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Person"}, nil)
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	g.Nodes.Delete(n1.ID())
+	g.Nodes.Delete(context.Background(), n1.ID())
 
 	count, err := g.Nodes.CountByLabel("Person")
 	if err != nil {
@@ -1509,7 +1512,7 @@ func TestGraphAddNode_DuplicateLabelsHashVerifies(t *testing.T) {
 	g := newTestGraph(t)
 
 	// Pass duplicate labels — NewNode deduplicates internally.
-	n, err := g.Nodes.Add([]string{"Person", "Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person", "Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -1528,7 +1531,7 @@ func TestGraphAddNode_DuplicateLabelsOnlyOneStored(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person", "Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person", "Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

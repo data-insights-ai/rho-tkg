@@ -37,7 +37,11 @@ type StoreStats interface {
 // Get returns a snapshot of graph operation counters and optional cache metrics.
 // Cache metrics are populated only when the underlying store implements StoreStats
 // (currently BadgerStore only); all cache fields are zero for MemoryStore and tiered.Store.
-func (s *StatOps) Get() GraphStats {
+//
+// Returns ErrGraphClosed if the graph has been closed; the counter snapshot
+// is still returned in that case. The error shape matches every other Stats
+// method for caller-side uniformity (API 4.0).
+func (s *StatOps) Get() (GraphStats, error) {
 	c := s.c
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -51,15 +55,16 @@ func (s *StatOps) Get() GraphStats {
 		RelsUpdated:  c.opRelUpdates.Load(),
 		RelsDeleted:  c.opRelDeletes.Load(),
 	}
-	if !c.closed.Load() {
-		if ss, ok := c.store.(StoreStats); ok {
-			out.NodeCacheHits = ss.NodeCacheHits()
-			out.NodeCacheMisses = ss.NodeCacheMisses()
-			out.RelCacheHits = ss.RelCacheHits()
-			out.RelCacheMisses = ss.RelCacheMisses()
-		}
+	if c.closed.Load() {
+		return out, ErrGraphClosed
 	}
-	return out
+	if ss, ok := c.store.(StoreStats); ok {
+		out.NodeCacheHits = ss.NodeCacheHits()
+		out.NodeCacheMisses = ss.NodeCacheMisses()
+		out.RelCacheHits = ss.RelCacheHits()
+		out.RelCacheMisses = ss.RelCacheMisses()
+	}
+	return out, nil
 }
 
 // SnapshotCounters returns the same operation counters and cache metrics as
@@ -71,7 +76,10 @@ func (s *StatOps) SnapshotCounters() (
 	relsAdded, relsRead, relsUpdated, relsDeleted int64,
 	nodeCacheHits, nodeCacheMisses, relCacheHits, relCacheMisses int64,
 ) {
-	g := s.Get()
+	// SnapshotCounters reports counters even when the graph is closed —
+	// callers (e.g. the public stats.API.Get wrapper) decide whether the
+	// closed-graph signal matters. The error is intentionally ignored here.
+	g, _ := s.Get()
 	return g.NodesAdded, g.NodesRead, g.NodesUpdated, g.NodesDeleted,
 		g.RelsAdded, g.RelsRead, g.RelsUpdated, g.RelsDeleted,
 		g.NodeCacheHits, g.NodeCacheMisses, g.RelCacheHits, g.RelCacheMisses

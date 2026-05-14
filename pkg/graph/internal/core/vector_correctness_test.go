@@ -16,6 +16,7 @@ package core
 //       temporal eligibility and k-cut.
 
 import (
+	"context"
 	"errors"
 	"math"
 	"sort"
@@ -37,8 +38,8 @@ func TestSearchNearestNodes_NonPositiveK_NoPanic(t *testing.T) {
 
 	label := "Vec"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -69,7 +70,7 @@ func TestSearchNearestNodes_NonFiniteQueryRejectedBeforeNonPositiveK(t *testing.
 
 	label := "Vec"
 	key := "v"
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
@@ -104,16 +105,16 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 	)
 
 	// Phase 1 (t0 era): create 4 "old" nodes far from origin.
-	old1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}, "tkg_valid_from": tOld})
-	old2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{11, 0}, "tkg_valid_from": tOld})
-	old3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{12, 0}, "tkg_valid_from": tOld})
-	old4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{13, 0}, "tkg_valid_from": tOld})
+	old1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{10, 0}, "tkg_valid_from": tOld})
+	old2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{11, 0}, "tkg_valid_from": tOld})
+	old3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{12, 0}, "tkg_valid_from": tOld})
+	old4, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{13, 0}, "tkg_valid_from": tOld})
 
 	// Phase 2 (post-t0): create 3 "new" nodes very close to origin (smaller distance
 	// to query [0, 0] than any old node). These did NOT exist at t0.
-	new1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
-	new2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}, "tkg_valid_from": tNew})
-	new3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.2, 0}, "tkg_valid_from": tNew})
+	new1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
+	new2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0.1, 0}, "tkg_valid_from": tNew})
+	new3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0.2, 0}, "tkg_valid_from": tNew})
 	_ = new1
 	_ = new2
 	_ = new3
@@ -166,7 +167,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	label := "Doc"
 	key := "v"
 
-	n, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}, "status": "draft"})
+	n, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}, "status": "draft"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -180,7 +181,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	t0 := clk.PeekInstant() - 1
 
 	// Mutate property after t0 — vector unchanged so ranking is stable.
-	if _, err := g.Nodes.Update(n.ID(), map[string]any{"status": "final"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"status": "final"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -234,11 +235,11 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 
 	clk := useTestClock(t, g)
 
-	a, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
+	a, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{10, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	b, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -250,7 +251,7 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 
 	// Mutate A's vector AFTER t0 so it becomes the closest by current vector
 	// while its t0 historical vector (10,0) is the farthest.
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{key: []float32{0.1, 0}}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{key: []float32{0.1, 0}}); err != nil {
 		t.Fatalf("UpdateNode A: %v", err)
 	}
 
@@ -302,7 +303,7 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	key := "v"
 
 	// Pre-t0 node: far from query. Snowflake-derived ValidFrom ≈ wall now.
-	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{5, 5}})
+	pre, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{5, 5}})
 
 	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
 	// pre's snowflake-derived ValidFrom ≈ wall now ≪ t0, and post's
@@ -313,7 +314,7 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	)
 
 	// Post-t0 node: exactly at query — would dominate without temporal filter.
-	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
+	post, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -346,11 +347,11 @@ func TestSearchNearestNodes_AfterLimit(t *testing.T) {
 	key := "v"
 
 	// 5 nodes with strictly distinct distances from the query [0, 0].
-	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}}) // d=1
-	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{2, 0}}) // d=2
-	n3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{3, 0}}) // d=3
-	n4, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{4, 0}}) // d=4
-	n5, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{5, 0}}) // d=5
+	n1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}}) // d=1
+	n2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{2, 0}}) // d=2
+	n3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{3, 0}}) // d=3
+	n4, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{4, 0}}) // d=4
+	n5, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{5, 0}}) // d=5
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -406,11 +407,11 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 	key := "v"
 
 	// Two reference nodes.
-	live, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	live, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode live: %v", err)
 	}
-	archived, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1.01, 0}})
+	archived, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1.01, 0}})
 	if err != nil {
 		t.Fatalf("AddNode archived: %v", err)
 	}
@@ -471,7 +472,7 @@ func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testin
 	label := "Signal" // event label per newTestTieredStore RefLabels
 	key := "v"
 
-	cold, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}})
+	cold, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}})
 	if err != nil {
 		t.Fatalf("AddNode cold: %v", err)
 	}
@@ -486,7 +487,7 @@ func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testin
 	demoteToCold(ts, coldShard)
 	time.Sleep(2 * time.Millisecond)
 
-	warm, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0.1, 0}})
+	warm, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0.1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode warm: %v", err)
 	}
@@ -496,7 +497,7 @@ func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testin
 	}
 	time.Sleep(2 * time.Millisecond)
 
-	hot, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{10, 0}})
+	hot, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{10, 0}})
 	if err != nil {
 		t.Fatalf("AddNode hot: %v", err)
 	}
@@ -538,14 +539,14 @@ func TestSearchNearestNodes_TemporalDepthCombo_FiltersArchivedBeforeK(t *testing
 
 	label := "User"
 	key := "v"
-	live, err := g.Nodes.Add([]string{label}, map[string]any{
+	live, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{
 		key:              []float32{2, 0},
 		"tkg_valid_from": types.Instant(1),
 	})
 	if err != nil {
 		t.Fatalf("AddNode live: %v", err)
 	}
-	archived, err := g.Nodes.Add([]string{label}, map[string]any{
+	archived, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{
 		key:              []float32{0.1, 0},
 		"tkg_valid_from": types.Instant(1),
 	})
@@ -606,7 +607,7 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	label, key := "Doc", "v"
-	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 
 	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
 	const (
@@ -614,7 +615,7 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 		tNew = t0 + 1
 	)
 
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -640,14 +641,14 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
 	label, key := "User", "v"
-	pre, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
+	pre, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 
 	const (
 		t0   = types.Instant(1_900_000_000_000)
 		tNew = t0 + 1
 	)
 
-	_, _ = g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
+	_, _ = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew}) // closer but post-t0
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -693,16 +694,16 @@ func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
 	g := newTestGraph(t)
 	label, key := "Vec", "v"
 
-	pre1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0}})
-	pre2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{2, 0}})
-	pre3, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{3, 0}})
+	pre1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
+	pre2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{2, 0}})
+	pre3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{3, 0}})
 
 	const (
 		t0   = types.Instant(1_900_000_000_000)
 		tNew = t0 + 1
 	)
 
-	post, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
+	post, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 
 	tok, _ := g.labels.Lookup(label)
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
@@ -754,16 +755,16 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 	label := "VDel"
 	key := "v"
 
-	nA, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0, 0}})
+	nA, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1, 0}})
+	nB, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
 	// nC is the node we will delete
-	nC, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 0, 1}})
+	nC, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode C: %v", err)
 	}
@@ -787,7 +788,7 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 	}
 
 	// Delete C via the graph public API (exercises DeleteNodeWithHistory path).
-	if err := g.Nodes.Delete(nC.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nC.ID()); err != nil {
 		t.Fatalf("DeleteNode C: %v", err)
 	}
 
@@ -847,11 +848,11 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	key := "v"
 
 	// nA stays far from query [1,0]; nB starts far but will be updated near.
-	nA, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
+	nA, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	nB, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1}})
+	nB, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -869,7 +870,7 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	}
 
 	// Update nB to be identical to query direction.
-	if _, err := g.Nodes.Update(nB.ID(), map[string]any{key: []float32{1, 0}}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), nB.ID(), map[string]any{key: []float32{1, 0}}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -934,7 +935,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	key := "v"
 
 	// Add a seed node first so the backfill path contributes one existing entry.
-	seed, err := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 1}})
+	seed, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 1}})
 	if err != nil {
 		t.Fatalf("AddNode seed: %v", err)
 	}
@@ -994,7 +995,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	}
 
 	// Delete nA via DeleteNode (exercises DeleteNodeWithHistory → DeleteNodesBatch path indirectly).
-	if err := g.Nodes.Delete(nA.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), nA.ID()); err != nil {
 		t.Fatalf("DeleteNode A: %v", err)
 	}
 
@@ -1077,7 +1078,7 @@ func TestSearchNearest_HeapCorrectness(t *testing.T) {
 
 	ids := make([]types.NodeID, len(vectors))
 	for i, vec := range vectors {
-		n, nerr := g.Nodes.Add([]string{label}, map[string]any{key: vec})
+		n, nerr := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: vec})
 		if nerr != nil {
 			t.Fatalf("AddNode[%d]: %v", i, nerr)
 		}

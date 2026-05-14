@@ -1,6 +1,7 @@
 package temporal_test
 
 import (
+	"context"
 	"time"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
@@ -16,7 +17,7 @@ func ExampleAPI_NodesAt() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	now := types.Instant(time.Now().UnixMilli())
 	nodes, err := g.Temporal.NodesAt(now)
@@ -35,7 +36,7 @@ func ExampleAPI_Snapshot() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	now := types.Instant(time.Now().UnixMilli())
 	snap, err := g.Temporal.Snapshot(now)
@@ -54,7 +55,7 @@ func ExampleAPI_NodeAt() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	now := types.Instant(time.Now().UnixMilli())
 	v, err := g.Temporal.NodeAt(n.ID(), now)
 	if err != nil {

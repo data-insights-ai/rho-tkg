@@ -57,7 +57,7 @@ func (c *Core) deletePartialRelationshipForRollback(r *types.Relationship) error
 
 // AddWithContext creates a new directed relationship between two nodes.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (r *RelOps) AddWithContext(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
+func (r *RelOps) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func nodeIntegrityHash(n *types.Node) string {
 // It has the same live-endpoint verification, endpoint-hash capture, and
 // constraint enforcement semantics as RelOps.AddWithContext; it only changes
 // the input form so callers do not need to carry endpoint node objects.
-func (r *RelOps) AddByIDWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -555,7 +555,7 @@ func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string,
 // the TOCTOU race inherent in separate check-then-create calls.
 //
 // Endpoint and constraint behaviour matches AddByIDWithContext.
-func (r *RelOps) AddByIDIfAbsentWithContext(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
+func (r *RelOps) AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, false, err

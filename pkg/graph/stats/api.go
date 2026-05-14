@@ -71,11 +71,16 @@ func (a *API) ready() (Ops, error) {
 // Cache metrics are populated only when the underlying store implements the
 // store-stats interface (currently BadgerStore only); all cache fields are zero
 // for MemoryStore and tiered.Store.
-func (a *API) Get() GraphStats {
-	if a == nil || !a.ok {
-		return GraphStats{}
+//
+// Returns ErrNilGraph if called on a zero-value or nil-backed API. The error
+// shape matches every other Stats method for caller-side uniformity; in
+// practice Get cannot fail at runtime once the graph is constructed.
+func (a *API) Get() (GraphStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return GraphStats{}, err
 	}
-	na, nr, nu, nd, ra, rr, ru, rd, nch, ncm, rch, rcm := a.ops.SnapshotCounters()
+	na, nr, nu, nd, ra, rr, ru, rd, nch, ncm, rch, rcm := ops.SnapshotCounters()
 	return GraphStats{
 		NodesAdded:      na,
 		NodesRead:       nr,
@@ -89,7 +94,7 @@ func (a *API) Get() GraphStats {
 		NodeCacheMisses: ncm,
 		RelCacheHits:    rch,
 		RelCacheMisses:  rcm,
-	}
+	}, nil
 }
 
 // NodeCount returns the total node count.

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -141,8 +142,8 @@ func TestGraphDefaultMemoryStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Verify the default store works by adding and retrieving a node.
-	n, _ := g.Nodes.Add([]string{"Test"}, nil)
-	got, _ := g.Nodes.Get(n.ID())
+	n, _ := g.Nodes.Add(context.Background(), []string{"Test"}, nil)
+	got, _ := g.Nodes.Get(context.Background(), n.ID())
 	if got.ID() != n.ID() {
 		t.Fatal("Default store should round-trip nodes")
 	}
@@ -176,7 +177,7 @@ func TestGraphGetNodeHistoryEmpty(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	// No updates = no history.
@@ -194,9 +195,9 @@ func TestGraphGetRelHistoryEmpty(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	defer g.Close()
 
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 	id := r.ID()
 
 	history, err := g.Rels.History(id)
@@ -216,11 +217,11 @@ func TestGraphBadgerNodeHistoryPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	n, _ := g1.Nodes.Add([]string{"Person"}, map[string]any{"name": "v0"})
+	n, _ := g1.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	g1.Nodes.Update(id, map[string]any{"name": "v1"})
-	g1.Nodes.Update(id, map[string]any{"name": "v2"})
+	g1.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
+	g1.Nodes.Update(context.Background(), id, map[string]any{"name": "v2"})
 
 	if err := g1.Close(); err != nil {
 		t.Fatalf("Close 1: %v", err)
@@ -252,13 +253,13 @@ func TestGraphBadgerRelHistoryPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New 1: %v", err)
 	}
-	nA, _ := g1.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g1.Nodes.Add([]string{"X"}, nil)
-	r, _ := g1.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g1.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g1.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	relID := r.ID()
 
-	g1.Rels.Update(relID, map[string]any{"w": int64(1)})
-	g1.Rels.Update(relID, map[string]any{"w": int64(2)})
+	g1.Rels.Update(context.Background(), relID, map[string]any{"w": int64(1)})
+	g1.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)})
 
 	if err := g1.Close(); err != nil {
 		t.Fatalf("Close 1: %v", err)
@@ -322,7 +323,7 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 	const hubCount = 10
 	hubs := make([]*types.Node, hubCount)
 	for i := range hubCount {
-		n, err := g.Nodes.Add([]string{"Hub"}, map[string]any{"idx": int64(i)})
+		n, err := g.Nodes.Add(context.Background(), []string{"Hub"}, map[string]any{"idx": int64(i)})
 		if err != nil {
 			t.Fatalf("AddNode hub %d: %v", i, err)
 		}
@@ -344,13 +345,13 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 				}
 			}()
 
-			wn, err := g.Nodes.Add([]string{"Worker"}, map[string]any{"w": int64(workerID)})
+			wn, err := g.Nodes.Add(context.Background(), []string{"Worker"}, map[string]any{"w": int64(workerID)})
 			if err != nil {
 				errs <- fmt.Errorf("worker %d AddNode: %w", workerID, err)
 				return
 			}
 			hub := hubs[workerID%hubCount]
-			if _, err := g.Rels.Add("LINK", wn, hub, nil); err != nil {
+			if _, err := g.Rels.Add(context.Background(), "LINK", wn, hub, nil); err != nil {
 				errs <- fmt.Errorf("worker %d AddRel: %w", workerID, err)
 				return
 			}
@@ -360,11 +361,11 @@ func TestGraphConcurrentCRUDStress(t *testing.T) {
 				g.Nodes.ByLabel("Hub", storepkg.QueryOpts{})
 
 				// Update.
-				g.Nodes.Update(wn.ID(), map[string]any{"iter": int64(i)})
+				g.Nodes.Update(context.Background(), wn.ID(), map[string]any{"iter": int64(i)})
 
 				// Delete on even iterations.
 				if i == opsPerWorker-1 && workerID%2 == 0 {
-					g.Nodes.Delete(wn.ID())
+					g.Nodes.Delete(context.Background(), wn.ID())
 				}
 			}
 		}(w)
@@ -402,9 +403,9 @@ func TestAllLabelCounts_Multiple(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Person"}, nil)
-	g.Nodes.Add([]string{"Company"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Company"}, nil)
 	// Register a label but don't add nodes — should be omitted.
 	g.Resolve.GetOrCreateLabel("Empty")
 
@@ -427,13 +428,13 @@ func TestAllRelTypeCounts_Multiple(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	c, _ := g.Nodes.Add([]string{"Company"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	c, _ := g.Nodes.Add(context.Background(), []string{"Company"}, nil)
 
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("KNOWS", b, a, nil)
-	g.Rels.Add("WORKS_AT", a, c, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "KNOWS", b, a, nil)
+	g.Rels.Add(context.Background(), "WORKS_AT", a, c, nil)
 	// Register a type but don't add rels — should be omitted.
 	g.Resolve.GetOrCreateRelType("EMPTY")
 
@@ -501,10 +502,10 @@ func TestCountAfterCascadeDelete(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	g.Rels.Add("KNOWS", a, b, nil)
-	g.Rels.Add("LIKES", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+	g.Rels.Add(context.Background(), "LIKES", a, b, nil)
 
 	// Before delete.
 	nc, _ := g.Nodes.CountByLabel("Person")
@@ -513,7 +514,7 @@ func TestCountAfterCascadeDelete(t *testing.T) {
 	}
 
 	// Cascade delete a — removes 2 rels.
-	g.Nodes.Delete(a.ID())
+	g.Nodes.Delete(context.Background(), a.ID())
 
 	nc, _ = g.Nodes.CountByLabel("Person")
 	if nc != 1 {

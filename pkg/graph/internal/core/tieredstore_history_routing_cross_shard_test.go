@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,18 +101,18 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 		t.Fatalf("New graph: %v", err)
 	}
 
-	n, err := g.Nodes.Add([]string{"Case"}, map[string]any{"v": 1})
+	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := n.ID()
-	if _, err := g.Nodes.Update(id, map[string]any{"v": 2}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": 2}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ts.ArchiveNode(id); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
-	if _, err := g.Nodes.Update(id, map[string]any{"v": 3}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": 3}); err != nil {
 		t.Fatalf("post-archive UpdateNode: %v", err)
 	}
 	if err := g.Close(); err != nil {
@@ -197,11 +198,11 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "open"})
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "open"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := g.Rels.Add("KNOWS", caseNode, caseNode, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", caseNode, caseNode, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +303,7 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +365,7 @@ func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
 func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -449,7 +450,7 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, map[string]any{"status": "open"})
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "open"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -528,7 +529,7 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -568,7 +569,7 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -609,7 +610,7 @@ func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
 func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -666,7 +667,7 @@ func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
 func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -701,7 +702,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
-	caseNode, err := g.Nodes.Add([]string{"Case"}, nil)
+	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

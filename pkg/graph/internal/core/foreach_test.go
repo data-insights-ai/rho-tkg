@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	defer g.Close()
 
 	// Add a node.
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -47,18 +48,18 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// Add a relationship.
-	n2, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Bob"})
+	n2, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	_, err = g.Rels.Add("KNOWS", n, n2, nil)
+	_, err = g.Rels.Add(context.Background(), "KNOWS", n, n2, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
 	now2 := types.Instant(time.Now().UnixMilli())
 
 	// GetRelationshipsValidAt should find the rel.
-	rels, err := g.Temporal.RelationshipsAt(now2)
+	rels, err := g.Temporal.RelsAt(now2)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidAt: %v", err)
 	}
@@ -76,7 +77,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	}
 
 	// GetRelationshipsValidDuring should find the rel.
-	relsDuring, err := g.Temporal.RelationshipsDuring(now, now2+1000)
+	relsDuring, err := g.Temporal.RelsDuring(now, now2+1000)
 	if err != nil {
 		t.Fatalf("GetRelationshipsValidDuring: %v", err)
 	}

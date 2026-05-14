@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -310,7 +311,7 @@ func TestVerifyNodeChain_GenesisOnly(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	valid, err := g.Hash.VerifyNodeChain(n.ID())
 	if err != nil {
@@ -325,12 +326,12 @@ func TestVerifyNodeChain_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.Nodes.Update(id, map[string]any{"name": "Bob"})
-	g.Nodes.Update(id, map[string]any{"name": "Charlie"})
-	g.Nodes.Update(id, map[string]any{"age": int64(30)})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Charlie"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"age": int64(30)})
 
 	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
@@ -345,7 +346,7 @@ func TestVerifyNodeChain_TamperedHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Tamper with the stored hash.
@@ -366,10 +367,10 @@ func TestVerifyNodeChain_BrokenPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.Nodes.Update(id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
 
 	// Break the PrevHash link on the current version.
 	current, _ := g.store.GetNode(id)
@@ -439,7 +440,7 @@ func TestVerifyNodeChain_NilIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
 	// Clear integrity metadata.
@@ -460,11 +461,11 @@ func TestVerifyNodeChain_PropertyChange(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
-	g.Nodes.Update(id, map[string]any{"name": "Bob"})
-	g.Nodes.Update(id, map[string]any{"name": nil, "age": int64(25)})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": nil, "age": int64(25)})
 
 	valid, err := g.Hash.VerifyNodeChain(id)
 	if err != nil {
@@ -481,9 +482,9 @@ func TestVerifyRelChain_GenesisOnly(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2020)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2020)})
 
 	valid, err := g.Hash.VerifyRelChain(r.ID())
 	if err != nil {
@@ -498,14 +499,14 @@ func TestVerifyRelChain_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
-	g.Rels.Update(id, map[string]any{"weight": int64(2)})
-	g.Rels.Update(id, map[string]any{"weight": int64(3)})
-	g.Rels.Update(id, map[string]any{"note": "old friends"})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(2)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(3)})
+	g.Rels.Update(context.Background(), id, map[string]any{"note": "old friends"})
 
 	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
@@ -520,9 +521,9 @@ func TestVerifyRelChain_TamperedHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
@@ -542,12 +543,12 @@ func TestVerifyRelChain_BrokenPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	id := r.ID()
 
-	g.Rels.Update(id, map[string]any{"weight": int64(5)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(5)})
 
 	current, _ := g.store.GetRelationship(id)
 	ig := current.Integrity()
@@ -578,9 +579,9 @@ func TestVerifyRelChain_NilIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	id := r.ID()
 
 	current, _ := g.store.GetRelationship(id)
@@ -600,13 +601,13 @@ func TestVerifyRelChain_PropertyChange(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
-	g.Rels.Update(id, map[string]any{"weight": int64(10)})
-	g.Rels.Update(id, map[string]any{"weight": nil, "note": "test"})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(10)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": nil, "note": "test"})
 
 	valid, err := g.Hash.VerifyRelChain(id)
 	if err != nil {
@@ -628,22 +629,22 @@ func TestVerifyChain_HistoryPagesVersionsWhenCapabilityAvailable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	rel, err := g.Rels.Add("LINKS", start, end, map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.Add(context.Background(), "LINKS", start, end, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
-	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "b"}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
-	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("Update relationship: %v", err)
 	}
 
@@ -675,22 +676,22 @@ func TestVerifyChain_IgnoresInheritedNativeHistoryPagerOnWrapper(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	start, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "a"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "a"})
 	if err != nil {
 		t.Fatalf("Add start: %v", err)
 	}
-	end, err := g.Nodes.Add([]string{"Doc"}, nil)
+	end, err := g.Nodes.Add(context.Background(), []string{"Doc"}, nil)
 	if err != nil {
 		t.Fatalf("Add end: %v", err)
 	}
-	rel, err := g.Rels.Add("LINKS", start, end, map[string]any{"weight": int64(1)})
+	rel, err := g.Rels.Add(context.Background(), "LINKS", start, end, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatalf("Add relationship: %v", err)
 	}
-	if _, err := g.Nodes.Update(start.ID(), map[string]any{"name": "b"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), start.ID(), map[string]any{"name": "b"}); err != nil {
 		t.Fatalf("Update node: %v", err)
 	}
-	if _, err := g.Rels.Update(rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"weight": int64(2)}); err != nil {
 		t.Fatalf("Update relationship: %v", err)
 	}
 
@@ -740,13 +741,13 @@ func TestVerifyNodeChain_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	n, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
-	g.Nodes.Update(id, map[string]any{"name": "Bob"})
-	g.Nodes.Update(id, map[string]any{"name": "Charlie"})
-	g.Nodes.Update(id, map[string]any{"name": "Diana"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Charlie"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Diana"})
 
 	// Verify before truncation.
 	valid, err := g.Hash.VerifyNodeChain(id)
@@ -776,15 +777,15 @@ func TestVerifyRelChain_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{})
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	id := r.ID()
 
 	// Create 3 updates → versions 0, 1, 2, 3 (current is v3).
-	g.Rels.Update(id, map[string]any{"weight": int64(2)})
-	g.Rels.Update(id, map[string]any{"weight": int64(3)})
-	g.Rels.Update(id, map[string]any{"weight": int64(4)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(2)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(3)})
+	g.Rels.Update(context.Background(), id, map[string]any{"weight": int64(4)})
 
 	// Verify before truncation.
 	valid, err := g.Hash.VerifyRelChain(id)

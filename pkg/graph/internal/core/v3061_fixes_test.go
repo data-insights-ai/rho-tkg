@@ -32,7 +32,7 @@ func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	defer g.Close()
 
 	sig := []byte{0xAA}
-	n, err := g.Nodes.Add([]string{"Person"}, map[string]any{
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{
 		"name":          "Alice",
 		"tkg_signature": sig,
 	})
@@ -133,7 +133,7 @@ func TestSetEventBus_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.Nodes.Add([]string{"Person"}, nil)
+				g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 			}
 		}()
 	}
@@ -165,8 +165,8 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	var wg sync.WaitGroup
 	const N = 20
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Writers: AddRelationship (reads constraints).
 	for i := 0; i < N; i++ {
@@ -174,7 +174,7 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.Rels.Add("KNOWS", a, b, nil)
+				g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 			}
 		}()
 	}
@@ -222,14 +222,14 @@ func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 			// This would deadlock if publishEvent ran under g.mu.RLock
 			// because GetNodeWithContext doesn't acquire g.mu.RLock,
 			// but more complex handlers calling write methods would.
-			_, _ = g.Nodes.Get(types.NodeID(e.EntityID))
+			_, _ = g.Nodes.Get(context.Background(), types.NodeID(e.EntityID))
 			handlerNodeID = e.EntityID
 		}
 	})
 
 	done := make(chan struct{})
 	go func() {
-		n, err := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 		if err != nil {
 			t.Errorf("AddNode failed: %v", err)
 		}
@@ -317,8 +317,8 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	defer g.Close()
 
 	// Create nodes outside tx.
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	relID := snowflake.ID(999999)
 
@@ -343,7 +343,7 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// Verify exists.
-	got, err := g.Rels.Get(types.RelID(relID))
+	got, err := g.Rels.Get(context.Background(), types.RelID(relID))
 	if err != nil {
 		t.Fatalf("GetRelationship after commit: %v", err)
 	}
@@ -367,13 +367,13 @@ func TestTx_ImportRelationshipWithID(t *testing.T) {
 	}
 
 	// New rel should not exist.
-	_, err = g.Rels.Get(types.RelID(newRelID))
+	_, err = g.Rels.Get(context.Background(), types.RelID(newRelID))
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound after rollback, got %v", err)
 	}
 
 	// Original rel should still exist.
-	_, err = g.Rels.Get(types.RelID(relID))
+	_, err = g.Rels.Get(context.Background(), types.RelID(relID))
 	if err != nil {
 		t.Fatalf("original rel lost after rollback: %v", err)
 	}
@@ -389,11 +389,11 @@ func TestGetRelsAsOf(t *testing.T) {
 	defer g.Close()
 	clk := useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
-	b, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Create rel.
-	r, err := g.Rels.Add("KNOWS", a, b, map[string]any{"weight": int64(1)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	clk.Advance(2 * time.Millisecond)
 
 	// Update rel — creates history entry.
-	r2, err := g.Rels.Update(rid, map[string]any{"weight": int64(2)})
+	r2, err := g.Rels.Update(context.Background(), rid, map[string]any{"weight": int64(2)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +460,7 @@ func TestCreateDropTemporalIndex(t *testing.T) {
 	defer g.Close()
 
 	// Register the label.
-	g.Nodes.Add([]string{"eventspkg.Event"}, nil)
+	g.Nodes.Add(context.Background(), []string{"eventspkg.Event"}, nil)
 
 	// Create temporal index.
 	if err := g.Index.CreateTemporal("eventspkg.Event"); err != nil {
@@ -489,7 +489,7 @@ func TestDropHighFrequencyIndex(t *testing.T) {
 	defer g.Close()
 
 	// Register the label.
-	g.Nodes.Add([]string{"Metric"}, nil)
+	g.Nodes.Add(context.Background(), []string{"Metric"}, nil)
 
 	// Create HF index.
 	if err := g.Index.CreateHighFrequency("Metric", time.Hour); err != nil {

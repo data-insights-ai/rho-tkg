@@ -5,6 +5,7 @@
 package core
 
 import (
+	"context"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -28,7 +29,7 @@ func TestImportWithOptions_StagingDirHonored(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	var exported bytes.Buffer
@@ -69,7 +70,7 @@ func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
 	}
 	defer src.Close()
 	for i := 0; i < 50; i++ {
-		if _, err := src.Nodes.Add([]string{"Person"}, map[string]any{"i": int64(i), "pad": strings.Repeat("x", 1024)}); err != nil {
+		if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"i": int64(i), "pad": strings.Repeat("x", 1024)}); err != nil {
 			t.Fatalf("seed %d: %v", i, err)
 		}
 	}
@@ -152,7 +153,7 @@ func TestImportWithOptions_DefaultsMatchPriorBehavior(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	var exported bytes.Buffer
@@ -183,7 +184,7 @@ func TestImportWithOptions_CloseDuringStagingReturnsGraphClosed(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	if _, err := src.Nodes.Add([]string{"Person"}, nil); err != nil {
+	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	var exported bytes.Buffer

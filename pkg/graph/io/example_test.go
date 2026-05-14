@@ -1,10 +1,11 @@
 package io_test
 
 import (
+	"context"
 	"bytes"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io" // godoc anchor: ExampleAPI_<method> resolves against io.API
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io" // godoc anchor: ExampleAPI_<method> resolves against io.API
 )
 
 // ExampleAPI_Export demonstrates writing a portable graph snapshot to an
@@ -16,7 +17,7 @@ func ExampleAPI_Export() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	var buf bytes.Buffer
 	if err := g.IO.Export(&buf); err != nil {
@@ -32,7 +33,7 @@ func ExampleAPI_Import() {
 		panic(err)
 	}
 	defer src.Close()
-	_, _ = src.Nodes.Add([]string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
@@ -44,7 +45,7 @@ func ExampleAPI_Import() {
 		panic(err)
 	}
 	defer dst.Close()
-	if err := dst.IO.Import(&buf); err != nil {
+	if err := dst.IO.Import(&buf, tkgio.ImportOptions{}); err != nil {
 		panic(err)
 	}
 }

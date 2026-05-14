@@ -39,12 +39,12 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 
 	ctx := context.Background()
 
-	a, err := g.Nodes.AddWithContext(ctx, []string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
+	a, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
 	if err != nil {
 		t.Fatalf("AddWithContext: %v", err)
 	}
 
-	if _, err := g.Nodes.GetWithContext(ctx, a.ID()); err != nil {
+	if _, err := g.Nodes.Get(ctx, a.ID()); err != nil {
 		t.Errorf("GetWithContext: %v", err)
 	}
 	if _, err := g.Nodes.GetByIDs([]types.NodeID{a.ID()}); err != nil {
@@ -53,16 +53,16 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if _, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), types.NodeID(999)}); !errors.Is(err, graphpkg.ErrNodeNotFound) {
 		t.Errorf("GetByIDs missing: err = %v, want ErrNodeNotFound", err)
 	}
-	if _, err := g.Nodes.Update(a.ID(), map[string]any{"age": int64(31)}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), a.ID(), map[string]any{"age": int64(31)}); err != nil {
 		t.Errorf("Update: %v", err)
 	}
-	if _, err := g.Nodes.UpdateWithContext(ctx, a.ID(), map[string]any{"age": int64(32)}); err != nil {
+	if _, err := g.Nodes.Update(ctx, a.ID(), map[string]any{"age": int64(32)}); err != nil {
 		t.Errorf("UpdateWithContext: %v", err)
 	}
-	if _, err := g.Nodes.UpdateInPlace(a.ID(), map[string]any{"age": int64(33)}); err != nil {
+	if _, err := g.Nodes.UpdateInPlace(context.Background(), a.ID(), map[string]any{"age": int64(33)}); err != nil {
 		t.Errorf("UpdateInPlace: %v", err)
 	}
-	if _, err := g.Nodes.UpdateInPlaceWithContext(ctx, a.ID(), map[string]any{"age": int64(34)}); err != nil {
+	if _, err := g.Nodes.UpdateInPlace(ctx, a.ID(), map[string]any{"age": int64(34)}); err != nil {
 		t.Errorf("UpdateInPlaceWithContext: %v", err)
 	}
 
@@ -72,10 +72,10 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if err := g.Nodes.DeleteProperty(a.ID(), "since"); err != nil {
 		t.Errorf("DeleteProperty: %v", err)
 	}
-	if _, err := g.Nodes.CompareAndSetProperty(a.ID(), "age", int64(34), int64(35)); err != nil {
+	if _, err := g.Nodes.CompareAndSetProperty(context.Background(), a.ID(), "age", int64(34), int64(35)); err != nil {
 		t.Errorf("CompareAndSetProperty: %v", err)
 	}
-	if _, err := g.Nodes.CompareAndSetPropertyWithContext(ctx, a.ID(), "age", int64(35), int64(36)); err != nil {
+	if _, err := g.Nodes.CompareAndSetProperty(ctx, a.ID(), "age", int64(35), int64(36)); err != nil {
 		t.Errorf("CompareAndSetPropertyWithContext: %v", err)
 	}
 
@@ -96,11 +96,11 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 	if _, err := g.Nodes.History(a.ID()); err != nil {
 		t.Errorf("History: %v", err)
 	}
-	if _, err := g.Nodes.NextVersion(a.ID(), 0); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
-		t.Errorf("NextVersion: %v", err)
+	if _, err := g.Nodes.VersionAfter(a.ID(), 0); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Errorf("VersionAfter: %v", err)
 	}
-	if _, err := g.Nodes.PreviousVersion(a.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
-		t.Errorf("PreviousVersion: %v", err)
+	if _, err := g.Nodes.VersionBefore(a.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Errorf("VersionBefore: %v", err)
 	}
 	if err := g.Nodes.CloseVersion(a.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
@@ -113,10 +113,10 @@ func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {
 		t.Errorf("Import: %v", err)
 	}
 
-	if err := g.Nodes.Delete(a.ID()); err != nil {
+	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
 		t.Errorf("Delete: %v", err)
 	}
-	if err := g.Nodes.DeleteWithContext(ctx, importID); err != nil {
+	if err := g.Nodes.Delete(ctx, importID); err != nil {
 		t.Errorf("DeleteWithContext: %v", err)
 	}
 }
@@ -130,31 +130,31 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	ctx := context.Background()
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
 
-	r1, err := g.Rels.AddWithContext(ctx, "KNOWS", a, b, nil)
+	r1, err := g.Rels.Add(ctx, "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddWithContext: %v", err)
 	}
-	r2, err := g.Rels.AddByID("FOLLOWS", a.ID(), b.ID(), nil)
+	r2, err := g.Rels.AddByID(context.Background(), "FOLLOWS", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByID: %v", err)
 	}
-	r3, err := g.Rels.AddByIDWithContext(ctx, "LIKES", a.ID(), b.ID(), nil)
+	r3, err := g.Rels.AddByID(ctx, "LIKES", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDWithContext: %v", err)
 	}
-	r4, _, err := g.Rels.AddByIDIfAbsent("UNIQUE", a.ID(), b.ID(), nil)
+	r4, _, err := g.Rels.AddByIDIfAbsent(context.Background(), "UNIQUE", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDIfAbsent: %v", err)
 	}
-	r5, _, err := g.Rels.AddByIDIfAbsentWithContext(ctx, "UNIQUE2", a.ID(), b.ID(), nil)
+	r5, _, err := g.Rels.AddByIDIfAbsent(ctx, "UNIQUE2", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDIfAbsentWithContext: %v", err)
 	}
 
-	if _, err := g.Rels.GetWithContext(ctx, r1.ID()); err != nil {
+	if _, err := g.Rels.Get(ctx, r1.ID()); err != nil {
 		t.Errorf("GetWithContext: %v", err)
 	}
 	if _, err := g.Rels.GetByIDs([]types.RelID{r1.ID(), r2.ID()}); err != nil {
@@ -164,25 +164,25 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 		t.Errorf("GetByIDs missing: err = %v, want ErrRelNotFound", err)
 	}
 
-	if _, err := g.Rels.Update(r1.ID(), map[string]any{"weight": float64(0.5)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), r1.ID(), map[string]any{"weight": float64(0.5)}); err != nil {
 		t.Errorf("Update: %v", err)
 	}
-	if _, err := g.Rels.UpdateWithContext(ctx, r1.ID(), map[string]any{"weight": float64(0.6)}); err != nil {
+	if _, err := g.Rels.Update(ctx, r1.ID(), map[string]any{"weight": float64(0.6)}); err != nil {
 		t.Errorf("UpdateWithContext: %v", err)
 	}
-	if _, err := g.Rels.UpdateInPlace(r1.ID(), map[string]any{"weight": float64(0.7)}); err != nil {
+	if _, err := g.Rels.UpdateInPlace(context.Background(), r1.ID(), map[string]any{"weight": float64(0.7)}); err != nil {
 		t.Errorf("UpdateInPlace: %v", err)
 	}
-	if _, err := g.Rels.UpdateInPlaceWithContext(ctx, r1.ID(), map[string]any{"weight": float64(0.8)}); err != nil {
+	if _, err := g.Rels.UpdateInPlace(ctx, r1.ID(), map[string]any{"weight": float64(0.8)}); err != nil {
 		t.Errorf("UpdateInPlaceWithContext: %v", err)
 	}
 	if err := g.Rels.SetProperty(r1.ID(), "since", int64(2026)); err != nil {
 		t.Errorf("SetProperty: %v", err)
 	}
-	if _, err := g.Rels.CompareAndSetProperty(r1.ID(), "since", int64(2026), int64(2027)); err != nil {
+	if _, err := g.Rels.CompareAndSetProperty(context.Background(), r1.ID(), "since", int64(2026), int64(2027)); err != nil {
 		t.Errorf("CompareAndSetProperty: %v", err)
 	}
-	if _, err := g.Rels.CompareAndSetPropertyWithContext(ctx, r1.ID(), "since", int64(2027), int64(2028)); err != nil {
+	if _, err := g.Rels.CompareAndSetProperty(ctx, r1.ID(), "since", int64(2027), int64(2028)); err != nil {
 		t.Errorf("CompareAndSetPropertyWithContext: %v", err)
 	}
 	if err := g.Rels.DeleteProperty(r1.ID(), "since"); err != nil {
@@ -211,11 +211,11 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 	if _, err := g.Rels.History(r1.ID()); err != nil {
 		t.Errorf("History: %v", err)
 	}
-	if _, err := g.Rels.NextVersion(r1.ID(), 0); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
-		t.Errorf("NextVersion: %v", err)
+	if _, err := g.Rels.VersionAfter(r1.ID(), 0); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Errorf("VersionAfter: %v", err)
 	}
-	if _, err := g.Rels.PreviousVersion(r1.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
-		t.Errorf("PreviousVersion: %v", err)
+	if _, err := g.Rels.VersionBefore(r1.ID(), 1); err != nil && !errors.Is(err, storepkg.ErrVersionNotFound) {
+		t.Errorf("VersionBefore: %v", err)
 	}
 	if err := g.Rels.CloseVersion(r1.ID(), types.Instant(time.Now().Add(time.Hour).UnixMilli())); err != nil {
 		t.Errorf("CloseVersion: %v", err)
@@ -227,10 +227,10 @@ func TestSubAPISmoke_RelsAllWrappers(t *testing.T) {
 		t.Errorf("Import: %v", err)
 	}
 
-	if err := g.Rels.Delete(r2.ID()); err != nil {
+	if err := g.Rels.Delete(context.Background(), r2.ID()); err != nil {
 		t.Errorf("Delete: %v", err)
 	}
-	if err := g.Rels.DeleteWithContext(ctx, r3.ID()); err != nil {
+	if err := g.Rels.Delete(ctx, r3.ID()); err != nil {
 		t.Errorf("DeleteWithContext: %v", err)
 	}
 	_ = r4
@@ -245,9 +245,9 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A", "age": int64(30)})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B", "age": int64(40)})
-	r, _ := g.Rels.Add("KNOWS", a, b, map[string]any{"since": int64(2025)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A", "age": int64(30)})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B", "age": int64(40)})
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2025)})
 
 	now := types.Instant(time.Now().UnixMilli())
 	earlier := now - 1
@@ -266,11 +266,11 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	if _, err := g.Temporal.RelAt(r.ID(), now); err != nil {
 		t.Errorf("RelAt: %v", err)
 	}
-	if _, err := g.Temporal.RelationshipsAt(now); err != nil {
-		t.Errorf("RelationshipsAt: %v", err)
+	if _, err := g.Temporal.RelsAt(now); err != nil {
+		t.Errorf("RelsAt: %v", err)
 	}
-	if _, err := g.Temporal.RelationshipsByTypeAt("KNOWS", now); err != nil {
-		t.Errorf("RelationshipsByTypeAt: %v", err)
+	if _, err := g.Temporal.RelsByTypeAt("KNOWS", now); err != nil {
+		t.Errorf("RelsByTypeAt: %v", err)
 	}
 	if _, err := g.Temporal.NeighborsAt(a.ID(), now); err != nil {
 		t.Errorf("NeighborsAt: %v", err)
@@ -285,8 +285,8 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	if _, err := g.Temporal.NodesDuring(earlier, later); err != nil {
 		t.Errorf("NodesDuring: %v", err)
 	}
-	if _, err := g.Temporal.RelationshipsDuring(earlier, later); err != nil {
-		t.Errorf("RelationshipsDuring: %v", err)
+	if _, err := g.Temporal.RelsDuring(earlier, later); err != nil {
+		t.Errorf("RelsDuring: %v", err)
 	}
 	if _, err := g.Temporal.NodesByLabelPropertyDuring("Person", "age", int64(30), earlier, later); err != nil {
 		t.Errorf("NodesByLabelPropertyDuring: %v", err)
@@ -328,7 +328,7 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	if err := g.Rels.CloseVersion(r.ID(), endTime); err != nil {
 		t.Fatalf("CloseVersion(r): %v", err)
 	}
-	r2, err := g.Rels.Add("ALT", a, b, nil)
+	r2, err := g.Rels.Add(context.Background(), "ALT", a, b, nil)
 	if err != nil {
 		t.Fatalf("Rels.Add(ALT): %v", err)
 	}
@@ -336,19 +336,19 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 		t.Fatalf("CloseVersion(r2): %v", err)
 	}
 
-	aClosed, err := g.Nodes.Get(a.ID())
+	aClosed, err := g.Nodes.Get(context.Background(), a.ID())
 	if err != nil {
 		t.Fatalf("re-fetch a: %v", err)
 	}
-	bClosed, err := g.Nodes.Get(b.ID())
+	bClosed, err := g.Nodes.Get(context.Background(), b.ID())
 	if err != nil {
 		t.Fatalf("re-fetch b: %v", err)
 	}
-	rClosed, err := g.Rels.Get(r.ID())
+	rClosed, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("re-fetch r: %v", err)
 	}
-	r2Closed, err := g.Rels.Get(r2.ID())
+	r2Closed, err := g.Rels.Get(context.Background(), r2.ID())
 	if err != nil {
 		t.Fatalf("re-fetch r2: %v", err)
 	}
@@ -375,12 +375,15 @@ func TestSubAPISmoke_StatsResolveConstraintsEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	a, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "A"})
-	b, _ := g.Nodes.Add([]string{"Person"}, map[string]any{"name": "B"})
-	r, _ := g.Rels.Add("KNOWS", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
+	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	_ = r
 
-	var snapshot graphpkg.GraphStats = g.Stats.Get()
+	snapshot, err := g.Stats.Get()
+	if err != nil {
+		t.Fatalf("Stats.Get: %v", err)
+	}
 	if snapshot.NodesAdded != 2 || snapshot.RelsAdded != 1 {
 		t.Fatalf("Stats.Get snapshot = %+v, want NodesAdded=2 RelsAdded=1", snapshot)
 	}
@@ -401,15 +404,6 @@ func TestSubAPISmoke_StatsResolveConstraintsEvents(t *testing.T) {
 	if _, ok := g.Resolve.RelProperty(r, "tkg_type"); !ok {
 		t.Errorf("Resolve.RelProperty(tkg_type): missing")
 	}
-	if _, err := g.Resolve.LabelToken("Person"); err != nil {
-		t.Errorf("Resolve.LabelToken: %v", err)
-	}
-	if _, err := g.Resolve.RelTypeToken("KNOWS"); err != nil {
-		t.Errorf("Resolve.RelTypeToken: %v", err)
-	}
-	if _, ok := g.Resolve.LookupRelType("KNOWS"); !ok {
-		t.Errorf("Resolve.LookupRelType(KNOWS): missing")
-	}
 
 	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{}); !errors.Is(err, temporalpkg.ErrTemporalConstraint) || !errors.Is(err, temporalpkg.ErrInvalidTemporalConstraint) {
 		t.Errorf("Constraints.Add(invalid): %v", err)
@@ -426,7 +420,7 @@ func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if _, err := g.Nodes.Add([]string{"Doc"}, map[string]any{"name": "x", "embedding": []float32{1, 2, 3}}); err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"name": "x", "embedding": []float32{1, 2, 3}}); err != nil {
 		t.Fatalf("seed Doc: %v", err)
 	}
 
@@ -475,11 +469,6 @@ func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {
 	if err := g.Index.UnregisterProvider("missing"); !errors.Is(err, graphpkg.ErrIndexProviderNotFound) {
 		t.Errorf("UnregisterProvider missing: %v, want ErrIndexProviderNotFound", err)
 	}
-
-	lp := &fakeLegacyIndexProvider{name: "legacy"}
-	if err := g.Index.RegisterLegacyProvider(lp); err != nil {
-		t.Errorf("RegisterLegacyProvider: %v", err)
-	}
 }
 
 func TestSubAPISmoke_AdminWrappers_NonTieredSentinel(t *testing.T) {
@@ -489,30 +478,30 @@ func TestSubAPISmoke_AdminWrappers_NonTieredSentinel(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { _ = g.Close() })
-	a, _ := g.Nodes.Add([]string{"Person"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Each admin wrapper on a non-tiered store must surface
 	// ErrNotTieredStore. Pinning the wrapper-level sentinel keeps the
 	// "graph layer doesn't quietly drop the call" contract enforced.
-	if err := g.Admin.Archive(a.ID()); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if err := g.Tier.Archive(a.ID()); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("Archive: %v, want ErrNotTieredStore", err)
 	}
-	if err := g.Admin.Restore(a.ID()); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if err := g.Tier.Restore(a.ID()); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("Restore: %v, want ErrNotTieredStore", err)
 	}
-	if err := g.Admin.ForceRotate(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if err := g.Tier.ForceRotate(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("ForceRotate: %v, want ErrNotTieredStore", err)
 	}
-	if _, err := g.Admin.ListShards(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if _, err := g.Tier.ListShards(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("ListShards: %v, want ErrNotTieredStore", err)
 	}
-	if err := g.Admin.RebuildCatalog(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if err := g.Tier.RebuildCatalog(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("RebuildCatalog: %v, want ErrNotTieredStore", err)
 	}
-	if _, err := g.Admin.Repair(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if _, err := g.Tier.Repair(); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("Repair: %v, want ErrNotTieredStore", err)
 	}
-	if _, err := g.Admin.VerifyShard("shard-name"); !errors.Is(err, graphpkg.ErrNotTieredStore) {
+	if _, err := g.Tier.VerifyShard("shard-name"); !errors.Is(err, graphpkg.ErrNotTieredStore) {
 		t.Errorf("VerifyShard: %v, want ErrNotTieredStore", err)
 	}
 	// Reset is implemented as store.Clear() — not a tiered-only operation,
@@ -538,20 +527,20 @@ func TestSubAPISmoke_AdminWrappers_TieredHappyPath(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if _, err := g.Admin.ListShards(); err != nil {
+	if _, err := g.Tier.ListShards(); err != nil {
 		t.Errorf("ListShards: %v", err)
 	}
-	if err := g.Admin.RebuildCatalog(); err != nil {
+	if err := g.Tier.RebuildCatalog(); err != nil {
 		t.Errorf("RebuildCatalog: %v", err)
 	}
-	if _, err := g.Admin.Repair(); err != nil {
+	if _, err := g.Tier.Repair(); err != nil {
 		t.Errorf("Repair: %v", err)
 	}
-	if err := g.Admin.ForceRotate(); err != nil {
+	if err := g.Tier.ForceRotate(); err != nil {
 		t.Errorf("ForceRotate: %v", err)
 	}
-	if shards, err := g.Admin.ListShards(); err == nil && len(shards) > 0 {
-		if _, err := g.Admin.VerifyShard(shards[0].Name); err != nil {
+	if shards, err := g.Tier.ListShards(); err == nil && len(shards) > 0 {
+		if _, err := g.Tier.VerifyShard(shards[0].Name); err != nil {
 			t.Errorf("VerifyShard(%s): %v", shards[0].Name, err)
 		}
 	}
@@ -568,20 +557,6 @@ func (p *fakeIndexProvider) Name() string               { return p.name }
 func (p *fakeIndexProvider) OnEvent(events.Event) error { return nil }
 func (p *fakeIndexProvider) Close() error               { return nil }
 
-type fakeLegacyIndexProvider struct{ name string }
-
-func (p *fakeLegacyIndexProvider) Name() string                               { return p.name }
-func (p *fakeLegacyIndexProvider) OnEvent(events.Event, indexpkg.GraphReader) {}
-func (p *fakeLegacyIndexProvider) Close() error                               { return nil }
-
-// Compile-time assertions so the fakes pin the IndexProvider /
-// LegacyIndexProvider interfaces. If those interfaces gain a method, this
-// test file must be updated alongside the API change.
-var (
-	_ indexpkg.IndexProvider = (*fakeIndexProvider)(nil)
-	// nolint:staticcheck // LegacyIndexProvider is deprecated by design;
-	// this is the test that pins the wrapper still works for legacy
-	// implementations. The deprecation warning will go away when the
-	// wrapper itself is removed in a future major version.
-	_ indexpkg.LegacyIndexProvider = (*fakeLegacyIndexProvider)(nil)
-)
+// Compile-time assertion that the IndexProvider fake satisfies the
+// interface — if IndexProvider gains a method, this file must be updated.
+var _ indexpkg.IndexProvider = (*fakeIndexProvider)(nil)

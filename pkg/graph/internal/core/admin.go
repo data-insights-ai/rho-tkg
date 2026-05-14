@@ -1,7 +1,6 @@
 package core
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
@@ -92,10 +91,16 @@ func (a *AdminOps) Restore(id types.NodeID) error {
 	return ErrNotTieredStore
 }
 
-// DecomposeID extracts the creation time, node ID, and sequence number from
-// a snowflake ID. Works with any store type.
-func (a *AdminOps) DecomposeID(id snowflake.ID) IDComponents {
-	return DecomposeID(id)
+// DecomposeNodeID extracts the creation time, node ID, and sequence number
+// from a NodeID. Works with any store type.
+func (a *AdminOps) DecomposeNodeID(id types.NodeID) IDComponents {
+	return DecomposeID(id.SnowflakeID())
+}
+
+// DecomposeRelID extracts the creation time, node ID, and sequence number
+// from a RelID. Works with any store type.
+func (a *AdminOps) DecomposeRelID(id types.RelID) IDComponents {
+	return DecomposeID(id.SnowflakeID())
 }
 
 // ForceRotate triggers a hot-shard rotation. Only available with tiered.Store.

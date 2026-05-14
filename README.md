@@ -33,6 +33,18 @@ Detailed documentation has been split into the `docs/` directory:
 
 ### What's new in Unreleased
 
+**v4.0 API cleanup (breaking).** The public surface has been simplified — see CHANGELOG.md for the full migration recipe. Highlights:
+
+- `*WithContext` method pairs collapsed: every `g.Nodes.Add(labels, props)` becomes `g.Nodes.Add(ctx, labels, props)`. Same for `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`, and the Rels counterparts (`Add`, `AddByID`, `AddByIDIfAbsent`, `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`). The `*WithContext` siblings no longer exist.
+- `g.Admin` split: tiered-only methods (`Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard`) moved to a new `g.Tier` sub-API. `g.Admin` now exposes only `Reset` + `DecomposeNodeID` + `DecomposeRelID`, which work on every backend.
+- `g.Admin.DecomposeID(snowflake.ID)` replaced with typed `g.Admin.DecomposeNodeID(types.NodeID)` / `g.Admin.DecomposeRelID(types.RelID)`.
+- `temporal.RelationshipsAt` → `temporal.RelsAt`, `RelationshipsByTypeAt` → `RelsByTypeAt`, `RelationshipsDuring` → `RelsDuring`.
+- `Nodes.NextVersion` / `PreviousVersion` renamed `VersionAfter` / `VersionBefore` (same on Rels).
+- `g.Resolve.LabelToken` / `RelTypeToken` / `LookupLabel` / `LookupRelType` removed. Shadow-property accessors kept.
+- `index.LegacyIndexProvider` interface + `Index.RegisterLegacyProvider` removed. External providers must migrate to `IndexProvider` + optional `Initializable`.
+- `IO.Import(r)` + `IO.ImportWithOptions(r, opts)` collapsed into `IO.Import(r, opts)`. Pass `ImportOptions{}` for the previous defaults.
+- New `g.Batch.Run(fn)` parallel to `g.Tx.Run` for the closure-style batch idiom.
+
 **Transaction rollback restores endpoints before relationships.** `GraphTx.Rollback` now restores all deleted node rows before recreating deleted relationships, so a rollback after `DeleteRelationship` followed by `DeleteNode(endpoint)` restores the edge instead of failing on a missing endpoint.
 
 **Transaction rollback restores version history.** Rolled-back updates and deletes no longer leave phantom node/relationship history rows; rollback restores pre-transaction history snapshots and clears history for created entities it deletes.

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -14,7 +15,7 @@ func TestNodeInterval_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -29,15 +30,15 @@ func TestRelInterval_OpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestNodeInterval_Resolved(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestNodeInterval_SnowflakeDerived(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestNodeInterval_NilTemporal(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestNodeInterval_InvalidFiniteInterval(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	n, err := g.Nodes.Add([]string{"Person"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -132,15 +133,15 @@ func TestRelInterval_InvalidFiniteInterval(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestTemporalAllenPostCloseReturnsErrGraphClosed(t *testing.T) {
 // makeFiniteNode creates a node via the graph and sets its interval to [from, to).
 func makeFiniteNode(t *testing.T, g *Core, from, to types.Instant) *types.Node {
 	t.Helper()
-	n, err := g.Nodes.Add([]string{"Event"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -248,15 +249,15 @@ func makeFiniteNode(t *testing.T, g *Core, from, to types.Instant) *types.Node {
 
 func makeFiniteRel(t *testing.T, g *Core, from, to types.Instant) *types.Relationship {
 	t.Helper()
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r, err := g.Rels.Add("KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -354,19 +355,19 @@ func TestRelateRels_Before(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r1, err := g.Rels.Add("KNOWS", a, b, nil)
+	r1, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	r2, err := g.Rels.Add("KNOWS", a, b, nil)
+	r2, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -401,7 +402,7 @@ func TestRelateNodes_OneOpenEnded(t *testing.T) {
 	g := newTestGraph(t)
 
 	a := makeFiniteNode(t, g, 100, 200)
-	b, err := g.Nodes.Add([]string{"Event"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -423,19 +424,19 @@ func TestRelateRels_OneOpenEnded(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
-	a, err := g.Nodes.Add([]string{"Person"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"Person"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-	r1, err := g.Rels.Add("KNOWS", a, b, nil)
+	r1, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	r2, err := g.Rels.Add("KNOWS", a, b, nil)
+	r2, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}

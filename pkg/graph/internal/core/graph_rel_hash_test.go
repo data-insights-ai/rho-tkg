@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
@@ -10,10 +11,10 @@ func TestGraphAddRelSetsIntegrity(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	r, err := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+	r, err := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": int64(2020)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -37,11 +38,11 @@ func TestGraphAddRelHashDeterministic(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	r1, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
-	r2, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+	r1, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": int64(2020)})
+	r2, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"since": int64(2020)})
 
 	if r1.Integrity().Hash == "" || r2.Integrity().Hash == "" {
 		t.Fatal("one or both hashes are empty")
@@ -56,9 +57,9 @@ func TestGraphAddRelGenesisZeroPrevHash(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, nil)
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, nil)
 
 	if r.Integrity().PrevHash != "" {
 		t.Fatalf("PrevHash = %q, want empty for genesis", r.Integrity().PrevHash)
@@ -71,14 +72,14 @@ func TestGraphUpdateRelHashChain(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"Person"}, nil)
-	nB, _ := g.Nodes.Add([]string{"Person"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"weight": int64(1)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"weight": int64(1)})
 	relID := r.ID()
 
 	oldHash := r.Integrity().Hash
 
-	updated, err := g.Rels.Update(relID, map[string]any{"weight": int64(2)})
+	updated, err := g.Rels.Update(context.Background(), relID, map[string]any{"weight": int64(2)})
 	if err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
@@ -99,26 +100,26 @@ func TestGraphUpdateRelMultipleUpdatesChain(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(0)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(0)})
 	relID := r.ID()
 
 	h0 := r.Integrity().Hash
 
-	r1, _ := g.Rels.Update(relID, map[string]any{"w": int64(1)})
+	r1, _ := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(1)})
 	h1 := r1.Integrity().Hash
 	if r1.Integrity().PrevHash != h0 {
 		t.Fatalf("update 1: PrevHash = %q, want %q", r1.Integrity().PrevHash, h0)
 	}
 
-	r2, _ := g.Rels.Update(relID, map[string]any{"w": int64(2)})
+	r2, _ := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(2)})
 	h2 := r2.Integrity().Hash
 	if r2.Integrity().PrevHash != h1 {
 		t.Fatalf("update 2: PrevHash = %q, want %q", r2.Integrity().PrevHash, h1)
 	}
 
-	r3, _ := g.Rels.Update(relID, map[string]any{"w": int64(3)})
+	r3, _ := g.Rels.Update(context.Background(), relID, map[string]any{"w": int64(3)})
 	if r3.Integrity().PrevHash != h2 {
 		t.Fatalf("update 3: PrevHash = %q, want %q", r3.Integrity().PrevHash, h2)
 	}
@@ -133,13 +134,13 @@ func TestGraphUpdateRelHashChanges(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add([]string{"X"}, nil)
-	nB, _ := g.Nodes.Add([]string{"X"}, nil)
-	r, _ := g.Rels.Add("KNOWS", nA, nB, map[string]any{"w": int64(1)})
+	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "KNOWS", nA, nB, map[string]any{"w": int64(1)})
 	relID := r.ID()
 	hashBefore := r.Integrity().Hash
 
-	updated, _ := g.Rels.Update(relID, map[string]any{"extra": "data"})
+	updated, _ := g.Rels.Update(context.Background(), relID, map[string]any{"extra": "data"})
 	if updated.Integrity().Hash == hashBefore {
 		t.Fatal("hash did not change when properties changed")
 	}

@@ -6,6 +6,127 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed - API 4.0 surface cleanup (2026-05-14)
+
+Breaking changes — all customer call sites need updating. The shape changes
+below are concentrated in `pkg/graph/{nodes,rels,admin,resolve,io,index,temporal,events}`
+and the new `pkg/graph/tier` sub-API.
+
+**Migration recipe (sed-driven):**
+
+```
+# 1. Collapse *WithContext methods to context-aware base names.
+sed -i '' '
+s/\.AddWithContext(/.Add(/g
+s/\.AddByIDWithContext(/.AddByID(/g
+s/\.AddByIDIfAbsentWithContext(/.AddByIDIfAbsent(/g
+s/\.GetWithContext(/.Get(/g
+s/\.UpdateWithContext(/.Update(/g
+s/\.UpdateInPlaceWithContext(/.UpdateInPlace(/g
+s/\.DeleteWithContext(/.Delete(/g
+s/\.CompareAndSetPropertyWithContext(/.CompareAndSetProperty(/g
+' **/*.go
+
+# 2. Insert context.Background() in any remaining no-context call to the
+# collapsed methods. Use a context-aware editor or compile-loop driven sed.
+
+# 3. Tiered-only Admin methods moved to a new g.Tier sub-API.
+sed -i '' '
+s/\.Admin\.Archive(/.Tier.Archive(/g
+s/\.Admin\.Restore(/.Tier.Restore(/g
+s/\.Admin\.ForceRotate(/.Tier.ForceRotate(/g
+s/\.Admin\.ListShards(/.Tier.ListShards(/g
+s/\.Admin\.RebuildCatalog(/.Tier.RebuildCatalog(/g
+s/\.Admin\.Repair(/.Tier.Repair(/g
+s/\.Admin\.VerifyShard(/.Tier.VerifyShard(/g
+' **/*.go
+
+# 4. Temporal long-form Relationships* names collapsed to short Rels*.
+sed -i '' '
+s/\.Temporal\.RelationshipsAt(/.Temporal.RelsAt(/g
+s/\.Temporal\.RelationshipsByTypeAt(/.Temporal.RelsByTypeAt(/g
+s/\.Temporal\.RelationshipsDuring(/.Temporal.RelsDuring(/g
+' **/*.go
+
+# 5. NextVersion/PreviousVersion renamed for unambiguous ordering.
+sed -i '' '
+s/\.NextVersion(/.VersionAfter(/g
+s/\.PreviousVersion(/.VersionBefore(/g
+' **/*.go
+
+# 6. io.Import collapsed to single signature.
+# For old IO.Import(r) no-options calls: append ", tkgio.ImportOptions{}".
+
+# 7. Admin.DecomposeID(snowflake.ID) split into typed variants.
+# Replace .Admin.DecomposeID(nodeID.SnowflakeID()) with .Admin.DecomposeNodeID(nodeID).
+# Replace .Admin.DecomposeID(relID.SnowflakeID()) with .Admin.DecomposeRelID(relID).
+```
+
+**Complete change list:**
+
+- `pkg/graph/nodes`: `Add`, `Get`, `Update`, `UpdateInPlace`, `Delete`,
+  `CompareAndSetProperty` now take `ctx context.Context` as first arg.
+  `*WithContext` variants removed. `NextVersion` renamed `VersionAfter`,
+  `PreviousVersion` renamed `VersionBefore`.
+- `pkg/graph/rels`: same collapse for `Add`, `AddByID`, `AddByIDIfAbsent`,
+  `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`. Same
+  version-helper rename.
+- `pkg/graph/temporal`: `RelationshipsAt` → `RelsAt`, `RelationshipsByTypeAt`
+  → `RelsByTypeAt`, `RelationshipsDuring` → `RelsDuring` (matches the
+  package, ID-type, and sub-API-field name `Rels`).
+- `pkg/graph/admin` → split into `admin` (generic: Reset, DecomposeNodeID,
+  DecomposeRelID) plus new `pkg/graph/tier` (tiered-only: Archive, Restore,
+  ForceRotate, ListShards, RebuildCatalog, Repair, VerifyShard).
+  `g.Admin.DecomposeID(snowflake.ID)` replaced with typed
+  `g.Admin.DecomposeNodeID(types.NodeID)` and `g.Admin.DecomposeRelID(types.RelID)`.
+  Top-level `graph.DecomposeID` package var likewise replaced by typed
+  `graph.DecomposeNodeID` / `graph.DecomposeRelID` helpers.
+- `pkg/graph/resolve`: token methods `LabelToken`, `RelTypeToken`,
+  `LookupLabel`, `LookupRelType` removed (leaked uint16 representation).
+  Shadow-property accessors `NodeProperty`, `RelProperty` kept.
+- `pkg/graph/index`: `LegacyIndexProvider` interface + `RegisterLegacyProvider`
+  removed. External providers must migrate to `IndexProvider` (with optional
+  `Initializable` for bulk-load).
+- `pkg/graph/io`: `IO.Import(r)` and `IO.ImportWithOptions(r, opts)`
+  collapsed into single `IO.Import(r, opts)`. Pass `ImportOptions{}` for
+  the previous default behaviour.
+- `pkg/graph/subapi.go`: new `BatchAPI.Run(fn) (*BatchResult, error)` —
+  parallel to `TxAPI.Run`. `TxAPI.Begin` docstring strengthened to direct
+  callers to `Run`.
+- `graph.ErrDepthTemporalUnsupported` removed (legacy sentinel, never
+  returned in production).
+
+### Fixed - Hardening sweep correctness items (2026-05-14)
+
+- **Relationship endpoint-lock retry now bounded.** `lockRelationshipCurrentEndpoints`
+  in `pkg/graph/internal/core/relationship_update.go` retries at most 10 times
+  before returning an "endpoints changed after N retries" error, matching
+  `deleteNodeInternal`'s adjacency-retry pattern. The previous unbounded loop
+  could deadlock the caller under a hostile concurrent delete+reimport workload.
+- **Relationship import event-dispatch parity.** `RelOps.Import` guards its
+  `dispatchEvent` call with `ep != nil` to match every other create path.
+  Functionally safe before (dispatchEvent is nil-safe) — pure parity fix.
+- **Property hash contract documented for NaN.** New `TestAppendPropertyValue_Float{32,64}_NaN_BitsPreserved`
+  tests document the intentional design: equal-by-CAS NaN values can hash
+  differently because the hash preserves the IEEE-754 bit pattern. Mirrors
+  the existing tested `±0` case. `PropertyValueEqual` and the property-hash
+  function carry expanded doc comments calling out the cross-system implication.
+- **Registry capacity warning fires on import.** `LabelRegistry.ImportNames`
+  and `RelTypeRegistry.ImportNames` now trip `warnOnce` when a restore
+  pushes the registry past `tokenCapacityWarning`. Before this fix, large
+  restores could exceed the threshold without any operator-visible signal.
+- **Tiered store doc-only hardening.** `temporalIndexShardRefsLocked`,
+  `EndpointIntegrityHashes`, `recordBackgroundError`/`backgroundError`,
+  and `DeleteNodeWithHistory` now document — respectively — the
+  `ts.mu → archiveMu` lock-ordering contract, the self-loop / same-shard /
+  cross-shard branch semantics, the sticky poison-pill behaviour and its
+  network-filesystem implication, and the partial-state error semantics
+  for the "shard delete failed but node is gone" race.
+- **`reconstructTypedValue` documents the trust contract.** The unchecked
+  path is intentionally best-effort for legacy data (Type=ptUnknown=0); the
+  checked path (`validatePropertyWire`) rejects unknown tags before reaching
+  this function.
+
 ### Fixed - Index create rollback cleanup (2026-05-14)
 
 - **Graph-level index creates now remove partial indexes after backend failure.**

@@ -16,9 +16,9 @@ import (
 
 // --- Version chain navigation ---
 
-// PreviousVersion returns the version immediately before the given version.
+// VersionBefore returns the version immediately before the given version.
 // Returns nil, nil if the predecessor does not exist for a known entity.
-func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node, error) {
+func (n *NodeOps) VersionBefore(id types.NodeID, version uint32) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -45,10 +45,10 @@ func (n *NodeOps) PreviousVersion(id types.NodeID, version uint32) (*types.Node,
 	return node, err
 }
 
-// NextVersion returns the version immediately after the given version.
+// VersionAfter returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current node (which may be version+1).
-func (n *NodeOps) NextVersion(id types.NodeID, version uint32) (*types.Node, error) {
+func (n *NodeOps) VersionAfter(id types.NodeID, version uint32) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -182,9 +182,9 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	return nil
 }
 
-// PreviousVersion returns the version immediately before the given version.
+// VersionBefore returns the version immediately before the given version.
 // Returns nil, nil if the predecessor does not exist for a known entity.
-func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+func (r *RelOps) VersionBefore(id types.RelID, version uint32) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -211,10 +211,10 @@ func (r *RelOps) PreviousVersion(id types.RelID, version uint32) (*types.Relatio
 	return rel, err
 }
 
-// NextVersion returns the version immediately after the given version.
+// VersionAfter returns the version immediately after the given version.
 // Returns nil, nil if no newer version exists (the given version IS the current tip).
 // Checks history first, then falls back to the current relationship (which may be version+1).
-func (r *RelOps) NextVersion(id types.RelID, version uint32) (*types.Relationship, error) {
+func (r *RelOps) VersionAfter(id types.RelID, version uint32) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err

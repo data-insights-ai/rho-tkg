@@ -240,11 +240,11 @@ func TestAddByIDIfAbsentUsesEndpointHashWriteCapability(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestAddByIDIfAbsentUsesEndpointHashWriteCapability(t *testing.T) {
 	fs.target = a.ID()
 	fs.enabled.Store(true)
 
-	rel, created, err := g.Rels.AddByIDIfAbsentWithContext(context.Background(), "KNOWS", a.ID(), b.ID(), nil)
+	rel, created, err := g.Rels.AddByIDIfAbsent(context.Background(), "KNOWS", a.ID(), b.ID(), nil)
 	if err != nil {
 		t.Fatalf("AddByIDIfAbsentWithContext: %v", err)
 	}
@@ -282,11 +282,11 @@ func TestBatchAddRelationshipUsesEndpointHashWriteCapability(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -336,11 +336,11 @@ func TestRelImportUsesEndpointHashCapability(t *testing.T) {
 		t.Fatal("concrete wrapper must not enable the endpoint hash fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -380,11 +380,11 @@ func TestRelAdd_ConcreteMemoryWrapperEndpointReadFailure_Propagates(t *testing.T
 		t.Fatal("concrete wrapper must not enable the endpoint hash fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestRelAdd_ConcreteMemoryWrapperEndpointReadFailure_Propagates(t *testing.T
 	fs.enabled.Store(true)
 
 	const typ = "CONCRETE_WRAPPER_ENDPOINT_FAULT"
-	rel, err := g.Rels.AddWithContext(context.Background(), typ, a, b, nil)
+	rel, err := g.Rels.Add(context.Background(), typ, a, b, nil)
 	if !errors.Is(err, injected) {
 		t.Fatalf("AddWithContext err = %v, want injected endpoint read fault", err)
 	}
@@ -421,15 +421,15 @@ func TestRelUpdate_ConcreteMemoryWrapperEndpointReadFailure_Propagates(t *testin
 		t.Fatal("concrete wrapper must not enable the endpoint hash fast path")
 	}
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.AddWithContext(context.Background(), "KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestRelUpdate_ConcreteMemoryWrapperEndpointReadFailure_Propagates(t *testin
 	fs.target = b.ID()
 	fs.enabled.Store(true)
 
-	updated, err := g.Rels.UpdateWithContext(context.Background(), r.ID(), map[string]any{"since": 2025})
+	updated, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"since": 2025})
 	if !errors.Is(err, injected) {
 		t.Fatalf("UpdateWithContext err = %v, want injected endpoint read fault", err)
 	}
@@ -456,15 +456,15 @@ func TestRelUpdate_EndpointReadFailure_Propagates(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.AddWithContext(context.Background(), "KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestRelUpdate_EndpointReadFailure_Propagates(t *testing.T) {
 	fs.target = b.ID()
 	fs.enabled.Store(true)
 
-	updated, err := g.Rels.UpdateWithContext(context.Background(), r.ID(), map[string]any{"since": 2025})
+	updated, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"since": 2025})
 	if err == nil {
 		t.Fatalf("UpdateWithContext: got nil error, want non-nil (synthetic GetNode failure must propagate)")
 	}
@@ -484,7 +484,7 @@ func TestRelUpdate_EndpointReadFailure_Propagates(t *testing.T) {
 	}
 
 	fs.enabled.Store(false)
-	got, err := g.Rels.GetWithContext(context.Background(), r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after failed update: %v", err)
 	}
@@ -505,15 +505,15 @@ func TestRelUpdate_EndpointNotFound_Propagates(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.AddWithContext(context.Background(), "KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -521,7 +521,7 @@ func TestRelUpdate_EndpointNotFound_Propagates(t *testing.T) {
 	fs.target = b.ID()
 	fs.enabled.Store(true)
 
-	updated, err := g.Rels.UpdateWithContext(context.Background(), r.ID(), map[string]any{"since": 2025})
+	updated, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"since": 2025})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("UpdateWithContext err = %v, want ErrNodeNotFound", err)
 	}
@@ -530,7 +530,7 @@ func TestRelUpdate_EndpointNotFound_Propagates(t *testing.T) {
 	}
 
 	fs.enabled.Store(false)
-	got, err := g.Rels.GetWithContext(context.Background(), r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after failed update: %v", err)
 	}
@@ -551,15 +551,15 @@ func TestRelCAS_EndpointNotFound_Propagates(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	r, err := g.Rels.AddWithContext(context.Background(), "KNOWS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestRelCAS_EndpointNotFound_Propagates(t *testing.T) {
 	fs.target = b.ID()
 	fs.enabled.Store(true)
 
-	ok, err := g.Rels.CompareAndSetPropertyWithContext(context.Background(), r.ID(), "since", nil, 2025)
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), r.ID(), "since", nil, 2025)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("CompareAndSetPropertyWithContext err = %v, want ErrNodeNotFound", err)
 	}
@@ -576,7 +576,7 @@ func TestRelCAS_EndpointNotFound_Propagates(t *testing.T) {
 	}
 
 	fs.enabled.Store(false)
-	got, err := g.Rels.GetWithContext(context.Background(), r.ID())
+	got, err := g.Rels.Get(context.Background(), r.ID())
 	if err != nil {
 		t.Fatalf("GetRelationship after failed CAS: %v", err)
 	}
@@ -598,15 +598,15 @@ func TestBatch_EndpointReadFailure_RecordsBatchError(t *testing.T) {
 	}
 	defer g.Close()
 
-	a, err := g.Nodes.Add([]string{"A"}, nil)
+	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	b, err := g.Nodes.Add([]string{"B"}, nil)
+	b, err := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
-	c, err := g.Nodes.Add([]string{"C"}, nil)
+	c, err := g.Nodes.Add(context.Background(), []string{"C"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode C: %v", err)
 	}

@@ -53,9 +53,9 @@ func (c *Core) nodesAtLocked(at types.Instant) ([]*types.Node, error) {
 	return result, nil
 }
 
-// RelationshipsAt returns all relationships valid at the given instant.
+// RelsAt returns all relationships valid at the given instant.
 // History-aware: includes deleted relationships that were valid at time t.
-func (t *TempOps) RelationshipsAt(at types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsAt(at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -186,11 +186,11 @@ func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 	return result, nil
 }
 
-// RelationshipsDuring returns all relationships whose validity overlaps [start, end).
+// RelsDuring returns all relationships whose validity overlaps [start, end).
 // History-aware: includes deleted or updated relationships.
 //
 // end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
-func (t *TempOps) RelationshipsDuring(start, end types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -570,15 +570,15 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 
 // --- Relationship-side parity (mirrors of the Node methods above) ---
 
-// RelationshipsByTypeAt returns all relationships of the given type
+// RelsByTypeAt returns all relationships of the given type
 // that are valid at the given instant. Returns nil if the type is not
 // registered.
 //
-// RelationshipsByTypeAt wrapper over RelationshipsByType(typeName, storepkg.QueryOpts{ValidAt: t}) —
+// RelsByTypeAt wrapper over RelationshipsByType(typeName, storepkg.QueryOpts{ValidAt: t}) —
 // the named convenience mirror of GetNodesByLabelValidAt. History-aware via
 // the generic-opts path: includes deleted relationships whose type matched
 // at t.
-func (t *TempOps) RelationshipsByTypeAt(relType string, at types.Instant) ([]*types.Relationship, error) {
+func (t *TempOps) RelsByTypeAt(relType string, at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err

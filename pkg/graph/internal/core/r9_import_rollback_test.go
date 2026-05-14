@@ -12,6 +12,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/memory"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/store/tiered"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/types"
+	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/io"
 )
 
 func TestR9_ImportReplayErrorRollsBackNewCurrentHistoryAndRegistries(t *testing.T) {
@@ -46,7 +47,7 @@ func TestR9_ImportReplayErrorRollsBackNewCurrentHistoryAndRegistries(t *testing.
 		EndID:   200, // missing endpoint: PutRelationship fails after node/history replay
 	})
 
-	err = g.IO.Import(bytes.NewReader(stream.Bytes()))
+	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("Import: got %v, want ErrNodeNotFound", err)
 	}
@@ -102,7 +103,7 @@ func TestR9_ImportReplayErrorRestoresExistingHistoryAndRegistries(t *testing.T) 
 		EndID:   200, // missing endpoint after the history replay
 	})
 
-	err = g.IO.Import(bytes.NewReader(stream.Bytes()))
+	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("Import: got %v, want ErrNodeNotFound", err)
 	}
@@ -144,7 +145,7 @@ func TestR9_ImportRollbackSnapshotsOnlyTouchedHistorySuffixWithNativeTrim(t *tes
 	if err != nil {
 		t.Fatalf("seed other node: %v", err)
 	}
-	if _, err := g.Rels.Add("KNOWS", n, other, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", n, other, nil); err != nil {
 		t.Fatalf("seed rel type: %v", err)
 	}
 
@@ -208,7 +209,7 @@ func TestR9_ImportReplayErrorRestoresHistorySuffixAfterTrimRollback(t *testing.T
 	if err != nil {
 		t.Fatalf("seed other node: %v", err)
 	}
-	if _, err := g.Rels.Add("KNOWS", n, other, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", n, other, nil); err != nil {
 		t.Fatalf("seed rel type: %v", err)
 	}
 
@@ -250,7 +251,7 @@ func TestR9_ImportReplayErrorRestoresHistorySuffixAfterTrimRollback(t *testing.T
 		EndID:   999, // missing endpoint: fail after history replay
 	})
 
-	err = g.IO.Import(bytes.NewReader(stream.Bytes()))
+	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("Import: got %v, want ErrNodeNotFound", err)
 	}
@@ -291,7 +292,7 @@ func TestR9_ImportRollbackHistoryFallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed other node: %v", err)
 	}
-	if _, err := g.Rels.Add("KNOWS", n, other, nil); err != nil {
+	if _, err := g.Rels.Add(context.Background(), "KNOWS", n, other, nil); err != nil {
 		t.Fatalf("seed rel type: %v", err)
 	}
 	for _, version := range []uint32{0, 1, 3} {
@@ -490,7 +491,7 @@ func TestR9_ImportReplayRollbackUsesImportRegistryBeforeTieredCleanup(t *testing
 		EndID:   int64(missingID.SnowflakeID()),
 	})
 
-	err := g.IO.Import(bytes.NewReader(stream.Bytes()))
+	err := g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("Import: got %v, want ErrNodeNotFound", err)
 	}

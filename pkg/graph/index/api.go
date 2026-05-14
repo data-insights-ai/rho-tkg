@@ -24,7 +24,6 @@ type Ops interface {
 	DropVector(label, propertyKey string) error
 	SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error)
 	RegisterProvider(p IndexProvider) error
-	RegisterLegacyProvider(p LegacyIndexProvider) error
 	UnregisterProvider(name string) error
 	Providers() []string
 }
@@ -135,15 +134,6 @@ func (a *API) RegisterProvider(p IndexProvider) error {
 		return err
 	}
 	return ops.RegisterProvider(p)
-}
-
-// RegisterLegacyProvider registers a legacy index provider.
-func (a *API) RegisterLegacyProvider(p LegacyIndexProvider) error {
-	ops, err := a.ready()
-	if err != nil {
-		return err
-	}
-	return ops.RegisterLegacyProvider(p)
 }
 
 // UnregisterProvider unregisters an index provider by name.

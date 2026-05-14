@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"sync"
@@ -169,7 +170,7 @@ func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
 
 	addNode := func(label string, props map[string]any) *types.Node {
 		t.Helper()
-		n, err := g.Nodes.Add([]string{label}, props)
+		n, err := g.Nodes.Add(context.Background(), []string{label}, props)
 		if err != nil {
 			t.Fatalf("AddNode %s: %v", label, err)
 		}
@@ -177,7 +178,7 @@ func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
 	}
 	addRel := func(typeName string, props map[string]any, start, end *types.Node) *types.Relationship {
 		t.Helper()
-		r, err := g.Rels.Add(typeName, start, end, props)
+		r, err := g.Rels.Add(context.Background(), typeName, start, end, props)
 		if err != nil {
 			t.Fatalf("AddRelationship %s: %v", typeName, err)
 		}
@@ -222,12 +223,12 @@ func TestDiffSnapshots_ReturnsSortedChangeSlices(t *testing.T) {
 
 	advanceClockPast(t, clk, t1+10)
 	for i, n := range updatedNodes {
-		if _, err := g.Nodes.Update(n.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
+		if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
 			t.Fatalf("UpdateNode %d: %v", i, err)
 		}
 	}
 	for i, r := range updatedRels {
-		if _, err := g.Rels.Update(r.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
+		if _, err := g.Rels.Update(context.Background(), r.ID(), map[string]any{"state": "after", "rank": int64(i)}); err != nil {
 			t.Fatalf("UpdateRelationship %d: %v", i, err)
 		}
 	}
@@ -321,7 +322,7 @@ func TestDiffSnapshots_Created(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.Nodes.Add([]string{"Thing"}, map[string]any{"k": "v"})
+	n, err := g.Nodes.Add(context.Background(), []string{"Thing"}, map[string]any{"k": "v"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -352,7 +353,7 @@ func TestDiffSnapshots_Deleted(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.Nodes.Add([]string{"Event"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -380,7 +381,7 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	g := newDiffGraph(t)
 	clk := useTestClock(t, g)
 
-	n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes.Add(context.Background(), []string{"User"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -392,7 +393,7 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	clk.Advance(2 * time.Millisecond)
 
 	// Update the node (its hash changes).
-	if _, err := g.Nodes.Update(nid, map[string]any{"name": "Alice Updated"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), nid, map[string]any{"name": "Alice Updated"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -426,7 +427,7 @@ func TestDiffSnapshots_Unchanged(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	n, err := g.Nodes.Add([]string{"Static"}, map[string]any{"x": int64(1)})
+	n, err := g.Nodes.Add(context.Background(), []string{"Static"}, map[string]any{"x": int64(1)})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -454,14 +455,14 @@ func TestDiffSnapshots_RelCreated(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	// Both nodes valid at t1.
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
-	r, err := g.Rels.Add("LINKS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -492,13 +493,13 @@ func TestDiffSnapshots_RelDeleted(t *testing.T) {
 	t1 := base + 100
 	t2 := base + 300
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
 
 	setNodeTemporal(t, g, a.ID(), base+50, 0)
 	setNodeTemporal(t, g, b.ID(), base+50, 0)
 
-	r, err := g.Rels.Add("LINKS", a, b, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", a, b, nil)
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -526,9 +527,9 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	g := newDiffGraph(t)
 	clk := useTestClock(t, g)
 
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, err := g.Rels.Add("LINKS", a, b, map[string]any{"w": int64(1)})
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, err := g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"w": int64(1)})
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
@@ -537,7 +538,7 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 	t1 := clk.PeekInstant()
 	clk.Advance(2 * time.Millisecond)
 
-	if _, err := g.Rels.Update(rid, map[string]any{"w": int64(2)}); err != nil {
+	if _, err := g.Rels.Update(context.Background(), rid, map[string]any{"w": int64(2)}); err != nil {
 		t.Fatalf("UpdateRelationship: %v", err)
 	}
 
@@ -568,7 +569,7 @@ func TestDiffSnapshots_RelUpdated(t *testing.T) {
 func TestNodeHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
 
-	n, _ := g.Nodes.Add([]string{"Shared"}, nil)
+	n, _ := g.Nodes.Add(context.Background(), []string{"Shared"}, nil)
 	n.SetIntegrity(nil) // exercise nodeHash nil branch
 
 	if got := nodeHash(n); got != "" {
@@ -579,9 +580,9 @@ func TestNodeHash_NilIntegrity(t *testing.T) {
 // TestRelHash_NilIntegrity verifies the nil-integrity path for relationships.
 func TestRelHash_NilIntegrity(t *testing.T) {
 	g := newDiffGraph(t)
-	a, _ := g.Nodes.Add([]string{"A"}, nil)
-	b, _ := g.Nodes.Add([]string{"B"}, nil)
-	r, _ := g.Rels.Add("E", a, b, nil)
+	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
+	r, _ := g.Rels.Add(context.Background(), "E", a, b, nil)
 	r.SetIntegrity(nil) // exercise relHash nil branch
 
 	if got := relHash(r); got != "" {
@@ -596,13 +597,13 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	clk := useTestClock(t, g)
 
 	// "unchanged" — created before the diff window, not modified.
-	_, err := g.Nodes.Add([]string{"Unchanged"}, map[string]any{"v": "same"})
+	_, err := g.Nodes.Add(context.Background(), []string{"Unchanged"}, map[string]any{"v": "same"})
 	if err != nil {
 		t.Fatalf("AddNode unchanged: %v", err)
 	}
 
 	// "updated" — exists at t1, properties change before t2.
-	toUpdate, err := g.Nodes.Add([]string{"Updated"}, map[string]any{"v": "before"})
+	toUpdate, err := g.Nodes.Add(context.Background(), []string{"Updated"}, map[string]any{"v": "before"})
 	if err != nil {
 		t.Fatalf("AddNode toUpdate: %v", err)
 	}
@@ -613,7 +614,7 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	clk.Advance(2 * time.Millisecond)
 
 	// Perform the update between t1 and t2.
-	if _, err := g.Nodes.Update(toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
+	if _, err := g.Nodes.Update(context.Background(), toUpdate.ID(), map[string]any{"v": "after"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
@@ -622,7 +623,7 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	// ValidFrom the snowflake-derived value is wall-clock-now which is
 	// before the test-clock-derived t1.
 	createdValidFrom := clk.PeekInstant()
-	created, err := g.Nodes.Add([]string{"Created"}, map[string]any{"tkg_valid_from": createdValidFrom})
+	created, err := g.Nodes.Add(context.Background(), []string{"Created"}, map[string]any{"tkg_valid_from": createdValidFrom})
 	if err != nil {
 		t.Fatalf("AddNode created: %v", err)
 	}
@@ -662,7 +663,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 	defer g.Close()
 
 	// Seed a node with explicit ValidFrom so temporal queries have real work to do.
-	n, err := g.Nodes.Add([]string{"Thing"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}

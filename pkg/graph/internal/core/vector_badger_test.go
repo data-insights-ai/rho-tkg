@@ -3,6 +3,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 
-	n, err := g.Nodes.Add([]string{"User", "Admin"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"User", "Admin"}, nil)
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -24,7 +25,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 		t.Fatalf("RemoveNodeLabel: %v", err)
 	}
 
-	updated, _ := g.Nodes.Get(id)
+	updated, _ := g.Nodes.Get(context.Background(), id)
 	if g.Nodes.HasLabel(updated, "Admin") {
 		t.Error("label 'Admin' still present after removal from tiered.Store")
 	}
@@ -35,8 +36,8 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	label := "User"
 	key := "embedding"
 
-	n1, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{1, 0, 0}})
-	n2, _ := g.Nodes.Add([]string{label}, map[string]any{key: []float32{0, 1, 0}})
+	n1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
+	n2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
 
 	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -56,7 +57,7 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 
 func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add([]string{"User"}, nil)
+	g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
 	err := g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
 	if !errors.Is(err, ErrVectorIndexExists) {
@@ -66,7 +67,7 @@ func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 
 func TestTieredStore_VectorIndex_Drop(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add([]string{"User"}, nil)
+	g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
 	if err := g.Index.DropVector("User", "v"); err != nil {
 		t.Fatalf("DropVectorIndex: %v", err)

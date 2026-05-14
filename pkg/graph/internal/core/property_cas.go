@@ -15,17 +15,8 @@ import (
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
 // Value comparison is exact-type property equality (int(42) != int64(42)); NaN property values match NaN.
-func (n *NodeOps) CompareAndSetProperty(id types.NodeID, key string, expected, newVal any) (bool, error) {
-	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return false, err
-	}
-	return c.Nodes.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
-}
-
-// CompareAndSetPropertyWithContext is the context-aware variant of CompareAndSetProperty.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (n *NodeOps) CompareAndSetPropertyWithContext(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
+func (n *NodeOps) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return false, err
@@ -210,17 +201,8 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
 // Value comparison is exact-type property equality (int(42) != int64(42)); NaN property values match NaN.
-func (r *RelOps) CompareAndSetProperty(id types.RelID, key string, expected, newVal any) (bool, error) {
-	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return false, err
-	}
-	return c.Rels.CompareAndSetPropertyWithContext(context.Background(), id, key, expected, newVal)
-}
-
-// CompareAndSetPropertyWithContext is the context-aware variant of CompareAndSetProperty.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
-func (r *RelOps) CompareAndSetPropertyWithContext(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
+func (r *RelOps) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return false, err

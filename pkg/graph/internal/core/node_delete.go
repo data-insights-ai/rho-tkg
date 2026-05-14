@@ -16,7 +16,7 @@ import (
 // =============================================================================
 
 // GetWithContext retrieves a node by snowflake ID with context support.
-func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.Node, error) {
+func (n *NodeOps) Get(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (n *NodeOps) GetWithContext(ctx context.Context, id types.NodeID) (*types.N
 // DeleteWithContext atomically removes a node and all connected relationships.
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
-func (n *NodeOps) DeleteWithContext(ctx context.Context, id types.NodeID) error {
+func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return err
