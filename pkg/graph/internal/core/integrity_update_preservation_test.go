@@ -158,6 +158,48 @@ func TestNodeUpdate_OverwritesExplicitlySuppliedProvenance(t *testing.T) {
 	}
 }
 
+// TestNodeUpdate_ExplicitNilProvenanceClears pins the documented contract:
+// a present key with a nil/empty value clears the corresponding stored
+// provenance field. To preserve, callers must OMIT the key entirely.
+func TestNodeUpdate_ExplicitNilProvenanceClears(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+
+	n, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{
+		"tkg_author_id":     "alice",
+		"tkg_authorized_by": "manager",
+		"tkg_auth_level":    uint8(7),
+		"tkg_signature":     []byte{0xab, 0xcd},
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// Explicit nil clears all four.
+	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{
+		"tkg_author_id":     nil,
+		"tkg_authorized_by": nil,
+		"tkg_auth_level":    nil,
+		"tkg_signature":     nil,
+		"k":                 "trigger-mutation",
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	ig := updated.Integrity()
+	if ig.AuthorID != "" {
+		t.Errorf("AuthorID after explicit nil = %q, want \"\"", ig.AuthorID)
+	}
+	if ig.AuthorizedBy != "" {
+		t.Errorf("AuthorizedBy after explicit nil = %q, want \"\"", ig.AuthorizedBy)
+	}
+	if ig.AuthorizationLevel != 0 {
+		t.Errorf("AuthorizationLevel after explicit nil = %d, want 0", ig.AuthorizationLevel)
+	}
+	if len(ig.Signature) != 0 {
+		t.Errorf("Signature after explicit nil = %v, want empty", ig.Signature)
+	}
+}
+
 // _ silences the unused-import lint when only one of the helpers is used —
 // pkg/types is referenced via the new test entities below.
 var _ = types.NodeID(0)

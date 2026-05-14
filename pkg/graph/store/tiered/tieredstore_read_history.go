@@ -836,12 +836,12 @@ func trimNodeHistoryPage(history []*types.Node, limit int) []*types.Node {
 }
 
 // ForEachDeletedNodeID iterates IDs that have history rows but no current
-// row. Two-phase: collect history IDs across in-scope shards under shard
-// locks (via ForEachNodeHistoryIDByDepth), then probe each via GetNode after
-// locks release. Skip when the current row exists, yield otherwise. The
-// graph-layer benefit is the same as for single-shard backends: history-aware
-// queries fold only deleted IDs onto the narrow candidate set rather than the
-// full history set.
+// row. Streaming: probes ts.GetNode INSIDE the history-iteration callback —
+// shard locks/checkouts are released across callback invocations (see the
+// pagination shape in forEachNodeHistoryIDAll / forEachNodeHistoryIDByDepth),
+// so the GetNode probe re-routes safely without holding the iterator's shard
+// handles. Yields only IDs whose current row is absent; live entities are
+// skipped without buffering the full history set.
 func (ts *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	return ts.ForEachDeletedNodeIDByDepth(DepthAll, fn)
 }
@@ -856,24 +856,20 @@ func (ts *Store) ForEachDeletedNodeIDByDepth(depth ShardDepth, fn func(types.Nod
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	var ids []types.NodeID
-	if err := ts.ForEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
-		ids = append(ids, id)
-		return true
-	}); err != nil {
-		return err
-	}
-	for _, id := range ids {
+	var probeErr error
+	err := ts.ForEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
 		_, err := ts.GetNode(id)
 		if err == nil {
-			continue
+			return true // live — skip
 		}
 		if !errors.Is(err, ErrNodeNotFound) {
-			return err
+			probeErr = err
+			return false
 		}
-		if !fn(id) {
-			return nil
-		}
+		return fn(id)
+	})
+	if probeErr != nil {
+		return probeErr
 	}
-	return nil
+	return err
 }

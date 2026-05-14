@@ -723,9 +723,10 @@ func trimRelHistoryPage(history []*types.Relationship, limit int) []*types.Relat
 	return history
 }
 
-// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID
-// — collect history IDs at depth, then probe GetRelationship after locks
-// release, yielding only IDs whose current row is absent.
+// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID.
+// Streaming probe inside the history-iteration callback; shard locks/checkouts
+// are released across callback invocations so ts.GetRelationship re-routes
+// safely. Yields only IDs whose current row is absent.
 func (ts *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	return ts.ForEachDeletedRelIDByDepth(DepthAll, fn)
 }
@@ -740,24 +741,20 @@ func (ts *Store) ForEachDeletedRelIDByDepth(depth ShardDepth, fn func(types.RelI
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	var ids []types.RelID
-	if err := ts.ForEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
-		ids = append(ids, id)
-		return true
-	}); err != nil {
-		return err
-	}
-	for _, id := range ids {
+	var probeErr error
+	err := ts.ForEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
 		_, err := ts.GetRelationship(id)
 		if err == nil {
-			continue
+			return true // live — skip
 		}
 		if !errors.Is(err, ErrRelNotFound) {
-			return err
+			probeErr = err
+			return false
 		}
-		if !fn(id) {
-			return nil
-		}
+		return fn(id)
+	})
+	if probeErr != nil {
+		return probeErr
 	}
-	return nil
+	return err
 }

@@ -250,6 +250,29 @@ type AsyncEventBus struct {
 	// pre-existing lower-priority events before the rest of the batch's
 	// higher-priority events have been made visible. Cleared at end of
 	// batch followed by signalWakeup so any lower-priority work can resume.
+	//
+	// Ordering correctness (W1 analysis):
+	//   - Go atomics are sequentially consistent, so the dispatcher's
+	//     Load always sees the most-recent Store across goroutines.
+	//   - Publisher pattern: Store(i+1) HAPPENS-BEFORE every enqueueLocked
+	//     for priority pass i, because they execute in straight-line code
+	//     under publishMu.
+	//   - Dispatcher pattern: Load happens before the priorityOrder scan,
+	//     which happens before any channel receive.
+	//   - Worst case: dispatcher reads a ceiling that's about to be raised
+	//     (publisher between Store(i+1) and Store(i+2)). The dispatcher
+	//     scans priorityOrder[0..i], finds them empty (publisher hasn't
+	//     enqueued pass i+1 yet, and earlier passes already drained), and
+	//     sleeps on wakeupCh until the next signal. No inversion possible.
+	//   - End-of-batch Store(0) is cosmetic in isolation: ceiling=5
+	//     (priorityOrder length) already means "all priorities allowed".
+	//     The clear is for hygiene so subsequent inspection sees "no batch".
+	//
+	// Panic safety: a panic inside enqueueLocked leaves publishMu held and
+	// batchPriorityCeiling non-zero. That's a pre-existing publishMu lifetime
+	// issue (publishMu is direct-locked, not defer-unlocked, to release
+	// before signalWakeup); not introduced by this field. The atomic itself
+	// is auto-cleared at end-of-batch on the happy path.
 	batchPriorityCeiling atomic.Int32
 
 	wg        sync.WaitGroup
