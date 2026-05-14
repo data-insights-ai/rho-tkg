@@ -429,13 +429,13 @@ func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {
 	if err := g.Index.CreateHighFrequency("Doc", time.Hour); err != nil {
 		t.Errorf("CreateHighFrequency: %v", err)
 	}
-	if err := g.Index.DropHighFrequency("Doc"); err != nil {
+	if err := g.Index.DeleteHighFrequency("Doc"); err != nil {
 		t.Errorf("DropHighFrequency: %v", err)
 	}
 	if err := g.Index.CreateTemporal("Doc"); err != nil {
 		t.Errorf("CreateTemporal: %v", err)
 	}
-	if err := g.Index.DropTemporal("Doc"); err != nil {
+	if err := g.Index.DeleteTemporal("Doc"); err != nil {
 		t.Errorf("DropTemporal: %v", err)
 	}
 	if err := g.Index.CreateVector("Doc", "embedding", 3, storepkg.DistanceCosine); err != nil {
@@ -444,7 +444,7 @@ func TestSubAPISmoke_IndexAllWrappers(t *testing.T) {
 	if _, err := g.Index.SearchNearest("Doc", "embedding", []float32{1, 2, 3}, 1, storepkg.QueryOpts{}); err != nil {
 		t.Errorf("SearchNearest: %v", err)
 	}
-	if err := g.Index.DropVector("Doc", "embedding"); err != nil {
+	if err := g.Index.DeleteVector("Doc", "embedding"); err != nil {
 		t.Errorf("DropVector: %v", err)
 	}
 

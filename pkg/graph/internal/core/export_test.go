@@ -313,7 +313,7 @@ func TestIOImportNilReaderReturnsSentinel(t *testing.T) {
 	}
 
 	var typedNilReader *bytes.Buffer
-	if err := g.IO.ImportWithOptions(typedNilReader, tkgio.ImportOptions{}); !errors.Is(err, ErrNilReader) {
+	if err := g.IO.Import(typedNilReader, tkgio.ImportOptions{}); !errors.Is(err, ErrNilReader) {
 		t.Fatalf("ImportWithOptions(typed nil reader): got %v, want ErrNilReader", err)
 	}
 }

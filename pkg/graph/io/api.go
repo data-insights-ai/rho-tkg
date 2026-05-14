@@ -8,12 +8,12 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v3/pkg/graph/internal/grapherr"
 )
 
-// Sentinel errors surfaced by Import / ImportWithOptions. The same
+// Sentinel errors surfaced by Import. The same
 // values are re-exported from pkg/graph (graph.ErrImportSizeLimit,
 // etc.) — callers that already import pkg/graph/io can use the
 // `tkgio.Err*` qualifier directly to keep `errors.Is` checks tidy.
 var (
-	// ErrNilReader is returned when Import / ImportWithOptions receives a nil
+	// ErrNilReader is returned when Import receives a nil
 	// io.Reader, including typed nil reader values.
 	ErrNilReader = errors.New("graph: import reader must not be nil")
 
@@ -75,7 +75,7 @@ type ImportOptions struct {
 // Ops is the subset of *core.IOOps the io sub-API forwards to.
 type Ops interface {
 	Export(w io.Writer) error
-	ImportWithOptions(r io.Reader, opts ImportOptions) error
+	Import(r io.Reader, opts ImportOptions) error
 }
 
 // API is the io sub-API accessor.
@@ -115,5 +115,5 @@ func (a *API) Import(r io.Reader, opts ImportOptions) error {
 	if err != nil {
 		return err
 	}
-	return ops.ImportWithOptions(r, opts)
+	return ops.Import(r, opts)
 }

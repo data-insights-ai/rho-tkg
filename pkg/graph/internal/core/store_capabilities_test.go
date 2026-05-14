@@ -56,7 +56,7 @@ func TestCapability_PropertyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	if err := g.Index.CreateProperty("Person", "name"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("CreateProperty err = %v, want ErrCapabilityNotSupported", err)
 	}
-	if err := g.Index.DropProperty("Person", "name"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	if err := g.Index.DeleteProperty("Person", "name"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropProperty err = %v, want ErrCapabilityNotSupported", err)
 	}
 
@@ -84,7 +84,7 @@ func TestCapability_TemporalIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed Person: %v", err)
 	}
-	if err := g.Index.DropTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	if err := g.Index.DeleteTemporal("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropTemporal err = %v, want ErrCapabilityNotSupported", err)
 	}
 }
@@ -99,7 +99,7 @@ func TestCapability_HighFrequencyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T
 	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
 		t.Fatalf("seed Person: %v", err)
 	}
-	if err := g.Index.DropHighFrequency("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	if err := g.Index.DeleteHighFrequency("Person"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropHighFrequency err = %v, want ErrCapabilityNotSupported", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestCapability_VectorIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": []float32{1, 2, 3}}); err != nil {
 		t.Fatalf("seed Doc: %v", err)
 	}
-	if err := g.Index.DropVector("Doc", "embedding"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	if err := g.Index.DeleteVector("Doc", "embedding"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Errorf("DropVector err = %v, want ErrCapabilityNotSupported", err)
 	}
 	if _, err := g.Index.SearchNearest("Doc", "embedding", []float32{1, 2, 3}, 1, storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {

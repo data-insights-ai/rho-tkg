@@ -35,8 +35,8 @@ const importPreallocLimit = 1 << 20    // avoid trusting unbounded header counts
 // for default behavior (platform default temp dir, no size cap).
 //
 // API 4.0 change: the previous separate Import(r) and ImportWithOptions(r, opts)
-// have been merged into this single method. ImportWithOptions is kept as a thin
-// alias to ease the migration.
+// were merged into this single method. Pass tkgio.ImportOptions{} for the
+// previous defaults.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
@@ -70,17 +70,6 @@ const importPreallocLimit = 1 << 20    // avoid trusting unbounded header counts
 // as idempotent re-imports. Conflicting duplicate current/history records are
 // rejected and rolled back with ErrCorruptExport.
 func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
-	return o.importWithOptions(r, opts)
-}
-
-// ImportWithOptions is an alias for Import. Kept as a non-breaking alias
-// for backward source-compat during the API 4.0 migration; new code should
-// call Import directly. Deprecated in favor of Import.
-func (o *IOOps) ImportWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
-	return o.importWithOptions(r, opts)
-}
-
-func (o *IOOps) importWithOptions(r io.Reader, opts tkgio.ImportOptions) error {
 	c := o.c
 	if err := c.checkOpen(); err != nil {
 		return err

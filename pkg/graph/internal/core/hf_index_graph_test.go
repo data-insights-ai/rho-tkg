@@ -33,7 +33,7 @@ func TestCreateHighFrequencyIndex_Graph(t *testing.T) {
 	}
 
 	// Drop it
-	err = g.Index.DropHighFrequency("Event")
+	err = g.Index.DeleteHighFrequency("Event")
 	if err != nil {
 		t.Fatalf("DropHighFrequencyIndex: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestHFIndex_ReplacesTemporalIndex(t *testing.T) {
 	// Replace with HFI — should either succeed or return storepkg.ErrTemporalIndexExists
 	// The spec says only one type can be set at a time.
 	// Drop first, then create HFI.
-	err = g.Index.DropTemporal("Widget")
+	err = g.Index.DeleteTemporal("Widget")
 	if err != nil {
 		t.Fatalf("DropTemporalIndex: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestHFIndex_DropNotFound(t *testing.T) {
 	}
 
 	// Drop when no HFI exists — should return storepkg.ErrTemporalIndexNotFound
-	err = g.Index.DropHighFrequency("Beta")
+	err = g.Index.DeleteHighFrequency("Beta")
 	if err == nil {
 		t.Fatal("expected storepkg.ErrTemporalIndexNotFound on drop of non-existent index, got nil")
 	}
@@ -168,7 +168,7 @@ func TestHFIndex_CreateBeforeLabelExists(t *testing.T) {
 		t.Fatalf("duplicate CreateHighFrequencyIndex err = %v, want ErrTemporalIndexExists", err)
 	}
 
-	err = g.Index.DropHighFrequency("NoSuchLabel")
+	err = g.Index.DeleteHighFrequency("NoSuchLabel")
 	if err != nil {
 		t.Fatalf("DropHighFrequencyIndex after future-label create: %v", err)
 	}

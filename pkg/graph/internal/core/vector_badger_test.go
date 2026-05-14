@@ -69,7 +69,7 @@ func TestTieredStore_VectorIndex_Drop(t *testing.T) {
 	g, _ := newTestTieredGraph(t)
 	g.Nodes.Add(context.Background(), []string{"User"}, nil)
 	g.Index.CreateVector("User", "v", 2, storepkg.DistanceCosine)
-	if err := g.Index.DropVector("User", "v"); err != nil {
+	if err := g.Index.DeleteVector("User", "v"); err != nil {
 		t.Fatalf("DropVectorIndex: %v", err)
 	}
 	_, err := g.Index.SearchNearest("User", "v", []float32{1, 0}, 1, storepkg.QueryOpts{})

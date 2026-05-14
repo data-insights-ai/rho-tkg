@@ -237,6 +237,82 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 	return node, err
 }
 
+// AddByIDIfAbsent is the idempotent counterpart of Import: if a node with
+// the supplied id already exists, the existing node is returned with
+// created=false and no error; otherwise a new node is created exactly as
+// Import would create it. Mirrors the shape of RelOps.AddByIDIfAbsent so
+// Node and Rel sub-APIs share the same "ensure-exists" verb (S3 parity).
+//
+// Returns ErrZeroID / ErrInvalidID for invalid IDs (same as Import).
+// Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
+// while a tx holds c.mu.Lock.
+func (n *NodeOps) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, false, err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	var (
+		node    *types.Node
+		created bool
+		err     error
+	)
+	ep, closeErr := c.runUnderRLock(func() {
+		node, created, err = c.addNodeByIDIfAbsentInternal(ctx, id, labels, props)
+	})
+	if closeErr != nil {
+		return nil, false, closeErr
+	}
+	if created && node != nil && ep != nil {
+		dispatchEvent(ep, eventspkg.Event{Type: eventspkg.EventNodeCreate, EntityID: types.EntityID(node.ID()), Timestamp: c.now(), Priority: eventspkg.PriorityHigh})
+	}
+	return node, created, err
+}
+
+// addNodeByIDIfAbsentInternal is the lock-free implementation of
+// AddByIDIfAbsent. Callers must hold c.mu.RLock (standalone) or
+// c.mu.Lock (tx/batch). Differs from importNodeWithIDInternal only in
+// the existence-check branch: instead of returning ErrNodeExists, we
+// return the existing node with created=false.
+func (c *Core) addNodeByIDIfAbsentInternal(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	if id == 0 {
+		return nil, false, ErrZeroID
+	}
+	if id < 0 {
+		return nil, false, ErrInvalidID
+	}
+	// Fast pre-flight existence check (lock-free read). The actual
+	// importNodeWithIDInternal will re-check under entity lock and return
+	// ErrNodeExists if a racing writer beat us — translate that into the
+	// "found, not created" shape for callers.
+	if existing, err := c.getCurrentNode(id); err == nil {
+		c.opNodeReads.Add(1)
+		return existing, false, nil
+	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return nil, false, fmt.Errorf("graph: node-id collision probe: %w", err)
+	}
+	node, err := c.importNodeWithIDInternal(ctx, id, labels, props)
+	if err != nil {
+		if errors.Is(err, storepkg.ErrNodeExists) {
+			// Race: another writer created the node between our pre-flight
+			// and the import's internal collision check. Re-read.
+			existing, getErr := c.getCurrentNode(id)
+			if getErr != nil {
+				return nil, false, fmt.Errorf("graph: AddByIDIfAbsent race re-read: %w", getErr)
+			}
+			c.opNodeReads.Add(1)
+			return existing, false, nil
+		}
+		return nil, false, err
+	}
+	return node, true, nil
+}
+
 // importNodeWithIDInternal is the lock-free implementation of ImportNodeWithID.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {

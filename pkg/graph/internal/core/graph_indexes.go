@@ -57,7 +57,7 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 
 // DropProperty removes a property index.
 // Resolves the label name to a token. Returns storepkg.ErrIndexNotFound if the index does not exist.
-func (i *IndexOps) DropProperty(label, propertyKey string) error {
+func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -126,7 +126,7 @@ func (i *IndexOps) CreateTemporal(label string) error {
 
 // DropTemporal removes a temporal index for the given label.
 // Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
-func (i *IndexOps) DropTemporal(label string) error {
+func (i *IndexOps) DeleteTemporal(label string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -203,7 +203,7 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 
 // DropHighFrequency removes the high-frequency temporal index for the given label.
 // Returns storepkg.ErrTemporalIndexNotFound if no high-frequency index exists.
-func (i *IndexOps) DropHighFrequency(label string) error {
+func (i *IndexOps) DeleteHighFrequency(label string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -277,7 +277,7 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 
 // DropVector removes a vector index.
 // Returns ErrVectorIndexNotFound if the index does not exist.
-func (i *IndexOps) DropVector(label, propertyKey string) error {
+func (i *IndexOps) DeleteVector(label, propertyKey string) error {
 	c := i.c
 	if err := c.checkOpen(); err != nil {
 		return err

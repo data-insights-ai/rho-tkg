@@ -15,13 +15,13 @@ import (
 // Ops is the subset of *core.IndexOps the index sub-API forwards to.
 type Ops interface {
 	CreateProperty(label, propertyKey string) error
-	DropProperty(label, propertyKey string) error
+	DeleteProperty(label, propertyKey string) error
 	CreateHighFrequency(label string, bucketSize time.Duration) error
-	DropHighFrequency(label string) error
+	DeleteHighFrequency(label string) error
 	CreateTemporal(label string) error
-	DropTemporal(label string) error
+	DeleteTemporal(label string) error
 	CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error
-	DropVector(label, propertyKey string) error
+	DeleteVector(label, propertyKey string) error
 	SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error)
 	RegisterProvider(p IndexProvider) error
 	UnregisterProvider(name string) error
@@ -54,12 +54,12 @@ func (a *API) CreateProperty(label, propertyKey string) error {
 }
 
 // DropProperty drops a property index.
-func (a *API) DropProperty(label, propertyKey string) error {
+func (a *API) DeleteProperty(label, propertyKey string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DropProperty(label, propertyKey)
+	return ops.DeleteProperty(label, propertyKey)
 }
 
 // CreateHighFrequency creates a high-frequency temporal index.
@@ -72,12 +72,12 @@ func (a *API) CreateHighFrequency(label string, bucketSize time.Duration) error 
 }
 
 // DropHighFrequency drops a high-frequency temporal index.
-func (a *API) DropHighFrequency(label string) error {
+func (a *API) DeleteHighFrequency(label string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DropHighFrequency(label)
+	return ops.DeleteHighFrequency(label)
 }
 
 // CreateTemporal creates a temporal interval index for a label.
@@ -90,12 +90,12 @@ func (a *API) CreateTemporal(label string) error {
 }
 
 // DropTemporal drops a temporal interval index.
-func (a *API) DropTemporal(label string) error {
+func (a *API) DeleteTemporal(label string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DropTemporal(label)
+	return ops.DeleteTemporal(label)
 }
 
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with
@@ -109,12 +109,12 @@ func (a *API) CreateVector(label, propertyKey string, dims int, metric storepkg.
 }
 
 // DropVector drops a vector index.
-func (a *API) DropVector(label, propertyKey string) error {
+func (a *API) DeleteVector(label, propertyKey string) error {
 	ops, err := a.ready()
 	if err != nil {
 		return err
 	}
-	return ops.DropVector(label, propertyKey)
+	return ops.DeleteVector(label, propertyKey)
 }
 
 // SearchNearest returns the k nearest nodes to query in the vector index.

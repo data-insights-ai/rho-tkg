@@ -169,3 +169,40 @@ func (a *BatchAPI) Run(fn func(*BatchBuilder) error) (*BatchResult, error) {
 	}
 	return bb.Execute()
 }
+
+// RunContext is the context-aware variant of [BatchAPI.Run]. The context
+// is honoured at three short-circuit points: before BeginBatch, after the
+// build callback returns nil, and immediately before Execute. If the
+// context is cancelled at any of these checkpoints the batch is dropped
+// without applying any writes; the underlying BatchBuilder is not exposed
+// to the caller.
+//
+// fn itself does not receive the context — batch builders queue
+// operations in-memory and never block on the context. Use a transaction
+// (TxAPI.RunContext) when you need ctx propagated into the per-op write
+// path.
+func (a *BatchAPI) RunContext(ctx context.Context, fn func(*BatchBuilder) error) (*BatchResult, error) {
+	if a == nil || a.c == nil {
+		return nil, core.ErrNilGraph
+	}
+	if ctx == nil {
+		return nil, core.ErrNilContext
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if fn == nil {
+		return nil, core.ErrNilTxCallback
+	}
+	bb, err := core.NewBatchBuilder(a.c)
+	if err != nil {
+		return nil, err
+	}
+	if err := fn(bb); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return bb.Execute()
+}

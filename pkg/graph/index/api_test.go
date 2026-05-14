@@ -20,13 +20,13 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 		run  func() error
 	}{
 		{name: "CreateProperty", run: func() error { return nilAPI.CreateProperty("Node", "name") }},
-		{name: "DropProperty", run: func() error { return nilAPI.DropProperty("Node", "name") }},
+		{name: "DropProperty", run: func() error { return nilAPI.DeleteProperty("Node", "name") }},
 		{name: "CreateHighFrequency", run: func() error { return nilAPI.CreateHighFrequency("Node", time.Second) }},
-		{name: "DropHighFrequency", run: func() error { return nilAPI.DropHighFrequency("Node") }},
+		{name: "DropHighFrequency", run: func() error { return nilAPI.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return nilAPI.CreateTemporal("Node") }},
-		{name: "DropTemporal", run: func() error { return nilAPI.DropTemporal("Node") }},
+		{name: "DropTemporal", run: func() error { return nilAPI.DeleteTemporal("Node") }},
 		{name: "CreateVector", run: func() error { return nilAPI.CreateVector("Node", "embedding", 3, storepkg.DistanceCosine) }},
-		{name: "DropVector", run: func() error { return nilAPI.DropVector("Node", "embedding") }},
+		{name: "DropVector", run: func() error { return nilAPI.DeleteVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return nilAPI.RegisterProvider(testIndexProvider{}) }},
 		{name: "UnregisterProvider", run: func() error { return nilAPI.UnregisterProvider("geo") }},
 	} {
@@ -69,13 +69,13 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		run  func() error
 	}{
 		{name: "CreateProperty", run: func() error { return api.CreateProperty("Node", "name") }},
-		{name: "DropProperty", run: func() error { return api.DropProperty("Node", "name") }},
+		{name: "DropProperty", run: func() error { return api.DeleteProperty("Node", "name") }},
 		{name: "CreateHighFrequency", run: func() error { return api.CreateHighFrequency("Node", time.Minute) }},
-		{name: "DropHighFrequency", run: func() error { return api.DropHighFrequency("Node") }},
+		{name: "DropHighFrequency", run: func() error { return api.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return api.CreateTemporal("Node") }},
-		{name: "DropTemporal", run: func() error { return api.DropTemporal("Node") }},
+		{name: "DropTemporal", run: func() error { return api.DeleteTemporal("Node") }},
 		{name: "CreateVector", run: func() error { return api.CreateVector("Node", "embedding", 3, storepkg.DistanceEuclidean) }},
-		{name: "DropVector", run: func() error { return api.DropVector("Node", "embedding") }},
+		{name: "DropVector", run: func() error { return api.DeleteVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return api.RegisterProvider(provider) }},
 		{name: "UnregisterProvider", run: func() error { return api.UnregisterProvider("geo") }},
 	} {
@@ -141,7 +141,7 @@ func (s *indexOpsSpy) CreateProperty(label, propertyKey string) error {
 	return s.err
 }
 
-func (s *indexOpsSpy) DropProperty(label, propertyKey string) error {
+func (s *indexOpsSpy) DeleteProperty(label, propertyKey string) error {
 	s.record("DropProperty")
 	return s.err
 }
@@ -151,7 +151,7 @@ func (s *indexOpsSpy) CreateHighFrequency(label string, bucketSize time.Duration
 	return s.err
 }
 
-func (s *indexOpsSpy) DropHighFrequency(label string) error {
+func (s *indexOpsSpy) DeleteHighFrequency(label string) error {
 	s.record("DropHighFrequency")
 	return s.err
 }
@@ -161,7 +161,7 @@ func (s *indexOpsSpy) CreateTemporal(label string) error {
 	return s.err
 }
 
-func (s *indexOpsSpy) DropTemporal(label string) error {
+func (s *indexOpsSpy) DeleteTemporal(label string) error {
 	s.record("DropTemporal")
 	return s.err
 }
@@ -173,7 +173,7 @@ func (s *indexOpsSpy) CreateVector(label, propertyKey string, dims int, metric s
 	return s.err
 }
 
-func (s *indexOpsSpy) DropVector(label, propertyKey string) error {
+func (s *indexOpsSpy) DeleteVector(label, propertyKey string) error {
 	s.record("DropVector")
 	return s.err
 }

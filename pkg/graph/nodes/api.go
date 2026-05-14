@@ -26,6 +26,7 @@ type Ops interface {
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	Delete(ctx context.Context, id types.NodeID) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
+	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error)
@@ -128,6 +129,19 @@ func (a *API) Import(ctx context.Context, id types.NodeID, labels []string, prop
 		return nil, err
 	}
 	return ops.Import(ctx, id, labels, props)
+}
+
+// AddByIDIfAbsent creates a node with the supplied id and labels+props if no
+// node with that id already exists; if a node is already present at that id
+// it returns the existing node with created=false and no error. Mirror of
+// Rels.AddByIDIfAbsent for Node/Rel parity (S3). Returns ErrZeroID or
+// ErrInvalidID for invalid IDs (same as Import).
+func (a *API) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, false, err
+	}
+	return ops.AddByIDIfAbsent(ctx, id, labels, props)
 }
 
 // All returns all nodes matching opts.

@@ -378,16 +378,16 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 		}},
 
 		{name: "Index.CreateProperty", fn: func(t *testing.T) error { var a indexpkg.API; return a.CreateProperty("", "") }},
-		{name: "Index.DropProperty", fn: func(t *testing.T) error { var a indexpkg.API; return a.DropProperty("", "") }},
+		{name: "Index.DeleteProperty", fn: func(t *testing.T) error { var a indexpkg.API; return a.DeleteProperty("", "") }},
 		{name: "Index.CreateHighFrequency", fn: func(t *testing.T) error { var a indexpkg.API; return a.CreateHighFrequency("", time.Second) }},
-		{name: "Index.DropHighFrequency", fn: func(t *testing.T) error { var a indexpkg.API; return a.DropHighFrequency("") }},
+		{name: "Index.DeleteHighFrequency", fn: func(t *testing.T) error { var a indexpkg.API; return a.DeleteHighFrequency("") }},
 		{name: "Index.CreateTemporal", fn: func(t *testing.T) error { var a indexpkg.API; return a.CreateTemporal("") }},
-		{name: "Index.DropTemporal", fn: func(t *testing.T) error { var a indexpkg.API; return a.DropTemporal("") }},
+		{name: "Index.DeleteTemporal", fn: func(t *testing.T) error { var a indexpkg.API; return a.DeleteTemporal("") }},
 		{name: "Index.CreateVector", fn: func(t *testing.T) error {
 			var a indexpkg.API
 			return a.CreateVector("", "", 0, storepkg.DistanceCosine)
 		}},
-		{name: "Index.DropVector", fn: func(t *testing.T) error { var a indexpkg.API; return a.DropVector("", "") }},
+		{name: "Index.DeleteVector", fn: func(t *testing.T) error { var a indexpkg.API; return a.DeleteVector("", "") }},
 		{name: "Index.SearchNearest", fn: func(t *testing.T) error {
 			var a indexpkg.API
 			got, err := a.SearchNearest("", "", nil, 0, storepkg.QueryOpts{})

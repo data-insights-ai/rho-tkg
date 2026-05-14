@@ -204,12 +204,12 @@ func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
 	if err := g.Index.CreateTemporal("Case"); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-	if err := g.Index.DropTemporal("Case"); err != nil {
+	if err := g.Index.DeleteTemporal("Case"); err != nil {
 		t.Fatalf("DropTemporalIndex: %v", err)
 	}
 
 	// Double-drop.
-	err := g.Index.DropTemporal("Case")
+	err := g.Index.DeleteTemporal("Case")
 	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
 		t.Errorf("double DropTemporalIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
 	}
@@ -242,12 +242,12 @@ func TestTieredStore_DropHighFrequencyIndex_Store(t *testing.T) {
 	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
 	}
-	if err := g.Index.DropHighFrequency("Case"); err != nil {
+	if err := g.Index.DeleteHighFrequency("Case"); err != nil {
 		t.Fatalf("DropHighFrequencyIndex: %v", err)
 	}
 
 	// Double-drop.
-	err := g.Index.DropHighFrequency("Case")
+	err := g.Index.DeleteHighFrequency("Case")
 	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
 		t.Errorf("double DropHighFrequencyIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
 	}

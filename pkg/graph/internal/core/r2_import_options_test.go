@@ -48,7 +48,7 @@ func TestImportWithOptions_StagingDirHonored(t *testing.T) {
 	// the staging file was created in the caller-supplied dir
 	// (and removed by Import's defer cleanup).
 	beforeEntries := readDir(t, stagingDir)
-	if err := dst.IO.ImportWithOptions(&exported, tkgio.ImportOptions{StagingDir: stagingDir}); err != nil {
+	if err := dst.IO.Import(&exported, tkgio.ImportOptions{StagingDir: stagingDir}); err != nil {
 		t.Fatalf("ImportWithOptions: %v", err)
 	}
 	afterEntries := readDir(t, stagingDir)
@@ -87,7 +87,7 @@ func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
 
 	// Set a tiny cap — far smaller than the export. Phase 1 must
 	// surface ErrImportSizeLimit before any live mutation.
-	err = dst.IO.ImportWithOptions(&exported, tkgio.ImportOptions{MaxStagedBytes: 256})
+	err = dst.IO.Import(&exported, tkgio.ImportOptions{MaxStagedBytes: 256})
 	if !errors.Is(err, ErrImportSizeLimit) {
 		t.Fatalf("ImportWithOptions: got %v, want ErrImportSizeLimit", err)
 	}
@@ -107,7 +107,7 @@ func TestImportWithOptions_MaxStagedBytesRejectsFrameBeforeBodyRead(t *testing.T
 	defer dst.Close()
 
 	reader := newFrameBodyTrapReader(exportTagHeader, 1024)
-	err = dst.IO.ImportWithOptions(reader, tkgio.ImportOptions{MaxStagedBytes: 16})
+	err = dst.IO.Import(reader, tkgio.ImportOptions{MaxStagedBytes: 16})
 	if !errors.Is(err, ErrImportSizeLimit) {
 		t.Fatalf("ImportWithOptions oversized frame: got %v, want ErrImportSizeLimit", err)
 	}
@@ -125,7 +125,7 @@ func TestImportWithOptions_MaxStagedBytes_RejectsNegative(t *testing.T) {
 	}
 	defer dst.Close()
 
-	err = dst.IO.ImportWithOptions(bytes.NewReader(nil), tkgio.ImportOptions{MaxStagedBytes: -1})
+	err = dst.IO.Import(bytes.NewReader(nil), tkgio.ImportOptions{MaxStagedBytes: -1})
 	if !errors.Is(err, ErrImportSizeLimit) {
 		t.Fatalf("ImportWithOptions negative MaxStagedBytes: got %v, want ErrImportSizeLimit", err)
 	}
@@ -168,7 +168,7 @@ func TestImportWithOptions_DefaultsMatchPriorBehavior(t *testing.T) {
 	defer dst.Close()
 
 	// Empty options must behave like the bare Import call.
-	if err := dst.IO.ImportWithOptions(&exported, tkgio.ImportOptions{}); err != nil {
+	if err := dst.IO.Import(&exported, tkgio.ImportOptions{}); err != nil {
 		t.Fatalf("ImportWithOptions{}: %v", err)
 	}
 	if cnt, _ := dst.Nodes.Count(); cnt != 1 {
@@ -205,7 +205,7 @@ func TestImportWithOptions_CloseDuringStagingReturnsGraphClosed(t *testing.T) {
 	defer reader.unblock()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- dst.IO.ImportWithOptions(reader, tkgio.ImportOptions{})
+		errCh <- dst.IO.Import(reader, tkgio.ImportOptions{})
 	}()
 
 	select {

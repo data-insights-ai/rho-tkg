@@ -267,6 +267,53 @@ func TestBatchBuilderNilAndZeroReceiversFailClosed(t *testing.T) {
 	}
 }
 
+// TestBatchRunContextHonoursLifecycleGates locks the S2 contract: the new
+// BatchAPI.RunContext rejects nil ctx, pre-cancelled ctx, and nil fn with
+// the same sentinels as TxAPI.RunContext.
+func TestBatchRunContextHonoursLifecycleGates(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	// Nil ctx.
+	var nilCtx context.Context
+	if _, err := g.Batch.RunContext(nilCtx, func(*graphpkg.BatchBuilder) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
+		t.Fatalf("RunContext(nil, fn) = %v, want ErrNilContext", err)
+	}
+	// Nil callback.
+	if _, err := g.Batch.RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+		t.Fatalf("RunContext(ctx, nil) = %v, want ErrNilTxCallback", err)
+	}
+	// Pre-cancelled ctx — callback must not run.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	if _, err := g.Batch.RunContext(ctx, func(*graphpkg.BatchBuilder) error {
+		called = true
+		return nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunContext(canceled, fn) = %v, want context.Canceled", err)
+	}
+	if called {
+		t.Fatal("RunContext called callback despite pre-canceled context")
+	}
+
+	// Happy path — opens batch, runs callback, executes.
+	res, err := g.Batch.RunContext(context.Background(), func(b *graphpkg.BatchBuilder) error {
+		_, err := b.AddNode([]string{"Person"}, nil)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("RunContext happy path: %v", err)
+	}
+	if res == nil || res.Created != 1 {
+		t.Fatalf("BatchResult = %+v, want 1 created", res)
+	}
+}
+
 func TestTxRunContextRejectsNilContext(t *testing.T) {
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{})

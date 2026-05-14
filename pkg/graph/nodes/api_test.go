@@ -34,6 +34,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
+		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ByLabel", run: func() error { _, err := nilAPI.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := nilAPI.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
@@ -116,6 +117,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
+		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ByLabel", run: func() error { _, err := api.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
@@ -169,7 +171,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "All", "ByLabel", "ByLabelAndProperty",
+		"Delete", "Delete", "Import", "AddByIDIfAbsent", "All", "ByLabel", "ByLabelAndProperty",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
@@ -282,6 +284,12 @@ func (s *nodeOpsSpy) Import(ctx context.Context, id types.NodeID, labels []strin
 	s.record("Import")
 	s.lastID = id
 	return nil, s.err
+}
+
+func (s *nodeOpsSpy) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
+	s.record("AddByIDIfAbsent")
+	s.lastID = id
+	return nil, false, s.err
 }
 
 func (s *nodeOpsSpy) All(opts storepkg.QueryOpts) ([]*types.Node, error) {

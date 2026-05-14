@@ -145,26 +145,26 @@ func TestR5_PostClose_Index_ReturnErrGraphClosed(t *testing.T) {
 	if err := g.Index.CreateProperty("X", "k"); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Index.CreateProperty: %v, want ErrGraphClosed", err)
 	}
-	if err := g.Index.DropProperty("X", "k"); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Index.DropProperty: %v, want ErrGraphClosed", err)
+	if err := g.Index.DeleteProperty("X", "k"); !errors.Is(err, ErrGraphClosed) {
+		t.Errorf("Index.DeleteProperty: %v, want ErrGraphClosed", err)
 	}
 	if err := g.Index.CreateTemporal("X"); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Index.CreateTemporal: %v, want ErrGraphClosed", err)
 	}
-	if err := g.Index.DropTemporal("X"); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Index.DropTemporal: %v, want ErrGraphClosed", err)
+	if err := g.Index.DeleteTemporal("X"); !errors.Is(err, ErrGraphClosed) {
+		t.Errorf("Index.DeleteTemporal: %v, want ErrGraphClosed", err)
 	}
 	if err := g.Index.CreateHighFrequency("X", time.Hour); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Index.CreateHighFrequency: %v, want ErrGraphClosed", err)
 	}
-	if err := g.Index.DropHighFrequency("X"); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Index.DropHighFrequency: %v, want ErrGraphClosed", err)
+	if err := g.Index.DeleteHighFrequency("X"); !errors.Is(err, ErrGraphClosed) {
+		t.Errorf("Index.DeleteHighFrequency: %v, want ErrGraphClosed", err)
 	}
 	if err := g.Index.CreateVector("X", "embedding", 2, storepkg.DistanceCosine); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Index.CreateVector: %v, want ErrGraphClosed", err)
 	}
-	if err := g.Index.DropVector("X", "embedding"); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Index.DropVector: %v, want ErrGraphClosed", err)
+	if err := g.Index.DeleteVector("X", "embedding"); !errors.Is(err, ErrGraphClosed) {
+		t.Errorf("Index.DeleteVector: %v, want ErrGraphClosed", err)
 	}
 	if _, err := g.Index.SearchNearest("X", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Index.SearchNearest: %v, want ErrGraphClosed", err)
@@ -246,7 +246,7 @@ func TestR5_PostClose_IO_ReturnErrGraphClosed(t *testing.T) {
 	if err := g.IO.Import(bytes.NewReader(nil), tkgio.ImportOptions{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("IO.Import: %v, want ErrGraphClosed", err)
 	}
-	if err := g.IO.ImportWithOptions(bytes.NewReader(nil), tkgio.ImportOptions{}); !errors.Is(err, ErrGraphClosed) {
+	if err := g.IO.Import(bytes.NewReader(nil), tkgio.ImportOptions{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("IO.ImportWithOptions: %v, want ErrGraphClosed", err)
 	}
 }

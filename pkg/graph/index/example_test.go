@@ -17,7 +17,7 @@ func ExampleAPI_CreateProperty() {
 	if err := g.Index.CreateProperty("Person", "email"); err != nil {
 		panic(err)
 	}
-	defer func() { _ = g.Index.DropProperty("Person", "email") }()
+	defer func() { _ = g.Index.DeleteProperty("Person", "email") }()
 }
 
 // ExampleAPI_CreateTemporal demonstrates installing a temporal index for a
@@ -32,7 +32,7 @@ func ExampleAPI_CreateTemporal() {
 	if err := g.Index.CreateTemporal("Event"); err != nil {
 		panic(err)
 	}
-	defer func() { _ = g.Index.DropTemporal("Event") }()
+	defer func() { _ = g.Index.DeleteTemporal("Event") }()
 }
 
 // ExampleAPI_Providers demonstrates listing registered IndexProvider names.

@@ -468,12 +468,12 @@ func TestCreateDropTemporalIndex(t *testing.T) {
 	}
 
 	// Drop.
-	if err := g.Index.DropTemporal("eventspkg.Event"); err != nil {
+	if err := g.Index.DeleteTemporal("eventspkg.Event"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second drop should error.
-	err = g.Index.DropTemporal("eventspkg.Event")
+	err = g.Index.DeleteTemporal("eventspkg.Event")
 	if err == nil {
 		t.Fatal("second DropTemporalIndex should fail")
 	}
@@ -497,12 +497,12 @@ func TestDropHighFrequencyIndex(t *testing.T) {
 	}
 
 	// Drop.
-	if err := g.Index.DropHighFrequency("Metric"); err != nil {
+	if err := g.Index.DeleteHighFrequency("Metric"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second drop should error.
-	err = g.Index.DropHighFrequency("Metric")
+	err = g.Index.DeleteHighFrequency("Metric")
 	if err == nil {
 		t.Fatal("second DropHighFrequencyIndex should fail")
 	}

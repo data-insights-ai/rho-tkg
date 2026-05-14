@@ -302,7 +302,7 @@ func TestMemStoreDropPropertyIndex(t *testing.T) {
 	g.Resolve.GetOrCreateLabel("Person")
 	g.Index.CreateProperty("Person", "name")
 
-	err := g.Index.DropProperty("Person", "name")
+	err := g.Index.DeleteProperty("Person", "name")
 	if err != nil {
 		t.Fatalf("DropPropertyIndex failed: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestMemStoreDropPropertyIndex_NotFound(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
 	g.Resolve.GetOrCreateLabel("Person")
 
-	err := g.Index.DropProperty("Person", "name")
+	err := g.Index.DeleteProperty("Person", "name")
 	if !errors.Is(err, storepkg.ErrIndexNotFound) {
 		t.Fatalf("expected storepkg.ErrIndexNotFound, got %v", err)
 	}
@@ -584,12 +584,12 @@ func TestGraphDropPropertyIndex(t *testing.T) {
 	g.Resolve.GetOrCreateLabel("Person")
 	g.Index.CreateProperty("Person", "name")
 
-	err := g.Index.DropProperty("Person", "name")
+	err := g.Index.DeleteProperty("Person", "name")
 	if err != nil {
 		t.Fatalf("DropPropertyIndex failed: %v", err)
 	}
 
-	err = g.Index.DropProperty("Unknown", "name")
+	err = g.Index.DeleteProperty("Unknown", "name")
 	if !errors.Is(err, storepkg.ErrIndexNotFound) {
 		t.Fatalf("unregistered label error = %v, want ErrIndexNotFound", err)
 	}
@@ -613,62 +613,62 @@ func TestGraphDropIndexRejectsInvalidAndUnknownInputs(t *testing.T) {
 	}{
 		{
 			name: "property empty label",
-			run:  func() error { return g.Index.DropProperty("", "name") },
+			run:  func() error { return g.Index.DeleteProperty("", "name") },
 			want: ErrEmptyName,
 		},
 		{
 			name: "property key too long",
-			run:  func() error { return g.Index.DropProperty("Person", "long-key") },
+			run:  func() error { return g.Index.DeleteProperty("Person", "long-key") },
 			want: ErrKeyTooLong,
 		},
 		{
 			name: "property reserved key",
-			run:  func() error { return g.Index.DropProperty("Person", "tkg_hash") },
+			run:  func() error { return g.Index.DeleteProperty("Person", "tkg_hash") },
 			want: types.ErrReservedPrefix,
 		},
 		{
 			name: "property unknown label",
-			run:  func() error { return g.Index.DropProperty("Missing", "name") },
+			run:  func() error { return g.Index.DeleteProperty("Missing", "name") },
 			want: storepkg.ErrIndexNotFound,
 		},
 		{
 			name: "temporal empty label",
-			run:  func() error { return g.Index.DropTemporal("") },
+			run:  func() error { return g.Index.DeleteTemporal("") },
 			want: ErrEmptyName,
 		},
 		{
 			name: "temporal unknown label",
-			run:  func() error { return g.Index.DropTemporal("Missing") },
+			run:  func() error { return g.Index.DeleteTemporal("Missing") },
 			want: storepkg.ErrTemporalIndexNotFound,
 		},
 		{
 			name: "high-frequency empty label",
-			run:  func() error { return g.Index.DropHighFrequency("") },
+			run:  func() error { return g.Index.DeleteHighFrequency("") },
 			want: ErrEmptyName,
 		},
 		{
 			name: "high-frequency unknown label",
-			run:  func() error { return g.Index.DropHighFrequency("Missing") },
+			run:  func() error { return g.Index.DeleteHighFrequency("Missing") },
 			want: storepkg.ErrTemporalIndexNotFound,
 		},
 		{
 			name: "vector empty label",
-			run:  func() error { return g.Index.DropVector("", "vec") },
+			run:  func() error { return g.Index.DeleteVector("", "vec") },
 			want: ErrEmptyName,
 		},
 		{
 			name: "vector key too long",
-			run:  func() error { return g.Index.DropVector("Person", "long-key") },
+			run:  func() error { return g.Index.DeleteVector("Person", "long-key") },
 			want: ErrKeyTooLong,
 		},
 		{
 			name: "vector reserved key",
-			run:  func() error { return g.Index.DropVector("Person", "tkg_hash") },
+			run:  func() error { return g.Index.DeleteVector("Person", "tkg_hash") },
 			want: types.ErrReservedPrefix,
 		},
 		{
 			name: "vector unknown label",
-			run:  func() error { return g.Index.DropVector("Missing", "vec") },
+			run:  func() error { return g.Index.DeleteVector("Missing", "vec") },
 			want: storepkg.ErrVectorIndexNotFound,
 		},
 	}

@@ -106,8 +106,8 @@ func TestSubAPISmoke(t *testing.T) {
 	if err := g.Index.CreateProperty("Person", "name"); err != nil {
 		t.Fatalf("Index.CreateProperty: %v", err)
 	}
-	if err := g.Index.DropProperty("Person", "name"); err != nil {
-		t.Fatalf("Index.DropProperty: %v", err)
+	if err := g.Index.DeleteProperty("Person", "name"); err != nil {
+		t.Fatalf("Index.DeleteProperty: %v", err)
 	}
 
 	// IO — round-trip Export/Import via in-memory graph.

@@ -29,7 +29,7 @@ func (f *fakeOps) Export(w stdio.Writer) error {
 	return f.exportErr
 }
 
-func (f *fakeOps) ImportWithOptions(r stdio.Reader, opts tkgio.ImportOptions) error {
+func (f *fakeOps) Import(r stdio.Reader, opts tkgio.ImportOptions) error {
 	f.importWithOptionsCalled = true
 	f.called = true
 	f.importWithOptionsReader = r

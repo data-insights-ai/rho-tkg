@@ -161,7 +161,7 @@ func TestVectorIndex_IndexNotFound(t *testing.T) {
 	label := "X"
 	_, _ = g.Nodes.Add(context.Background(), []string{label}, nil)
 
-	err := g.Index.DropVector(label, "nonexistent")
+	err := g.Index.DeleteVector(label, "nonexistent")
 	if !errors.Is(err, ErrVectorIndexNotFound) {
 		t.Errorf("expected ErrVectorIndexNotFound, got %v", err)
 	}
@@ -438,7 +438,7 @@ func TestVectorIndex_DropAndRecreate(t *testing.T) {
 		t.Fatalf("first CreateVectorIndex: %v", err)
 	}
 
-	if err := g.Index.DropVector(label, key); err != nil {
+	if err := g.Index.DeleteVector(label, key); err != nil {
 		t.Fatalf("DropVectorIndex: %v", err)
 	}
 

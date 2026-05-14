@@ -107,7 +107,7 @@ func TestR4_Import_ConflictingDuplicateNode_Rejected(t *testing.T) {
 		t.Fatalf("seed conflicting node: %v", err)
 	}
 
-	err = dst.IO.ImportWithOptions(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
+	err = dst.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, ErrCorruptExport) {
 		t.Fatalf("Import with conflicting duplicate: got %v, want errors.Is ErrCorruptExport", err)
 	}

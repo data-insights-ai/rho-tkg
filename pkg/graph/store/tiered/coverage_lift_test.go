@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -433,8 +434,8 @@ func TestTiered_VerifyShard_NilVerifierRejected(t *testing.T) {
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
-	if _, err := ts.VerifyShard(nil, "reference"); err == nil {
-		t.Fatalf("VerifyShard nil verifier = nil, want ErrInvalidStoreMutation")
+	if _, err := ts.VerifyShard(nil, "reference"); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("VerifyShard nil verifier = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -445,8 +446,15 @@ func TestTiered_VerifyShard_UnknownShard(t *testing.T) {
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
 	_, _ = reg.GetOrCreate("User")
-	if _, err := ts.VerifyShard(noopHashChainVerifier{}, "no-such-shard"); err == nil {
+	// Unknown-shard returns a wrapped fmt.Errorf, not a sentinel — pin
+	// the message so a sentinel introduction in the future doesn't
+	// silently bypass this case (S5).
+	_, err := ts.VerifyShard(noopHashChainVerifier{}, "no-such-shard")
+	if err == nil {
 		t.Fatalf("VerifyShard unknown shard = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "not found in catalog") {
+		t.Fatalf("VerifyShard unknown shard err = %v, want message containing \"not found in catalog\"", err)
 	}
 }
 
@@ -475,8 +483,8 @@ func TestTiered_TruncateNodeHistory_NegativeKeep(t *testing.T) {
 	ts := newTestTieredStore(t)
 	_ = installDefaultTestLabelRegistryDelegate(t, ts)
 	id := types.NodeID(tieredNodeGen(t).Generate())
-	if err := ts.TruncateNodeHistory(id, -1); err == nil {
-		t.Fatalf("TruncateNodeHistory keep=-1 = nil, want error")
+	if err := ts.TruncateNodeHistory(id, -1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateNodeHistory keep=-1 = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
@@ -484,8 +492,8 @@ func TestTiered_TruncateRelHistory_NegativeKeep(t *testing.T) {
 	ts := newTestTieredStore(t)
 	_ = installDefaultTestLabelRegistryDelegate(t, ts)
 	id := types.RelID(tieredRelGen(t).Generate())
-	if err := ts.TruncateRelHistory(id, -1); err == nil {
-		t.Fatalf("TruncateRelHistory keep=-1 = nil, want error")
+	if err := ts.TruncateRelHistory(id, -1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Fatalf("TruncateRelHistory keep=-1 = %v, want ErrInvalidStoreMutation", err)
 	}
 }
 
