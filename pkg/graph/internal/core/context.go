@@ -231,6 +231,72 @@ func extractProvenance(props map[string]any) (authorID string, sig []byte, autho
 	return authorID, sig, authorizedBy, authLevel, filtered, nil
 }
 
+// extractProvenanceTracked is like extractProvenance but returns per-field
+// presence flags via updateProvenance, so update paths can merge with the
+// base entity's existing integrity (B3 — preserve fields the caller did
+// not restate). The legacy extractProvenance return shape is preserved
+// for callers that don't need merging (e.g. node_add, where there is no
+// previous integrity).
+func extractProvenanceTracked(props map[string]any) (updateProvenance, map[string]any, error) {
+	_, hasA := props["tkg_author_id"]
+	_, hasS := props["tkg_signature"]
+	_, hasABy := props["tkg_authorized_by"]
+	_, hasAL := props["tkg_auth_level"]
+	if !hasA && !hasS && !hasABy && !hasAL {
+		return updateProvenance{}, props, nil
+	}
+
+	prov := updateProvenance{
+		hasAuthorID:     hasA,
+		hasSignature:    hasS,
+		hasAuthorizedBy: hasABy,
+		hasAuthLevel:    hasAL,
+		present:         true,
+	}
+	if hasA {
+		if v := props["tkg_author_id"]; v != nil {
+			s, ok := v.(string)
+			if !ok {
+				return updateProvenance{}, nil, fmt.Errorf("graph: tkg_author_id must be a string, got %T", v)
+			}
+			prov.authorID = s
+		}
+	}
+	if hasS {
+		if v := props["tkg_signature"]; v != nil {
+			b, ok := v.([]byte)
+			if !ok {
+				return updateProvenance{}, nil, fmt.Errorf("graph: tkg_signature must be []byte, got %T", v)
+			}
+			prov.signature = types.CloneBytes(b)
+		}
+	}
+	if hasABy {
+		if v := props["tkg_authorized_by"]; v != nil {
+			s, ok := v.(string)
+			if !ok {
+				return updateProvenance{}, nil, fmt.Errorf("graph: tkg_authorized_by must be a string, got %T", v)
+			}
+			prov.authorizedBy = s
+		}
+	}
+	if hasAL {
+		al, err := parseAuthLevel(props["tkg_auth_level"])
+		if err != nil {
+			return updateProvenance{}, nil, err
+		}
+		prov.authLevel = al
+	}
+
+	filtered := make(map[string]any, len(props))
+	for k, v := range props {
+		if k != "tkg_author_id" && k != "tkg_signature" && k != "tkg_authorized_by" && k != "tkg_auth_level" {
+			filtered[k] = v
+		}
+	}
+	return prov, filtered, nil
+}
+
 func parseAuthLevel(v any) (uint8, error) {
 	if v == nil {
 		return 0, nil

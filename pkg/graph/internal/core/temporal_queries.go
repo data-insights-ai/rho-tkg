@@ -343,6 +343,10 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 // NeighborsAt returns all neighbor nodes reachable from nodeID via
 // relationships that are valid at the given instant, where the neighbor nodes
 // themselves are also valid at that instant.
+//
+// Scalability note (B2 — v4 known limitation): see OutgoingRelsAt for the
+// O(total rel history) cost paid by the deleted-rel coverage fold. Same
+// trade-off applies; v4.1 will optimize via a deleted-rel-adjacency index.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -437,13 +441,21 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 //
 // Results are sorted by relationship ID. Returns ErrNodeNotFound if nodeID
 // was not valid at the given instant.
+//
+// Scalability note (B2 — v4 known limitation): to find rels that USED to
+// point at nodeID but have since been deleted, this method folds in every
+// rel history ID across the store. Cost is O(total rel history), not
+// O(degree). For graphs with few deletions this is fine; for graphs where
+// most rels have been turned over many times, expect proportional latency.
+// v4.1 will add a dedicated deleted-rel-adjacency index keyed by endpoint
+// to drop the cost to O(degree + deletedDegree).
 func (t *TempOps) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, true)
 }
 
 // IncomingRelsAt returns relationships where nodeID was the end endpoint and
 // the relationship was valid at the given instant. Mirror of OutgoingRelsAt;
-// see that method's documentation for semantics.
+// see that method's documentation for semantics and the B2 scalability note.
 func (t *TempOps) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, false)
 }

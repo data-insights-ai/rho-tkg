@@ -263,6 +263,15 @@ func relVersionInheritedValidFrom(chain []*types.Relationship, i int, tm *types.
 // caller already has a narrow indexed candidate list (label, property, or
 // adjacency index) — folding only the deleted/historical node IDs on top
 // preserves history-aware semantics without paying for a full table scan.
+//
+// Scalability note (B2 — v4 known limitation): the history fold walks
+// EVERY node-history ID in the store, so the cost is O(total_history)
+// regardless of how narrow currentIDs is. For full-graph temporal queries
+// (NodesAt, NodesDuring) this is correct. For SELECTIVE queries like
+// "nodes labelled X at time t" or adjacency-at-t, this is overpay —
+// most history IDs are already in currentIDs. v4.1 will add a
+// dedicated history-only-node-IDs index so the fold scales with the
+// number of deleted entities, not total history size.
 func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
 	return c.forEachNodeCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -288,7 +297,11 @@ func (c *Core) forEachNodeCandidateIDByDepth(currentIDs []types.NodeID, depth st
 
 // forEachRelCandidateID is the relationship counterpart of
 // forEachNodeCandidateID — same indexed-candidates + history-IDs union
-// without scanning ForEachRelID.
+// without scanning ForEachRelID. The B2 scalability note on
+// forEachNodeCandidateID applies here too: temporal adjacency queries
+// (OutgoingRelsAt / IncomingRelsAt / NeighborsAt) pay O(total rel history)
+// for the deleted-rel-coverage fold today; v4.1 will replace the fold
+// with a deleted-rel-adjacency lookup keyed by endpoint.
 func (c *Core) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
 	return c.forEachRelCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }

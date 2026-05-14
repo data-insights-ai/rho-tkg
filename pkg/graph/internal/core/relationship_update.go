@@ -171,13 +171,22 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 
 	// Refresh endpoint hashes to capture the current state of the endpoint nodes.
 	// These are NOT fed into ComputeRelHash to avoid cascading hash invalidation.
-	relIG := &types.RelIntegrity{
-		Hash:               hash,
-		PrevHash:           prevHash,
-		AuthorID:           prov.authorID,
-		Signature:          prov.signature,
-		AuthorizedBy:       prov.authorizedBy,
-		AuthorizationLevel: prov.authLevel,
+	// Preserve existing integrity metadata (B3 — see node_update.go for
+	// rationale). Only overwrite the four caller-supplied provenance fields
+	// that are explicitly present in `updates`; FromNodeHash / ToNodeHash
+	// are recomputed below by refreshRelationshipEndpointHashes.
+	relIG := relIntegrityWithHash(current.Integrity(), hash, prevHash)
+	if prov.hasAuthorID {
+		relIG.AuthorID = prov.authorID
+	}
+	if prov.hasSignature {
+		relIG.Signature = prov.signature
+	}
+	if prov.hasAuthorizedBy {
+		relIG.AuthorizedBy = prov.authorizedBy
+	}
+	if prov.hasAuthLevel {
+		relIG.AuthorizationLevel = prov.authLevel
 	}
 	if err := c.refreshRelationshipEndpointHashes(current, relIG); err != nil {
 		return nil, false, err

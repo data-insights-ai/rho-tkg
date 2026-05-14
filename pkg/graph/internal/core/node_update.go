@@ -168,14 +168,24 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
-	current.SetIntegrity(&types.NodeIntegrity{
-		Hash:               hash,
-		PrevHash:           prevHash,
-		AuthorID:           prov.authorID,
-		Signature:          prov.signature,
-		AuthorizedBy:       prov.authorizedBy,
-		AuthorizationLevel: prov.authLevel,
-	})
+	// Preserve existing integrity metadata (B3 — Update previously wiped
+	// AuthorID / Signature / AuthorizedBy / AuthorizationLevel whenever a
+	// caller restated even one of them). Only overwrite the four caller-
+	// supplied provenance fields that are explicitly present in `updates`.
+	ig := nodeIntegrityWithHash(current.Integrity(), hash, prevHash)
+	if prov.hasAuthorID {
+		ig.AuthorID = prov.authorID
+	}
+	if prov.hasSignature {
+		ig.Signature = prov.signature
+	}
+	if prov.hasAuthorizedBy {
+		ig.AuthorizedBy = prov.authorizedBy
+	}
+	if prov.hasAuthLevel {
+		ig.AuthorizationLevel = prov.authLevel
+	}
+	current.SetIntegrity(ig)
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err

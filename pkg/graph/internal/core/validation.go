@@ -279,12 +279,25 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 	return nil
 }
 
+// updateProvenance carries the four caller-supplied integrity fields
+// (`tkg_author_id`, `tkg_signature`, `tkg_authorized_by`, `tkg_auth_level`)
+// extracted from an update map, along with per-field presence flags. The
+// `present` collective flag is true iff at least one field was supplied —
+// it gates the "this update is non-empty" check. The per-field flags drive
+// the merge against existing integrity in update paths: a field NOT
+// restated is preserved from the previous version (B3 — previously every
+// Update wiped all four fields if any were restated, since extractProvenance
+// returned zeros for missing fields).
 type updateProvenance struct {
-	authorID     string
-	signature    []byte
-	authorizedBy string
-	authLevel    uint8
-	present      bool
+	authorID         string
+	signature        []byte
+	authorizedBy     string
+	authLevel        uint8
+	hasAuthorID      bool
+	hasSignature     bool
+	hasAuthorizedBy  bool
+	hasAuthLevel     bool
+	present          bool
 }
 
 type preparedUpdateProperties struct {
@@ -294,20 +307,14 @@ type preparedUpdateProperties struct {
 }
 
 func (c *Core) prepareUpdateProperties(updates map[string]any, operation string) (updateProvenance, map[string]any, error) {
-	authorID, sig, authorizedBy, authLevel, filtered, err := extractProvenance(updates)
+	prov, filtered, err := extractProvenanceTracked(updates)
 	if err != nil {
 		return updateProvenance{}, nil, err
 	}
 	if err := c.validatePropertyUpdates(filtered, operation); err != nil {
 		return updateProvenance{}, nil, err
 	}
-	return updateProvenance{
-		authorID:     authorID,
-		signature:    sig,
-		authorizedBy: authorizedBy,
-		authLevel:    authLevel,
-		present:      len(filtered) != len(updates),
-	}, filtered, nil
+	return prov, filtered, nil
 }
 
 func preparedUpdateCanBeReadOnlyNoOp(prov updateProvenance) bool {

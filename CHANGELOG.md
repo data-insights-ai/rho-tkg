@@ -109,6 +109,20 @@ s/\.PreviousVersion(/.VersionBefore(/g
 - `graph.ErrDepthTemporalUnsupported` removed (legacy sentinel, never
   returned in production).
 
+### Known limitations (carried forward to v4.1) — Temporal adjacency cost (2026-05-14)
+
+- **`g.Temporal.OutgoingRelsAt`, `IncomingRelsAt`, `NeighborsAt`** and the
+  internal `forEachNodeCandidateID` / `forEachRelCandidateID` helpers fold
+  the *entire* node-history or rel-history ID set into the candidate
+  union, so the cost is O(total history) regardless of the queried node's
+  degree. For graphs with few deletions this is fine — the union is a
+  no-op because every history ID is already in the indexed candidate set.
+  For graphs where most entities have been turned over many times, expect
+  proportional latency. v4.1 will introduce a dedicated
+  history-only-IDs index (keyed by endpoint for rels) so the fold scales
+  with the number of deleted entities, not total history. Docs on the
+  three API methods carry this note inline.
+
 ### Added - Temporal directional accessors (2026-05-14)
 
 - **`g.Temporal.OutgoingRelsAt(nodeID, t)` and `g.Temporal.IncomingRelsAt(nodeID, t)`.**
