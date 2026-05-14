@@ -477,6 +477,49 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	}
 }
 
+// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID
+// — visits only history-but-no-current IDs via an inline HasRelID check.
+func (bs *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	maxID, err := bs.maxHistoryID(storepkg.KeyHistRel)
+	if err != nil {
+		return fmt.Errorf("graph: scan rel history max ID: %w", err)
+	}
+	if maxID == 0 {
+		return nil
+	}
+	var after types.RelID
+	for {
+		ids, err := bs.AllRelHistoryIDsFrom(after, 1024)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		for _, id := range ids {
+			if id.SnowflakeID() > maxID {
+				return nil
+			}
+			if bs.HasRelID(id.SnowflakeID()) {
+				continue
+			}
+			if !fn(id) {
+				return nil
+			}
+		}
+		after = ids[len(ids)-1]
+		if after.SnowflakeID() >= maxID {
+			return nil
+		}
+	}
+}
+
 // MaxRelHistoryID returns the highest relationship ID with version history
 // visible to this store. It includes pending buffered writes and the persisted
 // Badger key space, and returns zero when no relationship history exists.

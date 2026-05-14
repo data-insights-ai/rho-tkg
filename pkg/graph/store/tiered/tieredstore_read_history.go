@@ -834,3 +834,46 @@ func trimNodeHistoryPage(history []*types.Node, limit int) []*types.Node {
 	}
 	return history
 }
+
+// ForEachDeletedNodeID iterates IDs that have history rows but no current
+// row. Two-phase: collect history IDs across in-scope shards under shard
+// locks (via ForEachNodeHistoryIDByDepth), then probe each via GetNode after
+// locks release. Skip when the current row exists, yield otherwise. The
+// graph-layer benefit is the same as for single-shard backends: history-aware
+// queries fold only deleted IDs onto the narrow candidate set rather than the
+// full history set.
+func (ts *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
+	return ts.ForEachDeletedNodeIDByDepth(DepthAll, fn)
+}
+
+func (ts *Store) ForEachDeletedNodeIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := validateDepth(depth); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	var ids []types.NodeID
+	if err := ts.ForEachNodeHistoryIDByDepth(depth, func(id types.NodeID) bool {
+		ids = append(ids, id)
+		return true
+	}); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		_, err := ts.GetNode(id)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, ErrNodeNotFound) {
+			return err
+		}
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}

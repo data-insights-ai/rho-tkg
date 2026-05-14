@@ -342,11 +342,10 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 
 // NeighborsAt returns all neighbor nodes reachable from nodeID via
 // relationships that are valid at the given instant, where the neighbor nodes
-// themselves are also valid at that instant.
-//
-// Scalability note (B2 — v4 known limitation): see OutgoingRelsAt for the
-// O(total rel history) cost paid by the deleted-rel coverage fold. Same
-// trade-off applies; v4.1 will optimize via a deleted-rel-adjacency index.
+// themselves are also valid at that instant. History-aware via the
+// deleted-rel candidate fold (see forEachRelCandidateID) which scales with
+// the number of deleted relationships when the underlying store implements
+// DeletedIterationCapability.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -391,7 +390,7 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 		currentRelIDs = append(currentRelIDs, inIDs...)
 
 		neighborIDs := make(map[types.NodeID]struct{})
-		if err := c.forEachRelCandidateID(currentRelIDs, func(id types.RelID) error {
+		if err := c.forEachRelAdjacencyCandidateID(currentRelIDs, func(id types.RelID) error {
 			r, err := c.relAtLocked(id, at)
 			if err != nil {
 				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -442,20 +441,18 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 // Results are sorted by relationship ID. Returns ErrNodeNotFound if nodeID
 // was not valid at the given instant.
 //
-// Scalability note (B2 — v4 known limitation): to find rels that USED to
-// point at nodeID but have since been deleted, this method folds in every
-// rel history ID across the store. Cost is O(total rel history), not
-// O(degree). For graphs with few deletions this is fine; for graphs where
-// most rels have been turned over many times, expect proportional latency.
-// v4.1 will add a dedicated deleted-rel-adjacency index keyed by endpoint
-// to drop the cost to O(degree + deletedDegree).
+// Scalability: the deleted-rel coverage fold uses the store's
+// DeletedIterationCapability when available (every in-tree backend
+// implements it), so cost is O(degree + deletedRelCount) rather than
+// O(degree + totalRelHistory). External backends that don't implement the
+// capability fall back to a full history scan.
 func (t *TempOps) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, true)
 }
 
 // IncomingRelsAt returns relationships where nodeID was the end endpoint and
 // the relationship was valid at the given instant. Mirror of OutgoingRelsAt;
-// see that method's documentation for semantics and the B2 scalability note.
+// see that method's documentation for semantics and scalability.
 func (t *TempOps) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, false)
 }
@@ -501,7 +498,7 @@ func (t *TempOps) directionalRelsAt(nodeID types.NodeID, at types.Instant, outgo
 			return err
 		}
 
-		return c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+		return c.forEachRelAdjacencyCandidateID(currentIDs, func(id types.RelID) error {
 			r, err := c.relAtLocked(id, at)
 			if err != nil {
 				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

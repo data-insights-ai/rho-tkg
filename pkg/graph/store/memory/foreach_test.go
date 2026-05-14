@@ -215,6 +215,102 @@ func TestMemoryStore_ForEachRelHistoryID(t *testing.T) {
 	}
 }
 
+// TestMemoryStore_ForEachDeletedNodeID pins the v4 DeletedIterationCapability
+// contract: visits only IDs with history rows whose current row is absent.
+// Live nodes with history MUST NOT appear; live nodes without history MUST
+// NOT appear; deleted-but-historic nodes MUST appear.
+func TestMemoryStore_ForEachDeletedNodeID(t *testing.T) {
+	t.Parallel()
+	ms := New()
+
+	// Node 10: live + history (a live entity with a prior version).
+	if err := ms.PutNode(types.NewNode(types.NodeID(10), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNodeVersion(types.NodeID(10), 0, types.NewNode(types.NodeID(10), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	// Node 20: live, no history.
+	if err := ms.PutNode(types.NewNode(types.NodeID(20), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	// Node 30: deleted — history exists, current row absent.
+	if err := ms.PutNodeVersion(types.NodeID(30), 0, types.NewNode(types.NodeID(30), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	err := ms.ForEachDeletedNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEachDeletedNodeID: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("got %d IDs (%v), want 1 (only node 30)", len(seen), seen)
+	}
+	if _, ok := seen[30]; !ok {
+		t.Errorf("node 30 (deleted) should appear")
+	}
+	if _, ok := seen[10]; ok {
+		t.Errorf("node 10 (live with history) must NOT appear")
+	}
+	if _, ok := seen[20]; ok {
+		t.Errorf("node 20 (live without history) must NOT appear")
+	}
+}
+
+func TestMemoryStore_ForEachDeletedRelID(t *testing.T) {
+	t.Parallel()
+	ms := New()
+	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutNode(types.NewNode(types.NodeID(2), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	// Rel 100: live + history.
+	r := types.NewRelationship(types.RelID(100), 1, types.NodeID(1), types.NodeID(2))
+	if err := ms.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutRelVersion(100, 0, r); err != nil {
+		t.Fatal(err)
+	}
+	// Rel 200: live, no history.
+	r2 := types.NewRelationship(types.RelID(200), 1, types.NodeID(1), types.NodeID(2))
+	if err := ms.PutRelationship(r2); err != nil {
+		t.Fatal(err)
+	}
+	// Rel 300: deleted (history only).
+	r3 := types.NewRelationship(types.RelID(300), 1, types.NodeID(1), types.NodeID(2))
+	if err := ms.PutRelVersion(300, 0, r3); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	err := ms.ForEachDeletedRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEachDeletedRelID: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("got %d IDs (%v), want 1 (only rel 300)", len(seen), seen)
+	}
+	if _, ok := seen[300]; !ok {
+		t.Errorf("rel 300 (deleted) should appear")
+	}
+	if _, ok := seen[100]; ok {
+		t.Errorf("rel 100 (live with history) must NOT appear")
+	}
+	if _, ok := seen[200]; ok {
+		t.Errorf("rel 200 (live without history) must NOT appear")
+	}
+}
+
 func TestMemoryStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 	ms := New()
 	if err := ms.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {

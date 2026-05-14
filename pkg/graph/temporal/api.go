@@ -118,13 +118,12 @@ func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationsh
 	return ops.RelsByTypeAt(relType, t)
 }
 
-// NeighborsAt returns the neighbours of nodeID valid at t.
-//
-// Scalability note (v4 known limitation): the deleted-rel coverage fold
-// inside this method scales with total relationship history size, not
-// node degree. Acceptable for graphs with few deletions; v4.1 adds a
-// deleted-rel-adjacency index. Same trade-off applies to OutgoingRelsAt
-// and IncomingRelsAt.
+// NeighborsAt returns the neighbours of nodeID valid at t. History-aware:
+// returns neighbours connected via rels (current or deleted) that were valid
+// at t. The deleted-rel fold scales with the number of deleted relationships,
+// not the total history size, when the underlying store implements
+// DeletedIterationCapability — every in-tree backend (memory, badger, tiered)
+// does. Same characteristic applies to OutgoingRelsAt and IncomingRelsAt.
 func (a *API) NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

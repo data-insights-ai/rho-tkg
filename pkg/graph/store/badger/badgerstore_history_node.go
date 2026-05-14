@@ -808,6 +808,52 @@ func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	}
 }
 
+// ForEachDeletedNodeID iterates IDs that have history rows but no current
+// row. Same iteration shape as ForEachNodeHistoryID with an inline O(1)
+// in-memory presence check via HasNodeID; the resulting cost is one extra
+// map lookup per history ID, no additional Badger reads. Callbacks are
+// invoked outside Badger transactions.
+func (bs *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	maxID, err := bs.maxHistoryID(storepkg.KeyHistNode)
+	if err != nil {
+		return fmt.Errorf("graph: scan node history max ID: %w", err)
+	}
+	if maxID == 0 {
+		return nil
+	}
+	var after types.NodeID
+	for {
+		ids, err := bs.AllNodeHistoryIDsFrom(after, 1024)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		for _, id := range ids {
+			if id.SnowflakeID() > maxID {
+				return nil
+			}
+			if bs.HasNodeID(id.SnowflakeID()) {
+				continue
+			}
+			if !fn(id) {
+				return nil
+			}
+		}
+		after = ids[len(ids)-1]
+		if after.SnowflakeID() >= maxID {
+			return nil
+		}
+	}
+}
+
 // MaxNodeHistoryID returns the highest node ID with version history visible to
 // this store. It includes pending buffered writes and the persisted Badger key
 // space, and returns zero when no node history exists.

@@ -282,6 +282,88 @@ func TestTieredStore_ForEachNodeHistoryID(t *testing.T) {
 	}
 }
 
+// TestTieredStore_ForEachDeletedNodeID pins the DeletedIterationCapability
+// contract across shard types. Live ref/event nodes with history must be
+// excluded; history-only nodes must be included regardless of shard.
+func TestTieredStore_ForEachDeletedNodeID(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	gen := tieredNodeGen(t)
+
+	// Ref node live + history.
+	live := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(live); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutNodeVersion(live.ID(), 0, live); err != nil {
+		t.Fatal(err)
+	}
+	// Ref node history only (deleted).
+	deletedRef := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := ts.PutNodeVersion(deletedRef.ID(), 0, deletedRef); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	if err := ts.ForEachDeletedNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachDeletedNodeID: %v", err)
+	}
+	if _, ok := seen[deletedRef.ID().SnowflakeID()]; !ok {
+		t.Errorf("deleted ref node %d should appear, got %v", deletedRef.ID(), seen)
+	}
+	if _, ok := seen[live.ID().SnowflakeID()]; ok {
+		t.Errorf("live ref node %d must NOT appear", live.ID())
+	}
+}
+
+// TestTieredStore_ForEachDeletedRelID is the rel counterpart.
+func TestTieredStore_ForEachDeletedRelID(t *testing.T) {
+	t.Parallel()
+	ts := newTestTieredStore(t)
+	gen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
+
+	a := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(a); err != nil {
+		t.Fatal(err)
+	}
+	b := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := ts.RefShardForTest().PutNode(b); err != nil {
+		t.Fatal(err)
+	}
+
+	// Rel live + history.
+	rLive := types.NewRelationship(types.RelID(relGen.Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelationship(rLive); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.PutRelVersion(rLive.ID(), 0, rLive); err != nil {
+		t.Fatal(err)
+	}
+	// Rel deleted (history only).
+	rDel := types.NewRelationship(types.RelID(relGen.Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelVersion(rDel.ID(), 0, rDel); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	if err := ts.ForEachDeletedRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachDeletedRelID: %v", err)
+	}
+	if _, ok := seen[rDel.ID().SnowflakeID()]; !ok {
+		t.Errorf("deleted rel %d should appear, got %v", rDel.ID(), seen)
+	}
+	if _, ok := seen[rLive.ID().SnowflakeID()]; ok {
+		t.Errorf("live rel %d must NOT appear", rLive.ID())
+	}
+}
+
 func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
 	ts := newTestTieredStore(t)
 	nodeGen := tieredNodeGen(t)

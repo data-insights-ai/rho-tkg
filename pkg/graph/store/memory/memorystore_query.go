@@ -423,6 +423,69 @@ func (ms *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	return nil
 }
 
+// ForEachDeletedNodeID iterates IDs that have history rows but no current
+// row — exactly the set the graph layer needs to fold onto narrow indexed
+// candidates for history-aware queries. Iteration stops early if fn
+// returns false. No ordering guarantee.
+func (ms *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.RLock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.NodeID, 0)
+	for id := range ms.nodeHistory {
+		if _, ok := ms.nodes[id]; ok {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID.
+func (ms *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.RLock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return errNilIterationCallback()
+	}
+	ids := make([]types.RelID, 0)
+	for id := range ms.relHistory {
+		if _, ok := ms.rels[id]; ok {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	for _, id := range ids {
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
+
 // AllNodeHistoryIDs returns the IDs of all nodes that have version history entries.
 // Thin wrapper that delegates to AllNodeHistoryIDsFrom(0, 0).
 func (ms *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {

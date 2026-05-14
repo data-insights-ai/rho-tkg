@@ -109,19 +109,23 @@ s/\.PreviousVersion(/.VersionBefore(/g
 - `graph.ErrDepthTemporalUnsupported` removed (legacy sentinel, never
   returned in production).
 
-### Known limitations (carried forward to v4.1) — Temporal adjacency cost (2026-05-14)
+### Fixed - Temporal adjacency O(history) fold (2026-05-14)
 
 - **`g.Temporal.OutgoingRelsAt`, `IncomingRelsAt`, `NeighborsAt`** and the
-  internal `forEachNodeCandidateID` / `forEachRelCandidateID` helpers fold
-  the *entire* node-history or rel-history ID set into the candidate
-  union, so the cost is O(total history) regardless of the queried node's
-  degree. For graphs with few deletions this is fine — the union is a
-  no-op because every history ID is already in the indexed candidate set.
-  For graphs where most entities have been turned over many times, expect
-  proportional latency. v4.1 will introduce a dedicated
-  history-only-IDs index (keyed by endpoint for rels) so the fold scales
-  with the number of deleted entities, not total history. Docs on the
-  three API methods carry this note inline.
+  history-aware label/property queries that fold deleted entities onto a
+  narrow indexed candidate set no longer scan the entire history ID space.
+  The fold now uses a new optional store capability,
+  `DeletedIterationCapability` (with depth-aware companion
+  `DepthDeletedIterationCapability`), that yields ONLY IDs whose history
+  exists but whose current row is absent. Cost drops from O(total history)
+  to O(deleted_count) for the candidate-fold step.
+- **Store contract additions (`pkg/graph/store/capabilities.go`).**
+  - `ForEachDeletedNodeID(fn) error` / `ForEachDeletedRelID(fn) error`
+  - `ForEachDeletedNodeIDByDepth(depth, fn) error` /
+    `ForEachDeletedRelIDByDepth(depth, fn) error`
+  - All three in-tree backends (memory, badger, tiered) implement the
+    capability. External stores that omit it transparently fall back to
+    the previous history-scan path — correct, just slower.
 
 ### Added - Temporal directional accessors (2026-05-14)
 

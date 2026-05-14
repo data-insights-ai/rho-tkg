@@ -56,6 +56,8 @@ type Core struct {
 	propertyQueryTrust bool
 	filteredVector     storepkg.FilteredVectorSearchCapability
 	depthHistory       storepkg.DepthHistoryIterationCapability
+	deletedIter        storepkg.DeletedIterationCapability
+	deletedDepthIter   storepkg.DepthDeletedIterationCapability
 	vectorRowsTrust    bool
 	storeRowsTrust     bool
 	nativeAdjacency    bool
@@ -566,6 +568,39 @@ func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	return cap
 }
 
+func deletedIterationCapability(store storepkg.MandatoryStore) storepkg.DeletedIterationCapability {
+	cap, ok := store.(storepkg.DeletedIterationCapability)
+	if !ok {
+		return nil
+	}
+	// Deleted iteration is an optional acceleration. Wrappers that only inherit
+	// the native methods must fall through so wrapper-injected ForEach*HistoryID
+	// behaviour remains observable on the candidate-fold path.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DeletedIterationCapability)(nil)).Elem(),
+		"ForEachDeletedNodeID", "ForEachDeletedRelID") {
+		return nil
+	}
+	return cap
+}
+
+func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.DepthDeletedIterationCapability {
+	cap, ok := store.(storepkg.DepthDeletedIterationCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthDeletedIterationCapability)(nil)).Elem(),
+		"ForEachDeletedNodeIDByDepth", "ForEachDeletedRelIDByDepth") {
+		return nil
+	}
+	return cap
+}
+
 func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
 	switch store.(type) {
 	case *memory.Store, *badger.Store, *tiered.Store:
@@ -776,6 +811,8 @@ func New(config Config) (*Core, error) {
 	c.propertyQueryTrust = isExactNativeStore(store)
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
+	c.deletedIter = deletedIterationCapability(store)
+	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)

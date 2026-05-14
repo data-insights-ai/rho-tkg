@@ -258,20 +258,14 @@ func relVersionInheritedValidFrom(chain []*types.Relationship, i int, tm *types.
 
 // --- Private helpers for history-aware queries ---
 
-// forEachNodeCandidateID iterates the union of (currentIDs, history node IDs)
-// without scanning the full current ID set via ForEachNodeID. Use when the
-// caller already has a narrow indexed candidate list (label, property, or
-// adjacency index) — folding only the deleted/historical node IDs on top
-// preserves history-aware semantics without paying for a full table scan.
-//
-// Scalability note (B2 — v4 known limitation): the history fold walks
-// EVERY node-history ID in the store, so the cost is O(total_history)
-// regardless of how narrow currentIDs is. For full-graph temporal queries
-// (NodesAt, NodesDuring) this is correct. For SELECTIVE queries like
-// "nodes labelled X at time t" or adjacency-at-t, this is overpay —
-// most history IDs are already in currentIDs. v4.1 will add a
-// dedicated history-only-node-IDs index so the fold scales with the
-// number of deleted entities, not total history size.
+// forEachNodeCandidateID iterates the union of (currentIDs, ALL node-history
+// IDs). Use for history-aware label/property queries where an entity's
+// CURRENT state may diverge from its state at the queried instant: a node
+// currently labelled Y but historically labelled X at t must still be
+// visited so the per-entity predicate can match its at-t version.
+// (Adjacency queries do NOT need the full history fold — endpoints are
+// immutable, so a rel that ever pointed at node N still points at N if
+// alive. See forEachRelAdjacencyCandidateIDByDepth.)
 func (c *Core) forEachNodeCandidateID(currentIDs []types.NodeID, fn func(types.NodeID) error) error {
 	return c.forEachNodeCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -296,12 +290,9 @@ func (c *Core) forEachNodeCandidateIDByDepth(currentIDs []types.NodeID, depth st
 }
 
 // forEachRelCandidateID is the relationship counterpart of
-// forEachNodeCandidateID — same indexed-candidates + history-IDs union
-// without scanning ForEachRelID. The B2 scalability note on
-// forEachNodeCandidateID applies here too: temporal adjacency queries
-// (OutgoingRelsAt / IncomingRelsAt / NeighborsAt) pay O(total rel history)
-// for the deleted-rel-coverage fold today; v4.1 will replace the fold
-// with a deleted-rel-adjacency lookup keyed by endpoint.
+// forEachNodeCandidateID — same all-history fold. For rel-type-flavored
+// temporal queries (a rel's type changes via a new version), this is needed.
+// For adjacency queries, prefer forEachRelAdjacencyCandidateIDByDepth.
 func (c *Core) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
 	return c.forEachRelCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
 }
@@ -323,6 +314,74 @@ func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth stor
 		}
 	}
 	return nil
+}
+
+// forEachRelAdjacencyCandidateID is the adjacency-query specialization of
+// forEachRelCandidateID. Adjacency endpoints are immutable, so a rel that
+// ever pointed at the queried node still points at it if alive — therefore
+// the candidate set is (currentIDs ∪ DELETED rel IDs), not (currentIDs ∪ ALL
+// rel history). When the underlying store implements
+// DeletedIterationCapability the fold scales with deleted-rel count, not
+// total rel history; otherwise it falls back to the wider history scan.
+func (c *Core) forEachRelAdjacencyCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
+	return c.forEachRelAdjacencyCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
+}
+
+func (c *Core) forEachRelAdjacencyCandidateIDByDepth(currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
+	seen := make(map[types.RelID]struct{}, len(currentIDs))
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	if err := c.forEachDeletedRelIDByDepth(depth, func(id types.RelID) bool {
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachDeletedRelIDByDepth prefers the store's DeletedIterationCapability
+// (depth-aware variant first, then plain) so the fold visits only rel IDs
+// whose history exists but whose current row is absent. Without either
+// capability the graph layer falls back to the wider history scan —
+// correct but O(total rel history). Only used by
+// forEachRelAdjacencyCandidateIDByDepth today; the matching node helper is
+// intentionally absent because no node temporal API has the "endpoints are
+// immutable" simplification that lets adjacency drop full-history fold.
+func (c *Core) forEachDeletedRelIDByDepth(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	wrapped := fn
+	if !c.storeRowsTrust {
+		var invalid error
+		wrapped = func(id types.RelID) bool {
+			if err := storepkg.ValidateRelID(id); err != nil {
+				invalid = err
+				return false
+			}
+			return fn(id)
+		}
+		err := c.forEachDeletedRelIDByDepthTrusted(depth, wrapped)
+		if invalid != nil {
+			return invalid
+		}
+		return err
+	}
+	return c.forEachDeletedRelIDByDepthTrusted(depth, wrapped)
+}
+
+func (c *Core) forEachDeletedRelIDByDepthTrusted(depth storepkg.ShardDepth, fn func(types.RelID) bool) error {
+	if depth != storepkg.DepthAll && c.deletedDepthIter != nil {
+		return c.deletedDepthIter.ForEachDeletedRelIDByDepth(depth, fn)
+	}
+	if c.deletedIter != nil && depth == storepkg.DepthAll {
+		return c.deletedIter.ForEachDeletedRelID(fn)
+	}
+	return c.forEachRelHistoryIDByDepthTrusted(depth, fn)
 }
 
 // forEachKnownNodeID collects the union of current + history node IDs

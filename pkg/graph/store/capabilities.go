@@ -227,6 +227,32 @@ type DepthHistoryIterationCapability interface {
 	ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error
 }
 
+// DeletedIterationCapability is OPTIONAL. Backends implement it so the graph
+// layer can fold ONLY deleted IDs (entities with history rows but no current
+// row) onto a narrow indexed candidate list when answering temporal adjacency
+// or label/property queries at a point/interval in the past. Without it the
+// graph layer falls back to iterating the full history set — correct but
+// O(total history) per query regardless of how narrow the candidate list is.
+//
+// Implementations must visit every ID that has at least one history version
+// AND no current row, and must not visit any ID that currently exists. Nil
+// callbacks return ErrInvalidStoreMutation. Callbacks are invoked outside
+// backend locks (same contract as ForEachNodeHistoryID).
+type DeletedIterationCapability interface {
+	ForEachDeletedNodeID(fn func(types.NodeID) bool) error
+	ForEachDeletedRelID(fn func(types.RelID) bool) error
+}
+
+// DepthDeletedIterationCapability is the depth-aware counterpart of
+// DeletedIterationCapability. Tiered backends implement it so history-aware
+// queries can combine deleted-only iteration with shard-depth filtering.
+// Single-shard backends do not need it because every valid depth maps to the
+// same shard. Nil callbacks return ErrInvalidStoreMutation.
+type DepthDeletedIterationCapability interface {
+	ForEachDeletedNodeIDByDepth(depth ShardDepth, fn func(types.NodeID) bool) error
+	ForEachDeletedRelIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error
+}
+
 // PropertyIndexCapability is OPTIONAL. Backends that do not implement
 // property indexes should omit it; consumers that need property-indexed
 // lookup should type-assert and surface ErrCapabilityNotSupported (or a

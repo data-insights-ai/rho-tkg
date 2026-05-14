@@ -722,3 +722,42 @@ func trimRelHistoryPage(history []*types.Relationship, limit int) []*types.Relat
 	}
 	return history
 }
+
+// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID
+// — collect history IDs at depth, then probe GetRelationship after locks
+// release, yielding only IDs whose current row is absent.
+func (ts *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
+	return ts.ForEachDeletedRelIDByDepth(DepthAll, fn)
+}
+
+func (ts *Store) ForEachDeletedRelIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := validateDepth(depth); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errNilIterationCallback()
+	}
+	var ids []types.RelID
+	if err := ts.ForEachRelHistoryIDByDepth(depth, func(id types.RelID) bool {
+		ids = append(ids, id)
+		return true
+	}); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		_, err := ts.GetRelationship(id)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, ErrRelNotFound) {
+			return err
+		}
+		if !fn(id) {
+			return nil
+		}
+	}
+	return nil
+}
