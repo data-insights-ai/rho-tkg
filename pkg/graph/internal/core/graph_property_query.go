@@ -45,63 +45,67 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 	if err := types.ValidatePropertyValue(value); err != nil {
 		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
 	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesByLabelAndPropertyLocked(label, key, value, opts)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// nodesByLabelAndPropertyLocked is the lock-free body of NodeOps.ByLabelAndProperty.
+// Callers must hold c.mu (R or W).
+func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	temporal := hasTemporalFilter(opts)
 	var targetKey string
 	if temporal {
 		targetKey = indexpkg.PropertyValueKey(value)
 	}
-	var result []*types.Node
-	err := c.readUnderRLock(func() error {
-		tok, ok := c.labels.Lookup(label)
-		if !ok {
-			return nil
-		}
-		if !temporal {
-			nodes, err := c.nodesByLabelAndProperty(tok, key, value, opts)
-			result = nodes
-			return err
-		}
-		if targetKey == "" {
-			return nil
-		}
-		// Indexed (or fallback-scanned) candidate set: nodes that currently
-		// match label+property, merged with all history IDs to cover
-		// deleted/changed nodes whose historical version matched.
-		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
-		if err != nil {
-			return err
-		}
-		currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
-		if err != nil {
-			return err
-		}
-
-		pred := func(n *types.Node) bool {
-			if !n.HasLabelTokenRaw(tok) {
-				return false
-			}
-			gotKey, found := n.IndexablePropertyValueKey(key)
-			return found && gotKey == targetKey
-		}
-		if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
-			n, err := c.findNodeVersionForOpts(id, opts, pred)
-			if err != nil {
-				if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-					return nil
-				}
-				return err
-			}
-			result = append(result, n)
-			return nil
-		}); err != nil {
-			return err
-		}
-		storeutil.SortNodesByID(result)
-		result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
-		return nil
-	})
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	if !temporal {
+		return c.nodesByLabelAndProperty(tok, key, value, opts)
+	}
+	if targetKey == "" {
+		return nil, nil
+	}
+	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
 		return nil, err
 	}
+	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*types.Node
+	pred := func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		gotKey, found := n.IndexablePropertyValueKey(key)
+		return found && gotKey == targetKey
+	}
+	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+		n, err := c.findNodeVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	storeutil.SortNodesByID(result)
+	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
 	return result, nil
 }

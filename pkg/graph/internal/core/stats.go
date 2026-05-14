@@ -45,6 +45,11 @@ func (s *StatOps) Get() (GraphStats, error) {
 	c := s.c
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.statsLocked()
+}
+
+// statsLocked is the lock-free body of StatOps.Get.
+func (c *Core) statsLocked() (GraphStats, error) {
 	out := GraphStats{
 		NodesAdded:   c.opNodeAdds.Load(),
 		NodesRead:    c.opNodeReads.Load(),
@@ -105,22 +110,29 @@ func (s *StatOps) AllLabelCounts() (map[string]int, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	result := make(map[string]int)
+	var result map[string]int
 	err := c.readUnderRLock(func() error {
-		names := c.labels.ExportNames()
-		// Skip index 0 (reserved empty string).
-		for i := 1; i < len(names); i++ {
-			count, err := c.nodeCountByLabel(uint16(i))
-			if err != nil {
-				return err
-			}
-			if count > 0 {
-				result[names[i]] = count
-			}
-		}
-		return nil
+		var err error
+		result, err = c.allLabelCountsLocked()
+		return err
 	})
 	return result, err
+}
+
+// allLabelCountsLocked is the lock-free body of StatOps.AllLabelCounts.
+func (c *Core) allLabelCountsLocked() (map[string]int, error) {
+	result := make(map[string]int)
+	names := c.labels.ExportNames()
+	for i := 1; i < len(names); i++ {
+		count, err := c.nodeCountByLabel(uint16(i))
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			result[names[i]] = count
+		}
+	}
+	return result, nil
 }
 
 // AllRelTypeCounts returns a map of relationship type name to relationship count
@@ -130,20 +142,27 @@ func (s *StatOps) AllRelTypeCounts() (map[string]int, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	result := make(map[string]int)
+	var result map[string]int
 	err := c.readUnderRLock(func() error {
-		names := c.relTypes.ExportNames()
-		// Skip index 0 (reserved empty string).
-		for i := 1; i < len(names); i++ {
-			count, err := c.relCountByType(uint16(i))
-			if err != nil {
-				return err
-			}
-			if count > 0 {
-				result[names[i]] = count
-			}
-		}
-		return nil
+		var err error
+		result, err = c.allRelTypeCountsLocked()
+		return err
 	})
 	return result, err
+}
+
+// allRelTypeCountsLocked is the lock-free body of StatOps.AllRelTypeCounts.
+func (c *Core) allRelTypeCountsLocked() (map[string]int, error) {
+	result := make(map[string]int)
+	names := c.relTypes.ExportNames()
+	for i := 1; i < len(names); i++ {
+		count, err := c.relCountByType(uint16(i))
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			result[names[i]] = count
+		}
+	}
+	return result, nil
 }

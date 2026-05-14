@@ -180,67 +180,74 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 
 	var result []*types.Node
 	err := c.readUnderRLock(func() error {
-		if c.txTimeQuery != nil {
-			nodes, err := c.txTimeQuery.NodesAsOf(txTime)
-			if err != nil {
-				return err
-			}
-			if c.txTimeQueryCopy && len(nodes) > 0 {
-				result = make([]*types.Node, 0, len(nodes))
-			} else {
-				result = nodes
-			}
-			for _, n := range nodes {
-				if n == nil {
-					return storepkg.ValidateNodeHistorySnapshot(0, nil)
-				}
-				if err := storepkg.ValidateNodeHistorySnapshot(n.ID(), n); err != nil {
-					return err
-				}
-				if c.txTimeQueryCopy {
-					result = append(result, c.nodeCapabilityVisibleAtTxTime(n, txTime))
-				} else {
-					nodeVisibleAtTxTime(n, txTime)
-				}
-			}
-			storeutil.SortNodesByID(result)
-			return nil
-		}
-
-		seen := make(map[snowflake.ID]struct{})
-		if err := c.forEachNodeID(func(id types.NodeID) bool {
-			seen[id.SnowflakeID()] = struct{}{}
-			return true
-		}); err != nil {
-			return err
-		}
-		if err := c.forEachNodeHistoryIDByDepth(storepkg.DepthAll, func(id types.NodeID) bool {
-			seen[id.SnowflakeID()] = struct{}{}
-			return true
-		}); err != nil {
-			return err
-		}
-
-		ids := make([]snowflake.ID, 0, len(seen))
-		for id := range seen {
-			ids = append(ids, id)
-		}
-		storeutil.SortSnowflakeIDs(ids)
-
-		for _, id := range ids {
-			n, err := c.nodeAsOfLocked(types.NodeID(id), txTime)
-			if err != nil {
-				if errors.Is(err, ErrNoVersionAsOf) {
-					continue
-				}
-				return err
-			}
-			result = append(result, n)
-		}
-		return nil
+		var err error
+		result, err = c.nodesAsOfLocked(txTime)
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
+	var result []*types.Node
+	if c.txTimeQuery != nil {
+		nodes, err := c.txTimeQuery.NodesAsOf(txTime)
+		if err != nil {
+			return nil, err
+		}
+		if c.txTimeQueryCopy && len(nodes) > 0 {
+			result = make([]*types.Node, 0, len(nodes))
+		} else {
+			result = nodes
+		}
+		for _, n := range nodes {
+			if n == nil {
+				return nil, storepkg.ValidateNodeHistorySnapshot(0, nil)
+			}
+			if err := storepkg.ValidateNodeHistorySnapshot(n.ID(), n); err != nil {
+				return nil, err
+			}
+			if c.txTimeQueryCopy {
+				result = append(result, c.nodeCapabilityVisibleAtTxTime(n, txTime))
+			} else {
+				nodeVisibleAtTxTime(n, txTime)
+			}
+		}
+		storeutil.SortNodesByID(result)
+		return result, nil
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	if err := c.forEachNodeID(func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	if err := c.forEachNodeHistoryIDByDepth(storepkg.DepthAll, func(id types.NodeID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+
+	ids := make([]snowflake.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	storeutil.SortSnowflakeIDs(ids)
+
+	for _, id := range ids {
+		n, err := c.nodeAsOfLocked(types.NodeID(id), txTime)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionAsOf) {
+				continue
+			}
+			return nil, err
+		}
+		result = append(result, n)
 	}
 	return result, nil
 }
@@ -255,67 +262,74 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
-		if c.txTimeQuery != nil {
-			rels, err := c.txTimeQuery.RelsAsOf(txTime)
-			if err != nil {
-				return err
-			}
-			if c.txTimeQueryCopy && len(rels) > 0 {
-				result = make([]*types.Relationship, 0, len(rels))
-			} else {
-				result = rels
-			}
-			for _, r := range rels {
-				if r == nil {
-					return storepkg.ValidateRelationshipHistorySnapshot(0, nil)
-				}
-				if err := storepkg.ValidateRelationshipHistorySnapshot(r.ID(), r); err != nil {
-					return err
-				}
-				if c.txTimeQueryCopy {
-					result = append(result, c.relCapabilityVisibleAtTxTime(r, txTime))
-				} else {
-					relVisibleAtTxTime(r, txTime)
-				}
-			}
-			storeutil.SortRelsByID(result)
-			return nil
-		}
-
-		seen := make(map[snowflake.ID]struct{})
-		if err := c.forEachRelID(func(id types.RelID) bool {
-			seen[id.SnowflakeID()] = struct{}{}
-			return true
-		}); err != nil {
-			return err
-		}
-		if err := c.forEachRelHistoryIDByDepth(storepkg.DepthAll, func(id types.RelID) bool {
-			seen[id.SnowflakeID()] = struct{}{}
-			return true
-		}); err != nil {
-			return err
-		}
-
-		ids := make([]snowflake.ID, 0, len(seen))
-		for id := range seen {
-			ids = append(ids, id)
-		}
-		storeutil.SortSnowflakeIDs(ids)
-
-		for _, id := range ids {
-			r, err := c.relAsOfLocked(types.RelID(id), txTime)
-			if err != nil {
-				if errors.Is(err, ErrNoVersionAsOf) {
-					continue
-				}
-				return err
-			}
-			result = append(result, r)
-		}
-		return nil
+		var err error
+		result, err = c.relsAsOfLocked(txTime)
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, error) {
+	var result []*types.Relationship
+	if c.txTimeQuery != nil {
+		rels, err := c.txTimeQuery.RelsAsOf(txTime)
+		if err != nil {
+			return nil, err
+		}
+		if c.txTimeQueryCopy && len(rels) > 0 {
+			result = make([]*types.Relationship, 0, len(rels))
+		} else {
+			result = rels
+		}
+		for _, r := range rels {
+			if r == nil {
+				return nil, storepkg.ValidateRelationshipHistorySnapshot(0, nil)
+			}
+			if err := storepkg.ValidateRelationshipHistorySnapshot(r.ID(), r); err != nil {
+				return nil, err
+			}
+			if c.txTimeQueryCopy {
+				result = append(result, c.relCapabilityVisibleAtTxTime(r, txTime))
+			} else {
+				relVisibleAtTxTime(r, txTime)
+			}
+		}
+		storeutil.SortRelsByID(result)
+		return result, nil
+	}
+
+	seen := make(map[snowflake.ID]struct{})
+	if err := c.forEachRelID(func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	if err := c.forEachRelHistoryIDByDepth(storepkg.DepthAll, func(id types.RelID) bool {
+		seen[id.SnowflakeID()] = struct{}{}
+		return true
+	}); err != nil {
+		return nil, err
+	}
+
+	ids := make([]snowflake.ID, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	storeutil.SortSnowflakeIDs(ids)
+
+	for _, id := range ids {
+		r, err := c.relAsOfLocked(types.RelID(id), txTime)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionAsOf) {
+				continue
+			}
+			return nil, err
+		}
+		result = append(result, r)
 	}
 	return result, nil
 }

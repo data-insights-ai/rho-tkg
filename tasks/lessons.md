@@ -437,16 +437,67 @@ A 900-line file is fine if it does one thing; a 200-line grab-bag is not.
 BAD:  tx := g.Tx.Begin(); defer tx.Rollback()
       n, _ := tx.GetNode(id)
       labels := g.Nodes.Labels(n)   // deadlocks: RLock waits on tx's Lock
+      rows, _ := g.Nodes.ByLabel(label, opts)  // also deadlocks via readUnderRLock
 GOOD: labels := tx.Labels(n)        // calls *Unlocked helper, no c.mu re-entry
+      rows, _ := tx.NodesByLabel(label, opts)  // routes through *Locked helper
 ```
 
-`BeginTx` holds `c.mu.Lock` for the entire transaction. Any public read
-accessor that opens with `c.mu.RLock` (resolution, shadow properties,
-snapshot, export, verification) deadlocks the calling goroutine because
-`sync.RWMutex` is not reentrant (lesson 9). Whenever you add a public
-read accessor that does `c.mu.RLock(); … c.fooUnlocked(…)`, you owe a
-matching `(tx *GraphTx) Foo(...)` in `tx_consistent_reads.go` that calls
-`tx.g.fooUnlocked` directly under `tx.mu`. Audit by grepping
-`c\.mu\.RLock\(\)` and listing every entry point — each must have a tx
-mirror or a written reason it never gets called inside a tx.
+`BeginTx` holds `c.mu.Lock` for the entire transaction. Two doors lead
+into deadlock:
+
+1. **Direct** `c.mu.RLock` in the method body (resolution, shadow
+   properties, hot-path Get, Count*, SearchNearest, ListShards,
+   GetSync/GetAsync, ConstraintOps.Get, StatOps.Get).
+2. **Indirect** via `c.readUnderRLock(func(){…})` — the helper at
+   `locks.go:40` that wraps a closure under RLock. This was the
+   v4.0.1 miss: ~28 query methods route through it (all of
+   `queries.go`, `graph_property_query.go`, `temporal_queries.go`,
+   `txtime.go`, `stats.go`).
+
+`sync.RWMutex` is not reentrant (lesson 9), so either door deadlocks
+the same goroutine that owns `c.mu.Lock` through the tx.
+
+**Audit recipe** when adding a new public read accessor:
+
+```
+grep -nE "c\.mu\.RLock|c\.readUnderRLock" pkg/graph/internal/core/*.go
+```
+
+Every hit in that grep that's reachable from a public sub-API method
+owes either (a) a `(tx *GraphTx) Foo(...)` mirror in
+`tx_consistent_reads.go` that calls a lock-free `c.fooLocked` helper
+directly under `tx.mu`, or (b) a written reason it can never be called
+inside a tx. The mirror pattern is:
+
+```go
+// Public method (still acquires lock):
+func (n *NodeOps) Foo(...) (T, error) {
+    c := n.c
+    // validation that doesn't need the lock
+    var result T
+    err := c.readUnderRLock(func() error {
+        var err error
+        result, err = c.fooLocked(...)
+        return err
+    })
+    return result, err
+}
+
+// Lock-free helper (callers must hold c.mu R or W):
+func (c *Core) fooLocked(...) (T, error) { /* … */ }
+
+// Tx mirror (inherits c.mu.Lock from BeginTx):
+func (tx *GraphTx) Foo(...) (T, error) {
+    if err := tx.lockActive(); err != nil { return zero, err }
+    defer tx.mu.Unlock()
+    // same validation
+    return tx.g.fooLocked(...)
+}
+```
+
+v4.0.1 mirrored only the direct-RLock metadata-resolution set;
+v4.0.2 added ~27 mirrors for the bulk-read methods (queries, temporal,
+AsOf, stats, search). Path B (v4.1.0) will drop `c.mu.Lock` from tx
+lifetime entirely and eliminate the whole bug class — but until then,
+this rule remains load-bearing.
 

@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-05-14
+
+### Fixed - Tx-read deadlock against c.mu (bulk read methods) (2026-05-14)
+
+- **v4.0.1 covered only the metadata-resolution accessors.** The actual
+  data-retrieval reads (`Nodes.ByLabel`, `Rels.Outgoing`, `Temporal.NodesAt`,
+  every `*By*(opts QueryOpts)` and `*At(...)` method, the `*AsOf` set,
+  `Stats.*`, `Index.SearchNearest`, `Tier.ListShards`, `Events.GetSync`,
+  `Constraints.Get`) all go through `c.mu.RLock` either directly or via
+  `c.readUnderRLock(func(){…})`, and still deadlocked inside an open
+  `*GraphTx` for the same reason: `BeginTx` holds `c.mu.Lock` for the tx
+  lifetime, `sync.RWMutex` is not reentrant.
+- Operationally critical second incident: Cypher
+  `CREATE (n:Widget {…}) RETURN n; MATCH (n:Widget) RETURN n.name` hung at
+  the `MATCH` because the engine keeps one tx open across all statements
+  and the second statement called `g.Nodes.ByLabel` inside it.
+- **Fix.** Extracted ~20 `(*Core).fooLocked` helpers from the
+  `readUnderRLock(func(){…})` closure bodies in `queries.go`,
+  `graph_property_query.go`, `temporal_queries.go`, `txtime.go`,
+  `stats.go`. Both the public methods (under `c.mu.RLock`) and the new
+  tx mirrors (under `tx.mu` only) now route through these helpers.
+- Audit recipe is now in lessons.md #31: any new public read method
+  that takes `c.mu.RLock` or `c.readUnderRLock` owes a tx mirror.
+  The audit grep is `c\.mu\.RLock\|c\.readUnderRLock` in pkg/graph/internal/core/.
+- **Known follow-up.** `Temporal.DiffCallback` retains its multi-segment
+  `readUnderRLock` design (lock released between callbacks so handlers
+  can re-enter the graph). It is not yet mirrored — its lock-release
+  semantics make the tx-side contract non-trivial. Deferred to v4.1.0
+  (Path B: drop `c.mu.Lock` from tx lifetime), which eliminates the
+  whole bug class.
+
+### Added - Tx-side bulk read accessors (2026-05-14)
+
+- **27 new `(*GraphTx)` methods** in
+  `pkg/graph/internal/core/tx_consistent_reads.go`:
+  - Nodes: `GetNodesByIDs`, `AllNodes`, `NodesByLabel`,
+    `NodesByLabelAndProperty`, `NodeCount`, `NodeCountByLabel`.
+  - Rels: `GetRelsByIDs`, `AllRels`, `RelsByType`, `OutgoingRels`,
+    `IncomingRels`, `OutgoingRelsForNodes`, `IncomingRelsForNodes`,
+    `RelCount`, `RelCountByType`.
+  - Temporal: `NodesAt`, `RelsAt`, `NodesByLabelAt`, `NodesDuring`,
+    `RelsDuring`, `NodeAt`, `RelAt`, `NeighborsAt`, `OutgoingRelsAt`,
+    `IncomingRelsAt`, `NodesByLabelPropertyAt`,
+    `NodesByLabelPropertyDuring`, `RelsByTypePropertyAt`,
+    `RelsByTypePropertyDuring`.
+  - AsOf (bitemporal): `NodeAsOf`, `RelAsOf`, `NodesAsOf`, `RelsAsOf`.
+  - Stats: `Stats`, `AllLabelCounts`, `AllRelTypeCounts`.
+  - Misc: `SearchNearest`, `IndexProviders`, `ListShards`, `EventBus`,
+    `AsyncEventBus`, `Constraints`.
+- Each guards only `tx.mu`, dispatches to the lock-free
+  `*Locked`/`*Unlocked` helper, and matches the corresponding non-tx
+  accessor's zero-value return contract after Commit/Rollback.
+
 ## [4.0.1] - 2026-05-14
 
 ### Fixed - Tx-read deadlock against c.mu (2026-05-14)
