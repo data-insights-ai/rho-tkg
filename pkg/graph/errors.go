@@ -15,11 +15,15 @@ import (
 var ErrCapabilityNotSupported = storepkg.ErrCapabilityNotSupported
 
 // Store entity sentinels re-exported for public Graph API callers.
-// Graph methods return these wrapped sentinels for missing current entities,
-// including bulk GetByIDs requests with any missing explicit ID.
+// Graph methods return ErrNodeNotFound / ErrRelNotFound for missing current
+// entities (including bulk GetByIDs requests with any missing explicit ID),
+// and ErrNodeExists / ErrRelExists for caller-supplied-ID create paths
+// (Import / AddByIDIfAbsent) when an entity at that ID is already present.
 var (
 	ErrNodeNotFound = storepkg.ErrNodeNotFound
 	ErrRelNotFound  = storepkg.ErrRelNotFound
+	ErrNodeExists   = storepkg.ErrNodeExists
+	ErrRelExists    = storepkg.ErrRelExists
 )
 
 // Index sentinel errors. Returned from the index sub-API.

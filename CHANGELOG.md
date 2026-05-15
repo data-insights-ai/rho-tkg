@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.2.2] - 2026-05-15
+
+### Added - Alias ErrNodeExists / ErrRelExists on graph package (2026-05-15)
+
+Follow-on to v4.2.1's consumer-ergonomics aliases. The entity-conflict
+sentinels (returned by `Import` and `AddByIDIfAbsent` create paths when
+a caller-supplied ID is already present) were not yet aliased on
+`pkg/graph`, forcing consumers to retain a `storepkg` import for those
+two `errors.Is` checks. Two-line addition; no behavior change.
+
+- **`graph.ErrNodeExists`** — alias for `store.ErrNodeExists`.
+- **`graph.ErrRelExists`** — alias for `store.ErrRelExists`.
+
+After upgrading, the conflict-409 paths in downstream DTO mappers no
+longer need to import `pkg/graph/store` alongside `pkg/graph`.
+
 ## [4.2.1] - 2026-05-15
 
 ### Added - Public aliases for QueryOpts + index sentinels (2026-05-15)
