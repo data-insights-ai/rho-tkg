@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-05-15
+
+### Added - Public aliases for QueryOpts + index sentinels (2026-05-15)
+
+Consumer-ergonomics patch — lets the Cypher engine (and other
+downstream callers) use `graph.QueryOpts` + the index-sentinel errors
+without importing `pkg/graph/store` alongside `pkg/graph`. No
+behavior change; purely additive type/var aliases on the `graph`
+package.
+
+- **`graph.QueryOpts`** — alias for `store.QueryOpts`. Configures
+  pagination, depth, and temporal filtering for read methods on
+  `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index().SearchNearest`.
+- **`graph.ShardDepth`** — alias for `store.ShardDepth` (the `Depth`
+  field of `QueryOpts`). Use the `storepkg.Depth*` constants —
+  they stay where they are since they're tiered-store specific.
+- **`graph.DistanceMetric`** — alias for `store.DistanceMetric`,
+  accepted by `g.Index().SearchNearest`. Use the `storepkg.Distance*`
+  constants for values.
+- **`graph.ErrIndexExists`** — alias for `store.ErrIndexExists`
+  (property index already exists).
+- **`graph.ErrIndexNotFound`** — alias for `store.ErrIndexNotFound`.
+- **`graph.ErrTemporalIndexExists`** — alias for `store.ErrTemporalIndexExists`.
+- **`graph.ErrTemporalIndexNotFound`** — alias for `store.ErrTemporalIndexNotFound`.
+
+The vector-index sentinels (`ErrVectorIndexExists`,
+`ErrVectorIndexNotFound`) were already exported; this patch closes
+the parallel gap for property and temporal indexes.
+
+After upgrading, consumer-side import of `storepkg` is no longer
+required for the common read-and-error-check pattern; just import
+`pkg/graph`.
+
 ## [4.2.0] - 2026-05-15
 
 ### Changed - Sub-APIs are accessor methods, not exported fields (2026-05-15)

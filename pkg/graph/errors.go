@@ -24,6 +24,10 @@ var (
 
 // Index sentinel errors. Returned from the index sub-API.
 var (
+	ErrIndexExists                = storepkg.ErrIndexExists
+	ErrIndexNotFound              = storepkg.ErrIndexNotFound
+	ErrTemporalIndexExists        = storepkg.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound      = storepkg.ErrTemporalIndexNotFound
 	ErrVectorIndexExists          = storepkg.ErrVectorIndexExists
 	ErrVectorIndexNotFound        = storepkg.ErrVectorIndexNotFound
 	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch

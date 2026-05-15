@@ -41,6 +41,7 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/rels"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/resolve"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/stats"
+	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/tier"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
@@ -213,6 +214,20 @@ type IDComponents = core.IDComponents
 
 // ConstraintSet aliases core.ConstraintSet.
 type ConstraintSet = core.ConstraintSet
+
+// QueryOpts aliases store.QueryOpts so callers can configure indexed,
+// temporal, and paginated reads via the *graph.Graph sub-APIs without
+// importing pkg/graph/store directly.
+type QueryOpts = store.QueryOpts
+
+// ShardDepth aliases store.ShardDepth — the Depth field of QueryOpts.
+// Use the storepkg.Depth* constants (DepthAll, DepthHot, …) — they keep
+// their original location since they're tiered-store-specific knobs.
+type ShardDepth = store.ShardDepth
+
+// DistanceMetric aliases store.DistanceMetric — accepted by
+// g.Index().SearchNearest. Use the storepkg.Distance* constants for values.
+type DistanceMetric = store.DistanceMetric
 
 // New creates a new Graph with the given configuration. Delegates to core.New
 // and wires every sub-API accessor to the same *Core instance.
