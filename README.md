@@ -31,9 +31,19 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in Unreleased
+### What's new in v4 (v4.0.0 → v4.2.2)
 
-**v4.0 API cleanup (breaking).** The public surface has been simplified — see CHANGELOG.md for the full migration recipe. Highlights:
+**v4.2.2 — consumer-ergonomics alias additions.** `graph.ErrNodeExists` and `graph.ErrRelExists` aliased so consumers can run `errors.Is(err, graph.ErrNodeExists)` without importing `pkg/graph/store` for those two sentinels.
+
+**v4.2.1 — consumer-ergonomics aliases.** `graph.QueryOpts`, `graph.ShardDepth`, `graph.DistanceMetric`, `graph.ErrIndexExists`, `graph.ErrIndexNotFound`, `graph.ErrTemporalIndexExists`, `graph.ErrTemporalIndexNotFound` aliased on `pkg/graph` for the same reason — keep downstream import lists short.
+
+**v4.2.0 — sub-APIs are accessor methods.** The 14 sub-API exported fields on `*Graph` (`g.Nodes`, `g.Rels`, …) are now methods (`g.Nodes()`, `g.Rels()`, …). The accessors are nil-safe: `(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph` instead of panicking. Mechanical sed migration in CHANGELOG `[4.2.0]`.
+
+**v4.1.0 — tx isolation: drop `c.mu.Lock` from tx lifetime (Path B).** Read accessors called inside an open `*GraphTx` no longer deadlock. `BeginTx` now uses a separate `c.txMu` for tx-vs-tx serialization; each tx method takes a brief `c.mu.RLock` around its body. Isolation semantics shift from "serializable graph-wide" to "serializable per touched entity, snapshot-isolated elsewhere" — concurrent standalone mutations on disjoint entities run in parallel. The tx-side read mirrors added in v4.0.1/4.0.2 remain for call-site clarity but are no longer required for correctness.
+
+**v4.0.x — tx-read deadlock fixes.** v4.0.1 mirrored the metadata-resolution read accessors on `*GraphTx`; v4.0.2 added 27 more mirrors covering bulk reads (ByLabel, Outgoing, NodesAt, …). Superseded by v4.1.0 Path B, kept as a clearer call-site signal "this read is inside the tx I'm holding".
+
+**v4.0.0 API cleanup (breaking).** The public surface was simplified — see CHANGELOG `[4.0.0]` for the full migration recipe. Highlights:
 
 - `*WithContext` method pairs collapsed: every `g.Nodes().Add(labels, props)` becomes `g.Nodes().Add(ctx, labels, props)`. Same for `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`, and the Rels counterparts (`Add`, `AddByID`, `AddByIDIfAbsent`, `Get`, `Update`, `UpdateInPlace`, `Delete`, `CompareAndSetProperty`). The `*WithContext` siblings no longer exist.
 - `g.Admin` split: tiered-only methods (`Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard`) moved to a new `g.Tier` sub-API. `g.Admin` now exposes only `Reset` + `DecomposeNodeID` + `DecomposeRelID`, which work on every backend.
@@ -439,7 +449,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **`ArchiveNode` / `RestoreNode` serialised under `g.mu.Lock()`.** Both admin methods now take the full write lock, the same exclusion class as a transaction. Pre-fix, a concurrent `AddRelationship` could slip between `ArchiveNode`'s adjacency pre-scan and its cascade, creating a cross-shard rel the cascade then partially destroyed.
 
-**`PutRelationship` cross-shard archive guard.** This release added a guard for relationships crossing the archive boundary. Current Unreleased code supersedes that guard by migrating relationship placement across `refArchive` and live shards.
+**`PutRelationship` cross-shard archive guard.** This release added a guard for relationships crossing the archive boundary. Superseded by later releases that migrate relationship placement across `refArchive` and live shards.
 
 ### What's new in 3.1.11
 
@@ -447,7 +457,7 @@ Detailed documentation has been split into the `docs/` directory:
 
 **Close-race protection on archive paths.** `shardForNodeIDChecked` / `shardForRelIDChecked` / `forEachHistoryShard` / `findRelInAnyShardStore` / `ArchiveNode` / `RestoreNode` now pin the archive via `checkoutArchive`, mirroring the `activeReqs` discipline used for cold event shards.
 
-**`ArchiveNode` cross-shard relationship handling.** This release rejected relationships crossing the archive boundary to avoid data loss. Current Unreleased code supersedes that by moving relationship placement during archive/restore.
+**`ArchiveNode` cross-shard relationship handling.** This release rejected relationships crossing the archive boundary to avoid data loss. Superseded by later releases that move relationship placement during archive/restore.
 
 ### What's new in 3.1.10
 

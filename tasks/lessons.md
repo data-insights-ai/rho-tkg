@@ -140,12 +140,17 @@ scheduler or memory pressure.
 ## 9. sync.RWMutex Is Not Reentrant
 
 ```
-BAD:  g.mu.RLock(); g.Nodes.ValidAt(t) // inner RLock can deadlock
-GOOD: g.mu.RLock(); getNodesValidAtLocked(t)
+BAD:  g.mu.RLock(); g.Nodes().Get(ctx, id) // inner RLock can deadlock
+GOOD: g.mu.RLock(); getNodeLocked(id)      // *Locked helper, no c.mu re-entry
 ```
 
 Do not call exported graph methods from already-locked graph internals. Use
-unexported lock-free helpers for nested operations.
+unexported lock-free helpers (`*Locked` / `*Unlocked`) for nested operations.
+This rule was load-bearing in v3.4 / v4.0.x when `BeginTx` held `c.mu.Lock`
+for the whole tx lifetime — see SUPERSEDED lesson 31 for that bug class.
+Path B (v4.1.0) removed the lifetime-Lock, but the principle still applies
+inside any internal code path that legitimately needs an enclosing lock
+(rollback, batch execute, snapshot, export).
 
 ## 10. Persistence Must Rebuild In-Memory State
 

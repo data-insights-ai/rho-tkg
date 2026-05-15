@@ -24,28 +24,30 @@ Provenance and authorization shadow inputs accepted through props/updates are st
 
 Temporal shadow inputs accepted through props (`tkg_valid_from`, `tkg_valid_to`, `tkg_created_at`) accept `types.Instant`, signed integer milliseconds, unsigned integer milliseconds that fit in `int64`, and whole-number `float32`/`float64` milliseconds inside each float type's contiguous exact integer range.
 
-## Graph Layer (`pkg/graph`) — v3.4 sub-API surface
+## Graph Layer (`pkg/graph`) — v4.2 sub-API surface
 
-`*graph.Graph` is a thin façade. Its only direct methods are `New(Config) (*Graph, error)` and `Close() error`. Everything else is reached through 13 sub-API field accessors on the Graph value:
+`*graph.Graph` is a thin façade. Its only direct methods are `New(Config) (*Graph, error)`, `Close() error`, and 14 nil-safe sub-API accessor methods. Every sub-API is reached through its accessor method (v4.2.0 converted these from exported fields to methods):
 
-Nil or zero-value graph façade entry points that have error returns (`Close`, `NewBatchBuilder`, `TxAPI`, `BatchAPI`) return `ErrNilGraph` instead of dereferencing an uninitialized core pointer. Nil, zero-value, or typed-nil sub-API wrappers return `ErrNilGraph` from error-returning methods and zero values from no-error helpers. Construct operational graphs with `graph.New`.
+Nil or zero-value graph façade entry points return nil for the sub-API (no panic). Calling a sub-API method on that nil receiver returns `ErrNilGraph` from error-returning methods and zero values from no-error helpers. Construct operational graphs with `graph.New`.
 
-| Field | Package | Purpose |
-|-------|---------|---------|
-| `g.Nodes` | `pkg/graph/nodes` | Node CRUD, property/label mutation, version chain, queries |
-| `g.Rels` | `pkg/graph/rels` | Relationship CRUD, adjacency, property mutation, version chain |
-| `g.Temporal` | `pkg/graph/temporal` | Point-in-time, interval, bitemporal queries; snapshot/diff; Allen relations |
-| `g.Index` | `pkg/graph/index` | Property / temporal / high-frequency / vector index management; vector search; IndexProvider registration |
-| `g.Events` | `pkg/graph/events` | Sync / async EventBus management |
-| `g.Constraints` | `pkg/graph/constraints` | Temporal-constraint set management |
-| `g.IO` | `pkg/graph/io` | Export, Import(r, opts) — single-signature in v4.0 |
-| `g.Admin` | `pkg/graph/admin` | Reset, DecomposeNodeID, DecomposeRelID — generic; works on every backend |
-| `g.Tier` | `pkg/graph/tier` | Archive/Restore, ForceRotate, ListShards, RebuildCatalog, Repair, VerifyShard — tiered-only; returns `ErrNotTieredStore` on memory/badger |
-| `g.Stats` | `pkg/graph/stats` | NodeCount, RelCount, NodeCountByLabel, RelCountByType, AllLabelCounts, AllRelTypeCounts, full GraphStats snapshot |
-| `g.Hash` | `pkg/graph/hash` | VerifyNodeChain, VerifyRelChain (shadows stdlib `hash` — alias as `tkghash` at consumer sites that also import stdlib `hash`) |
-| `g.Resolve` | `pkg/graph/resolve` | NodeProperty / RelProperty (shadow keys) — v4.0 dropped the token methods |
-| `g.Tx` | `pkg/graph` (in-package) | Begin, Run(fn), RunContext(ctx, fn) — Run/RunContext are panic-safe |
-| `g.Batch` | `pkg/graph` (in-package) | New() returns a *BatchBuilder; Run(fn) is the closure-style equivalent |
+| Accessor | Package | Purpose |
+|----------|---------|---------|
+| `g.Nodes()` | `pkg/graph/nodes` | Node CRUD, property/label mutation, version chain, queries |
+| `g.Rels()` | `pkg/graph/rels` | Relationship CRUD, adjacency, property mutation, version chain |
+| `g.Temporal()` | `pkg/graph/temporal` | Point-in-time, interval, bitemporal queries; snapshot/diff; Allen relations |
+| `g.Index()` | `pkg/graph/index` | Property / temporal / high-frequency / vector index management; vector search; IndexProvider registration |
+| `g.Events()` | `pkg/graph/events` | Sync / async EventBus management |
+| `g.Constraints()` | `pkg/graph/constraints` | Temporal-constraint set management |
+| `g.IO()` | `pkg/graph/io` | Export, Import(r, opts) — single-signature in v4.0 |
+| `g.Admin()` | `pkg/graph/admin` | Reset, DecomposeNodeID, DecomposeRelID — generic; works on every backend |
+| `g.Tier()` | `pkg/graph/tier` | Archive/Restore, ForceRotate, ListShards, RebuildCatalog, Repair, VerifyShard — tiered-only; returns `ErrNotTieredStore` on memory/badger |
+| `g.Stats()` | `pkg/graph/stats` | NodeCount, RelCount, NodeCountByLabel, RelCountByType, AllLabelCounts, AllRelTypeCounts, full GraphStats snapshot |
+| `g.Hash()` | `pkg/graph/hash` | VerifyNodeChain, VerifyRelChain (shadows stdlib `hash` — alias as `tkghash` at consumer sites that also import stdlib `hash`) |
+| `g.Resolve()` | `pkg/graph/resolve` | NodeProperty / RelProperty (shadow keys) — v4.0 dropped the token methods |
+| `g.Tx()` | `pkg/graph` (in-package) | Begin, Run(fn), RunContext(ctx, fn) — Run/RunContext are panic-safe |
+| `g.Batch()` | `pkg/graph` (in-package) | New() returns a *BatchBuilder; Run(fn) is the closure-style equivalent |
+
+**Consumer-ergonomics aliases (v4.2.1/v4.2.2)**: `graph.QueryOpts = store.QueryOpts`, `graph.ShardDepth = store.ShardDepth`, `graph.DistanceMetric = store.DistanceMetric`; the entity-conflict sentinels `graph.ErrNodeExists` / `graph.ErrRelExists` and the index-existence sentinels `graph.ErrIndexExists` / `graph.ErrIndexNotFound` / `graph.ErrTemporalIndexExists` / `graph.ErrTemporalIndexNotFound` are all aliased on `pkg/graph` so consumers can avoid a dual `pkg/graph/store` import for `QueryOpts` configuration and `errors.Is` checks on the conflict and existence sentinels.
 
 `Store` / `memory.Store` / `badger.Store` / `tiered.Store` types live in `pkg/graph/store{,/memory,/badger,/tiered}`. The Store interface is composed from capability sub-interfaces in `pkg/graph/store/capabilities.go` — the graph layer depends on `MandatoryStore` (Lifecycle, NodeCRUD, RelCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration). Delete batch methods coalesce duplicate IDs before validation and mutation. Lifecycle calls on nil concrete in-tree store receivers return `ErrNilStore` from `Close` and `Clear`; `graph.ErrNilStore` aliases the same store-layer sentinel. Iteration callbacks must be non-nil; open stores return `ErrInvalidStoreMutation` for nil `ForEach*ID` callbacks, while closed stores return `ErrStoreClosed` first. Non-nil `ForEach*ID` callbacks run outside backend locks and Tiered shard checkouts, so callbacks may call Store methods; Badger history iterators page IDs, overlay pending truncation deletes before async flush, and stop at the start high-water mark so callback-created higher history IDs do not extend the active iterator. Badger/Tiered registry save/load APIs reject nil registry pointers with `ErrInvalidStoreMutation` on open stores, while closed stores still return `ErrStoreClosed` first; `tiered.Store.SetLabelRegistry(nil)` is a no-op. Tiered `registry.msgpack` loads validate label and relationship-type slices before returning metadata, so deprecated single-registry save APIs cannot preserve a corrupt other half. Successful graph operations that allocate label or relationship-type tokens persist the updated registries to Badger/Tiered stores before returning, and import/transaction rollback persists restored registry snapshots. Batch post-write registry checkpoint failures surface through `BatchResult.Errors`; rows that were already written keep their finalized caller-visible node/relationship state. Transaction create/import methods record any row that already committed for rollback even when the method returns the checkpoint error, and `GraphTx.Commit` retries the registry checkpoint before making the transaction irreversible. `tiered.MigrateFromBadger(src, dst)` loads source registries itself, requires an empty destination, preflights migrated entity tokens and relationship endpoints, rolls back inserted destination entities and restores the previous destination registry file on failure, rejects nil stores, non-empty destinations, or missing source registry metadata for non-empty data with `ErrInvalidStoreMutation`, and returns `ErrStoreClosed` for closed source or destination stores. Optional capabilities (`DepthHistoryIterationCapability`, `DeletedIterationCapability`, `DepthDeletedIterationCapability`, `PropertyIndexCapability`, `TemporalIndexCapability`, `VectorIndexCapability`, `HighFrequencyIndexCapability`, `FilteredVectorSearchCapability`) are type-asserted at the call sites that need them. The graph layer falls back to label-scan + property filter for `g.Nodes().ByLabelAndProperty` when `PropertyIndexCapability` is absent (correctness, not just acceleration). `DeletedIterationCapability` (visit only IDs with history rows but no current row) is used by the adjacency-at-t fold inside `g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt`: implementations cap the fold at `O(deleted_count)` instead of `O(total history)`; stores that omit the capability transparently fall back to the wider history scan (correctness identical).
 

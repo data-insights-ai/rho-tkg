@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.2.3] - 2026-05-15
+
+### Changed - Full documentation sync (2026-05-15)
+
+Docs-only patch. No code change, no API surface change, no behavior
+change. Brings every `.md` file in the repository current with the
+v4.0 → v4.2.x release map.
+
+- **CLAUDE.md / AGENTS.md status lines** updated to v4.2.x; replaced
+  the "see CHANGELOG `[Unreleased]` for the v3.4 → v4.0 migration
+  recipe" pointer with explicit per-version anchors
+  (`[4.0.0]` / `[4.1.0]` / `[4.2.0]` / `[4.2.1]` / `[4.2.2]`).
+- **README.md** `### What's new in Unreleased` heading renamed to
+  `### What's new in v4 (v4.0.0 → v4.2.2)` and prepended summaries
+  for v4.2.2, v4.2.1, v4.2.0 (field→method), v4.1.0 (Path B), and
+  v4.0.x (tx-read deadlock fixes). Two "Current Unreleased code
+  supersedes" prose-staleness lines in the 3.1.x historical sections
+  rephrased as "Superseded by later releases".
+- **docs/api.md** sub-API table updated: field-shape headings
+  (`g.Nodes`, …) rewritten to method-shape (`g.Nodes()`, …); count
+  corrected `13 → 14`; "v3.4 sub-API surface" heading bumped to
+  `v4.2`; consumer-ergonomics alias paragraph added pointing to
+  `graph.QueryOpts` and the new sentinel aliases.
+- **docs/architecture.md** "Sub-API Accessors (v3.4.0)" section
+  heading and intro updated to mention the v4.2.0 field→method
+  conversion; file-map row for `graph.go` rewritten to note the
+  unexported sub-API pointers + 14 accessor methods + the v4.2.1
+  type-alias additions (`QueryOpts`, `ShardDepth`, `DistanceMetric`).
+- **docs/SPEC.md** `tkg/v3` → `tkg/v4`; `13 sub-API field accessors`
+  → `14 sub-API accessor methods`.
+- **tasks/lessons.md** lesson 9 BAD/GOOD example updated to the
+  current accessor-method shape and a real method name
+  (`g.Nodes().Get`); a one-line note added that v4.1.0's Path B
+  removed the lifetime-Lock but the underlying principle still
+  applies inside legitimately-locked internal code paths.
+
+Historical CHANGELOG entries describing earlier releases (`[3.x]`,
+`[4.0.x]`, `[4.1.0]`, `[4.2.0]`, etc.) keep their original prose with
+field-shape examples and version-specific phrasing — those are
+accurate snapshots of each release at its time and must not be
+rewritten.
+
 ## [4.2.2] - 2026-05-15
 
 ### Added - Alias ErrNodeExists / ErrRelExists on graph package (2026-05-15)

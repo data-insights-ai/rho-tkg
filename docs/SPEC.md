@@ -611,7 +611,7 @@ matches, err := g.Nodes().ByLabelAndProperty("User", "external_id", "user:alice"
 
 ## 12. Public API (v3.4 sub-API surface)
 
-`tkg/v3` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 13 sub-API field accessors. Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
+`tkg/v4` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 14 sub-API accessor methods (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, …). Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
 
 ### 12.1 Node Creation
 

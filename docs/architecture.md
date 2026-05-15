@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.2.2)
+# Architecture — tkg/v4 (v4.2.3)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -150,9 +150,9 @@ Caller-supplied temporal shadow inputs are also stripped before property validat
 
 All mutations enforce `ValidationLimits` (5 configurable limits with defaults). Update-style paths extract provenance/authorization shadow keys, reject other reserved `tkg_` keys, and validate update values before entity locks, transaction rollback snapshots, or batch queueing. They also recheck final property count after nil deletes/adds/sets are applied and before persistence. Versioned mutations use a checked next-version helper and return `ErrVersionOverflow` at `math.MaxUint32` before history writes, wrapped version `0`, or label-token allocation for rejected add-label calls; version-chain successor lookup also treats `math.MaxUint32` as having no successor instead of wrapping to genesis, and version-chain navigation validates explicit IDs before returning `nil, nil` for a missing neighbor version. Batch update queues deep-copy caller maps after validation so later caller mutations cannot change `Execute`. Add-label paths check node existence, idempotence, and `MaxLabelsPerNode` before creating a token for an unseen label. Node create/import/add-label write failures restore any newly allocated label tokens, and multi-label allocation failures restore partial suffixes before returning. Batch node queueing uses non-zero probe tokens for unseen labels and allocates real tokens only during `Execute`, retokenizing returned node pointers in place before persistence. Batch relationship create failures restore queue-time `TxFrom`, endpoint hashes, and type-token state on the returned relationship pointer. Direct relationship create paths run temporal constraints before allocating a token for an unseen relationship type and restore newly allocated type tokens on final write failure. `CloseVersion`, node label add/remove, node/relationship property CAS, and node/relationship in-place updates recompute hash-chain fields while preserving existing provenance, signature, authorization, and relationship endpoint-hash metadata because those APIs have no provenance shadow-key channel. Registry rollback windows release their allocation mutex via `defer`, so backend panics do not strand future registry writes. Context-aware variants (`*WithContext`) add cancellation checks at critical points. Non-context methods delegate with `context.Background()`.
 
-### Sub-API Accessors (v3.4.0)
+### Sub-API Accessors (v3.4.0 introduced; v4.2.0 converted to methods)
 
-The 130+ implementation methods on `*core.Core` are reachable through 14 sub-API field accessors on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 14 fields listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes().Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal.
+The 130+ implementation methods on `*core.Core` are reachable through 14 sub-API accessor methods on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 14 accessor methods listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes().Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal. Until v4.2.0 these accessors were exported fields (`g.Nodes` etc.); v4.2.0 converted them to nil-safe methods so `(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph`.
 
 | Field | Package | Wraps |
 |-------|---------|-------|
@@ -874,13 +874,13 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 
 ## File Map (`pkg/graph/`)
 
-After v3.4.0 (Option 3), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 14 sub-API field accessors. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes().Add`, `g.Temporal().NodesAt`, etc.).
+After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 14 unexported sub-API pointers exposed via nil-safe accessor methods. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes().Add`, `g.Temporal().NodesAt`, etc.).
 
 #### `pkg/graph/` (4 production files + 1 smoke test)
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | `Graph` thin façade: `core *core.Core` + 14 sub-API field accessors. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported. |
+| `graph.go` | `Graph` thin façade: `core *core.Core` + 14 unexported sub-API pointers. Public methods: `New`, `Close`, and 14 nil-safe accessor methods (`Nodes() *nodes.API`, etc.). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet`, `QueryOpts`, `ShardDepth`, `DistanceMetric` type aliases re-exported. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`, kept in-package because they wrap `*GraphTx` / `*BatchBuilder` declared in `internal/core`. |
 | `errors.go` | Public sentinel re-exports: 12 store sentinels, vector-index sentinels, registry sentinels, IndexProvider sentinels. Canonical declarations in `internal/core/core.go`. |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end. |
