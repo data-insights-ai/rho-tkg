@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-05-15
+
+### Changed - Sub-APIs are accessor methods, not exported fields (2026-05-15)
+
+The 14 sub-API field accessors on `*Graph` (`g.Nodes`, `g.Rels`,
+`g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`,
+`g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`)
+are now **methods** (`g.Nodes()`, `g.Rels()`, …). The exported fields
+are gone; the underlying sub-API pointers live in unexported fields and
+the accessor methods return them.
+
+#### Why
+
+- More idiomatic Go. Stdlib uses methods on receivers; exported struct
+  fields as the primary API is a Java/C#-style accent. See
+  CLAUDE.md "Code Style" notes from the v4.1.0 review thread.
+- Centralizes nil-safety. `(*Graph)(nil).Nodes()` returns nil cleanly;
+  zero-value `(&Graph{}).Nodes()` returns nil; both yield nil sub-API
+  pointers whose methods fail closed with `ErrNilGraph` via the
+  existing zero-value contract.
+- Removes a class of footgun: customers can no longer accidentally
+  assign or zero out `g.Nodes` from outside the package.
+
+#### Migration recipe (mechanical sed)
+
+```
+sed -i '' -E 's/\.(Nodes|Rels|Temporal|Index|Events|Constraints|IO|Admin|Tier|Stats|Hash|Resolve|Tx|Batch)\./.\1()./g' **/*.go
+```
+
+Run from any consumer repo's root. Catches the dot-prefixed access
+pattern (`g.Nodes.Add(...)` → `g.Nodes().Add(...)`). Bare field
+references (`var x = g.Nodes`) need a one-line follow-up: replace with
+`var x = g.Nodes()`. The compiler will flag every remaining occurrence.
+
+Inside `tkg` itself the migration touched 34 files (~5,218 call-site
+updates).
+
+#### Tests
+
+- `pkg/graph/accessor_test.go` (new) — 8 test functions covering:
+  - Reflection-driven enumeration: every exported method on `*Graph` is
+    checked for nil-receiver safety.
+  - Zero-value `Graph{}` returns nil for every accessor.
+  - Chained `(*Graph)(nil).Nodes().Add(...)` fails closed with
+    `ErrNilGraph`.
+  - After `Close()`, accessors still return live sub-API pointers,
+    but calls return `ErrGraphClosed`.
+  - Pointer stability: `g.Nodes() == g.Nodes()` on consecutive calls.
+  - Struct-shape regression: `*Graph` must have **zero** exported
+    fields (catches accidental re-introduction).
+  - Reflection-driven signature check: all 14 expected accessor methods
+    exist and return a single pointer.
+- Existing `subapi_zero_value_test.go` (~70+ table-driven cases for
+  zero-value sub-API behavior) is unchanged — the field-vs-method
+  conversion didn't alter the sub-API zero-value contract.
+
+#### What was NOT changed
+
+- Each sub-API's `ok bool` zero-value guard. Could have been simplified
+  to a single nil-check, but that would force `grapherr.IsNil` (reflect)
+  on every method call. Keep the field, keep the constant-time check.
+- The sub-API package layout under `pkg/graph/{nodes,rels,…}`.
+- Internal-core references to `*Core.Nodes`, `*Core.Rels` etc. (those
+  are still exported fields on `*Core` because the internal sub-API
+  packages need them — that surface is not customer-facing).
+
 ## [4.1.0] - 2026-05-14
 
 ### Changed - Tx isolation: drop c.mu.Lock from tx lifetime (Path B) (2026-05-14)

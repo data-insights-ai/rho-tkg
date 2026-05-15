@@ -576,7 +576,7 @@ func (ts *Store) beginSequentialStoreWideOperation() (func(), error) {
 // stale labels on the next hot-shard rotation).
 //
 // Concurrency: takes ts.mu.Lock for the full clear so direct Store callers get
-// the same topology exclusion as g.Admin.Reset. Each open event shard is also
+// the same topology exclusion as g.Admin().Reset. Each open event shard is also
 // pinned via checkoutStore for the duration of its Clear() call. Without the
 // pin, Close (which doesn't take ts.mu and only spin-waits on activeReqs) could
 // free the underlying DB while Clear was still touching it — Badger v4 Flush on

@@ -1,6 +1,6 @@
 // Package stats is a sub-API accessor for graph counter / count-by-label
 // statistics. The full GraphStats struct (atomic operation counters + cache
-// metrics) is reachable via `g.Stats.Get()`; the count helpers below answer
+// metrics) is reachable via `g.Stats().Get()`; the count helpers below answer
 // label/type-scoped questions without materialising the full GraphStats
 // snapshot.
 package stats

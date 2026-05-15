@@ -75,7 +75,7 @@
 // DeleteRelationship snapshot before deletion. Commit releases the lock.
 // Rollback restores all mutations in reverse order: re-creates deleted entities,
 // reverts updates to snapshots, deletes created entities.
-// g.Admin.Reset atomically clears all entities via Store.Clear while preserving
+// g.Admin().Reset atomically clears all entities via Store.Clear while preserving
 // registries.
 //
 // # Concurrency

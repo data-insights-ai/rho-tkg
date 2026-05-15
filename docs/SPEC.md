@@ -14,7 +14,7 @@
 
 This specification replaces string-based entity IDs, labels, and relationship types with compact internal representations: snowflake `int64` for entity IDs and `uint16` tokens for labels and relationship types. All internal types are unexported. Users interact exclusively through string-based public APIs.
 
-A core architectural decision: **Node and Relationship are pure data structs with no back-references to the graph.** String resolution for labels and types is performed exclusively by the Graph layer (or any downstream consumer that holds a `*graph.Graph` reference and goes through `g.Resolve` / `g.Nodes.Labels` / `g.Rels.Type`).
+A core architectural decision: **Node and Relationship are pure data structs with no back-references to the graph.** String resolution for labels and types is performed exclusively by the Graph layer (or any downstream consumer that holds a `*graph.Graph` reference and goes through `g.Resolve` / `g.Nodes().Labels` / `g.Rels().Type`).
 
 **Goals:**
 - Reduce per-node structural overhead from ~73B to ~18B (75% reduction)
@@ -194,9 +194,9 @@ There are exactly three consumers that need string labels/types. All three alrea
 
 | Consumer | Has registry? | Resolution method |
 |----------|--------------|-------------------|
-| **Graph layer (this library)** | Yes (owns registries) | `g.Nodes.Labels(n)`, `g.Rels.Type(r)`, `g.Resolve.NodeProperty(n, key)` |
-| **Downstream Cypher engine** (`rho/tkgd-v3`) | Yes (holds *graph.Graph ref) | Same `g.Resolve.*` / `g.Nodes.*` / `g.Rels.*` accessors |
-| **REST/gRPC API** | Yes (holds *graph.Graph ref) | `g.Nodes.Labels(n)` before JSON encoding |
+| **Graph layer (this library)** | Yes (owns registries) | `g.Nodes().Labels(n)`, `g.Rels().Type(r)`, `g.Resolve().NodeProperty(n, key)` |
+| **Downstream Cypher engine** (`rho/tkgd-v3`) | Yes (holds *graph.Graph ref) | Same `g.Resolve().*` / `g.Nodes().*` / `g.Rels().*` accessors |
+| **REST/gRPC API** | Yes (holds *graph.Graph ref) | `g.Nodes().Labels(n)` before JSON encoding |
 
 All internal operations — index lookups, label matching, adjacency traversal, hash computation — work with tokens directly. String resolution is a **presentation concern**, not a data concern.
 
@@ -566,12 +566,12 @@ meta/reltype_tokens  -> msgpack([]string)
 
 ## 11. Token Resolution Patterns (for downstream query engines)
 
-This library does not ship a query language. Downstream engines (notably `rho/tkgd-v3`'s Cypher engine) integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes.ByLabel` / `g.Rels.ByType` for token-driven queries.
+This library does not ship a query language. Downstream engines (notably `rho/tkgd-v3`'s Cypher engine) integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes().ByLabel` / `g.Rels().ByType` for token-driven queries.
 
 ### 11.1 Label Matching
 
 ```go
-// Per candidate: g.Nodes.HasLabel(node, "Person")
+// Per candidate: g.Nodes().HasLabel(node, "Person")
 // Internally resolves the label token once and compares as uint16.
 // Returns false for unregistered or malformed names (fail-closed).
 ```
@@ -580,31 +580,31 @@ This library does not ship a query language. Downstream engines (notably `rho/tk
 
 ```go
 // Per candidate:
-//   g.Nodes.HasLabel(node, "Person") || g.Nodes.HasLabel(node, "Company")
+//   g.Nodes().HasLabel(node, "Person") || g.Nodes().HasLabel(node, "Company")
 // The token-leak helpers (LookupLabel/LabelToken) were removed in v4;
 // callers that need bulk resolution should batch via the public By-label
-// scan helpers (g.Nodes.ByLabel(label, opts)).
+// scan helpers (g.Nodes().ByLabel(label, opts)).
 ```
 
 ### 11.3 Type Matching
 
 ```go
-// Per candidate: g.Rels.HasType(rel, "KNOWS")
+// Per candidate: g.Rels().HasType(rel, "KNOWS")
 ```
 
 ### 11.4 Property Access (incl. shadow keys)
 
 ```go
-val, ok := g.Resolve.NodeProperty(node, "name")       // user property
-val, ok := g.Resolve.NodeProperty(node, "tkg_labels") // shadow property
+val, ok := g.Resolve().NodeProperty(node, "name")       // user property
+val, ok := g.Resolve().NodeProperty(node, "tkg_labels") // shadow property
 ```
 
 ### 11.5 Entity IDs
 
-`tkg/v4` does not expose a user-supplied identity for nodes or relationships. Identity is the snowflake ID (typed `NodeID` / `RelID`). Property-based lookups via `g.Nodes.ByLabelAndProperty` are the recommended pattern for application-level identity:
+`tkg/v4` does not expose a user-supplied identity for nodes or relationships. Identity is the snowflake ID (typed `NodeID` / `RelID`). Property-based lookups via `g.Nodes().ByLabelAndProperty` are the recommended pattern for application-level identity:
 
 ```go
-matches, err := g.Nodes.ByLabelAndProperty("User", "external_id", "user:alice", store.QueryOpts{})
+matches, err := g.Nodes().ByLabelAndProperty("User", "external_id", "user:alice", store.QueryOpts{})
 ```
 
 ---
@@ -618,37 +618,37 @@ matches, err := g.Nodes.ByLabelAndProperty("User", "external_id", "user:alice", 
 ```go
 g, err := graph.New(graph.Config{Store: memory.New()})
 // ...
-n, err := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
+n, err := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Alice"})
 // Snowflake ID assigned automatically; n.ID() is the typed wrapper.
-// Context-aware variant: g.Nodes.Add(ctx, labels, props).
+// Context-aware variant: g.Nodes().Add(ctx, labels, props).
 ```
 
 ### 12.2 Relationship Creation
 
 ```go
-a, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Alice"})
-b, _ := g.Nodes.Add([]string{"User"}, map[string]any{"name": "Bob"})
-r, err := g.Rels.Add("KNOWS", a, b, nil)
+a, _ := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Alice"})
+b, _ := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Bob"})
+r, err := g.Rels().Add("KNOWS", a, b, nil)
 // ID-form variant with the same endpoint verification and hash capture:
-//   g.Rels.AddByID("KNOWS", a.ID(), b.ID(), nil)
+//   g.Rels().AddByID("KNOWS", a.ID(), b.ID(), nil)
 // Atomic check-then-create:
-//   g.Rels.AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), nil)
+//   g.Rels().AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), nil)
 ```
 
 ### 12.3 Node Retrieval
 
 ```go
 // By ID:
-n, err := g.Nodes.Get(a.ID())
+n, err := g.Nodes().Get(a.ID())
 
 // By label + property (uses the property index when present, falls back to
 // label scan + property filter when PropertyIndexCapability is absent; scalar
 // float matching canonicalizes signed zero and NaN payloads within the same
 // concrete type):
-matches, err := g.Nodes.ByLabelAndProperty("User", "name", "Alice", store.QueryOpts{})
+matches, err := g.Nodes().ByLabelAndProperty("User", "name", "Alice", store.QueryOpts{})
 
 // All nodes carrying a label:
-users, err := g.Nodes.ByLabel("User", store.QueryOpts{})
+users, err := g.Nodes().ByLabel("User", store.QueryOpts{})
 ```
 
 Vector nearest-neighbor retrieval returns nodes in ranked order. Backends may
@@ -785,7 +785,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 
 **Files (in this repo):**
 - `pkg/graph/internal/core/resolution.go` — NodeLabels, NodePrimaryLabel, NodeHasLabel, RelationshipType, RelationshipHasType, ResolveNodeProperty, ResolveRelProperty (all 21 shadow keys)
-- `pkg/graph/resolve/api.go` — public sub-API surface (`g.Resolve.*`)
+- `pkg/graph/resolve/api.go` — public sub-API surface (`g.Resolve().*`)
 
 **Files (moved to rho/tkgd-v3):**
 - Cypher engine, query plan, AST — superseded by tkgd-v3.
@@ -854,9 +854,9 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 32 | Warm/cold event shards remain mutable owners | Warm/cold tiers are not create targets, but open Badger handles must be writable so existing event entities can persist updates/deletes on their owner shard after restart |
 | 32 | Import enforces header counts and stream uniqueness | Accepted-version streams must not truncate current records or repeat singleton/current/history-version records inside one stream |
 | 33 | Recurrence calendar selectors are strict | Daily/weekly masks may only use Monday-through-Sunday bits, yearly months must be 0 or January-through-December, DayStart/DayEnd offsets must be whole milliseconds, and invalid expansion windows return `types.ErrInvalidTimeRange` |
-| 34 | Graph-level index create materializes future-label indexes | `g.Index.Create*` validates and creates label tokens before Store index creation; success means future matching writes are maintained |
+| 34 | Graph-level index create materializes future-label indexes | `g.Index().Create*` validates and creates label tokens before Store index creation; success means future matching writes are maintained |
 | 35 | Vector index config is explicit and durable | Non-positive dimensions and unsupported metrics return `ErrInvalidVectorIndexConfig` before create placeholders or persisted definitions are accepted |
-| 36 | Graph-level index target operations are not silent no-ops | `g.Index.Drop*` and vector search validate labels (and property keys where applicable), and an unknown label returns the same not-found sentinel as a missing index |
+| 36 | Graph-level index target operations are not silent no-ops | `g.Index().Drop*` and vector search validate labels (and property keys where applicable), and an unknown label returns the same not-found sentinel as a missing index |
 | 36 | Vector capability errors are public Store sentinels | Store-interface callers can use `errors.Is` against `pkg/graph/store` without importing root graph or a concrete backend |
 | 37 | Zero entity IDs do not enter Store state | Current-row put/replace, batch, split relationship helper writes/deletes, and repair-only incoming-index deletes reject zero node IDs, zero relationship IDs, zero relationship type tokens, and zero relationship endpoints before row, index, scan, or batch mutation; repair incoming-index deletes keep memory and pending/persisted state together |
 | 38 | History target IDs are validated before empty results | Entity-specific history reads/truncation and graph history sub-APIs reject zero/negative IDs with `ErrInvalidStoreMutation` before empty-history, version-not-found, or no-op truncation behavior |
@@ -867,7 +867,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 40a | Sub-day shard windows use fixed-duration starts | Accepted minute/hour TieredStore `ShardWindow` values start at the enclosing fixed-duration boundary and `ShardWindow` must be a whole millisecond |
 | 40b | Tiered cold-shard timing config is bounded | `ColdAfter` and `IdleTimeout` must not be negative, and positive `IdleTimeout` must be a whole millisecond so the idle-close ticker and millisecond idle threshold are well-defined |
 | 41 | Backfilled event node creates use timestamp-owner routing | TieredStore event node creates with caller-supplied snowflake IDs write to the event shard selected by that ID's timestamp, so successful creates remain readable by ID |
-| 40 | Temporal constraints fail closed | `g.Constraints.Add` and `Set` reject unknown `TemporalConstraint.Kind` values with `ErrInvalidTemporalConstraint` before changing the configured set; relationship writes also reject invalid kinds if one reaches enforcement; invalid constraint configuration is never treated as an empty constraint set |
+| 40 | Temporal constraints fail closed | `g.Constraints().Add` and `Set` reject unknown `TemporalConstraint.Kind` values with `ErrInvalidTemporalConstraint` before changing the configured set; relationship writes also reject invalid kinds if one reaches enforcement; invalid constraint configuration is never treated as an empty constraint set |
 | 41 | Tiered reference labels must be registry-valid names | `tiered.New` rejects empty or whitespace-only `Config.RefLabels`, and direct ontology construction does not classify empty names as reference labels |
 | 41a | Nil ontology mappings classify as empty | Nil `*ontology.OntologyMapping` receivers classify names/tokens as `ClassEvent`, do not swap registries, and return nil reference labels |
 | 42 | Store index definitions fail closed | Store-level property, temporal, high-frequency, and vector index APIs reject label token 0 with `ErrInvalidStoreMutation`; property/vector index and property-query targets reject reserved `tkg_` keys with `types.ErrReservedPrefix`; persisted index definitions with token 0, reserved `tkg_` property keys, or undecodable metadata are invalid on open |
@@ -876,7 +876,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43b | Interval QueryOpts require valid active ranges | `ValidStart`/`ValidEnd` activate interval filtering only when both bounds are greater than zero at both Store and graph boundaries; non-positive pairs are treated as no interval filter, and active intervals with `ValidStart >= ValidEnd` return `ErrInvalidTimeRange` |
 | 43c | Graph query names fail before empty shortcuts | Label/type query and count APIs reject empty, whitespace-only, or overlong names; relationship adjacency helpers allow empty `typeName` only as the all-types selector and reject invalid non-empty type filters |
 | 43d | Mutation names fail before unrelated work | Node label mutations and relationship type creation reject empty, whitespace-only, or overlong names before property validation, entity lookup, registry lookup, transaction snapshots, ID generation, or store writes |
-| 43e | Vector search targets fail before zero-k shortcuts | `g.Index.SearchNearest` rejects malformed label/property targets and unknown labels before returning the empty result for `k <= 0` |
+| 43e | Vector search targets fail before zero-k shortcuts | `g.Index().SearchNearest` rejects malformed label/property targets and unknown labels before returning the empty result for `k <= 0` |
 | 43f | Update maps fail before transaction snapshots | `GraphTx.UpdateNode` and `UpdateRelationship` validate malformed update keys/values before rollback snapshot lookup; batch update queues share the same update-map validation and provenance shadow-key extraction |
 | 43g | Batch empty updates are accounting no-ops | Queued empty node/relationship updates still check entity existence at execute time, but successful empty updates do not increment `BatchResult.Updated` or publish update events |
 | 43h | Rejected label additions do not create tokens | Add-label paths check `MaxLabelsPerNode` before creating a token for a previously unseen label, so failed mutations do not leave unreachable registry names |
@@ -890,12 +890,12 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43n | Failed batch relationship creates restore queue-time state | Relationship pointers returned from `BatchBuilder.AddRelationship` must not retain execute-time `TxFrom`, endpoint hashes, or real type tokens unless the relationship create commits |
 | 43o | Batch update queues snapshot mutable inputs | Mutating caller-owned update maps, nested property slices/maps, or provenance signatures after queueing must not change what `Execute` applies |
 | 43p | Metadata-blind rehashes preserve non-hash integrity metadata | `CloseVersion`, node label add/remove, node/relationship property CAS, and in-place updates recompute `Hash`/`PrevHash` without clearing provenance, signature, authorization, or relationship endpoint hashes |
-| 43q | Temporal label queries validate malformed targets | `g.Temporal.NodesByLabelAt` rejects empty, whitespace-only, and overlong labels before registry lookup instead of treating malformed labels as unregistered empty namespaces |
+| 43q | Temporal label queries validate malformed targets | `g.Temporal().NodesByLabelAt` rejects empty, whitespace-only, and overlong labels before registry lookup instead of treating malformed labels as unregistered empty namespaces |
 | 43r | Registry name limits enforced on first use | Internal registry allocation triggered by `Nodes.Add`/`Rels.Add`/`IO.Import` rejects empty, whitespace-only, and overlong names before token allocation; boolean name helpers (`Nodes.HasLabel`, `Rels.HasType`) fail closed for malformed inputs. (Token-leak helpers `LabelToken`/`RelTypeToken`/`LookupLabel`/`LookupRelType` removed in v4.) |
 | 43s | Registry import and rehydration enforce name limits | `IO.Import` and graph construction from persisted registries validate label/type names against active `MaxNameLength` before accepting serialized or stored mappings |
 | 43t | Index provider names fail before registry access | Provider registration and unregistration reject empty or whitespace-only names with `ErrIndexProviderEmptyName` before mutating or probing the provider registry |
 | 43u | Float32 wire tags reject lossy finite payloads | Checked property wire accepts `float32` NaN and infinities, but finite `float64` payloads tagged as `float32` or `[]float32` must round-trip exactly through `float32` before reconstruction |
-| 43v | Index provider list fails closed | `g.Index.Providers()` has no error return, so once the graph closed flag is visible it returns an empty list instead of reading provider registry state during teardown; the closed check must happen under the graph read lock so a waiter behind `Close()` cannot return stale names |
+| 43v | Index provider list fails closed | `g.Index().Providers()` has no error return, so once the graph closed flag is visible it returns an empty list instead of reading provider registry state during teardown; the closed check must happen under the graph read lock so a waiter behind `Close()` cannot return stale names |
 | 43w | Query limits are non-negative | `QueryOpts.Limit` accepts `0` for unbounded queries or a positive maximum; negative limits return `ErrInvalidQueryLimit` from Store and graph query methods before empty namespace shortcuts |
 | 43x | Query cursors are non-negative | `QueryOpts.After` accepts `0` for the first page or a non-negative entity cursor; negative cursors return `ErrInvalidQueryCursor` from Store and graph query methods before empty namespace shortcuts |
 | 43y | History cursors share pagination validation | `AllNodeHistoryIDsFrom` and `AllRelHistoryIDsFrom` reject negative limits with `ErrInvalidQueryLimit` and negative cursors with `ErrInvalidQueryCursor` before empty-history fast paths |
@@ -904,10 +904,10 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43ab | Import staging caps are non-negative and overflow-safe | `ImportOptions.MaxStagedBytes == 0` is unlimited, positive values cap staging bytes without `staged + recordSize` overflow, and negative values return `ErrImportSizeLimit` before staging-file creation |
 | 43ac | Entity versions never wrap | Versioned mutations reject current version `math.MaxUint32` with `ErrVersionOverflow` before writing history, wrapping to version `0`, or allocating labels for rejected add-label calls; `VersionAfter(..., math.MaxUint32)` returns no successor instead of wrapping to genesis |
 | 43ad | Resolver reads observe transaction isolation | No-error resolver helpers must acquire the graph read lock before reading registry pointers and return zero values once close is visible; internal mutation/hash paths already under the graph lock must use lock-free helpers instead of recursive `RLock` |
-| 43ae | Batch creates count in graph stats | Successful batch node and relationship creates increment `g.Stats.Get().NodesAdded` and `RelsAdded` in the same units as their contribution to `BatchResult.Created` |
+| 43ae | Batch creates count in graph stats | Successful batch node and relationship creates increment `g.Stats().Get().NodesAdded` and `RelsAdded` in the same units as their contribution to `BatchResult.Created` |
 | 43ae1 | Batch event flushes are atomic publisher batches | `BatchBuilder.Execute` publishes buffered mutation events with one `Publisher.PublishBatch` call after releasing graph and builder locks, so async priority ordering applies to the whole batch |
 | 43af | Temporal closes count in graph stats | Successful `CloseVersion` node and relationship calls increment `NodesUpdated`/`RelsUpdated`; rejected repeat-close calls leave update counters unchanged |
-| 43ag | Transaction rollback restores stats | A successful `GraphTx.Rollback` restores the operation-counter snapshot captured at `BeginTx`, so rolled-back writes do not remain visible through `g.Stats.Get()` |
+| 43ag | Transaction rollback restores stats | A successful `GraphTx.Rollback` restores the operation-counter snapshot captured at `BeginTx`, so rolled-back writes do not remain visible through `g.Stats().Get()` |
 | 43ah | Transaction rollback snapshot keys include entity kind | A node and relationship with the same caller-supplied underlying snowflake value are snapshotted independently and both roll back to their pre-transaction rows |
 | 43ai | High-frequency indexes backfill and maintain rows | Store-level HFI creation populates matching current nodes and later node writes keep buckets in sync; Badger HFI creation fails and removes its placeholder on corrupt existing rows, allowing tiered creates to roll back earlier shards |
 | 43ai1 | No-error index helpers tolerate nil and zero values | Internal property indexes initialize their value maps on first `Add`; zero-value high-frequency indexes initialize bucket maps on first `Add`; zero-value LRU caches initialize as minimum-capacity caches; nil property, temporal, high-frequency, and vector cleanup/read helpers no-op or return zero/nil values; nil vector writes/searches return `ErrInvalidVectorIndexConfig` |
@@ -921,8 +921,8 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 43am | Graph node delete tombstones use Phase B state | `deleteNodeInternal` re-reads the node after locking the node plus connected relationships and builds the node tombstone from that locked row, not from the initial adjacency-scan snapshot |
 | 43an | Explicit adjacency targets are all-or-error | Outgoing/incoming adjacency reads return `ErrNodeNotFound` for any missing requested node while preserving empty results for existing nodes with no matching relationships; batched reads must not return partial maps when a requested node is absent; temporal neighbor queries validate target validity at the queried instant before treating current-adjacency `ErrNodeNotFound` as no current candidates |
 | 43ao | Version-chain navigation validates explicit IDs | Node/relationship `VersionBefore` and `VersionAfter` return `ErrNodeNotFound`/`ErrRelNotFound` for unknown IDs; `nil, nil` is reserved for missing neighboring versions on entities that exist now or in history |
-| 43ap | Event bus setters fail closed | `g.Events.SetSync` and `SetAsync` return `ErrGraphClosed` after graph close and do not mutate the installed publisher |
-| 43aq | Provider teardown waits for Init | `Graph.Close()` and `g.Index.UnregisterProvider` must not call provider `Close()` while an `Initializable.Init` callback from registration is still running |
+| 43ap | Event bus setters fail closed | `g.Events().SetSync` and `SetAsync` return `ErrGraphClosed` after graph close and do not mutate the installed publisher |
+| 43aq | Provider teardown waits for Init | `Graph.Close()` and `g.Index().UnregisterProvider` must not call provider `Close()` while an `Initializable.Init` callback from registration is still running |
 | 44 | Shadow resolution preserves public wrapper types | `tkg_base_entity` resolves to `types.EntityID`; shadow-property APIs must not leak raw dependency IDs where a public wrapper type exists |
 | 43 | Badger delete prefetches but cleans up current rows | Cache-miss `DeleteNode` and `DeleteRelationship` read the entity before `idxMu.Lock`, then re-read the current cached row under the write lock before label/type/adjacency/index cleanup |
 | 44 | Badger SyncWrites includes metadata and split keys | Property, temporal, high-frequency, and vector index create/drop methods plus split relationship helper write/delete methods flush queued Badger writeOps before returning in `SyncWrites` mode, and the flush happens after releasing `idxMu` |
@@ -967,7 +967,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 62 | Public callback/context inputs fail closed | `TxAPI.Run` / `RunContext` reject nil callbacks with `ErrNilTxCallback` before opening a transaction, and graph context helpers reject nil contexts with `ErrNilContext` before dereference |
 | 63 | ConstraintSet iteration rejects nil callbacks | `temporal.ConstraintSet.ForEach(nil)` returns `ErrInvalidTemporalConstraint` before set-length checks, so empty and non-empty sets behave consistently |
 | 64 | Event buses ignore nil subscriptions and receivers | Sync and async event buses return no-op unsubscribers for nil handlers without installing nil handlers; async zero values do not start the dispatcher for nil subscriptions; nil bus receivers no-op for no-error methods |
-| 65 | IO stream endpoints reject nil values | `g.IO.Export` / `tx.Export` return `ErrNilWriter` for nil or typed nil writers, and `g.IO.Import` / `ImportWithOptions` return `ErrNilReader` for nil or typed nil readers before side effects |
+| 65 | IO stream endpoints reject nil values | `g.IO().Export` / `tx.Export` return `ErrNilWriter` for nil or typed nil writers, and `g.IO().Import` / `ImportWithOptions` return `ErrNilReader` for nil or typed nil readers before side effects |
 | 66 | Index provider registration rejects typed nils | `RegisterProvider` and `RegisterLegacyProvider` reject nil and typed nil provider interfaces before calling `Name()` |
 | 67 | Configured Store rejects typed nils | `graph.New` treats omitted `Config.Store` as "use default backend" but rejects typed nil Store interface values with `ErrNilStore` before graph construction |
 | 67a | Store lifecycle nil receivers fail closed | Nil concrete `*memory.Store`, `*badger.Store`, and `*tiered.Store` receivers return the public Store-layer `ErrNilStore` sentinel from `Close` and `Clear` instead of panicking |
@@ -976,6 +976,6 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 | 68b | Entity nil receivers fail closed | Nil `*types.Node` and `*types.Relationship` accessors return zero values, no-error mutators no-op, and error-returning mutators return `ErrNilNode`/`ErrNilRelationship`; nil `*PropertySlice` pointer mutators return `ErrNilPropertySlice`; nil metadata/integrity helpers return zero/nil |
 | 69 | AsyncEventBus serializes priority dispatch | `AsyncEventBusConfig.Workers` values greater than one are accepted but capped at one dispatcher, so `PublishBatch` priority ordering is preserved during normal drain and `Close` |
 | 69a | AsyncEventBus enforces PublishBatch priority ceiling | `AsyncEventBus.PublishBatch` raises a per-batch priority ceiling for each priority pass and clears it at end-of-batch; the dispatcher honours the ceiling so an in-batch wake-up triggered by `BackpressureBlock` filling a queue does NOT dispatch a pre-existing lower-priority event before later same-batch higher-priority events have been made visible |
-| 69b | Optional deleted-iteration store capability accelerates temporal adjacency | `Store` implementations may expose `DeletedIterationCapability` (`ForEachDeletedNodeID` / `ForEachDeletedRelID`) and the depth variant; the graph layer uses these in the adjacency-at-t coverage fold for `g.Temporal.OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` so cost is O(deleted_count) instead of O(total history). Stores that omit the capability transparently fall back to the all-history scan with identical semantics |
+| 69b | Optional deleted-iteration store capability accelerates temporal adjacency | `Store` implementations may expose `DeletedIterationCapability` (`ForEachDeletedNodeID` / `ForEachDeletedRelID`) and the depth variant; the graph layer uses these in the adjacency-at-t coverage fold for `g.Temporal().OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` so cost is O(deleted_count) instead of O(total history). Stores that omit the capability transparently fall back to the all-history scan with identical semantics |
 | 70 | Property deep-copy results are validated | Property ingress validates registered custom values after `DeepCopyValue`, rejects copy panics or unsupported copy results, and preserves value-vs-pointer shape before storing |
-| 71 | Temporal diff handlers run outside graph locks | `g.Temporal.DiffCallback` collects IDs and resolves entity pairs under graph read locks but invokes caller `DiffHandlers` after releasing the lock, so handlers can call graph read APIs even when a writer is waiting |
+| 71 | Temporal diff handlers run outside graph locks | `g.Temporal().DiffCallback` collects IDs and resolves entity pairs under graph read locks but invokes caller `DiffHandlers` after releasing the lock, so handlers can call graph read APIs even when a writer is waiting |

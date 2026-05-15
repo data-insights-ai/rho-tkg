@@ -56,7 +56,7 @@ Execute these three phases in order when reviewing a merge request.
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.0.0 (Unreleased — API cleanup pass). Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API field accessors: `g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Tx`, `g.Batch`. Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
+Status: v4.2.0 (sub-APIs are accessor methods). Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
 
 See `CHANGELOG.md` `[Unreleased]` for the full v3.4.0 → v4.0.0 migration recipe.
 
@@ -123,11 +123,11 @@ These rules exist because every single one was violated at least once. Do not sk
 
 ### `pkg/graph` (thin façade)
 
-`Graph` holds `core *core.Core` + 14 sub-API field accessors. Customers interact via the sub-APIs (`g.Nodes.Add(...)`, `g.Temporal.NodesAt(...)`, etc.); the old direct `g.AddNode(...)` form was removed.
+`Graph` holds `core *core.Core` + 14 unexported sub-API pointers. The exported surface is 14 accessor methods (`g.Nodes()`, `g.Temporal()`, etc.). Customers interact via the sub-APIs (`g.Nodes().Add(...)`, `g.Temporal().NodesAt(...)`, etc.); the old direct `g.AddNode(...)` form was removed in v3.4.0 and the field form (`g.Nodes`) was removed in v4.2.0.
 
 | File | Purpose |
 |---|---|
-| `graph.go` | Thin façade — `Graph` struct with `core *core.Core` + 14 sub-API fields. Methods: `New`, `Close`. Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
+| `graph.go` | Thin façade — `Graph` struct with `core *core.Core` + 14 unexported sub-API pointers. Methods: `New`, `Close`, and 14 nil-safe sub-API accessor methods (`Nodes() *nodes.API`, etc.). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet` type aliases re-exported from internal/core. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`. Live in `pkg/graph` itself (not a sibling) because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types defined inside `pkg/graph/internal/core`. `TxAPI.Run` / `TxAPI.RunContext` add closure-style helpers. |
 | `errors.go` | Public sentinel re-exports — store sentinels (`ErrNodeNotFound`, … 12 entries), vector-index sentinels, registry sentinels (`ErrEmptyName`, `ErrRegistryNotEmpty`), index-provider sentinels. Canonical declarations in `internal/core/core.go`. |
 | `subapi_smoke_test.go` | Compile-and-run smoke test exercising every sub-API accessor end-to-end. |
@@ -229,7 +229,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
 - **Transaction isolation via c.txMu (v4.1.0+)**: `Core.txMu` serializes tx-vs-tx and tx-vs-batch. `Core.mu` (an RWMutex) is taken with RLock by each tx method around its body (via `tx.lockActiveCore` / `tx.unlockActiveCore`), and is no longer held for the tx lifetime. Concurrent standalone mutations and reads from other goroutines proceed in parallel with an open tx — only entity-level conflicts block, via the existing 256-shard entity-lock manager. Admin ops that read adjacency and cascade (`ArchiveNode`, `RestoreNode`) acquire `g.mu.Lock()` to fence against concurrent writers. Tx Rollback briefly takes `c.mu.Lock` while replacing the registry pointers via `restoreRegistries`. Isolation level under v4.1.0: "serializable per touched entity, snapshot-isolated elsewhere" — a concurrent reader can observe in-progress tx-allocated labels/types until commit/rollback. Code requiring "tx blocks all concurrent observation" must take an external lock.
 - **sync.RWMutex is NOT reentrant**: If A holds RLock and calls B which RLocks, and a writer waits between them, deadlock. Inner methods must be lock-free.
-- **Inside a tx, both forms work (v4.1.0+)**: Under v3.4 / v4.0.x, `BeginTx` held `c.mu.Lock` for the tx lifetime, so any read accessor that opened with `c.mu.RLock` deadlocked. Path B (v4.1.0) replaced `c.mu.Lock`-for-tx-lifetime with brief per-call `c.mu.RLock`, so both `g.Nodes.ByLabel(...)` and the tx-side mirror `tx.NodesByLabel(...)` work correctly inside an open tx. The tx-side mirrors in `pkg/graph/internal/core/tx_consistent_reads.go` remain for call-site clarity but are no longer required for correctness. See lessons.md #31 (now marked SUPERSEDED).
+- **Inside a tx, both forms work (v4.1.0+)**: Under v3.4 / v4.0.x, `BeginTx` held `c.mu.Lock` for the tx lifetime, so any read accessor that opened with `c.mu.RLock` deadlocked. Path B (v4.1.0) replaced `c.mu.Lock`-for-tx-lifetime with brief per-call `c.mu.RLock`, so both `g.Nodes().ByLabel(...)` and the tx-side mirror `tx.NodesByLabel(...)` work correctly inside an open tx. The tx-side mirrors in `pkg/graph/internal/core/tx_consistent_reads.go` remain for call-site clarity but are no longer required for correctness. See lessons.md #31 (now marked SUPERSEDED).
 - **sync.Once for idempotent Close()**: Never nil-guard a function pointer across goroutines.
 
 ### Persistence
@@ -258,7 +258,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **History-aware merging**: Temporal queries merge current + history IDs via lazy ForEach iterators (two-phase: collect IDs under store locks, process after release).
 - **ForEach for OOM-safe iteration**: Never materialize all per-shard slices + merge. Use `ForEach*ID` callbacks. Constraint: callback must NOT call store methods (deadlock via B15). Two-phase: collect IDs, then process. ~83% memory reduction.
 - **Deleted entity verification**: Any verification reading entity state must tolerate deletion — if entity has history but no current state, proceed using history alone.
-- **Adjacency-at-t fold uses deleted-only iteration**: `g.Temporal.OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` go through `forEachRelAdjacencyCandidateID` which folds in only DELETED rel IDs (via the store's optional `DeletedIterationCapability`) on top of the live adjacency index. Rel endpoints are immutable, so a rel that ever pointed at the queried node still does if alive — therefore only deleted rels can be missing from the candidate set. Label/property temporal queries must keep using the full-history `forEachNodeCandidateID` / `forEachRelCandidateID` because entities can have their CURRENT label/property differ from their at-t state.
+- **Adjacency-at-t fold uses deleted-only iteration**: `g.Temporal().OutgoingRelsAt` / `IncomingRelsAt` / `NeighborsAt` go through `forEachRelAdjacencyCandidateID` which folds in only DELETED rel IDs (via the store's optional `DeletedIterationCapability`) on top of the live adjacency index. Rel endpoints are immutable, so a rel that ever pointed at the queried node still does if alive — therefore only deleted rels can be missing from the candidate set. Label/property temporal queries must keep using the full-history `forEachNodeCandidateID` / `forEachRelCandidateID` because entities can have their CURRENT label/property differ from their at-t state.
 
 ### TieredStore
 
@@ -286,7 +286,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — worker pool with per-priority `[5]chan Event` queues. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest). `Close()` drains all pending events before stopping workers. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
 - **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` worker uses non-blocking drain per level (Critical first) before blocking select.
 - **PublishBatch priority ceiling**: `AsyncEventBus.PublishBatch` raises a per-batch priority ceiling for each priority pass (atomic `batchPriorityCeiling`) and clears it at end-of-batch. The dispatcher's priority scan honours the ceiling so an in-batch wake-up triggered by `BackpressureBlock` filling a queue cannot dispatch a pre-existing lower-priority event before later same-batch higher-priority events have been enqueued. Liveness is preserved: the saturating-batch wake-up still drains same-or-higher priorities.
-- **StoreStats opt-in**: Type-asserted in `(*Core).Stats()` (reachable via `g.Stats.Get()`) — avoids polluting the `Store` interface.
+- **StoreStats opt-in**: Type-asserted in `(*Core).Stats()` (reachable via `g.Stats().Get()`) — avoids polluting the `Store` interface.
 - **Atomic operation counters**: 8 `atomic.Int64` fields on Graph — incremented after every successful store write.
 
 ### Vector Indexes

@@ -32,7 +32,7 @@ type SnapshotDiff struct {
 }
 
 // DiffHandlers is the streaming callback set delivered by
-// Graph.Temporal.DiffCallback (forwards to core.DiffSnapshotsCallback). For
+// Graph.Temporal().DiffCallback (forwards to core.DiffSnapshotsCallback). For
 // each entity whose state differs between t1 and t2, the matching handler is
 // invoked with the relevant before/after pointer(s). Any handler may be nil;
 // nil handlers are skipped without invoking any work for that change class.

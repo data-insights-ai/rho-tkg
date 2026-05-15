@@ -49,7 +49,7 @@ func TestTxRun_PanicReleasesLock(t *testing.T) {
 		// timeout. A leaked lock would block this indefinitely.
 		done := make(chan error, 1)
 		go func() {
-			_, addErr := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+			_, addErr := g.Nodes().Add(context.Background(), []string{"X"}, nil)
 			done <- addErr
 		}()
 		select {
@@ -62,7 +62,7 @@ func TestTxRun_PanicReleasesLock(t *testing.T) {
 		}
 	}()
 
-	_ = g.Tx.Run(func(tx *graphpkg.GraphTx) error {
+	_ = g.Tx().Run(func(tx *graphpkg.GraphTx) error {
 		panic("boom")
 	})
 }
@@ -75,16 +75,16 @@ func TestTxRunRejectsNilCallbackBeforeBegin(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if err := g.Tx.Run(nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+	if err := g.Tx().Run(nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
 		t.Fatalf("Run(nil) = %v, want ErrNilTxCallback", err)
 	}
-	if err := g.Tx.RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+	if err := g.Tx().RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
 		t.Fatalf("RunContext(ctx, nil) = %v, want ErrNilTxCallback", err)
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		_, addErr := g.Nodes.Add(context.Background(), []string{"AfterNilCallback"}, nil)
+		_, addErr := g.Nodes().Add(context.Background(), []string{"AfterNilCallback"}, nil)
 		done <- addErr
 	}()
 	select {
@@ -280,18 +280,18 @@ func TestBatchRunContextHonoursLifecycleGates(t *testing.T) {
 
 	// Nil ctx.
 	var nilCtx context.Context
-	if _, err := g.Batch.RunContext(nilCtx, func(*graphpkg.BatchBuilder) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
+	if _, err := g.Batch().RunContext(nilCtx, func(*graphpkg.BatchBuilder) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
 		t.Fatalf("RunContext(nil, fn) = %v, want ErrNilContext", err)
 	}
 	// Nil callback.
-	if _, err := g.Batch.RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
+	if _, err := g.Batch().RunContext(context.Background(), nil); !errors.Is(err, graphpkg.ErrNilTxCallback) {
 		t.Fatalf("RunContext(ctx, nil) = %v, want ErrNilTxCallback", err)
 	}
 	// Pre-cancelled ctx — callback must not run.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	called := false
-	if _, err := g.Batch.RunContext(ctx, func(*graphpkg.BatchBuilder) error {
+	if _, err := g.Batch().RunContext(ctx, func(*graphpkg.BatchBuilder) error {
 		called = true
 		return nil
 	}); !errors.Is(err, context.Canceled) {
@@ -302,7 +302,7 @@ func TestBatchRunContextHonoursLifecycleGates(t *testing.T) {
 	}
 
 	// Happy path — opens batch, runs callback, executes.
-	res, err := g.Batch.RunContext(context.Background(), func(b *graphpkg.BatchBuilder) error {
+	res, err := g.Batch().RunContext(context.Background(), func(b *graphpkg.BatchBuilder) error {
 		_, err := b.AddNode([]string{"Person"}, nil)
 		return err
 	})
@@ -323,7 +323,7 @@ func TestTxRunContextRejectsNilContext(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	var ctx context.Context
-	if err := g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
+	if err := g.Tx().RunContext(ctx, func(*graphpkg.GraphTx) error { return nil }); !errors.Is(err, graphpkg.ErrNilContext) {
 		t.Fatalf("RunContext(nil, fn) = %v, want ErrNilContext", err)
 	}
 }
@@ -339,7 +339,7 @@ func TestTxRunContextRejectsCanceledContextBeforeBegin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	called := false
-	if err := g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error {
+	if err := g.Tx().RunContext(ctx, func(*graphpkg.GraphTx) error {
 		called = true
 		return nil
 	}); !errors.Is(err, context.Canceled) {
@@ -348,7 +348,7 @@ func TestTxRunContextRejectsCanceledContextBeforeBegin(t *testing.T) {
 	if called {
 		t.Fatal("RunContext called callback despite pre-canceled context")
 	}
-	if _, err := g.Nodes.Add(context.Background(), []string{"AfterCanceled"}, nil); err != nil {
+	if _, err := g.Nodes().Add(context.Background(), []string{"AfterCanceled"}, nil); err != nil {
 		t.Fatalf("post-canceled-context Add: %v", err)
 	}
 }
@@ -363,7 +363,7 @@ func TestTxRunContextRechecksContextAfterBeginBeforeCallback(t *testing.T) {
 
 	ctx := &cancelAfterFirstErrContext{}
 	called := false
-	err = g.Tx.RunContext(ctx, func(*graphpkg.GraphTx) error {
+	err = g.Tx().RunContext(ctx, func(*graphpkg.GraphTx) error {
 		called = true
 		return nil
 	})
@@ -373,7 +373,7 @@ func TestTxRunContextRechecksContextAfterBeginBeforeCallback(t *testing.T) {
 	if called {
 		t.Fatal("RunContext called callback after context cancellation became visible post-BeginTx")
 	}
-	if _, err := g.Nodes.Add(context.Background(), []string{"AfterCanceledPostBegin"}, nil); err != nil {
+	if _, err := g.Nodes().Add(context.Background(), []string{"AfterCanceledPostBegin"}, nil); err != nil {
 		t.Fatalf("post-canceled-post-begin Add: %v", err)
 	}
 }
@@ -386,13 +386,13 @@ func TestTxRunContextCommits(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if err := g.Tx.RunContext(context.Background(), func(tx *graphpkg.GraphTx) error {
+	if err := g.Tx().RunContext(context.Background(), func(tx *graphpkg.GraphTx) error {
 		_, err := tx.AddNode([]string{"Committed"}, nil)
 		return err
 	}); err != nil {
 		t.Fatalf("RunContext commit: %v", err)
 	}
-	nodes, err := g.Nodes.All(storepkg.QueryOpts{})
+	nodes, err := g.Nodes().All(storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("Nodes.All: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestTxRun_FnErrorRollsBack(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	want := errors.New("user-defined")
-	got := g.Tx.Run(func(tx *graphpkg.GraphTx) error {
+	got := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
 		_, _ = tx.AddNode([]string{"Tmp"}, nil)
 		return want
 	})
@@ -420,7 +420,7 @@ func TestTxRun_FnErrorRollsBack(t *testing.T) {
 		t.Fatalf("Run = %v, want %v wrapped", got, want)
 	}
 	// Lock released — a follow-up mutation must complete.
-	if _, err := g.Nodes.Add(context.Background(), []string{"After"}, nil); err != nil {
+	if _, err := g.Nodes().Add(context.Background(), []string{"After"}, nil); err != nil {
 		t.Fatalf("post-rollback Add: %v", err)
 	}
 }
@@ -437,7 +437,7 @@ func TestTxRun_ManualRollbackInsideFnDoesNotErrorTwice(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	want := errors.New("explicit rollback")
-	got := g.Tx.Run(func(tx *graphpkg.GraphTx) error {
+	got := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
 		if rbErr := tx.Rollback(); rbErr != nil {
 			t.Fatalf("manual Rollback: %v", rbErr)
 		}
@@ -462,7 +462,7 @@ func TestTxRunContext_CtxCancelledAfterFn(t *testing.T) {
 	t.Cleanup(func() { _ = g.Close() })
 
 	ctx, cancel := context.WithCancel(context.Background())
-	got := g.Tx.RunContext(ctx, func(tx *graphpkg.GraphTx) error {
+	got := g.Tx().RunContext(ctx, func(tx *graphpkg.GraphTx) error {
 		_, _ = tx.AddNode([]string{"Tmp"}, nil)
 		cancel() // cancel before commit
 		return nil
@@ -471,7 +471,7 @@ func TestTxRunContext_CtxCancelledAfterFn(t *testing.T) {
 		t.Fatalf("RunContext = %v, want context.Canceled", got)
 	}
 	// Lock released.
-	if _, err := g.Nodes.Add(context.Background(), []string{"After"}, nil); err != nil {
+	if _, err := g.Nodes().Add(context.Background(), []string{"After"}, nil); err != nil {
 		t.Fatalf("post-cancel Add: %v", err)
 	}
 }
@@ -494,7 +494,7 @@ func TestTxRunContext_PanicReleasesLock(t *testing.T) {
 	defer func() {
 		done := make(chan error, 1)
 		go func() {
-			_, addErr := g.Nodes.Add(context.Background(), []string{"X"}, nil)
+			_, addErr := g.Nodes().Add(context.Background(), []string{"X"}, nil)
 			done <- addErr
 		}()
 		select {
@@ -507,7 +507,7 @@ func TestTxRunContext_PanicReleasesLock(t *testing.T) {
 		}
 	}()
 
-	_ = g.Tx.RunContext(context.Background(), func(tx *graphpkg.GraphTx) error {
+	_ = g.Tx().RunContext(context.Background(), func(tx *graphpkg.GraphTx) error {
 		panic("boom-ctx")
 	})
 }

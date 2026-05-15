@@ -13,7 +13,7 @@ func (t labelToken) Value() uint16 { return uint16(t) }
 // to graph methods and reference them in results, but the underlying
 // snowflake.ID layout is intentionally hidden — use the typed accessor
 // SnowflakeID() to bridge to persistence keys, and the graph generators
-// (g.Nodes.NextID, g.Rels.NextID) to allocate fresh IDs.
+// (g.Nodes().NextID, g.Rels().NextID) to allocate fresh IDs.
 type NodeID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a nodeID.

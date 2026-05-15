@@ -5,8 +5,8 @@
 //
 // The package contains only the contract types (interfaces and sentinel
 // errors). The Graph-coupled registration and dispatch wiring lives on
-// the graph index sub-API (g.Index.RegisterProvider,
-// g.Index.UnregisterProvider, g.Index.Providers).
+// the graph index sub-API (g.Index().RegisterProvider,
+// g.Index().UnregisterProvider, g.Index().Providers).
 package index
 
 import (
@@ -64,7 +64,7 @@ type IndexProvider interface {
 	OnEvent(ev events.Event) error
 
 	// Close releases resources held by the provider. Called from
-	// g.Index.UnregisterProvider and from Graph.Close. Returning an error
+	// g.Index().UnregisterProvider and from Graph.Close. Returning an error
 	// does not block shutdown — the graph still closes the store.
 	Close() error
 }
@@ -82,8 +82,8 @@ type IndexProvider interface {
 // their own version/state machinery.
 //
 // If Init returns an error, the provider is unsubscribed and removed from
-// the registry; g.Index.RegisterProvider returns the Init error.
-// Graph.Close and g.Index.UnregisterProvider wait for an in-flight Init
+// the registry; g.Index().RegisterProvider returns the Init error.
+// Graph.Close and g.Index().UnregisterProvider wait for an in-flight Init
 // callback to finish before calling provider Close.
 //
 // Implementations should not retain references to *Graph — accept only

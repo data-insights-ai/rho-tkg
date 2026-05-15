@@ -16,8 +16,8 @@ func ExampleAPI_DecomposeNodeID() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	comp := g.Admin.DecomposeNodeID(n.ID())
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	comp := g.Admin().DecomposeNodeID(n.ID())
 	_ = comp.CreatedAt
 	_ = comp.NodeID
 	_ = comp.Sequence
@@ -32,8 +32,8 @@ func ExampleAPI_Reset() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	if err := g.Admin.Reset(); err != nil {
+	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if err := g.Admin().Reset(); err != nil {
 		panic(err)
 	}
 }

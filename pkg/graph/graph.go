@@ -2,13 +2,31 @@
 //
 // As of v3.4.0 the 130+ public methods that historically lived directly on
 // *Graph have been removed. Customers must reach the implementation through
-// the sub-API accessors: g.Nodes.Add(context.Background(), ...), g.Rels.Add(context.Background(), ...), g.Temporal.NodesAt(...),
-// etc. The complete public surface on *Graph itself is:
+// the sub-API accessors. From v4.2.0 the sub-APIs are exposed as accessor
+// methods (g.Nodes(), g.Rels(), …) rather than exported fields — see the
+// CHANGELOG for the migration recipe. The complete public surface on
+// *Graph itself is:
 //
 //	New(cfg Config) (*Graph, error)
 //	(*Graph).Close() error
+//	(*Graph).Nodes() *nodes.API
+//	(*Graph).Rels() *rels.API
+//	(*Graph).Temporal() *temporal.API
+//	(*Graph).Index() *index.API
+//	(*Graph).Events() *events.API
+//	(*Graph).Constraints() *constraints.API
+//	(*Graph).IO() *io.API
+//	(*Graph).Admin() *admin.API
+//	(*Graph).Tier() *tier.API
+//	(*Graph).Stats() *stats.API
+//	(*Graph).Hash() *hash.API
+//	(*Graph).Resolve() *resolve.API
+//	(*Graph).Tx() *TxAPI
+//	(*Graph).Batch() *BatchAPI
 //
-// Plus the sub-API field set declared on Graph itself.
+// All accessors are nil-safe: (*Graph)(nil).Nodes() returns nil, and every
+// sub-API method handles a nil receiver by returning ErrNilGraph (or a zero
+// value for no-error variants).
 package graph
 
 import (
@@ -30,24 +48,138 @@ import (
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.
 // All methods that historically lived on *Graph have been moved to *core.Core
-// and are reachable through the sub-API fields below.
+// and are reachable through the sub-API accessor methods below.
 type Graph struct {
 	core *core.Core
 
-	Nodes       *nodes.API
-	Rels        *rels.API
-	Temporal    *temporal.API
-	Index       *index.API
-	Events      *events.API
-	Constraints *constraints.API
-	IO          *io.API
-	Admin       *admin.API
-	Tier        *tier.API
-	Stats       *stats.API
-	Hash        *hash.API
-	Resolve     *resolve.API
-	Tx          *TxAPI
-	Batch       *BatchAPI
+	nodes       *nodes.API
+	rels        *rels.API
+	temporal    *temporal.API
+	index       *index.API
+	events      *events.API
+	constraints *constraints.API
+	io          *io.API
+	admin       *admin.API
+	tier        *tier.API
+	stats       *stats.API
+	hash        *hash.API
+	resolve     *resolve.API
+	tx          *TxAPI
+	batch       *BatchAPI
+}
+
+// Nodes returns the node sub-API. Nil-safe: returns nil when g is nil
+// (every method on the returned *nodes.API also handles a nil receiver).
+func (g *Graph) Nodes() *nodes.API {
+	if g == nil {
+		return nil
+	}
+	return g.nodes
+}
+
+// Rels returns the relationship sub-API. Nil-safe.
+func (g *Graph) Rels() *rels.API {
+	if g == nil {
+		return nil
+	}
+	return g.rels
+}
+
+// Temporal returns the temporal-query sub-API. Nil-safe.
+func (g *Graph) Temporal() *temporal.API {
+	if g == nil {
+		return nil
+	}
+	return g.temporal
+}
+
+// Index returns the index-management sub-API. Nil-safe.
+func (g *Graph) Index() *index.API {
+	if g == nil {
+		return nil
+	}
+	return g.index
+}
+
+// Events returns the event-bus sub-API. Nil-safe.
+func (g *Graph) Events() *events.API {
+	if g == nil {
+		return nil
+	}
+	return g.events
+}
+
+// Constraints returns the constraint-management sub-API. Nil-safe.
+func (g *Graph) Constraints() *constraints.API {
+	if g == nil {
+		return nil
+	}
+	return g.constraints
+}
+
+// IO returns the export/import sub-API. Nil-safe.
+func (g *Graph) IO() *io.API {
+	if g == nil {
+		return nil
+	}
+	return g.io
+}
+
+// Admin returns the backend-agnostic admin sub-API. Nil-safe.
+func (g *Graph) Admin() *admin.API {
+	if g == nil {
+		return nil
+	}
+	return g.admin
+}
+
+// Tier returns the tiered-store admin sub-API. Nil-safe. Methods on the
+// returned API fail closed with ErrNotTieredStore on non-tiered backends.
+func (g *Graph) Tier() *tier.API {
+	if g == nil {
+		return nil
+	}
+	return g.tier
+}
+
+// Stats returns the statistics sub-API. Nil-safe.
+func (g *Graph) Stats() *stats.API {
+	if g == nil {
+		return nil
+	}
+	return g.stats
+}
+
+// Hash returns the hash-chain verification sub-API. Nil-safe.
+func (g *Graph) Hash() *hash.API {
+	if g == nil {
+		return nil
+	}
+	return g.hash
+}
+
+// Resolve returns the shadow-property resolution sub-API. Nil-safe.
+func (g *Graph) Resolve() *resolve.API {
+	if g == nil {
+		return nil
+	}
+	return g.resolve
+}
+
+// Tx returns the transaction sub-API. Nil-safe.
+func (g *Graph) Tx() *TxAPI {
+	if g == nil {
+		return nil
+	}
+	return g.tx
+}
+
+// Batch returns the batch sub-API. Nil-safe.
+func (g *Graph) Batch() *BatchAPI {
+	if g == nil {
+		return nil
+	}
+	return g.batch
 }
 
 // Config aliases core.Config for the public API.
@@ -90,20 +222,20 @@ func New(cfg Config) (*Graph, error) {
 		return nil, err
 	}
 	g := &Graph{core: c}
-	g.Nodes = nodes.New(c.Nodes)
-	g.Rels = rels.New(c.Rels)
-	g.Temporal = temporal.New(c.Temporal)
-	g.Index = index.New(c.Index)
-	g.Events = events.New(c.Events)
-	g.Constraints = constraints.New(c.Constraints)
-	g.IO = io.New(c.IO)
-	g.Admin = admin.New(c.Admin)
-	g.Tier = tier.New(c.Admin)
-	g.Stats = stats.New(c.Stats)
-	g.Hash = hash.New(c.Hash)
-	g.Resolve = resolve.New(c.Resolve)
-	g.Tx = &TxAPI{c: c}
-	g.Batch = &BatchAPI{c: c}
+	g.nodes = nodes.New(c.Nodes)
+	g.rels = rels.New(c.Rels)
+	g.temporal = temporal.New(c.Temporal)
+	g.index = index.New(c.Index)
+	g.events = events.New(c.Events)
+	g.constraints = constraints.New(c.Constraints)
+	g.io = io.New(c.IO)
+	g.admin = admin.New(c.Admin)
+	g.tier = tier.New(c.Admin)
+	g.stats = stats.New(c.Stats)
+	g.hash = hash.New(c.Hash)
+	g.resolve = resolve.New(c.Resolve)
+	g.tx = &TxAPI{c: c}
+	g.batch = &BatchAPI{c: c}
 	return g, nil
 }
 

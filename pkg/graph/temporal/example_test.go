@@ -17,10 +17,10 @@ func ExampleAPI_NodesAt() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	now := types.Instant(time.Now().UnixMilli())
-	nodes, err := g.Temporal.NodesAt(now)
+	nodes, err := g.Temporal().NodesAt(now)
 	if err != nil {
 		panic(err)
 	}
@@ -36,10 +36,10 @@ func ExampleAPI_Snapshot() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	now := types.Instant(time.Now().UnixMilli())
-	snap, err := g.Temporal.Snapshot(now)
+	snap, err := g.Temporal().Snapshot(now)
 	if err != nil {
 		panic(err)
 	}
@@ -55,9 +55,9 @@ func ExampleAPI_NodeAt() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	now := types.Instant(time.Now().UnixMilli())
-	v, err := g.Temporal.NodeAt(n.ID(), now)
+	v, err := g.Temporal().NodeAt(n.ID(), now)
 	if err != nil {
 		panic(err)
 	}

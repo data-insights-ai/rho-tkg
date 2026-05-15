@@ -71,7 +71,7 @@ func main() {
 
 	// Every entity gets an accurate creation timestamp from its snowflake ID,
 	// even without calling SetTemporal.
-	emp, err := g.Nodes.Add(context.Background(), []string{"Employee"}, map[string]any{
+	emp, err := g.Nodes().Add(context.Background(), []string{"Employee"}, map[string]any{
 		"name":       "Alice",
 		"department": "Engineering",
 	})
@@ -79,7 +79,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	createdAt, ok := g.Resolve.NodeProperty(emp, types.ShadowCreatedAt)
+	createdAt, ok := g.Resolve().NodeProperty(emp, types.ShadowCreatedAt)
 	if !ok {
 		log.Fatal("tkg_created_at not resolved")
 	}
@@ -118,7 +118,7 @@ func main() {
 	eventTime := types.Instant(time.Date(2026, 3, 9, 14, 30, 0, 0, time.UTC).UnixMilli())
 	farFuture := types.Instant(time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
 
-	sensor, err := g.Nodes.Add(context.Background(), []string{"Sensor"}, map[string]any{
+	sensor, err := g.Nodes().Add(context.Background(), []string{"Sensor"}, map[string]any{
 		"name":           "temperature-east-wing",
 		"location":       "building-A",
 		"tkg_valid_from": int64(eventTime), // when this fact becomes valid
@@ -146,7 +146,7 @@ func main() {
 	fmt.Println("tkg_valid_from NOT in regular properties (correctly extracted)")
 
 	// Works with relationships too:
-	reading, err := g.Rels.Add(context.Background(), "HAS_READING", sensor, emp, map[string]any{
+	reading, err := g.Rels().Add(context.Background(), "HAS_READING", sensor, emp, map[string]any{
 		"value":          float64(22.5),
 		"tkg_valid_from": int64(eventTime),
 		"tkg_created_at": int64(eventTime),
@@ -160,14 +160,14 @@ func main() {
 
 	fmt.Println("\n=== 4. Relationship with Temporal Data (Direct SetTemporal) ===")
 
-	mgr, err := g.Nodes.Add(context.Background(), []string{"Employee", "Manager"}, map[string]any{
+	mgr, err := g.Nodes().Add(context.Background(), []string{"Employee", "Manager"}, map[string]any{
 		"name": "Bob",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	reports, err := g.Rels.Add(context.Background(), "REPORTS_TO", emp, mgr, map[string]any{
+	reports, err := g.Rels().Add(context.Background(), "REPORTS_TO", emp, mgr, map[string]any{
 		"role": "direct",
 	})
 	if err != nil {
@@ -204,7 +204,7 @@ func main() {
 
 	fmt.Println("Node shadow properties:")
 	for _, key := range shadowKeys {
-		val, ok := g.Resolve.NodeProperty(emp, key)
+		val, ok := g.Resolve().NodeProperty(emp, key)
 		if ok {
 			fmt.Printf("  %-20s = %v\n", key, val)
 		} else {
@@ -216,7 +216,7 @@ func main() {
 
 	fmt.Println("Relationship shadow properties:")
 	for _, key := range shadowKeys {
-		val, ok := g.Resolve.RelProperty(reports, key)
+		val, ok := g.Resolve().RelProperty(reports, key)
 		if ok {
 			fmt.Printf("  %-20s = %v\n", key, val)
 		} else {
@@ -231,8 +231,8 @@ func main() {
 		PrevHash: "",
 	})
 
-	hash, _ := g.Resolve.NodeProperty(emp, types.ShadowHash)
-	prevHash, _ := g.Resolve.NodeProperty(emp, types.ShadowPrevHash)
+	hash, _ := g.Resolve().NodeProperty(emp, types.ShadowHash)
+	prevHash, _ := g.Resolve().NodeProperty(emp, types.ShadowPrevHash)
 	fmt.Printf("Node hash:      %s\n", hash)
 	fmt.Printf("Node prev_hash: %q (empty = first version)\n", prevHash)
 
@@ -241,25 +241,25 @@ func main() {
 		PrevHash: "sha256:abc123def456",
 	})
 
-	rHash, _ := g.Resolve.RelProperty(reports, types.ShadowHash)
-	rPrevHash, _ := g.Resolve.RelProperty(reports, types.ShadowPrevHash)
+	rHash, _ := g.Resolve().RelProperty(reports, types.ShadowHash)
+	rPrevHash, _ := g.Resolve().RelProperty(reports, types.ShadowPrevHash)
 	fmt.Printf("Rel hash:       %s\n", rHash)
 	fmt.Printf("Rel prev_hash:  %s\n", rPrevHash)
 
 	fmt.Println("\n=== 8. Version Tracking ===")
 
 	fmt.Printf("Employee version: %d\n", emp.Version())
-	ver, _ := g.Resolve.NodeProperty(emp, types.ShadowVersion)
+	ver, _ := g.Resolve().NodeProperty(emp, types.ShadowVersion)
 	fmt.Printf("Via shadow: tkg_version = %v\n", ver)
 
 	emp.SetVersion(2)
-	ver2, _ := g.Resolve.NodeProperty(emp, types.ShadowVersion)
+	ver2, _ := g.Resolve().NodeProperty(emp, types.ShadowVersion)
 	fmt.Printf("After update: tkg_version = %v\n", ver2)
 
 	fmt.Println("\n=== 9. Base Entity ID (Version Chain) ===")
 
 	// Create a new version linked back to the original.
-	empV2, err := g.Nodes.Add(context.Background(), []string{"Employee"}, map[string]any{
+	empV2, err := g.Nodes().Add(context.Background(), []string{"Employee"}, map[string]any{
 		"name":       "Alice",
 		"department": "Platform",
 	})
@@ -274,7 +274,7 @@ func main() {
 	})
 	empV2.Temporal().SetBaseEntityID(types.EntityID(emp.ID()))
 
-	baseID, ok := g.Resolve.NodeProperty(empV2, types.ShadowBaseEntity)
+	baseID, ok := g.Resolve().NodeProperty(empV2, types.ShadowBaseEntity)
 	if ok {
 		fmt.Printf("empV2 base entity: %s (points to original %s)\n",
 			commasFmt(baseID), commas(int64(emp.ID())))

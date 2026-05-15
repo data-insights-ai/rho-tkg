@@ -3,7 +3,7 @@
 //
 // Hash output is part of the on-disk format: any change to the byte layout
 // invalidates every existing `Hash`/`PrevHash` value persisted across stores
-// and would break `Graph.Hash.VerifyNodeChain` / `Graph.Hash.VerifyRelChain`.
+// and would break `Graph.Hash().VerifyNodeChain` / `Graph.Hash().VerifyRelChain`.
 // Treat the byte layout as a versioned wire format.
 package integrity
 

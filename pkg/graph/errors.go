@@ -85,12 +85,12 @@ var (
 	ErrImportSizeLimit      = core.ErrImportSizeLimit
 )
 
-// ErrNoVersionAsOf is the bitemporal sentinel returned by g.Temporal.NodeAsOf
+// ErrNoVersionAsOf is the bitemporal sentinel returned by g.Temporal().NodeAsOf
 // / RelAsOf when no version was committed at or before the supplied
 // transaction time.
 var ErrNoVersionAsOf = core.ErrNoVersionAsOf
 
-// ErrTxDone is the transaction-completion sentinel returned by g.Tx.Run /
+// ErrTxDone is the transaction-completion sentinel returned by g.Tx().Run /
 // RunContext / the imperative *GraphTx methods when the transaction has
 // already committed or rolled back. Aliases store.ErrTxDone so external
 // callers can use either qualifier.

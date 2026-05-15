@@ -15,7 +15,7 @@ func ExampleAPI_Add() {
 	}
 	defer g.Close()
 
-	if err := g.Constraints.Add(temporal.TemporalConstraint{
+	if err := g.Constraints().Add(temporal.TemporalConstraint{
 		Kind: temporal.ConstraintRelWithinEndpoints,
 	}); err != nil {
 		panic(err)
@@ -34,7 +34,7 @@ func ExampleAPI_Set() {
 	cs := temporal.NewConstraintSet(temporal.TemporalConstraint{
 		Kind: temporal.ConstraintRelWithinEndpoints,
 	})
-	if err := g.Constraints.Set(cs); err != nil {
+	if err := g.Constraints().Set(cs); err != nil {
 		panic(err)
 	}
 }
@@ -47,6 +47,6 @@ func ExampleAPI_Get() {
 	}
 	defer g.Close()
 
-	cs := g.Constraints.Get()
+	cs := g.Constraints().Get()
 	_ = cs.Len()
 }

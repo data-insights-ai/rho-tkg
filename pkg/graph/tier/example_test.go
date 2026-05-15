@@ -14,6 +14,6 @@ func ExampleAPI_ListShards() {
 	}
 	defer g.Close()
 
-	shards, _ := g.Tier.ListShards() // not a tiered store in this example — returns ErrNotTieredStore
+	shards, _ := g.Tier().ListShards() // not a tiered store in this example — returns ErrNotTieredStore
 	_ = shards
 }

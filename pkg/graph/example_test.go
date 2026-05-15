@@ -15,7 +15,7 @@ func ExampleTxAPI_Run() {
 	}
 	defer g.Close()
 
-	if err := g.Tx.Run(func(tx *graph.GraphTx) error {
+	if err := g.Tx().Run(func(tx *graph.GraphTx) error {
 		_, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 		return err
 	}); err != nil {
@@ -32,7 +32,7 @@ func ExampleTxAPI_Begin() {
 	}
 	defer g.Close()
 
-	tx, err := g.Tx.Begin()
+	tx, err := g.Tx().Begin()
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +55,7 @@ func ExampleTxAPI_RunContext() {
 	defer g.Close()
 
 	ctx := context.Background()
-	if err := g.Tx.RunContext(ctx, func(tx *graph.GraphTx) error {
+	if err := g.Tx().RunContext(ctx, func(tx *graph.GraphTx) error {
 		_, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
 		return err
 	}); err != nil {
@@ -72,7 +72,7 @@ func ExampleBatchAPI_New() {
 	}
 	defer g.Close()
 
-	bb, err := g.Batch.New()
+	bb, err := g.Batch().New()
 	if err != nil {
 		panic(err)
 	}

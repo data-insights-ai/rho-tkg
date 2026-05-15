@@ -12,7 +12,7 @@ import (
 // These types live inside pkg/graph because they alias *core.GraphTx /
 // *core.BatchBuilder; the wrappers route to the underlying *core.Core.
 
-// TxAPI is the transaction sub-API accessor on Graph.Tx.
+// TxAPI is the transaction sub-API accessor on Graph.Tx().
 type TxAPI struct{ c *core.Core }
 
 // Begin opens a new transaction.
@@ -129,7 +129,7 @@ func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr
 // that one sentinel and surface every other error.
 func errTxDoneSentinel() error { return storepkg.ErrTxDone }
 
-// BatchAPI is the batch sub-API accessor on Graph.Batch.
+// BatchAPI is the batch sub-API accessor on Graph.Batch().
 type BatchAPI struct{ c *core.Core }
 
 // New constructs a fresh BatchBuilder bound to the underlying graph.

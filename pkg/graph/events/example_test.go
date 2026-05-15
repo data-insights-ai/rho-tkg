@@ -19,7 +19,7 @@ func ExampleAPI_SetSync() {
 		// Custom event handler.
 		_ = e.Type
 	})
-	_ = g.Events.SetSync(bus)
+	_ = g.Events().SetSync(bus)
 }
 
 // ExampleAPI_GetSync demonstrates retrieving the currently installed sync
@@ -31,7 +31,7 @@ func ExampleAPI_GetSync() {
 	}
 	defer g.Close()
 
-	_ = g.Events.SetSync(events.NewEventBus())
-	bus := g.Events.GetSync()
+	_ = g.Events().SetSync(events.NewEventBus())
+	bus := g.Events().GetSync()
 	_ = bus
 }

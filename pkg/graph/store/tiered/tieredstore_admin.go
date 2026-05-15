@@ -286,7 +286,7 @@ func (ts *Store) RebuildCatalog() error {
 
 // HashChainVerifier is the dependency-inverted interface that VerifyShard uses
 // to run per-entity hash-chain verification. The Graph layer (pkg/graph)
-// satisfies it via Graph.Hash.VerifyNodeChain / Graph.Hash.VerifyRelChain.
+// satisfies it via Graph.Hash().VerifyNodeChain / Graph.Hash().VerifyRelChain.
 //
 // The interface lets Store call into the Graph layer for label/type
 // resolution without taking a hard import dependency on pkg/graph (which would

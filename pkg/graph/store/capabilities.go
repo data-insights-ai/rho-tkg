@@ -183,7 +183,7 @@ type HistoryVersionPageCapability interface {
 	RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error)
 }
 
-// StatsCapability is the counter surface used by `g.Stats.*` and by the
+// StatsCapability is the counter surface used by `g.Stats().*` and by the
 // graph layer's internal accounting.
 type StatsCapability interface {
 	NodeCount() (int, error)

@@ -15,7 +15,7 @@ func ExampleAPI_Add() {
 	}
 	defer g.Close()
 
-	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		panic(err)
 	}
@@ -30,8 +30,8 @@ func ExampleAPI_Update() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "Alice (renamed)"}); err != nil {
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if _, err := g.Nodes().Update(context.Background(), n.ID(), map[string]any{"name": "Alice (renamed)"}); err != nil {
 		panic(err)
 	}
 }
@@ -44,8 +44,8 @@ func ExampleAPI_Delete() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	if err := g.Nodes.Delete(context.Background(), n.ID()); err != nil {
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if err := g.Nodes().Delete(context.Background(), n.ID()); err != nil {
 		panic(err)
 	}
 }

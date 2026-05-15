@@ -6,16 +6,16 @@ import (
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 )
 
-// ErrIndexProviderExists is returned by g.Index.RegisterProvider /
+// ErrIndexProviderExists is returned by g.Index().RegisterProvider /
 // RegisterLegacyProvider when a provider with the same Name is
 // already registered.
 var ErrIndexProviderExists = errors.New("graph: index provider already registered")
 
-// ErrIndexProviderNotFound is returned by g.Index.UnregisterProvider
+// ErrIndexProviderNotFound is returned by g.Index().UnregisterProvider
 // when no provider with the given name is registered.
 var ErrIndexProviderNotFound = errors.New("graph: index provider not found")
 
-// ErrIndexProviderEmptyName is returned by g.Index.RegisterProvider /
+// ErrIndexProviderEmptyName is returned by g.Index().RegisterProvider /
 // RegisterLegacyProvider when the provider's Name() is empty or
 // whitespace-only. Names are the registry key.
 var ErrIndexProviderEmptyName = errors.New("graph: index provider Name must be non-empty")

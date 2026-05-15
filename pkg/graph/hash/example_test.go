@@ -15,8 +15,8 @@ func ExampleAPI_VerifyNodeChain() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	ok, err := g.Hash.VerifyNodeChain(n.ID())
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	ok, err := g.Hash().VerifyNodeChain(n.ID())
 	if err != nil {
 		panic(err)
 	}
@@ -32,10 +32,10 @@ func ExampleAPI_VerifyRelChain() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
-	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
-	ok, err := g.Hash.VerifyRelChain(r.ID())
+	a, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, _ := g.Rels().Add(context.Background(), "KNOWS", a, b, nil)
+	ok, err := g.Hash().VerifyRelChain(r.ID())
 	if err != nil {
 		panic(err)
 	}

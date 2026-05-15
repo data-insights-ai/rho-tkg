@@ -15,8 +15,8 @@ func ExampleAPI_NodeProperty() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	v, ok := g.Resolve.NodeProperty(n, "name")
+	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	v, ok := g.Resolve().NodeProperty(n, "name")
 	_ = v
 	_ = ok
 }
@@ -30,10 +30,10 @@ func ExampleAPI_RelProperty() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
-	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
-	v, ok := g.Resolve.RelProperty(r, "since")
+	a, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	b, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	r, _ := g.Rels().Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
+	v, ok := g.Resolve().RelProperty(r, "since")
 	_ = v
 	_ = ok
 }
